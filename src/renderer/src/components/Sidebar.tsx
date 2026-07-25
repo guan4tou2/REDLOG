@@ -8,7 +8,11 @@ const items = [
   { id: 'dashboard', label: 'Dashboard', icon: '◉' },
   { id: 'terminal', label: 'Terminal', icon: '▸' },
   { id: 'timeline', label: 'Timeline', icon: '═' },
-  { id: 'screenshots', label: 'Screenshots', icon: '◻' }
+  { id: 'screenshots', label: 'Screenshots', icon: '◻' },
+  { id: 'targets', label: 'Targets', icon: '⊕' },
+  { id: 'scope', label: 'Scope', icon: '⊘' },
+  { id: 'loot', label: 'Loot', icon: '◆' },
+  { id: 'export', label: 'Export', icon: '↗' }
 ]
 
 export default function Sidebar({ active, onNavigate, eventCount }: SidebarProps): JSX.Element {

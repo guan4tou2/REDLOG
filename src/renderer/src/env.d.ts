@@ -49,6 +49,20 @@ interface RedLogAPI {
     capture: () => Promise<string | null>
     getPath: (filename: string) => Promise<string>
   }
+  scope: {
+    getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>
+    getViolationCount: () => Promise<number>
+    isConfigured: () => Promise<boolean>
+    onCheck: (cb: (result: { target: string; command: string; inScope: boolean; violation: boolean }) => void) => () => void
+  }
+  chain: {
+    verify: () => Promise<{ valid: boolean; entries: number; firstBreak: number | null }>
+    length: () => Promise<number>
+  }
+  loot: {
+    getCount: () => Promise<number>
+    scan: (text: string) => Promise<Array<{ type: string; value: string; line: string; confidence: string }>>
+  }
   overlay?: {
     setExpanded: (expanded: boolean) => void
   }

@@ -10,6 +10,9 @@ import { eventBus } from './services/event-bus'
 import { TerminalManager } from './agents/terminal-manager'
 import { ClipboardMonitor } from './services/clipboard-monitor'
 import { ScreenshotAgent } from './services/screenshot-agent'
+import { ScopeMonitor } from './services/scope-monitor'
+import { LootDetector } from './services/loot-detector'
+import { initChain, appendToChain, verifyChain, getChainLength } from './services/evidence-chain'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -18,6 +21,8 @@ const ipMonitor = new IPMonitor()
 const terminalManager = new TerminalManager()
 const clipboardMonitor = new ClipboardMonitor()
 const screenshotAgent = new ScreenshotAgent()
+const scopeMonitor = new ScopeMonitor()
+const lootDetector = new LootDetector()
 
 function broadcastIPStatus(status: IPStatus): void {
   mainWindow?.webContents.send('ip:status', status)
@@ -45,6 +50,17 @@ app.whenReady().then(() => {
     idleDelay: 3,
     quality: 85
   })
+  scopeMonitor.configure({
+    enforcement: (config as Record<string, unknown>).scope
+      ? ((config as Record<string, unknown>).scope as Record<string, unknown>).enforcement as string
+      : 'warn',
+    targets: ((config as Record<string, unknown>).scope as Record<string, string[]>)?.targets ?? [],
+    excludeTargets: ((config as Record<string, unknown>).scope as Record<string, string[]>)?.excludeTargets ?? [],
+    engagementId,
+    operatorId
+  })
+  lootDetector.configure({ engagementId, operatorId })
+  initChain()
 
   mainWindow = createMainWindow()
   overlayWindow = createOverlayWindow()
@@ -74,9 +90,14 @@ app.whenReady().then(() => {
   })
   terminalManager.on('data', (id: string, data: string) => {
     mainWindow?.webContents.send('terminal:data', id, data)
+    if (data.length > 20) lootDetector.scan(data)
   })
   terminalManager.on('exit', (id: string, code: number) => {
     mainWindow?.webContents.send('terminal:exit', id, code)
+  })
+  terminalManager.on('target', (target: string, command: string) => {
+    const result = scopeMonitor.checkTarget(target, command)
+    mainWindow?.webContents.send('scope:check', { target, command, ...result })
   })
 
   // --- Events ---
@@ -84,6 +105,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', () => getEventCount())
   eventBus.on('event', (event) => {
     mainWindow?.webContents.send('events:new', event)
+    try { appendToChain(event.id, JSON.stringify(event)) } catch { /* chain not ready */ }
   })
 
   // --- Markers ---
@@ -105,6 +127,19 @@ app.whenReady().then(() => {
     const path = require('path')
     return path.join(getDataDir(engagementId), 'screenshots', filename)
   })
+
+  // --- Scope ---
+  ipcMain.handle('scope:getViolations', () => scopeMonitor.getViolations())
+  ipcMain.handle('scope:getViolationCount', () => scopeMonitor.getViolationCount())
+  ipcMain.handle('scope:isConfigured', () => scopeMonitor.isConfigured())
+
+  // --- Evidence Chain ---
+  ipcMain.handle('chain:verify', () => verifyChain())
+  ipcMain.handle('chain:length', () => getChainLength())
+
+  // --- Loot ---
+  ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
+  ipcMain.handle('loot:scan', (_e, text: string) => lootDetector.scan(text))
 
   // --- Global shortcut ---
   globalShortcut.register('CommandOrControl+Shift+M', () => {

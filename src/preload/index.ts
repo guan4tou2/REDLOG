@@ -48,5 +48,23 @@ contextBridge.exposeInMainWorld('redlog', {
     capture: () => ipcRenderer.invoke('screenshot:capture'),
     getPath: (filename: string): Promise<string> =>
       ipcRenderer.invoke('screenshot:getPath', filename)
+  },
+  scope: {
+    getViolations: () => ipcRenderer.invoke('scope:getViolations'),
+    getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
+    isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
+    onCheck: (cb: (result: unknown) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, result: unknown) => cb(result)
+      ipcRenderer.on('scope:check', handler)
+      return () => ipcRenderer.removeListener('scope:check', handler)
+    }
+  },
+  chain: {
+    verify: () => ipcRenderer.invoke('chain:verify'),
+    length: () => ipcRenderer.invoke('chain:length')
+  },
+  loot: {
+    getCount: () => ipcRenderer.invoke('loot:getCount'),
+    scan: (text: string) => ipcRenderer.invoke('loot:scan', text)
   }
 })

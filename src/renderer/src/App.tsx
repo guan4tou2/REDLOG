@@ -4,8 +4,12 @@ import IPStatusCard from './components/IPStatusCard'
 import TerminalPanel from './components/Terminal'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
+import { TargetView } from './components/TargetView'
+import { ScopeStatus } from './components/ScopeStatus'
+import { LootPanel } from './components/LootPanel'
+import { ReportExport } from './components/ReportExport'
 
-type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots'
+type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'export'
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('terminal')
@@ -59,6 +63,10 @@ export default function App(): JSX.Element {
           {view === 'terminal' && <TerminalPanel />}
           {view === 'timeline' && <TimelinePanel />}
           {view === 'screenshots' && <ScreenshotsView />}
+          {view === 'targets' && <TargetView />}
+          {view === 'scope' && <ScopeStatus />}
+          {view === 'loot' && <LootPanel />}
+          {view === 'export' && <ReportExport />}
         </div>
       </div>
 
@@ -69,9 +77,15 @@ export default function App(): JSX.Element {
 
 function DashboardView(): JSX.Element {
   const [eventCount, setEventCount] = useState(0)
+  const [lootCount, setLootCount] = useState(0)
+  const [chainLen, setChainLen] = useState(0)
+  const [scopeViolations, setScopeViolations] = useState(0)
 
   useEffect(() => {
     window.redlog.events.getCount().then(setEventCount)
+    window.redlog.loot.getCount().then(setLootCount)
+    window.redlog.chain.length().then(setChainLen)
+    window.redlog.scope.getViolationCount().then(setScopeViolations)
   }, [])
 
   return (
@@ -84,8 +98,18 @@ function DashboardView(): JSX.Element {
       <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
         Session Stats
       </h2>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <StatCard label="Events" value={String(eventCount)} />
+        <StatCard label="Chain" value={String(chainLen)} sub="evidence entries" />
+        <StatCard label="Loot" value={String(lootCount)} color={lootCount > 0 ? 'text-red-400' : undefined} />
+        <StatCard
+          label="Scope"
+          value={scopeViolations > 0 ? String(scopeViolations) : 'OK'}
+          color={scopeViolations > 0 ? 'text-red-400' : 'text-green-400'}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
         <StatCard label="Status" value="Recording" color="text-green-400" />
         <StatCard label="Hotkey" value="⌘⇧M" sub="Add marker" />
       </div>

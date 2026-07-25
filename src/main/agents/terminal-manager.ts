@@ -6,6 +6,7 @@ import * as pty from 'node-pty'
 import { insertEvent } from '../db/events'
 import { eventBus } from '../services/event-bus'
 import { getDataDir } from '../db/index'
+import { extractTarget, extractFileTransfer } from '../services/target-extractor'
 
 interface TermSession {
   id: string
@@ -107,12 +108,22 @@ export class TerminalManager extends EventEmitter {
       const command = session.inputBuffer.trim()
       session.inputBuffer = ''
       if (command.length > 0 && command.length < 2000) {
+        const target = extractTarget(command)
+        const transfer = extractFileTransfer(command)
         const evt = insertEvent('terminal', {
           subtype: 'command',
           sessionTermId: sessionId,
-          command
-        }, { engagementId: this.engagementId, operatorId: this.operatorId })
+          command,
+          ...(target && { detectedTarget: target }),
+          ...(transfer && { fileTransfer: transfer })
+        }, {
+          engagementId: this.engagementId,
+          operatorId: this.operatorId,
+          ...(target && { targetId: target })
+        })
         eventBus.publish(evt)
+        if (target) this.emit('target', target, command)
+        if (transfer) this.emit('transfer', transfer, command)
       }
     }
   }
