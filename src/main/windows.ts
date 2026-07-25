@@ -34,8 +34,8 @@ export function createOverlayWindow(): BrowserWindow {
   const { width: screenW } = screen.getPrimaryDisplay().workAreaSize
 
   const win = new BrowserWindow({
-    width: 420,
-    height: 44,
+    width: 440,
+    height: 52,
     x: screenW - 440,
     y: 20,
     frame: false,

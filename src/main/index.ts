@@ -69,7 +69,7 @@ app.whenReady().then(() => {
   ipcMain.handle('ip:getStatus', () => ipMonitor.status)
   ipcMain.handle('config:get', () => config)
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
-    overlayWindow?.setSize(420, expanded ? 200 : 44)
+    overlayWindow?.setSize(440, expanded ? 210 : 52)
   })
   ipMonitor.on('status', broadcastIPStatus)
   ipMonitor.start()

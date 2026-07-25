@@ -54,12 +54,13 @@ export default function OverlayApp(): JSX.Element {
       style={{
         background: s.bg,
         border: `1px solid ${s.border}`,
-        borderRadius: 10,
+        borderRadius: 12,
         backdropFilter: 'blur(16px)',
         WebkitAppRegion: 'drag',
         cursor: 'pointer',
         overflow: 'hidden',
-        height: '100%',
+        margin: 4,
+        height: 'calc(100% - 8px)',
         userSelect: 'none',
         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace'
       } as React.CSSProperties}

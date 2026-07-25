@@ -8,10 +8,12 @@ export default function TerminalPanel(): JSX.Element {
   const termRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const sessionRef = useRef<string | null>(null)
+  const initRef = useRef(false)
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current || initRef.current) return
+    initRef.current = true
 
     const term = new XTerm({
       cursorBlink: true,
@@ -61,7 +63,7 @@ export default function TerminalPanel(): JSX.Element {
       term.writeln('\r\n\x1b[90m[Session ended]\x1b[0m')
     })
 
-    const onResize = () => {
+    const onResize = (): void => {
       fit.fit()
       if (sessionRef.current) {
         window.redlog.terminal.resize(sessionRef.current, term.cols, term.rows)
@@ -78,8 +80,23 @@ export default function TerminalPanel(): JSX.Element {
         window.redlog.terminal.destroy(sessionRef.current)
       }
       term.dispose()
+      initRef.current = false
     }
   }, [])
+
+  function startNewSession(): void {
+    const term = termRef.current
+    if (!term) return
+    fitRef.current?.fit()
+    window.redlog.terminal.create(term.cols, term.rows).then((id) => {
+      sessionRef.current = id
+      setConnected(true)
+      term.clear()
+      term.onData((data) => {
+        window.redlog.terminal.write(id, data)
+      })
+    })
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -87,23 +104,7 @@ export default function TerminalPanel(): JSX.Element {
         <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-neutral-600'}`} />
         <span className="text-xs text-neutral-400">Terminal</span>
         {!connected && (
-          <button
-            onClick={() => {
-              const term = termRef.current
-              if (!term) return
-              const fit = fitRef.current
-              fit?.fit()
-              window.redlog.terminal.create(term.cols, term.rows).then((id) => {
-                sessionRef.current = id
-                setConnected(true)
-                term.clear()
-                term.onData((data) => {
-                  window.redlog.terminal.write(id, data)
-                })
-              })
-            }}
-            className="text-xs text-redlog-accent hover:text-red-300 ml-auto"
-          >
+          <button onClick={startNewSession} className="text-xs text-redlog-accent hover:text-red-300 ml-auto">
             New Session
           </button>
         )}
