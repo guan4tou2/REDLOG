@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 const VPN_STYLES = {
   connected: {
@@ -33,11 +33,24 @@ const VPN_STYLES = {
 export default function OverlayApp(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     window.redlog.ip.getStatus().then(setStatus)
     return window.redlog.ip.onStatus(setStatus)
   }, [])
+
+  useEffect(() => {
+    if (expanded) {
+      timerRef.current = setTimeout(() => collapse(), 8000)
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [expanded])
+
+  const collapse = (): void => {
+    setExpanded(false)
+    window.redlog.overlay?.setExpanded(false)
+  }
 
   const toggleExpand = (): void => {
     const next = !expanded
@@ -50,31 +63,31 @@ export default function OverlayApp(): JSX.Element {
 
   return (
     <div
-      onClick={toggleExpand}
       style={{
         background: s.bg,
         border: `1px solid ${s.border}`,
         borderRadius: 12,
         backdropFilter: 'blur(16px)',
-        WebkitAppRegion: 'drag',
-        cursor: 'pointer',
         overflow: 'hidden',
         margin: 4,
         height: 'calc(100% - 8px)',
         userSelect: 'none',
         fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace'
-      } as React.CSSProperties}
+      }}
     >
-      {/* Compact bar */}
+      {/* Compact bar — clickable to toggle */}
       <div
+        onClick={toggleExpand}
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           padding: '0 14px',
           height: 42,
-          fontSize: 12
-        }}
+          fontSize: 12,
+          cursor: 'pointer',
+          WebkitAppRegion: 'no-drag'
+        } as React.CSSProperties}
       >
         <span
           style={{
@@ -99,11 +112,28 @@ export default function OverlayApp(): JSX.Element {
         <span style={{ color: '#e5e5e5', fontWeight: 500 }}>
           {status?.internalIP ?? '—'}
         </span>
+        {expanded && (
+          <span
+            onClick={(e) => { e.stopPropagation(); collapse() }}
+            style={{ marginLeft: 'auto', color: '#737373', fontSize: 14, cursor: 'pointer', padding: '0 2px' }}
+          >
+            ✕
+          </span>
+        )}
       </div>
 
       {/* Expanded details */}
       {expanded && (
-        <div style={{ padding: '2px 14px 12px', fontSize: 11, color: '#a3a3a3' }}>
+        <div
+          onClick={collapse}
+          style={{
+            padding: '2px 14px 12px',
+            fontSize: 11,
+            color: '#a3a3a3',
+            cursor: 'pointer',
+            WebkitAppRegion: 'no-drag'
+          } as React.CSSProperties}
+        >
           <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '5px 0' }}>
             <span style={{ color: '#737373' }}>Status</span>
             <span style={{ color: s.statusColor, fontWeight: 600 }}>{s.statusText}</span>

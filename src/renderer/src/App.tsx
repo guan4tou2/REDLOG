@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
@@ -6,6 +6,7 @@ import TerminalPanel from './components/Terminal'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
+import ToastContainer, { useToast } from './components/Toast'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
@@ -13,20 +14,50 @@ import { ReportExport } from './components/ReportExport'
 
 type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'export' | 'settings'
 
+const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'export', 'settings']
+
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('terminal')
   const [showMarker, setShowMarker] = useState(false)
+  const { toasts, addToast } = useToast()
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
         e.preventDefault()
         setShowMarker(true)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        const num = parseInt(e.key)
+        if (num >= 1 && num <= VIEW_KEYS.length) {
+          e.preventDefault()
+          setView(VIEW_KEYS[num - 1])
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  useEffect(() => {
+    const unsubScope = window.redlog.scope.onCheck((result: { target: string; violation: boolean }) => {
+      if (result.violation) {
+        addToast(`Scope violation: ${result.target}`, 'scope')
+      }
+    })
+    let prevLoot = 0
+    window.redlog.loot.getCount().then((c) => { prevLoot = c })
+    const unsubEvent = window.redlog.events.onNew(() => {
+      window.redlog.loot.getCount().then((c) => {
+        if (c > prevLoot) {
+          addToast(`Credential detected (${c} total)`, 'loot')
+          prevLoot = c
+        }
+      })
+    })
+    return () => { unsubScope(); unsubEvent() }
+  }, [addToast])
 
   return (
     <div className="h-screen flex flex-col">
@@ -53,8 +84,8 @@ export default function App(): JSX.Element {
         <Sidebar active={view} onNavigate={(v) => setView(v as View)} />
 
         <div className="flex-1 min-w-0">
-          {view === 'dashboard' && <DashboardView />}
-          {view === 'terminal' && <TerminalPanel />}
+          {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
+          {view === 'terminal' && <SplitTerminal />}
           {view === 'timeline' && <TimelinePanel />}
           {view === 'screenshots' && <ScreenshotsView />}
           {view === 'targets' && <TargetView />}
@@ -65,25 +96,85 @@ export default function App(): JSX.Element {
         </div>
       </div>
 
-      {/* Status bar */}
       <StatusBar />
-
+      <ToastContainer toasts={toasts} />
       {showMarker && <EventMarker onClose={() => setShowMarker(false)} />}
     </div>
   )
 }
 
-function DashboardView(): JSX.Element {
+function SplitTerminal(): JSX.Element {
+  const [splitHeight, setSplitHeight] = useState(200)
+  const [showTimeline, setShowTimeline] = useState(true)
+  const [dragging, setDragging] = useState(false)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setDragging(true)
+    const startY = e.clientY
+    const startH = splitHeight
+
+    const onMove = (ev: MouseEvent): void => {
+      const container = document.getElementById('split-container')
+      if (!container) return
+      const containerH = container.getBoundingClientRect().height
+      const newH = startH - (ev.clientY - startY)
+      setSplitHeight(Math.max(100, Math.min(containerH - 200, newH)))
+    }
+    const onUp = (): void => {
+      setDragging(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [splitHeight])
+
+  return (
+    <div id="split-container" className="flex flex-col h-full">
+      <div className={`flex-1 min-h-0 ${showTimeline ? '' : 'h-full'}`}>
+        <TerminalPanel />
+      </div>
+      {showTimeline && (
+        <>
+          <div
+            onMouseDown={onMouseDown}
+            className={`h-1 shrink-0 cursor-row-resize flex items-center justify-center group ${
+              dragging ? 'bg-red-500/30' : 'bg-zinc-800 hover:bg-zinc-700'
+            }`}
+          >
+            <div className="w-8 h-0.5 bg-zinc-600 rounded group-hover:bg-zinc-400" />
+          </div>
+          <div style={{ height: splitHeight }} className="shrink-0 overflow-hidden">
+            <TimelinePanel />
+          </div>
+        </>
+      )}
+      <div className="h-6 shrink-0 flex items-center px-2 bg-zinc-950 border-t border-zinc-800">
+        <button
+          onClick={() => setShowTimeline(!showTimeline)}
+          className="text-[10px] text-zinc-500 hover:text-zinc-300"
+        >
+          {showTimeline ? '▾ Hide Timeline' : '▸ Show Timeline'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [eventCount, setEventCount] = useState(0)
   const [lootCount, setLootCount] = useState(0)
   const [chainLen, setChainLen] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
+  const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
 
   useEffect(() => {
     window.redlog.events.getCount().then(setEventCount)
     window.redlog.loot.getCount().then(setLootCount)
     window.redlog.chain.length().then(setChainLen)
     window.redlog.scope.getViolationCount().then(setScopeViolations)
+    window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>))
   }, [])
 
   return (
@@ -105,6 +196,68 @@ function DashboardView(): JSX.Element {
           value={scopeViolations > 0 ? String(scopeViolations) : 'OK'}
           color={scopeViolations > 0 ? 'text-red-400' : 'text-green-400'}
         />
+      </div>
+
+      {config && (
+        <>
+          <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
+            Engagement
+          </h2>
+          <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+              <div>
+                <span className="text-zinc-500">ID:</span>{' '}
+                <span className="text-zinc-200 font-mono">{config.engagement?.id as string}</span>
+              </div>
+              <div>
+                <span className="text-zinc-500">Name:</span>{' '}
+                <span className="text-zinc-200">{config.engagement?.name as string}</span>
+              </div>
+              <div>
+                <span className="text-zinc-500">Operator:</span>{' '}
+                <span className="text-zinc-200">{config.operator?.name as string}</span>
+              </div>
+              <div>
+                <span className="text-zinc-500">Scope:</span>{' '}
+                <span className="text-zinc-200">
+                  {(config.scope?.targets as string[])?.length || 0} targets,{' '}
+                  enforcement: {config.scope?.enforcement as string}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate('settings')}
+              className="mt-3 text-[10px] text-red-400 hover:text-red-300"
+            >
+              Edit in Settings →
+            </button>
+          </div>
+        </>
+      )}
+
+      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
+        Keyboard Shortcuts
+      </h2>
+      <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {[
+            ['⌘1', 'Dashboard'],
+            ['⌘2', 'Terminal'],
+            ['⌘3', 'Timeline'],
+            ['⌘4', 'Screenshots'],
+            ['⌘5', 'Targets'],
+            ['⌘6', 'Scope'],
+            ['⌘7', 'Loot'],
+            ['⌘8', 'Export'],
+            ['⌘9', 'Settings'],
+            ['⌘⇧M', 'Add Marker']
+          ].map(([key, label]) => (
+            <div key={key} className="flex items-center gap-2">
+              <kbd className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded text-[10px] font-mono">{key}</kbd>
+              <span className="text-zinc-500">{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
