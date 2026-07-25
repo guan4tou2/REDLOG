@@ -3,7 +3,7 @@ import { electronApp } from '@electron-toolkit/utils'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray } from './tray'
 import { IPMonitor, IPStatus } from './services/ip-monitor'
-import { loadConfig } from './services/config'
+import { loadConfig, saveConfig, RedLogConfig } from './services/config'
 import { initDB, closeDB } from './db/index'
 import { insertEvent, queryEvents, getEventCount } from './db/events'
 import { eventBus } from './services/event-bus'
@@ -68,6 +68,10 @@ app.whenReady().then(() => {
   // --- IP ---
   ipcMain.handle('ip:getStatus', () => ipMonitor.status)
   ipcMain.handle('config:get', () => config)
+  ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
+    saveConfig(newConfig)
+    return true
+  })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
     overlayWindow?.setSize(440, expanded ? 210 : 52)
   })

@@ -10,7 +10,8 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   config: {
-    get: () => ipcRenderer.invoke('config:get')
+    get: () => ipcRenderer.invoke('config:get'),
+    save: (config: unknown) => ipcRenderer.invoke('config:save', config)
   },
   terminal: {
     create: (cols: number, rows: number): Promise<string> =>

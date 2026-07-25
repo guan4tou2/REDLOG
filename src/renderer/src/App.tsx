@@ -1,27 +1,21 @@
 import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
+import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
 import TerminalPanel from './components/Terminal'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
+import Settings from './components/Settings'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
 import { ReportExport } from './components/ReportExport'
 
-type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'export'
+type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'export' | 'settings'
 
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('terminal')
   const [showMarker, setShowMarker] = useState(false)
-  const [eventCount, setEventCount] = useState(0)
-
-  useEffect(() => {
-    window.redlog.events.getCount().then(setEventCount)
-    return window.redlog.events.onNew(() => {
-      setEventCount((c) => c + 1)
-    })
-  }, [])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -56,7 +50,7 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => setView(v as View)} eventCount={eventCount} />
+        <Sidebar active={view} onNavigate={(v) => setView(v as View)} />
 
         <div className="flex-1 min-w-0">
           {view === 'dashboard' && <DashboardView />}
@@ -67,8 +61,12 @@ export default function App(): JSX.Element {
           {view === 'scope' && <ScopeStatus />}
           {view === 'loot' && <LootPanel />}
           {view === 'export' && <ReportExport />}
+          {view === 'settings' && <Settings />}
         </div>
       </div>
+
+      {/* Status bar */}
+      <StatusBar />
 
       {showMarker && <EventMarker onClose={() => setShowMarker(false)} />}
     </div>
@@ -107,18 +105,6 @@ function DashboardView(): JSX.Element {
           value={scopeViolations > 0 ? String(scopeViolations) : 'OK'}
           color={scopeViolations > 0 ? 'text-red-400' : 'text-green-400'}
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Status" value="Recording" color="text-green-400" />
-        <StatCard label="Hotkey" value="⌘⇧M" sub="Add marker" />
-      </div>
-
-      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
-        Engagement
-      </h2>
-      <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 text-neutral-500 text-sm">
-        Configure in <code className="text-neutral-400">~/.redlog/config.yaml</code>
       </div>
     </div>
   )

@@ -28,7 +28,10 @@ interface RedLogAPI {
     getStatus: () => Promise<IPStatus>
     onStatus: (cb: (status: IPStatus) => void) => () => void
   }
-  config: { get: () => Promise<unknown> }
+  config: {
+    get: () => Promise<unknown>
+    save: (config: unknown) => Promise<boolean>
+  }
   terminal: {
     create: (cols: number, rows: number) => Promise<string>
     write: (id: string, data: string) => void
