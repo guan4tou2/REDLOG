@@ -1,0 +1,40 @@
+# RedLog Configuration
+# Copy to ~/.redlog/config.yaml and edit
+
+engagement:
+  id: pentest-2026-001
+  name: "Example Corp External Pentest"
+
+operator:
+  id: op-1
+  name: "Operator"
+
+network:
+  # VPN exit IPs — when external IP matches, shows "VPN Connected" (green)
+  vpnIPs:
+    - 10.8.0.0/24
+    - 203.0.113.42
+
+  # Daily/home IPs — when external IP matches, shows "No VPN" (red)
+  # Put your ISP IPs here so the overlay warns you if VPN drops
+  dailyIPs:
+    - 114.24.97.0/24
+    - 36.225.0.0/16
+
+  # IP check interval in seconds
+  checkInterval: 10
+  emergencyPause: false
+
+# Scope definition (optional)
+scope:
+  # warn | block | log
+  enforcement: warn
+  # In-scope targets (IPs, CIDRs, wildcard domains)
+  targets:
+    - 10.0.0.0/8
+    - 192.168.1.0/24
+    - "*.example.com"
+  # Explicitly excluded targets
+  excludeTargets:
+    - 10.0.0.1
+    - "dc01.corp.example.com"

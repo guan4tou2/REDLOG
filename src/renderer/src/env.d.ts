@@ -3,7 +3,7 @@
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  isAllowed: boolean
+  vpnStatus: 'connected' | 'disconnected' | 'unknown'
   lastCheck: number
   error: string | null
 }

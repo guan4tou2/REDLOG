@@ -4,7 +4,7 @@ import os from 'os'
 export interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  isAllowed: boolean
+  vpnStatus: 'connected' | 'disconnected' | 'unknown'
   lastCheck: number
   error: string | null
 }
@@ -57,12 +57,13 @@ async function getExternalIP(): Promise<string> {
 
 export class IPMonitor extends EventEmitter {
   private interval: ReturnType<typeof setInterval> | null = null
-  private allowedIPs: string[] = []
+  private vpnIPs: string[] = []
+  private dailyIPs: string[] = []
   private checkIntervalMs = 10_000
   private _status: IPStatus = {
     externalIP: null,
     internalIP: null,
-    isAllowed: true,
+    vpnStatus: 'unknown',
     lastCheck: 0,
     error: null
   }
@@ -71,8 +72,9 @@ export class IPMonitor extends EventEmitter {
     return { ...this._status }
   }
 
-  configure(opts: { allowedIPs?: string[]; checkInterval?: number }): void {
-    if (opts.allowedIPs) this.allowedIPs = opts.allowedIPs
+  configure(opts: { vpnIPs?: string[]; dailyIPs?: string[]; checkInterval?: number }): void {
+    if (opts.vpnIPs) this.vpnIPs = opts.vpnIPs
+    if (opts.dailyIPs) this.dailyIPs = opts.dailyIPs
     if (opts.checkInterval) this.checkIntervalMs = opts.checkInterval * 1000
   }
 
@@ -95,14 +97,19 @@ export class IPMonitor extends EventEmitter {
         Promise.resolve(getInternalIP())
       ])
 
-      const isAllowed =
-        this.allowedIPs.length === 0 ||
-        this.allowedIPs.some((cidr) => ipInCIDR(externalIP, cidr))
+      let vpnStatus: IPStatus['vpnStatus'] = 'unknown'
+      if (this.vpnIPs.length > 0 && this.vpnIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
+        vpnStatus = 'connected'
+      } else if (this.dailyIPs.length > 0 && this.dailyIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
+        vpnStatus = 'disconnected'
+      } else if (this.vpnIPs.length > 0 || this.dailyIPs.length > 0) {
+        vpnStatus = 'unknown'
+      }
 
       this._status = {
         externalIP,
         internalIP,
-        isAllowed,
+        vpnStatus,
         lastCheck: Date.now(),
         error: null
       }

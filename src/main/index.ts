@@ -39,7 +39,8 @@ app.whenReady().then(() => {
   initDB(engagementId)
 
   ipMonitor.configure({
-    allowedIPs: config.network.allowedIPs,
+    vpnIPs: config.network.vpnIPs,
+    dailyIPs: config.network.dailyIPs,
     checkInterval: config.network.checkInterval
   })
   terminalManager.configure({ engagementId, operatorId })
@@ -51,11 +52,9 @@ app.whenReady().then(() => {
     quality: 85
   })
   scopeMonitor.configure({
-    enforcement: (config as Record<string, unknown>).scope
-      ? ((config as Record<string, unknown>).scope as Record<string, unknown>).enforcement as string
-      : 'warn',
-    targets: ((config as Record<string, unknown>).scope as Record<string, string[]>)?.targets ?? [],
-    excludeTargets: ((config as Record<string, unknown>).scope as Record<string, string[]>)?.excludeTargets ?? [],
+    enforcement: config.scope.enforcement,
+    targets: config.scope.targets,
+    excludeTargets: config.scope.excludeTargets,
     engagementId,
     operatorId
   })

@@ -3,3 +3,6 @@ out/
 dist/
 .DS_Store
 *.tsbuildinfo
+
+# Runtime data (screenshots, DB, cast files)
+.redlog/

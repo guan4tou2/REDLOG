@@ -13,9 +13,15 @@ export interface RedLogConfig {
     name: string
   }
   network: {
-    allowedIPs: string[]
+    vpnIPs: string[]
+    dailyIPs: string[]
     checkInterval: number
     emergencyPause: boolean
+  }
+  scope: {
+    enforcement: string
+    targets: string[]
+    excludeTargets: string[]
   }
 }
 
@@ -29,9 +35,15 @@ const DEFAULT_CONFIG: RedLogConfig = {
     name: 'Operator'
   },
   network: {
-    allowedIPs: [],
+    vpnIPs: [],
+    dailyIPs: [],
     checkInterval: 10,
     emergencyPause: false
+  },
+  scope: {
+    enforcement: 'warn',
+    targets: [],
+    excludeTargets: []
   }
 }
 
@@ -43,7 +55,8 @@ export function loadConfig(): RedLogConfig {
     return {
       engagement: { ...DEFAULT_CONFIG.engagement, ...parsed?.engagement },
       operator: { ...DEFAULT_CONFIG.operator, ...parsed?.operator },
-      network: { ...DEFAULT_CONFIG.network, ...parsed?.network }
+      network: { ...DEFAULT_CONFIG.network, ...parsed?.network },
+      scope: { ...DEFAULT_CONFIG.scope, ...parsed?.scope }
     }
   } catch {
     return DEFAULT_CONFIG
