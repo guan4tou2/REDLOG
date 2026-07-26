@@ -2,7 +2,7 @@ import { Tray, Menu, nativeImage, BrowserWindow } from 'electron'
 
 export function createTray(
   mainWindow: BrowserWindow,
-  overlayWindow: BrowserWindow
+  overlayWindow: BrowserWindow | null
 ): Tray {
   const icon = nativeImage.createFromDataURL(
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARElEQVQ4T2P8z8Dwn4EIwMjAwMBIjAamfwwM/4nRz0C1F4hyAdVcQLQXiHYBVcOAaBeQHI2kuoDoaKRaQiI6JRDtAgCGHBAR1gFDqQAAAABJRU5ErkJggg=='
@@ -20,6 +20,7 @@ export function createTray(
     {
       label: 'Toggle IP Overlay',
       click: () => {
+        if (!overlayWindow) return
         if (overlayWindow.isVisible()) {
           overlayWindow.hide()
         } else {

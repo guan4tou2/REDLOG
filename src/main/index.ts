@@ -237,7 +237,10 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('screenshot:read', (_e, filePath: string) => {
     try {
-      const data = fs.readFileSync(filePath)
+      const screenshotDir = path.join(getProjectDir(), 'screenshots')
+      const resolved = path.resolve(filePath)
+      if (!resolved.startsWith(screenshotDir)) return null
+      const data = fs.readFileSync(resolved)
       return `data:image/jpeg;base64,${data.toString('base64')}`
     } catch { return null }
   })
