@@ -100,5 +100,10 @@ contextBridge.exposeInMainWorld('redlog', {
     create: (eventId: string, note: string) => ipcRenderer.invoke('annotations:create', eventId, note),
     get: (eventId: string) => ipcRenderer.invoke('annotations:get', eventId),
     delete: (annotationId: string) => ipcRenderer.invoke('annotations:delete', annotationId)
+  },
+  overlay: {
+    toggle: () => ipcRenderer.send('overlay:toggle'),
+    hide: () => ipcRenderer.send('overlay:hide'),
+    show: () => ipcRenderer.send('overlay:show')
   }
 })

@@ -91,6 +91,10 @@ function startProject(project: ProjectMeta): void {
 
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow()
+    if (tray) {
+      tray.destroy()
+      tray = createTray(mainWindow!, overlayWindow)
+    }
   }
 
   mainWindow?.webContents.send('project:opened', {
@@ -111,6 +115,16 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
 
   mainWindow = createMainWindow()
+
+  let forceQuit = false
+  mainWindow.on('close', (e) => {
+    if (!forceQuit) {
+      e.preventDefault()
+      mainWindow?.hide()
+    }
+  })
+  app.on('before-quit', () => { forceQuit = true })
+
   tray = createTray(mainWindow, null)
 
   // --- Project management ---
@@ -159,6 +173,19 @@ app.whenReady().then(() => {
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
     overlayWindow?.setSize(440, expanded ? 210 : 52)
+  })
+  ipcMain.on('overlay:hide', () => {
+    overlayWindow?.hide()
+  })
+  ipcMain.on('overlay:show', () => {
+    overlayWindow?.show()
+  })
+  ipcMain.on('overlay:toggle', () => {
+    if (overlayWindow?.isVisible()) {
+      overlayWindow.hide()
+    } else {
+      overlayWindow?.show()
+    }
   })
   ipMonitor.on('status', broadcastIPStatus)
 

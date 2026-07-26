@@ -131,8 +131,11 @@ interface RedLogAPI {
     get: (eventId: string) => Promise<EventAnnotation[]>
     delete: (annotationId: string) => Promise<boolean>
   }
-  overlay?: {
-    setExpanded: (expanded: boolean) => void
+  overlay: {
+    toggle: () => void
+    hide: () => void
+    show: () => void
+    setExpanded?: (expanded: boolean) => void
   }
 }
 

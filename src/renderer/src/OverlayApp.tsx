@@ -72,9 +72,25 @@ export default function OverlayApp(): JSX.Element {
         margin: 4,
         height: 'calc(100% - 8px)',
         userSelect: 'none',
-        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace'
+        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+        position: 'relative'
       }}
     >
+      {/* Close button — always visible, inside border-radius safe zone */}
+      <div
+        onClick={() => window.redlog.overlay?.hide()}
+        style={{
+          position: 'absolute', top: 6, right: 8, zIndex: 10,
+          color: '#a3a3a3', fontSize: 10, cursor: 'pointer',
+          width: 18, height: 18, borderRadius: '50%',
+          background: 'rgba(50,50,50,0.9)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          WebkitAppRegion: 'no-drag'
+        } as React.CSSProperties}
+        title="Hide overlay (reopen from tray)"
+      >
+        ✕
+      </div>
       {/* Compact bar — clickable to toggle */}
       <div
         onClick={toggleExpand}
@@ -82,7 +98,7 @@ export default function OverlayApp(): JSX.Element {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '0 14px',
+          padding: '0 24px 0 14px',
           height: 42,
           fontSize: 12,
           cursor: 'pointer',
@@ -117,7 +133,7 @@ export default function OverlayApp(): JSX.Element {
             onClick={(e) => { e.stopPropagation(); collapse() }}
             style={{ marginLeft: 'auto', color: '#737373', fontSize: 14, cursor: 'pointer', padding: '0 2px' }}
           >
-            ✕
+            ▴
           </span>
         )}
       </div>

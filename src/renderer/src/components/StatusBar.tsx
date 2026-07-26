@@ -88,6 +88,13 @@ export default function StatusBar(): JSX.Element {
       {/* Right side */}
       <div className="ml-auto flex items-center gap-4">
         <span className="text-zinc-500">{eventCount} events</span>
+        <button
+          onClick={() => window.redlog.overlay.toggle()}
+          className="text-zinc-600 hover:text-zinc-400 transition-colors"
+          title="Toggle IP Overlay"
+        >
+          IP▪
+        </button>
         <span className="text-zinc-600">⌘⇧M mark</span>
       </div>
     </div>
