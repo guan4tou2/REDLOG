@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Red Team Operator Workbench",
   "main": "./out/main/index.js",
+  "bin": {
+    "redlog-cli": "./cli/redlog-cli.js"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

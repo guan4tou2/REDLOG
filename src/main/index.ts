@@ -20,6 +20,7 @@ import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from './services/project-manager'
+import { startApiServer, stopApiServer, configureApi, getApiToken } from './services/api-server'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -79,6 +80,18 @@ function startProject(project: ProjectMeta): void {
   fileTransferTracker.start()
   scopeMonitor.startDns()
 
+  configureApi({
+    engagementId,
+    operatorId,
+    lootDetector: lootDetector,
+    screenshotAgent: screenshotAgent,
+    ipMonitor: ipMonitor,
+    scopeMonitor: scopeMonitor
+  })
+  startApiServer(6660).then((port) => {
+    insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
+  })
+
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
   if (!overlayWindow) {
@@ -92,6 +105,7 @@ function startProject(project: ProjectMeta): void {
 }
 
 function stopProject(): void {
+  stopApiServer()
   ipMonitor.stop()
   clipboardMonitor.stop()
   screenshotAgent.stop()
