@@ -25,26 +25,6 @@ contextBridge.exposeInMainWorld('redlog', {
     get: () => ipcRenderer.invoke('config:get'),
     save: (config: unknown) => ipcRenderer.invoke('config:save', config)
   },
-  terminal: {
-    create: (cols: number, rows: number): Promise<string> =>
-      ipcRenderer.invoke('terminal:create', cols, rows),
-    write: (id: string, data: string) =>
-      ipcRenderer.send('terminal:write', id, data),
-    resize: (id: string, cols: number, rows: number) =>
-      ipcRenderer.send('terminal:resize', id, cols, rows),
-    destroy: (id: string) =>
-      ipcRenderer.send('terminal:destroy', id),
-    onData: (cb: (id: string, data: string) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, id: string, data: string) => cb(id, data)
-      ipcRenderer.on('terminal:data', handler)
-      return () => ipcRenderer.removeListener('terminal:data', handler)
-    },
-    onExit: (cb: (id: string, code: number) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, id: string, code: number) => cb(id, code)
-      ipcRenderer.on('terminal:exit', handler)
-      return () => ipcRenderer.removeListener('terminal:exit', handler)
-    }
-  },
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
     getCount: () => ipcRenderer.invoke('events:getCount'),

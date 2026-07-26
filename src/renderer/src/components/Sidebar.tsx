@@ -30,7 +30,6 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     {
       label: 'OPS',
       items: [
-        { id: 'terminal', label: 'Terminal', icon: '▸' },
         { id: 'timeline', label: 'Timeline', icon: '═' },
         { id: 'screenshots', label: 'Screens', icon: '◻' }
       ]

@@ -10,12 +10,11 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "rebuild": "electron-rebuild -f -w better-sqlite3,node-pty"
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
     "js-yaml": "^4.1.0",
-    "node-pty": "^1.0.0",
     "vis-data": "^8.0.4",
     "vis-timeline": "^8.5.2"
   },
@@ -28,8 +27,6 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0",
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.1",
     "electron-vite": "^2.3.0",

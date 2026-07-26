@@ -77,14 +77,6 @@ interface RedLogAPI {
     get: () => Promise<unknown>
     save: (config: unknown) => Promise<boolean>
   }
-  terminal: {
-    create: (cols: number, rows: number) => Promise<string>
-    write: (id: string, data: string) => void
-    resize: (id: string, cols: number, rows: number) => void
-    destroy: (id: string) => void
-    onData: (cb: (id: string, data: string) => void) => () => void
-    onExit: (cb: (id: string, code: number) => void) => () => void
-  }
   events: {
     query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
     getCount: () => Promise<number>

@@ -14,7 +14,6 @@ import {
 import { getActiveBrowserTab, setCdpPort } from './services/cdp-connector'
 import fs from 'fs'
 import { eventBus } from './services/event-bus'
-import { TerminalManager } from './agents/terminal-manager'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from './services/scope-monitor'
 import { LootDetector } from './services/loot-detector'
@@ -31,7 +30,6 @@ let tray: Tray | null = null
 let activeProject: ProjectMeta | null = null
 
 const ipMonitor = new IPMonitor()
-const terminalManager = new TerminalManager()
 const screenshotAgent = new ScreenshotAgent()
 const scopeMonitor = new ScopeMonitor()
 const lootDetector = new LootDetector()
@@ -56,7 +54,6 @@ function startProject(project: ProjectMeta): void {
     dailyIPs: config.network.dailyIPs,
     checkInterval: config.network.checkInterval
   })
-  terminalManager.configure({ engagementId, operatorId })
   screenshotAgent.configure({ engagementId, operatorId, quality: config.screenshot.quality })
 
   let scopeTargets = config.scope.targets
@@ -106,7 +103,6 @@ function startProject(project: ProjectMeta): void {
 function stopProject(): void {
   stopApiServer()
   ipMonitor.stop()
-  terminalManager.destroyAll()
   closeDB()
   activeProject = null
 }
@@ -188,39 +184,6 @@ app.whenReady().then(() => {
     }
   })
   ipMonitor.on('status', broadcastIPStatus)
-
-  // --- Terminal ---
-  ipcMain.handle('terminal:create', (_e, cols: number, rows: number) => {
-    return terminalManager.create(cols, rows)
-  })
-  ipcMain.on('terminal:write', (_e, id: string, data: string) => {
-    terminalManager.write(id, data)
-  })
-  ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) => {
-    terminalManager.resize(id, cols, rows)
-  })
-  ipcMain.on('terminal:destroy', (_e, id: string) => {
-    terminalManager.destroy(id)
-  })
-  terminalManager.on('data', (id: string, data: string) => {
-    mainWindow?.webContents.send('terminal:data', id, data)
-    if (data.length > 20) lootDetector.scan(data)
-  })
-  terminalManager.on('exit', (id: string, code: number) => {
-    mainWindow?.webContents.send('terminal:exit', id, code)
-  })
-  terminalManager.on('target', (target: string, command: string) => {
-    const result = scopeMonitor.checkTarget(target, command)
-    mainWindow?.webContents.send('scope:check', { target, command, ...result })
-  })
-  terminalManager.on('transfer', (transfer: { direction: string; remotePath: string; remoteHost: string }, command: string) => {
-    const evt = insertEvent('file_transfer', {
-      ...transfer,
-      command,
-      method: command.split(/\s+/)[0]
-    }, { engagementId: activeProject ? loadConfig(getProjectPath(activeProject)).engagement.id : 'default', operatorId: 'operator-1' })
-    eventBus.publish(evt)
-  })
 
   // --- Events ---
   ipcMain.handle('events:query', (_e, opts) => queryEvents(opts))

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 
 const TYPE_COLORS: Record<string, string> = {
-  terminal: 'text-green-400',
+  shell: 'text-green-400',
   screenshot: 'text-blue-400',
   clipboard: 'text-yellow-400',
   file_transfer: 'text-purple-400',
@@ -12,7 +12,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 function eventSummary(e: RedLogEvent): string {
   const d = e.data
-  if (e.agentType === 'terminal' && d.subtype === 'command') return `$ ${(d.command as string).slice(0, 120)}`
+  if (e.agentType === 'shell') return `$ ${(d.command as string)?.slice(0, 120) || ''}`
   if (e.agentType === 'screenshot') return `Screenshot (${d.trigger})`
   if (e.agentType === 'clipboard') return `Clipboard: ${(d.content as string)?.slice(0, 80) || ''}`
   if (e.agentType === 'marker') return `[${d.severity}] ${d.title}`

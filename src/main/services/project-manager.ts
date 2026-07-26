@@ -47,7 +47,6 @@ export function createProject(name: string): ProjectMeta {
 
   ensureDir(projectPath)
   ensureDir(path.join(projectPath, 'screenshots'))
-  ensureDir(path.join(projectPath, 'terminal'))
 
   const meta: ProjectMeta = {
     id,
@@ -93,6 +92,5 @@ export function deleteProject(id: string): boolean {
 export function getProjectDir(project: ProjectMeta): string {
   ensureDir(project.path)
   ensureDir(path.join(project.path, 'screenshots'))
-  ensureDir(path.join(project.path, 'terminal'))
   return project.path
 }

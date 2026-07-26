@@ -3,7 +3,7 @@ import { Timeline, DataSet } from 'vis-timeline/standalone'
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css'
 
 const GROUPS = [
-  { id: 'terminal', content: 'Terminal', className: 'lane-terminal' },
+  { id: 'shell', content: 'Shell', className: 'lane-shell' },
   { id: 'screenshot', content: 'Screenshot', className: 'lane-screenshot' },
   { id: 'clipboard', content: 'Clipboard', className: 'lane-clipboard' },
   { id: 'file_transfer', content: 'Files', className: 'lane-file' },
@@ -13,7 +13,7 @@ const GROUPS = [
 ]
 
 const TYPE_COLORS: Record<string, string> = {
-  terminal: '#22c55e',
+  shell: '#22c55e',
   screenshot: '#3b82f6',
   clipboard: '#a855f7',
   file_transfer: '#a78bfa',
@@ -25,11 +25,10 @@ const TYPE_COLORS: Record<string, string> = {
 function eventTitle(event: RedLogEvent): string {
   const d = event.data
   switch (event.agentType) {
-    case 'terminal':
-      if (d.subtype === 'command') return `$ ${(d.command as string).slice(0, 100)}`
-      if (d.subtype === 'session_start') return `Session started (${d.shell})`
-      if (d.subtype === 'session_end') return `Session ended (exit ${d.exitCode})`
-      return 'Terminal event'
+    case 'shell':
+      if (d.subtype === 'command_start') return `$ ${(d.command as string).slice(0, 100)}`
+      if (d.subtype === 'command_end') return `$ ${(d.command as string).slice(0, 80)} → exit ${d.exit_code}`
+      return 'Shell event'
     case 'screenshot':
       return `Screenshot (${d.trigger})`
     case 'clipboard':

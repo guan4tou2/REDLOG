@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
-import TerminalPanel from './components/Terminal'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
@@ -14,13 +13,13 @@ import { SearchPanel } from './components/SearchPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
 
-type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
+type View = 'dashboard' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
 
-const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks', 'settings']
+const VIEW_KEYS: View[] = ['dashboard', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks', 'settings']
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
-  const [view, setView] = useState<View>('terminal')
+  const [view, setView] = useState<View>('dashboard')
   const [showMarker, setShowMarker] = useState(false)
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export default function App(): JSX.Element {
   }, [project])
 
   if (!project) {
-    return <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('terminal') }} />
+    return <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
   }
 
   return (
@@ -86,7 +85,6 @@ export default function App(): JSX.Element {
         <div className="flex-1 min-w-0">
           <ErrorBoundary label={view}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
-            {view === 'terminal' && <SplitTerminal />}
             {view === 'timeline' && <TimelinePanel />}
             {view === 'screenshots' && <ScreenshotsView />}
             {view === 'targets' && <TargetView />}
@@ -101,65 +99,6 @@ export default function App(): JSX.Element {
 
       <StatusBar />
       {showMarker && <EventMarker onClose={() => setShowMarker(false)} />}
-    </div>
-  )
-}
-
-function SplitTerminal(): JSX.Element {
-  const [splitHeight, setSplitHeight] = useState(200)
-  const [showTimeline, setShowTimeline] = useState(true)
-  const [dragging, setDragging] = useState(false)
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setDragging(true)
-    const startY = e.clientY
-    const startH = splitHeight
-
-    const onMove = (ev: MouseEvent): void => {
-      const container = document.getElementById('split-container')
-      if (!container) return
-      const containerH = container.getBoundingClientRect().height
-      const newH = startH - (ev.clientY - startY)
-      setSplitHeight(Math.max(100, Math.min(containerH - 200, newH)))
-    }
-    const onUp = (): void => {
-      setDragging(false)
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [splitHeight])
-
-  return (
-    <div id="split-container" className="flex flex-col h-full">
-      <div className={`flex-1 min-h-0 ${showTimeline ? '' : 'h-full'}`}>
-        <TerminalPanel />
-      </div>
-      {showTimeline && (
-        <>
-          <div
-            onMouseDown={onMouseDown}
-            className={`h-1 shrink-0 cursor-row-resize flex items-center justify-center group ${
-              dragging ? 'bg-red-500/30' : 'bg-zinc-800 hover:bg-zinc-700'
-            }`}
-          >
-            <div className="w-8 h-0.5 bg-zinc-600 rounded group-hover:bg-zinc-400" />
-          </div>
-          <div style={{ height: splitHeight }} className="shrink-0 overflow-hidden">
-            <TimelinePanel />
-          </div>
-        </>
-      )}
-      <div className="h-6 shrink-0 flex items-center px-2 bg-zinc-950 border-t border-zinc-800">
-        <button
-          onClick={() => setShowTimeline(!showTimeline)}
-          className="text-[10px] text-zinc-500 hover:text-zinc-300"
-        >
-          {showTimeline ? '▾ Hide Timeline' : '▸ Show Timeline'}
-        </button>
-      </div>
     </div>
   )
 }
@@ -244,14 +183,13 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <div className="grid grid-cols-2 gap-2 text-xs">
           {[
             ['⌘1', 'Dashboard'],
-            ['⌘2', 'Terminal'],
-            ['⌘3', 'Timeline'],
-            ['⌘4', 'Screenshots'],
-            ['⌘5', 'Targets'],
-            ['⌘6', 'Scope'],
-            ['⌘7', 'Loot'],
-            ['⌘8', 'Marks'],
-            ['⌘9', 'Settings'],
+            ['⌘2', 'Timeline'],
+            ['⌘3', 'Screenshots'],
+            ['⌘4', 'Targets'],
+            ['⌘5', 'Scope'],
+            ['⌘6', 'Loot'],
+            ['⌘7', 'Marks'],
+            ['⌘8', 'Settings'],
             ['⌘⇧M', 'Add Marker']
           ].map(([key, label]) => (
             <div key={key} className="flex items-center gap-2">

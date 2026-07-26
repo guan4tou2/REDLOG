@@ -51,7 +51,7 @@ export function LootPanel(): JSX.Element {
       {lootEvents.length === 0 ? (
         <div className="text-zinc-500 text-sm">
           <p>No credentials or secrets detected yet.</p>
-          <p className="mt-1 text-xs">Auto-scans terminal output for password hashes, API keys, JWTs, private keys, database URLs, and CTF flags.</p>
+          <p className="mt-1 text-xs">Auto-scans shell output for password hashes, API keys, JWTs, private keys, database URLs, and CTF flags.</p>
         </div>
       ) : (
         <div className="space-y-2">

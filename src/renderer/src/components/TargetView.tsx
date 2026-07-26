@@ -24,7 +24,7 @@ export function TargetView(): JSX.Element {
   }, [])
 
   async function loadTargets(): Promise<void> {
-    const events = await window.redlog.events.query({ agentType: 'terminal' })
+    const events = await window.redlog.events.query({ agentType: 'shell' })
     const map = new Map<string, TargetEntry>()
     for (const evt of events) {
       const t = evt.data?.detectedTarget as string | undefined
@@ -73,7 +73,7 @@ export function TargetView(): JSX.Element {
   })
 
   const agentIcon: Record<string, string> = {
-    terminal: 'T',
+    shell: 'T',
     screenshot: 'S',
     clipboard: 'C',
     file_transfer: 'F',
@@ -83,7 +83,7 @@ export function TargetView(): JSX.Element {
   }
 
   const agentColor: Record<string, string> = {
-    terminal: 'text-green-400',
+    shell: 'text-green-400',
     screenshot: 'text-blue-400',
     clipboard: 'text-yellow-400',
     file_transfer: 'text-purple-400',
@@ -114,7 +114,7 @@ export function TargetView(): JSX.Element {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-zinc-500 text-sm">No targets detected yet. Run commands in the terminal to auto-catalog targets.</p>
+        <p className="text-zinc-500 text-sm">No targets detected yet. Commands from the shell hook auto-catalog targets.</p>
       ) : (
         <div className="space-y-2">
           {filtered.map((t) => (
@@ -167,13 +167,13 @@ export function TargetView(): JSX.Element {
                             {new Date(e.timestamp).toLocaleTimeString()}
                           </span>
                           <span className="text-zinc-300 truncate">
-                            {e.agentType === 'terminal' && (e.data.command as string)}
+                            {e.agentType === 'shell' && (e.data.command as string)}
                             {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
                             {e.agentType === 'file_transfer' && `${e.data.direction}: ${e.data.filename || e.data.localPath || e.data.remotePath}`}
                             {e.agentType === 'marker' && `[${e.data.severity}] ${e.data.title}`}
                             {e.agentType === 'loot' && `Loot: ${e.data.type} (${e.data.confidence})`}
-                            {!['terminal', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot'].includes(e.agentType) && JSON.stringify(e.data).slice(0, 80)}
+                            {!['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot'].includes(e.agentType) && JSON.stringify(e.data).slice(0, 80)}
                           </span>
                         </div>
                       ))}

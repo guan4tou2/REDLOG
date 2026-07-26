@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -6,6 +6,7 @@ export default function StatusBar(): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [uptime, setUptime] = useState(0)
+  const [stamped, setStamped] = useState(false)
 
   useEffect(() => {
     const start = Date.now()
@@ -86,8 +87,20 @@ export default function StatusBar(): JSX.Element {
       </div>
 
       {/* Right side */}
-      <div className="ml-auto flex items-center gap-4">
+      <div className="ml-auto flex items-center gap-3">
         <span className="text-zinc-500">{eventCount} events</span>
+        <button
+          onClick={async () => {
+            const ts = new Date().toLocaleTimeString()
+            await window.redlog.quickmarks.create({ title: `Timestamp ${ts}` })
+            setStamped(true)
+            setTimeout(() => setStamped(false), 1500)
+          }}
+          className={`transition-colors ${stamped ? 'text-green-400' : 'text-zinc-500 hover:text-red-400'}`}
+          title="Timestamp — mark this moment (auto-captures context)"
+        >
+          {stamped ? '✓' : '⏱'}
+        </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}
           className="text-zinc-600 hover:text-zinc-400 transition-colors"
@@ -95,7 +108,6 @@ export default function StatusBar(): JSX.Element {
         >
           IP▪
         </button>
-        <span className="text-zinc-600">⌘⇧M mark</span>
       </div>
     </div>
   )
