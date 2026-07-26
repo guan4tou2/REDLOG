@@ -14,6 +14,7 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from './services/scope-monitor'
 import { LootDetector } from './services/loot-detector'
 import { initChain, appendToChain, getChainLength } from './services/evidence-chain'
+import { FileTransferTracker } from './services/file-transfer-tracker'
 import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
@@ -30,6 +31,7 @@ const clipboardMonitor = new ClipboardMonitor()
 const screenshotAgent = new ScreenshotAgent()
 const scopeMonitor = new ScopeMonitor()
 const lootDetector = new LootDetector()
+const fileTransferTracker = new FileTransferTracker()
 
 function broadcastIPStatus(status: IPStatus): void {
   mainWindow?.webContents.send('ip:status', status)
@@ -62,11 +64,19 @@ function startProject(project: ProjectMeta): void {
     operatorId
   })
   lootDetector.configure({ engagementId, operatorId })
+  fileTransferTracker.configure({
+    engagementId,
+    operatorId,
+    watchDirs: ['~/Downloads'],
+    alertThreshold: 52428800
+  })
   initChain()
 
   ipMonitor.start()
   clipboardMonitor.start()
   screenshotAgent.start()
+  fileTransferTracker.start()
+  scopeMonitor.startDns()
 
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
@@ -84,6 +94,8 @@ function stopProject(): void {
   ipMonitor.stop()
   clipboardMonitor.stop()
   screenshotAgent.stop()
+  fileTransferTracker.stop()
+  scopeMonitor.stopDns()
   terminalManager.destroyAll()
   closeDB()
   activeProject = null
@@ -150,6 +162,9 @@ app.whenReady().then(() => {
   terminalManager.on('target', (target: string, command: string) => {
     const result = scopeMonitor.checkTarget(target, command)
     mainWindow?.webContents.send('scope:check', { target, command, ...result })
+  })
+  fileTransferTracker.on('large-transfer', (info: { path: string; size: number; sha256: string }) => {
+    mainWindow?.webContents.send('file:large-transfer', info)
   })
   terminalManager.on('transfer', (transfer: { direction: string; remotePath: string; remoteHost: string }, command: string) => {
     const evt = insertEvent('file_transfer', {
