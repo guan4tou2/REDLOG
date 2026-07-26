@@ -9,8 +9,10 @@ interface ConfigState {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'network' | 'scope'>('general')
+  const [tab, setTab] = useState<'general' | 'network' | 'scope' | 'data'>('general')
   const [saved, setSaved] = useState(false)
+  const [cdpPort, setCdpPort] = useState('9222')
+  const [exportResult, setExportResult] = useState<string | null>(null)
 
   useEffect(() => {
     window.redlog.config.get().then((c) => setConfig(c as ConfigState))
@@ -21,7 +23,8 @@ export default function Settings(): JSX.Element {
   const tabs = [
     { id: 'general' as const, label: 'General' },
     { id: 'network' as const, label: 'Network / VPN' },
-    { id: 'scope' as const, label: 'Scope' }
+    { id: 'scope' as const, label: 'Scope' },
+    { id: 'data' as const, label: 'Data' }
   ]
 
   return (
@@ -78,6 +81,50 @@ export default function Settings(): JSX.Element {
                 onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 10 } })}
                 type="number"
               />
+            </FieldGroup>
+          </>
+        )}
+
+        {tab === 'data' && (
+          <>
+            <FieldGroup title="Chrome DevTools Protocol">
+              <div className="space-y-2">
+                <Field
+                  label="CDP Port"
+                  value={cdpPort}
+                  onChange={(v) => setCdpPort(v)}
+                  type="number"
+                />
+                <button
+                  onClick={async () => {
+                    await window.redlog.cdp.setPort(parseInt(cdpPort) || 9222)
+                    const tab = await window.redlog.cdp.getTab()
+                    alert(tab.connected ? `Connected: ${tab.title}\n${tab.url}` : 'Not connected. Launch Chrome with:\n--remote-debugging-port=' + cdpPort)
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                >
+                  Test Connection
+                </button>
+                <p className="text-[10px] text-zinc-600">
+                  Launch Chrome: google-chrome --remote-debugging-port=9222
+                </p>
+              </div>
+            </FieldGroup>
+            <FieldGroup title="Export All Data">
+              <button
+                onClick={async () => {
+                  const path = await window.redlog.data.exportJson()
+                  setExportResult(path ? `Saved to: ${path}` : 'Export failed')
+                  setTimeout(() => setExportResult(null), 5000)
+                }}
+                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+              >
+                Export JSON Dump
+              </button>
+              {exportResult && <p className="text-[10px] text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
+              <p className="text-[10px] text-zinc-600">
+                Exports all events, quickmarks, and config as a single JSON file.
+              </p>
             </FieldGroup>
           </>
         )}

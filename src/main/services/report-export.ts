@@ -3,6 +3,7 @@ import path from 'path'
 import { queryEvents, getEventCount } from '../db/events'
 import { getChainLength } from './evidence-chain'
 import { getProjectDir } from '../db/index'
+import { listFindings, getEvidenceForFinding } from '../db/findings'
 
 interface ReportMeta {
   engagementName: string
@@ -35,6 +36,12 @@ function buildHtmlReport(meta: ReportMeta): string {
   const timeRange = events.length > 0
     ? `${formatTimestamp(events[events.length - 1].timestamp)} — ${formatTimestamp(events[0].timestamp)}`
     : 'N/A'
+
+  const findings = listFindings()
+  const findingsWithEvidence = findings.map((f) => ({
+    ...f,
+    evidence: getEvidenceForFinding(f.id)
+  }))
 
   const rows = events.slice(0, 500).map((e) => `
     <tr>
@@ -73,6 +80,12 @@ function buildHtmlReport(meta: ReportMeta): string {
   .stat .num { font-size: 1.5rem; font-weight: bold; color: #ef4444; }
   .chain-ok { color: #10b981; }
   .chain-fail { color: #ef4444; }
+  .finding-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1rem; margin: 0.75rem 0; }
+  .finding-card h3 { margin: 0 0 0.5rem; color: #eee; }
+  .sev-critical { color: #ef4444; } .sev-high { color: #f97316; } .sev-medium { color: #eab308; } .sev-low { color: #3b82f6; } .sev-info { color: #71717a; }
+  .finding-meta { font-size: 0.8rem; color: #999; margin-bottom: 0.5rem; }
+  .finding-section { margin-top: 0.5rem; }
+  .finding-section strong { color: #aaa; font-size: 0.8rem; }
   @media print { body { background: white; color: black; } th { background: #f3f3f3; color: #333; } .meta-card, .stat { background: #f9f9f9; border-color: #ccc; } }
 </style>
 </head>
@@ -111,6 +124,17 @@ ${markers.length > 0 ? `
   ${markers.map((m) => `<tr><td>${formatTimestamp(m.timestamp)}</td><td>${escapeHtml(String(m.data?.title || ''))}</td><td>${escapeHtml(String(m.data?.severity || 'info'))}</td><td>${escapeHtml(String(m.data?.notes || '').slice(0, 200))}</td></tr>`).join('')}
 </table>` : ''}
 
+${findingsWithEvidence.length > 0 ? `
+<h2>Findings (${findingsWithEvidence.length})</h2>
+${findingsWithEvidence.map((f) => `<div class="finding-card">
+  <h3><span class="sev-${f.severity}">[${f.severity.toUpperCase()}]</span> ${escapeHtml(f.title)}</h3>
+  <div class="finding-meta">Status: ${escapeHtml(f.status)}${f.cvssScore ? ` · CVSS ${f.cvssScore}` : ''}${f.cvssVector ? ` · ${escapeHtml(f.cvssVector)}` : ''}</div>
+  ${f.description ? `<div class="finding-section"><strong>Description</strong><p>${escapeHtml(f.description)}</p></div>` : ''}
+  ${f.remediation ? `<div class="finding-section"><strong>Remediation</strong><p>${escapeHtml(f.remediation)}</p></div>` : ''}
+  ${f.affectedHosts.length > 0 ? `<div class="finding-section"><strong>Affected Hosts:</strong> ${f.affectedHosts.map((h) => escapeHtml(h)).join(', ')}</div>` : ''}
+  ${f.evidence.length > 0 ? `<div class="finding-section"><strong>Linked Evidence:</strong> ${f.evidence.length} event(s)</div>` : ''}
+</div>`).join('')}` : ''}
+
 ${scopeViolations.length > 0 ? `
 <h2>Scope Violations</h2>
 <table>
@@ -138,9 +162,11 @@ export function exportReport(format: 'html' | 'json', meta: ReportMeta): string 
 
   if (format === 'json') {
     const events = queryEvents({ limit: 100000 })
+    const findings = listFindings()
     const data = {
       meta,
-      summary: { totalEvents: events.length, hashedEvents: getChainLength() },
+      summary: { totalEvents: events.length, hashedEvents: getChainLength(), findingsCount: findings.length },
+      findings: findings.map((f) => ({ ...f, evidence: getEvidenceForFinding(f.id) })),
       events
     }
     const filePath = path.join(dir, `report-${ts}.json`)

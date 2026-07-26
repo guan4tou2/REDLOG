@@ -31,26 +31,26 @@ interface RedLogEvent {
   createdAt: number
 }
 
-interface Finding {
-  id: string
-  title: string
-  severity: string
-  cvssVector: string | null
-  cvssScore: number | null
-  description: string
-  remediation: string
-  status: string
-  affectedHosts: string[]
-  createdAt: number
-  updatedAt: number
+interface QuickMarkContext {
+  browserUrl?: string
+  browserTitle?: string
+  externalIP?: string
+  lastCommand?: string
 }
 
-interface EvidenceLink {
+interface QuickMark {
   id: string
-  findingId: string
-  eventId: string
+  title: string
+  url: string | null
   note: string
+  context: QuickMarkContext
   createdAt: number
+}
+
+interface BrowserTabInfo {
+  url: string | null
+  title: string | null
+  connected: boolean
 }
 
 interface EventAnnotation {
@@ -112,21 +112,19 @@ interface RedLogAPI {
     getCount: () => Promise<number>
     scan: (text: string) => Promise<Array<{ type: string; value: string; line: string; confidence: string }>>
   }
-  report: {
-    export: (format: 'html' | 'json') => Promise<string | null>
-  }
-  findings: {
-    list: () => Promise<Finding[]>
-    get: (id: string) => Promise<Finding | null>
-    create: (data: { title: string; severity?: string; cvssVector?: string; cvssScore?: number; description?: string; remediation?: string; affectedHosts?: string[] }) => Promise<Finding>
-    update: (id: string, data: Partial<Finding>) => Promise<Finding | null>
+  quickmarks: {
+    list: () => Promise<QuickMark[]>
+    get: (id: string) => Promise<QuickMark | null>
+    create: (data: { title: string; url?: string; note?: string }) => Promise<QuickMark>
+    update: (id: string, data: Partial<QuickMark>) => Promise<QuickMark | null>
     delete: (id: string) => Promise<boolean>
   }
-  evidence: {
-    link: (findingId: string, eventId: string, note?: string) => Promise<EvidenceLink>
-    unlink: (linkId: string) => Promise<boolean>
-    forFinding: (findingId: string) => Promise<EvidenceLink[]>
-    forEvent: (eventId: string) => Promise<string[]>
+  cdp: {
+    getTab: () => Promise<BrowserTabInfo>
+    setPort: (port: number) => Promise<boolean>
+  }
+  data: {
+    exportJson: () => Promise<string | null>
   }
   annotations: {
     create: (eventId: string, note: string) => Promise<EventAnnotation>

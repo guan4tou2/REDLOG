@@ -10,14 +10,13 @@ import ProjectPicker from './components/ProjectPicker'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
-import { ReportExport } from './components/ReportExport'
 import { SearchPanel } from './components/SearchPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { FindingsView } from './components/FindingsView'
+import { QuickMarksView } from './components/FindingsView'
 
-type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'findings' | 'export' | 'settings' | 'search'
+type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
 
-const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'findings', 'export', 'settings']
+const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks', 'settings']
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
@@ -93,8 +92,7 @@ export default function App(): JSX.Element {
             {view === 'targets' && <TargetView />}
             {view === 'scope' && <ScopeStatus />}
             {view === 'loot' && <LootPanel />}
-            {view === 'findings' && <FindingsView />}
-            {view === 'export' && <ReportExport />}
+            {view === 'marks' && <QuickMarksView />}
             {view === 'settings' && <Settings />}
             {view === 'search' && <SearchPanel />}
           </ErrorBoundary>

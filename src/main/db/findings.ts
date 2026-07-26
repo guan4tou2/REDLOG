@@ -1,26 +1,20 @@
 import crypto from 'crypto'
 import { getDB } from './index'
 
-export interface Finding {
+export interface QuickMark {
   id: string
   title: string
-  severity: string
-  cvssVector: string | null
-  cvssScore: number | null
-  description: string
-  remediation: string
-  status: string
-  affectedHosts: string[]
+  url: string | null
+  note: string
+  context: QuickMarkContext
   createdAt: number
-  updatedAt: number
 }
 
-export interface EvidenceLink {
-  id: string
-  findingId: string
-  eventId: string
-  note: string
-  createdAt: number
+export interface QuickMarkContext {
+  browserUrl?: string
+  browserTitle?: string
+  externalIP?: string
+  lastCommand?: string
 }
 
 export interface EventAnnotation {
@@ -30,162 +24,80 @@ export interface EventAnnotation {
   createdAt: number
 }
 
-export function createFinding(data: {
-  title: string
-  severity?: string
-  cvssVector?: string
-  cvssScore?: number
-  description?: string
-  remediation?: string
-  affectedHosts?: string[]
-}): Finding {
-  const db = getDB()
-  const now = Date.now()
-  const finding: Finding = {
-    id: crypto.randomUUID(),
-    title: data.title,
-    severity: data.severity ?? 'info',
-    cvssVector: data.cvssVector ?? null,
-    cvssScore: data.cvssScore ?? null,
-    description: data.description ?? '',
-    remediation: data.remediation ?? '',
-    status: 'draft',
-    affectedHosts: data.affectedHosts ?? [],
-    createdAt: now,
-    updatedAt: now
-  }
-
-  db.prepare(`
-    INSERT INTO findings (id, title, severity, cvss_vector, cvss_score, description, remediation, status, affected_hosts, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    finding.id, finding.title, finding.severity, finding.cvssVector, finding.cvssScore,
-    finding.description, finding.remediation, finding.status,
-    JSON.stringify(finding.affectedHosts), finding.createdAt, finding.updatedAt
-  )
-
-  return finding
-}
-
-export function updateFinding(id: string, data: Partial<Omit<Finding, 'id' | 'createdAt'>>): Finding | null {
-  const db = getDB()
-  const existing = getFinding(id)
-  if (!existing) return null
-
-  const updated = { ...existing, ...data, updatedAt: Date.now() }
-
-  db.prepare(`
-    UPDATE findings SET title=?, severity=?, cvss_vector=?, cvss_score=?, description=?, remediation=?, status=?, affected_hosts=?, updated_at=?
-    WHERE id=?
-  `).run(
-    updated.title, updated.severity, updated.cvssVector, updated.cvssScore,
-    updated.description, updated.remediation, updated.status,
-    JSON.stringify(updated.affectedHosts), updated.updatedAt, id
-  )
-
-  return updated
-}
-
-export function getFinding(id: string): Finding | null {
-  const db = getDB()
-  const row = db.prepare('SELECT * FROM findings WHERE id = ?').get(id) as Record<string, unknown> | undefined
-  return row ? rowToFinding(row) : null
-}
-
-export function listFindings(): Finding[] {
-  const db = getDB()
-  const rows = db.prepare('SELECT * FROM findings ORDER BY updated_at DESC').all() as Array<Record<string, unknown>>
-  return rows.map(rowToFinding)
-}
-
-export function deleteFinding(id: string): boolean {
-  const db = getDB()
-  const result = db.prepare('DELETE FROM findings WHERE id = ?').run(id)
-  return result.changes > 0
-}
-
-function rowToFinding(row: Record<string, unknown>): Finding {
+function rowToQuickMark(row: Record<string, unknown>): QuickMark {
   return {
     id: row.id as string,
     title: row.title as string,
-    severity: row.severity as string,
-    cvssVector: row.cvss_vector as string | null,
-    cvssScore: row.cvss_score as number | null,
-    description: row.description as string,
-    remediation: row.remediation as string,
-    status: row.status as string,
-    affectedHosts: JSON.parse(row.affected_hosts as string),
-    createdAt: row.created_at as number,
-    updatedAt: row.updated_at as number
+    url: row.url as string | null,
+    note: row.note as string,
+    context: JSON.parse((row.context as string) || '{}'),
+    createdAt: row.created_at as number
   }
 }
 
-// --- Evidence Links ---
-
-export function linkEvidence(findingId: string, eventId: string, note = ''): EvidenceLink {
+export function createQuickMark(data: {
+  title: string
+  url?: string
+  note?: string
+  context?: QuickMarkContext
+}): QuickMark {
   const db = getDB()
-  const link: EvidenceLink = {
-    id: crypto.randomUUID(),
-    findingId,
-    eventId,
-    note,
-    createdAt: Date.now()
-  }
-  db.prepare('INSERT INTO evidence_links (id, finding_id, event_id, note, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(link.id, link.findingId, link.eventId, link.note, link.createdAt)
-  return link
+  const id = crypto.randomUUID()
+  const now = Date.now()
+  db.prepare(
+    'INSERT INTO quickmarks (id, title, url, note, context, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, data.title, data.url || null, data.note || '', JSON.stringify(data.context || {}), now)
+  return { id, title: data.title, url: data.url || null, note: data.note || '', context: data.context || {}, createdAt: now }
 }
 
-export function unlinkEvidence(linkId: string): boolean {
+export function listQuickMarks(): QuickMark[] {
   const db = getDB()
-  return db.prepare('DELETE FROM evidence_links WHERE id = ?').run(linkId).changes > 0
+  const rows = db.prepare('SELECT * FROM quickmarks ORDER BY created_at DESC').all()
+  return rows.map((r) => rowToQuickMark(r as Record<string, unknown>))
 }
 
-export function getEvidenceForFinding(findingId: string): EvidenceLink[] {
+export function getQuickMark(id: string): QuickMark | null {
   const db = getDB()
-  const rows = db.prepare('SELECT * FROM evidence_links WHERE finding_id = ? ORDER BY created_at ASC').all(findingId) as Array<Record<string, unknown>>
-  return rows.map((r) => ({
-    id: r.id as string,
-    findingId: r.finding_id as string,
-    eventId: r.event_id as string,
-    note: r.note as string,
-    createdAt: r.created_at as number
-  }))
+  const row = db.prepare('SELECT * FROM quickmarks WHERE id = ?').get(id)
+  return row ? rowToQuickMark(row as Record<string, unknown>) : null
 }
 
-export function getFindingsForEvent(eventId: string): string[] {
+export function updateQuickMark(id: string, data: { title?: string; url?: string; note?: string }): QuickMark | null {
   const db = getDB()
-  const rows = db.prepare('SELECT finding_id FROM evidence_links WHERE event_id = ?').all(eventId) as Array<{ finding_id: string }>
-  return rows.map((r) => r.finding_id)
+  const existing = getQuickMark(id)
+  if (!existing) return null
+  const title = data.title ?? existing.title
+  const url = data.url ?? existing.url
+  const note = data.note ?? existing.note
+  db.prepare('UPDATE quickmarks SET title = ?, url = ?, note = ? WHERE id = ?').run(title, url, note, id)
+  return { ...existing, title, url, note }
 }
 
-// --- Event Annotations ---
+export function deleteQuickMark(id: string): boolean {
+  const db = getDB()
+  const result = db.prepare('DELETE FROM quickmarks WHERE id = ?').run(id)
+  return result.changes > 0
+}
 
 export function annotateEvent(eventId: string, note: string): EventAnnotation {
   const db = getDB()
-  const annotation: EventAnnotation = {
-    id: crypto.randomUUID(),
-    eventId,
-    note,
-    createdAt: Date.now()
-  }
-  db.prepare('INSERT INTO event_annotations (id, event_id, note, created_at) VALUES (?, ?, ?, ?)')
-    .run(annotation.id, annotation.eventId, annotation.note, annotation.createdAt)
-  return annotation
+  const id = crypto.randomUUID()
+  const now = Date.now()
+  db.prepare('INSERT INTO event_annotations (id, event_id, note, created_at) VALUES (?, ?, ?, ?)').run(id, eventId, note, now)
+  return { id, eventId, note, createdAt: now }
 }
 
 export function getAnnotations(eventId: string): EventAnnotation[] {
   const db = getDB()
-  const rows = db.prepare('SELECT * FROM event_annotations WHERE event_id = ? ORDER BY created_at ASC').all(eventId) as Array<Record<string, unknown>>
-  return rows.map((r) => ({
-    id: r.id as string,
-    eventId: r.event_id as string,
-    note: r.note as string,
-    createdAt: r.created_at as number
-  }))
+  const rows = db.prepare('SELECT * FROM event_annotations WHERE event_id = ? ORDER BY created_at').all(eventId)
+  return rows.map((r) => {
+    const row = r as Record<string, unknown>
+    return { id: row.id as string, eventId: row.event_id as string, note: row.note as string, createdAt: row.created_at as number }
+  })
 }
 
-export function deleteAnnotation(annotationId: string): boolean {
+export function deleteAnnotation(id: string): boolean {
   const db = getDB()
-  return db.prepare('DELETE FROM event_annotations WHERE id = ?').run(annotationId).changes > 0
+  const result = db.prepare('DELETE FROM event_annotations WHERE id = ?').run(id)
+  return result.changes > 0
 }

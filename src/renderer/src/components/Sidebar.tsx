@@ -41,13 +41,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
         { id: 'targets', label: 'Targets', icon: '⊕' },
         { id: 'scope', label: 'Scope', icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
         { id: 'loot', label: 'Loot', icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' },
-        { id: 'findings', label: 'Findings', icon: '⚑' }
-      ]
-    },
-    {
-      label: 'OUTPUT',
-      items: [
-        { id: 'export', label: 'Export', icon: '↗' }
+        { id: 'marks', label: 'Marks', icon: '⚑' }
       ]
     }
   ]

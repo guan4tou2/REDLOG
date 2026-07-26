@@ -82,21 +82,19 @@ contextBridge.exposeInMainWorld('redlog', {
     getCount: () => ipcRenderer.invoke('loot:getCount'),
     scan: (text: string) => ipcRenderer.invoke('loot:scan', text)
   },
-  report: {
-    export: (format: 'html' | 'json') => ipcRenderer.invoke('report:export', format)
+  quickmarks: {
+    list: () => ipcRenderer.invoke('quickmarks:list'),
+    get: (id: string) => ipcRenderer.invoke('quickmarks:get', id),
+    create: (data: { title: string; url?: string; note?: string }) => ipcRenderer.invoke('quickmarks:create', data),
+    update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('quickmarks:update', id, data),
+    delete: (id: string) => ipcRenderer.invoke('quickmarks:delete', id)
   },
-  findings: {
-    list: () => ipcRenderer.invoke('findings:list'),
-    get: (id: string) => ipcRenderer.invoke('findings:get', id),
-    create: (data: Record<string, unknown>) => ipcRenderer.invoke('findings:create', data),
-    update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('findings:update', id, data),
-    delete: (id: string) => ipcRenderer.invoke('findings:delete', id)
+  cdp: {
+    getTab: () => ipcRenderer.invoke('cdp:getTab'),
+    setPort: (port: number) => ipcRenderer.invoke('cdp:setPort', port)
   },
-  evidence: {
-    link: (findingId: string, eventId: string, note?: string) => ipcRenderer.invoke('evidence:link', findingId, eventId, note),
-    unlink: (linkId: string) => ipcRenderer.invoke('evidence:unlink', linkId),
-    forFinding: (findingId: string) => ipcRenderer.invoke('evidence:forFinding', findingId),
-    forEvent: (eventId: string) => ipcRenderer.invoke('evidence:forEvent', eventId)
+  data: {
+    exportJson: () => ipcRenderer.invoke('data:exportJson')
   },
   annotations: {
     create: (eventId: string, note: string) => ipcRenderer.invoke('annotations:create', eventId, note),

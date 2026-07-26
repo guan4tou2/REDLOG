@@ -8,10 +8,10 @@ import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from './services/
 import { initDB, closeDB, getProjectDir } from './db/index'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
 import {
-  createFinding, updateFinding, getFinding, listFindings, deleteFinding,
-  linkEvidence, unlinkEvidence, getEvidenceForFinding, getFindingsForEvent,
+  createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark,
   annotateEvent, getAnnotations, deleteAnnotation
 } from './db/findings'
+import { getActiveBrowserTab, setCdpPort } from './services/cdp-connector'
 import fs from 'fs'
 import { eventBus } from './services/event-bus'
 import { TerminalManager } from './agents/terminal-manager'
@@ -24,7 +24,6 @@ import {
   getProjectDir as getProjectPath, ProjectMeta
 } from './services/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken } from './services/api-server'
-import { exportReport } from './services/report-export'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -245,33 +244,49 @@ app.whenReady().then(() => {
   ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
   ipcMain.handle('loot:scan', (_e, text: string) => lootDetector.scan(text))
 
-  // --- Findings ---
-  ipcMain.handle('findings:list', () => listFindings())
-  ipcMain.handle('findings:get', (_e, id: string) => getFinding(id))
-  ipcMain.handle('findings:create', (_e, data) => createFinding(data))
-  ipcMain.handle('findings:update', (_e, id: string, data) => updateFinding(id, data))
-  ipcMain.handle('findings:delete', (_e, id: string) => deleteFinding(id))
+  // --- QuickMarks ---
+  ipcMain.handle('quickmarks:list', () => listQuickMarks())
+  ipcMain.handle('quickmarks:get', (_e, id: string) => getQuickMark(id))
+  ipcMain.handle('quickmarks:create', async (_e, data: { title: string; url?: string; note?: string }) => {
+    const browser = await getActiveBrowserTab()
+    const context = {
+      browserUrl: browser.url || undefined,
+      browserTitle: browser.title || undefined,
+      externalIP: ipMonitor.status.externalIP || undefined
+    }
+    return createQuickMark({
+      title: data.title || browser.title || 'Untitled',
+      url: data.url || browser.url || undefined,
+      note: data.note,
+      context
+    })
+  })
+  ipcMain.handle('quickmarks:update', (_e, id: string, data) => updateQuickMark(id, data))
+  ipcMain.handle('quickmarks:delete', (_e, id: string) => deleteQuickMark(id))
 
-  // --- Evidence Links ---
-  ipcMain.handle('evidence:link', (_e, findingId: string, eventId: string, note?: string) => linkEvidence(findingId, eventId, note))
-  ipcMain.handle('evidence:unlink', (_e, linkId: string) => unlinkEvidence(linkId))
-  ipcMain.handle('evidence:forFinding', (_e, findingId: string) => getEvidenceForFinding(findingId))
-  ipcMain.handle('evidence:forEvent', (_e, eventId: string) => getFindingsForEvent(eventId))
+  // --- CDP ---
+  ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
+  ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
 
   // --- Event Annotations ---
   ipcMain.handle('annotations:create', (_e, eventId: string, note: string) => annotateEvent(eventId, note))
   ipcMain.handle('annotations:get', (_e, eventId: string) => getAnnotations(eventId))
   ipcMain.handle('annotations:delete', (_e, annotationId: string) => deleteAnnotation(annotationId))
 
-  // --- Report Export ---
-  ipcMain.handle('report:export', (_e, format: 'html' | 'json') => {
+  // --- Data Export (minimal JSON dump) ---
+  ipcMain.handle('data:exportJson', () => {
     if (!activeProject) return null
-    const config = loadConfig(getProjectPath(activeProject))
-    return exportReport(format, {
-      engagementName: config.engagement.name,
-      operatorName: config.operator.name,
-      generatedAt: new Date().toISOString()
-    })
+    const projectDir = getProjectPath(activeProject)
+    const config = loadConfig(projectDir)
+    const events = queryEvents({ limit: 100000 })
+    const marks = listQuickMarks()
+    const data = { config, quickmarks: marks, events, exportedAt: new Date().toISOString() }
+    const outDir = path.join(projectDir, 'exports')
+    fs.mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const filePath = path.join(outDir, `redlog-${ts}.json`)
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
+    return filePath
   })
 
   // --- Global shortcut ---
