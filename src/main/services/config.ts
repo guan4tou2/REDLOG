@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import os from 'os'
 import yaml from 'js-yaml'
 
 export interface RedLogConfig {
@@ -47,13 +46,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
   }
 }
 
-export function getConfigPath(): string {
-  return path.join(os.homedir(), '.redlog', 'config.yaml')
-}
-
-export function loadConfig(): RedLogConfig {
+export function loadConfig(projectDir: string): RedLogConfig {
+  const configPath = path.join(projectDir, 'config.yaml')
   try {
-    const raw = fs.readFileSync(getConfigPath(), 'utf-8')
+    const raw = fs.readFileSync(configPath, 'utf-8')
     const parsed = yaml.load(raw) as Partial<RedLogConfig>
     return {
       engagement: { ...DEFAULT_CONFIG.engagement, ...parsed?.engagement },
@@ -62,13 +58,12 @@ export function loadConfig(): RedLogConfig {
       scope: { ...DEFAULT_CONFIG.scope, ...parsed?.scope }
     }
   } catch {
-    return DEFAULT_CONFIG
+    return { ...DEFAULT_CONFIG }
   }
 }
 
-export function saveConfig(config: RedLogConfig): void {
-  const configPath = getConfigPath()
-  const dir = path.dirname(configPath)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+export function saveConfig(projectDir: string, config: RedLogConfig): void {
+  fs.mkdirSync(projectDir, { recursive: true })
+  const configPath = path.join(projectDir, 'config.yaml')
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
 }

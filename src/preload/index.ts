@@ -1,6 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('redlog', {
+  project: {
+    list: () => ipcRenderer.invoke('project:list'),
+    create: (name: string) => ipcRenderer.invoke('project:create', name),
+    open: (id: string) => ipcRenderer.invoke('project:open', id),
+    delete: (id: string) => ipcRenderer.invoke('project:delete', id),
+    active: () => ipcRenderer.invoke('project:active'),
+    onOpened: (cb: (project: unknown) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, project: unknown) => cb(project)
+      ipcRenderer.on('project:opened', handler)
+      return () => ipcRenderer.removeListener('project:opened', handler)
+    }
+  },
   ip: {
     getStatus: () => ipcRenderer.invoke('ip:getStatus'),
     onStatus: (cb: (status: unknown) => void) => {

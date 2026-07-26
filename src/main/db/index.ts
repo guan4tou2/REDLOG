@@ -1,22 +1,18 @@
 import Database from 'better-sqlite3'
 import path from 'path'
-import os from 'os'
 import fs from 'fs'
 
 let db: Database.Database | null = null
+let currentProjectDir: string | null = null
 
-function getDbPath(engagementId: string): string {
-  const dir = path.join(os.homedir(), '.redlog', 'data', engagementId)
-  fs.mkdirSync(dir, { recursive: true })
-  fs.mkdirSync(path.join(dir, 'screenshots'), { recursive: true })
-  fs.mkdirSync(path.join(dir, 'terminal'), { recursive: true })
-  return path.join(dir, 'timeline.db')
-}
+export function initDB(projectDir: string): Database.Database {
+  if (db) closeDB()
 
-export function initDB(engagementId: string): Database.Database {
-  if (db) return db
+  fs.mkdirSync(projectDir, { recursive: true })
+  fs.mkdirSync(path.join(projectDir, 'screenshots'), { recursive: true })
+  fs.mkdirSync(path.join(projectDir, 'terminal'), { recursive: true })
 
-  const dbPath = getDbPath(engagementId)
+  const dbPath = path.join(projectDir, 'timeline.db')
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
@@ -51,6 +47,7 @@ export function initDB(engagementId: string): Database.Database {
     );
   `)
 
+  currentProjectDir = projectDir
   return db
 }
 
@@ -62,8 +59,10 @@ export function getDB(): Database.Database {
 export function closeDB(): void {
   db?.close()
   db = null
+  currentProjectDir = null
 }
 
-export function getDataDir(engagementId: string): string {
-  return path.join(os.homedir(), '.redlog', 'data', engagementId)
+export function getProjectDir(): string {
+  if (!currentProjectDir) throw new Error('No project loaded')
+  return currentProjectDir
 }

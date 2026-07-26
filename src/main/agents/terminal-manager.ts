@@ -5,7 +5,7 @@ import fs from 'fs'
 import * as pty from 'node-pty'
 import { insertEvent } from '../db/events'
 import { eventBus } from '../services/event-bus'
-import { getDataDir } from '../db/index'
+import { getProjectDir } from '../db/index'
 import { extractTarget, extractFileTransfer } from '../services/target-extractor'
 
 interface TermSession {
@@ -30,7 +30,7 @@ export class TerminalManager extends EventEmitter {
     const id = crypto.randomUUID()
     const shell = process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/zsh')
 
-    const castDir = path.join(getDataDir(this.engagementId), 'terminal')
+    const castDir = path.join(getProjectDir(), 'terminal')
     fs.mkdirSync(castDir, { recursive: true })
     const castPath = path.join(castDir, `session-${id.slice(0, 8)}.cast`)
 

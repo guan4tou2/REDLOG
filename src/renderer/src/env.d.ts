@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
 
+interface ProjectMeta {
+  id: string
+  name: string
+  createdAt: number
+  lastOpened: number
+  path: string
+}
+
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
@@ -24,6 +32,14 @@ interface RedLogEvent {
 }
 
 interface RedLogAPI {
+  project: {
+    list: () => Promise<ProjectMeta[]>
+    create: (name: string) => Promise<ProjectMeta>
+    open: (id: string) => Promise<ProjectMeta | null>
+    delete: (id: string) => Promise<boolean>
+    active: () => Promise<{ id: string; name: string } | null>
+    onOpened: (cb: (project: { id: string; name: string }) => void) => () => void
+  }
   ip: {
     getStatus: () => Promise<IPStatus>
     onStatus: (cb: (status: IPStatus) => void) => () => void

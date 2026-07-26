@@ -4,7 +4,7 @@ import path from 'path'
 import fs from 'fs'
 import { insertEvent } from '../db/events'
 import { eventBus } from './event-bus'
-import { getDataDir } from '../db/index'
+import { getProjectDir } from '../db/index'
 
 export class ScreenshotAgent {
   private interval: ReturnType<typeof setInterval> | null = null
@@ -73,7 +73,7 @@ export class ScreenshotAgent {
       this.lastHash = hash
       this.lastCapture = Date.now()
 
-      const dir = path.join(getDataDir(this.engagementId), 'screenshots')
+      const dir = path.join(getProjectDir(), 'screenshots')
       fs.mkdirSync(dir, { recursive: true })
       const ts = new Date().toISOString().replace(/[:.]/g, '-')
       const filename = `${ts}_${trigger}.jpg`

@@ -6,6 +6,7 @@ import TerminalPanel from './components/Terminal'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
+import ProjectPicker from './components/ProjectPicker'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
@@ -16,11 +17,19 @@ type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 
 const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'export', 'settings']
 
 export default function App(): JSX.Element {
+  const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('terminal')
   const [showMarker, setShowMarker] = useState(false)
 
   useEffect(() => {
+    window.redlog.project.active().then((p) => {
+      if (p) setProject(p)
+    })
+  }, [])
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
+      if (!project) return
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
         e.preventDefault()
         setShowMarker(true)
@@ -36,7 +45,11 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [project])
+
+  if (!project) {
+    return <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('terminal') }} />
+  }
 
   return (
     <div className="h-screen flex flex-col">
@@ -47,6 +60,7 @@ export default function App(): JSX.Element {
       >
         <span className="text-redlog-accent font-bold text-sm tracking-wider pl-16">REDLOG</span>
         <span className="text-neutral-600 text-xs ml-2">v0.1.0</span>
+        <span className="text-zinc-500 text-xs ml-3 font-mono">{project.name}</span>
         <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button
             onClick={() => setShowMarker(true)}

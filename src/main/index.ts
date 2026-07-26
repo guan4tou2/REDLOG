@@ -1,10 +1,11 @@
 import { app, BrowserWindow, ipcMain, Tray, globalShortcut } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
+import path from 'path'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray } from './tray'
 import { IPMonitor, IPStatus } from './services/ip-monitor'
 import { loadConfig, saveConfig, RedLogConfig } from './services/config'
-import { initDB, closeDB } from './db/index'
+import { initDB, closeDB, getProjectDir } from './db/index'
 import { insertEvent, queryEvents, getEventCount } from './db/events'
 import { eventBus } from './services/event-bus'
 import { TerminalManager } from './agents/terminal-manager'
@@ -13,10 +14,16 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from './services/scope-monitor'
 import { LootDetector } from './services/loot-detector'
 import { initChain, appendToChain, getChainLength } from './services/evidence-chain'
+import {
+  listProjects, createProject, openProject, deleteProject,
+  getProjectDir as getProjectPath, ProjectMeta
+} from './services/project-manager'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let activeProject: ProjectMeta | null = null
+
 const ipMonitor = new IPMonitor()
 const terminalManager = new TerminalManager()
 const clipboardMonitor = new ClipboardMonitor()
@@ -29,14 +36,14 @@ function broadcastIPStatus(status: IPStatus): void {
   overlayWindow?.webContents.send('ip:status', status)
 }
 
-app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.redlog')
-
-  const config = loadConfig()
+function startProject(project: ProjectMeta): void {
+  activeProject = project
+  const projectDir = getProjectPath(project)
+  const config = loadConfig(projectDir)
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
 
-  initDB(engagementId)
+  initDB(projectDir)
 
   ipMonitor.configure({
     vpnIPs: config.network.vpnIPs,
@@ -45,12 +52,7 @@ app.whenReady().then(() => {
   })
   terminalManager.configure({ engagementId, operatorId })
   clipboardMonitor.configure({ engagementId, operatorId })
-  screenshotAgent.configure({
-    engagementId,
-    operatorId,
-    idleDelay: 3,
-    quality: 85
-  })
+  screenshotAgent.configure({ engagementId, operatorId, idleDelay: 3, quality: 85 })
   scopeMonitor.configure({
     enforcement: config.scope.enforcement,
     targets: config.scope.targets,
@@ -61,22 +63,68 @@ app.whenReady().then(() => {
   lootDetector.configure({ engagementId, operatorId })
   initChain()
 
+  ipMonitor.start()
+  clipboardMonitor.start()
+  screenshotAgent.start()
+
+  insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
+
+  if (!overlayWindow) {
+    overlayWindow = createOverlayWindow()
+  }
+
+  mainWindow?.webContents.send('project:opened', {
+    id: project.id,
+    name: project.name
+  })
+}
+
+function stopProject(): void {
+  ipMonitor.stop()
+  clipboardMonitor.stop()
+  screenshotAgent.stop()
+  terminalManager.destroyAll()
+  closeDB()
+  activeProject = null
+}
+
+app.whenReady().then(() => {
+  electronApp.setAppUserModelId('com.redlog')
+
   mainWindow = createMainWindow()
-  overlayWindow = createOverlayWindow()
-  tray = createTray(mainWindow, overlayWindow)
+  tray = createTray(mainWindow, null)
+
+  // --- Project management ---
+  ipcMain.handle('project:list', () => listProjects())
+  ipcMain.handle('project:create', (_e, name: string) => {
+    const project = createProject(name)
+    startProject(project)
+    return project
+  })
+  ipcMain.handle('project:open', (_e, id: string) => {
+    const project = openProject(id)
+    if (!project) return null
+    startProject(project)
+    return project
+  })
+  ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+  ipcMain.handle('project:active', () => activeProject ? { id: activeProject.id, name: activeProject.name } : null)
 
   // --- IP ---
   ipcMain.handle('ip:getStatus', () => ipMonitor.status)
-  ipcMain.handle('config:get', () => config)
+  ipcMain.handle('config:get', () => {
+    if (!activeProject) return null
+    return loadConfig(getProjectPath(activeProject))
+  })
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
-    saveConfig(newConfig)
+    if (!activeProject) return false
+    saveConfig(getProjectPath(activeProject), newConfig)
     return true
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
     overlayWindow?.setSize(440, expanded ? 210 : 52)
   })
   ipMonitor.on('status', broadcastIPStatus)
-  ipMonitor.start()
 
   // --- Terminal ---
   ipcMain.handle('terminal:create', (_e, cols: number, rows: number) => {
@@ -113,12 +161,14 @@ app.whenReady().then(() => {
 
   // --- Markers ---
   ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
+    if (!activeProject) return null
+    const config = loadConfig(getProjectPath(activeProject))
     const event = insertEvent('marker', {
       title: data.title,
       notes: data.notes,
       severity: data.severity ?? 'info',
       category: data.category ?? 'custom'
-    }, { engagementId, operatorId })
+    }, { engagementId: config.engagement.id, operatorId: config.operator.id })
     eventBus.publish(event)
     return event
   })
@@ -126,9 +176,7 @@ app.whenReady().then(() => {
   // --- Screenshots ---
   ipcMain.handle('screenshot:capture', () => screenshotAgent.captureNow('manual'))
   ipcMain.handle('screenshot:getPath', (_e, filename: string) => {
-    const { getDataDir } = require('./db/index')
-    const path = require('path')
-    return path.join(getDataDir(engagementId), 'screenshots', filename)
+    return path.join(getProjectDir(), 'screenshots', filename)
   })
 
   // --- Scope ---
@@ -150,12 +198,6 @@ app.whenReady().then(() => {
     mainWindow?.focus()
   })
 
-  // Start agents
-  clipboardMonitor.start()
-  screenshotAgent.start()
-
-  insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
-
   app.on('activate', () => {
     mainWindow?.show()
   })
@@ -169,10 +211,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   globalShortcut.unregisterAll()
-  ipMonitor.stop()
-  clipboardMonitor.stop()
-  screenshotAgent.stop()
-  terminalManager.destroyAll()
-  closeDB()
+  stopProject()
   tray?.destroy()
 })
