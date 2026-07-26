@@ -1,6 +1,5 @@
 import { insertEvent } from '../db/events'
 import { eventBus } from './event-bus'
-import dns2 from 'dns2'
 
 interface ScopeConfig {
   enforcement: 'warn' | 'log'
@@ -33,8 +32,6 @@ export class ScopeMonitor {
   private engagementId = 'default'
   private operatorId = 'operator-1'
   private violations: Array<{ target: string; command: string; timestamp: number }> = []
-  private dnsServer: dns2.DnsServer | null = null
-  private dnsPort = 15353
 
   configure(opts: {
     enforcement?: string
@@ -42,52 +39,12 @@ export class ScopeMonitor {
     excludeTargets?: string[]
     engagementId?: string
     operatorId?: string
-    dnsPort?: number
   }): void {
     if (opts.enforcement) this.config.enforcement = opts.enforcement as ScopeConfig['enforcement']
     if (opts.targets) this.config.targets = opts.targets
     if (opts.excludeTargets) this.config.excludeTargets = opts.excludeTargets
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
-    if (opts.dnsPort) this.dnsPort = opts.dnsPort
-  }
-
-  startDns(): void {
-    if (this.config.targets.length === 0) return
-
-    try {
-      const server = dns2.createServer({
-        udp: true,
-        handle: (request, send, _rinfo) => {
-          const response = dns2.Packet.createResponseFromRequest(request)
-          for (const question of request.questions) {
-            const domain = question.name
-            this.checkTarget(domain, `DNS: ${domain}`)
-
-            try {
-              insertEvent('system', {
-                subtype: 'dns_query',
-                domain,
-                type: dns2.Packet.TYPE[question.type] || String(question.type)
-              }, { engagementId: this.engagementId, operatorId: this.operatorId })
-            } catch { /* DB may not be ready */ }
-          }
-          send(response)
-        }
-      })
-
-      server.listen({ udp: this.dnsPort })
-      this.dnsServer = server
-    } catch {
-      // port may be in use
-    }
-  }
-
-  stopDns(): void {
-    if (this.dnsServer) {
-      this.dnsServer.close()
-      this.dnsServer = null
-    }
   }
 
   checkTarget(target: string, command: string): { inScope: boolean; violation: boolean } {
@@ -138,9 +95,5 @@ export class ScopeMonitor {
 
   isConfigured(): boolean {
     return this.config.targets.length > 0
-  }
-
-  getDnsPort(): number | null {
-    return this.dnsServer ? this.dnsPort : null
   }
 }

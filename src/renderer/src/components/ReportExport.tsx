@@ -3,49 +3,19 @@ import { useState } from 'react'
 export function ReportExport(): JSX.Element {
   const [exporting, setExporting] = useState(false)
   const [result, setResult] = useState<string | null>(null)
-  const [format, setFormat] = useState<'json' | 'markdown'>('json')
+  const [format, setFormat] = useState<'html' | 'json'>('html')
 
   async function handleExport(): Promise<void> {
     setExporting(true)
     setResult(null)
 
     try {
-      const [events, config, chainLen, lootCount, violations] = await Promise.all([
-        window.redlog.events.query({}),
-        window.redlog.config.get(),
-        window.redlog.chain.length(),
-        window.redlog.loot.getCount(),
-        window.redlog.scope.getViolations()
-      ])
-
-      const report = {
-        metadata: {
-          exportedAt: new Date().toISOString(),
-          config,
-          evidenceEntries: chainLen,
-          totalEvents: events.length,
-          lootDetected: lootCount,
-          scopeViolations: violations.length
-        },
-        events: events.map((e) => ({
-          id: e.id,
-          timestamp: e.timestamp,
-          agentType: e.agentType,
-          targetId: e.targetId,
-          data: e.data,
-          hash: e.hash
-        }))
-      }
-
-      if (format === 'json') {
-        const blob = JSON.stringify(report, null, 2)
-        downloadFile(blob, `redlog-export-${Date.now()}.json`, 'application/json')
+      const filePath = await window.redlog.report.export(format)
+      if (filePath) {
+        setResult(`Exported to: ${filePath}`)
       } else {
-        const md = generateMarkdown(report, events)
-        downloadFile(md, `redlog-report-${Date.now()}.md`, 'text/markdown')
+        setResult('Export failed: no active project')
       }
-
-      setResult(`Exported ${events.length} events`)
     } catch (err) {
       setResult(`Export failed: ${err}`)
     } finally {
@@ -61,7 +31,7 @@ export function ReportExport(): JSX.Element {
         <div>
           <label className="text-zinc-400 text-sm block mb-1">Format</label>
           <div className="flex gap-2">
-            {(['json', 'markdown'] as const).map((f) => (
+            {(['html', 'json'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFormat(f)}
@@ -69,7 +39,7 @@ export function ReportExport(): JSX.Element {
                   format === f ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                 }`}
               >
-                {f === 'json' ? 'JSON' : 'Markdown'}
+                {f.toUpperCase()}
               </button>
             ))}
           </div>
@@ -84,64 +54,15 @@ export function ReportExport(): JSX.Element {
         </button>
 
         {result && (
-          <div className="text-zinc-400 text-xs mt-2">{result}</div>
+          <div className="text-zinc-400 text-xs mt-2 font-mono break-all">{result}</div>
         )}
       </div>
 
       <div className="text-zinc-500 text-xs space-y-1">
-        <p>JSON export includes all events, evidence chain status, and metadata.</p>
-        <p>Markdown export generates a human-readable engagement report with timeline.</p>
+        <p>HTML report includes findings, evidence chain status, event timeline, and engagement metadata.</p>
+        <p>JSON export includes all events and metadata for external processing.</p>
+        <p>Reports are saved to the project's reports/ directory.</p>
       </div>
     </div>
   )
-}
-
-function downloadFile(content: string, filename: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function generateMarkdown(
-  report: { metadata: Record<string, unknown> },
-  events: RedLogEvent[]
-): string {
-  const meta = report.metadata
-  const lines: string[] = [
-    `# RedLog Engagement Report`,
-    ``,
-    `- **Exported**: ${meta.exportedAt}`,
-    `- **Total Events**: ${meta.totalEvents}`,
-    `- **Loot Detected**: ${meta.lootDetected}`,
-    `- **Scope Violations**: ${meta.scopeViolations}`,
-    `- **Evidence Entries**: ${meta.evidenceEntries}`,
-    ``,
-    `## Timeline`,
-    ``
-  ]
-
-  const byAgent = new Map<string, RedLogEvent[]>()
-  for (const e of events) {
-    const arr = byAgent.get(e.agentType) ?? []
-    arr.push(e)
-    byAgent.set(e.agentType, arr)
-  }
-
-  for (const [agent, evts] of byAgent) {
-    lines.push(`### ${agent} (${evts.length} events)`)
-    lines.push('')
-    for (const e of evts.slice(0, 50)) {
-      const time = new Date(e.timestamp).toLocaleTimeString()
-      const summary = e.data?.command || e.data?.subtype || e.data?.title || ''
-      lines.push(`- \`${time}\` ${summary}`)
-    }
-    if (evts.length > 50) lines.push(`- ... and ${evts.length - 50} more`)
-    lines.push('')
-  }
-
-  return lines.join('\n')
 }

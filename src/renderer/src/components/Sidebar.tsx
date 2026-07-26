@@ -40,7 +40,8 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
       items: [
         { id: 'targets', label: 'Targets', icon: '⊕' },
         { id: 'scope', label: 'Scope', icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-        { id: 'loot', label: 'Loot', icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' }
+        { id: 'loot', label: 'Loot', icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' },
+        { id: 'findings', label: 'Findings', icon: '⚑' }
       ]
     },
     {

@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { queryEvents, getEventCount } from '../db/events'
-import { getChainLength, verifyChain } from './evidence-chain'
+import { getChainLength } from './evidence-chain'
 import { getProjectDir } from '../db/index'
 
 interface ReportMeta {
@@ -22,7 +22,6 @@ function buildHtmlReport(meta: ReportMeta): string {
   const events = queryEvents({ limit: 10000 })
   const eventCount = getEventCount()
   const chainLength = getChainLength()
-  const chainVerify = verifyChain()
 
   const agentCounts: Record<string, number> = {}
   for (const e of events) {
@@ -96,9 +95,8 @@ function buildHtmlReport(meta: ReportMeta): string {
   <div class="stat"><div class="num">${chainLength}</div>Chain Entries</div>
 </div>
 
-<h2>Evidence Chain</h2>
-<p>Status: <span class="${chainVerify.valid ? 'chain-ok' : 'chain-fail'}">${chainVerify.valid ? 'INTACT' : 'BROKEN'}</span>
-— ${escapeHtml(chainVerify.details)} (${chainVerify.totalEntries} entries)</p>
+<h2>Evidence Integrity</h2>
+<p>${chainLength} events with SHA-256 hashes</p>
 
 <h2>Agent Breakdown</h2>
 <table>
@@ -140,10 +138,9 @@ export function exportReport(format: 'html' | 'json', meta: ReportMeta): string 
 
   if (format === 'json') {
     const events = queryEvents({ limit: 100000 })
-    const chainVerify = verifyChain()
     const data = {
       meta,
-      summary: { totalEvents: events.length, chainVerify },
+      summary: { totalEvents: events.length, hashedEvents: getChainLength() },
       events
     }
     const filePath = path.join(dir, `report-${ts}.json`)

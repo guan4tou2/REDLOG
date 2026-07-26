@@ -5,7 +5,6 @@ import path from 'path'
 import os from 'os'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from '../db/events'
 import { eventBus } from './event-bus'
-import { appendToChain } from './evidence-chain'
 
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
@@ -98,7 +97,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const targetId = body.target_id || body.targetId || undefined
       const event = insertEvent(agentType, data, { engagementId, operatorId, targetId })
       eventBus.publish(event)
-      try { appendToChain(event.id) } catch { /* chain not ready */ }
       json(res, 201, event)
       return
     }
@@ -139,7 +137,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         category: body.category || 'external'
       }, { engagementId, operatorId, targetId: body.target_id || body.targetId })
       eventBus.publish(event)
-      try { appendToChain(event.id) } catch { /* */ }
       json(res, 201, event)
       return
     }

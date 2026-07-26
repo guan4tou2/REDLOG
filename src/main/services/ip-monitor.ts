@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events'
 import os from 'os'
-import { lookupIP, GeoResult } from './geoip'
 
 export interface IPStatus {
   externalIP: string | null
@@ -8,7 +7,6 @@ export interface IPStatus {
   vpnStatus: 'connected' | 'disconnected' | 'unknown'
   lastCheck: number
   error: string | null
-  geo: GeoResult | null
 }
 
 const IP_PROVIDERS = [
@@ -62,32 +60,22 @@ export class IPMonitor extends EventEmitter {
   private vpnIPs: string[] = []
   private dailyIPs: string[] = []
   private checkIntervalMs = 10_000
-  private expectedCountry: string | null = null
-  private emergencyPause = false
-  private _paused = false
   private _status: IPStatus = {
     externalIP: null,
     internalIP: null,
     vpnStatus: 'unknown',
     lastCheck: 0,
-    error: null,
-    geo: null
+    error: null
   }
 
   get status(): IPStatus {
     return { ...this._status }
   }
 
-  get isPaused(): boolean {
-    return this._paused
-  }
-
-  configure(opts: { vpnIPs?: string[]; dailyIPs?: string[]; checkInterval?: number; expectedCountry?: string | null; emergencyPause?: boolean }): void {
+  configure(opts: { vpnIPs?: string[]; dailyIPs?: string[]; checkInterval?: number }): void {
     if (opts.vpnIPs) this.vpnIPs = opts.vpnIPs
     if (opts.dailyIPs) this.dailyIPs = opts.dailyIPs
     if (opts.checkInterval) this.checkIntervalMs = opts.checkInterval * 1000
-    if (opts.expectedCountry !== undefined) this.expectedCountry = opts.expectedCountry
-    if (opts.emergencyPause !== undefined) this.emergencyPause = opts.emergencyPause
   }
 
   start(): void {
@@ -118,33 +106,18 @@ export class IPMonitor extends EventEmitter {
         vpnStatus = 'unknown'
       }
 
-      let geo: GeoResult | null = null
-      try {
-        geo = await lookupIP(externalIP, this.expectedCountry)
-      } catch { /* geoip not available */ }
-
       this._status = {
         externalIP,
         internalIP,
         vpnStatus,
         lastCheck: Date.now(),
-        error: null,
-        geo
-      }
-
-      if (this.emergencyPause && vpnStatus === 'disconnected' && !this._paused) {
-        this._paused = true
-        this.emit('emergency-pause', this._status)
-      } else if (vpnStatus === 'connected' && this._paused) {
-        this._paused = false
-        this.emit('emergency-resume', this._status)
+        error: null
       }
     } catch (err) {
       this._status = {
         ...this._status,
         lastCheck: Date.now(),
-        error: err instanceof Error ? err.message : 'Unknown error',
-        geo: null
+        error: err instanceof Error ? err.message : 'Unknown error'
       }
     }
     this.emit('status', this._status)

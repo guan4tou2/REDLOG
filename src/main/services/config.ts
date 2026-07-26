@@ -15,8 +15,6 @@ export interface RedLogConfig {
     vpnIPs: string[]
     dailyIPs: string[]
     checkInterval: number
-    emergencyPause: boolean
-    expectedCountry: string | null
   }
   scope: {
     enforcement: string
@@ -24,33 +22,8 @@ export interface RedLogConfig {
     excludeTargets: string[]
     scopeFile: string | null
   }
-  encryption: {
-    enabled: boolean
-    passphrase: string | null
-  }
   screenshot: {
-    excludeWindows: string[]
     quality: number
-    idleDelay: number
-    minInterval: number
-  }
-  clipboard: {
-    excludeWindows: string[]
-  }
-  shipper: {
-    enabled: boolean
-    backend: string
-    elasticsearch: {
-      url: string
-      index: string
-      apiKey: string
-    } | null
-  }
-  sessionHealth: {
-    enabled: boolean
-    breakReminderMinutes: number
-    fatigueYellowMinutes: number
-    fatigueRedMinutes: number
   }
 }
 
@@ -66,9 +39,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
   network: {
     vpnIPs: [],
     dailyIPs: [],
-    checkInterval: 10,
-    emergencyPause: false,
-    expectedCountry: null
+    checkInterval: 10
   },
   scope: {
     enforcement: 'warn',
@@ -76,29 +47,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     excludeTargets: [],
     scopeFile: null
   },
-  encryption: {
-    enabled: false,
-    passphrase: null
-  },
   screenshot: {
-    excludeWindows: [],
-    quality: 85,
-    idleDelay: 3,
-    minInterval: 1
-  },
-  clipboard: {
-    excludeWindows: []
-  },
-  shipper: {
-    enabled: false,
-    backend: 'elasticsearch',
-    elasticsearch: null
-  },
-  sessionHealth: {
-    enabled: false,
-    breakReminderMinutes: 240,
-    fatigueYellowMinutes: 180,
-    fatigueRedMinutes: 360
+    quality: 85
   }
 }
 
@@ -139,7 +89,7 @@ export function loadScopeFile(scopeFilePath: string): string[] {
     if (ext === '.json') {
       const data = JSON.parse(raw)
       if (data.target?.scope) {
-        return data.target.scope.flatMap((s: { host?: string; protocol?: string }) => {
+        return data.target.scope.flatMap((s: { host?: string }) => {
           if (s.host) return [s.host.replace(/^\\Q|\\E$/g, '').replace(/^\.\*/g, '*')]
           return []
         })

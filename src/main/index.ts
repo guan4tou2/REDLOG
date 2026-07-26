@@ -4,28 +4,27 @@ import path from 'path'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray } from './tray'
 import { IPMonitor, IPStatus } from './services/ip-monitor'
-import { loadConfig, saveConfig, RedLogConfig } from './services/config'
+import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from './services/config'
 import { initDB, closeDB, getProjectDir } from './db/index'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
+import {
+  createFinding, updateFinding, getFinding, listFindings, deleteFinding,
+  linkEvidence, unlinkEvidence, getEvidenceForFinding, getFindingsForEvent,
+  annotateEvent, getAnnotations, deleteAnnotation
+} from './db/findings'
 import fs from 'fs'
 import { eventBus } from './services/event-bus'
 import { TerminalManager } from './agents/terminal-manager'
-import { ClipboardMonitor } from './services/clipboard-monitor'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from './services/scope-monitor'
 import { LootDetector } from './services/loot-detector'
-import { initChain, appendToChain, getChainLength, verifyChain } from './services/evidence-chain'
-import { FileTransferTracker } from './services/file-transfer-tracker'
+import { getChainLength } from './services/evidence-chain'
 import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from './services/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken } from './services/api-server'
-import { ShipperAgent } from './services/shipper'
-import { SessionHealthMonitor } from './services/session-health'
-import { loadScopeFile } from './services/config'
 import { exportReport } from './services/report-export'
-import { loadPlugins, getEnabledPlugins, togglePlugin } from './services/plugin-manifest'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -34,13 +33,9 @@ let activeProject: ProjectMeta | null = null
 
 const ipMonitor = new IPMonitor()
 const terminalManager = new TerminalManager()
-const clipboardMonitor = new ClipboardMonitor()
 const screenshotAgent = new ScreenshotAgent()
 const scopeMonitor = new ScopeMonitor()
 const lootDetector = new LootDetector()
-const fileTransferTracker = new FileTransferTracker()
-const shipperAgent = new ShipperAgent()
-const sessionHealth = new SessionHealthMonitor()
 
 function broadcastIPStatus(status: IPStatus): void {
   mainWindow?.webContents.send('ip:status', status)
@@ -55,23 +50,15 @@ function startProject(project: ProjectMeta): void {
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
 
-  initDB(projectDir, config.encryption)
+  initDB(projectDir)
 
   ipMonitor.configure({
     vpnIPs: config.network.vpnIPs,
     dailyIPs: config.network.dailyIPs,
-    checkInterval: config.network.checkInterval,
-    expectedCountry: config.network.expectedCountry,
-    emergencyPause: config.network.emergencyPause
+    checkInterval: config.network.checkInterval
   })
   terminalManager.configure({ engagementId, operatorId })
-  clipboardMonitor.configure({ engagementId, operatorId, excludeWindows: config.clipboard.excludeWindows })
-  screenshotAgent.configure({
-    engagementId, operatorId,
-    idleDelay: config.screenshot.idleDelay,
-    quality: config.screenshot.quality,
-    excludeWindows: config.screenshot.excludeWindows
-  })
+  screenshotAgent.configure({ engagementId, operatorId, quality: config.screenshot.quality })
 
   let scopeTargets = config.scope.targets
   if (config.scope.scopeFile) {
@@ -86,46 +73,8 @@ function startProject(project: ProjectMeta): void {
     operatorId
   })
   lootDetector.configure({ engagementId, operatorId })
-  fileTransferTracker.configure({
-    engagementId,
-    operatorId,
-    watchDirs: ['~/Downloads'],
-    alertThreshold: 52428800
-  })
-  initChain()
-
-  if (config.shipper.enabled && config.shipper.elasticsearch) {
-    shipperAgent.configure({ backend: config.shipper.backend, elasticsearch: config.shipper.elasticsearch })
-    shipperAgent.start()
-  }
-
-  if (config.sessionHealth.enabled) {
-    sessionHealth.configure({
-      breakReminderMinutes: config.sessionHealth.breakReminderMinutes,
-      fatigueYellowMinutes: config.sessionHealth.fatigueYellowMinutes,
-      fatigueRedMinutes: config.sessionHealth.fatigueRedMinutes
-    }, mainWindow)
-    sessionHealth.start()
-  }
-
-  ipMonitor.on('emergency-pause', () => {
-    screenshotAgent.paused = true
-    clipboardMonitor.paused = true
-    mainWindow?.webContents.send('emergency:pause')
-    insertEvent('system', { subtype: 'emergency_pause', reason: 'VPN disconnected' }, { engagementId, operatorId })
-  })
-  ipMonitor.on('emergency-resume', () => {
-    screenshotAgent.paused = false
-    clipboardMonitor.paused = false
-    mainWindow?.webContents.send('emergency:resume')
-    insertEvent('system', { subtype: 'emergency_resume' }, { engagementId, operatorId })
-  })
 
   ipMonitor.start()
-  clipboardMonitor.start()
-  screenshotAgent.start()
-  fileTransferTracker.start()
-  scopeMonitor.startDns()
 
   configureApi({
     engagementId,
@@ -154,14 +103,6 @@ function startProject(project: ProjectMeta): void {
 function stopProject(): void {
   stopApiServer()
   ipMonitor.stop()
-  ipMonitor.removeAllListeners('emergency-pause')
-  ipMonitor.removeAllListeners('emergency-resume')
-  clipboardMonitor.stop()
-  screenshotAgent.stop()
-  fileTransferTracker.stop()
-  scopeMonitor.stopDns()
-  shipperAgent.stop()
-  sessionHealth.stop()
   terminalManager.destroyAll()
   closeDB()
   activeProject = null
@@ -202,9 +143,7 @@ app.whenReady().then(() => {
     ipMonitor.configure({
       vpnIPs: newConfig.network.vpnIPs,
       dailyIPs: newConfig.network.dailyIPs,
-      checkInterval: newConfig.network.checkInterval,
-      expectedCountry: newConfig.network.expectedCountry,
-      emergencyPause: newConfig.network.emergencyPause
+      checkInterval: newConfig.network.checkInterval
     })
     let targets = newConfig.scope.targets
     if (newConfig.scope.scopeFile) {
@@ -216,14 +155,7 @@ app.whenReady().then(() => {
       targets,
       excludeTargets: newConfig.scope.excludeTargets
     })
-    scopeMonitor.stopDns()
-    scopeMonitor.startDns()
-    screenshotAgent.configure({
-      idleDelay: newConfig.screenshot.idleDelay,
-      quality: newConfig.screenshot.quality,
-      excludeWindows: newConfig.screenshot.excludeWindows
-    })
-    clipboardMonitor.configure({ excludeWindows: newConfig.clipboard.excludeWindows })
+    screenshotAgent.configure({ quality: newConfig.screenshot.quality })
     return true
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
@@ -255,9 +187,6 @@ app.whenReady().then(() => {
     const result = scopeMonitor.checkTarget(target, command)
     mainWindow?.webContents.send('scope:check', { target, command, ...result })
   })
-  fileTransferTracker.on('large-transfer', (info: { path: string; size: number; sha256: string }) => {
-    mainWindow?.webContents.send('file:large-transfer', info)
-  })
   terminalManager.on('transfer', (transfer: { direction: string; remotePath: string; remoteHost: string }, command: string) => {
     const evt = insertEvent('file_transfer', {
       ...transfer,
@@ -273,11 +202,6 @@ app.whenReady().then(() => {
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => searchEvents(query, limit))
   eventBus.on('event', (event) => {
     mainWindow?.webContents.send('events:new', event)
-    try { appendToChain(event.id) } catch { /* chain not ready */ }
-    try { shipperAgent.enqueue(event) } catch { /* shipper not ready */ }
-    if (event.agentType === 'clipboard' && typeof event.data?.content === 'string') {
-      lootDetector.scan(event.data.content as string)
-    }
   })
 
   // --- Markers ---
@@ -316,14 +240,28 @@ app.whenReady().then(() => {
 
   // --- Evidence Chain ---
   ipcMain.handle('chain:length', () => getChainLength())
-  ipcMain.handle('chain:verify', () => verifyChain())
 
-  // --- Session Health ---
-  ipcMain.handle('session:health', () => sessionHealth.getStatus())
-  ipcMain.handle('session:recordBreak', () => { sessionHealth.recordBreak(); return true })
+  // --- Loot ---
+  ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
+  ipcMain.handle('loot:scan', (_e, text: string) => lootDetector.scan(text))
 
-  // --- Shipper ---
-  ipcMain.handle('shipper:queueSize', () => shipperAgent.getQueueSize())
+  // --- Findings ---
+  ipcMain.handle('findings:list', () => listFindings())
+  ipcMain.handle('findings:get', (_e, id: string) => getFinding(id))
+  ipcMain.handle('findings:create', (_e, data) => createFinding(data))
+  ipcMain.handle('findings:update', (_e, id: string, data) => updateFinding(id, data))
+  ipcMain.handle('findings:delete', (_e, id: string) => deleteFinding(id))
+
+  // --- Evidence Links ---
+  ipcMain.handle('evidence:link', (_e, findingId: string, eventId: string, note?: string) => linkEvidence(findingId, eventId, note))
+  ipcMain.handle('evidence:unlink', (_e, linkId: string) => unlinkEvidence(linkId))
+  ipcMain.handle('evidence:forFinding', (_e, findingId: string) => getEvidenceForFinding(findingId))
+  ipcMain.handle('evidence:forEvent', (_e, eventId: string) => getFindingsForEvent(eventId))
+
+  // --- Event Annotations ---
+  ipcMain.handle('annotations:create', (_e, eventId: string, note: string) => annotateEvent(eventId, note))
+  ipcMain.handle('annotations:get', (_e, eventId: string) => getAnnotations(eventId))
+  ipcMain.handle('annotations:delete', (_e, annotationId: string) => deleteAnnotation(annotationId))
 
   // --- Report Export ---
   ipcMain.handle('report:export', (_e, format: 'html' | 'json') => {
@@ -335,24 +273,6 @@ app.whenReady().then(() => {
       generatedAt: new Date().toISOString()
     })
   })
-
-  // --- Plugins ---
-  ipcMain.handle('plugins:list', () => {
-    if (!activeProject) return []
-    return loadPlugins(getProjectPath(activeProject)).plugins
-  })
-  ipcMain.handle('plugins:enabled', () => {
-    if (!activeProject) return []
-    return getEnabledPlugins(getProjectPath(activeProject))
-  })
-  ipcMain.handle('plugins:toggle', (_e, name: string, enabled: boolean) => {
-    if (!activeProject) return false
-    return togglePlugin(getProjectPath(activeProject), name, enabled)
-  })
-
-  // --- Loot ---
-  ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
-  ipcMain.handle('loot:scan', (_e, text: string) => lootDetector.scan(text))
 
   // --- Global shortcut ---
   globalShortcut.register('CommandOrControl+Shift+M', () => {

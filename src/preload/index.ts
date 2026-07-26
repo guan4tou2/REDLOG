@@ -76,48 +76,31 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   chain: {
-    length: () => ipcRenderer.invoke('chain:length'),
-    verify: () => ipcRenderer.invoke('chain:verify')
+    length: () => ipcRenderer.invoke('chain:length')
   },
   loot: {
     getCount: () => ipcRenderer.invoke('loot:getCount'),
     scan: (text: string) => ipcRenderer.invoke('loot:scan', text)
   },
-  session: {
-    health: () => ipcRenderer.invoke('session:health'),
-    recordBreak: () => ipcRenderer.invoke('session:recordBreak'),
-    onBreakReminder: (cb: (status: unknown) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, s: unknown) => cb(s)
-      ipcRenderer.on('session-health:break-reminder', handler)
-      return () => ipcRenderer.removeListener('session-health:break-reminder', handler)
-    },
-    onFatigue: (cb: (status: unknown) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, s: unknown) => cb(s)
-      ipcRenderer.on('session-health:fatigue', handler)
-      return () => ipcRenderer.removeListener('session-health:fatigue', handler)
-    }
-  },
-  shipper: {
-    queueSize: () => ipcRenderer.invoke('shipper:queueSize')
-  },
   report: {
     export: (format: 'html' | 'json') => ipcRenderer.invoke('report:export', format)
   },
-  plugins: {
-    list: () => ipcRenderer.invoke('plugins:list'),
-    enabled: () => ipcRenderer.invoke('plugins:enabled'),
-    toggle: (name: string, enabled: boolean) => ipcRenderer.invoke('plugins:toggle', name, enabled)
+  findings: {
+    list: () => ipcRenderer.invoke('findings:list'),
+    get: (id: string) => ipcRenderer.invoke('findings:get', id),
+    create: (data: Record<string, unknown>) => ipcRenderer.invoke('findings:create', data),
+    update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('findings:update', id, data),
+    delete: (id: string) => ipcRenderer.invoke('findings:delete', id)
   },
-  emergency: {
-    onPause: (cb: () => void) => {
-      const handler = () => cb()
-      ipcRenderer.on('emergency:pause', handler)
-      return () => ipcRenderer.removeListener('emergency:pause', handler)
-    },
-    onResume: (cb: () => void) => {
-      const handler = () => cb()
-      ipcRenderer.on('emergency:resume', handler)
-      return () => ipcRenderer.removeListener('emergency:resume', handler)
-    }
+  evidence: {
+    link: (findingId: string, eventId: string, note?: string) => ipcRenderer.invoke('evidence:link', findingId, eventId, note),
+    unlink: (linkId: string) => ipcRenderer.invoke('evidence:unlink', linkId),
+    forFinding: (findingId: string) => ipcRenderer.invoke('evidence:forFinding', findingId),
+    forEvent: (eventId: string) => ipcRenderer.invoke('evidence:forEvent', eventId)
+  },
+  annotations: {
+    create: (eventId: string, note: string) => ipcRenderer.invoke('annotations:create', eventId, note),
+    get: (eventId: string) => ipcRenderer.invoke('annotations:get', eventId),
+    delete: (annotationId: string) => ipcRenderer.invoke('annotations:delete', annotationId)
   }
 })

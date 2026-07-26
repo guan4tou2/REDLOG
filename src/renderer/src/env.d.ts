@@ -31,6 +31,35 @@ interface RedLogEvent {
   createdAt: number
 }
 
+interface Finding {
+  id: string
+  title: string
+  severity: string
+  cvssVector: string | null
+  cvssScore: number | null
+  description: string
+  remediation: string
+  status: string
+  affectedHosts: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+interface EvidenceLink {
+  id: string
+  findingId: string
+  eventId: string
+  note: string
+  createdAt: number
+}
+
+interface EventAnnotation {
+  id: string
+  eventId: string
+  note: string
+  createdAt: number
+}
+
 interface RedLogAPI {
   project: {
     list: () => Promise<ProjectMeta[]>
@@ -78,32 +107,31 @@ interface RedLogAPI {
   }
   chain: {
     length: () => Promise<number>
-    verify: () => Promise<{ valid: boolean; totalEntries: number; breakAt: number | null; details: string }>
   }
   loot: {
     getCount: () => Promise<number>
     scan: (text: string) => Promise<Array<{ type: string; value: string; line: string; confidence: string }>>
   }
-  session: {
-    health: () => Promise<{ sessionMinutes: number; fatigueLevel: 'green' | 'yellow' | 'red'; lastBreakMinutesAgo: number; breaksDue: boolean }>
-    recordBreak: () => Promise<boolean>
-    onBreakReminder: (cb: (status: { sessionMinutes: number; breaksDue: boolean }) => void) => () => void
-    onFatigue: (cb: (status: { sessionMinutes: number; fatigueLevel: string }) => void) => () => void
-  }
-  shipper: {
-    queueSize: () => Promise<number>
-  }
   report: {
     export: (format: 'html' | 'json') => Promise<string | null>
   }
-  plugins: {
-    list: () => Promise<Array<{ name: string; version: string; description: string; enabled: boolean }>>
-    enabled: () => Promise<Array<{ name: string; version: string; description: string }>>
-    toggle: (name: string, enabled: boolean) => Promise<boolean>
+  findings: {
+    list: () => Promise<Finding[]>
+    get: (id: string) => Promise<Finding | null>
+    create: (data: { title: string; severity?: string; cvssVector?: string; cvssScore?: number; description?: string; remediation?: string; affectedHosts?: string[] }) => Promise<Finding>
+    update: (id: string, data: Partial<Finding>) => Promise<Finding | null>
+    delete: (id: string) => Promise<boolean>
   }
-  emergency: {
-    onPause: (cb: () => void) => () => void
-    onResume: (cb: () => void) => () => void
+  evidence: {
+    link: (findingId: string, eventId: string, note?: string) => Promise<EvidenceLink>
+    unlink: (linkId: string) => Promise<boolean>
+    forFinding: (findingId: string) => Promise<EvidenceLink[]>
+    forEvent: (eventId: string) => Promise<string[]>
+  }
+  annotations: {
+    create: (eventId: string, note: string) => Promise<EventAnnotation>
+    get: (eventId: string) => Promise<EventAnnotation[]>
+    delete: (annotationId: string) => Promise<boolean>
   }
   overlay?: {
     setExpanded: (expanded: boolean) => void
