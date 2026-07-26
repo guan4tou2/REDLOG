@@ -59,6 +59,7 @@ interface RedLogAPI {
   events: {
     query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
     getCount: () => Promise<number>
+    search: (query: string, limit?: number) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
   }
   marker: {
@@ -67,6 +68,7 @@ interface RedLogAPI {
   screenshot: {
     capture: () => Promise<string | null>
     getPath: (filename: string) => Promise<string>
+    read: (filePath: string) => Promise<string | null>
   }
   scope: {
     getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>

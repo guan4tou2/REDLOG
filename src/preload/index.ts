@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('redlog', {
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
     getCount: () => ipcRenderer.invoke('events:getCount'),
+    search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
       ipcRenderer.on('events:new', handler)
@@ -60,7 +61,9 @@ contextBridge.exposeInMainWorld('redlog', {
   screenshot: {
     capture: () => ipcRenderer.invoke('screenshot:capture'),
     getPath: (filename: string): Promise<string> =>
-      ipcRenderer.invoke('screenshot:getPath', filename)
+      ipcRenderer.invoke('screenshot:getPath', filename),
+    read: (filePath: string): Promise<string | null> =>
+      ipcRenderer.invoke('screenshot:read', filePath)
   },
   scope: {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),

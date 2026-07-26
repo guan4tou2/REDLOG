@@ -11,8 +11,10 @@ import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
 import { ReportExport } from './components/ReportExport'
+import { SearchPanel } from './components/SearchPanel'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
-type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'export' | 'settings'
+type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'export' | 'settings' | 'search'
 
 const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'export', 'settings']
 
@@ -33,6 +35,11 @@ export default function App(): JSX.Element {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
         e.preventDefault()
         setShowMarker(true)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        setView('search')
         return
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
@@ -77,15 +84,18 @@ export default function App(): JSX.Element {
         <Sidebar active={view} onNavigate={(v) => setView(v as View)} />
 
         <div className="flex-1 min-w-0">
-          {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
-          {view === 'terminal' && <SplitTerminal />}
-          {view === 'timeline' && <TimelinePanel />}
-          {view === 'screenshots' && <ScreenshotsView />}
-          {view === 'targets' && <TargetView />}
-          {view === 'scope' && <ScopeStatus />}
-          {view === 'loot' && <LootPanel />}
-          {view === 'export' && <ReportExport />}
-          {view === 'settings' && <Settings />}
+          <ErrorBoundary label={view}>
+            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
+            {view === 'terminal' && <SplitTerminal />}
+            {view === 'timeline' && <TimelinePanel />}
+            {view === 'screenshots' && <ScreenshotsView />}
+            {view === 'targets' && <TargetView />}
+            {view === 'scope' && <ScopeStatus />}
+            {view === 'loot' && <LootPanel />}
+            {view === 'export' && <ReportExport />}
+            {view === 'settings' && <Settings />}
+            {view === 'search' && <SearchPanel />}
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -269,6 +279,8 @@ function StatCard({ label, value, color, sub }: {
 
 function ScreenshotsView(): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
     window.redlog.events.query({ agentType: 'screenshot', limit: 50 }).then(setScreenshots)
@@ -279,27 +291,65 @@ function ScreenshotsView(): JSX.Element {
     })
   }, [])
 
+  useEffect(() => {
+    screenshots.forEach((s) => {
+      if (thumbs[s.id]) return
+      const filePath = s.data.filePath as string | undefined
+      if (!filePath) return
+      window.redlog.screenshot.read(filePath).then((dataUri) => {
+        if (dataUri) setThumbs((prev) => ({ ...prev, [s.id]: dataUri }))
+      })
+    })
+  }, [screenshots, thumbs])
+
   return (
     <div className="p-4 overflow-auto h-full">
-      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-3">
-        Screenshots ({screenshots.length})
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">
+          Screenshots ({screenshots.length})
+        </h2>
+        <button
+          onClick={() => window.redlog.screenshot.capture()}
+          className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+        >
+          Capture Now
+        </button>
+      </div>
       {screenshots.length === 0 ? (
         <p className="text-neutral-600 text-sm">Screenshots will appear here when captured</p>
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {screenshots.map((s) => (
-            <div key={s.id} className="rounded border border-redlog-border overflow-hidden bg-redlog-surface">
-              <div className="aspect-video bg-neutral-900 flex items-center justify-center text-neutral-700 text-xs">
-                {(s.data.filename as string) ?? 'screenshot'}
+            <div
+              key={s.id}
+              className="rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-zinc-600 transition-colors"
+              onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+            >
+              <div className="aspect-video bg-neutral-900 flex items-center justify-center overflow-hidden">
+                {thumbs[s.id] ? (
+                  <img src={thumbs[s.id]} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-neutral-700 text-xs">{(s.data.filename as string) ?? '...'}</span>
+                )}
               </div>
               <div className="px-2 py-1">
                 <p className="text-[10px] text-neutral-500">
                   {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
+                  {s.data.diffPercent !== undefined && (
+                    <span className="ml-1 text-zinc-600">({(s.data.diffPercent as number).toFixed(1)}% diff)</span>
+                  )}
                 </p>
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {expanded && thumbs[expanded] && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer"
+          onClick={() => setExpanded(null)}
+        >
+          <img src={thumbs[expanded]} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
         </div>
       )}
     </div>

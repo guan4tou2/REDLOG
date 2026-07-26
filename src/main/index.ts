@@ -6,7 +6,8 @@ import { createTray } from './tray'
 import { IPMonitor, IPStatus } from './services/ip-monitor'
 import { loadConfig, saveConfig, RedLogConfig } from './services/config'
 import { initDB, closeDB, getProjectDir } from './db/index'
-import { insertEvent, queryEvents, getEventCount } from './db/events'
+import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
+import fs from 'fs'
 import { eventBus } from './services/event-bus'
 import { TerminalManager } from './agents/terminal-manager'
 import { ClipboardMonitor } from './services/clipboard-monitor'
@@ -131,7 +132,21 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
     if (!activeProject) return false
-    saveConfig(getProjectPath(activeProject), newConfig)
+    const projectDir = getProjectPath(activeProject)
+    saveConfig(projectDir, newConfig)
+    ipMonitor.configure({
+      vpnIPs: newConfig.network.vpnIPs,
+      dailyIPs: newConfig.network.dailyIPs,
+      checkInterval: newConfig.network.checkInterval
+    })
+    scopeMonitor.configure({
+      enforcement: newConfig.scope.enforcement,
+      targets: newConfig.scope.targets,
+      excludeTargets: newConfig.scope.excludeTargets
+    })
+    scopeMonitor.stopDns()
+    scopeMonitor.startDns()
+    screenshotAgent.configure({ idleDelay: 3, quality: 85 })
     return true
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
@@ -178,6 +193,7 @@ app.whenReady().then(() => {
   // --- Events ---
   ipcMain.handle('events:query', (_e, opts) => queryEvents(opts))
   ipcMain.handle('events:getCount', () => getEventCount())
+  ipcMain.handle('events:search', (_e, query: string, limit?: number) => searchEvents(query, limit))
   eventBus.on('event', (event) => {
     mainWindow?.webContents.send('events:new', event)
     try { appendToChain(event.id) } catch { /* chain not ready */ }
@@ -204,6 +220,12 @@ app.whenReady().then(() => {
   ipcMain.handle('screenshot:capture', () => screenshotAgent.captureNow('manual'))
   ipcMain.handle('screenshot:getPath', (_e, filename: string) => {
     return path.join(getProjectDir(), 'screenshots', filename)
+  })
+  ipcMain.handle('screenshot:read', (_e, filePath: string) => {
+    try {
+      const data = fs.readFileSync(filePath)
+      return `data:image/jpeg;base64,${data.toString('base64')}`
+    } catch { return null }
   })
 
   // --- Scope ---

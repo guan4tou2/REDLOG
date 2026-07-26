@@ -105,6 +105,16 @@ export function getEventCount(): number {
   return row.count
 }
 
+export function searchEvents(query: string, limit = 100): RedLogEvent[] {
+  const db = getDB()
+  const pattern = `%${query}%`
+  const rows = db.prepare(
+    `SELECT * FROM events WHERE data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?
+     ORDER BY timestamp DESC LIMIT ?`
+  ).all(pattern, pattern, pattern, limit) as Array<Record<string, unknown>>
+  return rows.map(rowToEvent)
+}
+
 function rowToEvent(row: Record<string, unknown>): RedLogEvent {
   return {
     id: row.id as string,

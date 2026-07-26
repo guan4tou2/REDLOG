@@ -1,37 +1,58 @@
+import { useState, useEffect } from 'react'
+
 interface SidebarProps {
   active: string
   onNavigate: (view: string) => void
 }
 
-const groups = [
-  {
-    label: 'OPS',
-    items: [
-      { id: 'terminal', label: 'Terminal', icon: '▸' },
-      { id: 'timeline', label: 'Timeline', icon: '═' },
-      { id: 'screenshots', label: 'Screens', icon: '◻' }
-    ]
-  },
-  {
-    label: 'INTEL',
-    items: [
-      { id: 'targets', label: 'Targets', icon: '⊕' },
-      { id: 'scope', label: 'Scope', icon: '⊘' },
-      { id: 'loot', label: 'Loot', icon: '◆' }
-    ]
-  },
-  {
-    label: 'OUTPUT',
-    items: [
-      { id: 'export', label: 'Export', icon: '↗' }
-    ]
-  }
-]
-
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
+  const [lootCount, setLootCount] = useState(0)
+  const [scopeViolations, setScopeViolations] = useState(0)
+
+  useEffect(() => {
+    window.redlog.loot.getCount().then(setLootCount)
+    window.redlog.scope.getViolationCount().then(setScopeViolations)
+    const unsub = window.redlog.events.onNew(() => {
+      window.redlog.loot.getCount().then(setLootCount)
+      window.redlog.scope.getViolationCount().then(setScopeViolations)
+    })
+    return unsub
+  }, [])
+
+  const badge = (count: number, color: string): JSX.Element | null =>
+    count > 0 ? (
+      <span className={`absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full ${color} text-[8px] text-white font-bold flex items-center justify-center px-0.5`}>
+        {count > 99 ? '99+' : count}
+      </span>
+    ) : null
+
+  const groups = [
+    {
+      label: 'OPS',
+      items: [
+        { id: 'terminal', label: 'Terminal', icon: '▸' },
+        { id: 'timeline', label: 'Timeline', icon: '═' },
+        { id: 'screenshots', label: 'Screens', icon: '◻' }
+      ]
+    },
+    {
+      label: 'INTEL',
+      items: [
+        { id: 'targets', label: 'Targets', icon: '⊕' },
+        { id: 'scope', label: 'Scope', icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
+        { id: 'loot', label: 'Loot', icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' }
+      ]
+    },
+    {
+      label: 'OUTPUT',
+      items: [
+        { id: 'export', label: 'Export', icon: '↗' }
+      ]
+    }
+  ]
+
   return (
     <div className="w-[52px] bg-redlog-bg border-r border-redlog-border flex flex-col items-center py-2 shrink-0 select-none">
-      {/* Dashboard home */}
       <button
         onClick={() => onNavigate('dashboard')}
         title="Dashboard"
@@ -44,6 +65,18 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
         ◉
       </button>
 
+      <button
+        onClick={() => onNavigate('search')}
+        title="Search (⌘/)"
+        className={`w-10 h-7 rounded flex items-center justify-center text-sm mb-1 transition-colors ${
+          active === 'search'
+            ? 'bg-red-500/20 text-red-400'
+            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+        }`}
+      >
+        ⌕
+      </button>
+
       <div className="w-8 border-t border-zinc-800 mb-1" />
 
       {groups.map((group) => (
@@ -54,7 +87,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               key={item.id}
               onClick={() => onNavigate(item.id)}
               title={item.label}
-              className={`w-10 h-8 rounded flex flex-col items-center justify-center gap-0 transition-colors ${
+              className={`relative w-10 h-8 rounded flex flex-col items-center justify-center gap-0 transition-colors ${
                 active === item.id
                   ? 'bg-red-500/20 text-red-400'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
@@ -62,12 +95,12 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
             >
               <span className="text-sm leading-none">{item.icon}</span>
               <span className="text-[7px] leading-none mt-0.5">{item.label}</span>
+              {'badge' in item && badge(item.badge as number, item.badgeColor as string)}
             </button>
           ))}
         </div>
       ))}
 
-      {/* Settings at bottom */}
       <div className="mt-auto">
         <button
           onClick={() => onNavigate('settings')}

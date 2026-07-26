@@ -108,8 +108,36 @@ export default function TimelinePanel(): JSX.Element {
     timelineRef.current = tl
   }, [])
 
+  const loadedCountRef = useRef(0)
+  const loadingRef = useRef(false)
+  const allLoadedRef = useRef(false)
+
+  const loadMore = useCallback(() => {
+    if (loadingRef.current || allLoadedRef.current) return
+    loadingRef.current = true
+    const oldest = loadedCountRef.current > 0
+      ? Math.min(...Array.from(eventsMapRef.current.values()).map((e) => e.timestamp))
+      : undefined
+    window.redlog.events.query({ limit: 200, ...(oldest ? { since: undefined } : {}) }).then((events) => {
+      const newEvents = events.filter((e) => !eventsMapRef.current.has(e.id))
+      if (newEvents.length === 0) {
+        allLoadedRef.current = true
+      } else {
+        newEvents.forEach((e) => eventsMapRef.current.set(e.id, e))
+        loadedCountRef.current += newEvents.length
+        setEventCount(eventsMapRef.current.size)
+        if (itemsRef.current) {
+          try { itemsRef.current.add(newEvents.map(toTimelineItem)) } catch { /* dup */ }
+        }
+      }
+      loadingRef.current = false
+    })
+  }, [])
+
   useEffect(() => {
-    window.redlog.events.query({ limit: 1000 }).then((events) => {
+    window.redlog.events.query({ limit: 200 }).then((events) => {
+      loadedCountRef.current = events.length
+      if (events.length < 200) allLoadedRef.current = true
       initTimeline(events)
     })
 
@@ -133,6 +161,14 @@ export default function TimelinePanel(): JSX.Element {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border shrink-0">
         <span className="text-xs text-neutral-400">Attack Timeline</span>
         <span className="text-xs text-neutral-600">({eventCount} events)</span>
+        {!allLoadedRef.current && (
+          <button
+            onClick={loadMore}
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 ml-2"
+          >
+            Load more
+          </button>
+        )}
         <div className="ml-auto flex gap-1">
           {GROUPS.slice(0, 5).map((g) => (
             <span
