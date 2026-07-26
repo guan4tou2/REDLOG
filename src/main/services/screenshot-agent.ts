@@ -27,6 +27,11 @@ export class ScreenshotAgent {
   private lastCapture = 0
   private quality = 85
   private diffThreshold = 0.005
+  private excludeWindows: string[] = []
+  private _paused = false
+
+  get paused(): boolean { return this._paused }
+  set paused(v: boolean) { this._paused = v }
 
   configure(opts: {
     engagementId?: string
@@ -34,12 +39,14 @@ export class ScreenshotAgent {
     idleDelay?: number
     quality?: number
     diffThreshold?: number
+    excludeWindows?: string[]
   }): void {
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
     if (opts.idleDelay) this.idleDelay = opts.idleDelay * 1000
     if (opts.quality) this.quality = opts.quality
     if (opts.diffThreshold) this.diffThreshold = opts.diffThreshold
+    if (opts.excludeWindows) this.excludeWindows = opts.excludeWindows
   }
 
   start(): void {
@@ -58,12 +65,22 @@ export class ScreenshotAgent {
   }
 
   private async maybeCapture(): Promise<void> {
+    if (this._paused) return
+
     const now = Date.now()
     if (now - this.lastCapture < this.minInterval) return
 
     const { powerMonitor } = await import('electron')
     const idleTime = powerMonitor.getSystemIdleTime()
     if (idleTime * 1000 < this.idleDelay) return
+
+    if (this.excludeWindows.length > 0) {
+      const sources = await desktopCapturer.getSources({ types: ['window'] })
+      const activeWindow = sources[0]?.name
+      if (activeWindow && this.excludeWindows.some((w) => activeWindow.toLowerCase().includes(w.toLowerCase()))) {
+        return
+      }
+    }
 
     await this.capture('idle')
   }

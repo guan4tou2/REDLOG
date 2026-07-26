@@ -78,10 +78,32 @@ interface RedLogAPI {
   }
   chain: {
     length: () => Promise<number>
+    verify: () => Promise<{ valid: boolean; totalEntries: number; breakAt: number | null; details: string }>
   }
   loot: {
     getCount: () => Promise<number>
     scan: (text: string) => Promise<Array<{ type: string; value: string; line: string; confidence: string }>>
+  }
+  session: {
+    health: () => Promise<{ sessionMinutes: number; fatigueLevel: 'green' | 'yellow' | 'red'; lastBreakMinutesAgo: number; breaksDue: boolean }>
+    recordBreak: () => Promise<boolean>
+    onBreakReminder: (cb: (status: { sessionMinutes: number; breaksDue: boolean }) => void) => () => void
+    onFatigue: (cb: (status: { sessionMinutes: number; fatigueLevel: string }) => void) => () => void
+  }
+  shipper: {
+    queueSize: () => Promise<number>
+  }
+  report: {
+    export: (format: 'html' | 'json') => Promise<string | null>
+  }
+  plugins: {
+    list: () => Promise<Array<{ name: string; version: string; description: string; enabled: boolean }>>
+    enabled: () => Promise<Array<{ name: string; version: string; description: string }>>
+    toggle: (name: string, enabled: boolean) => Promise<boolean>
+  }
+  emergency: {
+    onPause: (cb: () => void) => () => void
+    onResume: (cb: () => void) => () => void
   }
   overlay?: {
     setExpanded: (expanded: boolean) => void

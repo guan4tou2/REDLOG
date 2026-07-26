@@ -8,18 +8,24 @@ export class ClipboardMonitor {
   private lastHash = ''
   private engagementId = 'default'
   private operatorId = 'operator-1'
+  private excludeWindows: string[] = []
+  private _paused = false
   private redactPatterns: RegExp[] = [
     /(?:password|passwd|pwd)[\s:=]+\S+/gi,
     /(?:api[_-]?key|token|secret|bearer)[\s:=]+\S+/gi,
     /-----BEGIN [\w\s]+ PRIVATE KEY-----/g
   ]
 
-  configure(opts: { engagementId?: string; operatorId?: string; redactPatterns?: string[] }): void {
+  get paused(): boolean { return this._paused }
+  set paused(v: boolean) { this._paused = v }
+
+  configure(opts: { engagementId?: string; operatorId?: string; redactPatterns?: string[]; excludeWindows?: string[] }): void {
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
     if (opts.redactPatterns) {
       this.redactPatterns = opts.redactPatterns.map((p) => new RegExp(p, 'gi'))
     }
+    if (opts.excludeWindows) this.excludeWindows = opts.excludeWindows
   }
 
   start(): void {
@@ -35,6 +41,8 @@ export class ClipboardMonitor {
   }
 
   private check(): void {
+    if (this._paused) return
+
     const text = clipboard.readText()
     const hash = this.hashContent(text)
     if (hash === this.lastHash) return

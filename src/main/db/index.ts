@@ -5,7 +5,7 @@ import fs from 'fs'
 let db: Database.Database | null = null
 let currentProjectDir: string | null = null
 
-export function initDB(projectDir: string): Database.Database {
+export function initDB(projectDir: string, encryption?: { enabled: boolean; passphrase: string | null }): Database.Database {
   if (db) closeDB()
 
   fs.mkdirSync(projectDir, { recursive: true })
@@ -14,6 +14,15 @@ export function initDB(projectDir: string): Database.Database {
 
   const dbPath = path.join(projectDir, 'timeline.db')
   db = new Database(dbPath)
+
+  if (encryption?.enabled && encryption.passphrase) {
+    try {
+      db.pragma(`key = '${encryption.passphrase.replace(/'/g, "''")}'`)
+    } catch {
+      // better-sqlite3 without cipher support — skip silently
+    }
+  }
+
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 

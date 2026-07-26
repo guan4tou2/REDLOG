@@ -76,10 +76,48 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   chain: {
-    length: () => ipcRenderer.invoke('chain:length')
+    length: () => ipcRenderer.invoke('chain:length'),
+    verify: () => ipcRenderer.invoke('chain:verify')
   },
   loot: {
     getCount: () => ipcRenderer.invoke('loot:getCount'),
     scan: (text: string) => ipcRenderer.invoke('loot:scan', text)
+  },
+  session: {
+    health: () => ipcRenderer.invoke('session:health'),
+    recordBreak: () => ipcRenderer.invoke('session:recordBreak'),
+    onBreakReminder: (cb: (status: unknown) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, s: unknown) => cb(s)
+      ipcRenderer.on('session-health:break-reminder', handler)
+      return () => ipcRenderer.removeListener('session-health:break-reminder', handler)
+    },
+    onFatigue: (cb: (status: unknown) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, s: unknown) => cb(s)
+      ipcRenderer.on('session-health:fatigue', handler)
+      return () => ipcRenderer.removeListener('session-health:fatigue', handler)
+    }
+  },
+  shipper: {
+    queueSize: () => ipcRenderer.invoke('shipper:queueSize')
+  },
+  report: {
+    export: (format: 'html' | 'json') => ipcRenderer.invoke('report:export', format)
+  },
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    enabled: () => ipcRenderer.invoke('plugins:enabled'),
+    toggle: (name: string, enabled: boolean) => ipcRenderer.invoke('plugins:toggle', name, enabled)
+  },
+  emergency: {
+    onPause: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on('emergency:pause', handler)
+      return () => ipcRenderer.removeListener('emergency:pause', handler)
+    },
+    onResume: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on('emergency:resume', handler)
+      return () => ipcRenderer.removeListener('emergency:resume', handler)
+    }
   }
 })
