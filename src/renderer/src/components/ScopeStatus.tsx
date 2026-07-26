@@ -10,13 +10,13 @@ interface ScopeCheckResult {
 export function ScopeStatus(): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
   const [configured, setConfigured] = useState(false)
-  const [chainStatus, setChainStatus] = useState<{ valid: boolean; entries: number } | null>(null)
+  const [chainLen, setChainLen] = useState(0)
   const [recentChecks, setRecentChecks] = useState<ScopeCheckResult[]>([])
 
   useEffect(() => {
     window.redlog.scope.isConfigured().then(setConfigured)
     window.redlog.scope.getViolations().then(setViolations)
-    window.redlog.chain.verify().then(setChainStatus)
+    window.redlog.chain.length().then(setChainLen)
 
     const unsub = window.redlog.scope.onCheck((result) => {
       setRecentChecks((prev) => [result, ...prev].slice(0, 50))
@@ -48,32 +48,17 @@ export function ScopeStatus(): JSX.Element {
         )}
         {!configured && (
           <p className="text-zinc-500 text-xs">
-            Add scope targets in ~/.redlog/config.yaml under scope.targets
+            Add scope targets in Settings → Scope tab
           </p>
         )}
       </div>
 
-      {/* Evidence Chain */}
+      {/* Evidence Log */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
         <div className="flex items-center justify-between">
-          <span className="text-zinc-300 text-sm font-medium">Evidence Chain</span>
-          {chainStatus?.valid ? (
-            <span className="text-green-400 text-xs bg-green-400/10 px-2 py-0.5 rounded">VALID</span>
-          ) : chainStatus ? (
-            <span className="text-red-400 text-xs bg-red-400/10 px-2 py-0.5 rounded">BROKEN</span>
-          ) : (
-            <span className="text-zinc-500 text-xs">Loading...</span>
-          )}
+          <span className="text-zinc-300 text-sm font-medium">Evidence Log</span>
+          <span className="text-zinc-500 text-xs">{chainLen} entries</span>
         </div>
-        {chainStatus && (
-          <div className="text-zinc-500 text-xs mt-1">{chainStatus.entries} entries in chain</div>
-        )}
-        <button
-          onClick={() => window.redlog.chain.verify().then(setChainStatus)}
-          className="mt-2 text-xs text-zinc-400 hover:text-white transition-colors"
-        >
-          Re-verify chain
-        </button>
       </div>
 
       {/* Violations */}

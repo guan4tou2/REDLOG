@@ -10,10 +10,10 @@ export function ReportExport(): JSX.Element {
     setResult(null)
 
     try {
-      const [events, config, chainInfo, lootCount, violations] = await Promise.all([
+      const [events, config, chainLen, lootCount, violations] = await Promise.all([
         window.redlog.events.query({}),
         window.redlog.config.get(),
-        window.redlog.chain.verify(),
+        window.redlog.chain.length(),
         window.redlog.loot.getCount(),
         window.redlog.scope.getViolations()
       ])
@@ -22,7 +22,7 @@ export function ReportExport(): JSX.Element {
         metadata: {
           exportedAt: new Date().toISOString(),
           config,
-          evidenceChain: chainInfo,
+          evidenceEntries: chainLen,
           totalEvents: events.length,
           lootDetected: lootCount,
           scopeViolations: violations.length
@@ -118,7 +118,7 @@ function generateMarkdown(
     `- **Total Events**: ${meta.totalEvents}`,
     `- **Loot Detected**: ${meta.lootDetected}`,
     `- **Scope Violations**: ${meta.scopeViolations}`,
-    `- **Evidence Chain**: ${(meta.evidenceChain as { valid: boolean }).valid ? 'Valid' : 'BROKEN'}`,
+    `- **Evidence Entries**: ${meta.evidenceEntries}`,
     ``,
     `## Timeline`,
     ``

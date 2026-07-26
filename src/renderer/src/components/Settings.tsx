@@ -86,7 +86,7 @@ export default function Settings(): JSX.Element {
           <>
             <FieldGroup title="Scope Enforcement">
               <div className="flex gap-2">
-                {['warn', 'block', 'log'].map((mode) => (
+                {['warn', 'log'].map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setConfig({ ...config, scope: { ...config.scope, enforcement: mode } })}

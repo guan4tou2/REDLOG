@@ -12,7 +12,7 @@ import { ClipboardMonitor } from './services/clipboard-monitor'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from './services/scope-monitor'
 import { LootDetector } from './services/loot-detector'
-import { initChain, appendToChain, verifyChain, getChainLength } from './services/evidence-chain'
+import { initChain, appendToChain, getChainLength } from './services/evidence-chain'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -108,7 +108,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', () => getEventCount())
   eventBus.on('event', (event) => {
     mainWindow?.webContents.send('events:new', event)
-    try { appendToChain(event.id, JSON.stringify(event)) } catch { /* chain not ready */ }
+    try { appendToChain(event.id) } catch { /* chain not ready */ }
   })
 
   // --- Markers ---
@@ -137,7 +137,6 @@ app.whenReady().then(() => {
   ipcMain.handle('scope:isConfigured', () => scopeMonitor.isConfigured())
 
   // --- Evidence Chain ---
-  ipcMain.handle('chain:verify', () => verifyChain())
   ipcMain.handle('chain:length', () => getChainLength())
 
   // --- Loot ---

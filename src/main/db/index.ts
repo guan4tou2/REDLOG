@@ -45,8 +45,8 @@ export function initDB(engagementId: string): Database.Database {
     CREATE TABLE IF NOT EXISTS chain (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
       event_id TEXT NOT NULL REFERENCES events(id),
-      event_hash TEXT NOT NULL,
-      prev_hash TEXT NOT NULL,
+      event_hash TEXT NOT NULL DEFAULT '',
+      prev_hash TEXT NOT NULL DEFAULT '',
       timestamp INTEGER NOT NULL
     );
   `)

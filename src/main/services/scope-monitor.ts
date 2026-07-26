@@ -2,7 +2,7 @@ import { insertEvent } from '../db/events'
 import { eventBus } from './event-bus'
 
 interface ScopeConfig {
-  enforcement: 'warn' | 'block' | 'log'
+  enforcement: 'warn' | 'log'
   targets: string[]
   excludeTargets: string[]
 }

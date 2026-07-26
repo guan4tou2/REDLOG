@@ -59,7 +59,6 @@ interface RedLogAPI {
     onCheck: (cb: (result: { target: string; command: string; inScope: boolean; violation: boolean }) => void) => () => void
   }
   chain: {
-    verify: () => Promise<{ valid: boolean; entries: number; firstBreak: number | null }>
     length: () => Promise<number>
   }
   loot: {

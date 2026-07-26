@@ -6,7 +6,6 @@ import TerminalPanel from './components/Terminal'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
-import ToastContainer, { useToast } from './components/Toast'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
@@ -19,7 +18,6 @@ const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', '
 export default function App(): JSX.Element {
   const [view, setView] = useState<View>('terminal')
   const [showMarker, setShowMarker] = useState(false)
-  const { toasts, addToast } = useToast()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -39,25 +37,6 @@ export default function App(): JSX.Element {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
-
-  useEffect(() => {
-    const unsubScope = window.redlog.scope.onCheck((result: { target: string; violation: boolean }) => {
-      if (result.violation) {
-        addToast(`Scope violation: ${result.target}`, 'scope')
-      }
-    })
-    let prevLoot = 0
-    window.redlog.loot.getCount().then((c) => { prevLoot = c })
-    const unsubEvent = window.redlog.events.onNew(() => {
-      window.redlog.loot.getCount().then((c) => {
-        if (c > prevLoot) {
-          addToast(`Credential detected (${c} total)`, 'loot')
-          prevLoot = c
-        }
-      })
-    })
-    return () => { unsubScope(); unsubEvent() }
-  }, [addToast])
 
   return (
     <div className="h-screen flex flex-col">
@@ -97,7 +76,6 @@ export default function App(): JSX.Element {
       </div>
 
       <StatusBar />
-      <ToastContainer toasts={toasts} />
       {showMarker && <EventMarker onClose={() => setShowMarker(false)} />}
     </div>
   )
