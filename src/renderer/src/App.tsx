@@ -250,7 +250,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             ['⌘5', 'Targets'],
             ['⌘6', 'Scope'],
             ['⌘7', 'Loot'],
-            ['⌘8', 'Export'],
+            ['⌘8', 'Marks'],
             ['⌘9', 'Settings'],
             ['⌘⇧M', 'Add Marker']
           ].map(([key, label]) => (
