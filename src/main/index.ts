@@ -40,6 +40,7 @@ function startProject(project: ProjectMeta): void {
   activeProject = project
   const projectDir = getProjectPath(project)
   const config = loadConfig(projectDir)
+  saveConfig(projectDir, config)
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
 
@@ -150,6 +151,14 @@ app.whenReady().then(() => {
     const result = scopeMonitor.checkTarget(target, command)
     mainWindow?.webContents.send('scope:check', { target, command, ...result })
   })
+  terminalManager.on('transfer', (transfer: { direction: string; remotePath: string; remoteHost: string }, command: string) => {
+    const evt = insertEvent('file_transfer', {
+      ...transfer,
+      command,
+      method: command.split(/\s+/)[0]
+    }, { engagementId: activeProject ? loadConfig(getProjectPath(activeProject)).engagement.id : 'default', operatorId: 'operator-1' })
+    eventBus.publish(evt)
+  })
 
   // --- Events ---
   ipcMain.handle('events:query', (_e, opts) => queryEvents(opts))
@@ -157,6 +166,9 @@ app.whenReady().then(() => {
   eventBus.on('event', (event) => {
     mainWindow?.webContents.send('events:new', event)
     try { appendToChain(event.id) } catch { /* chain not ready */ }
+    if (event.agentType === 'clipboard' && typeof event.data?.content === 'string') {
+      lootDetector.scan(event.data.content as string)
+    }
   })
 
   // --- Markers ---
