@@ -224,7 +224,6 @@ app.whenReady().then(() => {
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
-  ipcMain.handle('loot:scan', (_e, text: string) => lootDetector.scan(text))
 
   // --- QuickMarks ---
   ipcMain.handle('quickmarks:list', () => listQuickMarks())
