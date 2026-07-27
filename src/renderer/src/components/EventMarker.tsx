@@ -18,9 +18,9 @@ export default function EventMarker({ onClose }: EventMarkerProps): JSX.Element 
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
-    if (!title.trim()) return
     setSaving(true)
-    await window.redlog.marker.create({ title, notes, severity, category })
+    const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    await window.redlog.marker.create({ title: title.trim() || `Mark @ ${ts}`, notes, severity, category })
     await window.redlog.screenshot.capture()
     setSaving(false)
     onClose()
@@ -87,7 +87,7 @@ export default function EventMarker({ onClose }: EventMarkerProps): JSX.Element 
           </button>
           <button
             onClick={handleSave}
-            disabled={!title.trim() || saving}
+            disabled={saving}
             className="px-4 py-1.5 text-xs bg-redlog-accent text-white rounded hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving...' : 'Mark + Screenshot'}
