@@ -27,6 +27,7 @@ let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let activeProject: ProjectMeta | null = null
+let forceQuit = false
 
 const ipMonitor = new IPMonitor()
 const screenshotAgent = new ScreenshotAgent()
@@ -107,14 +108,12 @@ app.whenReady().then(() => {
 
   mainWindow = createMainWindow()
 
-  let forceQuit = false
   mainWindow.on('close', (e) => {
     if (!forceQuit) {
       e.preventDefault()
       mainWindow?.hide()
     }
   })
-  app.on('before-quit', () => { forceQuit = true })
 
   tray = createTray(mainWindow, null)
 
@@ -284,6 +283,10 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  forceQuit = true
+})
+
+app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopProject()
   tray?.destroy()
