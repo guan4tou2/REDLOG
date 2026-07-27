@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
+import { useI18n } from '../i18n'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -27,6 +28,7 @@ export function SearchPanel(): JSX.Element {
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { t } = useI18n()
 
   const doSearch = useCallback((q: string) => {
     if (q.length < 2) {
@@ -54,7 +56,7 @@ export function SearchPanel(): JSX.Element {
         <input
           value={query}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Search commands, targets, clipboard, loot..."
+          placeholder={t('search.placeholder')}
           autoFocus
           className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-zinc-200 font-mono focus:outline-none focus:border-red-500 placeholder-zinc-600"
         />
@@ -66,17 +68,17 @@ export function SearchPanel(): JSX.Element {
       <div className="flex-1 overflow-auto min-h-0">
         {!searched && !searching && (
           <div className="text-zinc-600 text-sm text-center mt-8">
-            Type at least 2 characters to search across all events
+            {t('search.hint')}
           </div>
         )}
         {searched && results.length === 0 && (
           <div className="text-zinc-600 text-sm text-center mt-8">
-            No results for "{query}"
+            {t('search.noResults', { query })}
           </div>
         )}
         {results.length > 0 && (
           <>
-            <div className="text-zinc-500 text-xs mb-2">{results.length} results</div>
+            <div className="text-zinc-500 text-xs mb-2">{t('search.results', { count: results.length })}</div>
             <div className="space-y-1">
               {results.map((e) => (
                 <div key={e.id} className="flex items-start gap-2 px-3 py-2 rounded hover:bg-zinc-800/50 text-xs">

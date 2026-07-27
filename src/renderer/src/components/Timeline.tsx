@@ -1,16 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Timeline, DataSet } from 'vis-timeline/standalone'
 import 'vis-timeline/styles/vis-timeline-graph2d.min.css'
-
-const GROUPS = [
-  { id: 'shell', content: 'Shell', className: 'lane-shell' },
-  { id: 'screenshot', content: 'Screenshot', className: 'lane-screenshot' },
-  { id: 'clipboard', content: 'Clipboard', className: 'lane-clipboard' },
-  { id: 'file_transfer', content: 'Files', className: 'lane-file' },
-  { id: 'marker', content: 'Markers', className: 'lane-marker' },
-  { id: 'loot', content: 'Loot', className: 'lane-loot' },
-  { id: 'system', content: 'System', className: 'lane-system' }
-]
+import { useI18n } from '../i18n'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: '#22c55e',
@@ -48,8 +39,7 @@ function toTimelineItem(event: RedLogEvent): {
   id: string; start: Date; group: string; content: string;
   className: string; title: string; type: string
 } {
-  const group = GROUPS.find((g) => g.id === event.agentType) ? event.agentType : 'system'
-  const color = TYPE_COLORS[group] || '#737373'
+  const group = ['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot', 'system'].includes(event.agentType) ? event.agentType : 'system'
   return {
     id: event.id,
     start: new Date(event.timestamp),
@@ -68,6 +58,17 @@ export default function TimelinePanel(): JSX.Element {
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [eventCount, setEventCount] = useState(0)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
+  const { t } = useI18n()
+
+  const GROUPS = [
+    { id: 'shell', content: t('timeline.shell'), className: 'lane-shell' },
+    { id: 'screenshot', content: t('timeline.screenshot'), className: 'lane-screenshot' },
+    { id: 'clipboard', content: t('timeline.clipboard'), className: 'lane-clipboard' },
+    { id: 'file_transfer', content: t('timeline.files'), className: 'lane-file' },
+    { id: 'marker', content: t('timeline.markers'), className: 'lane-marker' },
+    { id: 'loot', content: t('timeline.loot'), className: 'lane-loot' },
+    { id: 'system', content: t('timeline.system'), className: 'lane-system' }
+  ]
 
   const initTimeline = useCallback((events: RedLogEvent[]) => {
     if (!containerRef.current) return
@@ -114,10 +115,7 @@ export default function TimelinePanel(): JSX.Element {
   const loadMore = useCallback(() => {
     if (loadingRef.current || allLoadedRef.current) return
     loadingRef.current = true
-    const oldest = loadedCountRef.current > 0
-      ? Math.min(...Array.from(eventsMapRef.current.values()).map((e) => e.timestamp))
-      : undefined
-    window.redlog.events.query({ limit: 200, ...(oldest ? { since: undefined } : {}) }).then((events) => {
+    window.redlog.events.query({ limit: 200 }).then((events) => {
       const newEvents = events.filter((e) => !eventsMapRef.current.has(e.id))
       if (newEvents.length === 0) {
         allLoadedRef.current = true
@@ -158,14 +156,14 @@ export default function TimelinePanel(): JSX.Element {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border shrink-0">
-        <span className="text-xs text-neutral-400">Attack Timeline</span>
-        <span className="text-xs text-neutral-600">({eventCount} events)</span>
+        <span className="text-xs text-neutral-400">{t('timeline.title')}</span>
+        <span className="text-xs text-neutral-600">{t('timeline.events', { count: eventCount })}</span>
         {!allLoadedRef.current && (
           <button
             onClick={loadMore}
             className="text-[10px] text-zinc-500 hover:text-zinc-300 ml-2"
           >
-            Load more
+            {t('timeline.loadMore')}
           </button>
         )}
         <div className="ml-auto flex gap-1">
@@ -195,7 +193,7 @@ export default function TimelinePanel(): JSX.Element {
           </div>
           <p className="text-xs text-zinc-300 mt-1 font-mono">{eventTitle(selectedEvent)}</p>
           {selectedEvent.targetId && (
-            <p className="text-[10px] text-zinc-500 mt-0.5">Target: {selectedEvent.targetId}</p>
+            <p className="text-[10px] text-zinc-500 mt-0.5">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useI18n } from '../i18n'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -8,6 +9,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.project.list().then(setProjects)
@@ -34,12 +36,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   function timeAgo(ts: number): string {
     const diff = Date.now() - ts
     const mins = Math.floor(diff / 60000)
-    if (mins < 1) return 'just now'
-    if (mins < 60) return `${mins}m ago`
+    if (mins < 1) return t('time.justNow')
+    if (mins < 60) return t('time.mAgo', { m: mins })
     const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `${hrs}h ago`
+    if (hrs < 24) return t('time.hAgo', { h: hrs })
     const days = Math.floor(hrs / 24)
-    return `${days}d ago`
+    return t('time.dAgo', { d: days })
   }
 
   return (
@@ -47,19 +49,19 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       <div className="w-[420px] space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-redlog-accent font-bold text-2xl tracking-wider">REDLOG</h1>
-          <p className="text-zinc-500 text-xs mt-1">Red Team Operator Workbench</p>
+          <h1 className="text-redlog-accent font-bold text-2xl tracking-wider">{t('app.title')}</h1>
+          <p className="text-zinc-500 text-xs mt-1">{t('app.subtitle')}</p>
         </div>
 
         {/* New project */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <h2 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-3">New Project</h2>
+          <h2 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-3">{t('project.new')}</h2>
           <div className="flex gap-2">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              placeholder="e.g. Client-Pentest-Q3"
+              placeholder={t('project.placeholder')}
               autoFocus
               className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-red-500 placeholder-zinc-600"
             />
@@ -68,7 +70,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               disabled={!newName.trim() || creating}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm rounded transition-colors"
             >
-              Create
+              {t('project.create')}
             </button>
           </div>
         </div>
@@ -76,7 +78,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         {/* Recent projects */}
         {projects.length > 0 && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-            <h2 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-3">Recent Projects</h2>
+            <h2 className="text-zinc-400 text-xs font-semibold uppercase tracking-wider mb-3">{t('project.recent')}</h2>
             <div className="space-y-1">
               {projects.map((p) => (
                 <div
@@ -91,7 +93,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(p.id) }}
                     className="text-zinc-700 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Delete project"
+                    title={t('project.delete')}
                   >
                     ✕
                   </button>
@@ -102,7 +104,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         )}
 
         <p className="text-zinc-700 text-[10px] text-center">
-          Each project stores its own config, events, screenshots, and evidence log.
+          {t('project.description')}
         </p>
       </div>
     </div>

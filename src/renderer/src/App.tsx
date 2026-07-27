@@ -12,6 +12,7 @@ import { LootPanel } from './components/LootPanel'
 import { SearchPanel } from './components/SearchPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
+import { useI18n } from './i18n'
 
 type View = 'dashboard' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
 
@@ -21,6 +22,7 @@ export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('dashboard')
   const [showMarker, setShowMarker] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.project.active().then((p) => {
@@ -68,7 +70,7 @@ export default function App(): JSX.Element {
         className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <span className="text-redlog-accent font-bold text-sm tracking-wider pl-16">REDLOG</span>
+        <span className="text-redlog-accent font-bold text-sm tracking-wider pl-16">{t('app.title')}</span>
         <span className="text-neutral-600 text-xs ml-2">v0.1.0</span>
         <span className="text-zinc-500 text-xs ml-3 font-mono">{project.name}</span>
         <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -77,7 +79,7 @@ export default function App(): JSX.Element {
             className="px-2 py-1 text-[10px] bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30"
             title="Ctrl+Shift+M"
           >
-            + Mark
+            {t('app.mark')}
           </button>
         </div>
       </div>
@@ -113,6 +115,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [chainLen, setChainLen] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.events.getCount().then(setEventCount)
@@ -125,20 +128,20 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
       <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">
-        Network Status
+        {t('dashboard.networkStatus')}
       </h2>
       <IPStatusCard />
 
       <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
-        Session Stats
+        {t('dashboard.sessionStats')}
       </h2>
       <div className="grid grid-cols-4 gap-3">
-        <StatCard label="Events" value={String(eventCount)} />
-        <StatCard label="Chain" value={String(chainLen)} sub="evidence entries" />
-        <StatCard label="Loot" value={String(lootCount)} color={lootCount > 0 ? 'text-red-400' : undefined} />
+        <StatCard label={t('dashboard.events')} value={String(eventCount)} />
+        <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} />
+        <StatCard label={t('dashboard.loot')} value={String(lootCount)} color={lootCount > 0 ? 'text-red-400' : undefined} />
         <StatCard
-          label="Scope"
-          value={scopeViolations > 0 ? String(scopeViolations) : 'OK'}
+          label={t('dashboard.scope')}
+          value={scopeViolations > 0 ? String(scopeViolations) : t('dashboard.scopeOk')}
           color={scopeViolations > 0 ? 'text-red-400' : 'text-green-400'}
         />
       </div>
@@ -146,27 +149,26 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       {config && (
         <>
           <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
-            Engagement
+            {t('dashboard.engagement')}
           </h2>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div>
-                <span className="text-zinc-500">ID:</span>{' '}
+                <span className="text-zinc-500">{t('dashboard.id')}</span>{' '}
                 <span className="text-zinc-200 font-mono">{config.engagement?.id as string}</span>
               </div>
               <div>
-                <span className="text-zinc-500">Name:</span>{' '}
+                <span className="text-zinc-500">{t('dashboard.name')}</span>{' '}
                 <span className="text-zinc-200">{config.engagement?.name as string}</span>
               </div>
               <div>
-                <span className="text-zinc-500">Operator:</span>{' '}
+                <span className="text-zinc-500">{t('dashboard.operator')}</span>{' '}
                 <span className="text-zinc-200">{config.operator?.name as string}</span>
               </div>
               <div>
-                <span className="text-zinc-500">Scope:</span>{' '}
+                <span className="text-zinc-500">{t('dashboard.scopeLabel')}</span>{' '}
                 <span className="text-zinc-200">
-                  {(config.scope?.targets as string[])?.length || 0} targets,{' '}
-                  enforcement: {config.scope?.enforcement as string}
+                  {t('dashboard.targets', { count: (config.scope?.targets as string[])?.length || 0, mode: config.scope?.enforcement as string })}
                 </span>
               </div>
             </div>
@@ -174,27 +176,27 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               onClick={() => onNavigate('settings')}
               className="mt-3 text-[10px] text-red-400 hover:text-red-300"
             >
-              Edit in Settings →
+              {t('dashboard.editSettings')}
             </button>
           </div>
         </>
       )}
 
       <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
-        Keyboard Shortcuts
+        {t('dashboard.shortcuts')}
       </h2>
       <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
         <div className="grid grid-cols-2 gap-2 text-xs">
           {[
-            ['⌘1', 'Dashboard'],
-            ['⌘2', 'Timeline'],
-            ['⌘3', 'Screenshots'],
-            ['⌘4', 'Targets'],
-            ['⌘5', 'Scope'],
-            ['⌘6', 'Loot'],
-            ['⌘7', 'Marks'],
-            ['⌘8', 'Settings'],
-            ['⌘⇧M', 'Add Marker']
+            ['⌘1', t('sidebar.dashboard')],
+            ['⌘2', t('sidebar.timeline')],
+            ['⌘3', t('sidebar.screens')],
+            ['⌘4', t('sidebar.targets')],
+            ['⌘5', t('sidebar.scope')],
+            ['⌘6', t('sidebar.loot')],
+            ['⌘7', t('sidebar.marks')],
+            ['⌘8', t('sidebar.settings')],
+            ['⌘⇧M', t('dashboard.addMarker')]
           ].map(([key, label]) => (
             <div key={key} className="flex items-center gap-2">
               <kbd className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded text-[10px] font-mono">{key}</kbd>
@@ -223,6 +225,7 @@ function ScreenshotsView(): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.events.query({ agentType: 'screenshot', limit: 50 }).then(setScreenshots)
@@ -248,17 +251,17 @@ function ScreenshotsView(): JSX.Element {
     <div className="p-4 overflow-auto h-full">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">
-          Screenshots ({screenshots.length})
+          {t('screenshots.title', { count: screenshots.length })}
         </h2>
         <button
           onClick={() => window.redlog.screenshot.capture()}
           className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
         >
-          Capture Now
+          {t('screenshots.captureNow')}
         </button>
       </div>
       {screenshots.length === 0 ? (
-        <p className="text-neutral-600 text-sm">Screenshots will appear here when captured</p>
+        <p className="text-neutral-600 text-sm">{t('screenshots.empty')}</p>
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {screenshots.map((s) => (
@@ -278,7 +281,7 @@ function ScreenshotsView(): JSX.Element {
                 <p className="text-[10px] text-neutral-500">
                   {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
-                    <span className="ml-1 text-zinc-600">({(s.data.diffPercent as number).toFixed(1)}% diff)</span>
+                    <span className="ml-1 text-zinc-600">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
                   )}
                 </p>
               </div>

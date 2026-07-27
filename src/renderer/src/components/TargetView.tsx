@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useI18n } from '../i18n'
 
 interface TargetEntry {
   target: string
@@ -14,6 +15,7 @@ export function TargetView(): JSX.Element {
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
+  const { t } = useI18n()
 
   useEffect(() => {
     loadTargets()
@@ -27,17 +29,17 @@ export function TargetView(): JSX.Element {
     const events = await window.redlog.events.query({ agentType: 'shell' })
     const map = new Map<string, TargetEntry>()
     for (const evt of events) {
-      const t = evt.data?.detectedTarget as string | undefined
-      if (!t) continue
-      const existing = map.get(t)
+      const tgt = evt.data?.detectedTarget as string | undefined
+      if (!tgt) continue
+      const existing = map.get(tgt)
       if (existing) {
         existing.commands.push(evt.data.command as string)
         existing.lastSeen = Math.max(existing.lastSeen, evt.timestamp)
         existing.firstSeen = Math.min(existing.firstSeen, evt.timestamp)
         existing.eventCount++
       } else {
-        map.set(t, {
-          target: t,
+        map.set(tgt, {
+          target: tgt,
           commands: [evt.data.command as string],
           firstSeen: evt.timestamp,
           lastSeen: evt.timestamp,
@@ -66,36 +68,26 @@ export function TargetView(): JSX.Element {
     setEvidence(filtered.sort((a, b) => b.timestamp - a.timestamp))
   }, [selected])
 
-  const filtered = targets.filter((t) => {
-    if (filter === 'in_scope') return t.inScope === true
-    if (filter === 'out_scope') return t.inScope === false
+  const filtered = targets.filter((tgt) => {
+    if (filter === 'in_scope') return tgt.inScope === true
+    if (filter === 'out_scope') return tgt.inScope === false
     return true
   })
 
   const agentIcon: Record<string, string> = {
-    shell: 'T',
-    screenshot: 'S',
-    clipboard: 'C',
-    file_transfer: 'F',
-    marker: 'M',
-    loot: 'L',
-    system: '!',
+    shell: 'T', screenshot: 'S', clipboard: 'C',
+    file_transfer: 'F', marker: 'M', loot: 'L', system: '!'
   }
 
   const agentColor: Record<string, string> = {
-    shell: 'text-green-400',
-    screenshot: 'text-blue-400',
-    clipboard: 'text-yellow-400',
-    file_transfer: 'text-purple-400',
-    marker: 'text-red-400',
-    loot: 'text-orange-400',
-    system: 'text-zinc-400',
+    shell: 'text-green-400', screenshot: 'text-blue-400', clipboard: 'text-yellow-400',
+    file_transfer: 'text-purple-400', marker: 'text-red-400', loot: 'text-orange-400', system: 'text-zinc-400'
   }
 
   return (
     <div className="p-4 space-y-4 h-full overflow-auto">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">Targets ({targets.length})</h2>
+        <h2 className="text-lg font-semibold text-white">{t('targets.title', { count: targets.length })}</h2>
         <div className="flex gap-1">
           {(['all', 'in_scope', 'out_scope'] as const).map((f) => (
             <button
@@ -107,43 +99,43 @@ export function TargetView(): JSX.Element {
                   : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
               }`}
             >
-              {f === 'all' ? 'All' : f === 'in_scope' ? 'In Scope' : 'Out of Scope'}
+              {f === 'all' ? t('targets.all') : f === 'in_scope' ? t('targets.inScope') : t('targets.outOfScope')}
             </button>
           ))}
         </div>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-zinc-500 text-sm">No targets detected yet. Commands from the shell hook auto-catalog targets.</p>
+        <p className="text-zinc-500 text-sm">{t('targets.empty')}</p>
       ) : (
         <div className="space-y-2">
-          {filtered.map((t) => (
-            <div key={t.target}>
+          {filtered.map((tgt) => (
+            <div key={tgt.target}>
               <div
-                onClick={() => loadEvidence(t.target)}
+                onClick={() => loadEvidence(tgt.target)}
                 className={`bg-zinc-900 border rounded-lg p-3 cursor-pointer transition-colors ${
-                  selected === t.target ? 'border-red-600' : 'border-zinc-800 hover:border-zinc-700'
+                  selected === tgt.target ? 'border-red-600' : 'border-zinc-800 hover:border-zinc-700'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-white font-mono text-sm">{t.target}</span>
+                  <span className="text-white font-mono text-sm">{tgt.target}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-zinc-500 text-xs">{t.eventCount} cmds</span>
-                    {t.inScope === false && (
-                      <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">OUT</span>
+                    <span className="text-zinc-500 text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
+                    {tgt.inScope === false && (
+                      <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
                     )}
-                    <span className="text-zinc-600 text-xs">{selected === t.target ? '▾' : '▸'}</span>
+                    <span className="text-zinc-600 text-xs">{selected === tgt.target ? '▾' : '▸'}</span>
                   </div>
                 </div>
                 <div className="mt-1 text-zinc-500 text-xs">
-                  First: {new Date(t.firstSeen).toLocaleTimeString()} · Last: {new Date(t.lastSeen).toLocaleTimeString()}
+                  {t('targets.first', { time: new Date(tgt.firstSeen).toLocaleTimeString() })} · {t('targets.last', { time: new Date(tgt.lastSeen).toLocaleTimeString() })}
                 </div>
               </div>
 
-              {selected === t.target && (
+              {selected === tgt.target && (
                 <div className="ml-4 mt-1 border-l-2 border-zinc-800 pl-3 space-y-1 py-2">
                   {evidence.length === 0 ? (
-                    <p className="text-zinc-600 text-xs">No evidence linked to this target.</p>
+                    <p className="text-zinc-600 text-xs">{t('targets.noEvidence')}</p>
                   ) : (
                     <>
                       <div className="flex gap-2 mb-2">
@@ -178,7 +170,7 @@ export function TargetView(): JSX.Element {
                         </div>
                       ))}
                       {evidence.length > 20 && (
-                        <p className="text-zinc-600 text-[10px]">... and {evidence.length - 20} more</p>
+                        <p className="text-zinc-600 text-[10px]">{t('targets.andMore', { count: evidence.length - 20 })}</p>
                       )}
                     </>
                   )}

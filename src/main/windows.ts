@@ -24,7 +24,7 @@ export function createMainWindow(): BrowserWindow {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    win.loadFile(join(__dirname, '../renderer/main/index.html'))
+    win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
   return win
@@ -58,7 +58,7 @@ export function createOverlayWindow(): BrowserWindow {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/overlay.html')
   } else {
-    win.loadFile(join(__dirname, '../renderer/overlay/index.html'))
+    win.loadFile(join(__dirname, '../renderer/overlay.html'))
   }
 
   return win

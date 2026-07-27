@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useI18n } from '../i18n'
 
 interface SidebarProps {
   active: string
@@ -8,6 +9,7 @@ interface SidebarProps {
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.loot.getCount().then(setLootCount)
@@ -28,19 +30,19 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const groups = [
     {
-      label: 'OPS',
+      label: t('sidebar.ops'),
       items: [
-        { id: 'timeline', label: 'Timeline', icon: '═' },
-        { id: 'screenshots', label: 'Screens', icon: '◻' }
+        { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
+        { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' }
       ]
     },
     {
-      label: 'INTEL',
+      label: t('sidebar.intel'),
       items: [
-        { id: 'targets', label: 'Targets', icon: '⊕' },
-        { id: 'scope', label: 'Scope', icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-        { id: 'loot', label: 'Loot', icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' },
-        { id: 'marks', label: 'Marks', icon: '⚑' }
+        { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
+        { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
+        { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' },
+        { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
       ]
     }
   ]
@@ -49,7 +51,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     <div className="w-[52px] bg-redlog-bg border-r border-redlog-border flex flex-col items-center py-2 shrink-0 select-none">
       <button
         onClick={() => onNavigate('dashboard')}
-        title="Dashboard"
+        title={t('sidebar.dashboard')}
         className={`w-10 h-8 rounded flex items-center justify-center text-sm mb-2 transition-colors ${
           active === 'dashboard'
             ? 'bg-red-500/20 text-red-400'
@@ -61,7 +63,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
       <button
         onClick={() => onNavigate('search')}
-        title="Search (⌘/)"
+        title={t('sidebar.search')}
         className={`w-10 h-7 rounded flex items-center justify-center text-sm mb-1 transition-colors ${
           active === 'search'
             ? 'bg-red-500/20 text-red-400'
@@ -98,7 +100,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
       <div className="mt-auto">
         <button
           onClick={() => onNavigate('settings')}
-          title="Settings"
+          title={t('sidebar.settings')}
           className={`w-10 h-8 rounded flex flex-col items-center justify-center transition-colors ${
             active === 'settings'
               ? 'bg-red-500/20 text-red-400'
@@ -106,7 +108,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           }`}
         >
           <span className="text-sm leading-none">⚙</span>
-          <span className="text-[7px] leading-none mt-0.5">Config</span>
+          <span className="text-[7px] leading-none mt-0.5">{t('sidebar.config')}</span>
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useI18n, type Locale } from '../i18n'
 
 interface ConfigState {
   engagement: { id: string; name: string }
@@ -8,76 +9,99 @@ interface ConfigState {
   screenshot: { quality: number }
 }
 
+const LOCALE_LABELS: Record<Locale, string> = {
+  'en': 'English',
+  'zh-TW': '繁體中文'
+}
+
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
   const [tab, setTab] = useState<'general' | 'network' | 'scope' | 'data'>('general')
   const [saved, setSaved] = useState(false)
   const [cdpPort, setCdpPort] = useState('9222')
   const [exportResult, setExportResult] = useState<string | null>(null)
+  const { t, locale, setLocale } = useI18n()
 
   useEffect(() => {
     window.redlog.config.get().then((c) => setConfig(c as ConfigState))
   }, [])
 
-  if (!config) return <div className="p-4 text-zinc-500">Loading...</div>
+  if (!config) return <div className="p-4 text-zinc-500">{t('settings.loading')}</div>
 
   const tabs = [
-    { id: 'general' as const, label: 'General' },
-    { id: 'network' as const, label: 'Network / VPN' },
-    { id: 'scope' as const, label: 'Scope' },
-    { id: 'data' as const, label: 'Data' }
+    { id: 'general' as const, label: t('settings.general') },
+    { id: 'network' as const, label: t('settings.networkVpn') },
+    { id: 'scope' as const, label: t('settings.scope') },
+    { id: 'data' as const, label: t('settings.data') }
   ]
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-1 px-3 py-2 border-b border-redlog-border shrink-0">
-        {tabs.map((t) => (
+        {tabs.map((tb) => (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
+            key={tb.id}
+            onClick={() => setTab(tb.id)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
-              tab === t.id ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              tab === tb.id ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            {t.label}
+            {tb.label}
           </button>
         ))}
-        {saved && <span className="ml-auto text-green-400 text-xs">Config saved to ~/.redlog/config.yaml</span>}
+        {saved && <span className="ml-auto text-green-400 text-xs">{t('settings.saved')}</span>}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {tab === 'general' && (
           <>
-            <FieldGroup title="Engagement">
-              <Field label="ID" value={config.engagement.id} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, id: v } })} />
-              <Field label="Name" value={config.engagement.name} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, name: v } })} />
+            <FieldGroup title={t('settings.engagement')}>
+              <Field label={t('settings.id')} value={config.engagement.id} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, id: v } })} />
+              <Field label={t('settings.name')} value={config.engagement.name} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, name: v } })} />
             </FieldGroup>
-            <FieldGroup title="Operator">
-              <Field label="ID" value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
-              <Field label="Name" value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
+            <FieldGroup title={t('settings.operatorGroup')}>
+              <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
+              <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
+            </FieldGroup>
+            <FieldGroup title="Language">
+              <div className="flex gap-2">
+                {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setLocale(l)}
+                    className={`px-3 py-1.5 text-xs rounded ${
+                      locale === l
+                        ? 'bg-red-600 text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {LOCALE_LABELS[l]}
+                  </button>
+                ))}
+              </div>
             </FieldGroup>
           </>
         )}
 
         {tab === 'network' && (
           <>
-            <FieldGroup title="VPN Detection">
+            <FieldGroup title={t('settings.vpnDetection')}>
               <ListField
-                label="VPN IPs (green when matched)"
+                label={t('settings.vpnIps')}
                 items={config.network.vpnIPs}
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, vpnIPs: items } })}
-                placeholder="e.g. 10.8.0.0/24"
+                placeholder={t('settings.vpnIpPlaceholder')}
               />
               <ListField
-                label="Daily IPs (red when matched = no VPN)"
+                label={t('settings.dailyIps')}
                 items={config.network.dailyIPs}
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, dailyIPs: items } })}
-                placeholder="e.g. 114.24.97.0/24"
+                placeholder={t('settings.dailyIpPlaceholder')}
               />
             </FieldGroup>
-            <FieldGroup title="Polling">
+            <FieldGroup title={t('settings.polling')}>
               <Field
-                label="Check interval (seconds)"
+                label={t('settings.checkInterval')}
                 value={String(config.network.checkInterval)}
                 onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 10 } })}
                 type="number"
@@ -88,21 +112,21 @@ export default function Settings(): JSX.Element {
 
         {tab === 'data' && (
           <>
-            <FieldGroup title="Screenshot Quality">
+            <FieldGroup title={t('settings.screenshotQuality')}>
               <Field
-                label="JPEG quality (1-100)"
+                label={t('settings.jpegQuality')}
                 value={String(config.screenshot?.quality ?? 85)}
                 onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
                 type="number"
               />
               <p className="text-[10px] text-zinc-600">
-                Higher = better quality, larger files. Default: 85
+                {t('settings.qualityHint')}
               </p>
             </FieldGroup>
-            <FieldGroup title="Chrome DevTools Protocol">
+            <FieldGroup title={t('settings.cdp')}>
               <div className="space-y-2">
                 <Field
-                  label="CDP Port"
+                  label={t('settings.cdpPort')}
                   value={cdpPort}
                   onChange={(v) => setCdpPort(v)}
                   type="number"
@@ -115,27 +139,27 @@ export default function Settings(): JSX.Element {
                   }}
                   className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
                 >
-                  Test Connection
+                  {t('settings.testConnection')}
                 </button>
                 <p className="text-[10px] text-zinc-600">
-                  Launch Chrome: google-chrome --remote-debugging-port=9222
+                  {t('settings.cdpHint')}
                 </p>
               </div>
             </FieldGroup>
-            <FieldGroup title="Export All Data">
+            <FieldGroup title={t('settings.exportAll')}>
               <button
                 onClick={async () => {
                   const path = await window.redlog.data.exportJson()
-                  setExportResult(path ? `Saved to: ${path}` : 'Export failed')
+                  setExportResult(path ? t('settings.savedTo', { path }) : t('settings.exportFailed'))
                   setTimeout(() => setExportResult(null), 5000)
                 }}
                 className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
               >
-                Export JSON Dump
+                {t('settings.exportJson')}
               </button>
               {exportResult && <p className="text-[10px] text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
               <p className="text-[10px] text-zinc-600">
-                Exports all events, quickmarks, and config as a single JSON file.
+                {t('settings.exportHint')}
               </p>
             </FieldGroup>
           </>
@@ -143,7 +167,7 @@ export default function Settings(): JSX.Element {
 
         {tab === 'scope' && (
           <>
-            <FieldGroup title="Scope Enforcement">
+            <FieldGroup title={t('settings.scopeEnforcement')}>
               <div className="flex gap-2">
                 {['warn', 'log'].map((mode) => (
                   <button
@@ -160,30 +184,30 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
             </FieldGroup>
-            <FieldGroup title="In-Scope Targets">
+            <FieldGroup title={t('settings.inScopeTargets')}>
               <ListField
-                label="Targets (IPs, CIDRs, *.domain)"
+                label={t('settings.targetsLabel')}
                 items={config.scope.targets}
                 onChange={(items) => setConfig({ ...config, scope: { ...config.scope, targets: items } })}
-                placeholder="e.g. 192.168.1.0/24 or *.example.com"
+                placeholder={t('settings.targetsPlaceholder')}
               />
             </FieldGroup>
-            <FieldGroup title="Excluded Targets">
+            <FieldGroup title={t('settings.excludedTargets')}>
               <ListField
-                label="Exclude from scope"
+                label={t('settings.excludeLabel')}
                 items={config.scope.excludeTargets}
                 onChange={(items) => setConfig({ ...config, scope: { ...config.scope, excludeTargets: items } })}
-                placeholder="e.g. 10.0.0.1"
+                placeholder={t('settings.excludePlaceholder')}
               />
             </FieldGroup>
-            <FieldGroup title="Scope File">
+            <FieldGroup title={t('settings.scopeFile')}>
               <Field
-                label="Load targets from file (JSON or plain text, one per line)"
+                label={t('settings.scopeFileLabel')}
                 value={config.scope.scopeFile || ''}
                 onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
               />
               <p className="text-[10px] text-zinc-600">
-                Absolute path to a scope file. Targets are merged with the list above.
+                {t('settings.scopeFileHint')}
               </p>
             </FieldGroup>
           </>
@@ -200,9 +224,9 @@ export default function Settings(): JSX.Element {
             }}
             className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
           >
-            Save & Apply
+            {t('settings.saveApply')}
           </button>
-          <span className="text-zinc-600 text-[10px]">Requires restart to apply network/scope changes</span>
+          <span className="text-zinc-600 text-[10px]">{t('settings.restartHint')}</span>
         </div>
       </div>
     </div>

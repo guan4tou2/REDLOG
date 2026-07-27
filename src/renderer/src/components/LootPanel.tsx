@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useI18n } from '../i18n'
 
 export function LootPanel(): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -6,6 +7,7 @@ export function LootPanel(): JSX.Element {
     matches: Array<{ type: string; confidence: string; preview: string }>
   }>>([])
   const [lootCount, setLootCount] = useState(0)
+  const { t } = useI18n()
 
   useEffect(() => {
     loadLoot()
@@ -45,20 +47,20 @@ export function LootPanel(): JSX.Element {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">Loot ({lootCount})</h2>
+        <h2 className="text-lg font-semibold text-white">{t('loot.title', { count: lootCount })}</h2>
       </div>
 
       {lootEvents.length === 0 ? (
         <div className="text-zinc-500 text-sm">
-          <p>No credentials or secrets detected yet.</p>
-          <p className="mt-1 text-xs">Auto-scans shell output for password hashes, API keys, JWTs, private keys, database URLs, and CTF flags.</p>
+          <p>{t('loot.empty')}</p>
+          <p className="mt-1 text-xs">{t('loot.emptyDesc')}</p>
         </div>
       ) : (
         <div className="space-y-2">
           {lootEvents.map((le, i) => (
             <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
               <div className="text-zinc-500 text-xs mb-2">
-                {new Date(le.timestamp).toLocaleTimeString()} · {le.matches.length} item{le.matches.length > 1 ? 's' : ''}
+                {new Date(le.timestamp).toLocaleTimeString()} · {t('loot.items', { count: le.matches.length })}
               </div>
               {le.matches.map((m, j) => (
                 <div key={j} className="border-t border-zinc-800 pt-1 mt-1 first:border-0 first:pt-0 first:mt-0">

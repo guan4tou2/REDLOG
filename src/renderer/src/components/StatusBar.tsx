@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
+import { useI18n } from '../i18n'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -7,6 +8,7 @@ export default function StatusBar(): JSX.Element {
   const [scopeViolations, setScopeViolations] = useState(0)
   const [uptime, setUptime] = useState(0)
   const [stamped, setStamped] = useState(false)
+  const { t } = useI18n()
 
   useEffect(() => {
     const start = Date.now()
@@ -28,7 +30,7 @@ export default function StatusBar(): JSX.Element {
 
   const vpn = ipStatus?.vpnStatus ?? 'unknown'
   const vpnDot = vpn === 'connected' ? 'bg-green-500' : vpn === 'disconnected' ? 'bg-red-500' : 'bg-yellow-500'
-  const vpnLabel = vpn === 'connected' ? 'VPN' : vpn === 'disconnected' ? 'NO VPN' : 'IP?'
+  const vpnLabel = vpn === 'connected' ? t('statusBar.vpn') : vpn === 'disconnected' ? t('statusBar.noVpn') : t('statusBar.ipUnknown')
 
   const hours = Math.floor(uptime / 3600)
   const mins = Math.floor((uptime % 3600) / 60)
@@ -42,7 +44,7 @@ export default function StatusBar(): JSX.Element {
       {/* Recording indicator */}
       <div className="flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-        <span className="text-red-400">REC</span>
+        <span className="text-red-400">{t('statusBar.rec')}</span>
         <span className="text-zinc-600">{uptimeStr}</span>
       </div>
 
@@ -66,12 +68,12 @@ export default function StatusBar(): JSX.Element {
         {scopeViolations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-red-400">SCOPE {scopeViolations}</span>
+            <span className="text-red-400">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
           </>
         ) : (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            <span className="text-green-400">SCOPE OK</span>
+            <span className="text-green-400">{t('statusBar.scopeOk')}</span>
           </>
         )}
       </div>
@@ -82,13 +84,13 @@ export default function StatusBar(): JSX.Element {
       <div className="flex items-center gap-1.5">
         <span className={`text-xs ${lootCount > 0 ? 'text-yellow-400' : 'text-zinc-600'}`}>◆</span>
         <span className={lootCount > 0 ? 'text-yellow-400' : 'text-zinc-600'}>
-          {lootCount} loot
+          {t('statusBar.loot', { count: lootCount })}
         </span>
       </div>
 
       {/* Right side */}
       <div className="ml-auto flex items-center gap-3">
-        <span className="text-zinc-500">{eventCount} events</span>
+        <span className="text-zinc-500">{t('statusBar.events', { count: eventCount })}</span>
         <button
           onClick={async () => {
             const ts = new Date().toLocaleTimeString()
@@ -97,14 +99,14 @@ export default function StatusBar(): JSX.Element {
             setTimeout(() => setStamped(false), 1500)
           }}
           className={`transition-colors ${stamped ? 'text-green-400' : 'text-zinc-500 hover:text-red-400'}`}
-          title="Timestamp — mark this moment (auto-captures context)"
+          title={t('statusBar.timestampTitle')}
         >
           {stamped ? '✓' : '⏱'}
         </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}
           className="text-zinc-600 hover:text-zinc-400 transition-colors"
-          title="Toggle IP Overlay"
+          title={t('statusBar.toggleOverlay')}
         >
           IP▪
         </button>

@@ -1,39 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
-
-const VPN_STYLES = {
-  connected: {
-    bg: 'rgba(22,163,74,0.12)',
-    border: 'rgba(34,197,94,0.35)',
-    dot: '#22c55e',
-    label: 'VPN',
-    labelColor: '#86efac',
-    statusText: 'VPN Connected',
-    statusColor: '#22c55e'
-  },
-  disconnected: {
-    bg: 'rgba(220,38,38,0.15)',
-    border: 'rgba(239,68,68,0.5)',
-    dot: '#ef4444',
-    label: 'NO VPN',
-    labelColor: '#fca5a5',
-    statusText: 'Daily IP — No VPN',
-    statusColor: '#ef4444'
-  },
-  unknown: {
-    bg: 'rgba(234,179,8,0.12)',
-    border: 'rgba(234,179,8,0.35)',
-    dot: '#eab308',
-    label: 'IP?',
-    labelColor: '#fde047',
-    statusText: 'Unknown IP',
-    statusColor: '#eab308'
-  }
-}
+import { useI18n } from './i18n'
 
 export default function OverlayApp(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.ip.getStatus().then(setStatus)
@@ -59,6 +31,37 @@ export default function OverlayApp(): JSX.Element {
   }
 
   const vpn = status?.vpnStatus ?? 'unknown'
+
+  const VPN_STYLES = {
+    connected: {
+      bg: 'rgba(22,163,74,0.12)',
+      border: 'rgba(34,197,94,0.35)',
+      dot: '#22c55e',
+      label: t('overlay.vpn'),
+      labelColor: '#86efac',
+      statusText: t('overlay.vpnConnected'),
+      statusColor: '#22c55e'
+    },
+    disconnected: {
+      bg: 'rgba(220,38,38,0.15)',
+      border: 'rgba(239,68,68,0.5)',
+      dot: '#ef4444',
+      label: t('overlay.noVpn'),
+      labelColor: '#fca5a5',
+      statusText: t('overlay.dailyIp'),
+      statusColor: '#ef4444'
+    },
+    unknown: {
+      bg: 'rgba(234,179,8,0.12)',
+      border: 'rgba(234,179,8,0.35)',
+      dot: '#eab308',
+      label: t('overlay.ipUnknown'),
+      labelColor: '#fde047',
+      statusText: t('overlay.unknownIp'),
+      statusColor: '#eab308'
+    }
+  }
+
   const s = VPN_STYLES[vpn]
 
   return (
@@ -76,7 +79,7 @@ export default function OverlayApp(): JSX.Element {
         position: 'relative'
       }}
     >
-      {/* Close button — always visible, inside border-radius safe zone */}
+      {/* Close button */}
       <div
         onClick={() => window.redlog.overlay?.hide()}
         style={{
@@ -87,11 +90,11 @@ export default function OverlayApp(): JSX.Element {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           WebkitAppRegion: 'no-drag'
         } as React.CSSProperties}
-        title="Hide overlay (reopen from tray)"
+        title={t('overlay.hide')}
       >
         ✕
       </div>
-      {/* Compact bar — clickable to toggle */}
+      {/* Compact bar */}
       <div
         onClick={toggleExpand}
         style={{
@@ -119,12 +122,12 @@ export default function OverlayApp(): JSX.Element {
         <span style={{ color: s.labelColor, fontWeight: 700, fontSize: 11, letterSpacing: '0.05em' }}>
           {status ? s.label : '...'}
         </span>
-        <span style={{ color: '#525252', fontSize: 10 }}>外</span>
+        <span style={{ color: '#525252', fontSize: 10 }}>{t('overlay.ext')}</span>
         <span style={{ color: '#e5e5e5', fontWeight: 500 }}>
           {status?.externalIP ?? '—'}
         </span>
         <span style={{ color: '#333' }}>│</span>
-        <span style={{ color: '#525252', fontSize: 10 }}>內</span>
+        <span style={{ color: '#525252', fontSize: 10 }}>{t('overlay.int')}</span>
         <span style={{ color: '#e5e5e5', fontWeight: 500 }}>
           {status?.internalIP ?? '—'}
         </span>
@@ -151,13 +154,13 @@ export default function OverlayApp(): JSX.Element {
           } as React.CSSProperties}
         >
           <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '5px 0' }}>
-            <span style={{ color: '#737373' }}>Status</span>
+            <span style={{ color: '#737373' }}>{t('overlay.status')}</span>
             <span style={{ color: s.statusColor, fontWeight: 600 }}>{s.statusText}</span>
-            <span style={{ color: '#737373' }}>External</span>
+            <span style={{ color: '#737373' }}>{t('overlay.external')}</span>
             <span style={{ color: '#e5e5e5' }}>{status?.externalIP ?? '—'}</span>
-            <span style={{ color: '#737373' }}>Internal</span>
+            <span style={{ color: '#737373' }}>{t('overlay.internal')}</span>
             <span style={{ color: '#e5e5e5' }}>{status?.internalIP ?? '—'}</span>
-            <span style={{ color: '#737373' }}>Last check</span>
+            <span style={{ color: '#737373' }}>{t('overlay.lastCheck')}</span>
             <span style={{ color: '#a3a3a3' }}>{status?.lastCheck ? new Date(status.lastCheck).toLocaleTimeString() : '—'}</span>
           </div>
           {status?.error && (
