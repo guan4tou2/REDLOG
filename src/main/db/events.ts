@@ -19,14 +19,6 @@ export interface RedLogEvent {
 
 let sessionId = crypto.randomUUID()
 
-export function resetSession(): void {
-  sessionId = crypto.randomUUID()
-}
-
-export function getSessionId(): string {
-  return sessionId
-}
-
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,

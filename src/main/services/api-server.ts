@@ -98,16 +98,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let targetId = body.target_id || body.targetId || undefined
 
       if (agentType === 'shell' && data.command) {
-        const detected = extractTarget(data.command as string)
+        const cmd = data.command as string
+        const isStart = data.subtype === 'command_start'
+
+        const detected = extractTarget(cmd)
         if (detected) {
           data.detectedTarget = detected
           if (!targetId) targetId = detected
         }
-        if (detected && scopeMonitorRef) {
-          scopeMonitorRef.checkTarget(detected, data.command as string)
+
+        if (isStart && detected && scopeMonitorRef) {
+          scopeMonitorRef.checkTarget(detected, cmd)
         }
-        if (data.output && lootDetectorRef) {
-          lootDetectorRef.scan(data.output as string, targetId)
+
+        if (!isStart && lootDetectorRef) {
+          const textToScan = [cmd, data.output].filter(Boolean).join('\n')
+          if (textToScan) lootDetectorRef.scan(textToScan, targetId)
         }
       }
 

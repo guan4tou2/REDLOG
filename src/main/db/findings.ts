@@ -17,13 +17,6 @@ export interface QuickMarkContext {
   lastCommand?: string
 }
 
-export interface EventAnnotation {
-  id: string
-  eventId: string
-  note: string
-  createdAt: number
-}
-
 function rowToQuickMark(row: Record<string, unknown>): QuickMark {
   return {
     id: row.id as string,
@@ -79,25 +72,3 @@ export function deleteQuickMark(id: string): boolean {
   return result.changes > 0
 }
 
-export function annotateEvent(eventId: string, note: string): EventAnnotation {
-  const db = getDB()
-  const id = crypto.randomUUID()
-  const now = Date.now()
-  db.prepare('INSERT INTO event_annotations (id, event_id, note, created_at) VALUES (?, ?, ?, ?)').run(id, eventId, note, now)
-  return { id, eventId, note, createdAt: now }
-}
-
-export function getAnnotations(eventId: string): EventAnnotation[] {
-  const db = getDB()
-  const rows = db.prepare('SELECT * FROM event_annotations WHERE event_id = ? ORDER BY created_at').all(eventId)
-  return rows.map((r) => {
-    const row = r as Record<string, unknown>
-    return { id: row.id as string, eventId: row.event_id as string, note: row.note as string, createdAt: row.created_at as number }
-  })
-}
-
-export function deleteAnnotation(id: string): boolean {
-  const db = getDB()
-  const result = db.prepare('DELETE FROM event_annotations WHERE id = ?').run(id)
-  return result.changes > 0
-}

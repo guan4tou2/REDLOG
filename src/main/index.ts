@@ -93,10 +93,6 @@ function startProject(project: ProjectMeta): void {
     }
   }
 
-  mainWindow?.webContents.send('project:opened', {
-    id: project.id,
-    name: project.name
-  })
 }
 
 function stopProject(): void {

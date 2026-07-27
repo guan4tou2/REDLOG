@@ -71,19 +71,3 @@ export function extractTarget(command: string): string | null {
   return extractUrlHost(trimmed) ?? null
 }
 
-export function extractFileTransfer(command: string): { direction: string; remotePath: string; remoteHost: string } | null {
-  const trimmed = command.trim()
-
-  const scpMatch = trimmed.match(/^scp\s+.*?([^\s]+):([^\s]+)\s+([^\s]+)/)
-  if (scpMatch) return { direction: 'download', remoteHost: scpMatch[1].split('@').pop()!, remotePath: scpMatch[2] }
-
-  const scpUpMatch = trimmed.match(/^scp\s+([^\s]+)\s+.*?([^\s]+):([^\s]+)/)
-  if (scpUpMatch) return { direction: 'upload', remoteHost: scpUpMatch[2].split('@').pop()!, remotePath: scpUpMatch[3] }
-
-  if (/^(wget|curl\s.*-[oO])/.test(trimmed)) {
-    const host = extractUrlHost(trimmed)
-    if (host) return { direction: 'download', remoteHost: host, remotePath: trimmed.match(URL_RE)?.[0] ?? '' }
-  }
-
-  return null
-}
