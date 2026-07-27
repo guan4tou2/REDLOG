@@ -29,7 +29,7 @@ export default function StatusBar(): JSX.Element {
   }, [])
 
   const vpn = ipStatus?.vpnStatus ?? 'unknown'
-  const vpnDot = vpn === 'connected' ? 'bg-green-500' : vpn === 'disconnected' ? 'bg-red-500' : 'bg-yellow-500'
+  const vpnDot = vpn === 'connected' ? 'bg-emerald-500' : vpn === 'disconnected' ? 'bg-red-500' : 'bg-amber-500'
   const vpnLabel = vpn === 'connected' ? t('statusBar.vpn') : vpn === 'disconnected' ? t('statusBar.noVpn') : t('statusBar.ipUnknown')
 
   const hours = Math.floor(uptime / 3600)
@@ -39,58 +39,55 @@ export default function StatusBar(): JSX.Element {
     ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
     : `${mins}:${String(secs).padStart(2, '0')}`
 
+  const Sep = (): JSX.Element => <span className="text-zinc-800 select-none">|</span>
+
   return (
-    <div className="h-6 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-4 text-[10px] font-mono shrink-0 select-none">
-      {/* Recording indicator */}
+    <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
       <div className="flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-        <span className="text-red-400">{t('statusBar.rec')}</span>
-        <span className="text-zinc-600">{uptimeStr}</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse-slow" />
+        <span className="text-red-400/80">{t('statusBar.rec')}</span>
+        <span className="text-zinc-600 tabular-nums">{uptimeStr}</span>
       </div>
 
-      <span className="text-zinc-800">│</span>
+      <Sep />
 
-      {/* VPN */}
       <div className="flex items-center gap-1.5">
         <span className={`w-1.5 h-1.5 rounded-full ${vpnDot}`} />
-        <span className={vpn === 'connected' ? 'text-green-400' : vpn === 'disconnected' ? 'text-red-400' : 'text-yellow-400'}>
+        <span className={vpn === 'connected' ? 'text-emerald-400/80' : vpn === 'disconnected' ? 'text-red-400/80' : 'text-amber-400/80'}>
           {vpnLabel}
         </span>
         {ipStatus?.externalIP && (
-          <span className="text-zinc-500">{ipStatus.externalIP}</span>
+          <span className="text-zinc-600 tabular-nums">{ipStatus.externalIP}</span>
         )}
       </div>
 
-      <span className="text-zinc-800">│</span>
+      <Sep />
 
-      {/* Scope */}
       <div className="flex items-center gap-1.5">
         {scopeViolations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-red-400">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+            <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
           </>
         ) : (
           <>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            <span className="text-green-400">{t('statusBar.scopeOk')}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
           </>
         )}
       </div>
 
-      <span className="text-zinc-800">│</span>
+      <Sep />
 
-      {/* Loot */}
       <div className="flex items-center gap-1.5">
-        <span className={`text-xs ${lootCount > 0 ? 'text-yellow-400' : 'text-zinc-600'}`}>◆</span>
-        <span className={lootCount > 0 ? 'text-yellow-400' : 'text-zinc-600'}>
+        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-zinc-600'}>◆</span>
+        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-zinc-600'}>
           {t('statusBar.loot', { count: lootCount })}
         </span>
       </div>
 
-      {/* Right side */}
       <div className="ml-auto flex items-center gap-3">
-        <span className="text-zinc-500">{t('statusBar.events', { count: eventCount })}</span>
+        <span className="text-zinc-600 tabular-nums">{t('statusBar.events', { count: eventCount })}</span>
         <button
           onClick={async () => {
             const ts = new Date().toLocaleTimeString()
@@ -98,7 +95,7 @@ export default function StatusBar(): JSX.Element {
             setStamped(true)
             setTimeout(() => setStamped(false), 1500)
           }}
-          className={`transition-colors ${stamped ? 'text-green-400' : 'text-zinc-500 hover:text-red-400'}`}
+          className={`transition-colors ${stamped ? 'text-emerald-400' : 'text-zinc-600 hover:text-red-400'}`}
           title={t('statusBar.timestampTitle')}
         >
           {stamped ? '✓' : '⏱'}

@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { Timeline, DataSet } from 'vis-timeline/standalone'
-import 'vis-timeline/styles/vis-timeline-graph2d.min.css'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 
-const TYPE_COLORS: Record<string, string> = {
+const LANE_HEIGHT = 36
+const LABEL_WIDTH = 72
+const LANES = ['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot', 'system'] as const
+type LaneId = (typeof LANES)[number]
+
+const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
   screenshot: '#3b82f6',
   clipboard: '#a855f7',
@@ -35,165 +38,248 @@ function eventTitle(event: RedLogEvent): string {
   }
 }
 
-function toTimelineItem(event: RedLogEvent): {
-  id: string; start: Date; group: string; content: string;
-  className: string; title: string; type: string
-} {
-  const group = ['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot', 'system'].includes(event.agentType) ? event.agentType : 'system'
-  return {
-    id: event.id,
-    start: new Date(event.timestamp),
-    group,
-    content: '',
-    className: `item-${group}`,
-    title: `${new Date(event.timestamp).toLocaleTimeString()} — ${eventTitle(event)}${event.targetId ? ` → ${event.targetId}` : ''}`,
-    type: 'point'
-  }
+function toLane(agentType: string): LaneId {
+  return LANES.includes(agentType as LaneId) ? (agentType as LaneId) : 'system'
+}
+
+function formatTimeLabel(date: Date): string {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function TimelinePanel(): JSX.Element {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const timelineRef = useRef<Timeline | null>(null)
-  const itemsRef = useRef<DataSet<{ id: string; start: Date; group: string; content: string; className: string; title: string; type: string }> | null>(null)
+  const [events, setEvents] = useState<RedLogEvent[]>([])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
-  const [eventCount, setEventCount] = useState(0)
+  const [allLoaded, setAllLoaded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
   const { t } = useI18n()
 
-  const GROUPS = [
-    { id: 'shell', content: t('timeline.shell'), className: 'lane-shell' },
-    { id: 'screenshot', content: t('timeline.screenshot'), className: 'lane-screenshot' },
-    { id: 'clipboard', content: t('timeline.clipboard'), className: 'lane-clipboard' },
-    { id: 'file_transfer', content: t('timeline.files'), className: 'lane-file' },
-    { id: 'marker', content: t('timeline.markers'), className: 'lane-marker' },
-    { id: 'loot', content: t('timeline.loot'), className: 'lane-loot' },
-    { id: 'system', content: t('timeline.system'), className: 'lane-system' }
-  ]
-
-  const initTimeline = useCallback((events: RedLogEvent[]) => {
-    if (!containerRef.current) return
-
-    const items = new DataSet(events.map(toTimelineItem))
-    itemsRef.current = items
-    events.forEach((e) => eventsMapRef.current.set(e.id, e))
-    setEventCount(events.length)
-
-    const groups = new DataSet(GROUPS)
-
-    const now = new Date()
-    const oneHourAgo = new Date(now.getTime() - 3600000)
-
-    const tl = new Timeline(containerRef.current, items, groups, {
-      height: '100%',
-      start: events.length > 0 ? new Date(events[events.length - 1].timestamp - 60000) : oneHourAgo,
-      end: events.length > 0 ? new Date(events[0].timestamp + 60000) : now,
-      zoomMin: 5000,
-      zoomMax: 86400000,
-      stack: false,
-      showCurrentTime: true,
-      orientation: { axis: 'top' },
-      margin: { item: 2 },
-      tooltip: { followMouse: true, overflowMethod: 'flip' }
-    })
-
-    tl.on('select', (props: { items: string[] }) => {
-      if (props.items.length > 0) {
-        const evt = eventsMapRef.current.get(props.items[0])
-        setSelectedEvent(evt || null)
-      } else {
-        setSelectedEvent(null)
-      }
-    })
-
-    timelineRef.current = tl
-  }, [])
-
-  const loadedCountRef = useRef(0)
-  const loadingRef = useRef(false)
-  const allLoadedRef = useRef(false)
+  const laneLabels: Record<LaneId, string> = useMemo(() => ({
+    shell: t('timeline.shell'),
+    screenshot: t('timeline.screenshot'),
+    clipboard: t('timeline.clipboard'),
+    file_transfer: t('timeline.files'),
+    marker: t('timeline.markers'),
+    loot: t('timeline.loot'),
+    system: t('timeline.system')
+  }), [t])
 
   const loadMore = useCallback(() => {
-    if (loadingRef.current || allLoadedRef.current) return
-    loadingRef.current = true
-    window.redlog.events.query({ limit: 200 }).then((events) => {
-      const newEvents = events.filter((e) => !eventsMapRef.current.has(e.id))
-      if (newEvents.length === 0) {
-        allLoadedRef.current = true
+    if (loading || allLoaded) return
+    setLoading(true)
+    window.redlog.events.query({ limit: 200 }).then((fetched) => {
+      const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id))
+      if (newOnes.length === 0) {
+        setAllLoaded(true)
       } else {
-        newEvents.forEach((e) => eventsMapRef.current.set(e.id, e))
-        loadedCountRef.current += newEvents.length
-        setEventCount(eventsMapRef.current.size)
-        if (itemsRef.current) {
-          try { itemsRef.current.add(newEvents.map(toTimelineItem)) } catch { /* dup */ }
-        }
+        newOnes.forEach((e) => eventsMapRef.current.set(e.id, e))
+        setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
       }
-      loadingRef.current = false
+      setLoading(false)
     })
-  }, [])
+  }, [loading, allLoaded])
 
   useEffect(() => {
-    window.redlog.events.query({ limit: 200 }).then((events) => {
-      loadedCountRef.current = events.length
-      if (events.length < 200) allLoadedRef.current = true
-      initTimeline(events)
+    window.redlog.events.query({ limit: 200 }).then((fetched) => {
+      if (fetched.length < 200) setAllLoaded(true)
+      fetched.forEach((e) => eventsMapRef.current.set(e.id, e))
+      setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
     })
-
     const unsub = window.redlog.events.onNew((event) => {
       eventsMapRef.current.set(event.id, event)
-      setEventCount((c) => c + 1)
-      if (itemsRef.current) {
-        try { itemsRef.current.add(toTimelineItem(event)) } catch { /* dup */ }
-      }
+      setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
     })
+    return unsub
+  }, [])
 
-    return () => {
-      unsub()
-      timelineRef.current?.destroy()
-      timelineRef.current = null
+  const { timeStart, timeEnd, ticks } = useMemo(() => {
+    if (events.length === 0) {
+      const now = Date.now()
+      return { timeStart: now - 3600000, timeEnd: now, ticks: [] as number[] }
     }
-  }, [initTimeline])
+    const first = events[0].timestamp
+    const last = events[events.length - 1].timestamp
+    const pad = Math.max((last - first) * 0.05, 60000)
+    const s = first - pad
+    const e = last + pad
+    const span = e - s
+    const steps = Math.min(Math.max(Math.floor(span / 300000), 4), 20)
+    const step = span / steps
+    const ts: number[] = []
+    for (let i = 0; i <= steps; i++) ts.push(s + i * step)
+    return { timeStart: s, timeEnd: e, ticks: ts }
+  }, [events])
+
+  const TRACK_W = 2000
+  const timeSpan = timeEnd - timeStart
+
+  const toX = useCallback(
+    (ts: number) => ((ts - timeStart) / timeSpan) * TRACK_W,
+    [timeStart, timeSpan]
+  )
+
+  const laneEvents = useMemo(() => {
+    const map: Record<LaneId, RedLogEvent[]> = {
+      shell: [], screenshot: [], clipboard: [], file_transfer: [],
+      marker: [], loot: [], system: []
+    }
+    for (const e of events) {
+      map[toLane(e.agentType)].push(e)
+    }
+    return map
+  }, [events])
+
+  const totalH = LANES.length * LANE_HEIGHT
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border shrink-0">
-        <span className="text-xs text-neutral-400">{t('timeline.title')}</span>
-        <span className="text-xs text-neutral-600">{t('timeline.events', { count: eventCount })}</span>
-        {!allLoadedRef.current && (
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-redlog-border shrink-0 bg-redlog-bg">
+        <span className="text-sm font-semibold text-zinc-300">{t('timeline.title')}</span>
+        <span className="text-[11px] text-zinc-600 font-mono tabular-nums">
+          {t('timeline.events', { count: events.length })}
+        </span>
+        {!allLoaded && (
           <button
             onClick={loadMore}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 ml-2"
+            className="text-[10px] text-zinc-600 hover:text-zinc-300 ml-1 transition-colors"
           >
             {t('timeline.loadMore')}
           </button>
         )}
         <div className="ml-auto flex gap-1">
-          {GROUPS.slice(0, 5).map((g) => (
+          {LANES.map((id) => (
             <span
-              key={g.id}
-              className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{ color: TYPE_COLORS[g.id], backgroundColor: `${TYPE_COLORS[g.id]}15` }}
+              key={id}
+              className="text-[10px] px-1.5 py-0.5 rounded-sm font-mono"
+              style={{ color: LANE_COLORS[id], backgroundColor: `${LANE_COLORS[id]}12` }}
             >
-              {g.content}
+              {laneLabels[id]}
             </span>
           ))}
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 min-h-0 vis-dark" />
+      {/* Timeline body */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Lane labels (fixed) */}
+        <div className="shrink-0 border-r border-redlog-border" style={{ width: LABEL_WIDTH }}>
+          <div className="h-6 border-b border-redlog-border" />
+          {LANES.map((id) => (
+            <div
+              key={id}
+              className="flex items-center px-2 border-b border-zinc-900/60 font-mono text-[11px] text-zinc-500"
+              style={{ height: LANE_HEIGHT }}
+            >
+              {laneLabels[id]}
+            </div>
+          ))}
+        </div>
 
+        {/* Scrollable track */}
+        <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div style={{ width: TRACK_W, position: 'relative' }}>
+            {/* Time axis */}
+            <div className="h-6 border-b border-redlog-border relative">
+              {ticks.map((ts) => (
+                <span
+                  key={ts}
+                  className="absolute text-[10px] text-zinc-600 font-mono tabular-nums -translate-x-1/2"
+                  style={{ left: toX(ts), top: 4 }}
+                >
+                  {formatTimeLabel(new Date(ts))}
+                </span>
+              ))}
+            </div>
+
+            {/* Swim lanes */}
+            <div style={{ height: totalH, position: 'relative' }}>
+              {/* Grid lines */}
+              {LANES.map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-full border-b border-zinc-900/60"
+                  style={{ top: (i + 1) * LANE_HEIGHT }}
+                />
+              ))}
+              {/* Vertical grid lines */}
+              {ticks.map((ts) => (
+                <div
+                  key={ts}
+                  className="absolute top-0 border-l border-zinc-900/40"
+                  style={{ left: toX(ts), height: totalH }}
+                />
+              ))}
+
+              {/* Current time line */}
+              {Date.now() >= timeStart && Date.now() <= timeEnd && (
+                <div
+                  className="absolute top-0 w-px bg-red-500"
+                  style={{ left: toX(Date.now()), height: totalH }}
+                />
+              )}
+
+              {/* Event dots */}
+              {LANES.map((lane, laneIdx) =>
+                laneEvents[lane].map((evt) => {
+                  const x = toX(evt.timestamp)
+                  const y = laneIdx * LANE_HEIGHT + LANE_HEIGHT / 2
+                  const isSelected = selectedEvent?.id === evt.id
+                  return (
+                    <div
+                      key={evt.id}
+                      className="absolute cursor-pointer transition-transform hover:scale-150"
+                      style={{
+                        left: x - 4,
+                        top: y - 4,
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: LANE_COLORS[lane],
+                        boxShadow: isSelected
+                          ? `0 0 0 2px #0a0a0a, 0 0 0 4px ${LANE_COLORS[lane]}`
+                          : `0 0 4px ${LANE_COLORS[lane]}40`,
+                        zIndex: isSelected ? 10 : 1
+                      }}
+                      title={`${new Date(evt.timestamp).toLocaleTimeString()} — ${eventTitle(evt)}`}
+                      onClick={() => setSelectedEvent(selectedEvent?.id === evt.id ? null : evt)}
+                    />
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Detail panel */}
       {selectedEvent && (
-        <div className="shrink-0 border-t border-redlog-border p-3 bg-zinc-900 max-h-40 overflow-auto">
+        <div className="shrink-0 border-t border-redlog-border p-4 bg-redlog-surface max-h-44 overflow-auto">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono" style={{ color: TYPE_COLORS[selectedEvent.agentType] || '#737373' }}>
-              {selectedEvent.agentType}
-            </span>
-            <span className="text-[10px] text-zinc-500">
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType)] }}
+              />
+              <span
+                className="text-xs font-mono font-semibold uppercase tracking-wider"
+                style={{ color: LANE_COLORS[toLane(selectedEvent.agentType)] }}
+              >
+                {selectedEvent.agentType}
+              </span>
+            </div>
+            <span className="text-[10px] text-zinc-600 font-mono tabular-nums">
               {new Date(selectedEvent.timestamp).toLocaleString()}
             </span>
           </div>
-          <p className="text-xs text-zinc-300 mt-1 font-mono">{eventTitle(selectedEvent)}</p>
+          <p className="text-sm text-zinc-300 mt-2 font-mono leading-relaxed">
+            {eventTitle(selectedEvent)}
+          </p>
           {selectedEvent.targetId && (
-            <p className="text-[10px] text-zinc-500 mt-0.5">{t('timeline.target', { target: selectedEvent.targetId })}</p>
+            <p className="text-[10px] text-zinc-500 mt-1.5 font-mono">
+              {t('timeline.target', { target: selectedEvent.targetId })}
+            </p>
           )}
         </div>
       )}

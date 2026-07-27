@@ -67,16 +67,16 @@ export default function App(): JSX.Element {
     <div className="h-screen flex flex-col">
       {/* Title bar */}
       <div
-        className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border"
+        className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <span className="text-redlog-accent font-bold text-sm tracking-wider pl-16">{t('app.title')}</span>
-        <span className="text-neutral-600 text-xs ml-2">v0.1.0</span>
-        <span className="text-zinc-500 text-xs ml-3 font-mono">{project.name}</span>
+        <span className="text-redlog-accent font-bold text-base tracking-[0.2em] pl-16">{t('app.title')}</span>
+        <span className="text-zinc-700 text-xs ml-2 font-mono">v0.1.0</span>
+        <span className="text-zinc-600 text-xs ml-3 font-mono tracking-wide">{project.name}</span>
         <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button
             onClick={() => setShowMarker(true)}
-            className="px-2 py-1 text-[10px] bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30"
+            className="px-2.5 py-1 text-[10px] bg-redlog-accent/15 text-redlog-accent rounded-md hover:bg-redlog-accent/25 border border-redlog-accent/20 transition-colors"
             title="Ctrl+Shift+M"
           >
             {t('app.mark')}
@@ -126,97 +126,105 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   }, [])
 
   return (
-    <div className="p-4 space-y-4 overflow-auto h-full">
-      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">
-        {t('dashboard.networkStatus')}
-      </h2>
-      <IPStatusCard />
+    <div className="p-6 space-y-6 overflow-auto h-full">
+      <section>
+        <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
+          {t('dashboard.networkStatus')}
+        </h2>
+        <IPStatusCard />
+      </section>
 
-      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
-        {t('dashboard.sessionStats')}
-      </h2>
-      <div className="grid grid-cols-4 gap-3">
-        <StatCard label={t('dashboard.events')} value={String(eventCount)} />
-        <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} />
-        <StatCard label={t('dashboard.loot')} value={String(lootCount)} color={lootCount > 0 ? 'text-red-400' : undefined} />
-        <StatCard
-          label={t('dashboard.scope')}
-          value={scopeViolations > 0 ? String(scopeViolations) : t('dashboard.scopeOk')}
-          color={scopeViolations > 0 ? 'text-red-400' : 'text-green-400'}
-        />
-      </div>
+      <section>
+        <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
+          {t('dashboard.sessionStats')}
+        </h2>
+        <div className="grid grid-cols-4 gap-3">
+          <StatCard label={t('dashboard.events')} value={String(eventCount)} />
+          <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} />
+          <StatCard label={t('dashboard.loot')} value={String(lootCount)} color={lootCount > 0 ? 'text-red-400' : undefined} accent={lootCount > 0 ? 'red' : undefined} />
+          <StatCard
+            label={t('dashboard.scope')}
+            value={scopeViolations > 0 ? String(scopeViolations) : t('dashboard.scopeOk')}
+            color={scopeViolations > 0 ? 'text-red-400' : 'text-emerald-400'}
+            accent={scopeViolations > 0 ? 'red' : 'green'}
+          />
+        </div>
+      </section>
 
       {config && (
-        <>
-          <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
+        <section>
+          <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </h2>
-          <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+          <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
               <div>
-                <span className="text-zinc-500">{t('dashboard.id')}</span>{' '}
-                <span className="text-zinc-200 font-mono">{config.engagement?.id as string}</span>
+                <span className="text-zinc-500 text-xs">{t('dashboard.id')}</span>
+                <p className="text-zinc-200 font-mono text-sm mt-0.5">{config.engagement?.id as string}</p>
               </div>
               <div>
-                <span className="text-zinc-500">{t('dashboard.name')}</span>{' '}
-                <span className="text-zinc-200">{config.engagement?.name as string}</span>
+                <span className="text-zinc-500 text-xs">{t('dashboard.name')}</span>
+                <p className="text-zinc-200 text-sm mt-0.5">{config.engagement?.name as string}</p>
               </div>
               <div>
-                <span className="text-zinc-500">{t('dashboard.operator')}</span>{' '}
-                <span className="text-zinc-200">{config.operator?.name as string}</span>
+                <span className="text-zinc-500 text-xs">{t('dashboard.operator')}</span>
+                <p className="text-zinc-200 text-sm mt-0.5">{config.operator?.name as string}</p>
               </div>
               <div>
-                <span className="text-zinc-500">{t('dashboard.scopeLabel')}</span>{' '}
-                <span className="text-zinc-200">
+                <span className="text-zinc-500 text-xs">{t('dashboard.scopeLabel')}</span>
+                <p className="text-zinc-200 text-sm mt-0.5">
                   {t('dashboard.targets', { count: (config.scope?.targets as string[])?.length || 0, mode: config.scope?.enforcement as string })}
-                </span>
+                </p>
               </div>
             </div>
             <button
               onClick={() => onNavigate('settings')}
-              className="mt-3 text-[10px] text-red-400 hover:text-red-300"
+              className="mt-3 text-[10px] text-red-400/80 hover:text-red-300 transition-colors"
             >
               {t('dashboard.editSettings')}
             </button>
           </div>
-        </>
+        </section>
       )}
 
-      <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mt-6">
-        {t('dashboard.shortcuts')}
-      </h2>
-      <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          {[
-            ['⌘1', t('sidebar.dashboard')],
-            ['⌘2', t('sidebar.timeline')],
-            ['⌘3', t('sidebar.screens')],
-            ['⌘4', t('sidebar.targets')],
-            ['⌘5', t('sidebar.scope')],
-            ['⌘6', t('sidebar.loot')],
-            ['⌘7', t('sidebar.marks')],
-            ['⌘8', t('sidebar.settings')],
-            ['⌘⇧M', t('dashboard.addMarker')]
-          ].map(([key, label]) => (
-            <div key={key} className="flex items-center gap-2">
-              <kbd className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded text-[10px] font-mono">{key}</kbd>
-              <span className="text-zinc-500">{label}</span>
-            </div>
-          ))}
+      <section>
+        <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
+          {t('dashboard.shortcuts')}
+        </h2>
+        <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+          <div className="grid grid-cols-2 gap-2.5 text-sm">
+            {[
+              ['⌘1', t('sidebar.dashboard')],
+              ['⌘2', t('sidebar.timeline')],
+              ['⌘3', t('sidebar.screens')],
+              ['⌘4', t('sidebar.targets')],
+              ['⌘5', t('sidebar.scope')],
+              ['⌘6', t('sidebar.loot')],
+              ['⌘7', t('sidebar.marks')],
+              ['⌘8', t('sidebar.settings')],
+              ['⌘⇧M', t('dashboard.addMarker')]
+            ].map(([key, label]) => (
+              <div key={key} className="flex items-center gap-2.5">
+                <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{key}</kbd>
+                <span className="text-zinc-500 text-xs">{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   )
 }
 
-function StatCard({ label, value, color, sub }: {
-  label: string; value: string; color?: string; sub?: string
+function StatCard({ label, value, color, sub, accent }: {
+  label: string; value: string; color?: string; sub?: string; accent?: 'red' | 'green'
 }): JSX.Element {
+  const borderAccent = accent === 'red' ? 'border-t-red-500/60' : accent === 'green' ? 'border-t-emerald-500/60' : 'border-t-zinc-700/60'
   return (
-    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-3">
-      <p className="text-xs text-neutral-500">{label}</p>
-      <p className={`text-lg font-mono mt-1 ${color ?? 'text-neutral-200'}`}>{value}</p>
-      {sub && <p className="text-[10px] text-neutral-600 mt-0.5">{sub}</p>}
+    <div className={`rounded-lg bg-redlog-surface border border-redlog-border border-t-2 ${borderAccent} p-4 shadow-card transition-shadow hover:shadow-card-hover`}>
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className={`text-xl font-mono mt-1.5 font-semibold tabular-nums ${color ?? 'text-zinc-200'}`}>{value}</p>
+      {sub && <p className="text-[10px] text-zinc-600 mt-1">{sub}</p>}
     </div>
   )
 }
@@ -250,7 +258,7 @@ function ScreenshotsView(): JSX.Element {
   return (
     <div className="p-4 overflow-auto h-full">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">
+        <h2 className="text-base font-semibold text-neutral-400 uppercase tracking-wider">
           {t('screenshots.title', { count: screenshots.length })}
         </h2>
         <button

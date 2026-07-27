@@ -8,64 +8,20 @@ body {
   color: #e5e5e5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* vis-timeline dark theme overrides */
-.vis-dark .vis-timeline {
-  background: #0a0a0a;
-  border: none;
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-.vis-dark .vis-panel.vis-bottom,
-.vis-dark .vis-panel.vis-center,
-.vis-dark .vis-panel.vis-left,
-.vis-dark .vis-panel.vis-right,
-.vis-dark .vis-panel.vis-top {
-  border-color: #27272a;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
-.vis-dark .vis-time-axis .vis-text {
-  color: #71717a;
-  font-size: 10px;
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
 }
-.vis-dark .vis-time-axis .vis-grid.vis-minor {
-  border-color: #18181b;
-}
-.vis-dark .vis-time-axis .vis-grid.vis-major {
-  border-color: #27272a;
-}
-.vis-dark .vis-labelset .vis-label {
-  color: #a1a1aa;
-  font-size: 11px;
-  border-bottom-color: #27272a;
-}
-.vis-dark .vis-foreground .vis-group {
-  border-bottom-color: #18181b;
-}
-.vis-dark .vis-current-time {
-  background-color: #ef4444;
-  width: 1px;
-}
-.vis-dark .vis-item.vis-point .vis-dot {
-  border-width: 4px;
-  border-radius: 50%;
-}
-.vis-dark .vis-item.vis-selected {
-  border-color: #ef4444;
-}
-.vis-dark .item-shell .vis-dot { border-color: #22c55e; }
-.vis-dark .item-screenshot .vis-dot { border-color: #3b82f6; }
-.vis-dark .item-clipboard .vis-dot { border-color: #a855f7; }
-.vis-dark .item-file_transfer .vis-dot { border-color: #a78bfa; }
-.vis-dark .item-marker .vis-dot { border-color: #ef4444; }
-.vis-dark .item-loot .vis-dot { border-color: #f97316; }
-.vis-dark .item-system .vis-dot { border-color: #737373; }
-.vis-dark .vis-tooltip {
-  background: #18181b;
-  color: #d4d4d8;
-  border: 1px solid #3f3f46;
-  border-radius: 6px;
-  font-size: 11px;
-  font-family: monospace;
-  padding: 6px 10px;
-  max-width: 400px;
-  white-space: pre-wrap;
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
 }

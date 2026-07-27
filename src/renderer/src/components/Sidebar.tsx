@@ -23,7 +23,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const badge = (count: number, color: string): JSX.Element | null =>
     count > 0 ? (
-      <span className={`absolute -top-1 -right-1 min-w-[14px] h-[14px] rounded-full ${color} text-[8px] text-white font-bold flex items-center justify-center px-0.5`}>
+      <span className={`absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full ${color} text-[9px] text-white font-bold flex items-center justify-center px-0.5 shadow-lg`}>
         {count > 99 ? '99+' : count}
       </span>
     ) : null
@@ -41,75 +41,51 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
       items: [
         { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
         { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-        { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-yellow-500' },
+        { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-amber-500' },
         { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
       ]
     }
   ]
 
+  const navBtn = (id: string, icon: string, label: string, extra?: JSX.Element): JSX.Element => (
+    <button
+      key={id}
+      onClick={() => onNavigate(id)}
+      title={label}
+      className={`relative w-full h-10 rounded-md flex items-center gap-2.5 px-2.5 transition-all duration-150 ${
+        active === id
+          ? 'bg-red-500/10 text-red-400 border-l-2 border-red-500 shadow-glow-red-sm'
+          : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border-l-2 border-transparent'
+      }`}
+    >
+      <span className="text-base leading-none w-5 text-center shrink-0">{icon}</span>
+      <span className="text-[11px] leading-none truncate opacity-0 group-hover/sb:opacity-100 transition-opacity duration-200 whitespace-nowrap">{label}</span>
+      {extra}
+    </button>
+  )
+
   return (
-    <div className="w-[52px] bg-redlog-bg border-r border-redlog-border flex flex-col items-center py-2 shrink-0 select-none">
-      <button
-        onClick={() => onNavigate('dashboard')}
-        title={t('sidebar.dashboard')}
-        className={`w-10 h-8 rounded flex items-center justify-center text-sm mb-2 transition-colors ${
-          active === 'dashboard'
-            ? 'bg-red-500/20 text-red-400'
-            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-        }`}
-      >
-        ◉
-      </button>
+    <div className="w-[52px] hover:w-[180px] group/sb bg-redlog-bg border-r border-redlog-border flex flex-col py-2.5 px-1.5 shrink-0 select-none transition-[width] duration-200 overflow-hidden">
+      {navBtn('dashboard', '◉', t('sidebar.dashboard'))}
+      {navBtn('search', '⌕', t('sidebar.search'))}
 
-      <button
-        onClick={() => onNavigate('search')}
-        title={t('sidebar.search')}
-        className={`w-10 h-7 rounded flex items-center justify-center text-sm mb-1 transition-colors ${
-          active === 'search'
-            ? 'bg-red-500/20 text-red-400'
-            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-        }`}
-      >
-        ⌕
-      </button>
-
-      <div className="w-8 border-t border-zinc-800 mb-1" />
+      <div className="w-full border-t border-zinc-800/40 my-2" />
 
       {groups.map((group) => (
-        <div key={group.label} className="w-full flex flex-col items-center mb-1">
-          <span className="text-[8px] text-zinc-600 font-semibold tracking-[0.12em] mb-0.5">{group.label}</span>
-          {group.items.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              title={item.label}
-              className={`relative w-10 h-8 rounded flex flex-col items-center justify-center gap-0 transition-colors ${
-                active === item.id
-                  ? 'bg-red-500/20 text-red-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-              }`}
-            >
-              <span className="text-sm leading-none">{item.icon}</span>
-              <span className="text-[7px] leading-none mt-0.5">{item.label}</span>
-              {'badge' in item && badge(item.badge as number, item.badgeColor as string)}
-            </button>
+        <div key={group.label} className="w-full flex flex-col mb-1.5">
+          <span className="text-[9px] text-zinc-600 font-semibold tracking-[0.16em] uppercase mb-1 px-2.5 truncate opacity-0 group-hover/sb:opacity-100 transition-opacity duration-200">{group.label}</span>
+          {group.items.map((item) => navBtn(
+            item.id,
+            item.icon,
+            item.label,
+            'badge' in item ? badge(item.badge as number, item.badgeColor as string) ?? undefined : undefined
           ))}
         </div>
       ))}
 
       <div className="mt-auto">
-        <button
-          onClick={() => onNavigate('settings')}
-          title={t('sidebar.settings')}
-          className={`w-10 h-8 rounded flex flex-col items-center justify-center transition-colors ${
-            active === 'settings'
-              ? 'bg-red-500/20 text-red-400'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-          }`}
-        >
-          <span className="text-sm leading-none">⚙</span>
-          <span className="text-[7px] leading-none mt-0.5">{t('sidebar.config')}</span>
-        </button>
+        <div className="w-full border-t border-zinc-800/40 mb-2" />
+        {navBtn('settings', '⚙', t('sidebar.config'))}
       </div>
     </div>
   )
