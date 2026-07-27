@@ -5,6 +5,7 @@ import path from 'path'
 import os from 'os'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from '../db/events'
 import { eventBus } from './event-bus'
+import { extractTarget } from './target-extractor'
 
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
@@ -17,7 +18,7 @@ let operatorId = 'operator-1'
 let lootDetectorRef: { scan: (text: string) => unknown[] } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
-let scopeMonitorRef: { getViolations: () => unknown[]; getViolationCount: () => number } | null = null
+let scopeMonitorRef: { getViolations: () => unknown[]; getViolationCount: () => number; checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean } } | null = null
 
 export function configureApi(opts: {
   engagementId: string
@@ -94,7 +95,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const body = JSON.parse(await readBody(req))
       const agentType = body.agent_type || body.agentType || 'external'
       const data = body.data || {}
-      const targetId = body.target_id || body.targetId || undefined
+      let targetId = body.target_id || body.targetId || undefined
+
+      if (agentType === 'shell' && data.command) {
+        const detected = extractTarget(data.command as string)
+        if (detected) {
+          data.detectedTarget = detected
+          if (!targetId) targetId = detected
+        }
+        if (detected && scopeMonitorRef) {
+          scopeMonitorRef.checkTarget(detected, data.command as string)
+        }
+        if (data.output && lootDetectorRef) {
+          lootDetectorRef.scan(data.output as string, targetId)
+        }
+      }
+
       const event = insertEvent(agentType, data, { engagementId, operatorId, targetId })
       eventBus.publish(event)
       json(res, 201, event)

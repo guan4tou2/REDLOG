@@ -21,10 +21,6 @@ export function setCdpPort(port: number): void {
   cdpPort = port
 }
 
-export function getCdpPort(): number {
-  return cdpPort
-}
-
 function fetchJson<T>(url: string, timeout = 2000): Promise<T> {
   return new Promise((resolve, reject) => {
     const req = http.get(url, { timeout }, (res) => {
@@ -61,6 +57,3 @@ export async function getActiveBrowserTab(): Promise<BrowserContext> {
   return lastContext
 }
 
-export function getLastBrowserContext(): BrowserContext {
-  return lastContext
-}

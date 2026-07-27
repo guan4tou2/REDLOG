@@ -53,13 +53,6 @@ interface BrowserTabInfo {
   connected: boolean
 }
 
-interface EventAnnotation {
-  id: string
-  eventId: string
-  note: string
-  createdAt: number
-}
-
 interface RedLogAPI {
   project: {
     list: () => Promise<ProjectMeta[]>
@@ -67,7 +60,6 @@ interface RedLogAPI {
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>
     active: () => Promise<{ id: string; name: string } | null>
-    onOpened: (cb: (project: { id: string; name: string }) => void) => () => void
   }
   ip: {
     getStatus: () => Promise<IPStatus>
@@ -85,24 +77,22 @@ interface RedLogAPI {
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
+    onShortcut: (cb: () => void) => () => void
   }
   screenshot: {
     capture: () => Promise<string | null>
-    getPath: (filename: string) => Promise<string>
     read: (filePath: string) => Promise<string | null>
   }
   scope: {
     getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
-    onCheck: (cb: (result: { target: string; command: string; inScope: boolean; violation: boolean }) => void) => () => void
   }
   chain: {
     length: () => Promise<number>
   }
   loot: {
     getCount: () => Promise<number>
-    scan: (text: string) => Promise<Array<{ type: string; value: string; line: string; confidence: string }>>
   }
   quickmarks: {
     list: () => Promise<QuickMark[]>
@@ -117,11 +107,6 @@ interface RedLogAPI {
   }
   data: {
     exportJson: () => Promise<string | null>
-  }
-  annotations: {
-    create: (eventId: string, note: string) => Promise<EventAnnotation>
-    get: (eventId: string) => Promise<EventAnnotation[]>
-    delete: (annotationId: string) => Promise<boolean>
   }
   overlay: {
     toggle: () => void

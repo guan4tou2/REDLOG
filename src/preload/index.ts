@@ -6,12 +6,7 @@ contextBridge.exposeInMainWorld('redlog', {
     create: (name: string) => ipcRenderer.invoke('project:create', name),
     open: (id: string) => ipcRenderer.invoke('project:open', id),
     delete: (id: string) => ipcRenderer.invoke('project:delete', id),
-    active: () => ipcRenderer.invoke('project:active'),
-    onOpened: (cb: (project: unknown) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, project: unknown) => cb(project)
-      ipcRenderer.on('project:opened', handler)
-      return () => ipcRenderer.removeListener('project:opened', handler)
-    }
+    active: () => ipcRenderer.invoke('project:active')
   },
   ip: {
     getStatus: () => ipcRenderer.invoke('ip:getStatus'),
@@ -36,31 +31,28 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   marker: {
-    create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data)
+    create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),
+    onShortcut: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on('shortcut:marker', handler)
+      return () => ipcRenderer.removeListener('shortcut:marker', handler)
+    }
   },
   screenshot: {
     capture: () => ipcRenderer.invoke('screenshot:capture'),
-    getPath: (filename: string): Promise<string> =>
-      ipcRenderer.invoke('screenshot:getPath', filename),
     read: (filePath: string): Promise<string | null> =>
       ipcRenderer.invoke('screenshot:read', filePath)
   },
   scope: {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
-    isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
-    onCheck: (cb: (result: unknown) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, result: unknown) => cb(result)
-      ipcRenderer.on('scope:check', handler)
-      return () => ipcRenderer.removeListener('scope:check', handler)
-    }
+    isConfigured: () => ipcRenderer.invoke('scope:isConfigured')
   },
   chain: {
     length: () => ipcRenderer.invoke('chain:length')
   },
   loot: {
-    getCount: () => ipcRenderer.invoke('loot:getCount'),
-    scan: (text: string) => ipcRenderer.invoke('loot:scan', text)
+    getCount: () => ipcRenderer.invoke('loot:getCount')
   },
   quickmarks: {
     list: () => ipcRenderer.invoke('quickmarks:list'),
@@ -75,11 +67,6 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson')
-  },
-  annotations: {
-    create: (eventId: string, note: string) => ipcRenderer.invoke('annotations:create', eventId, note),
-    get: (eventId: string) => ipcRenderer.invoke('annotations:get', eventId),
-    delete: (annotationId: string) => ipcRenderer.invoke('annotations:delete', annotationId)
   },
   overlay: {
     toggle: () => ipcRenderer.send('overlay:toggle'),

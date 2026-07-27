@@ -49,7 +49,7 @@ export class ScreenshotAgent {
 
       const evt = insertEvent('screenshot', {
         trigger,
-        path: filepath,
+        filePath: filepath,
         filename,
         size: jpeg.length,
         width,

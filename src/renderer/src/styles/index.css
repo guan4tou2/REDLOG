@@ -51,7 +51,7 @@ body {
 .vis-dark .vis-item.vis-selected {
   border-color: #ef4444;
 }
-.vis-dark .item-terminal .vis-dot { border-color: #22c55e; }
+.vis-dark .item-shell .vis-dot { border-color: #22c55e; }
 .vis-dark .item-screenshot .vis-dot { border-color: #3b82f6; }
 .vis-dark .item-clipboard .vis-dot { border-color: #a855f7; }
 .vis-dark .item-file_transfer .vis-dot { border-color: #a78bfa; }

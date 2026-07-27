@@ -8,8 +8,7 @@ import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from './services/
 import { initDB, closeDB, getProjectDir } from './db/index'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
 import {
-  createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark,
-  annotateEvent, getAnnotations, deleteAnnotation
+  createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from './db/findings'
 import { getActiveBrowserTab, setCdpPort } from './services/cdp-connector'
 import fs from 'fs'
@@ -209,9 +208,6 @@ app.whenReady().then(() => {
 
   // --- Screenshots ---
   ipcMain.handle('screenshot:capture', () => screenshotAgent.captureNow('manual'))
-  ipcMain.handle('screenshot:getPath', (_e, filename: string) => {
-    return path.join(getProjectDir(), 'screenshots', filename)
-  })
   ipcMain.handle('screenshot:read', (_e, filePath: string) => {
     try {
       const screenshotDir = path.join(getProjectDir(), 'screenshots')
@@ -257,11 +253,6 @@ app.whenReady().then(() => {
   // --- CDP ---
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
-
-  // --- Event Annotations ---
-  ipcMain.handle('annotations:create', (_e, eventId: string, note: string) => annotateEvent(eventId, note))
-  ipcMain.handle('annotations:get', (_e, eventId: string) => getAnnotations(eventId))
-  ipcMain.handle('annotations:delete', (_e, annotationId: string) => deleteAnnotation(annotationId))
 
   // --- Data Export (minimal JSON dump) ---
   ipcMain.handle('data:exportJson', () => {

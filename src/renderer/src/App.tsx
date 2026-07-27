@@ -29,6 +29,10 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    return window.redlog.marker.onShortcut(() => setShowMarker(true))
+  }, [])
+
+  useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!project) return
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {

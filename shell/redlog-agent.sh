@@ -37,8 +37,8 @@ redlog_mark() {
   local title="${1:-Agent mark}"
   local note="${2:-}"
   local severity="${3:-info}"
-  _redlog_post "/api/marks" \
-    "{\"title\":$(_json_escape "$title"),\"note\":$(_json_escape "$note")}"
+  _redlog_post "/api/marker" \
+    "{\"title\":$(_json_escape "$title"),\"notes\":$(_json_escape "$note")}"
 }
 
 # Send a raw event with custom agent_type and data
@@ -52,8 +52,8 @@ redlog_event() {
 # Quick note — creates a marker with category=note
 redlog_note() {
   local text="$1"
-  _redlog_post "/api/marks" \
-    "{\"title\":\"Agent Note\",\"note\":$(_json_escape "$text")}"
+  _redlog_post "/api/marker" \
+    "{\"title\":\"Agent Note\",\"notes\":$(_json_escape "$text")}"
 }
 
 # Check if RedLog is running

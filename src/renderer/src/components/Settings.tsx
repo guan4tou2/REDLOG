@@ -4,7 +4,8 @@ interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
   network: { vpnIPs: string[]; dailyIPs: string[]; checkInterval: number }
-  scope: { enforcement: string; targets: string[]; excludeTargets: string[] }
+  scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
+  screenshot: { quality: number }
 }
 
 export default function Settings(): JSX.Element {
@@ -87,6 +88,17 @@ export default function Settings(): JSX.Element {
 
         {tab === 'data' && (
           <>
+            <FieldGroup title="Screenshot Quality">
+              <Field
+                label="JPEG quality (1-100)"
+                value={String(config.screenshot?.quality ?? 85)}
+                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+                type="number"
+              />
+              <p className="text-[10px] text-zinc-600">
+                Higher = better quality, larger files. Default: 85
+              </p>
+            </FieldGroup>
             <FieldGroup title="Chrome DevTools Protocol">
               <div className="space-y-2">
                 <Field
@@ -163,6 +175,16 @@ export default function Settings(): JSX.Element {
                 onChange={(items) => setConfig({ ...config, scope: { ...config.scope, excludeTargets: items } })}
                 placeholder="e.g. 10.0.0.1"
               />
+            </FieldGroup>
+            <FieldGroup title="Scope File">
+              <Field
+                label="Load targets from file (JSON or plain text, one per line)"
+                value={config.scope.scopeFile || ''}
+                onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
+              />
+              <p className="text-[10px] text-zinc-600">
+                Absolute path to a scope file. Targets are merged with the list above.
+              </p>
             </FieldGroup>
           </>
         )}
