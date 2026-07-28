@@ -242,5 +242,22 @@
   "overlay.rec": "錄製",
   "overlay.paused": "已暫停",
 
-  "screenshots.emptyDesc": "截圖會在閒置時自動擷取，或透過擷取按鈕手動觸發。"
+  "screenshots.emptyDesc": "截圖會在閒置時自動擷取，或透過擷取按鈕手動觸發。",
+
+  "project.advancedSetup": "進階設定（選填）",
+  "project.scopeTargets": "範圍目標（IP、CIDR、*.domain）",
+  "project.scopePlaceholder": "例如 192.168.1.0/24 或 *.example.com",
+  "project.vpnIps": "VPN IP（匹配時顯示綠色）",
+  "project.dailyIps": "日常 IP（匹配時顯示紅色 = 無 VPN）",
+  "project.enforcement": "範圍執行模式",
+  "project.or": "或",
+  "project.importProfile": "匯入設定檔（.yaml / .json）",
+
+  "settings.profileSync": "團隊設定同步",
+  "settings.exportProfile": "匯出設定檔",
+  "settings.importProfile": "匯入設定檔",
+  "settings.profileHint": "將設定匯出為 .yaml 檔案，分享範圍、VPN 和任務設定給團隊成員。",
+
+  "toast.profileExported": "設定檔已匯出",
+  "toast.profileImported": "設定檔已匯入 — 儲存以套用"
 }

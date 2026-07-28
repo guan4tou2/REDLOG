@@ -25,6 +25,22 @@ function matchesDomain(host: string, pattern: string): boolean {
   return host === pattern
 }
 
+function getRootDomain(host: string): string {
+  const parts = host.split('.')
+  if (parts.length <= 2) return host
+  return parts.slice(-2).join('.')
+}
+
+function extractRootDomains(targets: string[]): Set<string> {
+  const roots = new Set<string>()
+  for (const t of targets) {
+    if (IP_RE.test(t) || t.includes('/')) continue
+    const domain = t.startsWith('*.') ? t.slice(2) : t
+    roots.add(getRootDomain(domain))
+  }
+  return roots
+}
+
 const IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
 export class ScopeMonitor {
@@ -32,6 +48,7 @@ export class ScopeMonitor {
   private engagementId = 'default'
   private operatorId = 'operator-1'
   private violations: Array<{ target: string; command: string; timestamp: number }> = []
+  private rootDomains: Set<string> = new Set()
 
   configure(opts: {
     enforcement?: string
@@ -45,6 +62,7 @@ export class ScopeMonitor {
     if (opts.excludeTargets) this.config.excludeTargets = opts.excludeTargets
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
+    this.rootDomains = extractRootDomains(this.config.targets)
   }
 
   checkTarget(target: string, command: string): { inScope: boolean; violation: boolean } {
@@ -62,12 +80,20 @@ export class ScopeMonitor {
       IP_RE.test(target) ? matchesCIDR(target, t) : matchesDomain(target, t)
     )
 
-    if (!isInScope) {
-      this.recordViolation(target, command, 'out_of_scope')
-      return { inScope: false, violation: true }
+    if (isInScope) return { inScope: true, violation: false }
+
+    // Not in scope — only warn if the target shares a root domain with a scope target.
+    // Completely unrelated hosts (e.g. google.com when scope is *.example.com) are ignored.
+    const isIP = IP_RE.test(target)
+    if (!isIP) {
+      const targetRoot = getRootDomain(target)
+      if (!this.rootDomains.has(targetRoot)) {
+        return { inScope: false, violation: false }
+      }
     }
 
-    return { inScope: true, violation: false }
+    this.recordViolation(target, command, 'out_of_scope')
+    return { inScope: false, violation: true }
   }
 
   private recordViolation(target: string, command: string, reason: string): void {

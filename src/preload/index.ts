@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('redlog', {
   project: {
     list: () => ipcRenderer.invoke('project:list'),
-    create: (name: string) => ipcRenderer.invoke('project:create', name),
+    create: (name: string, initialConfig?: unknown) => ipcRenderer.invoke('project:create', name, initialConfig),
     open: (id: string) => ipcRenderer.invoke('project:open', id),
     delete: (id: string) => ipcRenderer.invoke('project:delete', id),
     active: () => ipcRenderer.invoke('project:active')
@@ -18,7 +18,9 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
-    save: (config: unknown) => ipcRenderer.invoke('config:save', config)
+    save: (config: unknown) => ipcRenderer.invoke('config:save', config),
+    exportProfile: () => ipcRenderer.invoke('config:exportProfile'),
+    importProfile: () => ipcRenderer.invoke('config:importProfile')
   },
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),

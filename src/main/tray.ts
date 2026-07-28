@@ -1,13 +1,14 @@
 import { Tray, Menu, nativeImage, BrowserWindow } from 'electron'
+import { join } from 'path'
 
 export function createTray(
   mainWindow: BrowserWindow,
   overlayWindow: BrowserWindow | null
 ): Tray {
-  const icon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARElEQVQ4T2P8z8Dwn4EIwMjAwMBIjAamfwwM/4nRz0C1F4hyAdVcQLQXiHYBVcOAaBeQHI2kuoDoaKRaQiI6JRDtAgCGHBAR1gFDqQAAAABJRU5ErkJggg=='
-  )
-  const tray = new Tray(icon.resize({ width: 16, height: 16 }))
+  const trayIconPath = join(__dirname, '../../resources/tray-iconTemplate.png')
+  const icon = nativeImage.createFromPath(trayIconPath)
+  icon.setTemplateImage(true)
+  const tray = new Tray(icon)
 
   const contextMenu = Menu.buildFromTemplate([
     {

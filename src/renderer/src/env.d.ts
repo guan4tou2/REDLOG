@@ -56,7 +56,7 @@ interface BrowserTabInfo {
 interface RedLogAPI {
   project: {
     list: () => Promise<ProjectMeta[]>
-    create: (name: string) => Promise<ProjectMeta>
+    create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>
     active: () => Promise<{ id: string; name: string } | null>
@@ -68,6 +68,8 @@ interface RedLogAPI {
   config: {
     get: () => Promise<unknown>
     save: (config: unknown) => Promise<boolean>
+    exportProfile: () => Promise<string | null>
+    importProfile: () => Promise<unknown | null>
   }
   events: {
     query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
@@ -119,6 +121,14 @@ interface RedLogAPI {
     show: () => void
     setExpanded?: (expanded: boolean) => void
   }
+}
+
+interface RedLogConfigPartial {
+  engagement?: { id?: string; name?: string }
+  operator?: { id?: string; name?: string }
+  network?: { vpnIPs?: string[]; dailyIPs?: string[]; checkInterval?: number }
+  scope?: { enforcement?: string; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null }
+  screenshot?: { quality?: number }
 }
 
 declare global {

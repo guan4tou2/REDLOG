@@ -242,5 +242,22 @@
   "overlay.rec": "REC",
   "overlay.paused": "PAUSED",
 
-  "screenshots.emptyDesc": "Screenshots are captured automatically on idle or manually via the capture button."
+  "screenshots.emptyDesc": "Screenshots are captured automatically on idle or manually via the capture button.",
+
+  "project.advancedSetup": "Advanced Setup (optional)",
+  "project.scopeTargets": "Scope Targets (IPs, CIDRs, *.domain)",
+  "project.scopePlaceholder": "e.g. 192.168.1.0/24 or *.example.com",
+  "project.vpnIps": "VPN IPs (green when matched)",
+  "project.dailyIps": "Daily IPs (red = no VPN)",
+  "project.enforcement": "Scope Enforcement",
+  "project.or": "or",
+  "project.importProfile": "Import Profile (.yaml / .json)",
+
+  "settings.profileSync": "Team Profile Sync",
+  "settings.exportProfile": "Export Profile",
+  "settings.importProfile": "Import Profile",
+  "settings.profileHint": "Export config as a .yaml file to share scope, VPN, and engagement settings with your team.",
+
+  "toast.profileExported": "Profile exported",
+  "toast.profileImported": "Profile imported — save to apply"
 }

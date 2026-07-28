@@ -1,0 +1,23 @@
+appId: com.redlog.app
+productName: RedLog
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - out/**/*
+  - resources/**/*
+mac:
+  icon: resources/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+win:
+  icon: resources/icon-256.png
+  target:
+    - nsis
+linux:
+  icon: resources/icon-256.png
+  target:
+    - AppImage
+  category: Development

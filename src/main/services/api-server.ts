@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from '../db/events'
+import { createQuickMark, listQuickMarks } from '../db/findings'
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
 
@@ -15,6 +16,8 @@ let apiToken = ''
 let engagementId = 'default'
 let operatorId = 'operator-1'
 
+let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
+
 let lootDetectorRef: { scan: (text: string) => unknown[] } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
@@ -23,6 +26,7 @@ let scopeMonitorRef: { getViolations: () => unknown[]; getViolationCount: () => 
 export function configureApi(opts: {
   engagementId: string
   operatorId: string
+  configLoader?: typeof configLoaderRef
   lootDetector?: typeof lootDetectorRef
   screenshotAgent?: typeof screenshotAgentRef
   ipMonitor?: typeof ipMonitorRef
@@ -30,6 +34,7 @@ export function configureApi(opts: {
 }): void {
   engagementId = opts.engagementId
   operatorId = opts.operatorId
+  if (opts.configLoader) configLoaderRef = opts.configLoader
   if (opts.lootDetector) lootDetectorRef = opts.lootDetector
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.ipMonitor) ipMonitorRef = opts.ipMonitor
@@ -190,6 +195,54 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         eventCount: getEventCount(),
         scopeViolations: scopeMonitorRef?.getViolationCount() || 0
       })
+      return
+    }
+
+    if (route === '/api/config' && req.method === 'GET') {
+      json(res, 200, configLoaderRef?.getConfig() || {})
+      return
+    }
+
+    if (route === '/api/scope' && req.method === 'GET') {
+      json(res, 200, {
+        configured: scopeMonitorRef ? true : false,
+        targets: configLoaderRef?.getTargets() || [],
+        violations: scopeMonitorRef?.getViolations() || [],
+        violationCount: scopeMonitorRef?.getViolationCount() || 0
+      })
+      return
+    }
+
+    if (route === '/api/quickmarks' && req.method === 'GET') {
+      json(res, 200, { quickmarks: listQuickMarks() })
+      return
+    }
+
+    if (route === '/api/quickmarks' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req))
+      const mark = createQuickMark({
+        title: body.title || 'Untitled',
+        url: body.url,
+        note: body.note || '',
+        context: body.context || {}
+      })
+      json(res, 201, mark)
+      return
+    }
+
+    if (route === '/api/recording' && req.method === 'GET') {
+      json(res, 200, { recording: !eventBus.paused })
+      return
+    }
+
+    if (route === '/api/recording' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req))
+      if (body.action === 'pause') eventBus.pause()
+      else if (body.action === 'resume') eventBus.resume()
+      else if (body.action === 'toggle') {
+        if (eventBus.paused) eventBus.resume(); else eventBus.pause()
+      }
+      json(res, 200, { recording: !eventBus.paused })
       return
     }
 

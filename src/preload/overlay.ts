@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('redlog', {
   overlay: {
     setExpanded: (expanded: boolean) =>
       ipcRenderer.send('overlay:setExpanded', expanded),
-    hide: () => ipcRenderer.send('overlay:hide')
+    hide: () => ipcRenderer.send('overlay:hide'),
+    mouseEnter: () => ipcRenderer.send('overlay:mouseEnter'),
+    mouseLeave: () => ipcRenderer.send('overlay:mouseLeave')
   }
 })

@@ -11,6 +11,7 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
     minWidth: 800,
     minHeight: 500,
     show: false,
+    icon: join(__dirname, '../../resources/icon-256.png'),
     backgroundColor: '#0a0a0a',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
@@ -48,6 +49,7 @@ export function createOverlayWindow(): BrowserWindow {
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
+    movable: true,
     webPreferences: {
       preload: join(__dirname, '../preload/overlay.js'),
       sandbox: true,
@@ -56,7 +58,7 @@ export function createOverlayWindow(): BrowserWindow {
     }
   })
 
-  win.setIgnoreMouseEvents(false)
+  win.setIgnoreMouseEvents(true, { forward: true })
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
