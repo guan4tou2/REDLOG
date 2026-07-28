@@ -1,0 +1,39 @@
+appId: com.redlog.app
+productName: RedLog
+directories:
+  output: release
+  buildResources: build
+# Native modules must live outside the asar so they can be loaded at runtime.
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+files:
+  - out/**
+  - package.json
+  - '!node_modules/**/{test,__tests__,tests,example,examples,.bin}/**'
+# Rebuild native deps (better-sqlite3) against the packaged Electron ABI.
+npmRebuild: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: RedLog
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+
+linux:
+  target:
+    - AppImage
+  category: Utility

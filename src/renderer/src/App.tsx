@@ -18,6 +18,9 @@ type View = 'dashboard' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'lo
 
 const VIEW_KEYS: View[] = ['dashboard', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks', 'settings']
 
+const isMac = window.redlog.platform === 'darwin'
+const modKey = isMac ? '⌘' : 'Ctrl+'
+
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('dashboard')
@@ -70,16 +73,19 @@ export default function App(): JSX.Element {
         className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className="flex items-center gap-2 pl-16">
+        <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
           <span className="text-red-500 font-bold text-[13px] tracking-[0.2em]">{t('app.title')}</span>
           <span className="text-zinc-800 text-[10px] font-mono">v0.1</span>
         </div>
         <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
-        <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div
+          className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
-            title="Ctrl+Shift+M"
+            title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
           >
             {t('app.mark')}
           </button>
@@ -196,15 +202,15 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {[
-              ['⌘1', t('sidebar.dashboard')],
-              ['⌘2', t('sidebar.timeline')],
-              ['⌘3', t('sidebar.screens')],
-              ['⌘4', t('sidebar.targets')],
-              ['⌘5', t('sidebar.scope')],
-              ['⌘6', t('sidebar.loot')],
-              ['⌘7', t('sidebar.marks')],
-              ['⌘8', t('sidebar.settings')],
-              ['⌘⇧M', t('dashboard.addMarker')]
+              [`${modKey}1`, t('sidebar.dashboard')],
+              [`${modKey}2`, t('sidebar.timeline')],
+              [`${modKey}3`, t('sidebar.screens')],
+              [`${modKey}4`, t('sidebar.targets')],
+              [`${modKey}5`, t('sidebar.scope')],
+              [`${modKey}6`, t('sidebar.loot')],
+              [`${modKey}7`, t('sidebar.marks')],
+              [`${modKey}8`, t('sidebar.settings')],
+              [isMac ? '⌘⇧M' : 'Ctrl+⇧M', t('dashboard.addMarker')]
             ].map(([key, label]) => (
               <div key={key} className="flex items-center gap-2.5">
                 <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{key}</kbd>
