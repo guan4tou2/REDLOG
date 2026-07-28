@@ -22,6 +22,9 @@ const readline = require('readline')
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
 
+let VERSION = 'dev'
+try { VERSION = require('../package.json').version } catch { /* dev mode outside repo */ }
+
 function readToken() {
   try { return fs.readFileSync(TOKEN_PATH, 'utf-8').trim() } catch { return null }
 }
@@ -315,7 +318,7 @@ function handleMessage(msg) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'redlog', version: '0.1.0' }
+        serverInfo: { name: 'redlog', version: VERSION }
       }
     })
   } else if (msg.method === 'notifications/initialized') {

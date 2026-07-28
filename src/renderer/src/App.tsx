@@ -82,7 +82,7 @@ export default function App(): JSX.Element {
       >
         <div className="flex items-center gap-2 pl-16">
           <span className="text-red-500 font-bold text-[13px] tracking-[0.2em]">{t('app.title')}</span>
-          <span className="text-zinc-800 text-[10px] font-mono">v0.1</span>
+          <span className="text-zinc-800 text-[10px] font-mono">v{__APP_VERSION__}</span>
         </div>
         <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
         <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

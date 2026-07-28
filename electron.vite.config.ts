@@ -1,10 +1,14 @@
 import { resolve } from 'path'
+import { readFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 
+const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')).version
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    define: { __APP_VERSION__: JSON.stringify(pkgVersion) }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
@@ -19,6 +23,7 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react()],
+    define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
     build: {
       rollupOptions: {
         input: {

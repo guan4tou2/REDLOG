@@ -7,6 +7,9 @@ const path = require('path')
 const http = require('http')
 const os = require('os')
 
+let VERSION = 'dev'
+try { VERSION = require('../package.json').version } catch { /* dev mode */ }
+
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
 
@@ -99,7 +102,7 @@ async function main() {
 
   if (!command || command === 'help' || command === '-h' || command === '--help') {
     console.log(`
-RedLog CLI v0.1.0
+RedLog CLI v${VERSION}
 
 Usage:
   redlog-cli log <agent_type> [--target <id>] [--data '{"key":"val"}']

@@ -130,7 +130,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   if (route === '/api/health' && req.method === 'GET') {
-    json(res, 200, { ok: true, version: '0.1.0' })
+    json(res, 200, { ok: true, version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev' })
     return
   }
 
