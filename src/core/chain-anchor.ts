@@ -237,6 +237,16 @@ export function getAnchorById(id: string): ChainAnchor | null {
   return row ? rowToAnchor(row) : null
 }
 
+export interface ClockAnomaly {
+  eventId: string
+  prevEventId: string
+  hostname: string
+  sessionId: string
+  wallDeltaMs: number
+  monoDeltaMs: number
+  diffMs: number
+}
+
 export interface FullVerifyResult {
   ok: boolean
   walked: number
@@ -245,7 +255,10 @@ export interface FullVerifyResult {
   currentHead: string | null
   anchor: ChainAnchor | null
   anchorMatchesWalkedHead: boolean
+  clockAnomalies: ClockAnomaly[]
 }
+
+const CLOCK_TOLERANCE_MS = 5000
 
 interface WalkRow {
   id: string
@@ -280,6 +293,8 @@ export function verifyChainFull(): FullVerifyResult {
   let walked = 0
   let expectedPrev: string | null = null
   let lastHash: string | null = null
+  const clockAnomalies: ClockAnomaly[] = []
+  const prevByHostSession = new Map<string, WalkRow>()
 
   for (const row of rowIter) {
     walked++
@@ -291,7 +306,8 @@ export function verifyChainFull(): FullVerifyResult {
         brokenReason: `prev_hash mismatch (expected ${expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
         currentHead: currentHead?.hash ?? null,
         anchor,
-        anchorMatchesWalkedHead: false
+        anchorMatchesWalkedHead: false,
+        clockAnomalies
       }
     }
 
@@ -308,7 +324,9 @@ export function verifyChainFull(): FullVerifyResult {
       data: JSON.parse(row.data),
       hash: undefined,
       prevHash: row.prev_hash,
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      monotonicNs: row.monotonic_ns ?? null,
+      ntpOffsetMs: row.ntp_offset_ms ?? null
     }
     const expectedHash = crypto.createHash('sha256').update(JSON.stringify(reconstructed)).digest('hex')
     if (expectedHash !== row.hash) {
@@ -319,9 +337,31 @@ export function verifyChainFull(): FullVerifyResult {
         brokenReason: `hash mismatch (recomputed ${expectedHash.slice(0, 16)}..., stored ${(row.hash ?? '').slice(0, 16)}...)`,
         currentHead: currentHead?.hash ?? null,
         anchor,
-        anchorMatchesWalkedHead: false
+        anchorMatchesWalkedHead: false,
+        clockAnomalies
       }
     }
+
+    const key = `${row.hostname}|${row.session_id}`
+    const prev = prevByHostSession.get(key)
+    if (prev && prev.monotonic_ns && row.monotonic_ns) {
+      const wallDelta = row.timestamp - prev.timestamp
+      const monoDelta = Number((BigInt(row.monotonic_ns) - BigInt(prev.monotonic_ns)) / 1000000n)
+      const diff = Math.abs(wallDelta - monoDelta)
+      if (diff > CLOCK_TOLERANCE_MS) {
+        clockAnomalies.push({
+          eventId: row.id,
+          prevEventId: prev.id,
+          hostname: row.hostname,
+          sessionId: row.session_id,
+          wallDeltaMs: wallDelta,
+          monoDeltaMs: monoDelta,
+          diffMs: diff
+        })
+      }
+    }
+    prevByHostSession.set(key, row)
+
     expectedPrev = row.hash
     lastHash = row.hash
   }
@@ -339,6 +379,7 @@ export function verifyChainFull(): FullVerifyResult {
     brokenReason: null,
     currentHead: currentHead?.hash ?? null,
     anchor,
-    anchorMatchesWalkedHead
+    anchorMatchesWalkedHead,
+    clockAnomalies
   }
 }

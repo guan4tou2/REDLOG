@@ -400,6 +400,16 @@ Examples:
               : `BROKEN at event ${d.brokenAtEventId}: ${d.brokenReason}`)
             if (d.currentHead) console.log(`  current head: ${d.currentHead}`)
             if (d.anchor) console.log(`  anchor match: ${d.anchorMatchesWalkedHead ? 'yes' : 'no'} (anchor covers ${d.anchor.eventCount})`)
+            const anomalies = d.clockAnomalies || []
+            if (anomalies.length > 0) {
+              console.log(`  clock anomalies: ${anomalies.length}`)
+              for (const a of anomalies.slice(0, 5)) {
+                console.log(`    ${a.eventId} wall_delta=${a.wallDeltaMs}ms mono_delta=${a.monoDeltaMs}ms diff=${a.diffMs}ms host=${a.hostname}`)
+              }
+              if (anomalies.length > 5) console.log(`    ... and ${anomalies.length - 5} more`)
+            } else {
+              console.log(`  clock anomalies: 0`)
+            }
             if (!d.ok) process.exit(2)
           } else {
             console.log(res.data.ok ? 'OK — latest anchor is a prefix of current chain' : 'MISMATCH — investigate')

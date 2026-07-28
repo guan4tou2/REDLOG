@@ -81,4 +81,16 @@ describeDB('chain-anchor', () => {
     expect(v.currentHead).toMatch(/^[0-9a-f]{64}$/)
     expect(v.ok).toBe(true)
   })
+
+  it('verifyChainFull passes on a clean chain and reports zero anomalies', () => {
+    insertEvent('shell', { command: 'a' })
+    insertEvent('shell', { command: 'b' })
+    insertEvent('shell', { command: 'c' })
+    const r = anchor.verifyChainFull()
+    expect(r.ok).toBe(true)
+    expect(r.walked).toBe(3)
+    expect(r.brokenAtEventId).toBeNull()
+    expect(r.clockAnomalies).toEqual([])
+  })
+
 })

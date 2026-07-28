@@ -130,12 +130,21 @@ Each event carries three time signals:
 - `monotonic_ns` — process-relative monotonic clock (immune to NTP jumps / manual changes)
 - `ntp_offset_ms` — cached offset vs `pool.ntp.org` at insertion time
 
-A future full-verify variant will flag events whose `monotonic_ns` delta and wall-clock delta disagree beyond tolerance. For now the fields are recorded so any offline analysis can spot clock jumps.
+`verify --full` compares wall-clock and monotonic deltas between adjacent events on the same hostname + session. Any pair whose deltas disagree by more than **5 seconds** is reported as a `clockAnomaly` — hash chain still passes, but an auditor sees the clock jumped (NTP correction, manual change, VM pause/resume, or worse). Cross-machine or cross-session events are skipped since the comparison only makes sense within one clock.
+
+```bash
+redlog-cli chain verify --full
+# OK — walked 1247 events, hash chain intact
+#   current head: 9f2c...
+#   anchor match: yes (anchor covers 1200)
+#   clock anomalies: 2
+#     evt-abc… wall_delta=63400ms mono_delta=412ms diff=62988ms host=op-laptop-01.local
+#     evt-def… wall_delta=-1200ms mono_delta=850ms  diff=2050ms  host=op-laptop-01.local
+```
 
 ## Future work
 
 - Automatic retry with exponential backoff for `failed` anchors instead of only at the next hourly tick.
-- Cross-check wall vs monotonic during `verify --full`.
 
 ## Related
 

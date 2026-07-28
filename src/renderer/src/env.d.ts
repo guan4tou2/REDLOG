@@ -143,6 +143,19 @@ interface RedLogAPI {
     revoke: (id: string) => Promise<boolean>
     delete: (id: string) => Promise<boolean>
   }
+  deconfliction: {
+    get: () => Promise<DeconflictionConfigInfo>
+    test: (cfg: DeconflictionConfigInfo) => Promise<{ ok: boolean; status: number; error?: string }>
+  }
+}
+
+interface DeconflictionConfigInfo {
+  enabled: boolean
+  url: string
+  secret: string
+  events: string[]
+  subtypes: string[]
+  includeData: boolean
 }
 
 interface OperatorInfo {

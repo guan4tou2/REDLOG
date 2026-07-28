@@ -87,6 +87,10 @@ contextBridge.exposeInMainWorld('redlog', {
     revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
     delete: (id: string) => ipcRenderer.invoke('operators:delete', id)
   },
+  deconfliction: {
+    get: () => ipcRenderer.invoke('deconfliction:get'),
+    test: (cfg: unknown) => ipcRenderer.invoke('deconfliction:test', cfg)
+  },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),
     toggle: (): Promise<boolean> => ipcRenderer.invoke('recording:toggle'),

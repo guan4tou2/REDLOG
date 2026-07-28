@@ -248,6 +248,18 @@
   "settings.integrityVerifiedBad": "不符：最新錨點涵蓋 {{n}} 筆，目前鏈只有 {{m}} 筆——請調查。",
   "settings.integrityVerifiedNone": "尚無錨點可驗證。",
 
+  "settings.deconfliction": "Deconfliction Webhook",
+  "settings.deconflictionHint": "把符合條件的事件（簽章過的摘要）即時推給藍隊，讓他們幾秒內判斷「這是紅隊還是真攻擊」。只在 RoE 明說藍隊在圈內時打開——covert external red team 絕對不要開。",
+  "settings.deconflictionEnable": "啟用 deconfliction webhook",
+  "settings.deconflictionUrl": "Webhook URL（建議 HTTPS）",
+  "settings.deconflictionSecret": "共用 secret（HMAC-SHA256 金鑰）",
+  "settings.deconflictionShow": "顯示",
+  "settings.deconflictionHide": "隱藏",
+  "settings.deconflictionEvents": "轉發這些 agent_type 的事件",
+  "settings.deconflictionSubtypes": "也轉發這些 subtype 的事件",
+  "settings.deconflictionIncludeData": "包含完整 event.data（可能外洩 PII / 秘密）",
+  "settings.deconflictionTest": "發送測試 payload",
+
   "error.crashed": "{{label}} 發生錯誤",
   "error.retry": "重試",
 

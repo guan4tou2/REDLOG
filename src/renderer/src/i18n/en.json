@@ -248,6 +248,18 @@
   "settings.integrityVerifiedBad": "MISMATCH: latest anchor covered {{n}} events, current chain has {{m}} — investigate.",
   "settings.integrityVerifiedNone": "No anchors to verify yet.",
 
+  "settings.deconfliction": "Deconfliction Webhook",
+  "settings.deconflictionHint": "Push signed digests of matching events to the blue team so they can confirm 'is this red team?' in seconds. Only enable when the engagement's RoE says the blue team is in the loop — never during covert external red team.",
+  "settings.deconflictionEnable": "Enable deconfliction webhook",
+  "settings.deconflictionUrl": "Webhook URL (HTTPS)",
+  "settings.deconflictionSecret": "Shared secret (HMAC-SHA256 key)",
+  "settings.deconflictionShow": "Show",
+  "settings.deconflictionHide": "Hide",
+  "settings.deconflictionEvents": "Forward these agent_type values",
+  "settings.deconflictionSubtypes": "Also forward these subtype values",
+  "settings.deconflictionIncludeData": "Include full event.data (may leak PII / secrets)",
+  "settings.deconflictionTest": "Send test payload",
+
   "error.crashed": "{{label}} crashed",
   "error.retry": "Retry",
 
