@@ -14,18 +14,36 @@ export interface RedLogEvent {
   targetId: string | null
   data: Record<string, unknown>
   hash?: string
+  prevHash?: string | null
   createdAt: number
 }
 
 let sessionId = crypto.randomUUID()
 
+const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
+const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
+
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,
   opts?: { engagementId?: string; operatorId?: string; targetId?: string }
-): RedLogEvent {
+): RedLogEvent | null {
   const db = getDB()
   const now = Date.now()
+
+  if (agentType === 'shell' && data.command) {
+    const twoSecondsAgo = now - 2000
+    const dup = db.prepare(
+      `SELECT id FROM events WHERE agent_type = 'shell' AND timestamp >= ? AND data LIKE ? ORDER BY timestamp DESC LIMIT 1`
+    ).get(twoSecondsAgo, `%"command":"${String(data.command).replace(/"/g, '\\"')}"%`) as { id: string } | undefined
+    if (dup) return null
+  }
+
+  const prevRow = db.prepare(
+    'SELECT hash FROM events ORDER BY created_at DESC, rowid DESC LIMIT 1'
+  ).get() as { hash: string } | undefined
+  const prevHash = prevRow?.hash ?? null
+
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: now,
@@ -37,22 +55,23 @@ export function insertEvent(
     sourceIP: null,
     targetId: opts?.targetId ?? null,
     data,
+    prevHash,
     createdAt: now
   }
 
   const hash = crypto
     .createHash('sha256')
-    .update(JSON.stringify({ ...event, hash: undefined }))
+    .update(JSON.stringify({ ...event, hash: undefined, prevHash }))
     .digest('hex')
   event.hash = hash
 
   db.prepare(`
-    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     event.id, event.timestamp, event.engagementId, event.sessionId,
     event.operatorId, event.agentType, event.hostname, event.sourceIP,
-    event.targetId, JSON.stringify(event.data), event.hash, event.createdAt
+    event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt
   )
 
   return event
@@ -117,8 +136,12 @@ export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] 
   if (scopeTargets.length === 0) return events
 
   return events.filter((e) => {
-    if (!e.targetId) return true
-    return scopeTargets.some((t) => matchTarget(e.targetId!, t))
+    if (e.targetId) {
+      return scopeTargets.some((t) => matchTarget(e.targetId!, t))
+    }
+    if (ALLOWED_NO_TARGET_TYPES.has(e.agentType)) return true
+    if (EXCLUDED_NO_TARGET_TYPES.has(e.agentType)) return false
+    return false
   })
 }
 
@@ -148,6 +171,7 @@ function rowToEvent(row: Record<string, unknown>): RedLogEvent {
     targetId: row.target_id as string | null,
     data: JSON.parse(row.data as string),
     hash: row.hash as string,
+    prevHash: (row.prev_hash as string | null) ?? null,
     createdAt: row.created_at as number
   }
 }

@@ -2,9 +2,9 @@ import { desktopCapturer, screen } from 'electron'
 import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
-import { insertEvent } from '../db/events'
-import { eventBus } from './event-bus'
-import { getProjectDir } from '../db/index'
+import { insertEvent } from '../../core/db/events'
+import { eventBus } from '../../core/event-bus'
+import { getProjectDir } from '../../core/db/index'
 
 export class ScreenshotAgent {
   private lastHash = ''
@@ -56,7 +56,7 @@ export class ScreenshotAgent {
         height,
         hash: jpegHash
       }, { engagementId: this.engagementId, operatorId: this.operatorId })
-      eventBus.publish(evt)
+      if (evt) eventBus.publish(evt)
 
       return filepath
     } catch {

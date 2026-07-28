@@ -1,4 +1,4 @@
-import { getDB } from '../db/index'
+import { getDB } from './db/index'
 
 export function getChainLength(): number {
   const db = getDB()

@@ -40,9 +40,9 @@ export default function StatusBar(): JSX.Element {
     toast(newState ? t('toast.recordingResumed') : t('toast.recordingPaused'), newState ? 'success' : 'warning')
   }
 
-  const vpn = ipStatus?.vpnStatus ?? 'unknown'
-  const vpnDot = vpn === 'connected' ? 'bg-emerald-500' : vpn === 'disconnected' ? 'bg-red-500' : 'bg-amber-500'
-  const vpnLabel = vpn === 'connected' ? t('statusBar.vpn') : vpn === 'disconnected' ? t('statusBar.noVpn') : t('statusBar.ipUnknown')
+  const safety = ipStatus?.ipSafety ?? 'unknown'
+  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-red-500' : 'bg-amber-500'
+  const safetyLabel = safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
 
   const hours = Math.floor(uptime / 3600)
   const mins = Math.floor((uptime % 3600) / 60)
@@ -68,9 +68,9 @@ export default function StatusBar(): JSX.Element {
       <Sep />
 
       <div className="flex items-center gap-1.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${vpnDot}`} />
-        <span className={vpn === 'connected' ? 'text-emerald-400/80' : vpn === 'disconnected' ? 'text-red-400/80' : 'text-amber-400/80'}>
-          {vpnLabel}
+        <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
+        <span className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
+          {safetyLabel}
         </span>
         {ipStatus?.externalIP && (
           <span className="text-zinc-600 tabular-nums">{ipStatus.externalIP}</span>

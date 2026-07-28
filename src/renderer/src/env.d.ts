@@ -11,7 +11,7 @@ interface ProjectMeta {
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  vpnStatus: 'connected' | 'disconnected' | 'unknown'
+  ipSafety: 'safe' | 'exposed' | 'unknown'
   lastCheck: number
   error: string | null
 }
@@ -137,7 +137,7 @@ interface RedLogAPI {
 interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
-  network?: { vpnIPs?: string[]; dailyIPs?: string[]; checkInterval?: number }
+  network?: { safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number }
   scope?: { enforcement?: string; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null }
   screenshot?: { quality?: number }
 }

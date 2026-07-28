@@ -4,7 +4,7 @@ import os from 'os'
 export interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  vpnStatus: 'connected' | 'disconnected' | 'unknown'
+  ipSafety: 'safe' | 'exposed' | 'unknown'
   lastCheck: number
   error: string | null
 }
@@ -57,13 +57,13 @@ async function getExternalIP(): Promise<string> {
 
 export class IPMonitor extends EventEmitter {
   private interval: ReturnType<typeof setInterval> | null = null
-  private vpnIPs: string[] = []
-  private dailyIPs: string[] = []
+  private safeIPs: string[] = []
+  private exposedIPs: string[] = []
   private checkIntervalMs = 10_000
   private _status: IPStatus = {
     externalIP: null,
     internalIP: null,
-    vpnStatus: 'unknown',
+    ipSafety: 'unknown',
     lastCheck: 0,
     error: null
   }
@@ -72,9 +72,9 @@ export class IPMonitor extends EventEmitter {
     return { ...this._status }
   }
 
-  configure(opts: { vpnIPs?: string[]; dailyIPs?: string[]; checkInterval?: number }): void {
-    if (opts.vpnIPs) this.vpnIPs = opts.vpnIPs
-    if (opts.dailyIPs) this.dailyIPs = opts.dailyIPs
+  configure(opts: { safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number }): void {
+    if (opts.safeIPs) this.safeIPs = opts.safeIPs
+    if (opts.exposedIPs) this.exposedIPs = opts.exposedIPs
     if (opts.checkInterval) this.checkIntervalMs = opts.checkInterval * 1000
   }
 
@@ -97,19 +97,19 @@ export class IPMonitor extends EventEmitter {
         Promise.resolve(getInternalIP())
       ])
 
-      let vpnStatus: IPStatus['vpnStatus'] = 'unknown'
-      if (this.vpnIPs.length > 0 && this.vpnIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
-        vpnStatus = 'connected'
-      } else if (this.dailyIPs.length > 0 && this.dailyIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
-        vpnStatus = 'disconnected'
-      } else if (this.vpnIPs.length > 0 || this.dailyIPs.length > 0) {
-        vpnStatus = 'unknown'
+      let ipSafety: IPStatus['ipSafety'] = 'unknown'
+      if (this.safeIPs.length > 0 && this.safeIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
+        ipSafety = 'safe'
+      } else if (this.exposedIPs.length > 0 && this.exposedIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
+        ipSafety = 'exposed'
+      } else if (this.safeIPs.length > 0 || this.exposedIPs.length > 0) {
+        ipSafety = 'unknown'
       }
 
       this._status = {
         externalIP,
         internalIP,
-        vpnStatus,
+        ipSafety,
         lastCheck: Date.now(),
         error: null
       }

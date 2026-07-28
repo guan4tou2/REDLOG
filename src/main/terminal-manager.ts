@@ -1,8 +1,8 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
 import os from 'os'
-import { insertEvent } from './db/events'
-import { eventBus } from './services/event-bus'
+import { insertEvent } from '../core/db/events'
+import { eventBus } from '../core/event-bus'
 
 interface TerminalSession {
   id: string
@@ -65,11 +65,12 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   term.onExit(({ exitCode }) => {
     const event = insertEvent('shell', {
       subtype: 'session_end',
+      source: 'builtin-terminal',
       terminalId: id,
       exitCode,
       pid: term.pid
     }, { engagementId, operatorId })
-    eventBus.publish(event)
+    if (event) eventBus.publish(event)
     sessions.delete(id)
     mainWindow?.webContents.send(`terminal:exit:${id}`, exitCode)
   })
@@ -78,11 +79,12 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
 
   const event = insertEvent('shell', {
     subtype: 'session_start',
+    source: 'builtin-terminal',
     terminalId: id,
     shell,
     pid: term.pid
   }, { engagementId, operatorId })
-  eventBus.publish(event)
+  if (event) eventBus.publish(event)
 
   return { pid: term.pid }
 }

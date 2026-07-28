@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import type { RedLogEvent } from '../db/events'
+import type { RedLogEvent } from './db/events'
 
 class RedLogEventBus extends EventEmitter {
   private _paused = false

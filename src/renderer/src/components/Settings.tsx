@@ -5,7 +5,7 @@ import { toast } from './Toast'
 interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
-  network: { vpnIPs: string[]; dailyIPs: string[]; checkInterval: number }
+  network: { safeIPs: string[]; exposedIPs: string[]; checkInterval: number }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
 }
@@ -14,8 +14,10 @@ interface HookInfo {
   id: string
   name: string
   description: string
+  agentType: string
   installed: boolean
   available: boolean
+  installMethod: 'claude-settings' | 'shell-source' | 'manual'
 }
 
 const LOCALE_LABELS: Record<Locale, string> = {
@@ -41,7 +43,7 @@ export default function Settings(): JSX.Element {
 
   const tabs = [
     { id: 'general' as const, label: t('settings.general') },
-    { id: 'network' as const, label: t('settings.networkVpn') },
+    { id: 'network' as const, label: t('settings.networkIp') },
     { id: 'scope' as const, label: t('settings.scope') },
     { id: 'hooks' as const, label: t('settings.hooks') },
     { id: 'data' as const, label: t('settings.data') }
@@ -97,18 +99,18 @@ export default function Settings(): JSX.Element {
 
         {tab === 'network' && (
           <>
-            <FieldGroup title={t('settings.vpnDetection')}>
+            <FieldGroup title={t('settings.ipSafety')}>
               <ListField
-                label={t('settings.vpnIps')}
-                items={config.network.vpnIPs}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, vpnIPs: items } })}
-                placeholder={t('settings.vpnIpPlaceholder')}
+                label={t('settings.safeIps')}
+                items={config.network.safeIPs}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, safeIPs: items } })}
+                placeholder={t('settings.safeIpPlaceholder')}
               />
               <ListField
-                label={t('settings.dailyIps')}
-                items={config.network.dailyIPs}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, dailyIPs: items } })}
-                placeholder={t('settings.dailyIpPlaceholder')}
+                label={t('settings.exposedIps')}
+                items={config.network.exposedIPs}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, exposedIPs: items } })}
+                placeholder={t('settings.exposedIpPlaceholder')}
               />
             </FieldGroup>
             <FieldGroup title={t('settings.polling')}>
@@ -373,7 +375,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                 </div>
                 <p className="text-[10px] text-zinc-500 mt-0.5">{hook.description}</p>
               </div>
-              {hook.available && (hook.id === 'claude-code' || hook.id === 'shell-zsh' || hook.id === 'shell-bash') && (
+              {hook.available && hook.installMethod !== 'manual' && (
                 <button
                   disabled={hookLoading === hook.id}
                   onClick={() => handleToggle(hook)}
@@ -386,7 +388,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                   {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
                 </button>
               )}
-              {hook.available && hook.id !== 'claude-code' && hook.id !== 'shell-zsh' && hook.id !== 'shell-bash' && (
+              {hook.available && hook.installMethod === 'manual' && (
                 <span className="text-[9px] text-zinc-600 ml-3">{t('settings.hookManual')}</span>
               )}
             </div>

@@ -13,8 +13,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
-  const [vpnIPs, setVpnIPs] = useState<string[]>([])
-  const [dailyIPs, setDailyIPs] = useState<string[]>([])
+  const [safeIPs, setSafeIPs] = useState<string[]>([])
+  const [exposedIPs, setExposedIPs] = useState<string[]>([])
   const [enforcement, setEnforcement] = useState('warn')
   const { t } = useI18n()
 
@@ -26,10 +26,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const name = newName.trim()
     if (!name) return
     setCreating(true)
-    const initialConfig = (showAdvanced && (scopeTargets.length > 0 || vpnIPs.length > 0 || dailyIPs.length > 0))
+    const initialConfig = (showAdvanced && (scopeTargets.length > 0 || safeIPs.length > 0 || exposedIPs.length > 0))
       ? {
         scope: { targets: scopeTargets, excludeTargets: [], enforcement, scopeFile: null },
-        network: { vpnIPs, dailyIPs, checkInterval: 10 }
+        network: { safeIPs, exposedIPs, checkInterval: 10 }
       }
       : undefined
     const project = await window.redlog.project.create(name, initialConfig)
@@ -52,8 +52,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
     if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
-    if (profile.network?.vpnIPs) setVpnIPs(profile.network.vpnIPs)
-    if (profile.network?.dailyIPs) setDailyIPs(profile.network.dailyIPs)
+    if (profile.network?.safeIPs) setSafeIPs(profile.network.safeIPs)
+    if (profile.network?.exposedIPs) setExposedIPs(profile.network.exposedIPs)
     if (profile.scope?.enforcement) setEnforcement(profile.scope.enforcement)
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
@@ -123,20 +123,20 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                 placeholder={t('project.scopePlaceholder')}
               />
 
-              {/* VPN IPs */}
+              {/* Safe IPs */}
               <MiniListField
-                label={t('project.vpnIps')}
-                items={vpnIPs}
-                onChange={setVpnIPs}
-                placeholder={t('settings.vpnIpPlaceholder')}
+                label={t('project.safeIps')}
+                items={safeIPs}
+                onChange={setSafeIPs}
+                placeholder={t('settings.safeIpPlaceholder')}
               />
 
-              {/* Daily IPs */}
+              {/* Exposed IPs */}
               <MiniListField
-                label={t('project.dailyIps')}
-                items={dailyIPs}
-                onChange={setDailyIPs}
-                placeholder={t('settings.dailyIpPlaceholder')}
+                label={t('project.exposedIps')}
+                items={exposedIPs}
+                onChange={setExposedIPs}
+                placeholder={t('settings.exposedIpPlaceholder')}
               />
 
               {/* Enforcement mode */}

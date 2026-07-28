@@ -1,4 +1,4 @@
-import { insertEvent } from '../db/events'
+import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 
 interface LootMatch {
@@ -62,7 +62,7 @@ export class LootDetector {
           operatorId: this.operatorId,
           targetId
         })
-        eventBus.publish(evt)
+        if (evt) eventBus.publish(evt)
       } catch { /* DB may not be ready */ }
     }
 

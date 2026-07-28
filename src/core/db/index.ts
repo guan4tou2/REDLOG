@@ -30,6 +30,7 @@ export function initDB(projectDir: string): Database.Database {
       target_id TEXT,
       data TEXT NOT NULL DEFAULT '{}',
       hash TEXT,
+      prev_hash TEXT,
       created_at INTEGER NOT NULL
     );
 

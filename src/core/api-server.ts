@@ -3,8 +3,8 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { insertEvent, queryEvents, getEventCount, searchEvents } from '../db/events'
-import { createQuickMark, listQuickMarks } from '../db/findings'
+import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
+import { createQuickMark, listQuickMarks } from './db/findings'
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
 
@@ -123,6 +123,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }
 
       const event = insertEvent(agentType, data, { engagementId, operatorId, targetId })
+      if (!event) { json(res, 409, { error: 'Duplicate event (dedup window)' }); return }
       eventBus.publish(event)
       json(res, 201, event)
       return
@@ -163,7 +164,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         severity: body.severity || 'info',
         category: body.category || 'external'
       }, { engagementId, operatorId, targetId: body.target_id || body.targetId })
-      eventBus.publish(event)
+      if (event) eventBus.publish(event)
       json(res, 201, event)
       return
     }

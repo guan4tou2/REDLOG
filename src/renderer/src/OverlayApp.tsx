@@ -44,25 +44,25 @@ export default function OverlayApp(): JSX.Element {
     window.redlog.overlay?.setExpanded(next)
   }
 
-  const vpn = status?.vpnStatus ?? 'unknown'
+  const safety = status?.ipSafety ?? 'unknown'
 
-  const VPN_STYLES = {
-    connected: {
+  const SAFETY_STYLES = {
+    safe: {
       bg: 'rgba(22,163,74,0.12)',
       border: 'rgba(34,197,94,0.35)',
       dot: '#22c55e',
-      label: t('overlay.vpn'),
+      label: t('overlay.safeIp'),
       labelColor: '#86efac',
-      statusText: t('overlay.vpnConnected'),
+      statusText: t('overlay.safeIpStatus'),
       statusColor: '#22c55e'
     },
-    disconnected: {
+    exposed: {
       bg: 'rgba(220,38,38,0.15)',
       border: 'rgba(239,68,68,0.5)',
       dot: '#ef4444',
-      label: t('overlay.noVpn'),
+      label: t('overlay.exposedIp'),
       labelColor: '#fca5a5',
-      statusText: t('overlay.dailyIp'),
+      statusText: t('overlay.exposedIpStatus'),
       statusColor: '#ef4444'
     },
     unknown: {
@@ -76,7 +76,7 @@ export default function OverlayApp(): JSX.Element {
     }
   }
 
-  const s = VPN_STYLES[vpn]
+  const s = SAFETY_STYLES[safety]
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
   return (
@@ -171,7 +171,7 @@ export default function OverlayApp(): JSX.Element {
             style={{
               width: 8, height: 8, borderRadius: '50%',
               background: s.dot, boxShadow: `0 0 6px ${s.dot}`,
-              animation: vpn === 'disconnected' ? 'pulse 1.5s infinite' : undefined,
+              animation: safety === 'exposed' ? 'pulse 1.5s infinite' : undefined,
               flexShrink: 0
             }}
           />

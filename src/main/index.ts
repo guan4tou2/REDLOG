@@ -4,31 +4,31 @@ import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray, setTrayRecording } from './tray'
-import { IPMonitor, IPStatus } from './services/ip-monitor'
+import { IPMonitor, IPStatus } from '../core/ip-monitor'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from './services/config'
-import { initDB, closeDB, getProjectDir } from './db/index'
-import { insertEvent, queryEvents, getEventCount, searchEvents, queryScopeFilteredEvents } from './db/events'
+import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
+import { initDB, closeDB, getProjectDir } from '../core/db/index'
+import { insertEvent, queryEvents, getEventCount, searchEvents, queryScopeFilteredEvents } from '../core/db/events'
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
-} from './db/findings'
+} from '../core/db/findings'
 import { getActiveBrowserTab, setCdpPort } from './services/cdp-connector'
 import fs from 'fs'
-import { eventBus } from './services/event-bus'
+import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
-import { ScopeMonitor } from './services/scope-monitor'
-import { LootDetector } from './services/loot-detector'
-import { getChainLength } from './services/evidence-chain'
+import { ScopeMonitor } from '../core/scope-monitor'
+import { LootDetector } from '../core/loot-detector'
+import { getChainLength } from '../core/evidence-chain'
 import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
-} from './services/project-manager'
-import { startApiServer, stopApiServer, configureApi, getApiToken } from './services/api-server'
+} from '../core/project-manager'
+import { startApiServer, stopApiServer, configureApi, getApiToken } from '../core/api-server'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
-import { detectHooks, installHook, uninstallHook } from './services/hooks-manager'
+import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -116,8 +116,8 @@ function startProject(project: ProjectMeta): void {
   initDB(projectDir)
 
   ipMonitor.configure({
-    vpnIPs: config.network.vpnIPs,
-    dailyIPs: config.network.dailyIPs,
+    safeIPs: config.network.safeIPs,
+    exposedIPs: config.network.exposedIPs,
     checkInterval: config.network.checkInterval
   })
   screenshotAgent.configure({ engagementId, operatorId, quality: config.screenshot.quality })
@@ -238,8 +238,8 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     saveConfig(projectDir, newConfig)
     ipMonitor.configure({
-      vpnIPs: newConfig.network.vpnIPs,
-      dailyIPs: newConfig.network.dailyIPs,
+      safeIPs: newConfig.network.safeIPs,
+      exposedIPs: newConfig.network.exposedIPs,
       checkInterval: newConfig.network.checkInterval
     })
     let targets = newConfig.scope.targets
@@ -311,7 +311,7 @@ app.whenReady().then(() => {
       severity: data.severity ?? 'info',
       category: data.category ?? 'custom'
     }, { engagementId: config.engagement.id, operatorId: config.operator.id })
-    eventBus.publish(event)
+    if (event) eventBus.publish(event)
     return event
   })
 

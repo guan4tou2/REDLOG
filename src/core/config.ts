@@ -12,8 +12,8 @@ export interface RedLogConfig {
     name: string
   }
   network: {
-    vpnIPs: string[]
-    dailyIPs: string[]
+    safeIPs: string[]
+    exposedIPs: string[]
     checkInterval: number
   }
   scope: {
@@ -37,8 +37,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     name: 'Operator'
   },
   network: {
-    vpnIPs: [],
-    dailyIPs: [],
+    safeIPs: [],
+    exposedIPs: [],
     checkInterval: 10
   },
   scope: {
@@ -64,11 +64,26 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result
 }
 
+function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown> {
+  const network = parsed.network as Record<string, unknown> | undefined
+  if (network) {
+    if (network.vpnIPs && !network.safeIPs) {
+      network.safeIPs = network.vpnIPs
+      delete network.vpnIPs
+    }
+    if (network.dailyIPs && !network.exposedIPs) {
+      network.exposedIPs = network.dailyIPs
+      delete network.dailyIPs
+    }
+  }
+  return parsed
+}
+
 export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = yaml.load(raw) as Record<string, unknown>
+    const parsed = migrateConfig(yaml.load(raw) as Record<string, unknown>)
     return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return { ...DEFAULT_CONFIG }

@@ -1,4 +1,4 @@
-import { insertEvent } from '../db/events'
+import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 
 interface ScopeConfig {
@@ -107,7 +107,7 @@ export class ScopeMonitor {
         reason,
         enforcement: this.config.enforcement
       }, { engagementId: this.engagementId, operatorId: this.operatorId, targetId: target })
-      eventBus.publish(evt)
+      if (evt) eventBus.publish(evt)
     } catch { /* DB may not be ready */ }
   }
 
