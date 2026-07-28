@@ -54,7 +54,8 @@ contextBridge.exposeInMainWorld('redlog', {
     length: () => ipcRenderer.invoke('chain:length'),
     anchors: () => ipcRenderer.invoke('chain:anchors'),
     anchorNow: () => ipcRenderer.invoke('chain:anchorNow'),
-    verify: () => ipcRenderer.invoke('chain:verify')
+    verify: (opts?: { full?: boolean }) => ipcRenderer.invoke('chain:verify', opts),
+    upgrade: (id?: string) => ipcRenderer.invoke('chain:upgrade', id)
   },
   loot: {
     getCount: () => ipcRenderer.invoke('loot:getCount')

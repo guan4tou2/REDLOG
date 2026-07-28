@@ -10,14 +10,39 @@ mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
 win:
   icon: resources/icon-256.png
   target:
-    - nsis
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
 linux:
   icon: resources/icon-256.png
   target:
-    - AppImage
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
   category: Development
+publish:
+  provider: github
+  releaseType: release

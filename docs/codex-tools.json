@@ -142,6 +142,20 @@
         "description": "Fast integrity check: confirm the latest anchor still describes a prefix of the current event chain.",
         "parameters": { "type": "object", "properties": {}, "required": [] }
       }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_chain_upgrade",
+        "description": "Fetch upgraded OpenTimestamps proofs from calendars for pending anchors. Wait at least a few hours after anchoring; the calendar has to fold your digest into a Bitcoin-anchored Merkle tree first. Omit anchor_id to upgrade all pending anchors.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "anchor_id": { "type": "string", "description": "Specific anchor id. Omit to upgrade all pending." }
+          },
+          "required": []
+        }
+      }
     }
   ]
 }

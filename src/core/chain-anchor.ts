@@ -20,7 +20,12 @@ export interface CalendarReceipt {
   receiptB64?: string
   error?: string
   submittedAt: number
+  upgraded?: boolean
+  upgradedAt?: number | null
+  upgradedBytes?: number
 }
+
+const UPGRADED_MIN_BYTES = 200
 
 const DEFAULT_CALENDARS = [
   'https://a.pool.opentimestamps.org',
@@ -177,8 +182,9 @@ export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promis
 }
 
 let loopTimer: ReturnType<typeof setInterval> | null = null
+let upgradeTimer: ReturnType<typeof setInterval> | null = null
 
-export function startAnchorLoop(intervalMs = 60 * 60 * 1000): void {
+export function startAnchorLoop(intervalMs = 60 * 60 * 1000, upgradeIntervalMs = 6 * 60 * 60 * 1000): void {
   stopAnchorLoop()
   const tick = async (): Promise<void> => {
     try {
@@ -191,13 +197,17 @@ export function startAnchorLoop(intervalMs = 60 * 60 * 1000): void {
   }
   loopTimer = setInterval(tick, intervalMs)
   setTimeout(tick, 30_000)
+
+  const upgradeTick = async (): Promise<void> => {
+    try { await upgradeAllPending() } catch { /* best effort */ }
+  }
+  upgradeTimer = setInterval(upgradeTick, upgradeIntervalMs)
+  setTimeout(upgradeTick, 2 * 60_000)
 }
 
 export function stopAnchorLoop(): void {
-  if (loopTimer) {
-    clearInterval(loopTimer)
-    loopTimer = null
-  }
+  if (loopTimer) { clearInterval(loopTimer); loopTimer = null }
+  if (upgradeTimer) { clearInterval(upgradeTimer); upgradeTimer = null }
 }
 
 export function verifyLatestAnchor(): { ok: boolean; anchor: ChainAnchor | null; currentHead: string | null } {
@@ -226,6 +236,80 @@ export function buildOtsBundle(headHashHex: string, receiptB64: string): Buffer 
     digest,
     timestamp
   ])
+}
+
+function getTimestamp(calendarUrl: string, headHashHex: string): Promise<{ ok: boolean; status: number; body?: Buffer; error?: string }> {
+  return new Promise((resolve) => {
+    let parsed: URL
+    try { parsed = new URL(calendarUrl + '/timestamp/' + headHashHex) } catch (e) { return resolve({ ok: false, status: 0, error: (e as Error).message }) }
+    const req = https.request({
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.opentimestamps.v1',
+        'User-Agent': 'RedLog-anchor/0.1'
+      },
+      timeout: HTTP_TIMEOUT_MS
+    }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c) => chunks.push(c as Buffer))
+      res.on('end', () => {
+        const body = Buffer.concat(chunks)
+        const s = res.statusCode ?? 0
+        if (s >= 200 && s < 300 && body.length > 0) resolve({ ok: true, status: s, body })
+        else resolve({ ok: false, status: s, error: `HTTP ${s}` })
+      })
+    })
+    req.on('error', (err) => resolve({ ok: false, status: 0, error: err.message }))
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, status: 0, error: 'timeout' }) })
+    req.end()
+  })
+}
+
+export async function upgradeAnchor(id: string): Promise<ChainAnchor | null> {
+  const db = getDB()
+  const existing = getAnchorById(id)
+  if (!existing) return null
+
+  const receipts = await Promise.all(existing.calendarReceipts.map(async (r) => {
+    if (!r.ok || r.upgraded) return r
+    const res = await getTimestamp(r.calendar, existing.headHash)
+    if (res.ok && res.body) {
+      const b64 = res.body.toString('base64')
+      const wasPending = r.receiptB64 ?? ''
+      const isBigger = res.body.length >= UPGRADED_MIN_BYTES && b64 !== wasPending
+      return {
+        ...r,
+        receiptB64: b64,
+        upgraded: isBigger,
+        upgradedAt: isBigger ? Date.now() : (r.upgradedAt ?? null),
+        upgradedBytes: res.body.length
+      }
+    }
+    return { ...r, upgraded: false, upgradedAt: r.upgradedAt ?? null, error: res.error ?? r.error }
+  }))
+
+  const anyUpgraded = receipts.some((r) => r.upgraded)
+  const allUpgraded = receipts.filter((r) => r.ok).every((r) => r.upgraded)
+  const status = allUpgraded ? 'complete' : (anyUpgraded ? 'partial' : existing.status)
+
+  db.prepare(
+    `UPDATE chain_anchors SET calendar_receipts = ?, status = ?, completed_at = COALESCE(completed_at, ?) WHERE id = ?`
+  ).run(JSON.stringify(receipts), status, anyUpgraded ? Date.now() : existing.completedAt, id)
+
+  return getAnchorById(id)
+}
+
+export async function upgradeAllPending(): Promise<{ upgraded: number; scanned: number }> {
+  const anchors = listAnchors(1000).filter((a) => a.calendarReceipts.some((r) => r.ok && !r.upgraded))
+  let upgraded = 0
+  for (const a of anchors) {
+    const result = await upgradeAnchor(a.id)
+    if (result && result.calendarReceipts.some((r) => r.upgraded)) upgraded++
+  }
+  return { upgraded, scanned: anchors.length }
 }
 
 export function getAnchorById(id: string): ChainAnchor | null {

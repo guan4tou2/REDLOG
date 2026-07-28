@@ -20,7 +20,7 @@ import {
 } from './db/operators'
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
-import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle } from './chain-anchor'
+import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
@@ -378,6 +378,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (route === '/api/anchors/verify' && req.method === 'GET') {
       const full = url.searchParams.get('full') === '1'
       json(res, 200, full ? verifyChainFull() : verifyLatestAnchor())
+      return
+    }
+
+    if (route === '/api/anchors/upgrade-all' && req.method === 'POST') {
+      const result = await upgradeAllPending()
+      json(res, 200, result)
+      return
+    }
+
+    const upgradeMatch = route.match(/^\/api\/anchors\/([^/]+)\/upgrade$/)
+    if (upgradeMatch && req.method === 'POST') {
+      const result = await upgradeAnchor(decodeURIComponent(upgradeMatch[1]))
+      json(res, result ? 200 : 404, { anchor: result })
       return
     }
 

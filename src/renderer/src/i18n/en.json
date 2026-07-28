@@ -238,6 +238,7 @@
   "settings.integrityAnchorNow": "Anchor now",
   "settings.integrityAnchoring": "Anchoring...",
   "settings.integrityVerify": "Verify latest",
+  "settings.integrityUpgradeAll": "Upgrade pending",
   "settings.integrityNoAnchors": "No anchors yet. Click Anchor now to submit the current chain head.",
   "settings.integrityStatusComplete": "COMPLETE",
   "settings.integrityStatusPartial": "PARTIAL",

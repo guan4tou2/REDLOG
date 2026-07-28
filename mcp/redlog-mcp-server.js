@@ -201,6 +201,17 @@ const TOOLS = [
     name: 'redlog_chain_verify',
     description: 'Quick integrity check: confirm the latest anchor still describes a prefix of the current chain (event count only — no cryptographic rewalk).',
     inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'redlog_chain_upgrade',
+    description: 'Fetch upgraded OpenTimestamps proofs from calendars for pending anchors — call after a few hours have passed since anchoring, so the calendar can have folded the digest into a Bitcoin-anchored Merkle tree. Without id, upgrades every pending anchor.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        anchor_id: { type: 'string', description: 'Specific anchor id to upgrade. Omit to upgrade all pending anchors.' }
+      },
+      required: []
+    }
   }
 ]
 
@@ -277,6 +288,11 @@ async function handleTool(name, args) {
 
     case 'redlog_chain_verify':
       return await apiRequest('GET', '/api/anchors/verify')
+
+    case 'redlog_chain_upgrade':
+      return args.anchor_id
+        ? await apiRequest('POST', `/api/anchors/${encodeURIComponent(args.anchor_id)}/upgrade`)
+        : await apiRequest('POST', '/api/anchors/upgrade-all')
 
     default:
       throw new Error(`Unknown tool: ${name}`)

@@ -238,6 +238,7 @@
   "settings.integrityAnchorNow": "立即錨定",
   "settings.integrityAnchoring": "錨定中...",
   "settings.integrityVerify": "驗證最新錨點",
+  "settings.integrityUpgradeAll": "升級待處理錨點",
   "settings.integrityNoAnchors": "還沒有錨點。點「立即錨定」提交目前的鏈頭。",
   "settings.integrityStatusComplete": "完成",
   "settings.integrityStatusPartial": "部分",

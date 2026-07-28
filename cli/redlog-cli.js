@@ -113,7 +113,7 @@ Usage:
   redlog-cli token
   redlog-cli whoami
   redlog-cli operators [list|add <name>|rotate <id>|revoke <id>|delete <id>]
-  redlog-cli chain [status|anchor|verify [--full]|anchors|export-ots <id> [--out <file>]]
+  redlog-cli chain [status|anchor|verify [--full]|anchors|export-ots <id> [--out <file>]|upgrade [<id>|--all]]
   redlog-cli export bundle
 
 Environment:
@@ -427,6 +427,27 @@ Examples:
             console.log(`  [${new Date(a.createdAt).toISOString()}] ${a.status.padEnd(8)} ${ok}/${a.calendarReceipts.length}  events=${a.eventCount}  head=${a.headHash.slice(0, 16)}...`)
           }
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'upgrade') {
+        if (flags.all || positional[1] === '--all') {
+          const res = await request('POST', '/api/anchors/upgrade-all')
+          if (res.status === 200) {
+            console.log(`Upgraded ${res.data.upgraded}/${res.data.scanned} pending anchors`)
+          } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+        } else {
+          const id = positional[1]
+          if (!id) { console.error('Usage: redlog-cli chain upgrade <anchor-id> | --all'); process.exit(1) }
+          const res = await request('POST', `/api/anchors/${encodeURIComponent(id)}/upgrade`)
+          if (res.status === 200 && res.data.anchor) {
+            const a = res.data.anchor
+            const up = a.calendarReceipts.filter((r) => r.upgraded).length
+            console.log(`Anchor ${a.id}: ${up}/${a.calendarReceipts.length} calendars upgraded (status=${a.status})`)
+            for (const r of a.calendarReceipts) {
+              const tag = r.upgraded ? 'UP  ' : r.ok ? 'PEND' : 'FAIL'
+              const size = r.upgradedBytes ?? (r.receiptB64 ? Buffer.from(r.receiptB64, 'base64').length : 0)
+              console.log(`  ${tag} ${r.calendar} (${size} B)${r.error ? ' — ' + r.error : ''}`)
+            }
+          } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+        }
       } else if (sub === 'export-ots') {
         const id = positional[1]
         if (!id) { console.error('Usage: redlog-cli chain export-ots <anchor-id> [--out file.ots] [--calendar url]'); process.exit(1) }

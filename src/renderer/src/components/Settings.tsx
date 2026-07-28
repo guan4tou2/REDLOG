@@ -469,7 +469,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
   return (
     <FieldGroup title={t('settings.integrity')}>
       <p className="text-[10px] text-zinc-600">{t('settings.integrityHint')}</p>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button
           onClick={handleAnchor}
           disabled={busy}
@@ -482,6 +482,16 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
           className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
         >
           {t('settings.integrityVerify')}
+        </button>
+        <button
+          onClick={async () => {
+            const r = await window.redlog.chain.upgrade() as { upgraded: number; scanned: number } | null
+            if (r) toast(`Upgraded ${r.upgraded}/${r.scanned} anchors`, r.upgraded > 0 ? 'success' : 'info')
+            await reload()
+          }}
+          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+        >
+          {t('settings.integrityUpgradeAll')}
         </button>
       </div>
       {verifyMsg && <p className="text-[10px] text-zinc-300 font-mono">{verifyMsg}</p>}
@@ -509,10 +519,16 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 {a.calendarReceipts.map((r, i) => (
                   <span
                     key={i}
-                    title={r.ok ? `${r.calendar} — ${r.receiptB64?.length || 0}B receipt` : `${r.calendar} — ${r.error}`}
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}`}
+                    title={r.ok
+                      ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}`
+                      : `${r.calendar} — ${r.error}`}
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
+                      r.upgraded ? 'bg-blue-900/50 text-blue-300' :
+                      r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
+                    }`}
                   >
                     {new URL(r.calendar).hostname.split('.').slice(-3).join('.')}
+                    {r.upgraded && ' ✓'}
                   </span>
                 ))}
               </div>

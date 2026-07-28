@@ -2,6 +2,14 @@
   "name": "redlog",
   "version": "0.1.0",
   "description": "Red Team Operation Log",
+  "author": "guan4tou2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guan4tou2/REDLOG.git"
+  },
+  "homepage": "https://github.com/guan4tou2/REDLOG",
+  "bugs": "https://github.com/guan4tou2/REDLOG/issues",
+  "license": "MIT",
   "main": "./out/main/index.js",
   "bin": {
     "redlog-cli": "./cli/redlog-cli.js"

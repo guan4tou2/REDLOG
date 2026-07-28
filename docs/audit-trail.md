@@ -76,15 +76,18 @@ RedLog exports **standard `.ots` bundles** — no manual assembly needed:
 redlog-cli chain anchors
 # → 2026-07-28T...  complete  3/3  events=1247  head=9f2c...
 
-# Export a standard OpenTimestamps bundle
-redlog-cli chain export-ots <anchor-id> --out anchor.ots
+# RedLog auto-upgrades pending anchors every 6 hours in-app, or on-demand:
+redlog-cli chain upgrade --all
+# → Upgraded 3/3 pending anchors
 
-# Once the calendars have folded your digest into a Bitcoin-anchored
-# Merkle tree (usually a few hours), upgrade and verify with any OTS client:
-ots upgrade anchor.ots
+# Once at least one calendar receipt is upgraded, exporting produces a
+# fully verifiable .ots file — no external `ots upgrade` step needed:
+redlog-cli chain export-ots <anchor-id> --out anchor.ots
 ots verify anchor.ots
 # → Success! Bitcoin block 855123 attests data existed as of 2026-07-28 14:22:11 UTC
 ```
+
+Upgrade is idempotent — pending calendars are retried, already-upgraded ones are skipped. If you export before upgrade completes, you still get a valid **pending** `.ots` file (verifiable with `ots upgrade anchor.ots && ots verify anchor.ots`).
 
 The bundle uses the standard OpenTimestamps `.ots` file format (magic
 `OpenTimestamps\x00\x00Proof\x00` + SHA-256 op + digest + calendar

@@ -94,7 +94,8 @@ interface RedLogAPI {
     length: () => Promise<number>
     anchors: () => Promise<ChainAnchorInfo[]>
     anchorNow: () => Promise<ChainAnchorInfo | null>
-    verify: () => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null }>
+    verify: (opts?: { full?: boolean }) => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null }>
+    upgrade: (id?: string) => Promise<ChainAnchorInfo | { upgraded: number; scanned: number } | null>
   }
   loot: {
     getCount: () => Promise<number>
@@ -172,6 +173,9 @@ interface CalendarReceiptInfo {
   receiptB64?: string
   error?: string
   submittedAt: number
+  upgraded?: boolean
+  upgradedAt?: number | null
+  upgradedBytes?: number
 }
 
 interface ChainAnchorInfo {

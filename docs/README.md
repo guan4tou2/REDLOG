@@ -20,6 +20,10 @@ Wiki-style index. Every page is self-contained; follow the links inside each for
 
 - **[redlog-pentest](skills/redlog-pentest.md)** — Claude Code skill covering session start (`whoami` / `status` / `scope`), real-time findings, loot scanning, and end-of-session `chain_anchor_now`. Copy to `~/.claude/skills/`.
 
+## Project ops
+
+- **[Releasing](releasing.md)** — how to cut a cross-platform release via GitHub Actions.
+
 ## Machine-readable
 
 - **[codex-tools.json](codex-tools.json)** — OpenAI function-calling schema for every RedLog tool (13 tools; primary + operator + chain).

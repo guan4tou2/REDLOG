@@ -19,7 +19,7 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from '../core/scope-monitor'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
-import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFull } from '../core/chain-anchor'
+import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFull, upgradeAnchor, upgradeAllPending } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
@@ -359,6 +359,11 @@ app.whenReady().then(() => {
   ipcMain.handle('chain:verify', (_e, opts?: { full?: boolean }) => {
     if (!activeProject) return { ok: false, anchor: null, currentHead: null }
     return opts?.full ? verifyChainFull() : verifyLatestAnchor()
+  })
+  ipcMain.handle('chain:upgrade', async (_e, id?: string) => {
+    if (!activeProject) return null
+    if (id) return await upgradeAnchor(id)
+    return await upgradeAllPending()
   })
   ipcMain.handle('deconfliction:get', () => getDeconflictionConfig())
   ipcMain.handle('deconfliction:test', async (_e, cfg) => testWebhook(cfg))
