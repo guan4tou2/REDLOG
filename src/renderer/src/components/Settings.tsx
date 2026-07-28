@@ -77,6 +77,7 @@ export default function Settings(): JSX.Element {
               <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
               <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
             </FieldGroup>
+            <OperatorsPanel t={t} />
             <FieldGroup title="Language">
               <div className="flex gap-2">
                 {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
@@ -192,6 +193,7 @@ export default function Settings(): JSX.Element {
                 {t('settings.scopeExportHint')}
               </p>
             </FieldGroup>
+            <IntegrityPanel t={t} />
             <FieldGroup title={t('settings.profileSync')}>
               <div className="flex gap-2">
                 <button
@@ -396,6 +398,272 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
         </div>
       </FieldGroup>
     </>
+  )
+}
+
+function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
+  const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
+  const [busy, setBusy] = useState(false)
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null)
+
+  const reload = async (): Promise<void> => {
+    const list = await window.redlog.chain.anchors()
+    setAnchors(list)
+  }
+
+  useEffect(() => { reload() }, [])
+
+  const handleAnchor = async (): Promise<void> => {
+    setBusy(true)
+    const result = await window.redlog.chain.anchorNow()
+    setBusy(false)
+    if (result) {
+      const ok = result.calendarReceipts.filter((r) => r.ok).length
+      toast(`Anchored (${ok}/${result.calendarReceipts.length} calendars)`, ok > 0 ? 'success' : 'error')
+      await reload()
+    } else {
+      toast(t('settings.integrityNoAnchors'), 'error')
+    }
+  }
+
+  const handleVerify = async (): Promise<void> => {
+    const result = await window.redlog.chain.verify()
+    if (!result.anchor) {
+      setVerifyMsg(t('settings.integrityVerifiedNone'))
+    } else {
+      const anchorCount = result.anchor.eventCount
+      const currentRow = anchors[0]?.eventCount ?? anchorCount
+      const msg = result.ok
+        ? t('settings.integrityVerifiedOk').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(Math.max(currentRow, anchorCount)))
+        : t('settings.integrityVerifiedBad').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(currentRow))
+      setVerifyMsg(msg)
+    }
+    setTimeout(() => setVerifyMsg(null), 8000)
+  }
+
+  const statusColor = (s: string): string => {
+    switch (s) {
+      case 'complete': return 'bg-green-900/60 text-green-300'
+      case 'partial': return 'bg-yellow-900/60 text-yellow-300'
+      case 'failed': return 'bg-red-900/60 text-red-300'
+      default: return 'bg-zinc-800 text-zinc-400'
+    }
+  }
+  const statusLabel = (s: string): string => t(`settings.integrityStatus${s.charAt(0).toUpperCase() + s.slice(1)}`)
+
+  return (
+    <FieldGroup title={t('settings.integrity')}>
+      <p className="text-[10px] text-zinc-600">{t('settings.integrityHint')}</p>
+      <div className="flex gap-2">
+        <button
+          onClick={handleAnchor}
+          disabled={busy}
+          className="px-3 py-1.5 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
+        >
+          {busy ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
+        </button>
+        <button
+          onClick={handleVerify}
+          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+        >
+          {t('settings.integrityVerify')}
+        </button>
+      </div>
+      {verifyMsg && <p className="text-[10px] text-zinc-300 font-mono">{verifyMsg}</p>}
+      {anchors.length === 0 ? (
+        <p className="text-[10px] text-zinc-500">{t('settings.integrityNoAnchors')}</p>
+      ) : (
+        <div className="space-y-1 max-h-[240px] overflow-y-auto">
+          {anchors.map((a) => (
+            <div key={a.id} className="p-2 rounded border border-zinc-700 bg-zinc-900/50">
+              <div className="flex items-center gap-2 text-xs">
+                <span className={`text-[9px] px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
+                  {statusLabel(a.status)}
+                </span>
+                <span className="text-zinc-500 font-mono tabular-nums text-[10px]">
+                  {new Date(a.createdAt).toLocaleString()}
+                </span>
+                <span className="text-zinc-500 text-[10px]">
+                  {t('settings.integrityEvents').replace('{{n}}', String(a.eventCount))}
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500 font-mono mt-1 break-all">
+                <span className="text-zinc-600">{t('settings.integrityHeadHash')}: </span>{a.headHash.slice(0, 32)}...
+              </p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {a.calendarReceipts.map((r, i) => (
+                  <span
+                    key={i}
+                    title={r.ok ? `${r.calendar} — ${r.receiptB64?.length || 0}B receipt` : `${r.calendar} — ${r.error}`}
+                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}`}
+                  >
+                    {new URL(r.calendar).hostname.split('.').slice(-3).join('.')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </FieldGroup>
+  )
+}
+
+function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
+  const [operators, setOperators] = useState<OperatorInfo[]>([])
+  const [newName, setNewName] = useState('')
+  const [pendingToken, setPendingToken] = useState<{ id: string; token: string; note: string } | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const reload = async (): Promise<void> => {
+    const list = await window.redlog.operators.list()
+    setOperators(list)
+  }
+
+  useEffect(() => { reload() }, [])
+
+  const handleAdd = async (): Promise<void> => {
+    const name = newName.trim()
+    if (!name) return
+    setBusy('add')
+    const result = await window.redlog.operators.create(name)
+    setBusy(null)
+    if (result) {
+      setNewName('')
+      setPendingToken({ id: result.operator.id, token: result.token, note: t('settings.operatorCreated') })
+      await reload()
+    } else {
+      toast(t('settings.exportFailed'), 'error')
+    }
+  }
+
+  const handleRotate = async (id: string): Promise<void> => {
+    setBusy(id + ':rotate')
+    const result = await window.redlog.operators.rotate(id)
+    setBusy(null)
+    if (result) {
+      setPendingToken({ id, token: result.token, note: t('settings.operatorRotated') })
+      await reload()
+    }
+  }
+
+  const handleRevoke = async (id: string): Promise<void> => {
+    setBusy(id + ':revoke')
+    await window.redlog.operators.revoke(id)
+    setBusy(null)
+    await reload()
+  }
+
+  const handleDelete = async (id: string): Promise<void> => {
+    if (!confirm(t('settings.operatorDeleteConfirm'))) return
+    setBusy(id + ':delete')
+    await window.redlog.operators.delete(id)
+    setBusy(null)
+    await reload()
+  }
+
+  return (
+    <FieldGroup title={t('settings.operators')}>
+      <p className="text-[10px] text-zinc-600">{t('settings.operatorsHint')}</p>
+
+      <div className="space-y-1">
+        {operators.map((op) => (
+          <div
+            key={op.id}
+            className={`flex items-center gap-2 p-2 rounded border text-xs ${
+              op.revokedAt ? 'border-zinc-800 bg-zinc-900/20 opacity-60' : 'border-zinc-700 bg-zinc-900/50'
+            }`}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-200 font-medium truncate">{op.name}</span>
+                {op.isPrimary && (
+                  <span className="text-[9px] bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
+                    {t('settings.operatorPrimary')}
+                  </span>
+                )}
+                {op.revokedAt && (
+                  <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
+                    {t('settings.operatorRevoked')}
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-zinc-500 font-mono truncate">{op.id}</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                disabled={busy === op.id + ':rotate'}
+                onClick={() => handleRotate(op.id)}
+                className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {busy === op.id + ':rotate' ? '...' : t('settings.operatorRotate')}
+              </button>
+              {!op.isPrimary && !op.revokedAt && (
+                <button
+                  disabled={busy === op.id + ':revoke'}
+                  onClick={() => handleRevoke(op.id)}
+                  className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                >
+                  {busy === op.id + ':revoke' ? '...' : t('settings.operatorRevoke')}
+                </button>
+              )}
+              {!op.isPrimary && (
+                <button
+                  disabled={busy === op.id + ':delete'}
+                  onClick={() => handleDelete(op.id)}
+                  className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-500 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                >
+                  {busy === op.id + ':delete' ? '...' : t('settings.operatorDelete')}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-1 pt-1">
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          placeholder={t('settings.operatorAddName')}
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={busy === 'add' || !newName.trim()}
+          className="px-3 py-1 bg-red-600/80 text-white text-[10px] rounded hover:bg-red-600 disabled:opacity-50"
+        >
+          {busy === 'add' ? '...' : t('settings.operatorAdd')}
+        </button>
+      </div>
+
+      {pendingToken && (
+        <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
+          <p className="text-[11px] text-red-300">{pendingToken.note}</p>
+          <div className="flex items-center gap-1">
+            <code className="flex-1 bg-black/40 text-zinc-200 text-[10px] font-mono px-2 py-1.5 rounded truncate">
+              {pendingToken.token}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(pendingToken.token)
+                toast(t('toast.copied'), 'success')
+              }}
+              className="px-2 py-1.5 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+            >
+              {t('settings.operatorTokenCopy')}
+            </button>
+            <button
+              onClick={() => setPendingToken(null)}
+              className="px-2 py-1.5 text-[10px] bg-red-600/80 text-white rounded hover:bg-red-600"
+            >
+              {t('settings.operatorTokenClose')}
+            </button>
+          </div>
+        </div>
+      )}
+    </FieldGroup>
   )
 }
 

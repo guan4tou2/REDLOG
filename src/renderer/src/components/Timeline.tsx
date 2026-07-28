@@ -57,6 +57,25 @@ export default function TimelinePanel(): JSX.Element {
   const [zoom, setZoom] = useState(1)
   const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
   const [showJson, setShowJson] = useState(false)
+  const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    const load = (): void => {
+      window.redlog.operators.list().then((ops) => {
+        const map: Record<string, string> = {}
+        ops.forEach((op) => { map[op.id] = op.name })
+        setOperatorNames(map)
+      }).catch(() => {})
+    }
+    load()
+    const unsub = window.redlog.events.onNew((e) => {
+      if (e.operatorId && !operatorNames[e.operatorId]) load()
+    })
+    return unsub
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const operatorLabel = (id: string): string => operatorNames[id] || id
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
@@ -396,6 +415,9 @@ export default function TimelinePanel(): JSX.Element {
                   <span className="text-zinc-600 font-mono tabular-nums shrink-0 w-16">
                     {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
+                  <span className="text-zinc-500 font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
+                    {operatorLabel(evt.operatorId)}
+                  </span>
                   <span className="text-zinc-400 truncate">{eventTitle(evt)}</span>
                 </div>
               )
@@ -412,6 +434,9 @@ export default function TimelinePanel(): JSX.Element {
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType)] }} />
               <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType)] }}>
                 {selectedEvent.agentType}
+              </span>
+              <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
+                {operatorLabel(selectedEvent.operatorId)}
               </span>
             </div>
             <div className="flex items-center gap-2">

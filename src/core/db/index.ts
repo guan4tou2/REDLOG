@@ -56,6 +56,28 @@ export function initDB(projectDir: string): Database.Database {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_annotation_event ON event_annotations(event_id);
+
+    CREATE TABLE IF NOT EXISTS operators (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_operator_token ON operators(token_hash);
+
+    CREATE TABLE IF NOT EXISTS chain_anchors (
+      id TEXT PRIMARY KEY,
+      head_event_id TEXT,
+      head_hash TEXT NOT NULL,
+      event_count INTEGER NOT NULL,
+      calendar_receipts TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_anchor_ts ON chain_anchors(created_at);
   `)
 
   // Migrate: add prev_hash column if missing (pre-v0.2 databases)

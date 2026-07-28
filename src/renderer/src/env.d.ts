@@ -92,6 +92,9 @@ interface RedLogAPI {
   }
   chain: {
     length: () => Promise<number>
+    anchors: () => Promise<ChainAnchorInfo[]>
+    anchorNow: () => Promise<ChainAnchorInfo | null>
+    verify: () => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null }>
   }
   loot: {
     getCount: () => Promise<number>
@@ -132,6 +135,41 @@ interface RedLogAPI {
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
   }
+  operators: {
+    list: () => Promise<OperatorInfo[]>
+    create: (name: string) => Promise<{ operator: OperatorInfo; token: string } | null>
+    rotate: (id: string) => Promise<{ token: string } | null>
+    rename: (id: string, name: string) => Promise<boolean>
+    revoke: (id: string) => Promise<boolean>
+    delete: (id: string) => Promise<boolean>
+  }
+}
+
+interface OperatorInfo {
+  id: string
+  name: string
+  isPrimary: boolean
+  createdAt: number
+  revokedAt: number | null
+}
+
+interface CalendarReceiptInfo {
+  calendar: string
+  ok: boolean
+  receiptB64?: string
+  error?: string
+  submittedAt: number
+}
+
+interface ChainAnchorInfo {
+  id: string
+  headEventId: string | null
+  headHash: string
+  eventCount: number
+  calendarReceipts: CalendarReceiptInfo[]
+  status: 'pending' | 'partial' | 'complete' | 'failed'
+  createdAt: number
+  completedAt: number | null
 }
 
 interface RedLogConfigPartial {

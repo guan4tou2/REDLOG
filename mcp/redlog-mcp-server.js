@@ -172,6 +172,31 @@ const TOOLS = [
       },
       required: ['action']
     }
+  },
+  {
+    name: 'redlog_whoami',
+    description: 'Return the operator identity that this token resolves to. Every event logged in this session is attributed to this operator.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'redlog_operators_list',
+    description: 'List every operator token registered on this RedLog instance (primary + secondary).',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'redlog_chain_status',
+    description: 'Return the evidence-chain length and the latest OpenTimestamps anchor status.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'redlog_chain_anchor_now',
+    description: 'Submit the current chain head to all OpenTimestamps calendars right now. Use before wrapping up a session or after a critical finding to fix its timestamp.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'redlog_chain_verify',
+    description: 'Quick integrity check: confirm the latest anchor still describes a prefix of the current chain (event count only — no cryptographic rewalk).',
+    inputSchema: { type: 'object', properties: {}, required: [] }
   }
 ]
 
@@ -233,6 +258,21 @@ async function handleTool(name, args) {
       if (args.action === 'status') return await apiRequest('GET', '/api/recording')
       return await apiRequest('POST', '/api/recording', { action: args.action })
     }
+
+    case 'redlog_whoami':
+      return await apiRequest('GET', '/api/whoami')
+
+    case 'redlog_operators_list':
+      return await apiRequest('GET', '/api/operators')
+
+    case 'redlog_chain_status':
+      return await apiRequest('GET', '/api/chain')
+
+    case 'redlog_chain_anchor_now':
+      return await apiRequest('POST', '/api/anchors')
+
+    case 'redlog_chain_verify':
+      return await apiRequest('GET', '/api/anchors/verify')
 
     default:
       throw new Error(`Unknown tool: ${name}`)

@@ -19,11 +19,16 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from '../core/scope-monitor'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
+import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor } from '../core/chain-anchor'
 import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken } from '../core/api-server'
+import {
+  listOperators, createOperator, updateOperatorToken, revokeOperator,
+  deleteOperator, renameOperator, generateToken, slugifyOperatorId
+} from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
@@ -143,6 +148,7 @@ function startProject(project: ProjectMeta): void {
   configureApi({
     engagementId,
     operatorId,
+    operatorName: config.operator.name,
     configLoader: {
       getConfig: () => loadConfig(projectDir),
       getTargets: () => config.scope.targets
@@ -158,6 +164,8 @@ function startProject(project: ProjectMeta): void {
 
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
+  startAnchorLoop()
+
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow()
     startOverlayMouseTracking()
@@ -171,6 +179,7 @@ function startProject(project: ProjectMeta): void {
 }
 
 function stopProject(): void {
+  stopAnchorLoop()
   stopApiServer()
   ipMonitor.stop()
   closeDB()
@@ -334,6 +343,9 @@ app.whenReady().then(() => {
 
   // --- Evidence Chain ---
   ipcMain.handle('chain:length', () => getChainLength())
+  ipcMain.handle('chain:anchors', () => activeProject ? listAnchors() : [])
+  ipcMain.handle('chain:anchorNow', async () => activeProject ? await anchorNow() : null)
+  ipcMain.handle('chain:verify', () => activeProject ? verifyLatestAnchor() : { ok: false, anchor: null, currentHead: null })
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
@@ -469,6 +481,54 @@ app.whenReady().then(() => {
     mainWindow?.webContents.send('recording:changed', recording)
     overlayWindow?.webContents.send('recording:changed', recording)
     if (tray) setTrayRecording(tray, recording)
+  })
+
+  // --- Operators ---
+  ipcMain.handle('operators:list', () => {
+    if (!activeProject) return []
+    return listOperators().map((op) => ({
+      id: op.id, name: op.name, isPrimary: op.isPrimary,
+      createdAt: op.createdAt, revokedAt: op.revokedAt
+    }))
+  })
+  ipcMain.handle('operators:create', (_e, name: string) => {
+    if (!activeProject) return null
+    const trimmed = (name || '').trim()
+    if (!trimmed) return null
+    const id = slugifyOperatorId(trimmed)
+    const token = generateToken()
+    try {
+      const op = createOperator({ id, name: trimmed, token, isPrimary: false })
+      return { operator: { id: op.id, name: op.name, isPrimary: false, createdAt: op.createdAt, revokedAt: null }, token }
+    } catch {
+      return null
+    }
+  })
+  ipcMain.handle('operators:rotate', (_e, id: string) => {
+    if (!activeProject) return null
+    const token = generateToken()
+    const ok = updateOperatorToken(id, token)
+    if (!ok) return null
+    const primary = listOperators().find((o) => o.id === id && o.isPrimary)
+    if (primary) {
+      const tokenPath = path.join(homedir(), '.redlog', 'api-token')
+      try { fs.writeFileSync(tokenPath, token, { mode: 0o600 }) } catch {}
+    }
+    return { token }
+  })
+  ipcMain.handle('operators:rename', (_e, id: string, name: string) => {
+    if (!activeProject) return false
+    const trimmed = (name || '').trim()
+    if (!trimmed) return false
+    return renameOperator(id, trimmed)
+  })
+  ipcMain.handle('operators:revoke', (_e, id: string) => {
+    if (!activeProject) return false
+    return revokeOperator(id)
+  })
+  ipcMain.handle('operators:delete', (_e, id: string) => {
+    if (!activeProject) return false
+    return deleteOperator(id)
   })
 
   // --- Global shortcut ---

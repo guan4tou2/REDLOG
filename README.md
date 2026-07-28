@@ -17,7 +17,8 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Zero-friction capture** — installs, starts recording, stays out of your way
 - **AI agent native** — MCP server + shell hooks let Claude Code, Codex, and GPT log directly into your timeline
 - **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
-- **Evidence chain** — append-only hash chain for tamper evidence in reports
+- **Per-operator identity** — every event carries an operator id resolved from an API token; teammates and agents get their own tokens ([details](docs/operators.md))
+- **Evidence chain + OpenTimestamps** — append-only SHA-256 chain, hourly anchored to public OpenTimestamps calendars for third-party verifiable tamper evidence ([details](docs/audit-trail.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Quick Start
@@ -142,11 +143,13 @@ The MCP server lets Claude Code, Cursor, and other MCP-compatible agents activel
 claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
 ```
 
-**12 available tools:**
+**17 available tools:**
 
 | Tool | Description |
 |------|-------------|
-| `redlog_status` | IP/VPN state, event count, scope violations |
+| `redlog_status` | IP state, event count, scope violations |
+| `redlog_whoami` | Confirm which operator token is loaded |
+| `redlog_operators_list` | List every registered operator |
 | `redlog_mark` | Create a timestamped marker (finding, phase change, note) |
 | `redlog_log_event` | Log a raw event with custom type and data |
 | `redlog_search` | Full-text search across all events |
@@ -158,6 +161,11 @@ claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
 | `redlog_loot_scan` | Scan text for credentials/secrets |
 | `redlog_screenshot` | Capture desktop screenshot |
 | `redlog_recording` | Pause/resume/toggle recording |
+| `redlog_chain_status` | Chain length + latest OTS anchor |
+| `redlog_chain_anchor_now` | Anchor current chain head to OpenTimestamps |
+| `redlog_chain_verify` | Fast prefix check on latest anchor |
+
+Ship-ready skill file at [`docs/skills/redlog-pentest.md`](docs/skills/redlog-pentest.md) — copy to `~/.claude/skills/` to opt an agent into the full flow.
 
 **Example agent interaction:**
 
@@ -194,6 +202,11 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
 | POST | `/api/quickmarks` | Create bookmark |
 | POST | `/api/loot/scan` | Scan text for secrets |
 | POST | `/api/screenshot` | Trigger manual capture |
+| GET | `/api/whoami` | Operator identity for this token |
+| GET/POST/PATCH/DELETE | `/api/operators[/…]` | Operator token management |
+| GET | `/api/chain` | Chain length + last anchor |
+| GET/POST | `/api/anchors` | List / trigger OpenTimestamps anchoring |
+| GET | `/api/anchors/verify` | Fast integrity check |
 
 ### Layer 4: Shell Functions
 
@@ -213,6 +226,13 @@ redlog_screenshot                       # manual capture
 ### Codex / OpenAI Function Calling
 
 See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible function definitions usable with Codex, GPT, or any OpenAI-API-compatible model.
+
+### More reading
+
+- [Agent integration](docs/agent-integration.md) — full REST + MCP + hook reference
+- [Operators & tokens](docs/operators.md) — multi-operator identity, token lifecycle
+- [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps verification
+- [Skill: redlog-pentest](docs/skills/redlog-pentest.md) — ready-to-copy Claude Code skill
 
 ## Architecture
 

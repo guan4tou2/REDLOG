@@ -93,6 +93,9 @@ Usage:
   redlog-cli status
   redlog-cli health
   redlog-cli token
+  redlog-cli whoami
+  redlog-cli operators [list|add <name>|rotate <id>|revoke <id>|delete <id>]
+  redlog-cli chain [status|anchor|verify|anchors]
 
 Environment:
   REDLOG_TOKEN   Override the auto-detected API token
@@ -103,6 +106,9 @@ Examples:
   redlog-cli mark "Found SQLi in /api/users" --severity high --target api.example.com
   redlog-cli search "password"
   redlog-cli loot "root:x:0:0:root:/root:/bin/bash"
+  redlog-cli whoami
+  redlog-cli operators add "Codex agent"
+  redlog-cli chain anchor
   curl -s -H "Authorization: Bearer $(redlog-cli token)" http://127.0.0.1:6660/api/events
 `)
     return
@@ -256,6 +262,117 @@ Examples:
     case 'token': {
       const token = readToken()
       process.stdout.write(token)
+      break
+    }
+
+    case 'whoami': {
+      const res = await request('GET', '/api/whoami')
+      if (res.status === 200) {
+        const op = res.data.operator
+        const tag = op.isPrimary ? ' (PRIMARY)' : ''
+        console.log(`Operator: ${op.name}${tag}`)
+        console.log(`  ID:         ${op.id}`)
+        console.log(`  Engagement: ${res.data.engagementId}`)
+      } else {
+        console.error(`Error ${res.status}:`, res.data)
+        process.exit(1)
+      }
+      break
+    }
+
+    case 'operators': {
+      const sub = positional[0] || 'list'
+      if (sub === 'list') {
+        const res = await request('GET', '/api/operators')
+        if (res.status === 200) {
+          for (const op of res.data.operators) {
+            const tag = op.isPrimary ? '[PRIMARY]' : op.revokedAt ? '[REVOKED]' : '         '
+            console.log(`  ${tag} ${op.id.padEnd(28)} ${op.name}`)
+          }
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'add') {
+        const name = positional.slice(1).join(' ')
+        if (!name) { console.error('Usage: redlog-cli operators add <name>'); process.exit(1) }
+        const res = await request('POST', '/api/operators', { name })
+        if (res.status === 201) {
+          console.log(`Created: ${res.data.operator.id}`)
+          console.log(`Token (save now — not shown again):`)
+          console.log(`  ${res.data.token}`)
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'rotate') {
+        const id = positional[1]
+        if (!id) { console.error('Usage: redlog-cli operators rotate <id>'); process.exit(1) }
+        const res = await request('POST', `/api/operators/${encodeURIComponent(id)}/rotate`)
+        if (res.status === 200) {
+          console.log(`New token for ${id}:`)
+          console.log(`  ${res.data.token}`)
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'revoke') {
+        const id = positional[1]
+        if (!id) { console.error('Usage: redlog-cli operators revoke <id>'); process.exit(1) }
+        const res = await request('POST', `/api/operators/${encodeURIComponent(id)}/revoke`)
+        console.log(res.status === 200 ? `Revoked ${id}` : `Error ${res.status}: ${JSON.stringify(res.data)}`)
+        if (res.status !== 200) process.exit(1)
+      } else if (sub === 'delete') {
+        const id = positional[1]
+        if (!id) { console.error('Usage: redlog-cli operators delete <id>'); process.exit(1) }
+        const res = await request('DELETE', `/api/operators/${encodeURIComponent(id)}`)
+        console.log(res.status === 200 ? `Deleted ${id}` : `Error ${res.status}: ${JSON.stringify(res.data)}`)
+        if (res.status !== 200) process.exit(1)
+      } else {
+        console.error(`Unknown operators subcommand: ${sub}. Use list|add|rotate|revoke|delete`)
+        process.exit(1)
+      }
+      break
+    }
+
+    case 'chain': {
+      const sub = positional[0] || 'status'
+      if (sub === 'status') {
+        const res = await request('GET', '/api/chain')
+        if (res.status === 200) {
+          console.log(`Chain length: ${res.data.length} events`)
+          const a = res.data.lastAnchor
+          if (a) {
+            const ok = a.calendarReceipts.filter((r) => r.ok).length
+            console.log(`Last anchor:  ${a.status} (${ok}/${a.calendarReceipts.length} calendars) @ ${new Date(a.createdAt).toLocaleString()}`)
+            console.log(`  head_hash:  ${a.headHash}`)
+            console.log(`  event_count: ${a.eventCount}`)
+          } else {
+            console.log(`Last anchor:  (none yet)`)
+          }
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'anchor') {
+        const res = await request('POST', '/api/anchors')
+        if (res.status === 201 && res.data.anchor) {
+          const a = res.data.anchor
+          const ok = a.calendarReceipts.filter((r) => r.ok).length
+          console.log(`Anchor ${a.status}: ${ok}/${a.calendarReceipts.length} calendars`)
+          for (const r of a.calendarReceipts) {
+            console.log(`  ${r.ok ? 'OK ' : 'FAIL'} ${r.calendar}${r.error ? ' — ' + r.error : ''}`)
+          }
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'verify') {
+        const res = await request('GET', '/api/anchors/verify')
+        if (res.status === 200) {
+          console.log(res.data.ok ? 'OK — latest anchor is a prefix of current chain' : 'MISMATCH — investigate')
+          if (res.data.anchor) console.log(`  anchor event_count: ${res.data.anchor.eventCount}`)
+          if (res.data.currentHead) console.log(`  current head:       ${res.data.currentHead}`)
+          if (!res.data.ok) process.exit(2)
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'anchors') {
+        const limit = flags.limit || 20
+        const res = await request('GET', `/api/anchors?limit=${limit}`)
+        if (res.status === 200) {
+          for (const a of res.data.anchors) {
+            const ok = a.calendarReceipts.filter((r) => r.ok).length
+            console.log(`  [${new Date(a.createdAt).toISOString()}] ${a.status.padEnd(8)} ${ok}/${a.calendarReceipts.length}  events=${a.eventCount}  head=${a.headHash.slice(0, 16)}...`)
+          }
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else {
+        console.error(`Unknown chain subcommand: ${sub}. Use status|anchor|verify|anchors`)
+        process.exit(1)
+      }
       break
     }
 

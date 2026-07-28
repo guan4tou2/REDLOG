@@ -1,31 +1,52 @@
 import http from 'http'
-import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
 import { createQuickMark, listQuickMarks } from './db/findings'
+import {
+  ensurePrimaryOperator,
+  resolveOperatorByToken,
+  listOperators,
+  createOperator,
+  updateOperatorToken,
+  revokeOperator,
+  deleteOperator,
+  renameOperator,
+  generateToken,
+  slugifyOperatorId,
+  getPrimaryOperator,
+  type Operator
+} from './db/operators'
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
+import { anchorNow, listAnchors, verifyLatestAnchor } from './chain-anchor'
+import { getChainLength } from './evidence-chain'
 
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
 
 let server: http.Server | null = null
-let apiToken = ''
+let primaryToken = ''
 let engagementId = 'default'
-let operatorId = 'operator-1'
+let primaryOperatorId = 'operator-1'
+let primaryOperatorName = 'Operator'
 
 let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
 
-let lootDetectorRef: { scan: (text: string) => unknown[] } | null = null
+let lootDetectorRef: { scan: (text: string, targetId?: string) => unknown[] } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
-let scopeMonitorRef: { getViolations: () => unknown[]; getViolationCount: () => number; checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean } } | null = null
+let scopeMonitorRef: {
+  getViolations: () => unknown[]
+  getViolationCount: () => number
+  checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean }
+} | null = null
 
 export function configureApi(opts: {
   engagementId: string
   operatorId: string
+  operatorName?: string
   configLoader?: typeof configLoaderRef
   lootDetector?: typeof lootDetectorRef
   screenshotAgent?: typeof screenshotAgentRef
@@ -33,7 +54,8 @@ export function configureApi(opts: {
   scopeMonitor?: typeof scopeMonitorRef
 }): void {
   engagementId = opts.engagementId
-  operatorId = opts.operatorId
+  primaryOperatorId = opts.operatorId
+  if (opts.operatorName) primaryOperatorName = opts.operatorName
   if (opts.configLoader) configLoaderRef = opts.configLoader
   if (opts.lootDetector) lootDetectorRef = opts.lootDetector
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
@@ -41,10 +63,11 @@ export function configureApi(opts: {
   if (opts.scopeMonitor) scopeMonitorRef = opts.scopeMonitor
 }
 
-function generateToken(): string {
-  const token = crypto.randomBytes(32).toString('hex')
+function writePrimaryToken(): string {
+  const token = generateToken()
   fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
   fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
+  primaryToken = token
   return token
 }
 
@@ -52,11 +75,18 @@ function writePort(port: number): void {
   fs.writeFileSync(PORT_PATH, String(port), { mode: 0o600 })
 }
 
-function auth(req: http.IncomingMessage): boolean {
+function extractBearerToken(req: http.IncomingMessage): string | null {
   const header = req.headers.authorization
-  if (!header) return false
+  if (!header) return null
   const parts = header.split(' ')
-  return parts.length === 2 && parts[0] === 'Bearer' && parts[1] === apiToken
+  if (parts.length !== 2 || parts[0] !== 'Bearer') return null
+  return parts[1]
+}
+
+function authenticate(req: http.IncomingMessage): Operator | null {
+  const token = extractBearerToken(req)
+  if (!token) return null
+  return resolveOperatorByToken(token)
 }
 
 function json(res: http.ServerResponse, status: number, data: unknown): void {
@@ -71,6 +101,16 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString()))
     req.on('error', reject)
   })
+}
+
+function publicOperator(op: Operator): Record<string, unknown> {
+  return {
+    id: op.id,
+    name: op.name,
+    isPrimary: op.isPrimary,
+    createdAt: op.createdAt,
+    revokedAt: op.revokedAt
+  }
 }
 
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -90,12 +130,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return
   }
 
-  if (!auth(req)) {
+  const operator = authenticate(req)
+  if (!operator) {
     json(res, 401, { error: 'Unauthorized. Set Authorization: Bearer <token>' })
     return
   }
 
   try {
+    if (route === '/api/whoami' && req.method === 'GET') {
+      json(res, 200, { operator: publicOperator(operator), engagementId })
+      return
+    }
+
     if (route === '/api/events' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req))
       const agentType = body.agent_type || body.agentType || 'external'
@@ -122,7 +168,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         }
       }
 
-      const event = insertEvent(agentType, data, { engagementId, operatorId, targetId })
+      const event = insertEvent(agentType, data, {
+        engagementId,
+        operatorId: operator.id,
+        targetId
+      })
       if (!event) { json(res, 409, { error: 'Duplicate event (dedup window)' }); return }
       eventBus.publish(event)
       json(res, 201, event)
@@ -163,7 +213,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         notes: body.notes || '',
         severity: body.severity || 'info',
         category: body.category || 'external'
-      }, { engagementId, operatorId, targetId: body.target_id || body.targetId })
+      }, { engagementId, operatorId: operator.id, targetId: body.target_id || body.targetId })
       if (event) eventBus.publish(event)
       json(res, 201, event)
       return
@@ -247,6 +297,99 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
+    if (route === '/api/operators' && req.method === 'GET') {
+      json(res, 200, { operators: listOperators().map(publicOperator) })
+      return
+    }
+
+    if (route === '/api/chain' && req.method === 'GET') {
+      const last = listAnchors(1)[0] ?? null
+      json(res, 200, { length: getChainLength(), lastAnchor: last })
+      return
+    }
+
+    if (route === '/api/anchors' && req.method === 'GET') {
+      const limit = parseInt(url.searchParams.get('limit') || '50')
+      json(res, 200, { anchors: listAnchors(limit) })
+      return
+    }
+
+    if (route === '/api/anchors' && req.method === 'POST') {
+      const anchor = await anchorNow()
+      json(res, anchor ? 201 : 400, { anchor })
+      return
+    }
+
+    if (route === '/api/anchors/verify' && req.method === 'GET') {
+      json(res, 200, verifyLatestAnchor())
+      return
+    }
+
+    if (route === '/api/operators' && req.method === 'POST') {
+      if (!operator.isPrimary) {
+        json(res, 403, { error: 'Only the primary operator can create operators' })
+        return
+      }
+      const body = JSON.parse(await readBody(req))
+      const name = (body.name || '').toString().trim()
+      if (!name) { json(res, 400, { error: 'name is required' }); return }
+      const id = (body.id || '').toString().trim() || slugifyOperatorId(name)
+      const token = generateToken()
+      try {
+        const op = createOperator({ id, name, token, isPrimary: false })
+        json(res, 201, { operator: publicOperator(op), token })
+      } catch (e) {
+        json(res, 400, { error: (e as Error).message })
+      }
+      return
+    }
+
+    const opMatch = route.match(/^\/api\/operators\/([^/]+)(?:\/(rotate|revoke))?$/)
+    if (opMatch) {
+      const targetId = decodeURIComponent(opMatch[1])
+      const action = opMatch[2]
+
+      if (action === 'rotate' && req.method === 'POST') {
+        if (!operator.isPrimary && operator.id !== targetId) {
+          json(res, 403, { error: 'Cannot rotate another operator token' })
+          return
+        }
+        const token = generateToken()
+        const ok = updateOperatorToken(targetId, token)
+        if (!ok) { json(res, 404, { error: 'Operator not found' }); return }
+        if (targetId === primaryOperatorId) {
+          fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
+          primaryToken = token
+        }
+        json(res, 200, { token })
+        return
+      }
+
+      if (action === 'revoke' && req.method === 'POST') {
+        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
+        const ok = revokeOperator(targetId)
+        json(res, ok ? 200 : 400, { revoked: ok })
+        return
+      }
+
+      if (!action && req.method === 'PATCH') {
+        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
+        const body = JSON.parse(await readBody(req))
+        const name = (body.name || '').toString().trim()
+        if (!name) { json(res, 400, { error: 'name is required' }); return }
+        const ok = renameOperator(targetId, name)
+        json(res, ok ? 200 : 404, { renamed: ok })
+        return
+      }
+
+      if (!action && req.method === 'DELETE') {
+        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
+        const ok = deleteOperator(targetId)
+        json(res, ok ? 200 : 400, { deleted: ok })
+        return
+      }
+    }
+
     json(res, 404, { error: `Unknown route: ${req.method} ${route}` })
   } catch (err) {
     json(res, 500, { error: (err as Error).message })
@@ -255,7 +398,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
 export function startApiServer(port = 6660): Promise<number> {
   return new Promise((resolve, reject) => {
-    apiToken = generateToken()
+    const token = writePrimaryToken()
+    ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, token)
 
     server = http.createServer((req, res) => {
       handleRequest(req, res).catch((err) => {
@@ -288,5 +432,9 @@ export function stopApiServer(): void {
 }
 
 export function getApiToken(): string {
-  return apiToken
+  return primaryToken
+}
+
+export function getPrimaryOperatorSnapshot(): Operator | null {
+  return getPrimaryOperator()
 }

@@ -193,20 +193,81 @@ These files are created when RedLog starts. If they don't exist, the MCP server 
 
 #### `redlog_status`
 
-Returns current IP addresses (external/internal), VPN status, total event count, scope violation count, and recording state.
+Returns current IP addresses (external/internal), IP safety flag, total event count, and scope violation count.
 
 **Parameters:** none
 
 **Returns:**
 ```json
 {
-  "ip": { "external": "203.0.113.42", "internal": "10.0.1.5" },
-  "vpn": true,
-  "events": 1247,
-  "violations": 3,
-  "recording": true
+  "ip": {
+    "externalIP": "203.0.113.42",
+    "internalIP": "10.0.1.5",
+    "ipSafety": "safe",
+    "lastCheck": 1706400000000,
+    "error": null
+  },
+  "eventCount": 1247,
+  "scopeViolations": 3
 }
 ```
+
+#### `redlog_whoami`
+
+Return the operator identity that this token resolves to. Every event logged under this token is attributed to this operator. Call once at session start to catch loaded-wrong-token mistakes.
+
+**Parameters:** none
+
+**Returns:**
+```json
+{
+  "operator": {
+    "id": "codex-agent-a1b2c3",
+    "name": "Codex agent",
+    "isPrimary": false,
+    "createdAt": 1706300000000,
+    "revokedAt": null
+  },
+  "engagementId": "client-pentest-q3"
+}
+```
+
+#### `redlog_operators_list`
+
+List every operator token registered on this RedLog instance.
+
+**Returns:** `{ "operators": [ ... ] }` — each entry mirrors the `operator` object in `redlog_whoami`.
+
+#### `redlog_chain_status`
+
+Length of the SHA-256 hash chain and the latest OpenTimestamps anchor.
+
+**Returns:**
+```json
+{
+  "length": 1247,
+  "lastAnchor": {
+    "id": "…",
+    "headHash": "9f2c…",
+    "eventCount": 1200,
+    "status": "complete",
+    "createdAt": 1706398800000,
+    "calendarReceipts": [
+      { "calendar": "https://a.pool.opentimestamps.org", "ok": true, "receiptB64": "…" }
+    ]
+  }
+}
+```
+
+#### `redlog_chain_anchor_now`
+
+Submit the current chain head to public OpenTimestamps calendars immediately. Use before wrapping up a session or right after a critical finding.
+
+#### `redlog_chain_verify`
+
+Fast check: does the latest anchor still describe a prefix of the current chain? Compares event counts (not a full re-walk).
+
+**Returns:** `{ "ok": true, "anchor": { … }, "currentHead": "9f2c…" }`
 
 #### `redlog_mark`
 
@@ -329,20 +390,15 @@ Controls recording state.
 
 ### Building a Claude Code Skill
 
-Create a skill that uses RedLog tools:
+Ship-ready skill file at [`docs/skills/redlog-pentest.md`](skills/redlog-pentest.md). Install with:
 
-```markdown
-# .claude/skills/pentest-logger.md
-
-When performing security testing:
-
-1. At session start: call `redlog_status` to verify connection
-2. Before scanning: call `redlog_scope` to check target is in scope
-3. When finding something: call `redlog_mark` with severity and details
-4. After scanning: call `redlog_log_event` with results summary
-5. For interesting URLs: call `redlog_quickmark`
-6. Periodically: call `redlog_loot_scan` on command output
+```bash
+cp docs/skills/redlog-pentest.md ~/.claude/skills/redlog-pentest.md
+# or per-project
+cp docs/skills/redlog-pentest.md .claude/skills/redlog-pentest.md
 ```
+
+The skill covers the full loop: session start (`whoami` + `status` + `scope`), real-time findings via `redlog_mark`, loot scanning, and end-of-session `chain_anchor_now`. Read [the skill](skills/redlog-pentest.md) directly for the exact flow.
 
 ## 3. HTTP API
 
@@ -369,12 +425,13 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | GET | `/api/health` | no | Health check |
-| GET | `/api/status` | yes | System status (IP, VPN, events, violations) |
+| GET | `/api/whoami` | yes | Resolve token → operator |
+| GET | `/api/status` | yes | System status (IP, events, violations) |
 | GET | `/api/config` | yes | Project configuration |
 | GET | `/api/scope` | yes | Scope targets + violations |
 | GET | `/api/recording` | yes | Recording state |
 | POST | `/api/recording` | yes | Control recording (`{"action":"pause\|resume\|toggle"}`) |
-| POST | `/api/events` | yes | Insert event |
+| POST | `/api/events` | yes | Insert event (operator_id set from token) |
 | GET | `/api/events` | yes | Query events (`?agent_type=&limit=&target_id=&since=`) |
 | GET | `/api/events/search` | yes | Search events (`?q=&limit=`) |
 | GET | `/api/events/count` | yes | Event count |
@@ -383,6 +440,16 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | POST | `/api/quickmarks` | yes | Create bookmark |
 | POST | `/api/loot/scan` | yes | Scan for secrets |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
+| GET | `/api/operators` | yes | List operators (any valid token) |
+| POST | `/api/operators` | primary | Create operator, returns token **once** |
+| PATCH | `/api/operators/:id` | primary | Rename |
+| POST | `/api/operators/:id/rotate` | self or primary | Rotate token |
+| POST | `/api/operators/:id/revoke` | primary | Revoke token |
+| DELETE | `/api/operators/:id` | primary | Delete operator |
+| GET | `/api/chain` | yes | Chain length + latest anchor |
+| GET | `/api/anchors` | yes | List OTS anchors (`?limit=`) |
+| POST | `/api/anchors` | yes | Anchor current chain head now |
+| GET | `/api/anchors/verify` | yes | Fast prefix check on latest anchor |
 
 ### Event Schema
 
@@ -472,16 +539,36 @@ Team members import this when creating a new project:
 - **Project Picker** → Advanced Setup → Import Profile
 - **Settings** → Team Profile Sync → Import Profile
 
+## Multi-Operator Setup
+
+Each API token maps to one operator identity. The audit log tags every event with the operator resolved from the token — so several people (or several agents) can share one RedLog instance and stay distinguishable.
+
+Full lifecycle in [docs/operators.md](operators.md). TL;DR:
+
+1. **You** (primary): use RedLog's own generated token in `~/.redlog/api-token`. Rotated every app launch. Do nothing.
+2. **Teammate**: Settings ▸ General ▸ Operator Tokens ▸ **Add operator** ▸ copy token once ▸ hand over securely. On their machine: `echo -n '<token>' > ~/.redlog/api-token && chmod 600 ~/.redlog/api-token`.
+3. **Distinct agent context** on the same machine (e.g. Codex vs Claude): create a secondary token and have that agent use `REDLOG_TOKEN=<token>` instead of the file — patch the one hook that agent uses.
+
+## Evidence Chain & OpenTimestamps
+
+The `events` table is a SHA-256 hash chain (every row's `hash` covers the previous row's). Once an hour RedLog submits the chain head to three public OpenTimestamps calendars, producing receipts stored in `chain_anchors`. Anyone with a receipt can later prove the chain existed at that time — without touching your machine.
+
+Agents should call `redlog_chain_anchor_now` right before ending a session so anything done in-session is timestamped in-session (don't wait for the hourly loop).
+
+Details, threat model, and verification workflow: [docs/audit-trail.md](audit-trail.md).
+
 ## Recommended Setup
 
 For maximum coverage with minimal friction:
 
 1. **Install shell preexec hook** in `~/.zshrc` (captures everything from all agents)
 2. **Add Claude Code PostToolUse hook** (captures structured tool call data)
-3. **Add MCP server** to Claude Code (lets the agent actively check scope, create markers)
-4. **Create a pentest-logger skill** (guides the agent's RedLog usage)
+3. **Add MCP server** to Claude Code (lets the agent actively check scope, create markers, anchor the chain)
+4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** (guides the agent's RedLog usage)
+5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable
 
 This gives you:
 - Automatic passive capture of every command (hooks)
 - Agent-initiated markers and scope checks (MCP)
 - Team-shared scope configuration (profiles)
+- Per-operator attribution + Bitcoin-backed integrity anchoring

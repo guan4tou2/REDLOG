@@ -51,7 +51,10 @@ contextBridge.exposeInMainWorld('redlog', {
     isConfigured: () => ipcRenderer.invoke('scope:isConfigured')
   },
   chain: {
-    length: () => ipcRenderer.invoke('chain:length')
+    length: () => ipcRenderer.invoke('chain:length'),
+    anchors: () => ipcRenderer.invoke('chain:anchors'),
+    anchorNow: () => ipcRenderer.invoke('chain:anchorNow'),
+    verify: () => ipcRenderer.invoke('chain:verify')
   },
   loot: {
     getCount: () => ipcRenderer.invoke('loot:getCount')
@@ -75,6 +78,14 @@ contextBridge.exposeInMainWorld('redlog', {
     detect: () => ipcRenderer.invoke('hooks:detect'),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
+  },
+  operators: {
+    list: () => ipcRenderer.invoke('operators:list'),
+    create: (name: string) => ipcRenderer.invoke('operators:create', name),
+    rotate: (id: string) => ipcRenderer.invoke('operators:rotate', id),
+    rename: (id: string, name: string) => ipcRenderer.invoke('operators:rename', id, name),
+    revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
+    delete: (id: string) => ipcRenderer.invoke('operators:delete', id)
   },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),
