@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#141414"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <linearGradient id="rGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#b91c1c"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="dotGlow">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="960" height="960" rx="200" ry="200" fill="url(#bg)" stroke="#2a2a2a" stroke-width="3"/>
+
+  <!-- Subtle grid lines (log/data aesthetic) -->
+  <g opacity="0.04" stroke="#ffffff" stroke-width="1">
+    <line x1="200" y1="250" x2="824" y2="250"/>
+    <line x1="200" y1="380" x2="824" y2="380"/>
+    <line x1="200" y1="510" x2="824" y2="510"/>
+    <line x1="200" y1="640" x2="824" y2="640"/>
+    <line x1="200" y1="770" x2="824" y2="770"/>
+  </g>
+
+  <!-- The "R" letterform — bold geometric with tactical diagonal slash -->
+  <g filter="url(#glow)">
+    <path d="
+      M 300 260
+      L 300 764
+      L 380 764
+      L 380 560
+      L 520 560
+      L 660 764
+      L 752 764
+      L 600 544
+      Q 700 520 700 410
+      Q 700 300 600 270
+      Q 570 260 520 260
+      Z
+      M 380 340
+      L 520 340
+      Q 570 340 595 365
+      Q 620 390 620 415
+      Q 620 440 595 465
+      Q 570 490 520 490
+      L 380 490
+      Z
+    " fill="url(#rGrad)"/>
+  </g>
+
+  <!-- Diagonal tactical slash across the R -->
+  <line x1="580" y1="220" x2="440" y2="810" stroke="#0a0a0a" stroke-width="28" stroke-linecap="round" opacity="0.85"/>
+  <line x1="580" y1="220" x2="440" y2="810" stroke="#dc2626" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Recording dot — top right -->
+  <circle cx="800" cy="224" r="36" fill="#ef4444" filter="url(#dotGlow)"/>
+  <circle cx="800" cy="224" r="18" fill="#ffffff" opacity="0.3"/>
+</svg>

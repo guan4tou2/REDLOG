@@ -1,0 +1,129 @@
+import { useEffect, useState } from 'react'
+import { useI18n } from '../i18n'
+import { toast } from './Toast'
+
+export default function StatusBar(): JSX.Element {
+  const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
+  const [eventCount, setEventCount] = useState(0)
+  const [lootCount, setLootCount] = useState(0)
+  const [scopeViolations, setScopeViolations] = useState(0)
+  const [uptime, setUptime] = useState(0)
+  const [recording, setRecording] = useState(true)
+  const [stamped, setStamped] = useState(false)
+  const [overlayVisible, setOverlayVisible] = useState(true)
+  const { t } = useI18n()
+
+  useEffect(() => {
+    const start = Date.now()
+    window.redlog.ip.getStatus().then(setIpStatus)
+    window.redlog.events.getCount().then(setEventCount)
+    window.redlog.loot.getCount().then(setLootCount)
+    window.redlog.scope.getViolationCount().then(setScopeViolations)
+    window.redlog.recording.get().then(setRecording)
+
+    const unsubIp = window.redlog.ip.onStatus(setIpStatus)
+    const unsubEvent = window.redlog.events.onNew(() => {
+      setEventCount((c) => c + 1)
+      window.redlog.loot.getCount().then(setLootCount)
+      window.redlog.scope.getViolationCount().then(setScopeViolations)
+    })
+    const unsubRec = window.redlog.recording.onChange(setRecording)
+    window.redlog.overlay.isVisible().then(setOverlayVisible)
+    const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
+    const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
+
+    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer) }
+  }, [])
+
+  const handleToggleRecording = async (): Promise<void> => {
+    const newState = await window.redlog.recording.toggle()
+    toast(newState ? t('toast.recordingResumed') : t('toast.recordingPaused'), newState ? 'success' : 'warning')
+  }
+
+  const vpn = ipStatus?.vpnStatus ?? 'unknown'
+  const vpnDot = vpn === 'connected' ? 'bg-emerald-500' : vpn === 'disconnected' ? 'bg-red-500' : 'bg-amber-500'
+  const vpnLabel = vpn === 'connected' ? t('statusBar.vpn') : vpn === 'disconnected' ? t('statusBar.noVpn') : t('statusBar.ipUnknown')
+
+  const hours = Math.floor(uptime / 3600)
+  const mins = Math.floor((uptime % 3600) / 60)
+  const secs = uptime % 60
+  const uptimeStr = hours > 0
+    ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    : `${mins}:${String(secs).padStart(2, '0')}`
+
+  const Sep = (): JSX.Element => <span className="text-zinc-800 select-none">|</span>
+
+  return (
+    <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
+      <button
+        onClick={handleToggleRecording}
+        className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+        title={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${recording ? 'bg-red-500 animate-pulse-slow' : 'bg-zinc-500'}`} />
+        <span className={recording ? 'text-red-400/80' : 'text-zinc-500'}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
+        <span className="text-zinc-600 tabular-nums">{uptimeStr}</span>
+      </button>
+
+      <Sep />
+
+      <div className="flex items-center gap-1.5">
+        <span className={`w-1.5 h-1.5 rounded-full ${vpnDot}`} />
+        <span className={vpn === 'connected' ? 'text-emerald-400/80' : vpn === 'disconnected' ? 'text-red-400/80' : 'text-amber-400/80'}>
+          {vpnLabel}
+        </span>
+        {ipStatus?.externalIP && (
+          <span className="text-zinc-600 tabular-nums">{ipStatus.externalIP}</span>
+        )}
+      </div>
+
+      <Sep />
+
+      <div className="flex items-center gap-1.5">
+        {scopeViolations > 0 ? (
+          <>
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+          </>
+        ) : (
+          <>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
+          </>
+        )}
+      </div>
+
+      <Sep />
+
+      <div className="flex items-center gap-1.5">
+        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-zinc-600'}>◆</span>
+        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-zinc-600'}>
+          {t('statusBar.loot', { count: lootCount })}
+        </span>
+      </div>
+
+      <div className="ml-auto flex items-center gap-3">
+        <span className="text-zinc-600 tabular-nums">{t('statusBar.events', { count: eventCount })}</span>
+        <button
+          onClick={async () => {
+            const ts = new Date().toLocaleTimeString()
+            await window.redlog.quickmarks.create({ title: `Timestamp ${ts}` })
+            setStamped(true)
+            setTimeout(() => setStamped(false), 1500)
+          }}
+          className={`transition-colors ${stamped ? 'text-emerald-400' : 'text-zinc-600 hover:text-red-400'}`}
+          title={t('statusBar.timestampTitle')}
+        >
+          {stamped ? '✓' : '⏱'}
+        </button>
+        <button
+          onClick={() => window.redlog.overlay.toggle()}
+          className={`transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-600 hover:text-red-400'}`}
+          title={t('statusBar.toggleOverlay')}
+        >
+          {overlayVisible ? '⬒ IP' : '⬓ IP'}
+        </button>
+      </div>
+    </div>
+  )
+}
