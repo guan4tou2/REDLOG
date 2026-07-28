@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
+import { confirm } from './ConfirmDialog'
+import { toast } from './Toast'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -9,6 +11,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [vpnIPs, setVpnIPs] = useState<string[]>([])
+  const [dailyIPs, setDailyIPs] = useState<string[]>([])
+  const [enforcement, setEnforcement] = useState('warn')
   const { t } = useI18n()
 
   useEffect(() => {
@@ -19,7 +26,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const name = newName.trim()
     if (!name) return
     setCreating(true)
-    const project = await window.redlog.project.create(name)
+    const initialConfig = (showAdvanced && (scopeTargets.length > 0 || vpnIPs.length > 0 || dailyIPs.length > 0))
+      ? {
+        scope: { targets: scopeTargets, excludeTargets: [], enforcement, scopeFile: null },
+        network: { vpnIPs, dailyIPs, checkInterval: 10 }
+      }
+      : undefined
+    const project = await window.redlog.project.create(name, initialConfig)
     onProjectOpen({ id: project.id, name: project.name })
   }
 
@@ -29,8 +42,21 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   async function handleDelete(id: string): Promise<void> {
+    const ok = await confirm(t('confirm.deleteProject'), t('confirm.deleteProjectDesc'), true)
+    if (!ok) return
     await window.redlog.project.delete(id)
     setProjects((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  async function handleImportProfile(): Promise<void> {
+    const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
+    if (!profile) return
+    if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
+    if (profile.network?.vpnIPs) setVpnIPs(profile.network.vpnIPs)
+    if (profile.network?.dailyIPs) setDailyIPs(profile.network.dailyIPs)
+    if (profile.scope?.enforcement) setEnforcement(profile.scope.enforcement)
+    setShowAdvanced(true)
+    toast(t('toast.profileImported'), 'success')
   }
 
   function timeAgo(ts: number): string {
@@ -46,7 +72,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
   return (
     <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
-      <div className="w-[420px] space-y-6">
+      <div className="w-[480px] space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 mb-2">
@@ -63,7 +89,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              onKeyDown={(e) => e.key === 'Enter' && !showAdvanced && handleCreate()}
               placeholder={t('project.placeholder')}
               autoFocus
               className="flex-1 bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 placeholder-zinc-700 transition-all"
@@ -76,6 +102,78 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               {t('project.create')}
             </button>
           </div>
+
+          {/* Advanced toggle */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="mt-3 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors flex items-center gap-1"
+          >
+            <span className="text-zinc-700">{showAdvanced ? '▾' : '▸'}</span>
+            {t('project.advancedSetup')}
+          </button>
+
+          {/* Advanced setup */}
+          {showAdvanced && (
+            <div className="mt-3 space-y-3 border-t border-redlog-border pt-3">
+              {/* Scope targets */}
+              <MiniListField
+                label={t('project.scopeTargets')}
+                items={scopeTargets}
+                onChange={setScopeTargets}
+                placeholder={t('project.scopePlaceholder')}
+              />
+
+              {/* VPN IPs */}
+              <MiniListField
+                label={t('project.vpnIps')}
+                items={vpnIPs}
+                onChange={setVpnIPs}
+                placeholder={t('settings.vpnIpPlaceholder')}
+              />
+
+              {/* Daily IPs */}
+              <MiniListField
+                label={t('project.dailyIps')}
+                items={dailyIPs}
+                onChange={setDailyIPs}
+                placeholder={t('settings.dailyIpPlaceholder')}
+              />
+
+              {/* Enforcement mode */}
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-1">{t('project.enforcement')}</label>
+                <div className="flex gap-1.5">
+                  {['warn', 'log'].map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setEnforcement(mode)}
+                      className={`px-3 py-1 text-[10px] rounded ${
+                        enforcement === mode
+                          ? 'bg-red-600 text-white'
+                          : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {mode.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Import profile divider */}
+              <div className="flex items-center gap-3 pt-1">
+                <div className="flex-1 border-t border-zinc-800" />
+                <span className="text-[10px] text-zinc-700">{t('project.or')}</span>
+                <div className="flex-1 border-t border-zinc-800" />
+              </div>
+
+              <button
+                onClick={handleImportProfile}
+                className="w-full py-2 bg-zinc-800/50 border border-dashed border-zinc-700 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+              >
+                {t('project.importProfile')}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Recent projects */}
@@ -111,6 +209,46 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           {t('project.description')}
         </p>
       </div>
+    </div>
+  )
+}
+
+function MiniListField({ label, items, onChange, placeholder }: {
+  label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
+}): JSX.Element {
+  const [input, setInput] = useState('')
+
+  const addItem = (): void => {
+    const trimmed = input.trim()
+    if (trimmed && !items.includes(trimmed)) {
+      onChange([...items, trimmed])
+      setInput('')
+    }
+  }
+
+  return (
+    <div>
+      <label className="text-[10px] text-zinc-500 block mb-1">{label}</label>
+      <div className="flex gap-1">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); addItem() } }}
+          placeholder={placeholder}
+          className="flex-1 bg-redlog-bg border border-zinc-800 rounded px-2 py-1 text-[11px] text-zinc-200 font-mono focus:outline-none focus:border-red-500/50"
+        />
+        <button onClick={addItem} className="px-2 py-1 bg-zinc-800 text-zinc-500 text-[10px] rounded hover:bg-zinc-700">+</button>
+      </div>
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {items.map((item, i) => (
+            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-400 text-[10px] font-mono px-1.5 py-0.5 rounded">
+              {item}
+              <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-zinc-600 hover:text-red-400">×</button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

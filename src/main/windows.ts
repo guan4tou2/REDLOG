@@ -4,13 +4,16 @@ import { is } from '@electron-toolkit/utils'
 
 const isMac = process.platform === 'darwin'
 
-export function createMainWindow(): BrowserWindow {
+export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1100,
-    height: 700,
+    width: savedBounds?.width ?? 1100,
+    height: savedBounds?.height ?? 700,
+    x: savedBounds?.x,
+    y: savedBounds?.y,
     minWidth: 800,
     minHeight: 500,
     show: false,
+    icon: join(__dirname, '../../resources/icon-256.png'),
     backgroundColor: '#0a0a0a',
     // macOS uses the inset traffic-light layout; Windows/Linux use a hidden
     // title bar with a native window-controls overlay so min/max/close remain
@@ -60,6 +63,7 @@ export function createOverlayWindow(): BrowserWindow {
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
+    movable: true,
     webPreferences: {
       preload: join(__dirname, '../preload/overlay.js'),
       sandbox: true,
@@ -68,7 +72,7 @@ export function createOverlayWindow(): BrowserWindow {
     }
   })
 
-  win.setIgnoreMouseEvents(false)
+  win.setIgnoreMouseEvents(true, { forward: true })
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

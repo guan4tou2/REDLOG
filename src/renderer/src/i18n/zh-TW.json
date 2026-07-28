@@ -1,6 +1,6 @@
 {
   "app.title": "REDLOG",
-  "app.subtitle": "紅隊操作工作台",
+  "app.subtitle": "紅隊行動日誌",
   "app.mark": "+ 標記",
 
   "project.new": "新專案",
@@ -211,5 +211,53 @@
   "settings.restartHint": "需要重新啟動以套用網路/範圍變更",
 
   "error.crashed": "{{label}} 發生錯誤",
-  "error.retry": "重試"
+  "error.retry": "重試",
+
+  "common.loading": "載入中...",
+
+  "confirm.cancel": "取消",
+  "confirm.confirm": "確認",
+  "confirm.delete": "刪除",
+  "confirm.deleteProject": "刪除專案？",
+  "confirm.deleteProjectDesc": "此專案的所有資料將被永久刪除，此操作無法復原。",
+  "confirm.deleteMark": "刪除標記？",
+  "confirm.deleteMarkDesc": "此標記將被永久移除。",
+
+  "toast.recordingPaused": "錄製已暫停",
+  "toast.recordingResumed": "錄製已恢復",
+  "toast.exported": "資料匯出成功",
+  "toast.exportFailed": "匯出失敗",
+  "toast.copied": "已複製到剪貼簿",
+
+  "timeline.zoomIn": "放大（Ctrl+滾輪）",
+  "timeline.zoomOut": "縮小（Ctrl+滾輪）",
+  "timeline.resetZoom": "重置縮放",
+  "timeline.noEvents": "尚未記錄任何事件",
+  "timeline.noEventsDesc": "來自 Shell、剪貼簿、截圖及其他監控的事件將顯示在此。",
+  "timeline.copyJson": "複製 JSON",
+  "timeline.fullData": "完整資料",
+
+  "dashboard.exportData": "匯出資料",
+
+  "overlay.rec": "錄製",
+  "overlay.paused": "已暫停",
+
+  "screenshots.emptyDesc": "截圖會在閒置時自動擷取，或透過擷取按鈕手動觸發。",
+
+  "project.advancedSetup": "進階設定（選填）",
+  "project.scopeTargets": "範圍目標（IP、CIDR、*.domain）",
+  "project.scopePlaceholder": "例如 192.168.1.0/24 或 *.example.com",
+  "project.vpnIps": "VPN IP（匹配時顯示綠色）",
+  "project.dailyIps": "日常 IP（匹配時顯示紅色 = 無 VPN）",
+  "project.enforcement": "範圍執行模式",
+  "project.or": "或",
+  "project.importProfile": "匯入設定檔（.yaml / .json）",
+
+  "settings.profileSync": "團隊設定同步",
+  "settings.exportProfile": "匯出設定檔",
+  "settings.importProfile": "匯入設定檔",
+  "settings.profileHint": "將設定匯出為 .yaml 檔案，分享範圍、VPN 和任務設定給團隊成員。",
+
+  "toast.profileExported": "設定檔已匯出",
+  "toast.profileImported": "設定檔已匯入 — 儲存以套用"
 }
