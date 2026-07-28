@@ -51,6 +51,11 @@ npx electron-builder --mac    # or --win / --linux
 - **macOS** — Xcode Command Line Tools (`xcode-select --install`).
 - **Linux** — `build-essential` + `python3`.
 
+> **Windows + WSL:** see [docs/windows-wsl-setup.md](docs/windows-wsl-setup.md)
+> for the full walkthrough — build tools, PowerShell notes, packaging, WSL
+> mirrored networking, logging from WSL, and **operational privacy / isolating
+> private activity**.
+
 ## Packaging
 
 Installers are produced with [electron-builder](https://www.electron.build)
