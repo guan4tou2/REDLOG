@@ -12,7 +12,9 @@ Wiki-style index. Every page is self-contained; follow the links inside each for
 
 ## Evidence & tamper-evidence
 
-- **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring. Threat model, what's detected, what isn't, how to verify a receipt with the `ots` CLI.
+- **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring + full re-walk verify + `.ots` bundle export. Threat model, what's detected, what isn't.
+- **[Event schema](event-schema.md)** — standard `agent_type` values and data keys (Ghostwriter-compatible). Read before designing a new event source.
+- **[Deconfliction webhook](deconfliction.md)** — real-time signed feed to the blue team. When to enable, when not to, payload shape, threat model.
 
 ## Agent skills (drop-in)
 

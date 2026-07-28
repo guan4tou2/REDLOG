@@ -19,7 +19,11 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from '../core/scope-monitor'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
-import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor } from '../core/chain-anchor'
+import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFull } from '../core/chain-anchor'
+import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
+import { configureRedaction } from '../core/redaction'
+import { exportBundle } from '../core/bundle-export'
+import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
@@ -140,6 +144,8 @@ function startProject(project: ProjectMeta): void {
     operatorId
   })
   lootDetector.configure({ engagementId, operatorId })
+  configureRedaction(config.redaction)
+  configureDeconfliction(config.deconfliction)
 
   configureTerminal({ engagementId, operatorId })
 
@@ -165,6 +171,7 @@ function startProject(project: ProjectMeta): void {
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
   startAnchorLoop()
+  startNtpLoop()
 
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow()
@@ -180,6 +187,7 @@ function startProject(project: ProjectMeta): void {
 
 function stopProject(): void {
   stopAnchorLoop()
+  stopNtpLoop()
   stopApiServer()
   ipMonitor.stop()
   closeDB()
@@ -262,6 +270,8 @@ app.whenReady().then(() => {
       excludeTargets: newConfig.scope.excludeTargets
     })
     screenshotAgent.configure({ quality: newConfig.screenshot.quality })
+    if (newConfig.redaction) configureRedaction(newConfig.redaction)
+    if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     return true
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
@@ -308,6 +318,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => searchEvents(query, limit))
   eventBus.on('event', (event) => {
     mainWindow?.webContents.send('events:new', event)
+    notifyDeconfliction(event)
   })
 
   // --- Markers ---
@@ -345,7 +356,18 @@ app.whenReady().then(() => {
   ipcMain.handle('chain:length', () => getChainLength())
   ipcMain.handle('chain:anchors', () => activeProject ? listAnchors() : [])
   ipcMain.handle('chain:anchorNow', async () => activeProject ? await anchorNow() : null)
-  ipcMain.handle('chain:verify', () => activeProject ? verifyLatestAnchor() : { ok: false, anchor: null, currentHead: null })
+  ipcMain.handle('chain:verify', (_e, opts?: { full?: boolean }) => {
+    if (!activeProject) return { ok: false, anchor: null, currentHead: null }
+    return opts?.full ? verifyChainFull() : verifyLatestAnchor()
+  })
+  ipcMain.handle('deconfliction:get', () => getDeconflictionConfig())
+  ipcMain.handle('deconfliction:test', async (_e, cfg) => testWebhook(cfg))
+
+  ipcMain.handle('clock:status', () => ({
+    ntpOffsetMs: getNtpOffsetMs(),
+    lastQueryAt: getLastNtpQuery(),
+    hostWallMs: Date.now()
+  }))
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
@@ -373,6 +395,14 @@ app.whenReady().then(() => {
   // --- CDP ---
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
+
+  // --- Evidence bundle ---
+  ipcMain.handle('data:exportBundle', () => {
+    if (!activeProject) return null
+    const cfg = loadConfig(getProjectPath(activeProject))
+    const bundle = exportBundle(cfg.engagement.id)
+    return { outDir: bundle.outDir, manifest: bundle.manifest }
+  })
 
   // --- Data Export (minimal JSON dump) ---
   ipcMain.handle('data:exportJson', () => {

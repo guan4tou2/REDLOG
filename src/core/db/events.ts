@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import os from 'os'
 import { getDB } from './index'
+import { monotonicNs, getNtpOffsetMs } from '../clock'
 
 export interface RedLogEvent {
   id: string
@@ -16,6 +17,8 @@ export interface RedLogEvent {
   hash?: string
   prevHash?: string | null
   createdAt: number
+  monotonicNs?: string | null
+  ntpOffsetMs?: number | null
 }
 
 let sessionId = crypto.randomUUID()
@@ -56,7 +59,9 @@ export function insertEvent(
     targetId: opts?.targetId ?? null,
     data,
     prevHash,
-    createdAt: now
+    createdAt: now,
+    monotonicNs: monotonicNs(),
+    ntpOffsetMs: getNtpOffsetMs()
   }
 
   const hash = crypto
@@ -66,12 +71,13 @@ export function insertEvent(
   event.hash = hash
 
   db.prepare(`
-    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     event.id, event.timestamp, event.engagementId, event.sessionId,
     event.operatorId, event.agentType, event.hostname, event.sourceIP,
-    event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt
+    event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
+    event.monotonicNs, event.ntpOffsetMs
   )
 
   return event
@@ -172,6 +178,8 @@ function rowToEvent(row: Record<string, unknown>): RedLogEvent {
     data: JSON.parse(row.data as string),
     hash: row.hash as string,
     prevHash: (row.prev_hash as string | null) ?? null,
-    createdAt: row.created_at as number
+    createdAt: row.created_at as number,
+    monotonicNs: (row.monotonic_ns as string | null) ?? null,
+    ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null
   }
 }

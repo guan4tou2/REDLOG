@@ -1,14 +1,22 @@
 import * as pty from 'node-pty'
 import { BrowserWindow } from 'electron'
 import os from 'os'
+import fs from 'fs'
+import path from 'path'
+import crypto from 'crypto'
 import { insertEvent } from '../core/db/events'
 import { eventBus } from '../core/event-bus'
+import { getProjectDir } from '../core/db/index'
 
 interface TerminalSession {
   id: string
   pty: pty.IPty
   buffer: string
   lastActivity: number
+  castPath: string | null
+  castStream: fs.WriteStream | null
+  castStart: number
+  castBytes: number
 }
 
 const sessions = new Map<string, TerminalSession>()
@@ -46,11 +54,38 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     } as Record<string, string>
   })
 
+  let castPath: string | null = null
+  let castStream: fs.WriteStream | null = null
+  const castStart = Date.now()
+  try {
+    const dir = path.join(getProjectDir(), 'casts')
+    fs.mkdirSync(dir, { recursive: true })
+    const ts = new Date(castStart).toISOString().replace(/[:.]/g, '-')
+    castPath = path.join(dir, `${ts}_${id}.cast`)
+    castStream = fs.createWriteStream(castPath)
+    const header = {
+      version: 2,
+      width: cols,
+      height: rows,
+      timestamp: Math.floor(castStart / 1000),
+      env: { SHELL: shell, TERM: 'xterm-256color' },
+      title: `redlog terminal ${id}`
+    }
+    castStream.write(JSON.stringify(header) + '\n')
+  } catch {
+    castPath = null
+    castStream = null
+  }
+
   const session: TerminalSession = {
     id,
     pty: term,
     buffer: '',
-    lastActivity: Date.now()
+    lastActivity: Date.now(),
+    castPath,
+    castStream,
+    castStart,
+    castBytes: 0
   }
 
   term.onData((data: string) => {
@@ -59,16 +94,38 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     if (session.buffer.length > 8192) {
       session.buffer = session.buffer.slice(-4096)
     }
+    if (session.castStream) {
+      const rel = (session.lastActivity - session.castStart) / 1000
+      try {
+        session.castStream.write(JSON.stringify([rel, 'o', data]) + '\n')
+        session.castBytes += Buffer.byteLength(data)
+      } catch { /* stream closed */ }
+    }
     mainWindow?.webContents.send(`terminal:data:${id}`, data)
   })
 
   term.onExit(({ exitCode }) => {
+    let castSha256: string | null = null
+    if (session.castStream) {
+      try { session.castStream.end() } catch { /* */ }
+    }
+    if (session.castPath) {
+      try {
+        const hasher = crypto.createHash('sha256')
+        hasher.update(fs.readFileSync(session.castPath))
+        castSha256 = hasher.digest('hex')
+      } catch { castSha256 = null }
+    }
     const event = insertEvent('shell', {
       subtype: 'session_end',
       source: 'builtin-terminal',
       terminalId: id,
       exitCode,
-      pid: term.pid
+      pid: term.pid,
+      castPath: session.castPath,
+      castSha256,
+      castBytes: session.castBytes,
+      durationMs: Date.now() - session.castStart
     }, { engagementId, operatorId })
     if (event) eventBus.publish(event)
     sessions.delete(id)
@@ -82,7 +139,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     source: 'builtin-terminal',
     terminalId: id,
     shell,
-    pid: term.pid
+    pid: term.pid,
+    castPath
   }, { engagementId, operatorId })
   if (event) eventBus.publish(event)
 

@@ -20,8 +20,12 @@ import {
 } from './db/operators'
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
-import { anchorNow, listAnchors, verifyLatestAnchor } from './chain-anchor'
+import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
+import { getNtpOffsetMs, getLastNtpQuery } from './clock'
+import { redact } from './redaction'
+import { exportBundle } from './bundle-export'
+import { getDeconflictionConfig, testWebhook } from './deconfliction'
 
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
@@ -165,6 +169,17 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         if (!isStart && lootDetectorRef) {
           const textToScan = [cmd, data.output].filter(Boolean).join('\n')
           if (textToScan) lootDetectorRef.scan(textToScan, targetId)
+        }
+      }
+
+      for (const field of ['output', 'output_preview']) {
+        if (typeof data[field] === 'string' && data[field]) {
+          const result = redact(data[field] as string)
+          data[field] = result.text
+          if (result.redacted.length > 0) {
+            const redactions = (data.redactions as unknown[] | undefined) ?? []
+            data.redactions = [...redactions, ...result.redacted.map((r) => ({ ...r, field }))]
+          }
         }
       }
 
@@ -320,8 +335,64 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
+    if (route === '/api/export/bundle' && req.method === 'POST') {
+      try {
+        const bundle = exportBundle(engagementId)
+        json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
+      } catch (e) {
+        json(res, 500, { error: (e as Error).message })
+      }
+      return
+    }
+
+    if (route === '/api/deconfliction' && req.method === 'GET') {
+      const cfg = getDeconflictionConfig()
+      json(res, 200, { ...cfg, secret: cfg.secret ? '***' : '' })
+      return
+    }
+
+    if (route === '/api/deconfliction/test' && req.method === 'POST') {
+      const result = await testWebhook(getDeconflictionConfig())
+      json(res, 200, result)
+      return
+    }
+
+    if (route === '/api/clock' && req.method === 'GET') {
+      json(res, 200, {
+        ntpOffsetMs: getNtpOffsetMs(),
+        lastQueryAt: getLastNtpQuery(),
+        hostWallMs: Date.now()
+      })
+      return
+    }
+
     if (route === '/api/anchors/verify' && req.method === 'GET') {
-      json(res, 200, verifyLatestAnchor())
+      const full = url.searchParams.get('full') === '1'
+      json(res, 200, full ? verifyChainFull() : verifyLatestAnchor())
+      return
+    }
+
+    const otsMatch = route.match(/^\/api\/anchors\/([^/]+)\/ots$/)
+    if (otsMatch && req.method === 'GET') {
+      const anchor = getAnchorById(decodeURIComponent(otsMatch[1]))
+      if (!anchor) { json(res, 404, { error: 'Anchor not found' }); return }
+      const calendarFilter = url.searchParams.get('calendar')
+      const receipt = anchor.calendarReceipts.find((r) =>
+        r.ok && r.receiptB64 && (!calendarFilter || r.calendar === calendarFilter)
+      )
+      if (!receipt || !receipt.receiptB64) {
+        json(res, 404, { error: 'No successful calendar receipt available for this anchor' })
+        return
+      }
+      const bundle = buildOtsBundle(anchor.headHash, receipt.receiptB64)
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="redlog-anchor-${anchor.id}.ots"`,
+        'Content-Length': String(bundle.length),
+        'X-Redlog-Head-Hash': anchor.headHash,
+        'X-Redlog-Calendar': receipt.calendar
+      })
+      res.end(bundle)
       return
     }
 

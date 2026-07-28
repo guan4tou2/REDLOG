@@ -25,6 +25,20 @@ export interface RedLogConfig {
   screenshot: {
     quality: number
   }
+  redaction: {
+    allowlist: string[]
+    denylist: string[]
+    entropyThreshold: number
+    minLength: number
+  }
+  deconfliction: {
+    enabled: boolean
+    url: string
+    secret: string
+    events: string[]
+    subtypes: string[]
+    includeData: boolean
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -49,6 +63,20 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshot: {
     quality: 85
+  },
+  redaction: {
+    allowlist: [],
+    denylist: [],
+    entropyThreshold: 4.5,
+    minLength: 20
+  },
+  deconfliction: {
+    enabled: false,
+    url: '',
+    secret: '',
+    events: ['marker', 'system', 'credential_use', 'c2_checkin'],
+    subtypes: ['scope_violation'],
+    includeData: false
   }
 }
 

@@ -31,7 +31,9 @@ export function initDB(projectDir: string): Database.Database {
       data TEXT NOT NULL DEFAULT '{}',
       hash TEXT,
       prev_hash TEXT,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      monotonic_ns TEXT,
+      ntp_offset_ms INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
@@ -80,11 +82,12 @@ export function initDB(projectDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_anchor_ts ON chain_anchors(created_at);
   `)
 
-  // Migrate: add prev_hash column if missing (pre-v0.2 databases)
+  // Migrate: add columns if missing (older DB versions)
   const cols = db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>
-  if (!cols.some(c => c.name === 'prev_hash')) {
-    db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT')
-  }
+  const colNames = new Set(cols.map(c => c.name))
+  if (!colNames.has('prev_hash')) db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT')
+  if (!colNames.has('monotonic_ns')) db.exec('ALTER TABLE events ADD COLUMN monotonic_ns TEXT')
+  if (!colNames.has('ntp_offset_ms')) db.exec('ALTER TABLE events ADD COLUMN ntp_offset_ms INTEGER')
 
   currentProjectDir = projectDir
   return db

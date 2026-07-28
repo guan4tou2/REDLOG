@@ -22,12 +22,12 @@
       "type": "function",
       "function": {
         "name": "redlog_log_event",
-        "description": "Log a structured event to the RedLog timeline with custom type and data payload.",
+        "description": "Log a structured event to the RedLog timeline. Prefer standard agent_type (shell, agent, scanner, dns, credential_use, c2_checkin, file_transfer, marker, loot) and standard data keys (subtype, command, tool, dest_ip, dest_host, dest_port, user_context, mitre_ttp, description, sha256, bytes). See docs/event-schema.md.",
         "parameters": {
           "type": "object",
           "properties": {
-            "agent_type": { "type": "string", "description": "Event source category (e.g. 'agent', 'scanner', 'recon', 'exploit')" },
-            "data": { "type": "object", "description": "Arbitrary event data as JSON object" },
+            "agent_type": { "type": "string", "description": "Event source category. Prefer: shell / agent / scanner / dns / credential_use / c2_checkin / file_transfer / marker / loot" },
+            "data": { "type": "object", "description": "Event payload. Populate standard keys when applicable." },
             "target": { "type": "string", "description": "Target host/IP" }
           },
           "required": ["agent_type", "data"]

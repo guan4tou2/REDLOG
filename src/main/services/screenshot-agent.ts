@@ -35,10 +35,11 @@ export class ScreenshotAgent {
 
       const image = sources[0].thumbnail
       const jpeg = image.toJPEG(this.quality)
-      const jpegHash = crypto.createHash('sha256').update(jpeg).digest('hex').slice(0, 16)
+      const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
+      const dedupKey = sha256.slice(0, 16)
 
-      if (trigger !== 'manual' && jpegHash === this.lastHash) return null
-      this.lastHash = jpegHash
+      if (trigger !== 'manual' && dedupKey === this.lastHash) return null
+      this.lastHash = dedupKey
 
       const dir = path.join(getProjectDir(), 'screenshots')
       fs.mkdirSync(dir, { recursive: true })
@@ -54,7 +55,8 @@ export class ScreenshotAgent {
         size: jpeg.length,
         width,
         height,
-        hash: jpegHash
+        sha256,
+        hash: dedupKey
       }, { engagementId: this.engagementId, operatorId: this.operatorId })
       if (evt) eventBus.publish(evt)
 

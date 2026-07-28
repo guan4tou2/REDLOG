@@ -21,6 +21,24 @@ function readPort() {
   try { return parseInt(fs.readFileSync(PORT_PATH, 'utf-8').trim()) } catch { return 6660 }
 }
 
+function requestRaw(method, path) {
+  return new Promise((resolve, reject) => {
+    const token = readToken()
+    const port = readPort()
+    const opts = {
+      hostname: '127.0.0.1', port, path, method,
+      headers: { 'Authorization': `Bearer ${token}` }
+    }
+    const req = http.request(opts, (res) => {
+      const chunks = []
+      res.on('data', (c) => chunks.push(c))
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, buffer: Buffer.concat(chunks) }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
 function request(method, path, body) {
   return new Promise((resolve, reject) => {
     const token = readToken()
@@ -95,7 +113,8 @@ Usage:
   redlog-cli token
   redlog-cli whoami
   redlog-cli operators [list|add <name>|rotate <id>|revoke <id>|delete <id>]
-  redlog-cli chain [status|anchor|verify|anchors]
+  redlog-cli chain [status|anchor|verify [--full]|anchors|export-ots <id> [--out <file>]]
+  redlog-cli export bundle
 
 Environment:
   REDLOG_TOKEN   Override the auto-detected API token
@@ -326,6 +345,24 @@ Examples:
       break
     }
 
+    case 'export': {
+      const sub = positional[0]
+      if (sub === 'bundle') {
+        const res = await request('POST', '/api/export/bundle')
+        if (res.status === 201) {
+          console.log(`Bundle written: ${res.data.outDir}`)
+          console.log(`  files: ${res.data.manifest.files.length}`)
+          if (res.data.manifest.lastAnchor) {
+            console.log(`  last anchor: ${res.data.manifest.lastAnchor.status} @ event_count=${res.data.manifest.lastAnchor.eventCount}`)
+          }
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else {
+        console.error(`Unknown export subcommand: ${sub}. Use bundle`)
+        process.exit(1)
+      }
+      break
+    }
+
     case 'chain': {
       const sub = positional[0] || 'status'
       if (sub === 'status') {
@@ -353,12 +390,23 @@ Examples:
           }
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       } else if (sub === 'verify') {
-        const res = await request('GET', '/api/anchors/verify')
+        const full = !!flags.full
+        const res = await request('GET', `/api/anchors/verify${full ? '?full=1' : ''}`)
         if (res.status === 200) {
-          console.log(res.data.ok ? 'OK — latest anchor is a prefix of current chain' : 'MISMATCH — investigate')
-          if (res.data.anchor) console.log(`  anchor event_count: ${res.data.anchor.eventCount}`)
-          if (res.data.currentHead) console.log(`  current head:       ${res.data.currentHead}`)
-          if (!res.data.ok) process.exit(2)
+          if (full) {
+            const d = res.data
+            console.log(d.ok
+              ? `OK — walked ${d.walked} events, hash chain intact`
+              : `BROKEN at event ${d.brokenAtEventId}: ${d.brokenReason}`)
+            if (d.currentHead) console.log(`  current head: ${d.currentHead}`)
+            if (d.anchor) console.log(`  anchor match: ${d.anchorMatchesWalkedHead ? 'yes' : 'no'} (anchor covers ${d.anchor.eventCount})`)
+            if (!d.ok) process.exit(2)
+          } else {
+            console.log(res.data.ok ? 'OK — latest anchor is a prefix of current chain' : 'MISMATCH — investigate')
+            if (res.data.anchor) console.log(`  anchor event_count: ${res.data.anchor.eventCount}`)
+            if (res.data.currentHead) console.log(`  current head:       ${res.data.currentHead}`)
+            if (!res.data.ok) process.exit(2)
+          }
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       } else if (sub === 'anchors') {
         const limit = flags.limit || 20
@@ -369,6 +417,21 @@ Examples:
             console.log(`  [${new Date(a.createdAt).toISOString()}] ${a.status.padEnd(8)} ${ok}/${a.calendarReceipts.length}  events=${a.eventCount}  head=${a.headHash.slice(0, 16)}...`)
           }
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'export-ots') {
+        const id = positional[1]
+        if (!id) { console.error('Usage: redlog-cli chain export-ots <anchor-id> [--out file.ots] [--calendar url]'); process.exit(1) }
+        const qs = flags.calendar ? `?calendar=${encodeURIComponent(flags.calendar)}` : ''
+        const res = await requestRaw('GET', `/api/anchors/${encodeURIComponent(id)}/ots${qs}`)
+        if (res.status !== 200) {
+          try { console.error(`Error ${res.status}:`, JSON.parse(res.buffer.toString())) } catch { console.error(`Error ${res.status}`) }
+          process.exit(1)
+        }
+        const outPath = flags.out || `redlog-anchor-${id}.ots`
+        fs.writeFileSync(outPath, res.buffer)
+        console.log(`Wrote ${res.buffer.length} bytes to ${outPath}`)
+        console.log(`  head_hash: ${res.headers['x-redlog-head-hash'] || '?'}`)
+        console.log(`  calendar:  ${res.headers['x-redlog-calendar'] || '?'}`)
+        console.log(`  verify:    ots upgrade ${outPath} && ots verify ${outPath}`)
       } else {
         console.error(`Unknown chain subcommand: ${sub}. Use status|anchor|verify|anchors`)
         process.exit(1)

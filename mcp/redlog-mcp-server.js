@@ -82,13 +82,17 @@ const TOOLS = [
   },
   {
     name: 'redlog_log_event',
-    description: 'Log a raw event to the RedLog timeline with custom agent_type and data.',
+    description: 'Log a raw event to the RedLog timeline with custom agent_type and data. Prefer standard agent_type values (shell, agent, scanner, dns, credential_use, c2_checkin, file_transfer, marker, loot, system). Prefer standard data keys where they apply: subtype, command, output_preview, tool, dest_ip, dest_host, dest_port, src_ip, user_context, mitre_ttp, description, comments, sha256, bytes. See docs/event-schema.md.',
     inputSchema: {
       type: 'object',
       properties: {
-        agent_type: { type: 'string', description: 'Event source type (e.g. "agent", "scanner", "recon")' },
-        data: { type: 'object', description: 'Arbitrary event data as JSON' },
-        target: { type: 'string', description: 'Target host/IP' }
+        agent_type: { type: 'string', description: 'Event source type. Prefer: shell / agent / scanner / dns / credential_use / c2_checkin / file_transfer / marker / loot' },
+        data: {
+          type: 'object',
+          description: 'Event payload. Populate standard keys when applicable (subtype, tool, dest_ip, dest_host, dest_port, user_context, mitre_ttp, description, sha256, bytes).',
+          additionalProperties: true
+        },
+        target: { type: 'string', description: 'Target host/IP (also written to target_id column for filter/scope match)' }
       },
       required: ['agent_type', 'data']
     }

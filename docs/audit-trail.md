@@ -69,25 +69,41 @@ You do not need RedLog to verify an anchor. All you need is:
 2. Any calendar receipt for that hash (base64 in the same row).
 3. The [OpenTimestamps CLI](https://github.com/opentimestamps/opentimestamps-client) (`pip install opentimestamps-client`).
 
-Sketch (v0.1 stores raw calendar receipts; a fully-formed `.ots` bundle requires the OTS `Timestamp` wrapper — the CLI can consume the calendar-response bytes directly to upgrade them):
+RedLog exports **standard `.ots` bundles** — no manual assembly needed:
 
 ```bash
-# Extract from the DB
-sqlite3 ~/.redlog/projects/<id>/timeline.db \
-  "SELECT head_hash, calendar_receipts FROM chain_anchors ORDER BY created_at DESC LIMIT 1"
+# Pick an anchor id (or grab the latest from `redlog-cli chain status`)
+redlog-cli chain anchors
+# → 2026-07-28T...  complete  3/3  events=1247  head=9f2c...
 
-# Once the calendar has folded your digest into a Bitcoin-anchored Merkle tree
-# (usually within a few hours), the receipt can be upgraded and verified:
+# Export a standard OpenTimestamps bundle
+redlog-cli chain export-ots <anchor-id> --out anchor.ots
+
+# Once the calendars have folded your digest into a Bitcoin-anchored
+# Merkle tree (usually a few hours), upgrade and verify with any OTS client:
 ots upgrade anchor.ots
 ots verify anchor.ots
 # → Success! Bitcoin block 855123 attests data existed as of 2026-07-28 14:22:11 UTC
 ```
 
-Full end-to-end `.ots` bundle export is not yet built into RedLog — see [Future work](#future-work).
+The bundle uses the standard OpenTimestamps `.ots` file format (magic
+`OpenTimestamps\x00\x00Proof\x00` + SHA-256 op + digest + calendar
+attestation), so any OTS-aware tooling can consume it.
 
 ## Quick self-check
 
-`GET /api/anchors/verify` (or `redlog_chain_verify` in an MCP client) compares the latest anchor's `event_count` to the current chain length. If the current chain has fewer events than the anchor did, something was deleted after anchoring — investigate. This is a fast sanity check, not a cryptographic rewalk.
+Two levels of check:
+
+**Fast** — `GET /api/anchors/verify` (or `redlog-cli chain verify` / `redlog_chain_verify` in MCP) compares the latest anchor's `event_count` to the current chain length. Detects deletion of events after anchoring in constant time.
+
+**Full re-walk** — `GET /api/anchors/verify?full=1` (or `redlog-cli chain verify --full`) iterates every event in insertion order, recomputes each hash, checks each `prev_hash` pointer, and confirms the walked head matches the anchor's `head_hash`. Detects any modification, deletion, insertion, or reorder — but O(n).
+
+```bash
+redlog-cli chain verify --full
+# OK — walked 1247 events, hash chain intact
+#   current head: 9f2c...
+#   anchor match: yes (anchor covers 1200)
+```
 
 ## Threat model
 
@@ -103,13 +119,23 @@ Full end-to-end `.ots` bundle export is not yet built into RedLog — see [Futur
 ## Retention & export
 
 - All anchors stay in `<project>/timeline.db` for the life of the project.
-- Recommended: `Settings ▸ Data ▸ Export JSON Dump` after each engagement — the export includes `chain_anchors` rows, giving auditors a self-contained package they can verify offline.
+- **Evidence bundle** (`redlog-cli export bundle`) — produces a self-contained directory with `events.jsonl`, `quickmarks.json`, `chain_anchors.json`, `operators.json`, `screenshots/`, `casts/`, and `manifest.json` (SHA-256 per file + chain head + latest anchor). `manifest.sha256` sits alongside for one-shot integrity checks.
+- Standard `.ots` bundles per anchor via `redlog-cli chain export-ots <id> --out anchor.ots`.
+
+## Clock hardening
+
+Each event carries three time signals:
+
+- `timestamp` / `created_at` — wall clock (can drift or be tampered)
+- `monotonic_ns` — process-relative monotonic clock (immune to NTP jumps / manual changes)
+- `ntp_offset_ms` — cached offset vs `pool.ntp.org` at insertion time
+
+A future full-verify variant will flag events whose `monotonic_ns` delta and wall-clock delta disagree beyond tolerance. For now the fields are recorded so any offline analysis can spot clock jumps.
 
 ## Future work
 
-- Package calendar receipts as standard `.ots` bundles so `ots verify` works with zero manual steps.
-- Full cryptographic re-walk of the chain from anchor point to current head as part of `redlog_chain_verify`.
 - Automatic retry with exponential backoff for `failed` anchors instead of only at the next hourly tick.
+- Cross-check wall vs monotonic during `verify --full`.
 
 ## Related
 

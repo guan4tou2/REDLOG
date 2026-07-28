@@ -449,7 +449,12 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | GET | `/api/chain` | yes | Chain length + latest anchor |
 | GET | `/api/anchors` | yes | List OTS anchors (`?limit=`) |
 | POST | `/api/anchors` | yes | Anchor current chain head now |
-| GET | `/api/anchors/verify` | yes | Fast prefix check on latest anchor |
+| GET | `/api/anchors/verify` | yes | Fast prefix check (add `?full=1` for full re-walk) |
+| GET | `/api/anchors/:id/ots` | yes | Download standard `.ots` bundle (`?calendar=<url>` optional) |
+| GET | `/api/clock` | yes | NTP offset + last query time + host wall clock |
+| POST | `/api/export/bundle` | yes | Produce signed evidence bundle in project's `exports/` dir |
+| GET | `/api/deconfliction` | yes | Current deconfliction config (secret redacted) |
+| POST | `/api/deconfliction/test` | yes | Send a test payload to the configured webhook |
 
 ### Event Schema
 

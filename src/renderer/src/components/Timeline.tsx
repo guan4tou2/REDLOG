@@ -5,14 +5,17 @@ import { toast } from './Toast'
 const MIN_LANE_H = 36
 const LABEL_W = 72
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot', 'system'] as const
+const LANES = ['shell', 'dns', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
+  dns: '#14b8a6',
   screenshot: '#3b82f6',
   clipboard: '#a855f7',
   file_transfer: '#a78bfa',
+  credential_use: '#eab308',
+  c2_checkin: '#f43f5e',
   marker: '#ef4444',
   loot: '#f97316',
   system: '#52525b'
@@ -25,12 +28,18 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'command_start') return `$ ${(d.command as string).slice(0, 100)}`
       if (d.subtype === 'command_end') return `$ ${(d.command as string).slice(0, 80)} → exit ${d.exit_code}`
       return 'Shell event'
+    case 'dns':
+      return `DNS ${d.subtype === 'dns_response' ? '⇐' : '⇒'} ${d.dest_host || d.command || ''}`
     case 'screenshot':
       return `Screenshot (${d.trigger})`
     case 'clipboard':
       return `Clipboard: ${(d.content as string)?.slice(0, 60) || ''}...`
     case 'file_transfer':
-      return `${d.direction}: ${d.filename || d.localPath || d.remotePath}`
+      return `${d.subtype || d.direction || 'transfer'}: ${d.filename || d.localPath || d.remotePath || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
+    case 'credential_use':
+      return `${d.subtype || 'cred'}: ${d.user_context || '?'} @ ${d.dest_host || d.dest_ip || ''}`
+    case 'c2_checkin':
+      return `C2 beacon ← ${d.dest_ip || d.dest_host || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
     case 'marker':
       return `${(d.severity as string || 'info').toUpperCase()}: ${d.title}`
     case 'loot':
@@ -85,9 +94,12 @@ export default function TimelinePanel(): JSX.Element {
 
   const laneLabels: Record<LaneId, string> = useMemo(() => ({
     shell: t('timeline.shell'),
+    dns: t('timeline.dns'),
     screenshot: t('timeline.screenshot'),
     clipboard: t('timeline.clipboard'),
     file_transfer: t('timeline.files'),
+    credential_use: t('timeline.credentialUse'),
+    c2_checkin: t('timeline.c2Checkin'),
     marker: t('timeline.markers'),
     loot: t('timeline.loot'),
     system: t('timeline.system')

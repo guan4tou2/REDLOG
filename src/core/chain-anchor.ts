@@ -207,3 +207,138 @@ export function verifyLatestAnchor(): { ok: boolean; anchor: ChainAnchor | null;
   const ok = last.eventCount <= head.eventCount
   return { ok, anchor: last, currentHead: head.hash }
 }
+
+const OTS_MAGIC = Buffer.from([
+  0x00, 0x4f, 0x70, 0x65, 0x6e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61,
+  0x6d, 0x70, 0x73, 0x00, 0x00, 0x50, 0x72, 0x6f, 0x6f, 0x66, 0x00, 0xbf,
+  0x89, 0xe2, 0xe8, 0x84, 0xe8, 0x92, 0x94
+])
+const OTS_VERSION = 0x01
+const OTS_OP_SHA256 = 0x08
+
+export function buildOtsBundle(headHashHex: string, receiptB64: string): Buffer {
+  const digest = Buffer.from(headHashHex, 'hex')
+  if (digest.length !== 32) throw new Error(`headHash must be 32 bytes (SHA-256), got ${digest.length}`)
+  const timestamp = Buffer.from(receiptB64, 'base64')
+  return Buffer.concat([
+    OTS_MAGIC,
+    Buffer.from([OTS_VERSION, OTS_OP_SHA256]),
+    digest,
+    timestamp
+  ])
+}
+
+export function getAnchorById(id: string): ChainAnchor | null {
+  const db = getDB()
+  const row = db.prepare(
+    `SELECT id, head_event_id, head_hash, event_count, calendar_receipts, status, created_at, completed_at
+     FROM chain_anchors WHERE id = ?`
+  ).get(id) as AnchorRow | undefined
+  return row ? rowToAnchor(row) : null
+}
+
+export interface FullVerifyResult {
+  ok: boolean
+  walked: number
+  brokenAtEventId: string | null
+  brokenReason: string | null
+  currentHead: string | null
+  anchor: ChainAnchor | null
+  anchorMatchesWalkedHead: boolean
+}
+
+interface WalkRow {
+  id: string
+  timestamp: number
+  engagement_id: string
+  session_id: string
+  operator_id: string
+  agent_type: string
+  hostname: string
+  source_ip: string | null
+  target_id: string | null
+  data: string
+  hash: string | null
+  prev_hash: string | null
+  created_at: number
+  monotonic_ns: string | null
+  ntp_offset_ms: number | null
+}
+
+export function verifyChainFull(): FullVerifyResult {
+  const db = getDB()
+  const anchor = getLastAnchor()
+  const currentHead = computeChainHead()
+
+  const rowIter = db.prepare(
+    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+            monotonic_ns, ntp_offset_ms
+     FROM events ORDER BY created_at ASC, rowid ASC`
+  ).iterate() as IterableIterator<WalkRow>
+
+  let walked = 0
+  let expectedPrev: string | null = null
+  let lastHash: string | null = null
+
+  for (const row of rowIter) {
+    walked++
+    if ((row.prev_hash ?? null) !== expectedPrev) {
+      return {
+        ok: false,
+        walked,
+        brokenAtEventId: row.id,
+        brokenReason: `prev_hash mismatch (expected ${expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
+        currentHead: currentHead?.hash ?? null,
+        anchor,
+        anchorMatchesWalkedHead: false
+      }
+    }
+
+    const reconstructed: Record<string, unknown> = {
+      id: row.id,
+      timestamp: row.timestamp,
+      engagementId: row.engagement_id,
+      sessionId: row.session_id,
+      operatorId: row.operator_id,
+      agentType: row.agent_type,
+      hostname: row.hostname,
+      sourceIP: row.source_ip,
+      targetId: row.target_id,
+      data: JSON.parse(row.data),
+      hash: undefined,
+      prevHash: row.prev_hash,
+      createdAt: row.created_at
+    }
+    const expectedHash = crypto.createHash('sha256').update(JSON.stringify(reconstructed)).digest('hex')
+    if (expectedHash !== row.hash) {
+      return {
+        ok: false,
+        walked,
+        brokenAtEventId: row.id,
+        brokenReason: `hash mismatch (recomputed ${expectedHash.slice(0, 16)}..., stored ${(row.hash ?? '').slice(0, 16)}...)`,
+        currentHead: currentHead?.hash ?? null,
+        anchor,
+        anchorMatchesWalkedHead: false
+      }
+    }
+    expectedPrev = row.hash
+    lastHash = row.hash
+  }
+
+  let anchorMatchesWalkedHead = false
+  if (anchor && lastHash) {
+    const walkedHead = crypto.createHash('sha256').update(lastHash).update(String(walked)).digest('hex')
+    anchorMatchesWalkedHead = walkedHead === anchor.headHash || anchor.eventCount <= walked
+  }
+
+  return {
+    ok: true,
+    walked,
+    brokenAtEventId: null,
+    brokenReason: null,
+    currentHead: currentHead?.hash ?? null,
+    anchor,
+    anchorMatchesWalkedHead
+  }
+}

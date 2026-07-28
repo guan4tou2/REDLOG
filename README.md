@@ -18,7 +18,13 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **AI agent native** — MCP server + shell hooks let Claude Code, Codex, and GPT log directly into your timeline
 - **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
 - **Per-operator identity** — every event carries an operator id resolved from an API token; teammates and agents get their own tokens ([details](docs/operators.md))
-- **Evidence chain + OpenTimestamps** — append-only SHA-256 chain, hourly anchored to public OpenTimestamps calendars for third-party verifiable tamper evidence ([details](docs/audit-trail.md))
+- **Evidence chain + OpenTimestamps** — append-only SHA-256 chain, hourly anchored to public OpenTimestamps calendars, one-command `.ots` bundle export for third-party `ots verify` ([details](docs/audit-trail.md))
+- **Ghostwriter-compatible event schema** — first-class `dns`, `credential_use`, `c2_checkin`, `file_transfer` types plus standard `dest_ip / dest_host / mitre_ttp / description` keys ([details](docs/event-schema.md))
+- **Signed evidence bundle** — `redlog-cli export bundle` produces a self-contained directory with SHA-256 manifest ready for delivery
+- **Entropy-based redaction** — high-entropy tokens and per-project allow/denylist patterns are auto-redacted from captured output
+- **Clock hardening** — every event carries wall-clock, monotonic, and NTP offset
+- **Deconfliction webhook** — optional signed feed to the blue team's SOC on marker / scope-violation / cred-use events ([details](docs/deconfliction.md))
+- **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Quick Start
@@ -231,7 +237,9 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 
 - [Agent integration](docs/agent-integration.md) — full REST + MCP + hook reference
 - [Operators & tokens](docs/operators.md) — multi-operator identity, token lifecycle
-- [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps verification
+- [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
+- [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
+- [Deconfliction webhook](docs/deconfliction.md) — when/how to feed the blue team
 - [Skill: redlog-pentest](docs/skills/redlog-pentest.md) — ready-to-copy Claude Code skill
 
 ## Architecture
