@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
+import { toast } from './Toast'
 
 const MIN_LANE_H = 36
 const LABEL_W = 72
+const BASE_TRACK_W = 2000
 const LANES = ['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
@@ -50,11 +52,16 @@ export default function TimelinePanel(): JSX.Element {
   const [events, setEvents] = useState<RedLogEvent[]>([])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [containerH, setContainerH] = useState(0)
+  const [zoom, setZoom] = useState(1)
+  const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
+  const [showJson, setShowJson] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
+  const isDragging = useRef(false)
+  const dragStart = useRef({ x: 0, scroll: 0 })
   const { t } = useI18n()
 
   const laneLabels: Record<LaneId, string> = useMemo(() => ({
@@ -74,11 +81,13 @@ export default function TimelinePanel(): JSX.Element {
     return () => ro.disconnect()
   }, [])
 
+  const visibleLanes = useMemo(() => LANES.filter((l) => !hiddenLanes.has(l)), [hiddenLanes])
+
   const laneH = useMemo(() => {
     const axisH = 28
     const available = containerH - axisH
-    return Math.max(MIN_LANE_H, Math.floor(available / LANES.length))
-  }, [containerH])
+    return Math.max(MIN_LANE_H, Math.floor(available / visibleLanes.length))
+  }, [containerH, visibleLanes.length])
 
   const loadMore = useCallback(() => {
     if (loading || allLoaded) return
@@ -99,6 +108,7 @@ export default function TimelinePanel(): JSX.Element {
       if (fetched.length < 200) setAllLoaded(true)
       fetched.forEach((e) => eventsMapRef.current.set(e.id, e))
       setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
+      setLoading(false)
     })
     const unsub = window.redlog.events.onNew((event) => {
       eventsMapRef.current.set(event.id, event)
@@ -125,10 +135,10 @@ export default function TimelinePanel(): JSX.Element {
     return { timeStart: s, timeEnd: e, ticks: ts }
   }, [events])
 
-  const TRACK_W = 2000
+  const TRACK_W = Math.round(BASE_TRACK_W * zoom)
   const timeSpan = timeEnd - timeStart
-  const toX = useCallback((ts: number) => ((ts - timeStart) / timeSpan) * TRACK_W, [timeStart, timeSpan])
-  const totalH = LANES.length * laneH
+  const toX = useCallback((ts: number) => ((ts - timeStart) / timeSpan) * TRACK_W, [timeStart, timeSpan, TRACK_W])
+  const totalH = visibleLanes.length * laneH
 
   const laneEvents = useMemo(() => {
     const map: Record<LaneId, RedLogEvent[]> = {
@@ -139,7 +149,79 @@ export default function TimelinePanel(): JSX.Element {
     return map
   }, [events])
 
-  const recentEvents = useMemo(() => [...events].reverse().slice(0, 50), [events])
+  const recentEvents = useMemo(() => {
+    const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType)))
+    return [...visible].reverse().slice(0, 50)
+  }, [events, hiddenLanes])
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      setZoom((prev) => Math.min(6, Math.max(0.25, prev + (e.deltaY < 0 ? 0.15 : -0.15))))
+    }
+  }, [])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    isDragging.current = true
+    dragStart.current = { x: e.clientX, scroll: scrollRef.current?.scrollLeft ?? 0 }
+    document.body.classList.add('timeline-grabbing')
+  }, [])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent): void => {
+      if (!isDragging.current || !scrollRef.current) return
+      const dx = e.clientX - dragStart.current.x
+      scrollRef.current.scrollLeft = dragStart.current.scroll - dx
+    }
+    const onUp = (): void => {
+      isDragging.current = false
+      document.body.classList.remove('timeline-grabbing')
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
+  const toggleLane = useCallback((lane: LaneId) => {
+    setHiddenLanes((prev) => {
+      const next = new Set(prev)
+      if (next.has(lane)) next.delete(lane)
+      else if (next.size < LANES.length - 1) next.add(lane)
+      return next
+    })
+  }, [])
+
+  const copyEventJson = useCallback(() => {
+    if (!selectedEvent) return
+    navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
+    toast(t('toast.copied'), 'success')
+  }, [selectedEvent, t])
+
+  if (loading && events.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
+          <span className="text-xs text-zinc-600">{t('common.loading')}</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (events.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3 text-center px-8">
+          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+            <span className="text-2xl text-zinc-700">═</span>
+          </div>
+          <p className="text-sm text-zinc-500">{t('timeline.noEvents')}</p>
+          <p className="text-xs text-zinc-700">{t('timeline.noEventsDesc')}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -154,27 +236,58 @@ export default function TimelinePanel(): JSX.Element {
             {t('timeline.loadMore')}
           </button>
         )}
+
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1 ml-2">
+          <button
+            onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors"
+            title={t('timeline.zoomOut')}
+          >−</button>
+          <button
+            onClick={() => setZoom(1)}
+            className="px-1.5 h-5 flex items-center justify-center text-[10px] text-zinc-600 hover:text-zinc-300 bg-zinc-800/50 rounded font-mono tabular-nums transition-colors"
+            title={t('timeline.resetZoom')}
+          >{Math.round(zoom * 100)}%</button>
+          <button
+            onClick={() => setZoom((z) => Math.min(6, z + 0.25))}
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors"
+            title={t('timeline.zoomIn')}
+          >+</button>
+        </div>
+
+        {/* Lane filter toggles */}
         <div className="ml-auto flex gap-1">
-          {LANES.map((id) => (
-            <span
-              key={id}
-              className="text-[10px] px-1.5 py-0.5 rounded font-mono"
-              style={{ color: LANE_COLORS[id], backgroundColor: `${LANE_COLORS[id]}10` }}
-            >
-              {laneLabels[id]}
-            </span>
-          ))}
+          {LANES.map((id) => {
+            const hidden = hiddenLanes.has(id)
+            return (
+              <button
+                key={id}
+                onClick={() => toggleLane(id)}
+                className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition-all ${
+                  hidden ? 'opacity-30 line-through' : ''
+                }`}
+                style={{
+                  color: hidden ? '#525252' : LANE_COLORS[id],
+                  backgroundColor: hidden ? 'transparent' : `${LANE_COLORS[id]}10`
+                }}
+                title={`${hidden ? 'Show' : 'Hide'} ${laneLabels[id]}`}
+              >
+                {laneLabels[id]}
+              </button>
+            )
+          })}
         </div>
       </div>
 
       {/* Timeline + event list split */}
       <div className="flex-1 min-h-0 flex flex-col">
-        {/* Swim lanes — fills available space */}
+        {/* Swim lanes */}
         <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden">
           {/* Lane labels */}
           <div className="shrink-0 border-r border-zinc-800/60 bg-zinc-950/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-zinc-800/60" />
-            {LANES.map((id) => (
+            {visibleLanes.map((id) => (
               <div
                 key={id}
                 className="flex items-center gap-1.5 px-2 border-b border-zinc-800/30 font-mono text-[11px]"
@@ -187,7 +300,12 @@ export default function TimelinePanel(): JSX.Element {
           </div>
 
           {/* Scrollable track */}
-          <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+          >
             <div style={{ width: TRACK_W, position: 'relative' }}>
               {/* Time axis */}
               <div className="h-7 border-b border-zinc-800/60 relative bg-zinc-950/30">
@@ -204,8 +322,7 @@ export default function TimelinePanel(): JSX.Element {
 
               {/* Lanes area */}
               <div style={{ height: totalH, position: 'relative' }}>
-                {/* Alternating lane backgrounds */}
-                {LANES.map((_, i) => (
+                {visibleLanes.map((_, i) => (
                   <div
                     key={i}
                     className="absolute w-full border-b border-zinc-800/30"
@@ -216,7 +333,6 @@ export default function TimelinePanel(): JSX.Element {
                     }}
                   />
                 ))}
-                {/* Vertical grid */}
                 {ticks.map((ts) => (
                   <div
                     key={ts}
@@ -224,12 +340,12 @@ export default function TimelinePanel(): JSX.Element {
                     style={{ left: toX(ts), height: totalH }}
                   />
                 ))}
-                {/* Current time */}
+                {/* Current time line */}
                 {Date.now() >= timeStart && Date.now() <= timeEnd && (
                   <div className="absolute top-0 w-px bg-red-500/70" style={{ left: toX(Date.now()), height: totalH }} />
                 )}
-                {/* Dots */}
-                {LANES.map((lane, li) =>
+                {/* Event dots */}
+                {visibleLanes.map((lane, li) =>
                   laneEvents[lane].map((evt) => {
                     const x = toX(evt.timestamp)
                     const y = li * laneH + laneH / 2
@@ -262,7 +378,7 @@ export default function TimelinePanel(): JSX.Element {
         <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/50" style={{ height: selectedEvent ? 160 : 180 }}>
           <div className="px-3 py-1.5 border-b border-zinc-800/40 flex items-center justify-between">
             <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">{t('timeline.title')}</span>
-            <span className="text-[10px] text-zinc-600 font-mono tabular-nums">{events.length}</span>
+            <span className="text-[10px] text-zinc-600 font-mono tabular-nums">{recentEvents.length}</span>
           </div>
           <div className="overflow-y-auto" style={{ height: selectedEvent ? 128 : 148 }}>
             {recentEvents.map((evt) => {
@@ -288,9 +404,9 @@ export default function TimelinePanel(): JSX.Element {
         </div>
       </div>
 
-      {/* Detail panel */}
+      {/* Enhanced detail panel */}
       {selectedEvent && (
-        <div className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80">
+        <div className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[240px] overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType)] }} />
@@ -298,11 +414,36 @@ export default function TimelinePanel(): JSX.Element {
                 {selectedEvent.agentType}
               </span>
             </div>
-            <span className="text-[10px] text-zinc-600 font-mono tabular-nums">{new Date(selectedEvent.timestamp).toLocaleString()}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowJson(!showJson)}
+                className={`text-[10px] px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
+              >
+                {t('timeline.fullData')}
+              </button>
+              <button
+                onClick={copyEventJson}
+                className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                {t('timeline.copyJson')}
+              </button>
+              <button
+                onClick={() => { setSelectedEvent(null); setShowJson(false) }}
+                className="text-[10px] text-zinc-600 hover:text-zinc-300 transition-colors ml-1"
+              >
+                ✕
+              </button>
+              <span className="text-[10px] text-zinc-600 font-mono tabular-nums">{new Date(selectedEvent.timestamp).toLocaleString()}</span>
+            </div>
           </div>
           <p className="text-[12px] text-zinc-300 mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
           {selectedEvent.targetId && (
             <p className="text-[10px] text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
+          )}
+          {showJson && (
+            <pre className="mt-2 p-3 bg-zinc-950 rounded border border-zinc-800 text-[10px] text-zinc-400 font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
+              {JSON.stringify(selectedEvent.data, null, 2)}
+            </pre>
           )}
         </div>
       )}

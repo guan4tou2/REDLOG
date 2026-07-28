@@ -1,9 +1,11 @@
-import { app, BrowserWindow, ipcMain, Tray, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
+import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray } from './tray'
 import { IPMonitor, IPStatus } from './services/ip-monitor'
+import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from './services/config'
 import { initDB, closeDB, getProjectDir } from './db/index'
 import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
@@ -28,6 +30,27 @@ let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let activeProject: ProjectMeta | null = null
 let forceQuit = false
+
+const WINDOW_STATE_PATH = path.join(homedir(), '.redlog', 'window-state.json')
+
+function loadWindowState(): { bounds?: Electron.Rectangle; isMaximized?: boolean } | null {
+  try { return JSON.parse(fs.readFileSync(WINDOW_STATE_PATH, 'utf-8')) } catch { return null }
+}
+
+function saveWindowState(win: BrowserWindow): void {
+  try {
+    const isMaximized = win.isMaximized()
+    const bounds = isMaximized ? undefined : win.getBounds()
+    fs.mkdirSync(path.dirname(WINDOW_STATE_PATH), { recursive: true })
+    fs.writeFileSync(WINDOW_STATE_PATH, JSON.stringify({ bounds, isMaximized }))
+  } catch {}
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+function debouncedSaveWindowState(win: BrowserWindow): void {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => saveWindowState(win), 500)
+}
 
 const ipMonitor = new IPMonitor()
 const screenshotAgent = new ScreenshotAgent()
@@ -75,6 +98,10 @@ function startProject(project: ProjectMeta): void {
   configureApi({
     engagementId,
     operatorId,
+    configLoader: {
+      getConfig: () => loadConfig(projectDir),
+      getTargets: () => config.scope.targets
+    },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
     ipMonitor: ipMonitor,
@@ -106,11 +133,16 @@ function stopProject(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
 
-  mainWindow = createMainWindow()
+  const savedState = loadWindowState()
+  mainWindow = createMainWindow(savedState?.bounds)
+  if (savedState?.isMaximized) mainWindow.maximize()
 
+  mainWindow.on('resize', () => { if (mainWindow) debouncedSaveWindowState(mainWindow) })
+  mainWindow.on('move', () => { if (mainWindow) debouncedSaveWindowState(mainWindow) })
   mainWindow.on('close', (e) => {
     if (!forceQuit) {
       e.preventDefault()
+      if (mainWindow) saveWindowState(mainWindow)
       mainWindow?.hide()
     }
   })
@@ -119,8 +151,21 @@ app.whenReady().then(() => {
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
-  ipcMain.handle('project:create', (_e, name: string) => {
+  ipcMain.handle('project:create', (_e, name: string, initialConfig?: Partial<RedLogConfig>) => {
     const project = createProject(name)
+    if (initialConfig) {
+      const projectDir = getProjectPath(project)
+      const config = loadConfig(projectDir)
+      const merged = {
+        ...config,
+        engagement: { ...config.engagement, ...initialConfig.engagement },
+        operator: { ...config.operator, ...initialConfig.operator },
+        network: { ...config.network, ...initialConfig.network },
+        scope: { ...config.scope, ...initialConfig.scope },
+        screenshot: { ...config.screenshot, ...initialConfig.screenshot }
+      }
+      saveConfig(projectDir, merged)
+    }
     startProject(project)
     return project
   })
@@ -176,6 +221,12 @@ app.whenReady().then(() => {
     } else {
       overlayWindow?.show()
     }
+  })
+  ipcMain.on('overlay:mouseEnter', () => {
+    overlayWindow?.setIgnoreMouseEvents(false)
+  })
+  ipcMain.on('overlay:mouseLeave', () => {
+    overlayWindow?.setIgnoreMouseEvents(true, { forward: true })
   })
   ipMonitor.on('status', broadcastIPStatus)
 
@@ -264,6 +315,48 @@ app.whenReady().then(() => {
     return filePath
   })
 
+  // --- Config Profile Export/Import ---
+  ipcMain.handle('config:exportProfile', async () => {
+    if (!activeProject) return null
+    const projectDir = getProjectPath(activeProject)
+    const config = loadConfig(projectDir)
+    const profile = { version: 1, ...config }
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath: `redlog-profile-${activeProject.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
+      filters: [
+        { name: 'REDLOG Profile', extensions: ['yaml', 'yml'] },
+        { name: 'JSON', extensions: ['json'] }
+      ]
+    })
+    if (result.canceled || !result.filePath) return null
+    const ext = path.extname(result.filePath).toLowerCase()
+    if (ext === '.json') {
+      fs.writeFileSync(result.filePath, JSON.stringify(profile, null, 2))
+    } else {
+      fs.writeFileSync(result.filePath, `# REDLOG Profile — share with your team\n${yaml.dump(profile, { lineWidth: 120 })}`)
+    }
+    return result.filePath
+  })
+
+  ipcMain.handle('config:importProfile', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      filters: [
+        { name: 'REDLOG Profile', extensions: ['yaml', 'yml', 'json'] }
+      ],
+      properties: ['openFile']
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    try {
+      const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
+      const ext = path.extname(result.filePaths[0]).toLowerCase()
+      const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw) as Record<string, unknown>
+      delete data.version
+      return data as Partial<RedLogConfig>
+    } catch {
+      return null
+    }
+  })
+
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
   ipcMain.handle('recording:toggle', () => {
@@ -271,10 +364,12 @@ app.whenReady().then(() => {
     else eventBus.pause()
     const recording = !eventBus.paused
     mainWindow?.webContents.send('recording:changed', recording)
+    overlayWindow?.webContents.send('recording:changed', recording)
     return recording
   })
   eventBus.on('recording', (recording: boolean) => {
     mainWindow?.webContents.send('recording:changed', recording)
+    overlayWindow?.webContents.send('recording:changed', recording)
   })
 
   // --- Global shortcut ---

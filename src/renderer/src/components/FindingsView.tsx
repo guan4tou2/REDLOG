@@ -1,5 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { confirm } from './ConfirmDialog'
+
+const TAG_COLORS = [
+  { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
+  { bg: 'bg-blue-500/20', text: 'text-blue-400', dot: 'bg-blue-400' },
+  { bg: 'bg-emerald-500/20', text: 'text-emerald-400', dot: 'bg-emerald-400' },
+  { bg: 'bg-amber-500/20', text: 'text-amber-400', dot: 'bg-amber-400' },
+  { bg: 'bg-purple-500/20', text: 'text-purple-400', dot: 'bg-purple-400' },
+  { bg: 'bg-pink-500/20', text: 'text-pink-400', dot: 'bg-pink-400' },
+  { bg: 'bg-cyan-500/20', text: 'text-cyan-400', dot: 'bg-cyan-400' },
+  { bg: 'bg-orange-500/20', text: 'text-orange-400', dot: 'bg-orange-400' }
+]
+
+function getTagColor(title: string): typeof TAG_COLORS[0] {
+  let hash = 0
+  for (let i = 0; i < title.length; i++) hash = ((hash << 5) - hash + title.charCodeAt(i)) | 0
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
+}
 
 export function QuickMarksView(): JSX.Element {
   const [marks, setMarks] = useState<QuickMark[]>([])
@@ -55,21 +73,27 @@ export function QuickMarksView(): JSX.Element {
           </div>
         </div>
         <div className="flex-1 overflow-auto">
-          {marks.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => { setSelected(m); setCreating(false) }}
-              className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-zinc-800/50 ${
-                selected?.id === m.id ? 'bg-zinc-800' : ''
-              }`}
-            >
-              <div className="text-xs text-zinc-200 truncate">{m.title}</div>
-              {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono">{m.url}</div>}
-              <div className="text-[10px] text-zinc-600 mt-0.5">
-                {new Date(m.createdAt).toLocaleString()}
-              </div>
-            </button>
-          ))}
+          {marks.map((m) => {
+            const tagColor = getTagColor(m.title)
+            return (
+              <button
+                key={m.id}
+                onClick={() => { setSelected(m); setCreating(false) }}
+                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-zinc-800/50 ${
+                  selected?.id === m.id ? 'bg-zinc-800' : ''
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
+                  <span className="text-xs text-zinc-200 truncate">{m.title}</span>
+                </div>
+                {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                <div className="text-[10px] text-zinc-600 mt-0.5 pl-4">
+                  {new Date(m.createdAt).toLocaleString()}
+                </div>
+              </button>
+            )
+          })}
           {marks.length === 0 && !creating && (
             <div className="p-4 text-xs text-zinc-600 text-center">
               {t('marks.empty')}
@@ -185,6 +209,8 @@ function QuickMarkDetail({ mark, onUpdate, onDelete }: {
   }
 
   const handleDelete = async (): Promise<void> => {
+    const ok = await confirm(t('confirm.deleteMark'), t('confirm.deleteMarkDesc'), true)
+    if (!ok) return
     await window.redlog.quickmarks.delete(mark.id)
     onDelete()
   }

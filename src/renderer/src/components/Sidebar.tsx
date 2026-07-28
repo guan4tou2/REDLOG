@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useI18n } from '../i18n'
 
 interface SidebarProps {
@@ -6,9 +6,34 @@ interface SidebarProps {
   onNavigate: (view: string) => void
 }
 
+interface NavItem {
+  id: string
+  label: string
+  icon: string
+  badge?: number
+  badgeColor?: string
+}
+
+const STORAGE_KEY = 'redlog-sidebar-order'
+const DEFAULT_ORDER = ['dashboard', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks']
+
+function loadOrder(): string[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      const parsed = JSON.parse(saved) as string[]
+      if (Array.isArray(parsed) && parsed.length === DEFAULT_ORDER.length) return parsed
+    }
+  } catch {}
+  return DEFAULT_ORDER
+}
+
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
+  const [order, setOrder] = useState(loadOrder)
+  const dragItem = useRef<string | null>(null)
+  const dragOverItem = useRef<string | null>(null)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -28,15 +53,40 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
       </span>
     ) : null
 
-  const items = [
-    { id: 'dashboard', label: t('sidebar.dashboard'), icon: '◉' },
-    { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
-    { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' },
-    { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
-    { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-    { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-amber-500' },
-    { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
-  ]
+  const itemMap: Record<string, NavItem> = {
+    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: '◉' },
+    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
+    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' },
+    targets: { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
+    scope: { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
+    loot: { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-amber-500' },
+    marks: { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
+  }
+
+  const items = order.map((id) => itemMap[id]).filter(Boolean)
+
+  const handleDragStart = useCallback((id: string) => {
+    dragItem.current = id
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    dragOverItem.current = id
+  }, [])
+
+  const handleDrop = useCallback(() => {
+    if (!dragItem.current || !dragOverItem.current || dragItem.current === dragOverItem.current) return
+    const newOrder = [...order]
+    const fromIdx = newOrder.indexOf(dragItem.current)
+    const toIdx = newOrder.indexOf(dragOverItem.current)
+    if (fromIdx === -1 || toIdx === -1) return
+    newOrder.splice(fromIdx, 1)
+    newOrder.splice(toIdx, 0, dragItem.current)
+    setOrder(newOrder)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newOrder))
+    dragItem.current = null
+    dragOverItem.current = null
+  }, [order])
 
   return (
     <nav className="w-[140px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
@@ -46,6 +96,10 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           return (
             <button
               key={item.id}
+              draggable
+              onDragStart={() => handleDragStart(item.id)}
+              onDragOver={(e) => handleDragOver(e, item.id)}
+              onDrop={handleDrop}
               onClick={() => onNavigate(item.id)}
               className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
                 isActive
@@ -62,7 +116,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               <span className={`text-[11px] leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
                 {item.label}
               </span>
-              {'badge' in item && badge(item.badge as number, item.badgeColor as string)}
+              {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-zinc-500')}
             </button>
           )
         })}

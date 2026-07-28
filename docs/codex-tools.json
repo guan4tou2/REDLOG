@@ -1,0 +1,107 @@
+{
+  "_comment": "OpenAI Function Calling / Codex tool definitions for RedLog. Use these with any OpenAI-API-compatible model or agent framework.",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_mark",
+        "description": "Create a timestamped marker in the RedLog attack timeline. Use when you discover a vulnerability, start a new testing phase, or want to note something important.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "What happened (e.g. 'Found SQLi in /api/users')" },
+            "notes": { "type": "string", "description": "Additional context, reproduction steps, or technical details" },
+            "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"], "description": "Finding severity" },
+            "target": { "type": "string", "description": "Target host, IP, or URL this relates to" }
+          },
+          "required": ["title"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_log_event",
+        "description": "Log a structured event to the RedLog timeline with custom type and data payload.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "agent_type": { "type": "string", "description": "Event source category (e.g. 'agent', 'scanner', 'recon', 'exploit')" },
+            "data": { "type": "object", "description": "Arbitrary event data as JSON object" },
+            "target": { "type": "string", "description": "Target host/IP" }
+          },
+          "required": ["agent_type", "data"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_search",
+        "description": "Search across all RedLog events (shell commands, targets, clipboard, loot) by keyword.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Search query (minimum 2 characters)" },
+            "limit": { "type": "number", "description": "Maximum results to return (default 20)" }
+          },
+          "required": ["query"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_status",
+        "description": "Get the current RedLog status including IP/VPN state, event count, scope violations, and recording state.",
+        "parameters": { "type": "object", "properties": {}, "required": [] }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_scope",
+        "description": "Get the current scope configuration: in-scope targets, exclusions, and any scope violations detected.",
+        "parameters": { "type": "object", "properties": {}, "required": [] }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_loot_scan",
+        "description": "Scan text for credentials, secrets, API keys, JWTs, password hashes, private keys, database URLs, and CTF flags.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Text to scan for embedded secrets or credentials" }
+          },
+          "required": ["text"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_quickmark",
+        "description": "Create a QuickMark bookmark for a URL, finding, or point of interest.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string", "description": "Bookmark title" },
+            "url": { "type": "string", "description": "URL to bookmark" },
+            "note": { "type": "string", "description": "Notes about why this is interesting" }
+          },
+          "required": ["title"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_screenshot",
+        "description": "Capture a screenshot of the current desktop state.",
+        "parameters": { "type": "object", "properties": {}, "required": [] }
+      }
+    }
+  ]
+}

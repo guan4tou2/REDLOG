@@ -24,7 +24,20 @@ module.exports = {
         'card-hover': '0 4px 12px 0 rgba(0, 0, 0, 0.5)'
       },
       animation: {
-        'pulse-slow': 'pulse 3s ease-in-out infinite'
+        'pulse-slow': 'pulse 3s ease-in-out infinite',
+        'toast-in': 'toastIn 0.25s ease-out',
+        'blink-rec': 'blinkRec 1s step-end infinite',
+        'spin-slow': 'spin 2s linear infinite'
+      },
+      keyframes: {
+        toastIn: {
+          '0%': { opacity: '0', transform: 'translateX(16px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' }
+        },
+        blinkRec: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' }
+        }
       }
     }
   },

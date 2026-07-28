@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
+import { toast } from './Toast'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -31,6 +32,11 @@ export default function StatusBar(): JSX.Element {
     return () => { unsubIp(); unsubEvent(); unsubRec(); clearInterval(timer) }
   }, [])
 
+  const handleToggleRecording = async (): Promise<void> => {
+    const newState = await window.redlog.recording.toggle()
+    toast(newState ? t('toast.recordingResumed') : t('toast.recordingPaused'), newState ? 'success' : 'warning')
+  }
+
   const vpn = ipStatus?.vpnStatus ?? 'unknown'
   const vpnDot = vpn === 'connected' ? 'bg-emerald-500' : vpn === 'disconnected' ? 'bg-red-500' : 'bg-amber-500'
   const vpnLabel = vpn === 'connected' ? t('statusBar.vpn') : vpn === 'disconnected' ? t('statusBar.noVpn') : t('statusBar.ipUnknown')
@@ -47,7 +53,7 @@ export default function StatusBar(): JSX.Element {
   return (
     <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
       <button
-        onClick={() => window.redlog.recording.toggle()}
+        onClick={handleToggleRecording}
         className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
         title={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
       >

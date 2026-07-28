@@ -7,10 +7,11 @@ export function LootPanel(): JSX.Element {
     matches: Array<{ type: string; confidence: string; preview: string }>
   }>>([])
   const [lootCount, setLootCount] = useState(0)
+  const [loading, setLoading] = useState(true)
   const { t } = useI18n()
 
   useEffect(() => {
-    loadLoot()
+    loadLoot().then(() => setLoading(false))
     window.redlog.loot.getCount().then(setLootCount)
     const unsub = window.redlog.events.onNew((evt) => {
       if (evt.agentType === 'loot') {
@@ -44,16 +45,27 @@ export function LootPanel(): JSX.Element {
     base64_creds: 'text-orange-400'
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
+      </div>
+    )
+  }
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">{t('loot.title', { count: lootCount })}</h2>
       </div>
 
       {lootEvents.length === 0 ? (
-        <div className="text-zinc-500 text-sm">
-          <p>{t('loot.empty')}</p>
-          <p className="mt-1 text-xs">{t('loot.emptyDesc')}</p>
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+            <span className="text-2xl text-zinc-700">◆</span>
+          </div>
+          <p className="text-sm text-zinc-500">{t('loot.empty')}</p>
+          <p className="text-xs text-zinc-700 text-center max-w-xs">{t('loot.emptyDesc')}</p>
         </div>
       ) : (
         <div className="space-y-2">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useI18n, type Locale } from '../i18n'
+import { toast } from './Toast'
 
 interface ConfigState {
   engagement: { id: string; name: string }
@@ -160,6 +161,34 @@ export default function Settings(): JSX.Element {
               {exportResult && <p className="text-[10px] text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
               <p className="text-[10px] text-zinc-600">
                 {t('settings.exportHint')}
+              </p>
+            </FieldGroup>
+            <FieldGroup title={t('settings.profileSync')}>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const path = await window.redlog.config.exportProfile()
+                    if (path) toast(t('toast.profileExported'), 'success')
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                >
+                  {t('settings.exportProfile')}
+                </button>
+                <button
+                  onClick={async () => {
+                    const profile = await window.redlog.config.importProfile() as Record<string, unknown> | null
+                    if (profile) {
+                      setConfig(profile as unknown as ConfigState)
+                      toast(t('toast.profileImported'), 'success')
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                >
+                  {t('settings.importProfile')}
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-600">
+                {t('settings.profileHint')}
               </p>
             </FieldGroup>
           </>
