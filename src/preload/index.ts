@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('redlog', {
+  platform: process.platform,
   project: {
     list: () => ipcRenderer.invoke('project:list'),
     create: (name: string) => ipcRenderer.invoke('project:create', name),

@@ -2,6 +2,8 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
+const isMac = process.platform === 'darwin'
+
 export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1100,
@@ -10,7 +12,19 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 500,
     show: false,
     backgroundColor: '#0a0a0a',
-    titleBarStyle: 'hiddenInset',
+    // macOS uses the inset traffic-light layout; Windows/Linux use a hidden
+    // title bar with a native window-controls overlay so min/max/close remain
+    // usable behind our custom drag region.
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac
+      ? {}
+      : {
+          titleBarOverlay: {
+            color: '#0a0a0a',
+            symbolColor: '#a1a1aa',
+            height: 40
+          }
+        }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,

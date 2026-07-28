@@ -15,7 +15,7 @@ let apiToken = ''
 let engagementId = 'default'
 let operatorId = 'operator-1'
 
-let lootDetectorRef: { scan: (text: string) => unknown[] } | null = null
+let lootDetectorRef: { scan: (text: string, targetId?: string) => unknown[] } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
 let scopeMonitorRef: { getViolations: () => unknown[]; getViolationCount: () => number; checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean } } | null = null

@@ -5,16 +5,45 @@ Red Team Operator Workbench -- an Electron-based desktop tool that passively rec
 ## Quick Start
 
 ```bash
-# Install dependencies (requires Node 20+, Python 3 for native modules)
+# Install dependencies (requires Node 20-22, Python 3 for native modules)
 npm install
-npm run rebuild        # rebuild better-sqlite3 + node-pty for Electron
+npm run rebuild        # rebuild better-sqlite3 for Electron's ABI
 
 # Development
 npm run dev
 
-# Production build
+# Production build (compile only)
 npm run build
 ```
+
+### Platform prerequisites
+
+`better-sqlite3` is a native module and must be compiled for Electron's ABI
+(`npm run rebuild`). That step needs a C/C++ toolchain:
+
+- **Windows** — Visual Studio Build Tools with the **"Desktop development with
+  C++"** workload, plus Python 3. Install via
+  `winget install Microsoft.VisualStudio.2022.BuildTools` and add the C++ workload,
+  or `npm install --global windows-build-tools` (legacy). Use an LTS Node
+  (20 or 22); Node 24+ has no prebuilt `better-sqlite3` binary yet, forcing a
+  source build.
+- **macOS** — Xcode Command Line Tools (`xcode-select --install`).
+- **Linux** — `build-essential` + `python3`.
+
+## Packaging
+
+Installers are produced with [electron-builder](https://www.electron.build)
+(config in `electron-builder.yml`). Native deps must be rebuilt for the target
+Electron first (`npm run rebuild`).
+
+```bash
+npm run dist:win      # Windows NSIS installer (release/)
+npm run dist:mac      # macOS dmg
+npm run dist:linux    # Linux AppImage
+npm run pack:dir      # unpacked dir only (fast smoke test, no installer)
+```
+
+Output lands in `release/`.
 
 ## Architecture
 
