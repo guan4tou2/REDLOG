@@ -7,6 +7,20 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
+[![Latest release](https://img.shields.io/github/v/release/guan4tou2/REDLOG?label=download&logo=github)](https://github.com/guan4tou2/REDLOG/releases/latest)
+
+## Download
+
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.2.2**:
+
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | [`RedLog-0.2.2-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.2.2/RedLog-0.2.2-arm64.dmg) |
+| macOS (Intel) | [`RedLog-0.2.2.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.2.2/RedLog-0.2.2.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.2.2.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.2.2/RedLog.Setup.0.2.2.exe) |
+| Windows (portable) | [`RedLog.0.2.2.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.2.2/RedLog.0.2.2.exe) |
+
+Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
 ## Why RedLog
 
