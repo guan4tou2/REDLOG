@@ -1,7 +1,7 @@
 {
   "name": "redlog",
   "version": "0.1.0",
-  "description": "Red Team Operator Workbench",
+  "description": "Red Team Operation Log",
   "main": "./out/main/index.js",
   "bin": {
     "redlog-cli": "./cli/redlog-cli.js"

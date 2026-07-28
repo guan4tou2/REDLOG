@@ -1,6 +1,6 @@
 # RedLog
 
-Red Team Operator Workbench — an Electron desktop app that passively records everything during a penetration test engagement into a tamper-evident, per-project timeline database.
+Red Team Operation Log — an Electron desktop app that passively records everything during a penetration test engagement into a tamper-evident, per-project timeline database.
 
 ![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)

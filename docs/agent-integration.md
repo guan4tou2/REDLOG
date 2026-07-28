@@ -1,6 +1,6 @@
 # RedLog AI Agent Integration
 
-RedLog is designed to work as a passive recorder for AI-driven penetration testing. This document covers all integration methods, from zero-config terminal hooks to full MCP control.
+RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI-driven penetration testing. This document covers all integration methods, from zero-config terminal hooks to full MCP control.
 
 ## Integration Architecture
 
