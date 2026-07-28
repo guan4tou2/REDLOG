@@ -4,12 +4,18 @@ import { useI18n } from './i18n'
 export default function OverlayApp(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [recording, setRecording] = useState(true)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.ip.getStatus().then(setStatus)
     return window.redlog.ip.onStatus(setStatus)
+  }, [])
+
+  useEffect(() => {
+    window.redlog.recording.get().then(setRecording)
+    return window.redlog.recording.onChange(setRecording)
   }, [])
 
   useEffect(() => {
@@ -108,6 +114,41 @@ export default function OverlayApp(): JSX.Element {
           WebkitAppRegion: 'no-drag'
         } as React.CSSProperties}
       >
+        {/* Recording indicator */}
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            marginRight: 2,
+            flexShrink: 0
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: recording ? '#ef4444' : '#52525b',
+              boxShadow: recording ? '0 0 6px #ef4444' : 'none',
+              animation: recording ? 'blinkRec 1s step-end infinite' : undefined,
+              flexShrink: 0
+            }}
+          />
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              color: recording ? '#fca5a5' : '#71717a'
+            }}
+          >
+            {recording ? t('overlay.rec') : t('overlay.paused')}
+          </span>
+        </span>
+
+        <span style={{ color: '#333', fontSize: 14 }}>│</span>
+
         <span
           style={{
             width: 8,
@@ -173,6 +214,10 @@ export default function OverlayApp(): JSX.Element {
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
+        }
+        @keyframes blinkRec {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
       `}</style>
     </div>

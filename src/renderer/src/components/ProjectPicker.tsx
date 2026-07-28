@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
+import { confirm } from './ConfirmDialog'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -29,6 +30,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   async function handleDelete(id: string): Promise<void> {
+    const ok = await confirm(t('confirm.deleteProject'), t('confirm.deleteProjectDesc'), true)
+    if (!ok) return
     await window.redlog.project.delete(id)
     setProjects((prev) => prev.filter((p) => p.id !== id))
   }

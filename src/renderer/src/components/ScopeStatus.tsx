@@ -5,12 +5,15 @@ export function ScopeStatus(): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
   const [configured, setConfigured] = useState(false)
   const [chainLen, setChainLen] = useState(0)
+  const [loading, setLoading] = useState(true)
   const { t } = useI18n()
 
   useEffect(() => {
-    window.redlog.scope.isConfigured().then(setConfigured)
-    window.redlog.scope.getViolations().then(setViolations)
-    window.redlog.chain.length().then(setChainLen)
+    Promise.all([
+      window.redlog.scope.isConfigured().then(setConfigured),
+      window.redlog.scope.getViolations().then(setViolations),
+      window.redlog.chain.length().then(setChainLen)
+    ]).then(() => setLoading(false))
 
     const unsub = window.redlog.events.onNew((event) => {
       if (event.agentType === 'system' && (event.data as Record<string, unknown>)?.subtype === 'scope_violation') {
@@ -21,8 +24,16 @@ export function ScopeStatus(): JSX.Element {
     return unsub
   }, [])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
+      </div>
+    )
+  }
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 overflow-auto h-full">
       <h2 className="text-lg font-semibold text-white">{t('scope.title')}</h2>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
@@ -43,9 +54,14 @@ export function ScopeStatus(): JSX.Element {
           </div>
         )}
         {!configured && (
-          <p className="text-zinc-500 text-xs">
-            {t('scope.hint')}
-          </p>
+          <div className="flex flex-col items-center py-6 gap-2">
+            <div className="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+              <span className="text-xl text-zinc-600">⊘</span>
+            </div>
+            <p className="text-zinc-500 text-xs">
+              {t('scope.hint')}
+            </p>
+          </div>
         )}
       </div>
 

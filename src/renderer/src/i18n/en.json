@@ -211,5 +211,36 @@
   "settings.restartHint": "Requires restart to apply network/scope changes",
 
   "error.crashed": "{{label}} crashed",
-  "error.retry": "Retry"
+  "error.retry": "Retry",
+
+  "common.loading": "Loading...",
+
+  "confirm.cancel": "Cancel",
+  "confirm.confirm": "Confirm",
+  "confirm.delete": "Delete",
+  "confirm.deleteProject": "Delete Project?",
+  "confirm.deleteProjectDesc": "All data for this project will be permanently deleted. This cannot be undone.",
+  "confirm.deleteMark": "Delete Mark?",
+  "confirm.deleteMarkDesc": "This mark will be permanently removed.",
+
+  "toast.recordingPaused": "Recording paused",
+  "toast.recordingResumed": "Recording resumed",
+  "toast.exported": "Data exported successfully",
+  "toast.exportFailed": "Export failed",
+  "toast.copied": "Copied to clipboard",
+
+  "timeline.zoomIn": "Zoom in (Ctrl+scroll)",
+  "timeline.zoomOut": "Zoom out (Ctrl+scroll)",
+  "timeline.resetZoom": "Reset zoom",
+  "timeline.noEvents": "No events recorded yet",
+  "timeline.noEventsDesc": "Events will appear here as they are captured from shell, clipboard, screenshots, and other monitors.",
+  "timeline.copyJson": "Copy JSON",
+  "timeline.fullData": "Full Data",
+
+  "dashboard.exportData": "Export Data",
+
+  "overlay.rec": "REC",
+  "overlay.paused": "PAUSED",
+
+  "screenshots.emptyDesc": "Screenshots are captured automatically on idle or manually via the capture button."
 }

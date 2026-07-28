@@ -2,10 +2,12 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
-export function createMainWindow(): BrowserWindow {
+export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1100,
-    height: 700,
+    width: savedBounds?.width ?? 1100,
+    height: savedBounds?.height ?? 700,
+    x: savedBounds?.x,
+    y: savedBounds?.y,
     minWidth: 800,
     minHeight: 500,
     show: false,

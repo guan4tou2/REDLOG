@@ -12,6 +12,9 @@ import { LootPanel } from './components/LootPanel'
 import { SearchPanel } from './components/SearchPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
+import { ToastContainer } from './components/Toast'
+import { ConfirmDialogContainer } from './components/ConfirmDialog'
+import { toast } from './components/Toast'
 import { useI18n } from './i18n'
 
 type View = 'dashboard' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
@@ -60,7 +63,13 @@ export default function App(): JSX.Element {
   }, [project])
 
   if (!project) {
-    return <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
+    return (
+      <>
+        <ProjectPicker onProjectOpen={(p) => { setProject(p); setView('dashboard') }} />
+        <ToastContainer />
+        <ConfirmDialogContainer />
+      </>
+    )
   }
 
   return (
@@ -107,6 +116,8 @@ export default function App(): JSX.Element {
 
       <StatusBar />
       {showMarker && <EventMarker onClose={() => setShowMarker(false)} />}
+      <ToastContainer />
+      <ConfirmDialogContainer />
     </div>
   )
 }
@@ -117,15 +128,33 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [chainLen, setChainLen] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
+  const [loading, setLoading] = useState(true)
   const { t } = useI18n()
 
   useEffect(() => {
-    window.redlog.events.getCount().then(setEventCount)
-    window.redlog.loot.getCount().then(setLootCount)
-    window.redlog.chain.length().then(setChainLen)
-    window.redlog.scope.getViolationCount().then(setScopeViolations)
-    window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>))
+    Promise.all([
+      window.redlog.events.getCount().then(setEventCount),
+      window.redlog.loot.getCount().then(setLootCount),
+      window.redlog.chain.length().then(setChainLen),
+      window.redlog.scope.getViolationCount().then(setScopeViolations),
+      window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>))
+    ]).then(() => setLoading(false))
   }, [])
+
+  if (loading) {
+    return (
+      <div className="p-5 space-y-5 overflow-auto h-full">
+        <div className="grid grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-lg bg-redlog-surface border border-redlog-border p-4 h-20 animate-pulse">
+              <div className="h-3 w-12 bg-zinc-800 rounded mb-3" />
+              <div className="h-5 w-8 bg-zinc-800 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-5 space-y-5 overflow-auto h-full">
@@ -137,9 +166,21 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       </section>
 
       <section>
-        <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
-          {t('dashboard.sessionStats')}
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em]">
+            {t('dashboard.sessionStats')}
+          </h2>
+          <button
+            onClick={async () => {
+              const path = await window.redlog.data.exportJson()
+              if (path) toast(t('toast.exported'), 'success')
+              else toast(t('toast.exportFailed'), 'error')
+            }}
+            className="px-2.5 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
+          >
+            {t('dashboard.exportData')}
+          </button>
+        </div>
         <div className="grid grid-cols-4 gap-3">
           <StatCard label={t('dashboard.events')} value={String(eventCount)} />
           <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} />
@@ -236,10 +277,14 @@ function ScreenshotsView(): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const { t } = useI18n()
 
   useEffect(() => {
-    window.redlog.events.query({ agentType: 'screenshot', limit: 50 }).then(setScreenshots)
+    window.redlog.events.query({ agentType: 'screenshot', limit: 50 }).then((s) => {
+      setScreenshots(s)
+      setLoading(false)
+    })
     return window.redlog.events.onNew((event) => {
       if (event.agentType === 'screenshot') {
         setScreenshots((prev) => [event, ...prev].slice(0, 50))
@@ -258,6 +303,14 @@ function ScreenshotsView(): JSX.Element {
     })
   }, [screenshots, thumbs])
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 overflow-auto h-full">
       <div className="flex items-center justify-between mb-3">
@@ -272,7 +325,13 @@ function ScreenshotsView(): JSX.Element {
         </button>
       </div>
       {screenshots.length === 0 ? (
-        <p className="text-neutral-600 text-sm">{t('screenshots.empty')}</p>
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+            <span className="text-2xl text-zinc-700">◻</span>
+          </div>
+          <p className="text-zinc-500 text-sm">{t('screenshots.empty')}</p>
+          <p className="text-zinc-700 text-xs">{t('screenshots.emptyDesc')}</p>
+        </div>
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {screenshots.map((s) => (

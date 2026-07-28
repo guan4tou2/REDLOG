@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, globalShortcut } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
+import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray } from './tray'
 import { IPMonitor, IPStatus } from './services/ip-monitor'
@@ -28,6 +29,27 @@ let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let activeProject: ProjectMeta | null = null
 let forceQuit = false
+
+const WINDOW_STATE_PATH = path.join(homedir(), '.redlog', 'window-state.json')
+
+function loadWindowState(): { bounds?: Electron.Rectangle; isMaximized?: boolean } | null {
+  try { return JSON.parse(fs.readFileSync(WINDOW_STATE_PATH, 'utf-8')) } catch { return null }
+}
+
+function saveWindowState(win: BrowserWindow): void {
+  try {
+    const isMaximized = win.isMaximized()
+    const bounds = isMaximized ? undefined : win.getBounds()
+    fs.mkdirSync(path.dirname(WINDOW_STATE_PATH), { recursive: true })
+    fs.writeFileSync(WINDOW_STATE_PATH, JSON.stringify({ bounds, isMaximized }))
+  } catch {}
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+function debouncedSaveWindowState(win: BrowserWindow): void {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => saveWindowState(win), 500)
+}
 
 const ipMonitor = new IPMonitor()
 const screenshotAgent = new ScreenshotAgent()
@@ -106,11 +128,16 @@ function stopProject(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
 
-  mainWindow = createMainWindow()
+  const savedState = loadWindowState()
+  mainWindow = createMainWindow(savedState?.bounds)
+  if (savedState?.isMaximized) mainWindow.maximize()
 
+  mainWindow.on('resize', () => { if (mainWindow) debouncedSaveWindowState(mainWindow) })
+  mainWindow.on('move', () => { if (mainWindow) debouncedSaveWindowState(mainWindow) })
   mainWindow.on('close', (e) => {
     if (!forceQuit) {
       e.preventDefault()
+      if (mainWindow) saveWindowState(mainWindow)
       mainWindow?.hide()
     }
   })
@@ -271,10 +298,12 @@ app.whenReady().then(() => {
     else eventBus.pause()
     const recording = !eventBus.paused
     mainWindow?.webContents.send('recording:changed', recording)
+    overlayWindow?.webContents.send('recording:changed', recording)
     return recording
   })
   eventBus.on('recording', (recording: boolean) => {
     mainWindow?.webContents.send('recording:changed', recording)
+    overlayWindow?.webContents.send('recording:changed', recording)
   })
 
   // --- Global shortcut ---

@@ -25,3 +25,14 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+.drag-over {
+  border-top: 2px solid #ef4444 !important;
+}
+
+.timeline-grabbing {
+  cursor: grabbing !important;
+}
+.timeline-grabbing * {
+  cursor: grabbing !important;
+}
