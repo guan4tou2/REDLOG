@@ -25,6 +25,9 @@ export interface RedLogConfig {
   screenshot: {
     quality: number
   }
+  terminal: {
+    maxCastBytes: number
+  }
   redaction: {
     allowlist: string[]
     denylist: string[]
@@ -63,6 +66,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshot: {
     quality: 85
+  },
+  terminal: {
+    maxCastBytes: 50 * 1024 * 1024
   },
   redaction: {
     allowlist: [],

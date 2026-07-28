@@ -175,6 +175,7 @@
   "overlay.lastCheck": "Last check",
 
   "settings.general": "General",
+  "settings.team": "Team & Integrations",
   "settings.networkIp": "Network / IP",
   "settings.scope": "Scope",
   "settings.data": "Data",

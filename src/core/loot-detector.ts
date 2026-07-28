@@ -23,7 +23,7 @@ const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' |
 
 export class LootDetector {
   private engagementId = 'default'
-  private operatorId = 'operator-1'
+  private operatorId = ''
   private detectedHashes = new Set<string>()
 
   configure(opts: { engagementId?: string; operatorId?: string }): void {
@@ -51,7 +51,7 @@ export class LootDetector {
       }
     }
 
-    if (matches.length > 0) {
+    if (matches.length > 0 && this.operatorId) {
       try {
         const evt = insertEvent('loot', {
           subtype: 'credential_detected',

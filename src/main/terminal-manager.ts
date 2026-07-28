@@ -17,25 +17,31 @@ interface TerminalSession {
   castStream: fs.WriteStream | null
   castStart: number
   castBytes: number
+  castTruncated: boolean
 }
 
 const sessions = new Map<string, TerminalSession>()
 let mainWindow: BrowserWindow | null = null
 let engagementId = ''
 let operatorId = ''
+let maxCastBytes = 50 * 1024 * 1024
 
 export function setTerminalWindow(win: BrowserWindow): void {
   mainWindow = win
 }
 
-export function configureTerminal(opts: { engagementId: string; operatorId: string }): void {
+export function configureTerminal(opts: { engagementId: string; operatorId: string; maxCastBytes?: number }): void {
   engagementId = opts.engagementId
   operatorId = opts.operatorId
+  if (typeof opts.maxCastBytes === 'number' && opts.maxCastBytes > 0) maxCastBytes = opts.maxCastBytes
 }
 
 export function spawnTerminal(id: string, cols: number, rows: number): { pid: number } {
   if (sessions.has(id)) {
     return { pid: sessions.get(id)!.pty.pid }
+  }
+  if (!operatorId) {
+    throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
   }
 
   const shell = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
@@ -85,7 +91,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castPath,
     castStream,
     castStart,
-    castBytes: 0
+    castBytes: 0,
+    castTruncated: false
   }
 
   term.onData((data: string) => {
@@ -94,12 +101,22 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     if (session.buffer.length > 8192) {
       session.buffer = session.buffer.slice(-4096)
     }
-    if (session.castStream) {
-      const rel = (session.lastActivity - session.castStart) / 1000
-      try {
-        session.castStream.write(JSON.stringify([rel, 'o', data]) + '\n')
-        session.castBytes += Buffer.byteLength(data)
-      } catch { /* stream closed */ }
+    if (session.castStream && !session.castTruncated) {
+      const encoded = JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', data]) + '\n'
+      const chunkBytes = Buffer.byteLength(encoded)
+      if (session.castBytes + chunkBytes > maxCastBytes) {
+        try {
+          session.castStream.write(JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', `\r\n[redlog: cast truncated at ${maxCastBytes} bytes]\r\n`]) + '\n')
+          session.castStream.end()
+        } catch { /* */ }
+        session.castStream = null
+        session.castTruncated = true
+      } else {
+        try {
+          session.castStream.write(encoded)
+          session.castBytes += chunkBytes
+        } catch { /* stream closed */ }
+      }
     }
     mainWindow?.webContents.send(`terminal:data:${id}`, data)
   })
@@ -125,6 +142,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
       castPath: session.castPath,
       castSha256,
       castBytes: session.castBytes,
+      castTruncated: session.castTruncated,
       durationMs: Date.now() - session.castStart
     }, { engagementId, operatorId })
     if (event) eventBus.publish(event)

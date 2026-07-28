@@ -9,7 +9,7 @@ import { getProjectDir } from '../../core/db/index'
 export class ScreenshotAgent {
   private lastHash = ''
   private engagementId = 'default'
-  private operatorId = 'operator-1'
+  private operatorId = ''
   private quality = 85
 
   configure(opts: {
@@ -23,6 +23,7 @@ export class ScreenshotAgent {
   }
 
   async captureNow(trigger: string): Promise<string | null> {
+    if (!this.operatorId) return null
     try {
       const display = screen.getPrimaryDisplay()
       const { width, height } = display.size

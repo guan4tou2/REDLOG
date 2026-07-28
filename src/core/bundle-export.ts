@@ -6,7 +6,7 @@ import { getDB, getProjectDir } from './db/index'
 import { queryEvents } from './db/events'
 import { listQuickMarks } from './db/findings'
 import { listAnchors, computeChainHead } from './chain-anchor'
-import { listOperators } from './db/operators'
+import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 
 interface ManifestFile {
   path: string
@@ -24,6 +24,7 @@ interface ManifestPayload {
   createdAt: string
   hostname: string
   engagementId: string
+  signedBy: { operatorId: string; operatorName: string; tokenHashPrefix: string } | null
   chainHead: { hash: string; eventCount: number } | null
   lastAnchor: { id: string; headHash: string; eventCount: number; status: string; createdAt: number } | null
   files: ManifestFile[]
@@ -119,12 +120,19 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
 
   const head = computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
+  const primary = getPrimaryOperator()
+  const primaryTokenHash = getPrimaryOperatorTokenHash()
 
   const manifest: ManifestPayload = {
     bundleVersion: 1,
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
     engagementId,
+    signedBy: primary && primaryTokenHash ? {
+      operatorId: primary.id,
+      operatorName: primary.name,
+      tokenHashPrefix: primaryTokenHash.slice(0, 16)
+    } : null,
     chainHead: head ? { hash: head.hash, eventCount: head.eventCount } : null,
     lastAnchor: lastAnchor ? {
       id: lastAnchor.id,
@@ -137,10 +145,19 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
   }
 
   const manifestPath = path.join(bundleDir, 'manifest.json')
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
+  const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))
+  fs.writeFileSync(manifestPath, manifestBytes)
 
-  const manifestSha = sha256File(manifestPath).sha256
+  const manifestSha = crypto.createHash('sha256').update(manifestBytes).digest('hex')
   fs.writeFileSync(path.join(bundleDir, 'manifest.sha256'), manifestSha + '\n')
+
+  if (primaryTokenHash) {
+    const hmac = crypto.createHmac('sha256', primaryTokenHash).update(manifestBytes).digest('hex')
+    fs.writeFileSync(
+      path.join(bundleDir, 'manifest.hmac'),
+      `hmac_sha256=${hmac}\ntoken_hash_prefix=${primaryTokenHash.slice(0, 16)}\nalgo=HMAC-SHA256(token_hash, manifest.json)\n`
+    )
+  }
 
   return { outDir: bundleDir, manifest }
 }

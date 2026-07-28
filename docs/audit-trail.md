@@ -119,7 +119,7 @@ redlog-cli chain verify --full
 ## Retention & export
 
 - All anchors stay in `<project>/timeline.db` for the life of the project.
-- **Evidence bundle** (`redlog-cli export bundle`) — produces a self-contained directory with `events.jsonl`, `quickmarks.json`, `chain_anchors.json`, `operators.json`, `screenshots/`, `casts/`, and `manifest.json` (SHA-256 per file + chain head + latest anchor). `manifest.sha256` sits alongside for one-shot integrity checks.
+- **Evidence bundle** (`redlog-cli export bundle`) — produces a self-contained directory with `events.jsonl`, `quickmarks.json`, `chain_anchors.json`, `operators.json`, `screenshots/`, `casts/`, `manifest.json` (SHA-256 per file + chain head + latest anchor + signing operator), `manifest.sha256`, and **`manifest.hmac`** (HMAC-SHA-256 of `manifest.json` keyed by the primary operator's `token_hash`; verifiable by anyone with that operator's token via `sha256(token) == token_hash`). Off-machine tampering flips both the SHA and the HMAC.
 - Standard `.ots` bundles per anchor via `redlog-cli chain export-ots <id> --out anchor.ots`.
 
 ## Clock hardening

@@ -5,7 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
-let insertEvent: typeof import('../src/core/db/events').insertEvent
+let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let anchor: typeof import('../src/core/chain-anchor')
 
 let dbAvailable = false
@@ -15,9 +15,12 @@ try {
   anchor = await import('../src/core/chain-anchor')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
-  insertEvent = evMod.insertEvent
+  insertEventRaw = evMod.insertEvent
   dbAvailable = true
 } catch { /* better-sqlite3 not compiled */ }
+
+const insertEvent: typeof import('../src/core/db/events').insertEvent = (agentType, data, opts) =>
+  insertEventRaw(agentType, data, { operatorId: 'test-op', ...opts })
 
 const describeDB = dbAvailable ? describe : describe.skip
 

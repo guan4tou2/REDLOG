@@ -112,6 +112,14 @@ export function getPrimaryOperator(): Operator | null {
   return row ? rowToOperator(row) : null
 }
 
+export function getPrimaryOperatorTokenHash(): string | null {
+  const db = getDB()
+  const row = db.prepare(
+    `SELECT token_hash FROM operators WHERE is_primary = 1 LIMIT 1`
+  ).get() as { token_hash: string } | undefined
+  return row?.token_hash ?? null
+}
+
 export function ensurePrimaryOperator(id: string, name: string, token: string): Operator {
   const db = getDB()
   const existing = getPrimaryOperator()

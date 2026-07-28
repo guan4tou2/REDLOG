@@ -46,7 +46,7 @@ const IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
 export class ScopeMonitor {
   private config: ScopeConfig = { enforcement: 'warn', targets: [], excludeTargets: [] }
   private engagementId = 'default'
-  private operatorId = 'operator-1'
+  private operatorId = ''
   private violations: Array<{ target: string; command: string; timestamp: number }> = []
   private rootDomains: Set<string> = new Set()
 
@@ -98,6 +98,7 @@ export class ScopeMonitor {
 
   private recordViolation(target: string, command: string, reason: string): void {
     this.violations.push({ target, command, timestamp: Date.now() })
+    if (!this.operatorId) return
 
     try {
       const evt = insertEvent('system', {

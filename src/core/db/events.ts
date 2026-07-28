@@ -47,12 +47,16 @@ export function insertEvent(
   ).get() as { hash: string } | undefined
   const prevHash = prevRow?.hash ?? null
 
+  if (!opts?.operatorId) {
+    throw new Error(`insertEvent: operatorId is required (agent_type=${agentType}). ` +
+      `Every event must resolve to a known operator — see docs/operators.md.`)
+  }
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: now,
     engagementId: opts?.engagementId ?? 'default',
     sessionId,
-    operatorId: opts?.operatorId ?? 'operator-1',
+    operatorId: opts.operatorId,
     agentType,
     hostname: os.hostname(),
     sourceIP: null,

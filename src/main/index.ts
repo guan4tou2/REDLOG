@@ -147,7 +147,7 @@ function startProject(project: ProjectMeta): void {
   configureRedaction(config.redaction)
   configureDeconfliction(config.deconfliction)
 
-  configureTerminal({ engagementId, operatorId })
+  configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
 
   ipMonitor.start()
 

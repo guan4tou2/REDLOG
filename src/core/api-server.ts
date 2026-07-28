@@ -23,7 +23,7 @@ import { extractTarget } from './target-extractor'
 import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
-import { redact } from './redaction'
+import { redact, getRules } from './redaction'
 import { exportBundle } from './bundle-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
 
@@ -33,12 +33,12 @@ const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
 let server: http.Server | null = null
 let primaryToken = ''
 let engagementId = 'default'
-let primaryOperatorId = 'operator-1'
-let primaryOperatorName = 'Operator'
+let primaryOperatorId = ''
+let primaryOperatorName = ''
 
 let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
 
-let lootDetectorRef: { scan: (text: string, targetId?: string) => unknown[] } | null = null
+let lootDetectorRef: { scan: (text: string, targetId?: string) => Array<{ type: string; value: string; confidence: string }> } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
 let scopeMonitorRef: {
@@ -152,6 +152,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
 
+      let lootValues: string[] = []
       if (agentType === 'shell' && data.command) {
         const cmd = data.command as string
         const isStart = data.subtype === 'command_start'
@@ -168,13 +169,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
         if (!isStart && lootDetectorRef) {
           const textToScan = [cmd, data.output].filter(Boolean).join('\n')
-          if (textToScan) lootDetectorRef.scan(textToScan, targetId)
+          if (textToScan) {
+            const matches = lootDetectorRef.scan(textToScan, targetId)
+            lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
+          }
         }
       }
 
+      const baseRules = getRules()
+      const perEventRules = lootValues.length > 0
+        ? { ...baseRules, denylist: [...baseRules.denylist, ...lootValues] }
+        : baseRules
+
       for (const field of ['output', 'output_preview']) {
         if (typeof data[field] === 'string' && data[field]) {
-          const result = redact(data[field] as string)
+          const result = redact(data[field] as string, perEventRules)
           data[field] = result.text
           if (result.redacted.length > 0) {
             const redactions = (data.redactions as unknown[] | undefined) ?? []

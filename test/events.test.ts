@@ -5,7 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
-let insertEvent: typeof import('../src/core/db/events').insertEvent
+let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let getEventCount: typeof import('../src/core/db/events').getEventCount
 let searchEvents: typeof import('../src/core/db/events').searchEvents
@@ -17,7 +17,7 @@ try {
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
-  insertEvent = eventsMod.insertEvent
+  insertEventRaw = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
   getEventCount = eventsMod.getEventCount
   searchEvents = eventsMod.searchEvents
@@ -26,6 +26,9 @@ try {
 } catch {
   // better-sqlite3 not compiled for this Node.js version
 }
+
+const insertEvent: typeof import('../src/core/db/events').insertEvent = (agentType, data, opts) =>
+  insertEventRaw(agentType, data, { operatorId: 'test-op', ...opts })
 
 const describeDB = dbAvailable ? describe : describe.skip
 
@@ -49,10 +52,15 @@ describeDB('insertEvent', () => {
     expect(event!.hash).toBeTruthy()
   })
 
-  it('assigns default engagement and operator', () => {
+  it('assigns default engagement when not provided', () => {
     const event = insertEvent('marker', { title: 'test' })!
     expect(event.engagementId).toBe('default')
-    expect(event.operatorId).toBe('operator-1')
+    expect(event.operatorId).toBe('test-op')
+  })
+
+  it('throws if operatorId is missing (no silent fallback)', () => {
+    expect(() => insertEventRaw('marker', { title: 'x' })).toThrow(/operatorId is required/)
+    expect(() => insertEventRaw('marker', { title: 'x' }, { engagementId: 'e' } as unknown as { operatorId: string })).toThrow(/operatorId is required/)
   })
 
   it('uses provided engagement and operator', () => {

@@ -35,7 +35,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'network' | 'scope' | 'data' | 'hooks'>('general')
+  const [tab, setTab] = useState<'general' | 'team' | 'network' | 'scope' | 'data' | 'hooks'>('general')
   const [saved, setSaved] = useState(false)
   const [cdpPort, setCdpPort] = useState('9222')
   const [exportResult, setExportResult] = useState<string | null>(null)
@@ -51,6 +51,7 @@ export default function Settings(): JSX.Element {
 
   const tabs = [
     { id: 'general' as const, label: t('settings.general') },
+    { id: 'team' as const, label: t('settings.team') },
     { id: 'network' as const, label: t('settings.networkIp') },
     { id: 'scope' as const, label: t('settings.scope') },
     { id: 'hooks' as const, label: t('settings.hooks') },
@@ -85,8 +86,6 @@ export default function Settings(): JSX.Element {
               <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
               <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
             </FieldGroup>
-            <OperatorsPanel t={t} />
-            <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title="Language">
               <div className="flex gap-2">
                 {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
@@ -104,6 +103,13 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
             </FieldGroup>
+          </>
+        )}
+
+        {tab === 'team' && (
+          <>
+            <OperatorsPanel t={t} />
+            <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
           </>
         )}
 
