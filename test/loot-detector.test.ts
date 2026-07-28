@@ -87,7 +87,9 @@ describe('loot pattern detection', () => {
   })
 
   it('detects mongodb URLs', () => {
-    const matches = scanText('mongodb://admin:pass@cluster.mongodb.net/test')
+    // Fake fixture on a reserved host — avoids tripping secret scanners while
+    // still exercising the mongodb:// database_url pattern.
+    const matches = scanText('mongodb://user:examplepass@db.example.test:27017/test')
     expect(matches.some(m => m.type === 'database_url')).toBe(true)
   })
 
