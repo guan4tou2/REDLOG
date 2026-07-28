@@ -29,12 +29,21 @@ function loadOrder(): string[] {
   return DEFAULT_ORDER
 }
 
+// Vertical travel before a press counts as a reorder instead of a click.
+const DRAG_THRESHOLD_PX = 6
+const ITEM_STRIDE_PX = 34 // h-8 button + space-y-0.5 gap
+
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [order, setOrder] = useState(loadOrder)
-  const dragItem = useRef<string | null>(null)
-  const dragOverItem = useRef<string | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  // HTML5 `draggable` hands the browser control of the gesture, and any press
+  // it decides was a drag never produces a click — so navigation would silently
+  // fail. Own the gesture instead: a press is a click until it travels far
+  // enough to be a reorder.
+  const press = useRef<{ id: string; y: number; from: number } | null>(null)
+  const didDrag = useRef(false)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -67,28 +76,47 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const items = order.map((id) => itemMap[id]).filter(Boolean)
 
-  const handleDragStart = useCallback((id: string) => {
-    dragItem.current = id
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
-    e.preventDefault()
-    dragOverItem.current = id
-  }, [])
-
-  const handleDrop = useCallback(() => {
-    if (!dragItem.current || !dragOverItem.current || dragItem.current === dragOverItem.current) return
-    const newOrder = [...order]
-    const fromIdx = newOrder.indexOf(dragItem.current)
-    const toIdx = newOrder.indexOf(dragOverItem.current)
-    if (fromIdx === -1 || toIdx === -1) return
-    newOrder.splice(fromIdx, 1)
-    newOrder.splice(toIdx, 0, dragItem.current)
-    setOrder(newOrder)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newOrder))
-    dragItem.current = null
-    dragOverItem.current = null
+  const onPointerDown = useCallback((e: React.PointerEvent, id: string) => {
+    if (e.button !== 0) return
+    press.current = { id, y: e.clientY, from: order.indexOf(id) }
+    didDrag.current = false
   }, [order])
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const p = press.current
+    if (!p) return
+    const dy = e.clientY - p.y
+    if (!didDrag.current && Math.abs(dy) < DRAG_THRESHOLD_PX) return
+
+    if (!didDrag.current) {
+      didDrag.current = true
+      setDraggingId(p.id)
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+
+    const target = Math.max(0, Math.min(order.length - 1, p.from + Math.round(dy / ITEM_STRIDE_PX)))
+    const current = order.indexOf(p.id)
+    if (target === current) return
+    const next = [...order]
+    next.splice(current, 1)
+    next.splice(target, 0, p.id)
+    setOrder(next)
+  }, [order])
+
+  const onPointerUp = useCallback(() => {
+    if (didDrag.current) localStorage.setItem(STORAGE_KEY, JSON.stringify(order))
+    press.current = null
+    setDraggingId(null)
+  }, [order])
+
+  const onItemClick = useCallback((id: string) => {
+    // A press that turned into a reorder should not also navigate.
+    if (didDrag.current) {
+      didDrag.current = false
+      return
+    }
+    onNavigate(id)
+  }, [onNavigate])
 
   return (
     <nav className="w-[140px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
@@ -98,12 +126,15 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           return (
             <button
               key={item.id}
-              draggable
-              onDragStart={() => handleDragStart(item.id)}
-              onDragOver={(e) => handleDragOver(e, item.id)}
-              onDrop={handleDrop}
-              onClick={() => onNavigate(item.id)}
-              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
+              onPointerDown={(e) => onPointerDown(e, item.id)}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              onClick={() => onItemClick(item.id)}
+              title={t('sidebar.reorderHint')}
+              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none ${
+                draggingId === item.id ? 'bg-white/[0.07] cursor-grabbing' : ''
+              } ${
                 isActive
                   ? 'text-red-400'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'

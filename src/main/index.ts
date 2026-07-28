@@ -38,6 +38,7 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
+import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -405,6 +406,32 @@ app.whenReady().then(() => {
   ipcMain.handle('quickmarks:update', (_e, id: string, data) => updateQuickMark(id, data))
   ipcMain.handle('quickmarks:delete', (_e, id: string) => deleteQuickMark(id))
 
+  // --- Proxied browser ---
+  ipcMain.handle('browser:detect', () => detectBrowser())
+  ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
+  ipcMain.handle('browser:launch', () => {
+    if (!activeProject) return { ok: false, error: 'No project open' }
+    const projectDir = getProjectPath(activeProject)
+    const cfg = loadConfig(projectDir)
+    const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
+    const result = launchBrowser(browserCfg, projectDir)
+
+    if (result.ok) {
+      setCdpPort(browserCfg.cdpPort)
+      const event = insertEvent('system', {
+        subtype: 'browser_launched',
+        binary: result.binary,
+        proxy: browserCfg.proxy || null,
+        cdpPort: browserCfg.cdpPort,
+        isolatedProfile: browserCfg.isolateProfile,
+        pid: result.pid
+      }, { engagementId: cfg.engagement.id, operatorId: cfg.operator.id })
+      if (event) eventBus.publish(event)
+    }
+    return result
+  })
+  ipcMain.handle('browser:stop', () => ({ stopped: stopBrowser() }))
+
   // --- CDP ---
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
@@ -597,6 +624,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()
   killAllTerminals()

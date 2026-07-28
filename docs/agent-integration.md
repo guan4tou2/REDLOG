@@ -544,6 +544,33 @@ Team members import this when creating a new project:
 - **Project Picker** → Advanced Setup → Import Profile
 - **Settings** → Team Profile Sync → Import Profile
 
+## Proxied Browser
+
+The title-bar **Launch Browser** button (also in Settings ▸ Data) starts a Chromium-based browser wired up for capture in one click:
+
+| Flag | Why |
+|---|---|
+| `--proxy-server=<your proxy>` | mitmproxy sees the traffic, so it lands in the timeline as `scanner` events |
+| `--proxy-bypass-list=<-loopback>` | Chrome bypasses the proxy for localhost by default — this re-enables capture for local targets |
+| `--remote-debugging-port=<port>` | QuickMarks can read the active tab's URL and title |
+| `--user-data-dir=<project>/browser-profile` | Project-local profile, so none of this touches your daily browsing |
+| `--ignore-certificate-errors` | Required for mitmproxy's interception cert |
+
+Launching logs a `system` event with `subtype: browser_launched` recording the binary, proxy, CDP port, and pid — so the report shows exactly which browser instance produced the captured traffic. The browser is terminated when RedLog quits.
+
+Configure under Settings ▸ Data ▸ Proxied Browser, or in `config.yaml`:
+
+```yaml
+browser:
+  binary: ""                        # blank = auto-detect Chrome/Chromium/Brave/Edge
+  proxy: "http://127.0.0.1:8080"    # blank = no proxy flag
+  cdpPort: 9222
+  isolateProfile: true
+  ignoreCertErrors: true
+  startUrl: ""
+  extraArgs: []
+```
+
 ## Multi-Operator Setup
 
 Each API token maps to one operator identity. The audit log tags every event with the operator resolved from the token — so several people (or several agents) can share one RedLog instance and stay distinguishable.

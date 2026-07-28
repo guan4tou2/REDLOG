@@ -27,6 +27,7 @@
   "sidebar.scope": "範圍",
   "sidebar.loot": "戰利品",
   "sidebar.marks": "標記",
+  "sidebar.reorderHint": "點擊開啟 · 長按可拖曳排序",
   "sidebar.config": "設定",
   "sidebar.settings": "設定",
 
@@ -76,6 +77,7 @@
   "timeline.markers": "標記",
   "timeline.loot": "戰利品",
   "timeline.system": "系統",
+  "timeline.laneEmpty": "{{lane}} — 尚無事件",
   "timeline.shellEvent": "Shell 事件",
 
   "targets.title": "目標（{{count}}）",
@@ -174,6 +176,22 @@
   "overlay.external": "外部",
   "overlay.internal": "內部",
   "overlay.lastCheck": "最後檢查",
+
+  "browser.launch": "開啟瀏覽器",
+  "browser.stop": "關閉瀏覽器",
+  "browser.hint": "開啟走 proxy 的 Chromium，已啟用 CDP 並使用獨立設定檔。可在「設定 ▸ 資料」調整。",
+  "browser.launched": "瀏覽器已透過 proxy 開啟",
+  "browser.stopped": "瀏覽器已關閉",
+  "browser.failed": "無法啟動瀏覽器",
+  "settings.browser": "Proxy 瀏覽器",
+  "settings.browserHint": "以 --proxy-server（讓 mitmproxy 收得到流量）、--remote-debugging-port（讓 QuickMark 讀得到當前分頁）與專案獨立設定檔啟動 Chromium，這些參數不會影響你日常使用的瀏覽器。",
+  "settings.browserBinary": "瀏覽器執行檔（留空 = 自動偵測）",
+  "settings.browserProxy": "Proxy（留空 = 不加 proxy 參數）",
+  "settings.browserStartUrl": "起始網址（選填）",
+  "settings.browserIsolate": "使用專案獨立設定檔",
+  "settings.browserIgnoreCert": "忽略憑證錯誤（mitmproxy 攔截需要）",
+  "settings.browserDetected": "自動偵測到：{{path}}",
+  "settings.browserNotFound": "找不到 Chromium 系瀏覽器 — 請在上方指定路徑",
 
   "settings.general": "一般",
   "settings.team": "團隊與整合",

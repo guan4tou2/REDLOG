@@ -8,6 +8,15 @@ interface ConfigState {
   network: { safeIPs: string[]; exposedIPs: string[]; checkInterval: number }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
+  browser?: {
+    binary: string
+    proxy: string
+    cdpPort: number
+    isolateProfile: boolean
+    ignoreCertErrors: boolean
+    startUrl: string
+    extraArgs: string[]
+  }
   deconfliction?: {
     enabled: boolean
     url: string
@@ -153,6 +162,7 @@ export default function Settings(): JSX.Element {
                 {t('settings.qualityHint')}
               </p>
             </FieldGroup>
+            <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
               <div className="space-y-2">
                 <Field
@@ -413,6 +423,73 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
         </div>
       </FieldGroup>
     </>
+  )
+}
+
+function BrowserPanel({
+  t, config, setConfig
+}: {
+  t: (key: string, vars?: Record<string, string | number>) => string
+  config: ConfigState
+  setConfig: (c: ConfigState) => void
+}): JSX.Element {
+  const b = config.browser ?? {
+    binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: 9222,
+    isolateProfile: true, ignoreCertErrors: true, startUrl: '', extraArgs: []
+  }
+  const [detected, setDetected] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.redlog.browser.detect().then(setDetected).catch(() => setDetected(null))
+  }, [])
+
+  const patch = (delta: Partial<typeof b>): void => {
+    setConfig({ ...config, browser: { ...b, ...delta } })
+  }
+
+  return (
+    <FieldGroup title={t('settings.browser')}>
+      <p className="text-[10px] text-zinc-600">{t('settings.browserHint')}</p>
+      <Field label={t('settings.browserBinary')} value={b.binary} onChange={(v) => patch({ binary: v })} />
+      <p className="text-[10px] text-zinc-600 font-mono break-all">
+        {detected ? t('settings.browserDetected', { path: detected }) : t('settings.browserNotFound')}
+      </p>
+      <Field label={t('settings.browserProxy')} value={b.proxy} onChange={(v) => patch({ proxy: v })} />
+      <Field
+        label={t('settings.cdpPort')}
+        value={String(b.cdpPort)}
+        onChange={(v) => patch({ cdpPort: parseInt(v) || 9222 })}
+        type="number"
+      />
+      <Field label={t('settings.browserStartUrl')} value={b.startUrl} onChange={(v) => patch({ startUrl: v })} />
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={b.isolateProfile}
+          onChange={(e) => patch({ isolateProfile: e.target.checked })}
+          className="accent-red-600"
+        />
+        <span className="text-[11px] text-zinc-400">{t('settings.browserIsolate')}</span>
+      </label>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={b.ignoreCertErrors}
+          onChange={(e) => patch({ ignoreCertErrors: e.target.checked })}
+          className="accent-red-600"
+        />
+        <span className="text-[11px] text-zinc-400">{t('settings.browserIgnoreCert')}</span>
+      </label>
+      <button
+        onClick={async () => {
+          const r = await window.redlog.browser.launch()
+          toast(r.ok ? t('browser.launched') : (r.error || t('browser.failed')), r.ok ? 'success' : 'error')
+        }}
+        className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+      >
+        {t('browser.launch')}
+      </button>
+    </FieldGroup>
   )
 }
 

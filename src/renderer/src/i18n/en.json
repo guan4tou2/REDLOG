@@ -27,6 +27,7 @@
   "sidebar.scope": "Scope",
   "sidebar.loot": "Loot",
   "sidebar.marks": "Marks",
+  "sidebar.reorderHint": "Click to open · hold to drag and reorder",
   "sidebar.config": "Config",
   "sidebar.settings": "Settings",
 
@@ -76,6 +77,7 @@
   "timeline.markers": "Markers",
   "timeline.loot": "Loot",
   "timeline.system": "System",
+  "timeline.laneEmpty": "{{lane}} — no events yet",
   "timeline.shellEvent": "Shell event",
 
   "targets.title": "Targets ({{count}})",
@@ -174,6 +176,22 @@
   "overlay.external": "External",
   "overlay.internal": "Internal",
   "overlay.lastCheck": "Last check",
+
+  "browser.launch": "Launch Browser",
+  "browser.stop": "Stop Browser",
+  "browser.hint": "Open a Chromium browser routed through your proxy, with CDP enabled and an isolated profile. Configure in Settings ▸ Data.",
+  "browser.launched": "Browser launched through proxy",
+  "browser.stopped": "Browser stopped",
+  "browser.failed": "Could not launch browser",
+  "settings.browser": "Proxied Browser",
+  "settings.browserHint": "Launches a Chromium browser with --proxy-server (so mitmproxy captures the traffic), --remote-debugging-port (so QuickMarks can read the active tab), and a project-local profile so these flags never touch your daily browsing.",
+  "settings.browserBinary": "Browser binary (blank = auto-detect)",
+  "settings.browserProxy": "Proxy (blank = no proxy flag)",
+  "settings.browserStartUrl": "Start URL (optional)",
+  "settings.browserIsolate": "Use an isolated project profile",
+  "settings.browserIgnoreCert": "Ignore certificate errors (needed for mitmproxy interception)",
+  "settings.browserDetected": "Auto-detected: {{path}}",
+  "settings.browserNotFound": "No Chromium-based browser found — set a path above",
 
   "settings.general": "General",
   "settings.team": "Team & Integrations",

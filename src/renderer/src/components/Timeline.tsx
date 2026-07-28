@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { toast } from './Toast'
 
 const MIN_LANE_H = 36
-const LABEL_W = 72
+const LABEL_W = 92
 const BASE_TRACK_W = 2000
 const LANES = ['shell', 'dns', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
 type LaneId = (typeof LANES)[number]
@@ -85,6 +85,9 @@ export default function TimelinePanel(): JSX.Element {
   }, [])
 
   const operatorLabel = (id: string): string => operatorNames[id] || id
+  // With a single operator the column is the same string on every row — only
+  // worth the horizontal space once a second identity shows up.
+  const showOperator = Object.keys(operatorNames).length > 1
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
@@ -112,9 +115,22 @@ export default function TimelinePanel(): JSX.Element {
     return () => ro.disconnect()
   }, [])
 
-  const visibleLanes = useMemo(() => LANES.filter((l) => !hiddenLanes.has(l)), [hiddenLanes])
+  // A lane with no events is dead vertical space — most engagements only ever
+  // touch three or four of them. Keep the filter chip so the operator can see
+  // the lane exists, but don't give it a row until something lands in it.
+  const populatedLanes = useMemo(() => {
+    const seen = new Set<LaneId>()
+    for (const e of events) seen.add(toLane(e.agentType))
+    return seen
+  }, [events])
+
+  const visibleLanes = useMemo(
+    () => LANES.filter((l) => populatedLanes.has(l) && !hiddenLanes.has(l)),
+    [populatedLanes, hiddenLanes]
+  )
 
   const laneH = useMemo(() => {
+    if (visibleLanes.length === 0) return MIN_LANE_H
     const axisH = 28
     const available = containerH - axisH
     return Math.max(MIN_LANE_H, Math.floor(available / visibleLanes.length))
@@ -287,19 +303,22 @@ export default function TimelinePanel(): JSX.Element {
         {/* Lane filter toggles */}
         <div className="ml-auto flex gap-1">
           {LANES.map((id) => {
+            const empty = !populatedLanes.has(id)
             const hidden = hiddenLanes.has(id)
+            const off = empty || hidden
             return (
               <button
                 key={id}
-                onClick={() => toggleLane(id)}
+                onClick={() => !empty && toggleLane(id)}
+                disabled={empty}
                 className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition-all ${
-                  hidden ? 'opacity-30 line-through' : ''
+                  hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
-                  color: hidden ? '#525252' : LANE_COLORS[id],
-                  backgroundColor: hidden ? 'transparent' : `${LANE_COLORS[id]}10`
+                  color: off ? '#525252' : LANE_COLORS[id],
+                  backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
                 }}
-                title={`${hidden ? 'Show' : 'Hide'} ${laneLabels[id]}`}
+                title={empty ? t('timeline.laneEmpty', { lane: laneLabels[id] }) : `${hidden ? 'Show' : 'Hide'} ${laneLabels[id]}`}
               >
                 {laneLabels[id]}
               </button>
@@ -424,9 +443,11 @@ export default function TimelinePanel(): JSX.Element {
                   <span className="text-zinc-600 font-mono tabular-nums shrink-0 w-16">
                     {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
-                  <span className="text-zinc-500 font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
-                    {operatorLabel(evt.operatorId)}
-                  </span>
+                  {showOperator && (
+                    <span className="text-zinc-500 font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
+                      {operatorLabel(evt.operatorId)}
+                    </span>
+                  )}
                   <span className="text-zinc-400 truncate">{eventTitle(evt)}</span>
                 </div>
               )

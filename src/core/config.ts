@@ -28,6 +28,15 @@ export interface RedLogConfig {
   terminal: {
     maxCastBytes: number
   }
+  browser: {
+    binary: string
+    proxy: string
+    cdpPort: number
+    isolateProfile: boolean
+    ignoreCertErrors: boolean
+    startUrl: string
+    extraArgs: string[]
+  }
   redaction: {
     allowlist: string[]
     denylist: string[]
@@ -69,6 +78,15 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024
+  },
+  browser: {
+    binary: '',
+    proxy: 'http://127.0.0.1:8080',
+    cdpPort: 9222,
+    isolateProfile: true,
+    ignoreCertErrors: true,
+    startUrl: '',
+    extraArgs: []
   },
   redaction: {
     allowlist: [],

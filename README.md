@@ -25,6 +25,7 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Clock hardening** — every event carries wall-clock, monotonic, and NTP offset
 - **Deconfliction webhook** — optional signed feed to the blue team's SOC on marker / scope-violation / cred-use events ([details](docs/deconfliction.md))
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end
+- **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Quick Start
@@ -59,7 +60,7 @@ npx electron-builder --mac    # or --win / --linux
 
 ### Timeline & UI
 
-- **7-Lane Swim Timeline** — shell, screenshot, clipboard, file transfer, marker, loot, system — with dynamic lane height and real-time event dots
+- **Swim-lane Timeline** — shell, dns, screenshot, clipboard, file transfer, credential use, c2 check-in, marker, loot, system. Lanes with no events collapse away, so the chart only shows what this engagement actually touched
 - **Pause / Resume** — click the status bar recording indicator to pause/resume capture
 - **Global Search** — full-text search across all event types with highlighted results
 - **Target View** — auto-cataloged targets with per-target evidence drill-down

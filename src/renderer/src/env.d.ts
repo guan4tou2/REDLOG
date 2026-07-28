@@ -113,6 +113,12 @@ interface RedLogAPI {
     getTab: () => Promise<BrowserTabInfo>
     setPort: (port: number) => Promise<boolean>
   }
+  browser: {
+    detect: () => Promise<string | null>
+    status: () => Promise<{ running: boolean }>
+    launch: () => Promise<BrowserLaunchResult>
+    stop: () => Promise<{ stopped: boolean }>
+  }
   data: {
     exportJson: () => Promise<string | null>
   }
@@ -150,6 +156,15 @@ interface RedLogAPI {
     get: () => Promise<DeconflictionConfigInfo>
     test: (cfg: DeconflictionConfigInfo) => Promise<{ ok: boolean; status: number; error?: string }>
   }
+}
+
+interface BrowserLaunchResult {
+  ok: boolean
+  pid?: number
+  binary?: string
+  args?: string[]
+  profileDir?: string
+  error?: string
 }
 
 interface DeconflictionConfigInfo {

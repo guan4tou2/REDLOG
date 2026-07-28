@@ -86,6 +86,7 @@ export default function App(): JSX.Element {
         </div>
         <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
         <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <LaunchBrowserButton />
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
@@ -121,6 +122,49 @@ export default function App(): JSX.Element {
       <ToastContainer />
       <ConfirmDialogContainer />
     </div>
+  )
+}
+
+function LaunchBrowserButton(): JSX.Element {
+  const [running, setRunning] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const { t } = useI18n()
+
+  useEffect(() => {
+    window.redlog.browser.status().then((s) => setRunning(s.running)).catch(() => {})
+  }, [])
+
+  const handleClick = async (): Promise<void> => {
+    setBusy(true)
+    if (running) {
+      await window.redlog.browser.stop()
+      setRunning(false)
+      toast(t('browser.stopped'), 'info')
+    } else {
+      const r = await window.redlog.browser.launch()
+      if (r.ok) {
+        setRunning(true)
+        toast(t('browser.launched'), 'success')
+      } else {
+        toast(r.error || t('browser.failed'), 'error')
+      }
+    }
+    setBusy(false)
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={busy}
+      title={t('browser.hint')}
+      className={`px-2.5 py-1 text-[10px] font-medium rounded-md border transition-colors disabled:opacity-50 ${
+        running
+          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+          : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700/60 hover:text-zinc-200'
+      }`}
+    >
+      {busy ? '…' : running ? t('browser.stop') : t('browser.launch')}
+    </button>
   )
 }
 

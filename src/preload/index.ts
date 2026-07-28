@@ -71,6 +71,12 @@ contextBridge.exposeInMainWorld('redlog', {
     getTab: () => ipcRenderer.invoke('cdp:getTab'),
     setPort: (port: number) => ipcRenderer.invoke('cdp:setPort', port)
   },
+  browser: {
+    detect: () => ipcRenderer.invoke('browser:detect'),
+    status: () => ipcRenderer.invoke('browser:status'),
+    launch: () => ipcRenderer.invoke('browser:launch'),
+    stop: () => ipcRenderer.invoke('browser:stop')
+  },
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson'),
     exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered')
