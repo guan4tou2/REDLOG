@@ -17,6 +17,7 @@ import { ToastContainer } from './components/Toast'
 import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { useI18n } from './i18n'
+import logoUrl from './assets/logo.svg'
 
 type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
 
@@ -81,6 +82,7 @@ export default function App(): JSX.Element {
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-2 pl-16">
+          <img src={logoUrl} alt="" className="w-4 h-4 rounded" />
           <span className="text-red-500 font-bold text-[13px] tracking-[0.2em]">{t('app.title')}</span>
           <span className="text-zinc-800 text-[10px] font-mono">v{__APP_VERSION__}</span>
         </div>

@@ -8,6 +8,9 @@
   "project.recent": "最近的專案",
   "project.placeholder": "例如 Client-Pentest-Q3",
   "project.delete": "刪除專案",
+  "project.openFailed": "無法開啟專案：{{error}}",
+  "project.openMissing": "找不到專案 —— 可能已被移動或刪除。",
+  "project.bridgeMissing": "RedLog 的 app bridge 無法使用。請從安裝好的 RedLog app 開啟,不要用網頁瀏覽器 —— 這裡的按鈕不會有作用。",
   "project.description": "每個專案獨立儲存設定、事件、截圖和證據日誌。",
 
   "time.justNow": "剛剛",

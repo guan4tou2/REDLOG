@@ -8,6 +8,9 @@
   "project.recent": "Recent Projects",
   "project.placeholder": "e.g. Client-Pentest-Q3",
   "project.delete": "Delete project",
+  "project.openFailed": "Could not open project: {{error}}",
+  "project.openMissing": "Project not found — it may have been moved or deleted.",
+  "project.bridgeMissing": "RedLog’s app bridge is unavailable. Open RedLog from the installed app, not a web browser — buttons won’t work here.",
   "project.description": "Each project stores its own config, events, screenshots, and evidence log.",
 
   "time.justNow": "just now",

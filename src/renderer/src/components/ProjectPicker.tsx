@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
+import logoUrl from '../assets/logo.svg'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -18,27 +19,43 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [enforcement, setEnforcement] = useState('warn')
   const { t } = useI18n()
 
+  // The whole UI runs on the preload bridge. If it's missing (e.g. the page was
+  // opened in a plain browser instead of the RedLog app), every button silently
+  // no-ops — so detect it and say so instead of dying quietly.
+  const bridgeMissing = typeof window.redlog === 'undefined'
+
   useEffect(() => {
-    window.redlog.project.list().then(setProjects)
-  }, [])
+    if (bridgeMissing) return
+    window.redlog.project.list().then(setProjects).catch(() => {})
+  }, [bridgeMissing])
 
   async function handleCreate(): Promise<void> {
     const name = newName.trim()
     if (!name) return
     setCreating(true)
-    const initialConfig = (showAdvanced && (scopeTargets.length > 0 || safeIPs.length > 0 || exposedIPs.length > 0))
-      ? {
-        scope: { targets: scopeTargets, excludeTargets: [], enforcement, scopeFile: null },
-        network: { safeIPs, exposedIPs, checkInterval: 10 }
-      }
-      : undefined
-    const project = await window.redlog.project.create(name, initialConfig)
-    onProjectOpen({ id: project.id, name: project.name })
+    try {
+      const initialConfig = (showAdvanced && (scopeTargets.length > 0 || safeIPs.length > 0 || exposedIPs.length > 0))
+        ? {
+          scope: { targets: scopeTargets, excludeTargets: [], enforcement, scopeFile: null },
+          network: { safeIPs, exposedIPs, checkInterval: 60 }
+        }
+        : undefined
+      const project = await window.redlog.project.create(name, initialConfig)
+      onProjectOpen({ id: project.id, name: project.name })
+    } catch (e) {
+      setCreating(false)
+      toast(t('project.openFailed', { error: (e as Error).message }), 'error')
+    }
   }
 
-  async function handleOpen(id: string, name: string): Promise<void> {
-    const project = await window.redlog.project.open(id)
-    if (project) onProjectOpen({ id: project.id, name: project.name })
+  async function handleOpen(id: string): Promise<void> {
+    try {
+      const project = await window.redlog.project.open(id)
+      if (project) onProjectOpen({ id: project.id, name: project.name })
+      else toast(t('project.openMissing'), 'error')
+    } catch (e) {
+      toast(t('project.openFailed', { error: (e as Error).message }), 'error')
+    }
   }
 
   async function handleDelete(id: string): Promise<void> {
@@ -75,12 +92,17 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       <div className="w-[480px] space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 mb-2">
-            <span className="text-red-500 text-xl font-bold">R</span>
-          </div>
+          <img src={logoUrl} alt="RedLog" className="w-14 h-14 mx-auto mb-2 rounded-xl" />
+
           <h1 className="text-zinc-100 font-bold text-xl tracking-[0.15em]">{t('app.title')}</h1>
           <p className="text-zinc-600 text-[11px] font-mono">{t('app.subtitle')}</p>
         </div>
+
+        {bridgeMissing && (
+          <div className="bg-red-950/40 border border-red-900/50 rounded-xl p-4 text-center">
+            <p className="text-red-300 text-xs">{t('project.bridgeMissing')}</p>
+          </div>
+        )}
 
         {/* New project */}
         <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
@@ -185,7 +207,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                 <div
                   key={p.id}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.03] cursor-pointer group transition-colors"
-                  onClick={() => handleOpen(p.id, p.name)}
+                  onClick={() => handleOpen(p.id)}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-red-500/40 group-hover:bg-red-500/80 transition-colors shrink-0" />
                   <div className="flex-1 min-w-0">
