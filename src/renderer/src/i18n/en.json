@@ -216,6 +216,9 @@
   "settings.confirmationsHint": "Egress behind CGNAT or a load-balanced pool answers differently each poll. Requiring several identical reads stops the safety badge flickering between SAFE and EXPOSED.",
   "settings.ipProviders": "IP lookup endpoints (blank = built-in defaults)",
   "settings.ipProvidersHint": "Tried in order until one answers. Must return JSON with an \"ip\" field.",
+  "settings.overlayGroup": "Overlay",
+  "settings.overlayShowMark": "Show Mark button in the expanded overlay",
+  "settings.overlayShowMarkHint": "Keeps the collapsed overlay minimal; the Mark button only appears when expanded.",
   "settings.screenshotQuality": "Screenshot Quality",
   "settings.jpegQuality": "JPEG quality (1-100)",
   "settings.qualityHint": "Higher = better quality, larger files. Default: 85",
@@ -241,6 +244,16 @@
   "settings.saveApply": "Save & Apply",
   "settings.restartHint": "Requires restart to apply network/scope changes",
 
+  "settings.mcp": "MCP Server (for AI agents)",
+  "settings.mcpHint": "RedLog hosts its own MCP server over HTTP — it's live whenever the app is open, no subprocess to launch. Use it to let Claude Code / Cursor operate the app: create markers, check scope, anchor the chain. Logging still goes through the hooks, not MCP.",
+  "settings.mcpLive": "MCP live at {{endpoint}}",
+  "settings.mcpOffline": "MCP endpoint starts when a project is open.",
+  "settings.mcpSetup": "Set up MCP access",
+  "settings.mcpRotate": "Rotate MCP token",
+  "settings.mcpCreated": "Run this once in your terminal to connect the agent. The token is stable across restarts and shown only now.",
+  "settings.mcpCopy": "Copy",
+  "settings.mcpStdio": "Prefer stdio transport?",
+  "settings.mcpStdioHint": "Runs the MCP bridge as a subprocess. Requires node on PATH; HTTP is simpler and works in the packaged app.",
   "settings.operators": "Operator Tokens",
   "settings.operatorsHint": "Each token is a distinct identity in the audit log. The primary operator's token is rotated automatically each session and stored at ~/.redlog/api-token — hand-copy a secondary token to a teammate or a specific agent (Codex, mitmproxy, etc.) so their events can be attributed independently.",
   "settings.operatorAddName": "New operator name",
@@ -318,6 +331,7 @@
 
   "dashboard.exportData": "Export Data",
 
+  "overlay.mark": "Mark",
   "overlay.rec": "REC",
   "overlay.paused": "PAUSED",
 

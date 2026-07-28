@@ -8,6 +8,7 @@ interface ConfigState {
   network: { safeIPs: string[]; exposedIPs: string[]; checkInterval: number; providers?: string[]; confirmations?: number }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
+  overlay?: { showMarkButton: boolean }
   browser?: {
     binary: string
     proxy: string
@@ -117,6 +118,7 @@ export default function Settings(): JSX.Element {
 
         {tab === 'team' && (
           <>
+            <McpPanel t={t} />
             <OperatorsPanel t={t} />
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
           </>
@@ -176,6 +178,18 @@ export default function Settings(): JSX.Element {
               <p className="text-[10px] text-zinc-600">
                 {t('settings.qualityHint')}
               </p>
+            </FieldGroup>
+            <FieldGroup title={t('settings.overlayGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.overlay?.showMarkButton !== false}
+                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.overlayShowMark')}</span>
+              </label>
+              <p className="text-[10px] text-zinc-600">{t('settings.overlayShowMarkHint')}</p>
             </FieldGroup>
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
@@ -627,6 +641,79 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
             </div>
           ))}
         </div>
+      )}
+    </FieldGroup>
+  )
+}
+
+function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const [info, setInfo] = useState<McpInfo | null>(null)
+  const [creds, setCreds] = useState<{ token: string; endpoint: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    window.redlog.mcp.info().then(setInfo).catch(() => setInfo(null))
+  }, [])
+
+  const setup = async (): Promise<void> => {
+    setBusy(true)
+    const r = await window.redlog.mcp.setupToken()
+    setBusy(false)
+    if (r) {
+      setCreds({ token: r.token, endpoint: r.endpoint })
+      window.redlog.mcp.info().then(setInfo)
+    }
+  }
+
+  const httpCmd = creds
+    ? `claude mcp add --transport http redlog ${creds.endpoint} --header "Authorization: Bearer ${creds.token}"`
+    : null
+  const stdioCmd = info ? `claude mcp add redlog -- node ${info.stdioPath}` : null
+
+  const copy = (text: string): void => {
+    navigator.clipboard.writeText(text)
+    toast(t('toast.copied'), 'success')
+  }
+
+  return (
+    <FieldGroup title={t('settings.mcp')}>
+      <p className="text-[10px] text-zinc-600">{t('settings.mcpHint')}</p>
+
+      {info ? (
+        <p className="text-[10px] text-emerald-400 font-mono">
+          ● {t('settings.mcpLive', { endpoint: info.endpoint })}
+        </p>
+      ) : (
+        <p className="text-[10px] text-zinc-500">{t('settings.mcpOffline')}</p>
+      )}
+
+      <button
+        onClick={setup}
+        disabled={busy || !info}
+        className="px-3 py-1.5 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
+      >
+        {busy ? '…' : info?.hasToken ? t('settings.mcpRotate') : t('settings.mcpSetup')}
+      </button>
+
+      {creds && httpCmd && (
+        <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
+          <p className="text-[11px] text-red-300">{t('settings.mcpCreated')}</p>
+          <div className="flex items-start gap-1">
+            <code className="flex-1 bg-black/40 text-zinc-200 text-[10px] font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
+            <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
+          </div>
+        </div>
+      )}
+
+      {stdioCmd && (
+        <details className="mt-1">
+          <summary className="text-[10px] text-zinc-600 cursor-pointer">{t('settings.mcpStdio')}</summary>
+          <div className="flex items-start gap-1 mt-1">
+            <code className="flex-1 bg-black/40 text-zinc-400 text-[10px] font-mono px-2 py-1.5 rounded break-all">{stdioCmd}</code>
+            <button onClick={() => copy(stdioCmd)} className="px-2 py-1.5 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
+          </div>
+          <p className="text-[10px] text-zinc-600 mt-1">{t('settings.mcpStdioHint')}</p>
+        </details>
       )}
     </FieldGroup>
   )

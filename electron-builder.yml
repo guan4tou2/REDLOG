@@ -6,6 +6,16 @@ directories:
 files:
   - out/**/*
   - resources/**/*
+# Ship the stdio MCP bridge + hook scripts alongside the app so the packaged
+# build can point at them (HTTP MCP needs none of this, but stdio + hook
+# install do).
+extraResources:
+  - from: mcp
+    to: mcp
+  - from: hooks
+    to: hooks
+  - from: shell
+    to: shell
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools

@@ -12,8 +12,8 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
        │                │                │
   ┌────▼────┐    ┌──────▼──────┐   ┌─────▼─────┐
   │ Terminal │    │ MCP Server  │   │ HTTP API  │
-  │  Hooks   │    │ (12 tools)  │   │ (REST)    │
-  │(passive) │    │  (active)   │   │(universal)│
+  │  Hooks   │    │ (18 tools)  │   │ (REST)    │
+  │  (log)   │    │ (operate)   │   │(universal)│
   └────┬────┘    └──────┬──────┘   └─────┬─────┘
        │                │                │
        └────────────────┼────────────────┘
@@ -27,26 +27,31 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
 
 **Passive hooks** capture everything without the agent knowing. **MCP/API** lets the agent actively query scope, create markers, and search history.
 
-## Capture priority: hooks first, MCP only for what hooks can't do
+## Two planes: hooks log, MCP operates
 
-**Install the hooks first, and rely on them for everything they can capture. Reach for MCP/API only for actions a hook cannot perform.** The reason is completeness, not preference:
+The cleanest way to think about it:
 
-- **Hooks are passive** — they fire on every command regardless of what the agent is thinking about. Nothing has to remember to log; a command *cannot* be run without being recorded. For an audit log, that guarantee is the whole point.
-- **MCP is agent-initiated** — it only records what the agent decides to call. An agent that forgets, is interrupted, or simply wasn't prompted to log will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make your capture depend on the agent's memory.
+- **Hooks are the data plane — they record.** Passive, automatic, fire on every command. This is where *logging* happens.
+- **MCP is the control plane — it operates and configures the app.** Create markers, check scope, anchor the chain, read the timeline. These are actions *on* RedLog, not a substitute for capturing what the agent did.
+
+**For logging, always prefer hooks; use MCP only for what a hook cannot do.** The reason is completeness, not taste:
+
+- A hook fires whether or not the agent is thinking about it — a command *cannot* run without being recorded. For an audit log, that guarantee is the whole point.
+- MCP only records what the agent decides to call. An agent that forgets, is interrupted, or wasn't prompted will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make capture depend on the agent's memory.
 
 So the division of labour is:
 
-| Use **hooks** for… | Use **MCP/API** for… |
+| Use **hooks** for (logging) | Use **MCP** for (operating the app) |
 |---|---|
-| Every shell / Bash command and its output (automatic) | Findings and phase markers (`redlog_mark`) — a human/agent judgement a hook can't infer |
+| Every shell / Bash command and its output (automatic) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
 | mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
 | Screenshots, clipboard, file transfers (automatic) | Loot scanning of pasted output (`redlog_loot_scan`) |
-| | Confirming identity (`redlog_whoami`) and anchoring the chain (`redlog_chain_anchor_now`) |
+| | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |
 | | Structured events for actions no shell ran — GUI clicks, manual observations (`redlog_log_event`) |
 
-If a piece of activity *can* be captured by a hook, let the hook capture it and do **not** also log it over MCP — you'll get duplicates. MCP is for the judgement calls and the actions that never touched a shell.
+If activity *can* be captured by a hook, let the hook capture it and do **not** also log it over MCP — that just produces duplicates. MCP is for the control-plane actions and the observations that never touched a shell.
 
-The recommended setup therefore installs **all applicable hooks**, then adds MCP on top for the agent-initiated actions above.
+So: install **all applicable hooks first** for logging, then connect MCP for operating the app.
 
 ## 1. Terminal Hooks (Passive Capture)
 
@@ -173,31 +178,37 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 - If called without arguments: starts an interactive shell with preexec hooks loaded
 - Sets `REDLOG_SHELL_WRAPPED=1` env var so tools can detect the wrapper
 
-## 2. MCP Server (Agent-Controlled)
+## 2. MCP Server (operate the app)
 
-The MCP (Model Context Protocol) server lets compatible agents actively interact with RedLog — check scope before scanning, create markers for findings, search history, etc.
+The MCP (Model Context Protocol) server lets compatible agents operate RedLog — check scope before scanning, create markers for findings, anchor the chain, search history. Two transports; **HTTP is recommended**.
 
-### Setup
+### Setup — HTTP (recommended, app-hosted)
+
+RedLog hosts its own MCP server over HTTP from the process already running the API, so **MCP is live the moment the app is open** — no subprocess to spawn, no `node` on PATH, nothing to unpack from the app bundle.
+
+1. In RedLog: **Settings ▸ Team & Integrations ▸ MCP Server ▸ Set up MCP access.** This mints a dedicated, non-rotating operator token (so the registration survives restarts and MCP activity is attributed to its own identity) and shows a ready-to-paste command.
+2. Run it once:
 
 ```bash
-# Claude Code
+claude mcp add --transport http redlog http://127.0.0.1:6660/mcp \
+  --header "Authorization: Bearer <mcp-operator-token>"
+```
+
+`claude mcp list` should show `redlog … (HTTP) - ✔ Connected`. From then on, every time RedLog is open the endpoint is live.
+
+### Setup — stdio (fallback)
+
+For clients without HTTP-MCP support, the standalone bridge still works. It's a subprocess the client spawns, and in a packaged app the script lives inside the bundle's resources:
+
+```bash
+# Claude Code (dev checkout)
 claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
 
-# Cursor
-# Add to .cursor/mcp.json:
-{
-  "mcpServers": {
-    "redlog": {
-      "command": "node",
-      "args": ["/path/to/redlog/mcp/redlog-mcp-server.js"]
-    }
-  }
-}
-
-# Generic MCP client
-node /path/to/redlog/mcp/redlog-mcp-server.js
-# (uses stdio transport with Content-Length framing)
+# Cursor — .cursor/mcp.json
+{ "mcpServers": { "redlog": { "command": "node", "args": ["/path/to/redlog/mcp/redlog-mcp-server.js"] } } }
 ```
+
+The stdio bridge discovers the running app via `~/.redlog/api-port` + `api-token` and proxies to the same tools. HTTP avoids the subprocess and the node-on-PATH requirement entirely.
 
 ### Auto-Discovery
 
@@ -610,7 +621,7 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 
 ## Recommended Setup
 
-For maximum coverage with minimal friction — **hooks first, MCP only for the gaps** (see [Capture priority](#capture-priority-hooks-first-mcp-only-for-what-hooks-cant-do)):
+For maximum coverage with minimal friction — **hooks first, MCP only for the gaps** (see [Capture priority](#two-planes-hooks-log-mcp-operates)):
 
 1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
 2. **Add the Claude Code PostToolUse hook** — structured Bash tool-call capture.

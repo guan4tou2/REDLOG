@@ -27,6 +27,9 @@ export interface RedLogConfig {
   screenshot: {
     quality: number
   }
+  overlay: {
+    showMarkButton: boolean
+  }
   terminal: {
     maxCastBytes: number
   }
@@ -79,6 +82,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshot: {
     quality: 85
+  },
+  overlay: {
+    showMarkButton: true
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024

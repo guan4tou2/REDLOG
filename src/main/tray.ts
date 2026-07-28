@@ -69,7 +69,8 @@ export function setTrayRecording(tray: Tray, recording: boolean | null): void {
 export function createTray(
   mainWindow: BrowserWindow,
   overlayWindow: BrowserWindow | null,
-  onToggleRecording?: () => boolean
+  onToggleRecording?: () => boolean,
+  onQuickMark?: () => void
 ): Tray {
   const tray = new Tray(getTemplateIcon())
 
@@ -83,6 +84,14 @@ export function createTray(
         }
       }
     ]
+
+    if (onQuickMark) {
+      items.push({
+        label: '⚑ Quick Mark',
+        accelerator: 'CommandOrControl+Shift+M',
+        click: () => onQuickMark()
+      })
+    }
 
     if (onToggleRecording) {
       items.push({

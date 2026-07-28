@@ -6,8 +6,17 @@ export default function OverlayApp(): JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const [recording, setRecording] = useState(true)
   const [interactive, setInteractive] = useState(false)
+  const [showMark, setShowMark] = useState(true)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { t } = useI18n()
+
+  useEffect(() => {
+    const cfg = window.redlog.config as { get?: () => Promise<unknown> } | undefined
+    cfg?.get?.().then((c) => {
+      const ov = (c as { overlay?: { showMarkButton?: boolean } } | null)?.overlay
+      setShowMark(ov?.showMarkButton !== false)
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const overlay = window.redlog.overlay as { onInteractive?: (cb: (v: boolean) => void) => () => void }
@@ -200,6 +209,23 @@ export default function OverlayApp(): JSX.Element {
             </div>
             {status?.error && (
               <p style={{ color: '#ef4444', marginTop: 6, fontSize: 10 }}>{status.error}</p>
+            )}
+            {showMark && (
+              <button
+                onClick={() => window.redlog.overlay?.quickMark()}
+                style={{
+                  ...noDrag,
+                  marginTop: 8, width: '100%',
+                  padding: '5px 0', fontSize: 10, fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  color: '#fca5a5', background: 'rgba(239,68,68,0.12)',
+                  border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6,
+                  cursor: 'pointer', fontFamily: 'inherit'
+                }}
+                title="⌘⇧M"
+              >
+                ⚑ {t('overlay.mark')}
+              </button>
             )}
           </div>
         )}

@@ -156,6 +156,17 @@ interface RedLogAPI {
     get: () => Promise<DeconflictionConfigInfo>
     test: (cfg: DeconflictionConfigInfo) => Promise<{ ok: boolean; status: number; error?: string }>
   }
+  mcp: {
+    info: () => Promise<McpInfo | null>
+    setupToken: () => Promise<{ token: string; port: number; endpoint: string } | null>
+  }
+}
+
+interface McpInfo {
+  port: number
+  endpoint: string
+  stdioPath: string
+  hasToken: boolean
 }
 
 interface BrowserLaunchResult {

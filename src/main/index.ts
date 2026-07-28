@@ -28,7 +28,7 @@ import {
   listProjects, createProject, openProject, deleteProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
-import { startApiServer, stopApiServer, configureApi, getApiToken } from '../core/api-server'
+import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort } from '../core/api-server'
 import {
   listOperators, createOperator, updateOperatorToken, revokeOperator,
   deleteOperator, renameOperator, generateToken, slugifyOperatorId
@@ -90,6 +90,14 @@ function toggleRecording(): boolean {
   send(mainWindow, 'recording:changed', recording)
   send(overlayWindow, 'recording:changed', recording)
   return recording
+}
+
+// Quick-mark trigger shared by the global shortcut, the tray menu, and the
+// overlay button — opens the marker dialog in the main window.
+function triggerQuickMark(): void {
+  send(mainWindow, 'shortcut:marker')
+  mainWindow?.show()
+  mainWindow?.focus()
 }
 
 const WINDOW_STATE_PATH = path.join(homedir(), '.redlog', 'window-state.json')
@@ -189,7 +197,7 @@ function startProject(project: ProjectMeta): void {
     startOverlayMouseTracking()
     if (tray) {
       tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording)
+      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerQuickMark)
       setTrayRecording(tray, !eventBus.paused)
     }
   }
@@ -207,6 +215,7 @@ function stopProject(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
+  setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
 
   const savedState = loadWindowState()
   mainWindow = createMainWindow(savedState?.bounds)
@@ -224,7 +233,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording)
+  tray = createTray(mainWindow, null, toggleRecording, triggerQuickMark)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -557,6 +566,35 @@ app.whenReady().then(() => {
     if (tray) setTrayRecording(tray, recording)
   })
 
+  // --- MCP (app-hosted HTTP server) ---
+  const MCP_OPERATOR_ID = 'mcp-agent'
+  ipcMain.handle('mcp:info', () => {
+    if (!activeProject) return null
+    const port = getApiPort()
+    // In dev the stdio bridge is in the repo; in a packaged app it's unpacked
+    // next to resources. HTTP is the recommended transport either way.
+    const stdioPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'mcp', 'redlog-mcp-server.js')
+      : path.join(__dirname, '../../mcp/redlog-mcp-server.js')
+    return {
+      port,
+      endpoint: `http://127.0.0.1:${port}/mcp`,
+      stdioPath,
+      hasToken: listOperators().some((o) => o.id === MCP_OPERATOR_ID && !o.revokedAt)
+    }
+  })
+  // Mints (or rotates) a dedicated, non-rotating operator token for MCP. Unlike
+  // the primary token this survives app restarts, so a registered `claude mcp
+  // add` keeps working, and MCP activity is attributed to its own identity.
+  ipcMain.handle('mcp:setupToken', () => {
+    if (!activeProject) return null
+    const token = generateToken()
+    const existing = listOperators().find((o) => o.id === MCP_OPERATOR_ID)
+    if (existing) updateOperatorToken(MCP_OPERATOR_ID, token)
+    else createOperator({ id: MCP_OPERATOR_ID, name: 'MCP agent', token, isPrimary: false })
+    return { token, port: getApiPort(), endpoint: `http://127.0.0.1:${getApiPort()}/mcp` }
+  })
+
   // --- Operators ---
   ipcMain.handle('operators:list', () => {
     if (!activeProject) return []
@@ -605,12 +643,9 @@ app.whenReady().then(() => {
     return deleteOperator(id)
   })
 
-  // --- Global shortcut ---
-  globalShortcut.register('CommandOrControl+Shift+M', () => {
-    send(mainWindow, 'shortcut:marker')
-    mainWindow?.show()
-    mainWindow?.focus()
-  })
+  // --- Quick mark (global shortcut + tray + overlay all route here) ---
+  globalShortcut.register('CommandOrControl+Shift+M', triggerQuickMark)
+  ipcMain.on('overlay:quickMark', triggerQuickMark)
 
   app.on('activate', () => {
     mainWindow?.show()

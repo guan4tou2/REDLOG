@@ -26,10 +26,14 @@ contextBridge.exposeInMainWorld('redlog', {
       return () => ipcRenderer.removeListener('recording:changed', handler)
     }
   },
+  config: {
+    get: (): Promise<unknown> => ipcRenderer.invoke('config:get')
+  },
   overlay: {
     setExpanded: (expanded: boolean) =>
       ipcRenderer.send('overlay:setExpanded', expanded),
     hide: () => ipcRenderer.send('overlay:hide'),
+    quickMark: () => ipcRenderer.send('overlay:quickMark'),
     mouseEnter: () => ipcRenderer.send('overlay:mouseEnter'),
     mouseLeave: () => ipcRenderer.send('overlay:mouseLeave'),
     onInteractive: (cb: (interactive: boolean) => void) => {

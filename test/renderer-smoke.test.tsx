@@ -150,6 +150,10 @@ function installBridge(): void {
       get: async () => ({ enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false }),
       test: async () => ({ ok: true, status: 200 })
     },
+    mcp: {
+      info: async () => ({ port: 6660, endpoint: 'http://127.0.0.1:6660/mcp', stdioPath: '/x/mcp/redlog-mcp-server.js', hasToken: false }),
+      setupToken: async () => ({ token: 't'.repeat(64), port: 6660, endpoint: 'http://127.0.0.1:6660/mcp' })
+    },
     recording: { get: async () => true, toggle: async () => true, onChange: () => unsub },
     terminal: {
       spawn: async () => ({ pid: 1 }), write: () => {}, resize: () => {}, kill: () => {},

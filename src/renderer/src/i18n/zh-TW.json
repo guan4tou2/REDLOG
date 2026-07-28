@@ -216,6 +216,9 @@
   "settings.confirmationsHint": "在 CGNAT 或負載平衡出口後面，每次輪詢回來的位址都可能不同。要求連續數次一致，安全徽章才不會在「安全」和「暴露」之間亂閃。",
   "settings.ipProviders": "IP 查詢端點（留空 = 內建預設）",
   "settings.ipProvidersHint": "依序嘗試直到有回應。需回傳含 \"ip\" 欄位的 JSON。",
+  "settings.overlayGroup": "懸浮視窗",
+  "settings.overlayShowMark": "在展開的懸浮視窗顯示標記按鈕",
+  "settings.overlayShowMarkHint": "收合狀態保持簡潔;標記按鈕只在展開時出現。",
   "settings.screenshotQuality": "截圖品質",
   "settings.jpegQuality": "JPEG 品質（1-100）",
   "settings.qualityHint": "數值越高品質越好但檔案越大。預設：85",
@@ -241,6 +244,16 @@
   "settings.saveApply": "儲存並套用",
   "settings.restartHint": "需要重新啟動以套用網路/範圍變更",
 
+  "settings.mcp": "MCP 伺服器（給 AI agent）",
+  "settings.mcpHint": "RedLog 自己用 HTTP 提供 MCP 伺服器 —— app 一開就上線,不用另外啟動子程序。用來讓 Claude Code / Cursor 操作 app:建立標記、檢查範圍、錨定證據鏈。記 log 仍走 hook,不走 MCP。",
+  "settings.mcpLive": "MCP 已上線於 {{endpoint}}",
+  "settings.mcpOffline": "開啟專案後 MCP 端點才會啟動。",
+  "settings.mcpSetup": "設定 MCP 存取",
+  "settings.mcpRotate": "重新產生 MCP token",
+  "settings.mcpCreated": "在終端機執行一次即可連上 agent。此 token 重啟後仍有效,且只在此顯示一次。",
+  "settings.mcpCopy": "複製",
+  "settings.mcpStdio": "想用 stdio 傳輸?",
+  "settings.mcpStdioHint": "以子程序執行 MCP bridge,需要 node 在 PATH。HTTP 較單純,打包後也能用。",
   "settings.operators": "Operator Tokens",
   "settings.operatorsHint": "每一組 token 都是 audit log 中獨立的身分。主 operator 的 token 每次啟動會自動輪替，寫入 ~/.redlog/api-token；額外的 token 請手動複製給隊友或指定的 agent（Codex、mitmproxy 等），他們產生的事件就能被獨立歸屬。",
   "settings.operatorAddName": "新 operator 名稱",
@@ -318,6 +331,7 @@
 
   "dashboard.exportData": "匯出資料",
 
+  "overlay.mark": "標記",
   "overlay.rec": "錄製",
   "overlay.paused": "已暫停",
 

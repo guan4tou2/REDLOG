@@ -26,12 +26,17 @@ import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
 import { exportBundle } from './bundle-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
+import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
+
+let appVersion = 'dev'
+export function setAppVersion(v: string): void { appVersion = v }
 
 const TOKEN_PATH = path.join(os.homedir(), '.redlog', 'api-token')
 const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
 
 let server: http.Server | null = null
 let primaryToken = ''
+let listeningPort = 6660
 let engagementId = 'default'
 let primaryOperatorId = ''
 let primaryOperatorName = ''
@@ -65,6 +70,122 @@ export function configureApi(opts: {
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.ipMonitor) ipMonitorRef = opts.ipMonitor
   if (opts.scopeMonitor) scopeMonitorRef = opts.scopeMonitor
+}
+
+// Runs an MCP tool directly against the same internal functions the REST
+// routes use, attributed to the operator the bearer token resolved to. This is
+// the app-hosted counterpart of mcp/redlog-mcp-server.js's HTTP calls — same
+// tools, no subprocess.
+function makeMcpDispatch(operator: Operator): ToolDispatch {
+  const attributed = { engagementId, operatorId: operator.id }
+
+  return async (name, args): Promise<unknown> => {
+    switch (name) {
+      case 'redlog_status':
+        return {
+          ip: ipMonitorRef?.status ?? null,
+          eventCount: getEventCount(),
+          scopeViolations: scopeMonitorRef?.getViolationCount() ?? 0
+        }
+
+      case 'redlog_whoami':
+        return { operator: publicOperator(operator), engagementId }
+
+      case 'redlog_operators_list':
+        return { operators: listOperators().map(publicOperator) }
+
+      case 'redlog_mark': {
+        const event = insertEvent('marker', {
+          title: args.title ?? 'Untitled',
+          notes: args.notes ?? '',
+          severity: args.severity ?? 'info',
+          category: 'mcp'
+        }, { ...attributed, targetId: args.target as string | undefined })
+        if (event) eventBus.publish(event)
+        return event
+      }
+
+      case 'redlog_log_event': {
+        const data = (args.data as Record<string, unknown>) ?? {}
+        const event = insertEvent(
+          (args.agent_type as string) || 'agent',
+          data,
+          { ...attributed, targetId: args.target as string | undefined }
+        )
+        if (event) eventBus.publish(event)
+        return event
+      }
+
+      case 'redlog_search':
+        return { events: searchEvents(String(args.query ?? ''), Number(args.limit) || 20) }
+
+      case 'redlog_events':
+        return {
+          events: queryEvents({
+            agentType: args.agent_type as string | undefined,
+            targetId: args.target as string | undefined,
+            limit: Number(args.limit) || 50
+          })
+        }
+
+      case 'redlog_scope':
+        return {
+          targets: configLoaderRef?.getTargets() ?? [],
+          violations: scopeMonitorRef?.getViolations() ?? [],
+          violationCount: scopeMonitorRef?.getViolationCount() ?? 0
+        }
+
+      case 'redlog_config':
+        return configLoaderRef?.getConfig() ?? {}
+
+      case 'redlog_quickmark':
+        return createQuickMark({
+          title: (args.title as string) || 'Untitled',
+          url: args.url as string | undefined,
+          note: (args.note as string) || '',
+          context: {}
+        })
+
+      case 'redlog_quickmarks_list':
+        return { quickmarks: listQuickMarks() }
+
+      case 'redlog_loot_scan': {
+        if (!lootDetectorRef) return { findings: [] }
+        return { findings: lootDetectorRef.scan(String(args.text ?? '')) }
+      }
+
+      case 'redlog_screenshot': {
+        if (!screenshotAgentRef) return { captured: false }
+        const filePath = await screenshotAgentRef.captureNow('mcp')
+        return { captured: !!filePath, filePath }
+      }
+
+      case 'redlog_recording': {
+        const action = args.action as string
+        if (action === 'pause') eventBus.pause()
+        else if (action === 'resume') eventBus.resume()
+        else if (action === 'toggle') { if (eventBus.paused) eventBus.resume(); else eventBus.pause() }
+        return { recording: !eventBus.paused }
+      }
+
+      case 'redlog_chain_status':
+        return { length: getChainLength(), lastAnchor: listAnchors(1)[0] ?? null }
+
+      case 'redlog_chain_anchor_now':
+        return { anchor: await anchorNow() }
+
+      case 'redlog_chain_verify':
+        return verifyLatestAnchor()
+
+      case 'redlog_chain_upgrade':
+        return args.anchor_id
+          ? { anchor: await upgradeAnchor(String(args.anchor_id)) }
+          : await upgradeAllPending()
+
+      default:
+        throw new Error(`Unknown tool: ${name}`)
+    }
+  }
 }
 
 function writePrimaryToken(): string {
@@ -141,6 +262,23 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   try {
+    // MCP over Streamable HTTP — the app hosts its own MCP server, so it is live
+    // whenever RedLog is open. Connect with:
+    //   claude mcp add --transport http redlog http://127.0.0.1:<port>/mcp \
+    //     --header "Authorization: Bearer <operator-token>"
+    if ((route === '/mcp' || route === '/api/mcp') && req.method === 'POST') {
+      const parsed = JSON.parse(await readBody(req))
+      const dispatch = makeMcpDispatch(operator)
+      const messages = Array.isArray(parsed) ? parsed : [parsed]
+      const responses = (await Promise.all(
+        messages.map((m) => handleMcpMessage(m, { version: appVersion, dispatch }))
+      )).filter((r): r is Record<string, unknown> => r !== null)
+
+      if (responses.length === 0) { res.writeHead(202); res.end(); return }
+      json(res, 200, Array.isArray(parsed) ? responses : responses[0])
+      return
+    }
+
     if (route === '/api/whoami' && req.method === 'GET') {
       json(res, 200, { operator: publicOperator(operator), engagementId })
       return
@@ -503,6 +641,7 @@ export function startApiServer(port = 6660): Promise<number> {
     server.listen(port, '127.0.0.1', () => {
       const addr = server!.address()
       const actualPort = typeof addr === 'object' && addr ? addr.port : port
+      listeningPort = actualPort
       writePort(actualPort)
       resolve(actualPort)
     })
@@ -526,6 +665,10 @@ export function stopApiServer(): void {
 
 export function getApiToken(): string {
   return primaryToken
+}
+
+export function getApiPort(): number {
+  return listeningPort
 }
 
 export function getPrimaryOperatorSnapshot(): Operator | null {

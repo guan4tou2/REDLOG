@@ -39,6 +39,7 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Clock hardening** — every event carries wall-clock, monotonic, and NTP offset
 - **Deconfliction webhook** — optional signed feed to the blue team's SOC on marker / scope-violation / cred-use events ([details](docs/deconfliction.md))
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end
+- **Built-in MCP server (HTTP)** — the app hosts its own MCP endpoint, live the moment RedLog opens; agents operate the app (markers, scope, anchoring) without spawning a subprocess ([details](docs/agent-integration.md#2-mcp-server-operate-the-app))
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
@@ -113,7 +114,7 @@ Built-in English and Traditional Chinese (zh-TW). Locale files in `src/renderer/
 
 ## AI Agent Integration
 
-RedLog is designed to work alongside AI coding agents. Three integration layers — **install the hooks first and rely on them; add MCP only for what hooks can't do.** Hooks are passive so nothing can be forgotten; MCP is agent-initiated, and anything the agent forgets to log is a silent gap in the audit trail. See [Capture priority](docs/agent-integration.md#capture-priority-hooks-first-mcp-only-for-what-hooks-cant-do).
+RedLog is designed to work alongside AI coding agents. Three integration layers — **install the hooks first and rely on them; add MCP only for what hooks can't do.** Hooks are passive so nothing can be forgotten; MCP is agent-initiated, and anything the agent forgets to log is a silent gap in the audit trail. See [Capture priority](docs/agent-integration.md#two-planes-hooks-log-mcp-operates).
 
 ### Layer 1: Terminal Hooks (Automatic Capture) — start here
 
@@ -156,15 +157,24 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 ./hooks/codex-wrapper.sh nmap -sV target.com
 ```
 
-### Layer 2: MCP Server (Agent-Controlled) — for the gaps only
+### Layer 2: MCP Server (operate the app) — control plane, not logging
 
-The MCP server lets Claude Code, Cursor, and other MCP-compatible agents actively read and write to RedLog. Use it for the judgement calls a hook can't make — markers, scope checks, loot scans, chain anchoring, non-shell observations — **not** to log commands the hooks already capture (that just produces duplicates).
+RedLog hosts its own MCP server **over HTTP**, so it's live whenever the app is open — no subprocess to spawn. Use it to *operate* RedLog: create markers, check scope, anchor the chain, read history. Hooks do the logging; MCP does not duplicate it.
+
+Set up in **Settings ▸ Team & Integrations ▸ MCP Server**, then:
+
+```bash
+claude mcp add --transport http redlog http://127.0.0.1:6660/mcp \
+  --header "Authorization: Bearer <mcp-token>"
+```
+
+(A stdio bridge is available as a fallback — see [docs](docs/agent-integration.md#2-mcp-server-operate-the-app).)
 
 ```bash
 claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
 ```
 
-**17 available tools:**
+**18 available tools (HTTP or stdio):**
 
 | Tool | Description |
 |------|-------------|
@@ -185,6 +195,7 @@ claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
 | `redlog_chain_status` | Chain length + latest OTS anchor |
 | `redlog_chain_anchor_now` | Anchor current chain head to OpenTimestamps |
 | `redlog_chain_verify` | Fast prefix check on latest anchor |
+| `redlog_chain_upgrade` | Fetch upgraded OTS proofs for pending anchors |
 
 Ship-ready skill file at [`docs/skills/redlog-pentest.md`](docs/skills/redlog-pentest.md) — copy to `~/.claude/skills/` to opt an agent into the full flow.
 
