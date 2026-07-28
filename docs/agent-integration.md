@@ -27,7 +27,26 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
 
 **Passive hooks** capture everything without the agent knowing. **MCP/API** lets the agent actively query scope, create markers, and search history.
 
-The recommended setup combines both: hooks for automatic command logging + MCP for agent-initiated actions.
+## Capture priority: hooks first, MCP only for what hooks can't do
+
+**Install the hooks first, and rely on them for everything they can capture. Reach for MCP/API only for actions a hook cannot perform.** The reason is completeness, not preference:
+
+- **Hooks are passive** — they fire on every command regardless of what the agent is thinking about. Nothing has to remember to log; a command *cannot* be run without being recorded. For an audit log, that guarantee is the whole point.
+- **MCP is agent-initiated** — it only records what the agent decides to call. An agent that forgets, is interrupted, or simply wasn't prompted to log will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make your capture depend on the agent's memory.
+
+So the division of labour is:
+
+| Use **hooks** for… | Use **MCP/API** for… |
+|---|---|
+| Every shell / Bash command and its output (automatic) | Findings and phase markers (`redlog_mark`) — a human/agent judgement a hook can't infer |
+| mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
+| Screenshots, clipboard, file transfers (automatic) | Loot scanning of pasted output (`redlog_loot_scan`) |
+| | Confirming identity (`redlog_whoami`) and anchoring the chain (`redlog_chain_anchor_now`) |
+| | Structured events for actions no shell ran — GUI clicks, manual observations (`redlog_log_event`) |
+
+If a piece of activity *can* be captured by a hook, let the hook capture it and do **not** also log it over MCP — you'll get duplicates. MCP is for the judgement calls and the actions that never touched a shell.
+
+The recommended setup therefore installs **all applicable hooks**, then adds MCP on top for the agent-initiated actions above.
 
 ## 1. Terminal Hooks (Passive Capture)
 
@@ -591,13 +610,14 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 
 ## Recommended Setup
 
-For maximum coverage with minimal friction:
+For maximum coverage with minimal friction — **hooks first, MCP only for the gaps** (see [Capture priority](#capture-priority-hooks-first-mcp-only-for-what-hooks-cant-do)):
 
-1. **Install shell preexec hook** in `~/.zshrc` (captures everything from all agents)
-2. **Add Claude Code PostToolUse hook** (captures structured tool call data)
-3. **Add MCP server** to Claude Code (lets the agent actively check scope, create markers, anchor the chain)
-4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** (guides the agent's RedLog usage)
-5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable
+1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
+2. **Add the Claude Code PostToolUse hook** — structured Bash tool-call capture.
+3. **Add the mitmproxy addon** if you're proxying traffic — passive HTTP capture.
+4. **Only then add the MCP server** — for the agent-initiated actions hooks can't do (markers, scope checks, anchoring), never as a substitute for capture the hooks already handle.
+5. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use MCP only for those gaps.
+6. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.
 
 This gives you:
 - Automatic passive capture of every command (hooks)

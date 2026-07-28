@@ -113,11 +113,11 @@ Built-in English and Traditional Chinese (zh-TW). Locale files in `src/renderer/
 
 ## AI Agent Integration
 
-RedLog is designed to work alongside AI coding agents. Three integration layers, from tightest to lightest:
+RedLog is designed to work alongside AI coding agents. Three integration layers — **install the hooks first and rely on them; add MCP only for what hooks can't do.** Hooks are passive so nothing can be forgotten; MCP is agent-initiated, and anything the agent forgets to log is a silent gap in the audit trail. See [Capture priority](docs/agent-integration.md#capture-priority-hooks-first-mcp-only-for-what-hooks-cant-do).
 
-### Layer 1: Terminal Hooks (Automatic Capture)
+### Layer 1: Terminal Hooks (Automatic Capture) — start here
 
-Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog.
+Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
 **Claude Code (PostToolUse hook):**
 
@@ -156,9 +156,9 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 ./hooks/codex-wrapper.sh nmap -sV target.com
 ```
 
-### Layer 2: MCP Server (Agent-Controlled)
+### Layer 2: MCP Server (Agent-Controlled) — for the gaps only
 
-The MCP server lets Claude Code, Cursor, and other MCP-compatible agents actively read and write to RedLog.
+The MCP server lets Claude Code, Cursor, and other MCP-compatible agents actively read and write to RedLog. Use it for the judgement calls a hook can't make — markers, scope checks, loot scans, chain anchoring, non-shell observations — **not** to log commands the hooks already capture (that just produces duplicates).
 
 ```bash
 claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
