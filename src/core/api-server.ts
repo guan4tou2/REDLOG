@@ -27,6 +27,7 @@ import { redact, getRules } from './redaction'
 import { exportBundle } from './bundle-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
+import { getCaptureHealth } from './capture-health'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -85,7 +86,8 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
         return {
           ip: ipMonitorRef?.status ?? null,
           eventCount: getEventCount(),
-          scopeViolations: scopeMonitorRef?.getViolationCount() ?? 0
+          scopeViolations: scopeMonitorRef?.getViolationCount() ?? 0,
+          capture: getCaptureHealth()
         }
 
       case 'redlog_whoami':
@@ -406,8 +408,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       json(res, 200, {
         ip: ipMonitorRef?.status || null,
         eventCount: getEventCount(),
-        scopeViolations: scopeMonitorRef?.getViolationCount() || 0
+        scopeViolations: scopeMonitorRef?.getViolationCount() || 0,
+        capture: getCaptureHealth()
       })
+      return
+    }
+
+    if (route === '/api/capture' && req.method === 'GET') {
+      json(res, 200, getCaptureHealth())
       return
     }
 

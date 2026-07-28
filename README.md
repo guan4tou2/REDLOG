@@ -120,6 +120,8 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the **shell hook** (covers commands in *your own* terminal) AND the Claude Code hook (covers only Claude Code's Bash tool). The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+
 **Claude Code (PostToolUse hook):**
 
 ```jsonc

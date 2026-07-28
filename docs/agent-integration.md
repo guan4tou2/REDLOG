@@ -53,6 +53,24 @@ If activity *can* be captured by a hook, let the hook capture it and do **not** 
 
 So: install **all applicable hooks first** for logging, then connect MCP for operating the app.
 
+## Set up capture — do this first
+
+RedLog captures **nothing** until a source is wired up. Being open is not enough. The Dashboard shows a **Capture Health** card; if it says *"Recording nothing"*, none of the below is active. Set these up at the start of every engagement:
+
+| Source | Covers | How | Only while RedLog open? |
+|---|---|---|---|
+| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…) | Settings ▸ Hooks ▸ Zsh/Bash → Enable, then `source ~/.zshrc` | Yes — it no-ops when RedLog is closed |
+| **Claude Code hook** | Only Claude Code's **Bash tool** calls — NOT your terminal | Settings ▸ Hooks ▸ Claude Code → Enable | Yes |
+| **mitmproxy** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
+| **RedLog terminal** | Commands run inside RedLog's own terminal pane | Built in, always on | — |
+
+**Two things that trip people up:**
+
+1. **The Claude Code hook ≠ full capture.** It only records what Claude Code runs through its Bash tool. Anything you type in a normal terminal is invisible unless the **shell hook** is installed. Install both.
+2. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
+
+**Verify capture is live:** run a command in your terminal, then check the Dashboard's Capture Health card (or `redlog-cli status` → `capture`) — the shell hook source should flip to *active*.
+
 ## 1. Terminal Hooks (Passive Capture)
 
 Terminal hooks intercept commands at the shell level. The agent doesn't need to be RedLog-aware — every command it runs is automatically logged with timestamps, exit codes, and duration.

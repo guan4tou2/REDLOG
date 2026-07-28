@@ -154,6 +154,17 @@ function installBridge(): void {
       info: async () => ({ port: 6660, endpoint: 'http://127.0.0.1:6660/mcp', stdioPath: '/x/mcp/redlog-mcp-server.js', hasToken: false }),
       setupToken: async () => ({ token: 't'.repeat(64), port: 6660, endpoint: 'http://127.0.0.1:6660/mcp' })
     },
+    capture: {
+      health: async () => ({
+        verdict: 'healthy', recording: true, lastEventAt: Date.now(), checkedAt: Date.now(),
+        sources: [
+          { id: 'shell-hook', installed: true, lastEventAt: Date.now(), state: 'active' },
+          { id: 'claude-code', installed: true, lastEventAt: null, state: 'idle' },
+          { id: 'mitmproxy', lastEventAt: null, state: 'idle' },
+          { id: 'builtin-terminal', lastEventAt: null, state: 'idle' }
+        ]
+      })
+    },
     recording: { get: async () => true, toggle: async () => true, onChange: () => unsub },
     terminal: {
       spawn: async () => ({ pid: 1 }), write: () => {}, resize: () => {}, kill: () => {},

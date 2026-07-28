@@ -86,6 +86,9 @@ contextBridge.exposeInMainWorld('redlog', {
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },
+  capture: {
+    health: () => ipcRenderer.invoke('capture:health')
+  },
   operators: {
     list: () => ipcRenderer.invoke('operators:list'),
     create: (name: string) => ipcRenderer.invoke('operators:create', name),

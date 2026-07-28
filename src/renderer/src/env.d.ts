@@ -160,6 +160,24 @@ interface RedLogAPI {
     info: () => Promise<McpInfo | null>
     setupToken: () => Promise<{ token: string; port: number; endpoint: string } | null>
   }
+  capture: {
+    health: () => Promise<CaptureHealthInfo | null>
+  }
+}
+
+interface CaptureSourceInfo {
+  id: string
+  installed?: boolean
+  lastEventAt: number | null
+  state: 'active' | 'idle' | 'absent'
+}
+
+interface CaptureHealthInfo {
+  verdict: 'healthy' | 'partial' | 'dark'
+  recording: boolean
+  sources: CaptureSourceInfo[]
+  lastEventAt: number | null
+  checkedAt: number
 }
 
 interface McpInfo {

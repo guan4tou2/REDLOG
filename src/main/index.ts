@@ -38,6 +38,7 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
+import { getCaptureHealth } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 
 let mainWindow: BrowserWindow | null = null
@@ -554,6 +555,7 @@ app.whenReady().then(() => {
 
   // --- Hooks ---
   ipcMain.handle('hooks:detect', () => detectHooks())
+  ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => installHook(hookId))
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => uninstallHook(hookId))
 

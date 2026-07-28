@@ -127,6 +127,62 @@ export default function App(): JSX.Element {
   )
 }
 
+function CaptureHealthCard({ capture, onNavigate }: {
+  capture: CaptureHealthInfo
+  onNavigate: (v: string) => void
+}): JSX.Element {
+  const { t } = useI18n()
+
+  const SOURCE_LABEL: Record<string, string> = {
+    'shell-hook': t('capture.shellHook'),
+    'claude-code': t('capture.claudeCode'),
+    'mitmproxy': t('capture.mitmproxy'),
+    'builtin-terminal': t('capture.builtinTerminal')
+  }
+  const dot = (s: string): string =>
+    s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-zinc-700'
+  const stateLabel = (s: string): string => t(`capture.state.${s}`)
+
+  const dark = capture.verdict === 'dark'
+  const partial = capture.verdict === 'partial'
+  const barColor = dark ? 'bg-red-500' : partial ? 'bg-amber-500' : 'bg-emerald-500'
+  const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
+
+  return (
+    <section>
+      <div className={`rounded-lg border p-4 shadow-card relative overflow-hidden ${
+        dark ? 'bg-red-950/30 border-red-900/50' : partial ? 'bg-amber-950/20 border-amber-900/40' : 'bg-redlog-surface border-redlog-border'
+      }`}>
+        <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-[0.15em]">{t('capture.title')}</h2>
+          <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
+        </div>
+        {(dark || partial) && (
+          <p className="text-[11px] text-zinc-400 mb-3">
+            {dark ? t('capture.darkHint') : t('capture.partialHint')}
+            {' '}
+            <button onClick={() => onNavigate('settings')} className="text-red-400/90 hover:text-red-300 underline">
+              {t('capture.openHooks')}
+            </button>
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+          {capture.sources.map((s) => (
+            <div key={s.id} className="flex items-center gap-2 text-xs">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
+              <span className="text-zinc-300 flex-1 truncate">{SOURCE_LABEL[s.id] ?? s.id}</span>
+              <span className="text-zinc-600 text-[10px]">
+                {s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function LaunchBrowserButton(): JSX.Element {
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -176,6 +232,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [chainLen, setChainLen] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
+  const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const { t } = useI18n()
 
@@ -185,8 +242,14 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       window.redlog.loot.getCount().then(setLootCount),
       window.redlog.chain.length().then(setChainLen),
       window.redlog.scope.getViolationCount().then(setScopeViolations),
-      window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>))
+      window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)),
+      window.redlog.capture.health().then(setCapture).catch(() => {})
     ]).then(() => setLoading(false))
+    // Re-check capture health as events flow in, so the warning clears live.
+    const unsub = window.redlog.events.onNew(() => {
+      window.redlog.capture.health().then(setCapture).catch(() => {})
+    })
+    return unsub
   }, [])
 
   if (loading) {
@@ -206,6 +269,8 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 
   return (
     <div className="p-5 space-y-5 overflow-auto h-full">
+      {capture && <CaptureHealthCard capture={capture} onNavigate={onNavigate} />}
+
       <section>
         <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
           {t('dashboard.networkStatus')}

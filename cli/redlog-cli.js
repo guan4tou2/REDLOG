@@ -260,8 +260,17 @@ Examples:
         console.log(`  Events:     ${d.eventCount}`)
         console.log(`  Scope:      ${d.scopeViolations > 0 ? `${d.scopeViolations} violations` : 'OK'}`)
         if (ip) {
-          console.log(`  VPN:        ${ip.vpnStatus}`)
+          console.log(`  IP safety:  ${ip.ipSafety || 'unknown'}`)
           console.log(`  External IP: ${ip.externalIP || 'unknown'}`)
+        }
+        if (d.capture) {
+          const c = d.capture
+          const mark = c.verdict === 'dark' ? '⚠ RECORDING NOTHING' : c.verdict === 'partial' ? 'wired but idle' : 'recording'
+          console.log(`  Capture:    ${mark}`)
+          for (const s of c.sources) {
+            const flag = s.installed === false ? 'not installed' : s.state
+            console.log(`    - ${s.id.padEnd(18)} ${flag}`)
+          }
         }
       } else {
         console.error(`Error ${res.status}:`, res.data)
