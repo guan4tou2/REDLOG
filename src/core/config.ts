@@ -15,6 +15,8 @@ export interface RedLogConfig {
     safeIPs: string[]
     exposedIPs: string[]
     checkInterval: number
+    providers: string[]
+    confirmations: number
   }
   scope: {
     enforcement: string
@@ -65,7 +67,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   network: {
     safeIPs: [],
     exposedIPs: [],
-    checkInterval: 10
+    checkInterval: 60,
+    providers: [],
+    confirmations: 3
   },
   scope: {
     enforcement: 'warn',

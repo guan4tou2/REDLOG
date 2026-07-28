@@ -14,14 +14,20 @@ git push origin main
 git push origin v0.2.0
 ```
 
-The workflow will:
-1. Run tests on macOS and Windows runners (against Node ABI — the default `npm ci` install)
+The workflow has two phases:
+
+**build** (matrix macOS + Windows, in parallel):
+1. Run tests on each runner (against Node ABI — the default `npm ci` install)
 2. Build renderer + main via `electron-vite build`
-3. Package with `electron-builder` — it rebuilds native modules (better-sqlite3, node-pty) against the target Electron ABI automatically during packaging, using prebuilt binaries where available:
+3. Package with `electron-builder --publish never` — it rebuilds native modules (better-sqlite3, node-pty) against the target Electron ABI automatically during packaging, using prebuilt binaries where available:
    - **macOS**: `dmg` and `zip` for x64 + arm64
    - **Windows**: `nsis` installer + `portable` .exe for x64
-4. Upload artifacts to the GitHub Release matching the tag
-5. Also uploads to workflow artifacts for 14 days
+4. Upload the installers as workflow artifacts
+
+**release** (single job, after both builds):
+5. Download every platform's artifacts and create **one** GitHub Release with all of them via `softprops/action-gh-release`
+
+> The build jobs deliberately do NOT publish. Two concurrent `electron-builder --publish always` jobs race to create the release and produce two release objects for one tag — which is how v0.2.1 first shipped mac-only. Collecting artifacts and releasing once avoids the race entirely.
 
 Unsigned macOS/Windows binaries — no Apple/Microsoft cert configured.
 

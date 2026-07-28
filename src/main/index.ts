@@ -136,7 +136,9 @@ function startProject(project: ProjectMeta): void {
   ipMonitor.configure({
     safeIPs: config.network.safeIPs,
     exposedIPs: config.network.exposedIPs,
-    checkInterval: config.network.checkInterval
+    checkInterval: config.network.checkInterval,
+    providers: config.network.providers,
+    confirmations: config.network.confirmations
   })
   screenshotAgent.configure({ engagementId, operatorId, quality: config.screenshot.quality })
 
@@ -266,7 +268,9 @@ app.whenReady().then(() => {
     ipMonitor.configure({
       safeIPs: newConfig.network.safeIPs,
       exposedIPs: newConfig.network.exposedIPs,
-      checkInterval: newConfig.network.checkInterval
+      checkInterval: newConfig.network.checkInterval,
+      providers: newConfig.network.providers,
+      confirmations: newConfig.network.confirmations
     })
     let targets = newConfig.scope.targets
     if (newConfig.scope.scopeFile) {

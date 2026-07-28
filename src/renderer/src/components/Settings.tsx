@@ -5,7 +5,7 @@ import { toast } from './Toast'
 interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
-  network: { safeIPs: string[]; exposedIPs: string[]; checkInterval: number }
+  network: { safeIPs: string[]; exposedIPs: string[]; checkInterval: number; providers?: string[]; confirmations?: number }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
   browser?: {
@@ -142,9 +142,24 @@ export default function Settings(): JSX.Element {
               <Field
                 label={t('settings.checkInterval')}
                 value={String(config.network.checkInterval)}
-                onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 10 } })}
+                onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 60 } })}
                 type="number"
               />
+              <p className="text-[10px] text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
+              <Field
+                label={t('settings.confirmations')}
+                value={String(config.network.confirmations ?? 3)}
+                onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
+                type="number"
+              />
+              <p className="text-[10px] text-zinc-600">{t('settings.confirmationsHint')}</p>
+              <ListField
+                label={t('settings.ipProviders')}
+                items={config.network.providers ?? []}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, providers: items } })}
+                placeholder="https://ip.internal.example/json"
+              />
+              <p className="text-[10px] text-zinc-600">{t('settings.ipProvidersHint')}</p>
             </FieldGroup>
           </>
         )}

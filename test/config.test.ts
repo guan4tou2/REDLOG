@@ -20,7 +20,7 @@ describe('loadConfig', () => {
     expect(config.engagement.id).toBe('default')
     expect(config.network.safeIPs).toEqual([])
     expect(config.network.exposedIPs).toEqual([])
-    expect(config.network.checkInterval).toBe(10)
+    expect(config.network.checkInterval).toBe(60)
     expect(config.scope.enforcement).toBe('warn')
   })
 
@@ -29,7 +29,7 @@ describe('loadConfig', () => {
     const config = loadConfig(tmpDir)
     expect(config.engagement.id).toBe('test-123')
     expect(config.engagement.name).toBe('Default Engagement')
-    expect(config.network.checkInterval).toBe(10)
+    expect(config.network.checkInterval).toBe(60)
   })
 
   it('migrates vpnIPs to safeIPs', () => {

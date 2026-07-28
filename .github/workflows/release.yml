@@ -11,6 +11,11 @@ on:
         required: true
         type: string
 
+# Build each platform in parallel and only PACKAGE (never publish) here.
+# Two concurrent `electron-builder --publish always` jobs race to create the
+# GitHub release and end up with two release objects for one tag — which is
+# exactly how v0.2.1 first shipped mac-only. Collect the artifacts and let a
+# single downstream job create one release.
 jobs:
   build:
     strategy:
@@ -18,8 +23,6 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout
@@ -48,18 +51,14 @@ jobs:
       - name: Package macOS (dmg + zip, x64 + arm64)
         if: matrix.os == 'macos-latest'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npx electron-builder --mac --publish always
+        run: npx electron-builder --mac --publish never
 
       - name: Package Windows (nsis + portable, x64)
         if: matrix.os == 'windows-latest'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --publish always
+        run: npx electron-builder --win --publish never
 
-      - name: Upload build artifacts
-        if: always()
+      - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: redlog-${{ matrix.os }}
@@ -69,5 +68,23 @@ jobs:
             dist/*.exe
             dist/*.blockmap
             dist/latest*.yml
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          fail_on_unmatched_files: false
+          files: artifacts/**/*

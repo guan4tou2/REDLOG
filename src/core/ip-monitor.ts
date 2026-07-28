@@ -7,13 +7,22 @@ export interface IPStatus {
   ipSafety: 'safe' | 'exposed' | 'unknown'
   lastCheck: number
   error: string | null
+  /** True while a new address is being confirmed — the displayed one is the last stable read. */
+  settling: boolean
 }
 
-const IP_PROVIDERS = [
+const DEFAULT_IP_PROVIDERS = [
   'https://api.ipify.org?format=json',
   'https://ipinfo.io/json',
   'https://api.my-ip.io/v2/ip.json'
 ]
+
+// Egress behind CGNAT or a load-balanced pool answers with a different address
+// from one poll to the next. Reporting each read straight to the UI makes the
+// safety badge flicker between SAFE and EXPOSED, which is the one thing an
+// operator has to be able to trust at a glance. Hold a new address until it has
+// been seen this many times in a row.
+const DEFAULT_CONFIRMATIONS = 3
 
 function ipToLong(ip: string): number {
   return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0
@@ -38,8 +47,8 @@ function getInternalIP(): string | null {
   return null
 }
 
-async function getExternalIP(): Promise<string> {
-  for (const url of IP_PROVIDERS) {
+async function getExternalIP(providers: string[]): Promise<string> {
+  for (const url of providers) {
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 5000)
@@ -60,22 +69,43 @@ export class IPMonitor extends EventEmitter {
   private safeIPs: string[] = []
   private exposedIPs: string[] = []
   private checkIntervalMs = 10_000
+  private providers: string[] = [...DEFAULT_IP_PROVIDERS]
+  private confirmations = DEFAULT_CONFIRMATIONS
+  private pendingIP: string | null = null
+  private pendingCount = 0
   private _status: IPStatus = {
     externalIP: null,
     internalIP: null,
     ipSafety: 'unknown',
     lastCheck: 0,
-    error: null
+    error: null,
+    settling: false
   }
 
   get status(): IPStatus {
     return { ...this._status }
   }
 
-  configure(opts: { safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number }): void {
+  configure(opts: {
+    safeIPs?: string[]
+    exposedIPs?: string[]
+    checkInterval?: number
+    providers?: string[]
+    confirmations?: number
+  }): void {
     if (opts.safeIPs) this.safeIPs = opts.safeIPs
     if (opts.exposedIPs) this.exposedIPs = opts.exposedIPs
     if (opts.checkInterval) this.checkIntervalMs = opts.checkInterval * 1000
+    if (opts.providers?.length) this.providers = opts.providers
+    if (typeof opts.confirmations === 'number' && opts.confirmations > 0) {
+      this.confirmations = opts.confirmations
+    }
+  }
+
+  private classify(ip: string): IPStatus['ipSafety'] {
+    if (this.safeIPs.length > 0 && this.safeIPs.some((cidr) => ipInCIDR(ip, cidr))) return 'safe'
+    if (this.exposedIPs.length > 0 && this.exposedIPs.some((cidr) => ipInCIDR(ip, cidr))) return 'exposed'
+    return 'unknown'
   }
 
   start(): void {
@@ -93,25 +123,49 @@ export class IPMonitor extends EventEmitter {
   private async check(): Promise<void> {
     try {
       const [externalIP, internalIP] = await Promise.all([
-        getExternalIP(),
+        getExternalIP(this.providers),
         Promise.resolve(getInternalIP())
       ])
 
-      let ipSafety: IPStatus['ipSafety'] = 'unknown'
-      if (this.safeIPs.length > 0 && this.safeIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
-        ipSafety = 'safe'
-      } else if (this.exposedIPs.length > 0 && this.exposedIPs.some((cidr) => ipInCIDR(externalIP, cidr))) {
-        ipSafety = 'exposed'
-      } else if (this.safeIPs.length > 0 || this.exposedIPs.length > 0) {
-        ipSafety = 'unknown'
-      }
+      const settled = this._status.externalIP
+      if (externalIP === settled) {
+        // Still on the known address — drop any half-confirmed candidate.
+        this.pendingIP = null
+        this.pendingCount = 0
+        this._status = {
+          ...this._status,
+          internalIP,
+          lastCheck: Date.now(),
+          error: null,
+          settling: false
+        }
+      } else {
+        this.pendingCount = externalIP === this.pendingIP ? this.pendingCount + 1 : 1
+        this.pendingIP = externalIP
 
-      this._status = {
-        externalIP,
-        internalIP,
-        ipSafety,
-        lastCheck: Date.now(),
-        error: null
+        // The very first reading has nothing to flap against, so take it as-is.
+        const promote = settled === null || this.pendingCount >= this.confirmations
+        if (promote) {
+          this.pendingIP = null
+          this.pendingCount = 0
+          this._status = {
+            externalIP,
+            internalIP,
+            ipSafety: this.classify(externalIP),
+            lastCheck: Date.now(),
+            error: null,
+            settling: false
+          }
+        } else {
+          // Keep showing the last stable address, but say we're unsure.
+          this._status = {
+            ...this._status,
+            internalIP,
+            lastCheck: Date.now(),
+            error: null,
+            settling: true
+          }
+        }
       }
     } catch (err) {
       this._status = {
