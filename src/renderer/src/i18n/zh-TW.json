@@ -141,6 +141,9 @@
   "search.results": "{{count}} 項結果",
 
   "statusBar.rec": "錄製",
+  "statusBar.paused": "已暫停",
+  "statusBar.clickToPause": "點擊暫停錄製",
+  "statusBar.clickToResume": "點擊恢復錄製",
   "statusBar.vpn": "VPN",
   "statusBar.noVpn": "無 VPN",
   "statusBar.ipUnknown": "IP?",

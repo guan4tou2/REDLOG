@@ -68,6 +68,15 @@ contextBridge.exposeInMainWorld('redlog', {
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson')
   },
+  recording: {
+    get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),
+    toggle: (): Promise<boolean> => ipcRenderer.invoke('recording:toggle'),
+    onChange: (cb: (recording: boolean) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, r: boolean) => cb(r)
+      ipcRenderer.on('recording:changed', handler)
+      return () => ipcRenderer.removeListener('recording:changed', handler)
+    }
+  },
   overlay: {
     toggle: () => ipcRenderer.send('overlay:toggle'),
     hide: () => ipcRenderer.send('overlay:hide'),

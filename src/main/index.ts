@@ -264,6 +264,19 @@ app.whenReady().then(() => {
     return filePath
   })
 
+  // --- Recording ---
+  ipcMain.handle('recording:get', () => !eventBus.paused)
+  ipcMain.handle('recording:toggle', () => {
+    if (eventBus.paused) eventBus.resume()
+    else eventBus.pause()
+    const recording = !eventBus.paused
+    mainWindow?.webContents.send('recording:changed', recording)
+    return recording
+  })
+  eventBus.on('recording', (recording: boolean) => {
+    mainWindow?.webContents.send('recording:changed', recording)
+  })
+
   // --- Global shortcut ---
   globalShortcut.register('CommandOrControl+Shift+M', () => {
     mainWindow?.webContents.send('shortcut:marker')

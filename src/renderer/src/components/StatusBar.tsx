@@ -7,6 +7,7 @@ export default function StatusBar(): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [uptime, setUptime] = useState(0)
+  const [recording, setRecording] = useState(true)
   const [stamped, setStamped] = useState(false)
   const { t } = useI18n()
 
@@ -16,6 +17,7 @@ export default function StatusBar(): JSX.Element {
     window.redlog.events.getCount().then(setEventCount)
     window.redlog.loot.getCount().then(setLootCount)
     window.redlog.scope.getViolationCount().then(setScopeViolations)
+    window.redlog.recording.get().then(setRecording)
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
     const unsubEvent = window.redlog.events.onNew(() => {
@@ -23,9 +25,10 @@ export default function StatusBar(): JSX.Element {
       window.redlog.loot.getCount().then(setLootCount)
       window.redlog.scope.getViolationCount().then(setScopeViolations)
     })
+    const unsubRec = window.redlog.recording.onChange(setRecording)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
 
-    return () => { unsubIp(); unsubEvent(); clearInterval(timer) }
+    return () => { unsubIp(); unsubEvent(); unsubRec(); clearInterval(timer) }
   }, [])
 
   const vpn = ipStatus?.vpnStatus ?? 'unknown'
@@ -43,11 +46,15 @@ export default function StatusBar(): JSX.Element {
 
   return (
     <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
-      <div className="flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse-slow" />
-        <span className="text-red-400/80">{t('statusBar.rec')}</span>
+      <button
+        onClick={() => window.redlog.recording.toggle()}
+        className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+        title={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${recording ? 'bg-red-500 animate-pulse-slow' : 'bg-zinc-500'}`} />
+        <span className={recording ? 'text-red-400/80' : 'text-zinc-500'}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
         <span className="text-zinc-600 tabular-nums">{uptimeStr}</span>
-      </div>
+      </button>
 
       <Sep />
 

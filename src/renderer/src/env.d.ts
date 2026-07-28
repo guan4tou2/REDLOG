@@ -108,6 +108,11 @@ interface RedLogAPI {
   data: {
     exportJson: () => Promise<string | null>
   }
+  recording: {
+    get: () => Promise<boolean>
+    toggle: () => Promise<boolean>
+    onChange: (cb: (recording: boolean) => void) => () => void
+  }
   overlay: {
     toggle: () => void
     hide: () => void

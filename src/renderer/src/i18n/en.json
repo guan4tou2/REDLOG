@@ -141,6 +141,9 @@
   "search.results": "{{count}} results",
 
   "statusBar.rec": "REC",
+  "statusBar.paused": "PAUSED",
+  "statusBar.clickToPause": "Click to pause recording",
+  "statusBar.clickToResume": "Click to resume recording",
   "statusBar.vpn": "VPN",
   "statusBar.noVpn": "NO VPN",
   "statusBar.ipUnknown": "IP?",
