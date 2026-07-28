@@ -39,34 +39,49 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
   ]
 
   return (
-    <nav className="w-[140px] bg-redlog-bg border-r border-redlog-border flex flex-col py-2 px-1.5 shrink-0 select-none overflow-hidden">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          onClick={() => onNavigate(item.id)}
-          className={`w-full h-9 rounded-md flex items-center gap-2 px-2.5 mb-0.5 transition-colors text-left ${
-            active === item.id
-              ? 'bg-red-500/10 text-red-400 border-l-2 border-red-500'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border-l-2 border-transparent'
-          }`}
-        >
-          <span className="text-sm leading-none w-4 text-center shrink-0">{item.icon}</span>
-          <span className="text-[12px] leading-none truncate">{item.label}</span>
-          {'badge' in item && badge(item.badge as number, item.badgeColor as string)}
-        </button>
-      ))}
+    <nav className="w-[140px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isActive = active === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
+                isActive
+                  ? 'text-red-400'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+              }`}
+            >
+              {isActive && (
+                <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
+              )}
+              <span className={`text-[13px] leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
+                {item.icon}
+              </span>
+              <span className={`text-[11px] leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
+                {item.label}
+              </span>
+              {'badge' in item && badge(item.badge as number, item.badgeColor as string)}
+            </button>
+          )
+        })}
+      </div>
 
-      <div className="mt-auto pt-2 border-t border-zinc-800/40">
+      <div className="mt-auto pt-3 border-t border-zinc-800/40">
         <button
           onClick={() => onNavigate('settings')}
-          className={`w-full h-9 rounded-md flex items-center gap-2 px-2.5 transition-colors text-left ${
+          className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
             active === 'settings'
-              ? 'bg-red-500/10 text-red-400 border-l-2 border-red-500'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border-l-2 border-transparent'
+              ? 'text-red-400'
+              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
           }`}
         >
-          <span className="text-sm leading-none w-4 text-center shrink-0">⚙</span>
-          <span className="text-[12px] leading-none truncate">{t('sidebar.config')}</span>
+          {active === 'settings' && (
+            <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
+          )}
+          <span className={`text-[13px] leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>⚙</span>
+          <span className={`text-[11px] leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
         </button>
       </div>
     </nav>

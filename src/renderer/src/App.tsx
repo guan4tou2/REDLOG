@@ -70,13 +70,15 @@ export default function App(): JSX.Element {
         className="h-10 flex items-center px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <span className="text-redlog-accent font-bold text-base tracking-[0.2em] pl-16">{t('app.title')}</span>
-        <span className="text-zinc-700 text-xs ml-2 font-mono">v0.1.0</span>
-        <span className="text-zinc-600 text-xs ml-3 font-mono tracking-wide">{project.name}</span>
+        <div className="flex items-center gap-2 pl-16">
+          <span className="text-red-500 font-bold text-[13px] tracking-[0.2em]">{t('app.title')}</span>
+          <span className="text-zinc-800 text-[10px] font-mono">v0.1</span>
+        </div>
+        <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
         <div className="ml-auto flex gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button
             onClick={() => setShowMarker(true)}
-            className="px-2.5 py-1 text-[10px] bg-redlog-accent/15 text-redlog-accent rounded-md hover:bg-redlog-accent/25 border border-redlog-accent/20 transition-colors"
+            className="px-2.5 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
             title="Ctrl+Shift+M"
           >
             {t('app.mark')}
@@ -126,7 +128,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   }, [])
 
   return (
-    <div className="p-6 space-y-6 overflow-auto h-full">
+    <div className="p-5 space-y-5 overflow-auto h-full">
       <section>
         <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
           {t('dashboard.networkStatus')}
@@ -219,12 +221,13 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 function StatCard({ label, value, color, sub, accent }: {
   label: string; value: string; color?: string; sub?: string; accent?: 'red' | 'green'
 }): JSX.Element {
-  const borderAccent = accent === 'red' ? 'border-t-red-500/60' : accent === 'green' ? 'border-t-emerald-500/60' : 'border-t-zinc-700/60'
+  const accentColor = accent === 'red' ? 'bg-red-500' : accent === 'green' ? 'bg-emerald-500' : 'bg-zinc-700'
   return (
-    <div className={`rounded-lg bg-redlog-surface border border-redlog-border border-t-2 ${borderAccent} p-4 shadow-card transition-shadow hover:shadow-card-hover`}>
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className={`text-xl font-mono mt-1.5 font-semibold tabular-nums ${color ?? 'text-zinc-200'}`}>{value}</p>
-      {sub && <p className="text-[10px] text-zinc-600 mt-1">{sub}</p>}
+    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
+      <span className={`absolute top-0 left-0 right-0 h-[2px] ${accentColor}`} />
+      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${color ?? 'text-zinc-200'}`}>{value}</p>
+      {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
     </div>
   )
 }
