@@ -8,69 +8,253 @@ Red Team Operator Workbench — an Electron desktop app that passively records e
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-## Features
+## Why RedLog
 
-- **Passive Recording** — automatically captures terminal commands, clipboard, screenshots, file transfers, and network events
-- **Pause / Resume** — click the status bar recording indicator to pause event capture; click again to resume
-- **7-Lane Swim Timeline** — shell, screenshot, clipboard, file transfer, marker, loot, system — with dynamic lane height and real-time event dots
-- **Evidence Chain** — append-only chain of event IDs for tamper evidence
-- **Scope Monitor** — target scope enforcement with DNS query logging
-- **Loot Detector** — regex-based credential/secret scanning (AWS keys, JWTs, password hashes, flags, etc.)
-- **Screenshot Agent** — idle-triggered capture with 2-tier dedup (SHA-256 + pixelmatch)
-- **HTTP API** — localhost REST API for external tool integration (127.0.0.1 only, Bearer token auth)
-- **CLI Tool** — `redlog-cli` for shell script and agent integration
-- **i18n** — English and Traditional Chinese (zh-TW)
-- **IP Overlay** — always-on-top floating widget showing external/internal IP
-- **Per-Project Isolation** — each engagement has its own config, database, screenshots, and terminal recordings
+Penetration testers need a complete, tamper-evident record of every action taken during an engagement. RedLog runs in the background and captures terminal commands, clipboard activity, screenshots, file transfers, and network events — all timestamped and indexed in a per-project SQLite database. No manual note-taking required.
+
+**Key differentiators:**
+
+- **Zero-friction capture** — installs, starts recording, stays out of your way
+- **AI agent native** — MCP server + shell hooks let Claude Code, Codex, and GPT log directly into your timeline
+- **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
+- **Evidence chain** — append-only hash chain for tamper evidence in reports
+- **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Quick Start
 
 ```bash
 # Install dependencies (requires Node 20+, Python 3 for native modules)
 npm install
-npm run rebuild        # rebuild better-sqlite3 + node-pty for Electron
+npm run rebuild        # rebuild better-sqlite3 for Electron
 
 # Development
 npm run dev
 
 # Production build
 npm run build
+
+# Package as DMG/installer
+npx electron-builder --mac    # or --win / --linux
 ```
+
+## Features
+
+### Recording Engine
+
+| Module | What it captures | Dedup |
+|--------|-----------------|-------|
+| Terminal Agent | All shell commands + output (via node-pty) | — |
+| Clipboard Monitor | 200ms polling, auto-redacts passwords/keys | SHA-256 |
+| Screenshot Agent | Idle-triggered desktop capture | SHA-256 + pixelmatch |
+| File Transfer Tracker | ~/Downloads watcher with auto-hash | — |
+| Scope Monitor | DNS queries + target scope enforcement | — |
+| Loot Detector | AWS keys, JWTs, password hashes, flags, PII | regex patterns |
+
+### Timeline & UI
+
+- **7-Lane Swim Timeline** — shell, screenshot, clipboard, file transfer, marker, loot, system — with dynamic lane height and real-time event dots
+- **Pause / Resume** — click the status bar recording indicator to pause/resume capture
+- **Global Search** — full-text search across all event types with highlighted results
+- **Target View** — auto-cataloged targets with per-target evidence drill-down
+- **Loot Panel** — detected credentials/secrets organized by type
+- **Scope Status** — violation log with enforcement mode (warn / log)
+- **Screenshot Gallery** — thumbnail grid with lightbox preview
+- **Multi-tab Terminal** — multiple concurrent terminal sessions
+- **Error Boundary** — per-view crash recovery with retry
+
+### Overlay
+
+- **IP Widget** — always-on-top floating display showing external/internal IP, VPN status, and recording state
+- **Click-through Mode** — overlay passes mouse events through to windows below; hover to reactivate for interaction
+- **Draggable** — grab the overlay to reposition it anywhere on screen
+
+### Scope Engine
+
+RedLog's scope monitor uses root-domain matching for smart violation detection:
+
+- **In scope**: `admin.example.com` when scope includes `*.example.com` — no alert
+- **Out of scope, same root**: `staging.example.com` when scope only lists `api.example.com` — **warning**
+- **Unrelated host**: `google.com` — silently ignored (no false positive)
+- **IP targets**: CIDR matching with `/24`, `/16`, etc.
+- **Excluded targets**: explicitly excluded IPs/hosts always flagged
+
+### Project Management
+
+- Per-project isolation (config, database, screenshots, terminal recordings)
+- Advanced setup at creation: pre-configure scope targets, VPN IPs, enforcement mode
+- Config profile export/import (YAML or JSON) for team synchronization
+- Hot-reload on config save — no restart needed
+
+### i18n
+
+Built-in English and Traditional Chinese (zh-TW). Locale files in `src/renderer/src/i18n/`.
+
+## AI Agent Integration
+
+RedLog is designed to work alongside AI coding agents. Three integration layers, from tightest to lightest:
+
+### Layer 1: Terminal Hooks (Automatic Capture)
+
+Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog.
+
+**Claude Code (PostToolUse hook):**
+
+```jsonc
+// ~/.claude/settings.json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "command": "/path/to/redlog/hooks/claude-code-hook.sh" }]
+      }
+    ]
+  }
+}
+```
+
+Every Bash tool call (command + output preview + session ID) is sent to RedLog's timeline.
+
+**Any agent via shell preexec (zsh/bash):**
+
+```bash
+# Add to ~/.zshrc or ~/.bashrc
+source /path/to/redlog/hooks/shell-preexec-hook.sh
+```
+
+Captures every command with start/end timestamps, exit code, and duration. Works with Claude Code, Codex, Cursor, Aider, or any tool that spawns a shell.
+
+**Codex/GPT wrapper (for agents you can't hook):**
+
+```bash
+# Wrap the agent's shell:
+SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
+
+# Or wrap a single command:
+./hooks/codex-wrapper.sh nmap -sV target.com
+```
+
+### Layer 2: MCP Server (Agent-Controlled)
+
+The MCP server lets Claude Code, Cursor, and other MCP-compatible agents actively read and write to RedLog.
+
+```bash
+claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
+```
+
+**12 available tools:**
+
+| Tool | Description |
+|------|-------------|
+| `redlog_status` | IP/VPN state, event count, scope violations |
+| `redlog_mark` | Create a timestamped marker (finding, phase change, note) |
+| `redlog_log_event` | Log a raw event with custom type and data |
+| `redlog_search` | Full-text search across all events |
+| `redlog_events` | Query recent events by type/target |
+| `redlog_scope` | Get scope config and violations |
+| `redlog_config` | Get project configuration |
+| `redlog_quickmark` | Bookmark a URL/finding |
+| `redlog_quickmarks_list` | List all bookmarks |
+| `redlog_loot_scan` | Scan text for credentials/secrets |
+| `redlog_screenshot` | Capture desktop screenshot |
+| `redlog_recording` | Pause/resume/toggle recording |
+
+**Example agent interaction:**
+
+```
+User: "Check if this target is in scope, then run a port scan and log the results"
+
+Agent calls: redlog_scope → confirms target → runs nmap → redlog_mark with findings
+```
+
+### Layer 3: HTTP API (Universal)
+
+Direct REST API for scripts, custom agents, and non-MCP tools.
+
+```bash
+TOKEN=$(cat ~/.redlog/api-token)
+PORT=$(cat ~/.redlog/api-port)
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
+```
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check (no auth) |
+| GET | `/api/status` | System status |
+| GET | `/api/config` | Project configuration |
+| GET | `/api/scope` | Scope targets + violations |
+| GET | `/api/recording` | Recording state |
+| POST | `/api/recording` | Control recording (`pause`/`resume`/`toggle`) |
+| POST | `/api/events` | Insert event |
+| GET | `/api/events` | Query events (filter by `agent_type`, `target_id`, `limit`, `since`) |
+| GET | `/api/events/search` | Full-text search (`?q=...&limit=N`) |
+| GET | `/api/events/count` | Event count |
+| POST | `/api/marker` | Create a marker event |
+| GET | `/api/quickmarks` | List bookmarks |
+| POST | `/api/quickmarks` | Create bookmark |
+| POST | `/api/loot/scan` | Scan text for secrets |
+| POST | `/api/screenshot` | Trigger manual capture |
+
+### Layer 4: Shell Functions
+
+```bash
+source /path/to/redlog/shell/redlog-agent.sh
+
+redlog_status                           # check connection
+redlog_mark "Found SQLi" "Blind" "high" # create marker
+redlog_event "agent" '{"subtype":"scan_complete"}'
+redlog_search "password"                # search events
+redlog_scope                            # check scope
+redlog_loot "root:x:0:0:..."           # scan for creds
+redlog_quickmark "Interesting endpoint" "https://..."
+redlog_screenshot                       # manual capture
+```
+
+### Codex / OpenAI Function Calling
+
+See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible function definitions usable with Codex, GPT, or any OpenAI-API-compatible model.
 
 ## Architecture
 
 ```
 Electron Main Process
-  +-- ProjectManager        per-engagement isolated storage (~/.redlog/projects/<id>/)
-  +-- SQLite DB (WAL)       events table + evidence chain table
-  +-- EventBus              pub/sub with pause/resume support
-  +-- Services
-  |     +-- IPMonitor         external IP polling, VPN status detection
-  |     +-- ClipboardMonitor  200ms polling, auto-redact credentials
-  |     +-- ScreenshotAgent   idle-triggered capture, 2-tier dedup (SHA-256 + pixelmatch)
-  |     +-- ScopeMonitor      target scope check + DNS query logging (UDP :15353)
-  |     +-- LootDetector      regex-based credential/secret scanning
-  |     +-- FileTransferTracker   ~/Downloads watcher with auto-hash
-  |     +-- EvidenceChain     append-only chain of event IDs
-  |     +-- APIServer         localhost HTTP API for external agents
-  +-- IPC (contextBridge)   renderer <-> main communication
+  ├── ProjectManager        per-engagement isolated storage (~/.redlog/projects/<id>/)
+  ├── SQLite DB (WAL)       events table + evidence chain table
+  ├── EventBus              pub/sub with pause/resume support
+  └── Services
+        ├── IPMonitor         external IP polling, VPN status detection
+        ├── ClipboardMonitor  200ms polling, auto-redact credentials
+        ├── ScreenshotAgent   idle-triggered capture, 2-tier dedup
+        ├── ScopeMonitor      target scope check (root-domain matching)
+        ├── LootDetector      regex-based credential/secret scanning
+        ├── FileTransferTracker   ~/Downloads watcher with auto-hash
+        ├── EvidenceChain     append-only chain of event IDs
+        └── APIServer         localhost HTTP API for external agents
 
 Renderer (React 18 + Tailwind CSS 3)
-  +-- ProjectPicker         project create/open/delete
-  +-- Sidebar               navigation with live badges
-  +-- Dashboard             stats + engagement info + keyboard shortcuts
-  +-- Timeline              custom swim-lane timeline (7 lanes, dynamic height)
-  +-- ScreenshotsView       thumbnail grid with lightbox
-  +-- TargetView            auto-cataloged targets with evidence drilldown
-  +-- ScopeStatus           violation log
-  +-- LootPanel             detected credentials/secrets
-  +-- SearchPanel           full-text search across all events
-  +-- Settings              YAML config editor
-  +-- StatusBar             recording toggle + VPN/scope/loot/uptime indicators
-  +-- ErrorBoundary         per-view crash recovery
+  ├── ProjectPicker         create (with advanced scope setup) / open / delete
+  ├── Sidebar               navigation with live badges (loot, violations)
+  ├── Dashboard             stats + engagement info + keyboard shortcuts
+  ├── Timeline              custom swim-lane timeline (7 lanes, dynamic height)
+  ├── ScreenshotsView       thumbnail grid with lightbox
+  ├── TargetView            auto-cataloged targets with evidence drilldown
+  ├── ScopeStatus           violation log
+  ├── LootPanel             detected credentials/secrets
+  ├── SearchPanel           full-text search across all events
+  ├── Settings              YAML config editor + team profile sync
+  ├── StatusBar             recording toggle + VPN/scope/loot/uptime indicators
+  └── ErrorBoundary         per-view crash recovery
 
 Overlay Window
-  +-- IP status always-on-top widget (top-right corner)
+  └── IP status always-on-top widget (click-through + draggable)
+
+Hooks
+  ├── claude-code-hook.sh   Claude Code PostToolUse hook
+  ├── shell-preexec-hook.sh zsh/bash preexec integration
+  └── codex-wrapper.sh      Shell wrapper for Codex/GPT
+
+MCP Server
+  └── redlog-mcp-server.js  12-tool MCP server (stdio transport)
 ```
 
 ## Project Structure
@@ -95,7 +279,7 @@ src/
       ip-monitor.ts          external IP check + VPN detection
       loot-detector.ts       credential/secret pattern matching
       project-manager.ts     per-project directory management
-      scope-monitor.ts       scope enforcement + DNS server
+      scope-monitor.ts       scope enforcement (root-domain matching)
       screenshot-agent.ts    screen capture + dedup pipeline
       target-extractor.ts    command parser for target/transfer detection
   preload/
@@ -109,8 +293,26 @@ src/
       i18n/                  en.json + zh-TW.json locale files
       styles/index.css       Tailwind + custom scrollbar
       env.d.ts               TypeScript declarations for preload API
+hooks/
+  claude-code-hook.sh        Claude Code PostToolUse → RedLog
+  shell-preexec-hook.sh      zsh/bash preexec → RedLog
+  codex-wrapper.sh           shell wrapper for any agent
+mcp/
+  redlog-mcp-server.js       MCP server (12 tools, stdio transport)
 cli/
-  redlog-cli.js             CLI tool for external integration
+  redlog-cli.js              CLI tool for external integration
+shell/
+  redlog-agent.sh            bash/zsh helper functions
+docs/
+  agent-integration.md       comprehensive agent integration guide
+  codex-tools.json           OpenAI function calling definitions
+resources/
+  icon.svg                   vector source (1024×1024)
+  icon.icns                  macOS app icon
+  icon-{16..1024}.png        all standard sizes
+  logo.svg                   horizontal wordmark
+  tray-iconTemplate.png      macOS menu bar icon
+  tray-iconTemplate@2x.png   Retina variant
 ```
 
 ## Data Model
@@ -120,7 +322,7 @@ All data is stored in SQLite (`~/.redlog/projects/<id>/timeline.db`):
 ### events table
 
 | Column | Type | Description |
-|---|---|---|
+|--------|------|-------------|
 | id | TEXT PK | UUID |
 | timestamp | INTEGER | Unix ms |
 | engagement_id | TEXT | Engagement identifier |
@@ -144,48 +346,6 @@ All data is stored in SQLite (`~/.redlog/projects/<id>/timeline.db`):
   terminal/            asciicast v2 recordings (.cast)
 ```
 
-## HTTP API
-
-The API server starts when a project is opened (default port 6660, 127.0.0.1 only).
-
-```bash
-TOKEN=$(cat ~/.redlog/api-token)
-PORT=$(cat ~/.redlog/api-port)
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
-```
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /api/events | Insert an event |
-| GET | /api/events | Query events (filter by agent_type, target_id, limit, since) |
-| GET | /api/events/search?q=...&limit=N | Full-text search |
-| GET | /api/events/count | Event count |
-| POST | /api/marker | Create a marker event |
-| POST | /api/loot/scan | Scan text for credentials |
-| POST | /api/screenshot | Trigger manual capture |
-| GET | /api/status | IP status, event count, violations |
-| GET | /api/health | Health check (no auth) |
-
-## CLI
-
-```bash
-redlog-cli mark "Found SQLi in /api/users" --severity high --target api.example.com
-redlog-cli log terminal --data '{"subtype":"command","command":"nmap -sV 10.0.0.1"}'
-redlog-cli search "password" --limit 20
-redlog-cli events --agent_type terminal --limit 10
-redlog-cli loot "root:$6$...:..."
-redlog-cli screenshot
-redlog-cli status
-```
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|---|---|
-| Cmd+1..8 | Switch views |
-| Cmd+Shift+M | Quick marker |
-| Cmd+/ | Search |
-
 ## Configuration
 
 ```yaml
@@ -207,6 +367,22 @@ scope:
 
 Changes are hot-reloaded — no restart needed.
 
+### Team Config Sync
+
+Export your project config as a `.yaml` or `.json` profile:
+
+1. **Export**: Settings → Team Profile Sync → Export Profile
+2. **Import**: Project Picker → Advanced Setup → Import Profile, or Settings → Import Profile
+3. Share the file with teammates — they import it when creating a new project
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| Cmd+1..8 | Switch views |
+| Cmd+Shift+M | Quick marker |
+| Cmd+/ | Search |
+
 ## Security Model
 
 - **Sandbox**: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
@@ -218,14 +394,33 @@ Changes are hot-reloaded — no restart needed.
 
 ## Tech Stack
 
-- **Runtime**: Electron 33 + electron-vite
-- **Database**: better-sqlite3 (WAL mode)
-- **UI**: React 18 + Tailwind CSS 3
-- **Timeline**: Custom HTML/CSS swim-lane (zero dependencies)
-- **Screenshot dedup**: pixelmatch + pngjs
-- **DNS logging**: dns2
-- **Config**: js-yaml
-- **i18n**: Custom React context
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Electron 33 + electron-vite |
+| Database | better-sqlite3 (WAL mode) |
+| UI | React 18 + Tailwind CSS 3 |
+| Timeline | Custom HTML/CSS swim-lane (zero dependencies) |
+| Screenshot dedup | pixelmatch + pngjs |
+| DNS logging | dns2 |
+| Config | js-yaml |
+| i18n | Custom React context |
+| Build | electron-builder |
+| AI integration | MCP (stdio) + HTTP API + shell hooks |
+
+## Packaging
+
+```bash
+# macOS DMG
+npx electron-builder --mac
+
+# Windows installer
+npx electron-builder --win
+
+# Linux AppImage
+npx electron-builder --linux
+```
+
+Built artifacts go to `dist/`.
 
 ## License
 
