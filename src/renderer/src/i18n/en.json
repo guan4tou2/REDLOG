@@ -47,6 +47,7 @@
   "dashboard.editSettings": "Edit in Settings →",
   "dashboard.shortcuts": "Keyboard Shortcuts",
   "dashboard.addMarker": "Add Marker",
+  "dashboard.search": "Search",
 
   "screenshots.title": "Screenshots ({{count}})",
   "screenshots.captureNow": "Capture Now",
@@ -59,7 +60,7 @@
   "ip.unknownIp": "Unknown IP",
   "ip.externalIp": "External IP",
   "ip.internalIp": "Internal IP",
-  "ip.safetyHint": "Set safeIPs / exposedIPs in ~/.redlog/config.yaml to enable IP safety detection",
+  "ip.safetyHint": "Set safe / exposed IP ranges in Settings ▸ Network to enable IP safety detection",
 
   "timeline.title": "Attack Timeline",
   "timeline.events": "({{count}} events)",
@@ -180,7 +181,7 @@
   "settings.scope": "Scope",
   "settings.data": "Data",
   "settings.loading": "Loading...",
-  "settings.saved": "Config saved to ~/.redlog/config.yaml",
+  "settings.saved": "Config saved to this project",
   "settings.engagement": "Engagement",
   "settings.id": "ID",
   "settings.name": "Name",

@@ -172,10 +172,7 @@ export default function TimelinePanel(): JSX.Element {
   const totalH = visibleLanes.length * laneH
 
   const laneEvents = useMemo(() => {
-    const map: Record<LaneId, RedLogEvent[]> = {
-      shell: [], screenshot: [], clipboard: [], file_transfer: [],
-      marker: [], loot: [], system: []
-    }
+    const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
     for (const e of events) map[toLane(e.agentType)].push(e)
     return map
   }, [events])

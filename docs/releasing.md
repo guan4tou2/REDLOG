@@ -52,6 +52,14 @@ npm run build && npx electron-builder --win --publish never
 
 Output ends up in `dist/`. electron-builder rebuilds native modules for the target Electron ABI internally — you do NOT need to run `npm run rebuild` first (that script is only useful when running `electron-vite dev` locally so better-sqlite3 loads inside the dev-mode Electron process).
 
+**Gotcha:** because electron-builder recompiles `better-sqlite3` in `node_modules/` for Electron's ABI, `npm test` fails with `NODE_MODULE_VERSION` mismatch after any local packaging run. Restore the Node build before testing again:
+
+```bash
+npm rebuild better-sqlite3
+```
+
+CI is unaffected — the workflow runs tests before packaging.
+
 ## Version bump checklist
 
 - [ ] `package.json` → `version`

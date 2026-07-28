@@ -18,6 +18,44 @@ interface TerminalSession {
   castStart: number
   castBytes: number
   castTruncated: boolean
+  finalised: boolean
+}
+
+// Writes the session_end event (with the cast's SHA-256) exactly once.
+// pty.kill() delivers onExit asynchronously, so on app quit this must be
+// called while the DB is still open — otherwise the event, and with it the
+// recording's integrity hash, is lost and insertEvent throws into the void.
+function finaliseSession(session: TerminalSession, exitCode: number): void {
+  if (session.finalised) return
+  session.finalised = true
+
+  if (session.castStream) {
+    try { session.castStream.end() } catch { /* already closed */ }
+    session.castStream = null
+  }
+
+  let castSha256: string | null = null
+  if (session.castPath) {
+    try {
+      castSha256 = crypto.createHash('sha256').update(fs.readFileSync(session.castPath)).digest('hex')
+    } catch { castSha256 = null }
+  }
+
+  try {
+    const event = insertEvent('shell', {
+      subtype: 'session_end',
+      source: 'builtin-terminal',
+      terminalId: session.id,
+      exitCode,
+      pid: session.pty.pid,
+      castPath: session.castPath,
+      castSha256,
+      castBytes: session.castBytes,
+      castTruncated: session.castTruncated,
+      durationMs: Date.now() - session.castStart
+    }, { engagementId, operatorId })
+    if (event) eventBus.publish(event)
+  } catch { /* project already closed — nothing left to record into */ }
 }
 
 const sessions = new Map<string, TerminalSession>()
@@ -28,6 +66,13 @@ let maxCastBytes = 50 * 1024 * 1024
 
 export function setTerminalWindow(win: BrowserWindow): void {
   mainWindow = win
+}
+
+// pty callbacks can fire after the window is gone (app quit), and a destroyed
+// BrowserWindow is non-null — `mainWindow?.` alone doesn't protect us.
+function sendToWindow(channel: string, payload: unknown): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try { mainWindow.webContents.send(channel, payload) } catch { /* window tearing down */ }
 }
 
 export function configureTerminal(opts: { engagementId: string; operatorId: string; maxCastBytes?: number }): void {
@@ -92,7 +137,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castStream,
     castStart,
     castBytes: 0,
-    castTruncated: false
+    castTruncated: false,
+    finalised: false
   }
 
   term.onData((data: string) => {
@@ -118,36 +164,13 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
         } catch { /* stream closed */ }
       }
     }
-    mainWindow?.webContents.send(`terminal:data:${id}`, data)
+    sendToWindow(`terminal:data:${id}`, data)
   })
 
   term.onExit(({ exitCode }) => {
-    let castSha256: string | null = null
-    if (session.castStream) {
-      try { session.castStream.end() } catch { /* */ }
-    }
-    if (session.castPath) {
-      try {
-        const hasher = crypto.createHash('sha256')
-        hasher.update(fs.readFileSync(session.castPath))
-        castSha256 = hasher.digest('hex')
-      } catch { castSha256 = null }
-    }
-    const event = insertEvent('shell', {
-      subtype: 'session_end',
-      source: 'builtin-terminal',
-      terminalId: id,
-      exitCode,
-      pid: term.pid,
-      castPath: session.castPath,
-      castSha256,
-      castBytes: session.castBytes,
-      castTruncated: session.castTruncated,
-      durationMs: Date.now() - session.castStart
-    }, { engagementId, operatorId })
-    if (event) eventBus.publish(event)
+    finaliseSession(session, exitCode)
     sessions.delete(id)
-    mainWindow?.webContents.send(`terminal:exit:${id}`, exitCode)
+    sendToWindow(`terminal:exit:${id}`, exitCode)
   })
 
   sessions.set(id, session)
@@ -178,6 +201,7 @@ export function resizeTerminal(id: string, cols: number, rows: number): void {
 export function killTerminal(id: string): void {
   const session = sessions.get(id)
   if (!session) return
+  finaliseSession(session, 0)
   try {
     session.pty.kill()
   } catch {}
@@ -194,6 +218,7 @@ export function listTerminals(): Array<{ id: string; pid: number; lastActivity: 
 
 export function killAllTerminals(): void {
   for (const session of sessions.values()) {
+    finaliseSession(session, 0)
     try { session.pty.kill() } catch {}
   }
   sessions.clear()

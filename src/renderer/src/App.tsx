@@ -239,15 +239,9 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {[
-              ['⌘1', t('sidebar.dashboard')],
-              ['⌘2', t('sidebar.timeline')],
-              ['⌘3', t('sidebar.screens')],
-              ['⌘4', t('sidebar.targets')],
-              ['⌘5', t('sidebar.scope')],
-              ['⌘6', t('sidebar.loot')],
-              ['⌘7', t('sidebar.marks')],
-              ['⌘8', t('sidebar.settings')],
-              ['⌘⇧M', t('dashboard.addMarker')]
+              ...VIEW_KEYS.map((v, i) => [`⌘${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
+              ['⌘⇧M', t('dashboard.addMarker')] as [string, string],
+              ['⌘/', t('dashboard.search')] as [string, string]
             ].map(([key, label]) => (
               <div key={key} className="flex items-center gap-2.5">
                 <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{key}</kbd>

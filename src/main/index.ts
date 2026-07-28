@@ -74,12 +74,20 @@ function stopOverlayMouseTracking(): void {
   }
 }
 
+// Timers and pty callbacks keep firing while the app tears down, and a
+// destroyed BrowserWindow is still non-null — send through here so a quit
+// mid-poll can't raise "Object has been destroyed".
+function send(win: BrowserWindow | null, channel: string, payload?: unknown): void {
+  if (!win || win.isDestroyed()) return
+  try { win.webContents.send(channel, payload) } catch { /* window tearing down */ }
+}
+
 function toggleRecording(): boolean {
   if (eventBus.paused) eventBus.resume()
   else eventBus.pause()
   const recording = !eventBus.paused
-  mainWindow?.webContents.send('recording:changed', recording)
-  overlayWindow?.webContents.send('recording:changed', recording)
+  send(mainWindow, 'recording:changed', recording)
+  send(overlayWindow, 'recording:changed', recording)
   return recording
 }
 
@@ -110,8 +118,8 @@ const scopeMonitor = new ScopeMonitor()
 const lootDetector = new LootDetector()
 
 function broadcastIPStatus(status: IPStatus): void {
-  mainWindow?.webContents.send('ip:status', status)
-  overlayWindow?.webContents.send('ip:status', status)
+  send(mainWindow, 'ip:status', status)
+  send(overlayWindow, 'ip:status', status)
 }
 
 function startProject(project: ProjectMeta): void {
@@ -279,11 +287,11 @@ app.whenReady().then(() => {
   })
   ipcMain.on('overlay:hide', () => {
     overlayWindow?.hide()
-    mainWindow?.webContents.send('overlay:visibilityChanged', false)
+    send(mainWindow, 'overlay:visibilityChanged', false)
   })
   ipcMain.on('overlay:show', () => {
     overlayWindow?.show()
-    mainWindow?.webContents.send('overlay:visibilityChanged', true)
+    send(mainWindow, 'overlay:visibilityChanged', true)
   })
   ipcMain.on('overlay:toggle', () => {
     if (overlayWindow?.isVisible()) {
@@ -291,7 +299,7 @@ app.whenReady().then(() => {
     } else {
       overlayWindow?.show()
     }
-    mainWindow?.webContents.send('overlay:visibilityChanged', overlayWindow?.isVisible() ?? false)
+    send(mainWindow, 'overlay:visibilityChanged', overlayWindow?.isVisible() ?? false)
   })
   ipcMain.handle('overlay:isVisible', () => {
     return overlayWindow?.isVisible() ?? false
@@ -317,7 +325,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', () => getEventCount())
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => searchEvents(query, limit))
   eventBus.on('event', (event) => {
-    mainWindow?.webContents.send('events:new', event)
+    send(mainWindow, 'events:new', event)
     notifyDeconfliction(event)
   })
 
@@ -513,8 +521,8 @@ app.whenReady().then(() => {
   ipcMain.handle('recording:get', () => !eventBus.paused)
   ipcMain.handle('recording:toggle', () => toggleRecording())
   eventBus.on('recording', (recording: boolean) => {
-    mainWindow?.webContents.send('recording:changed', recording)
-    overlayWindow?.webContents.send('recording:changed', recording)
+    send(mainWindow, 'recording:changed', recording)
+    send(overlayWindow, 'recording:changed', recording)
     if (tray) setTrayRecording(tray, recording)
   })
 
@@ -568,7 +576,7 @@ app.whenReady().then(() => {
 
   // --- Global shortcut ---
   globalShortcut.register('CommandOrControl+Shift+M', () => {
-    mainWindow?.webContents.send('shortcut:marker')
+    send(mainWindow, 'shortcut:marker')
     mainWindow?.show()
     mainWindow?.focus()
   })

@@ -47,6 +47,7 @@
   "dashboard.editSettings": "在設定中編輯 →",
   "dashboard.shortcuts": "快捷鍵",
   "dashboard.addMarker": "新增標記",
+  "dashboard.search": "搜尋",
 
   "screenshots.title": "截圖（{{count}}）",
   "screenshots.captureNow": "立即擷取",
@@ -59,7 +60,7 @@
   "ip.unknownIp": "未知 IP",
   "ip.externalIp": "外部 IP",
   "ip.internalIp": "內部 IP",
-  "ip.safetyHint": "在 ~/.redlog/config.yaml 設定 safeIPs / exposedIPs 以啟用 IP 安全偵測",
+  "ip.safetyHint": "在「設定 ▸ 網路」設定安全 / 暴露 IP 範圍，以啟用 IP 安全偵測",
 
   "timeline.title": "攻擊時間軸",
   "timeline.events": "（{{count}} 個事件）",
@@ -180,7 +181,7 @@
   "settings.scope": "範圍",
   "settings.data": "資料",
   "settings.loading": "載入中...",
-  "settings.saved": "設定已儲存至 ~/.redlog/config.yaml",
+  "settings.saved": "設定已儲存至此專案",
   "settings.engagement": "任務資訊",
   "settings.id": "ID",
   "settings.name": "名稱",
