@@ -39,10 +39,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules for Electron
-        run: npm run rebuild
-
-      - name: Run tests
+      - name: Run tests (Node ABI)
         run: npm test
 
       - name: Build renderer + main

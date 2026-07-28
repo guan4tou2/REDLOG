@@ -15,14 +15,15 @@ git push origin v0.2.0
 ```
 
 The workflow will:
-1. Run tests on macOS and Windows runners
-2. Rebuild `better-sqlite3` for the target Electron runtime
-3. Build renderer + main via `electron-vite build`
-4. Package with `electron-builder`:
+1. Run tests on macOS and Windows runners (against Node ABI — the default `npm ci` install)
+2. Build renderer + main via `electron-vite build`
+3. Package with `electron-builder` — it rebuilds native modules (better-sqlite3, node-pty) against the target Electron ABI automatically during packaging, using prebuilt binaries where available:
    - **macOS**: `dmg` and `zip` for x64 + arm64
    - **Windows**: `nsis` installer + `portable` .exe for x64
-5. Upload artifacts to the GitHub Release matching the tag
-6. Sign artifacts with GitHub's OIDC token (unsigned macOS/Windows binaries — no Apple/Microsoft cert)
+4. Upload artifacts to the GitHub Release matching the tag
+5. Also uploads to workflow artifacts for 14 days
+
+Unsigned macOS/Windows binaries — no Apple/Microsoft cert configured.
 
 ## Manual trigger
 
@@ -43,13 +44,13 @@ To enable signing, add these secrets and remove `CSC_IDENTITY_AUTO_DISCOVERY: fa
 
 ```bash
 # macOS (on a Mac)
-npm run rebuild && npm run build && npx electron-builder --mac --publish never
+npm run build && npx electron-builder --mac --publish never
 
 # Windows (on Windows)
-npm run rebuild && npm run build && npx electron-builder --win --publish never
+npm run build && npx electron-builder --win --publish never
 ```
 
-Output ends up in `dist/`.
+Output ends up in `dist/`. electron-builder rebuilds native modules for the target Electron ABI internally — you do NOT need to run `npm run rebuild` first (that script is only useful when running `electron-vite dev` locally so better-sqlite3 loads inside the dev-mode Electron process).
 
 ## Version bump checklist
 
