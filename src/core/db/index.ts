@@ -58,6 +58,12 @@ export function initDB(projectDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_annotation_event ON event_annotations(event_id);
   `)
 
+  // Migrate: add prev_hash column if missing (pre-v0.2 databases)
+  const cols = db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>
+  if (!cols.some(c => c.name === 'prev_hash')) {
+    db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT')
+  }
+
   currentProjectDir = projectDir
   return db
 }
