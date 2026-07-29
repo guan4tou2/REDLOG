@@ -136,7 +136,7 @@ export const MCP_PROTOCOL_VERSION = '2024-11-05'
  */
 export async function handleMcpMessage(
   msg: JsonRpcMessage,
-  opts: { version: string; dispatch: ToolDispatch }
+  opts: { version: string; dispatch: ToolDispatch; extraTools?: McpTool[] }
 ): Promise<Record<string, unknown> | null> {
   const id = msg.id ?? null
 
@@ -156,7 +156,7 @@ export async function handleMcpMessage(
       return null
 
     case 'tools/list':
-      return { jsonrpc: '2.0', id, result: { tools: MCP_TOOLS } }
+      return { jsonrpc: '2.0', id, result: { tools: [...MCP_TOOLS, ...(opts.extraTools ?? [])] } }
 
     case 'tools/call': {
       const name = (msg.params?.name as string) ?? ''

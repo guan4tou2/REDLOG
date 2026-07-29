@@ -21,6 +21,10 @@ Wiki-style index for **v0.3.0**. Every page is self-contained; follow the links 
 - **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring + full re-walk verify (with wall-vs-monotonic clock-anomaly detection) + `.ots` bundle export. Threat model, what's detected, what isn't.
 - **[Event schema](event-schema.md)** — standard `agent_type` values and data keys (Ghostwriter-compatible). Read before designing a new event source.
 
+## Extending RedLog
+
+- **[Plugin development](plugin-development.md)** — build a plugin: the manifest format, 🟢 declarative contributions (loot/redaction/target patterns, event types, capture integrations) and 🔴 privileged MCP tools, the capability-scoped `ctx` API, and the content-hash-pinned trust gate. Two worked examples under [`examples/plugins/`](../examples/plugins).
+
 ## Agent skills (drop-in)
 
 - **[redlog-pentest](skills/redlog-pentest.md)** — Claude Code skill: hooks record, MCP operates; session start (`whoami` / `status` / `scope`), real-time findings, loot scanning, end-of-session `chain_anchor_now`. Copy to `~/.claude/skills/`.

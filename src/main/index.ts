@@ -38,7 +38,8 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
-import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust } from '../core/plugins'
+import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
+import { createPluginHost } from '../core/plugins/host'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 
@@ -166,9 +167,26 @@ function startProject(project: ProjectMeta): void {
   })
   lootDetector.configure({ engagementId, operatorId })
   configureRedaction(config.redaction)
+  // 🔴 host: runs trusted plugin code in an isolated utility process, serving a
+  // capability-scoped API. Wired before initPlugins so trusted plugins start.
+  setPluginHost(createPluginHost({
+    queryEvents: (a) => queryEvents({ limit: Math.min(Number(a.limit) || 50, 500), type: a.type as string | undefined, target: a.target as string | undefined }),
+    searchEvents: (a) => searchEvents(String(a.query ?? ''), Math.min(Number(a.limit) || 20, 200)),
+    appendEvent: (pluginId, a) => {
+      const ev = insertEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
+      if (ev) eventBus.publish(ev)
+      return { ok: !!ev }
+    },
+    listFindings: () => listQuickMarks(),
+    getConfig: () => ({ engagement: config.engagement, scope: config.scope, redaction: config.redaction }),
+    fetch: async (a) => {
+      const r = await fetch(String(a.url), { method: String(a.method ?? 'GET') })
+      return { status: r.status, body: (await r.text()).slice(0, 10_000) }
+    }
+  }))
   // Load plugins after core config so their 🟢 contributions (loot/redaction/
   // target/event-type/capture) layer on top. 🔴 code plugins only start if the
-  // trust gate already passed (host wired below).
+  // trust gate already passed.
   try {
     const psum = initPlugins()
     if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)

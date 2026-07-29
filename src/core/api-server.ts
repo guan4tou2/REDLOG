@@ -27,6 +27,7 @@ import { redact, getRules } from './redaction'
 import { exportBundle } from './bundle-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
+import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
 import { getCaptureHealth } from './capture-health'
 
 let appVersion = 'dev'
@@ -184,8 +185,12 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
           ? { anchor: await upgradeAnchor(String(args.anchor_id)) }
           : await upgradeAllPending()
 
-      default:
+      default: {
+        // Route to a trusted 🔴 plugin tool if one owns this name.
+        const plug = await dispatchPluginTool(name, args)
+        if (plug.owned) return plug.result
         throw new Error(`Unknown tool: ${name}`)
+      }
     }
   }
 }
@@ -272,8 +277,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const parsed = JSON.parse(await readBody(req))
       const dispatch = makeMcpDispatch(operator)
       const messages = Array.isArray(parsed) ? parsed : [parsed]
+      const extraTools = listPluginTools().map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
       const responses = (await Promise.all(
-        messages.map((m) => handleMcpMessage(m, { version: appVersion, dispatch }))
+        messages.map((m) => handleMcpMessage(m, { version: appVersion, dispatch, extraTools }))
       )).filter((r): r is Record<string, unknown> => r !== null)
 
       if (responses.length === 0) { res.writeHead(202); res.end(); return }

@@ -10,6 +10,10 @@ import { applyContributions, removeContributions } from '../src/core/plugins/con
 import { extractTarget, unregisterTargetExtractors } from '../src/core/target-extractor'
 import { getRules, unregisterRedactionRules } from '../src/core/redaction'
 import { detectHooks, unregisterCapturePlugins } from '../src/core/hooks-manager'
+import {
+  registerPluginTools, unregisterPluginTools, listPluginTools, dispatchPluginTool,
+  toolName, methodAllowed
+} from '../src/core/plugins/tool-registry'
 
 // Isolate all plugin stores (trust/state) + userRoot under a temp HOME.
 let realHome: string | undefined
@@ -131,6 +135,13 @@ describe('privileged trust gate', () => {
     revoke('tool-plugin')
   })
 
+  it('capability gate maps ctx methods to caps and denies unknowns', () => {
+    expect(methodAllowed('events.query', ['read:events'])).toBe(true)
+    expect(methodAllowed('events.append', ['read:events'])).toBe(false)
+    expect(methodAllowed('events.append', ['write:events'])).toBe(true)
+    expect(methodAllowed('fs.readFile', ['read:events', 'write:events'])).toBe(false) // not a known method
+  })
+
   it('does not grant capabilities beyond what was consented', () => {
     const dir = writePlugin('tool2', { ...priv, id: 'tool2', capabilities: ['read:events'] },
       { 'code/tools.js': 'exports.tools = []\n' })
@@ -141,5 +152,41 @@ describe('privileged trust gate', () => {
     // manifest later asks for more than granted
     expect(isTrusted('tool2', hash, ['read:events', 'write:events'])).toBe(false)
     revoke('tool2')
+  })
+})
+
+describe('shipped example plugins', () => {
+  const examplesDir = path.join(__dirname, '..', 'examples', 'plugins')
+  for (const id of ['recon-pack', 'geoip-tool']) {
+    it(`example ${id} has a valid manifest`, () => {
+      const dir = path.join(examplesDir, id)
+      const raw = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8'))
+      const parsed = validateManifest(raw, dir)
+      expect(parsed.ok, parsed.error).toBe(true)
+    })
+  }
+})
+
+describe('plugin MCP tool registry', () => {
+  afterEach(() => { unregisterPluginTools('geo'); unregisterPluginTools('other') })
+
+  it('namespaces tool names to the plugin id', () => {
+    expect(toolName('geo', 'lookup')).toBe('geo_lookup')
+    expect(toolName('geo', 'geo_lookup')).toBe('geo_lookup') // already prefixed
+    expect(toolName('my-plug', 'do')).toBe('my_plug_do')     // hyphen → underscore
+  })
+
+  it('routes a call to the owning plugin and returns its result', async () => {
+    registerPluginTools('geo', [{ name: 'lookup', description: 'd', inputSchema: {} }],
+      async (name, args) => ({ echoed: name, ip: args.ip }))
+    const names = listPluginTools().map((t) => t.name)
+    expect(names).toContain('geo_lookup')
+
+    const hit = await dispatchPluginTool('geo_lookup', { ip: '1.1.1.1' })
+    expect(hit.owned).toBe(true)
+    expect((hit.result as { ip: string }).ip).toBe('1.1.1.1')
+
+    const miss = await dispatchPluginTool('nonexistent_tool', {})
+    expect(miss.owned).toBe(false)
   })
 })

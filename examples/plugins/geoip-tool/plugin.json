@@ -1,0 +1,12 @@
+{
+  "id": "geoip-tool",
+  "name": "GeoIP Tool",
+  "version": "1.0.0",
+  "description": "Example privileged plugin: exposes an MCP tool that geolocates an IP and logs the lookup. Runs code inside RedLog (isolated), so it requires an explicit trust grant.",
+  "author": "your-handle",
+  "redlogApi": 1,
+  "capabilities": ["write:events", "net:outbound"],
+  "contributes": {
+    "mcpTools": "code/tools.js"
+  }
+}

@@ -268,6 +268,7 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 - [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
 - [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
 - [Deconfliction webhook](docs/deconfliction.md) — when/how to feed the blue team
+- [Plugin development](docs/plugin-development.md) — extend RedLog: 🟢 declarative packs + 🔴 trust-gated MCP tools
 - [Skill: redlog-pentest](docs/skills/redlog-pentest.md) — ready-to-copy Claude Code skill
 
 ## Architecture
