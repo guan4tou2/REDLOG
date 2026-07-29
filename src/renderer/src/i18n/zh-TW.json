@@ -127,6 +127,7 @@
   "loot.emptyDesc": "自動掃描 Shell 輸出中的密碼雜湊、API 金鑰、JWT、私鑰、資料庫 URL 和 CTF Flag。",
   "loot.items": "{{count}} 項",
   "loot.from": "來源",
+  "loot.target": "目標",
   "loot.openInTimeline": "在時間軸檢視",
   "loot.openInTimelineHint": "跳到時間軸上這筆發現,查看前後的相關活動。",
 

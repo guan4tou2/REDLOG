@@ -61,6 +61,12 @@ function toLane(agentType: string): LaneId {
   return LANES.includes(agentType as LaneId) ? (agentType as LaneId) : 'system'
 }
 
+// RedLog's own lifecycle noise (API server + session bootstrap) — kept in the DB
+// for the record but hidden from the timeline so it doesn't clutter the view.
+function isHousekeeping(e: RedLogEvent): boolean {
+  return e.agentType === 'system' && (e.data?.subtype === 'api_started' || e.data?.subtype === 'session_start')
+}
+
 function formatTimeLabel(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
@@ -155,9 +161,9 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     if (loading || allLoaded) return
     setLoading(true)
     window.redlog.events.query({ limit: 200 }).then((fetched) => {
-      const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id))
-      if (newOnes.length === 0) setAllLoaded(true)
-      else {
+      const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id) && !isHousekeeping(e))
+      if (fetched.every((e) => eventsMapRef.current.has(e.id) || isHousekeeping(e))) setAllLoaded(true)
+      if (newOnes.length > 0) {
         newOnes.forEach((e) => eventsMapRef.current.set(e.id, e))
         setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
       }
@@ -168,11 +174,12 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   useEffect(() => {
     window.redlog.events.query({ limit: 200 }).then((fetched) => {
       if (fetched.length < 200) setAllLoaded(true)
-      fetched.forEach((e) => eventsMapRef.current.set(e.id, e))
+      fetched.filter((e) => !isHousekeeping(e)).forEach((e) => eventsMapRef.current.set(e.id, e))
       setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
       setLoading(false)
     })
     const unsub = window.redlog.events.onNew((event) => {
+      if (isHousekeeping(event)) return
       eventsMapRef.current.set(event.id, event)
       setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
     })
@@ -348,8 +355,8 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     if (focused) {
       setSelectedEvent(focused)
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
-    } else if (focusEventId && focusTs) {
-      // event not in the loaded window — at least scroll to its time
+    } else if (focusTs) {
+      // no matching event (e.g. jumped from a quickmark) — centre on its time
       el.scrollLeft = Math.max(0, Math.min(toX(focusTs) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else {
       el.scrollLeft = Math.max(0, Math.min(toX(Date.now()) - el.clientWidth + 80, TRACK_W - el.clientWidth))
@@ -614,7 +621,12 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                         <button
                           key={evt.id}
                           className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
-                          onClick={() => { setSelectedEvent(evt); setCluster(null) }}
+                          onClick={() => {
+                            setSelectedEvent(evt)
+                            const el = scrollRef.current
+                            if (el) el.scrollLeft = Math.max(0, Math.min(toX(evt.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+                            setCluster(null)
+                          }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType)] }} />
                           <span className="text-zinc-600 font-mono text-[9px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
