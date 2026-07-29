@@ -77,7 +77,6 @@ export default function IPStatusCard(): JSX.Element {
 
       {pivots.length > 0 && (() => {
         const chain = [...pivots].sort((a, b) => a.ts - b.ts)
-        const deepest = [...chain].reverse().find((p) => p.route)?.route ?? status.internalIP ?? t('overlay.internalNet')
         const Arrow = (): JSX.Element => <span className="text-cyan-500/50 text-sm shrink-0">→</span>
         const Pill = ({ top, sub, tone }: { top: string; sub: string; tone: 'ext' | 'pivot' | 'int' }): JSX.Element => {
           const c = tone === 'ext'
@@ -95,16 +94,17 @@ export default function IPStatusCard(): JSX.Element {
         return (
           <div className="pt-2 border-t border-redlog-border">
             <p className="text-[10px] text-cyan-400/80 font-medium uppercase tracking-wider mb-2">⇄ {t('overlay.topology')}</p>
+            {/* our host outward: internal → external egress → pivot hops */}
             <div className="flex flex-wrap items-center gap-1.5">
+              <Pill top={status.internalIP ?? t('overlay.internalNet')} sub={t('overlay.internalNet')} tone="int" />
+              <Arrow />
               <Pill top={status.externalIP ?? '—'} sub={t('ip.externalIp')} tone="ext" />
               {chain.map((p) => (
                 <span key={p.via + p.ts} className="flex items-center gap-1.5">
                   <Arrow />
-                  <Pill top={p.via} sub={p.tool} tone="pivot" />
+                  <Pill top={p.route ? `${p.via} (${p.route})` : p.via} sub={p.tool} tone="pivot" />
                 </span>
               ))}
-              <Arrow />
-              <Pill top={deepest} sub={t('overlay.internalNet')} tone="int" />
             </div>
           </div>
         )

@@ -131,8 +131,11 @@ export default function OverlayApp(): JSX.Element {
 
           {/* measured content — window auto-sizes to this */}
           <div ref={contentRef}>
-          {/* compact bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 54px 0 14px', height: 40, fontSize: 12, position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+          {/* compact bar — two columns: external IP (left) with any active pivot
+              stacked beneath it, and internal IP (right) with the Wi-Fi/wired name
+              beneath it. Keeping the pivot in the external column stops it crowding
+              the internal IP. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 54px 4px 14px', minHeight: 40, fontSize: 12, position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
@@ -140,28 +143,36 @@ export default function OverlayApp(): JSX.Element {
             {hair}
             <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined }} />
             <span style={{ color: STATE, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
-              <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
-              <span style={{ color: VALUE, fontWeight: 500, whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
+            {/* external IP + pivot (left column) */}
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, flexShrink: 0, minWidth: 0, lineHeight: 1.15 }}>
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
+                <span style={{ color: VALUE, fontWeight: 600, whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
+              </span>
+              {latestPivot && (
+                <span
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', clipPath: 'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)', background: hexA(CYAN, 0.2), border: `1px solid ${hexA(CYAN, 0.6)}`, boxShadow: `0 0 5px ${hexA(CYAN, 0.2)}`, maxWidth: 160 }}
+                  title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
+                >
+                  <span style={{ color: CYAN, fontSize: 9, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
+                  <span style={{ color: '#bff2ff', fontSize: 9.5, fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
+                  {pivots.length > 1 && <span style={{ color: CYAN, fontSize: 8.5, fontWeight: 700 }}>+{pivots.length - 1}</span>}
+                </span>
+              )}
             </span>
-            {/* internal IP lives in the expanded panel — kept out of the compact bar so
-                the external IP and Wi-Fi name stay readable instead of truncating */}
-            {linkText && (
-              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
-                <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
-                <span style={{ color: '#9fd8e6', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkText}</span>
+            {/* internal IP + network name (right column) */}
+            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15 }}>
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
+                <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
+                <span style={{ color: '#9fd8e6', fontWeight: 500, whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
               </span>
-            )}
-            {latestPivot && (
-              <span
-                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: hexA(CYAN, 0.22), border: `1px solid ${hexA(CYAN, 0.7)}`, boxShadow: `0 0 6px ${hexA(CYAN, 0.25)}` }}
-                title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
-              >
-                <span style={{ color: CYAN, fontSize: 10, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                <span style={{ color: '#bff2ff', fontSize: 10, fontWeight: 600, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
-                {pivots.length > 1 && <span style={{ color: CYAN, fontSize: 9, fontWeight: 700 }}>+{pivots.length - 1}</span>}
-              </span>
-            )}
+              {linkText && (
+                <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%', minWidth: 0 }}>
+                  <span style={{ color: MUTED, fontSize: 8, letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
+                  <span style={{ color: '#7fb8c6', fontWeight: 500, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkText}</span>
+                </span>
+              )}
+            </span>
           </div>
 
           {/* expanded */}
@@ -187,7 +198,6 @@ export default function OverlayApp(): JSX.Element {
 
               {pivots.length > 0 && (() => {
                 const chain = [...pivots].sort((a, b) => a.ts - b.ts)
-                const deepest = [...chain].reverse().find((p) => p.route)?.route ?? status?.internalIP ?? t('overlay.internalNet')
                 const arrow = <span style={{ color: hexA(CYAN, 0.8), fontSize: 11, flexShrink: 0 }}>▸</span>
                 const nodeClip = 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)'
                 const pill = (color: string, bg: string, brd: string, top: string, sub: string): JSX.Element => (
@@ -203,16 +213,17 @@ export default function OverlayApp(): JSX.Element {
                       <span style={{ color: '#7fe6f7', fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em' }}>{t('overlay.topology').toUpperCase()}</span>
                       <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
                     </div>
+                    {/* our host outward: internal → external egress → pivot hops */}
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, rowGap: 6 }}>
+                      {pill('#a6e8c6', hexA(HUD.green, 0.2), hexA(HUD.green, 0.6), status?.internalIP ?? t('overlay.internalNet'), t('overlay.internalNet'))}
+                      {arrow}
                       {pill('#eaf7fb', 'rgba(255,255,255,0.09)', 'rgba(150,170,180,0.6)', status?.externalIP ?? '—', t('overlay.external'))}
                       {chain.map((p) => (
                         <span key={p.via + p.ts} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           {arrow}
-                          {pill('#d6f7fd', hexA(CYAN, 0.22), hexA(CYAN, 0.6), p.via, p.tool)}
+                          {pill('#d6f7fd', hexA(CYAN, 0.22), hexA(CYAN, 0.6), p.route ? `${p.via} (${p.route})` : p.via, p.tool)}
                         </span>
                       ))}
-                      {arrow}
-                      {pill('#a6e8c6', hexA(HUD.green, 0.2), hexA(HUD.green, 0.6), deepest, t('overlay.internalNet'))}
                     </div>
                   </>
                 )
