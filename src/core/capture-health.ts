@@ -79,7 +79,7 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   const builtinLast = lastEventFor(`agent_type = 'shell' AND json_extract(data,'$.source') = 'builtin-terminal'`)
 
   const sources: CaptureSource[] = [
-    { id: 'shell-hook', installed: hookInstalled('shell-zsh') ?? hookInstalled('shell-bash'), lastEventAt: shellHookLast, state: stateFrom(hookInstalled('shell-zsh') ?? hookInstalled('shell-bash'), shellHookLast, now) },
+    { id: 'shell-hook', installed: hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell'), lastEventAt: shellHookLast, state: stateFrom(hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell'), shellHookLast, now) },
     { id: 'claude-code', installed: hookInstalled('claude-code'), lastEventAt: claudeLast, state: stateFrom(hookInstalled('claude-code'), claudeLast, now) },
     { id: 'mitmproxy', installed: undefined, lastEventAt: mitmLast, state: stateFrom(undefined, mitmLast, now) },
     { id: 'builtin-terminal', installed: undefined, lastEventAt: builtinLast, state: stateFrom(undefined, builtinLast, now) }
