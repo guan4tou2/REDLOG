@@ -237,18 +237,23 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const { t } = useI18n()
 
   useEffect(() => {
+    // Core cards — the dashboard's "loading" resolves on these only, so a
+    // failing/missing add-on API can never wedge it on the loading skeleton.
     Promise.all([
-      window.redlog.events.getCount().then(setEventCount),
-      window.redlog.loot.getCount().then(setLootCount),
-      window.redlog.chain.length().then(setChainLen),
-      window.redlog.scope.getViolationCount().then(setScopeViolations),
-      window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)),
-      window.redlog.capture.health().then(setCapture).catch(() => {})
+      window.redlog.events.getCount().then(setEventCount).catch(() => {}),
+      window.redlog.loot.getCount().then(setLootCount).catch(() => {}),
+      window.redlog.chain.length().then(setChainLen).catch(() => {}),
+      window.redlog.scope.getViolationCount().then(setScopeViolations).catch(() => {}),
+      window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)).catch(() => {})
     ]).then(() => setLoading(false))
-    // Re-check capture health as events flow in, so the warning clears live.
-    const unsub = window.redlog.events.onNew(() => {
-      window.redlog.capture.health().then(setCapture).catch(() => {})
-    })
+
+    // Capture health is non-critical and loaded separately + guarded, so a
+    // stale preload (missing the namespace) or a slow check never blocks load.
+    const loadCapture = (): void => {
+      try { window.redlog.capture?.health?.()?.then(setCapture).catch(() => {}) } catch { /* older preload */ }
+    }
+    loadCapture()
+    const unsub = window.redlog.events.onNew(() => loadCapture())
     return unsub
   }, [])
 

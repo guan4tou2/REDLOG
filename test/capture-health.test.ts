@@ -7,6 +7,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let getCaptureHealth: typeof import('../src/core/capture-health').getCaptureHealth
+let invalidateHooksCache: typeof import('../src/core/capture-health').invalidateHooksCache
 let hooksMod: typeof import('../src/core/hooks-manager')
 
 let dbAvailable = false
@@ -18,6 +19,7 @@ try {
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   getCaptureHealth = chMod.getCaptureHealth
+  invalidateHooksCache = chMod.invalidateHooksCache
   dbAvailable = true
 } catch { /* better-sqlite3 not built */ }
 
@@ -27,6 +29,7 @@ const ins = (agentType: string, data: Record<string, unknown>) =>
   insertEventRaw(agentType, data, { operatorId: 'op' })
 
 function mockHooks(installed: Record<string, boolean>): void {
+  invalidateHooksCache()
   vi.spyOn(hooksMod, 'detectHooks').mockReturnValue(
     Object.entries(installed).map(([id, inst]) => ({
       id, name: id, description: '', agentType: 'shell',

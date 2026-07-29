@@ -44,9 +44,26 @@ function stateFrom(installed: boolean | undefined, last: number | null, now: num
   return 'idle'
 }
 
+// detectHooks() runs `which` via execSync — cheap once, but getCaptureHealth is
+// on a hot path (every new event + every status poll), and doing synchronous
+// subprocess spawns there blocks the main process and freezes the UI. Hook
+// install status barely changes during a session (and Settings re-detects on
+// install), so cache it briefly.
+let hooksCache: { at: number; value: ReturnType<typeof detectHooks> } | null = null
+const HOOKS_TTL_MS = 15_000
+
+function cachedHooks(now: number): ReturnType<typeof detectHooks> {
+  if (hooksCache && now - hooksCache.at < HOOKS_TTL_MS) return hooksCache.value
+  let value: ReturnType<typeof detectHooks> = []
+  try { value = detectHooks() } catch { /* hooks dir unreadable */ }
+  hooksCache = { at: now, value }
+  return value
+}
+
+export function invalidateHooksCache(): void { hooksCache = null }
+
 export function getCaptureHealth(now = Date.now()): CaptureHealth {
-  let hooks: ReturnType<typeof detectHooks> = []
-  try { hooks = detectHooks() } catch { /* hooks dir unreadable */ }
+  const hooks = cachedHooks(now)
   const hookInstalled = (id: string): boolean | undefined => hooks.find((h) => h.id === id)?.installed
 
   // Claude Code hook writes agent events with subtype claude_code_bash.

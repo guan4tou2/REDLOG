@@ -38,7 +38,7 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
-import { getCaptureHealth } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 
 let mainWindow: BrowserWindow | null = null
@@ -214,7 +214,23 @@ function stopProject(): void {
   activeProject = null
 }
 
+// One RedLog at a time. Two instances race for port 6660 and clobber each
+// other's ~/.redlog/api-token, which breaks hooks/CLI/MCP and can wedge the UI.
+// A second launch just focuses the window that's already open.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+}
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+})
+
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return
   electronApp.setAppUserModelId('com.redlog')
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
 
@@ -556,8 +572,8 @@ app.whenReady().then(() => {
   // --- Hooks ---
   ipcMain.handle('hooks:detect', () => detectHooks())
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
-  ipcMain.handle('hooks:install', (_e, hookId: string) => installHook(hookId))
-  ipcMain.handle('hooks:uninstall', (_e, hookId: string) => uninstallHook(hookId))
+  ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); return installHook(hookId) })
+  ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); return uninstallHook(hookId) })
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
