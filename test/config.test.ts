@@ -18,8 +18,8 @@ describe('loadConfig', () => {
   it('returns defaults when no config file exists', () => {
     const config = loadConfig(tmpDir)
     expect(config.engagement.id).toBe('default')
-    expect(config.network.safeIPs).toEqual([])
-    expect(config.network.exposedIPs).toEqual([])
+    expect(config.network.whitelist).toEqual([])
+    expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
     expect(config.scope.enforcement).toBe('warn')
   })
@@ -32,23 +32,23 @@ describe('loadConfig', () => {
     expect(config.network.checkInterval).toBe(60)
   })
 
-  it('migrates vpnIPs to safeIPs', () => {
+  it('migrates vpnIPs → whitelist', () => {
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'network:\n  vpnIPs:\n    - 10.8.0.0/24\n')
     const config = loadConfig(tmpDir)
-    expect(config.network.safeIPs).toEqual(['10.8.0.0/24'])
+    expect(config.network.whitelist).toEqual(['10.8.0.0/24'])
   })
 
-  it('migrates dailyIPs to exposedIPs', () => {
+  it('migrates dailyIPs → blacklist', () => {
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'network:\n  dailyIPs:\n    - 114.24.0.0/16\n')
     const config = loadConfig(tmpDir)
-    expect(config.network.exposedIPs).toEqual(['114.24.0.0/16'])
+    expect(config.network.blacklist).toEqual(['114.24.0.0/16'])
   })
 
   it('does not overwrite new names with old during migration', () => {
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'),
       'network:\n  safeIPs:\n    - 10.0.0.0/8\n  vpnIPs:\n    - 172.16.0.0/12\n')
     const config = loadConfig(tmpDir)
-    expect(config.network.safeIPs).toEqual(['10.0.0.0/8'])
+    expect(config.network.whitelist).toEqual(['10.0.0.0/8'])
   })
 })
 
@@ -56,11 +56,11 @@ describe('saveConfig', () => {
   it('writes yaml that loadConfig can read back', () => {
     const config = loadConfig(tmpDir)
     config.engagement.id = 'roundtrip-test'
-    config.network.safeIPs = ['10.8.0.1']
+    config.network.whitelist = ['10.8.0.1']
     saveConfig(tmpDir, config)
     const reloaded = loadConfig(tmpDir)
     expect(reloaded.engagement.id).toBe('roundtrip-test')
-    expect(reloaded.network.safeIPs).toEqual(['10.8.0.1'])
+    expect(reloaded.network.whitelist).toEqual(['10.8.0.1'])
   })
 })
 

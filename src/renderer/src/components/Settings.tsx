@@ -5,7 +5,7 @@ import { toast } from './Toast'
 interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
-  network: { safeIPs: string[]; exposedIPs: string[]; checkInterval: number; providers?: string[]; confirmations?: number }
+  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
   overlay?: { showMarkButton: boolean }
@@ -136,15 +136,15 @@ export default function Settings(): JSX.Element {
           <>
             <FieldGroup title={t('settings.ipSafety')}>
               <ListField
-                label={t('settings.safeIps')}
-                items={config.network.safeIPs}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, safeIPs: items } })}
+                label={t('settings.whitelist')}
+                items={config.network.whitelist}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, whitelist: items } })}
                 placeholder={t('settings.safeIpPlaceholder')}
               />
               <ListField
-                label={t('settings.exposedIps')}
-                items={config.network.exposedIPs}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, exposedIPs: items } })}
+                label={t('settings.blacklist')}
+                items={config.network.blacklist}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
                 placeholder={t('settings.exposedIpPlaceholder')}
               />
             </FieldGroup>

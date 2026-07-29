@@ -132,7 +132,7 @@ export default function OverlayApp(): JSX.Element {
             </span>
             {latestPivot && (
               <span
-                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: hexA(CYAN, 0.12), border: `1px solid ${SKY}55` }}
+                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: hexA(CYAN, 0.22), border: `1px solid ${hexA(CYAN, 0.7)}`, boxShadow: `0 0 6px ${hexA(CYAN, 0.25)}` }}
                 title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
               >
                 <span style={{ color: CYAN, fontSize: 10, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
@@ -164,7 +164,7 @@ export default function OverlayApp(): JSX.Element {
               {pivots.length > 0 && (() => {
                 const chain = [...pivots].sort((a, b) => a.ts - b.ts)
                 const deepest = [...chain].reverse().find((p) => p.route)?.route ?? status?.internalIP ?? t('overlay.internalNet')
-                const arrow = <span style={{ color: `${SKY}99`, fontSize: 11, flexShrink: 0 }}>▸</span>
+                const arrow = <span style={{ color: hexA(CYAN, 0.8), fontSize: 11, flexShrink: 0 }}>▸</span>
                 const nodeClip = 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)'
                 const pill = (color: string, bg: string, brd: string, top: string, sub: string): JSX.Element => (
                   <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', padding: '3px 8px', clipPath: nodeClip, background: bg, border: `1px solid ${brd}`, flexShrink: 0, maxWidth: 150 }}>
@@ -180,15 +180,15 @@ export default function OverlayApp(): JSX.Element {
                       <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, rowGap: 6 }}>
-                      {pill('#d6f5ff', 'rgba(255,255,255,0.04)', 'rgba(120,140,150,0.4)', status?.externalIP ?? '—', t('overlay.external'))}
+                      {pill('#eaf7fb', 'rgba(255,255,255,0.09)', 'rgba(150,170,180,0.6)', status?.externalIP ?? '—', t('overlay.external'))}
                       {chain.map((p) => (
                         <span key={p.via + p.ts} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           {arrow}
-                          {pill('#bfeff5', hexA(CYAN, 0.12), `${SKY}55`, p.via, p.tool)}
+                          {pill('#d6f7fd', hexA(CYAN, 0.22), hexA(CYAN, 0.6), p.via, p.tool)}
                         </span>
                       ))}
                       {arrow}
-                      {pill('#8fddb6', hexA(HUD.green, 0.12), hexA(HUD.green, 0.42), deepest, t('overlay.internalNet'))}
+                      {pill('#a6e8c6', hexA(HUD.green, 0.2), hexA(HUD.green, 0.6), deepest, t('overlay.internalNet'))}
                     </div>
                   </>
                 )

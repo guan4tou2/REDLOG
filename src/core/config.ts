@@ -12,8 +12,10 @@ export interface RedLogConfig {
     name: string
   }
   network: {
-    safeIPs: string[]
-    exposedIPs: string[]
+    /** whitelist — IPs confirmed OK to attack from (VPN/VPS exits) → SAFE */
+    whitelist: string[]
+    /** blacklist — your own fixed IPs; seeing one means identity leak → EXPOSED */
+    blacklist: string[]
     checkInterval: number
     providers: string[]
     confirmations: number
@@ -68,8 +70,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     name: 'Operator'
   },
   network: {
-    safeIPs: [],
-    exposedIPs: [],
+    whitelist: [],
+    blacklist: [],
     checkInterval: 60,
     providers: [],
     confirmations: 3
@@ -129,14 +131,12 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
 function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown> {
   const network = parsed.network as Record<string, unknown> | undefined
   if (network) {
-    if (network.vpnIPs && !network.safeIPs) {
-      network.safeIPs = network.vpnIPs
-      delete network.vpnIPs
-    }
-    if (network.dailyIPs && !network.exposedIPs) {
-      network.exposedIPs = network.dailyIPs
-      delete network.dailyIPs
-    }
+    // whitelist (safe/attack IPs): vpnIPs → safeIPs → whitelist
+    if (network.vpnIPs && !network.whitelist && !network.safeIPs) { network.whitelist = network.vpnIPs; delete network.vpnIPs }
+    if (network.safeIPs && !network.whitelist) { network.whitelist = network.safeIPs; delete network.safeIPs }
+    // blacklist (your own IPs): dailyIPs → exposedIPs → blacklist
+    if (network.dailyIPs && !network.blacklist && !network.exposedIPs) { network.blacklist = network.dailyIPs; delete network.dailyIPs }
+    if (network.exposedIPs && !network.blacklist) { network.blacklist = network.exposedIPs; delete network.exposedIPs }
   }
   return parsed
 }

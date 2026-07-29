@@ -165,8 +165,8 @@ function startProject(project: ProjectMeta): void {
   initDB(projectDir)
 
   ipMonitor.configure({
-    safeIPs: config.network.safeIPs,
-    exposedIPs: config.network.exposedIPs,
+    whitelist: config.network.whitelist,
+    blacklist: config.network.blacklist,
     checkInterval: config.network.checkInterval,
     providers: config.network.providers,
     confirmations: config.network.confirmations
@@ -338,8 +338,8 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     saveConfig(projectDir, newConfig)
     ipMonitor.configure({
-      safeIPs: newConfig.network.safeIPs,
-      exposedIPs: newConfig.network.exposedIPs,
+      whitelist: newConfig.network.whitelist,
+      blacklist: newConfig.network.blacklist,
       checkInterval: newConfig.network.checkInterval,
       providers: newConfig.network.providers,
       confirmations: newConfig.network.confirmations

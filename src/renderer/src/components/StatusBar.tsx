@@ -118,10 +118,11 @@ export default function StatusBar(): JSX.Element {
         </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}
-          className={`transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-600 hover:text-red-400'}`}
+          className={`flex items-center gap-1.5 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-500 hover:text-zinc-300'}`}
           title={t('statusBar.toggleOverlay')}
         >
-          {overlayVisible ? '⬒ IP' : '⬓ IP'}
+          <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-zinc-600'}`} />
+          <span>{t('statusBar.overlay')}</span>
         </button>
       </div>
     </div>

@@ -66,8 +66,8 @@ async function getExternalIP(providers: string[]): Promise<string> {
 
 export class IPMonitor extends EventEmitter {
   private interval: ReturnType<typeof setInterval> | null = null
-  private safeIPs: string[] = []
-  private exposedIPs: string[] = []
+  private whitelist: string[] = []
+  private blacklist: string[] = []
   private checkIntervalMs = 10_000
   private providers: string[] = [...DEFAULT_IP_PROVIDERS]
   private confirmations = DEFAULT_CONFIRMATIONS
@@ -87,14 +87,14 @@ export class IPMonitor extends EventEmitter {
   }
 
   configure(opts: {
-    safeIPs?: string[]
-    exposedIPs?: string[]
+    whitelist?: string[]
+    blacklist?: string[]
     checkInterval?: number
     providers?: string[]
     confirmations?: number
   }): void {
-    if (opts.safeIPs) this.safeIPs = opts.safeIPs
-    if (opts.exposedIPs) this.exposedIPs = opts.exposedIPs
+    if (opts.whitelist) this.whitelist = opts.whitelist
+    if (opts.blacklist) this.blacklist = opts.blacklist
     if (opts.checkInterval) this.checkIntervalMs = opts.checkInterval * 1000
     if (opts.providers?.length) this.providers = opts.providers
     if (typeof opts.confirmations === 'number' && opts.confirmations > 0) {
@@ -103,8 +103,10 @@ export class IPMonitor extends EventEmitter {
   }
 
   private classify(ip: string): IPStatus['ipSafety'] {
-    if (this.safeIPs.length > 0 && this.safeIPs.some((cidr) => ipInCIDR(ip, cidr))) return 'safe'
-    if (this.exposedIPs.length > 0 && this.exposedIPs.some((cidr) => ipInCIDR(ip, cidr))) return 'exposed'
+    // Blacklist (your own IP) wins: seeing it means your real identity is
+    // leaking, which is the alert that must never be masked by a whitelist hit.
+    if (this.blacklist.length > 0 && this.blacklist.some((cidr) => ipInCIDR(ip, cidr))) return 'exposed'
+    if (this.whitelist.length > 0 && this.whitelist.some((cidr) => ipInCIDR(ip, cidr))) return 'safe'
     return 'unknown'
   }
 

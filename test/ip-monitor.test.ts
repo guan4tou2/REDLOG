@@ -22,8 +22,8 @@ describe('IPMonitor settling', () => {
   beforeEach(() => {
     m = new IPMonitor()
     m.configure({
-      safeIPs: ['10.8.0.0/24'],
-      exposedIPs: ['203.0.113.0/24'],
+      whitelist: ['10.8.0.0/24'],
+      blacklist: ['203.0.113.0/24'],
       confirmations: 3
     })
   })
@@ -85,6 +85,15 @@ describe('IPMonitor settling', () => {
     await tick(m)
     expect(m.status.externalIP).toBe('10.8.0.5')
     expect(m.status.error).toBeTruthy()
+  })
+
+  it('blacklist (own IP) wins over whitelist — identity leak must not be masked', async () => {
+    // An IP that is in BOTH lists must classify as exposed: the blacklist is
+    // your own IP, and leaking it is the alert that has to win.
+    m.configure({ whitelist: ['203.0.113.0/24'], blacklist: ['203.0.113.0/24'] })
+    mockIPs('203.0.113.9')
+    await tick(m)
+    expect(m.status.ipSafety).toBe('exposed')
   })
 
   it('honours a custom provider list so an operator can self-host', async () => {

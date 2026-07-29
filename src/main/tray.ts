@@ -105,7 +105,7 @@ export function createTray(
     }
 
     items.push({
-      label: 'Toggle IP Overlay',
+      label: 'Toggle HUD',
       click: () => {
         if (!overlayWindow) return
         if (overlayWindow.isVisible()) {

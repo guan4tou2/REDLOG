@@ -14,8 +14,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
-  const [safeIPs, setSafeIPs] = useState<string[]>([])
-  const [exposedIPs, setExposedIPs] = useState<string[]>([])
+  const [whitelist, setWhitelist] = useState<string[]>([])
+  const [blacklist, setBlacklist] = useState<string[]>([])
   const [enforcement, setEnforcement] = useState('warn')
   const { t } = useI18n()
 
@@ -34,10 +34,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      const initialConfig = (showAdvanced && (scopeTargets.length > 0 || safeIPs.length > 0 || exposedIPs.length > 0))
+      const initialConfig = (showAdvanced && (scopeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0))
         ? {
           scope: { targets: scopeTargets, excludeTargets: [], enforcement, scopeFile: null },
-          network: { safeIPs, exposedIPs, checkInterval: 60 }
+          network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
       const project = await window.redlog.project.create(name, initialConfig)
@@ -69,8 +69,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
     if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
-    if (profile.network?.safeIPs) setSafeIPs(profile.network.safeIPs)
-    if (profile.network?.exposedIPs) setExposedIPs(profile.network.exposedIPs)
+    if (profile.network?.whitelist ?? profile.network?.safeIPs) setWhitelist(profile.network.whitelist ?? profile.network.safeIPs)
+    if (profile.network?.blacklist ?? profile.network?.exposedIPs) setBlacklist(profile.network.blacklist ?? profile.network.exposedIPs)
     if (profile.scope?.enforcement) setEnforcement(profile.scope.enforcement)
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
@@ -147,17 +147,17 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
               {/* Safe IPs */}
               <MiniListField
-                label={t('project.safeIps')}
-                items={safeIPs}
-                onChange={setSafeIPs}
+                label={t('project.whitelist')}
+                items={whitelist}
+                onChange={setWhitelist}
                 placeholder={t('settings.safeIpPlaceholder')}
               />
 
               {/* Exposed IPs */}
               <MiniListField
-                label={t('project.exposedIps')}
-                items={exposedIPs}
-                onChange={setExposedIPs}
+                label={t('project.blacklist')}
+                items={blacklist}
+                onChange={setBlacklist}
                 placeholder={t('settings.exposedIpPlaceholder')}
               />
 
