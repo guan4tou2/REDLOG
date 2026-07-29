@@ -204,7 +204,7 @@ function isShellSourceInstalled(rcFile: string, hookPath: string): boolean {
   const rcPath = join(homedir(), rcFile)
   if (!existsSync(rcPath)) return false
   const content = readFileSync(rcPath, 'utf-8')
-  const hookName = hookPath.split('/').pop() ?? ''
+  const hookName = hookPath.split(/[\\/]/).pop() ?? ''
   return content.includes(hookName)
 }
 
@@ -373,7 +373,7 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         const rcFile = shellRcFor(plugin)
         const rcPath = join(homedir(), rcFile)
         let content = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
-        const hookName = dest.split('/').pop()
+        const hookName = dest.split(/[\\/]/).pop()
         if (!content.includes(hookName!)) {
           content += `\n# RedLog shell hook\nsource ${dest}\n`
           writeFileSync(rcPath, content)

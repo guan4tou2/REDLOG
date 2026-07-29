@@ -27,8 +27,30 @@
 
 set -euo pipefail
 
-REDLOG_PORT_FILE="$HOME/.redlog/api-port"
-REDLOG_TOKEN_FILE="$HOME/.redlog/api-token"
+# --- Resolve RedLog dir (native or WSL) ---
+_resolve_redlog_dir() {
+  if [[ -f "$HOME/.redlog/api-token" ]]; then
+    echo "$HOME/.redlog"
+    return
+  fi
+  if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+    local win_profile
+    win_profile=$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')
+    if [[ -n "$win_profile" ]]; then
+      local wsl_path
+      wsl_path=$(wslpath "$win_profile" 2>/dev/null)
+      if [[ -f "$wsl_path/.redlog/api-token" ]]; then
+        echo "$wsl_path/.redlog"
+        return
+      fi
+    fi
+  fi
+  return 1
+}
+
+REDLOG_DIR=$(_resolve_redlog_dir) || exit 0
+REDLOG_PORT_FILE="$REDLOG_DIR/api-port"
+REDLOG_TOKEN_FILE="$REDLOG_DIR/api-token"
 
 [[ -f "$REDLOG_PORT_FILE" ]] || exit 0
 [[ -f "$REDLOG_TOKEN_FILE" ]] || exit 0
@@ -104,7 +126,18 @@ data = {
 print(json.dumps(data))
 ' 2>/dev/null)
 
-curl -sf -X POST "http://127.0.0.1:${PORT}/api/events" \
+# --- Resolve reachable host ---
+REDLOG_HOST="127.0.0.1"
+if ! curl -sf --connect-timeout 1 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+  if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+    gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
+    if [[ -n "$gw" ]] && curl -sf --connect-timeout 1 "http://${gw}:${PORT}/api/health" >/dev/null 2>&1; then
+      REDLOG_HOST="$gw"
+    fi
+  fi
+fi
+
+curl -sf -X POST "http://${REDLOG_HOST}:${PORT}/api/events" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" \
