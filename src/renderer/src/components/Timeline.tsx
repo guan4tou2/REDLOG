@@ -70,6 +70,7 @@ export default function TimelinePanel(): JSX.Element {
   const [loading, setLoading] = useState(true)
   const [containerH, setContainerH] = useState(0)
   const [zoom, setZoom] = useState(1)
+  const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
   const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
   const [showJson, setShowJson] = useState(false)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
@@ -202,6 +203,34 @@ export default function TimelinePanel(): JSX.Element {
     return map
   }, [events])
 
+  // Collapse events that fall within ~14px of each other on the same lane into a
+  // single clickable marker (with a count) so dense bursts stay legible. Zooming
+  // in widens the track, so clusters naturally split apart into individual dots.
+  const CLUSTER_PX = 14
+  const clusters = useMemo(() => {
+    const out: Array<{ key: string; lane: LaneId; li: number; x: number; y: number; events: RedLogEvent[] }> = []
+    visibleLanes.forEach((lane, li) => {
+      const evs = laneEvents[lane]
+      if (!evs.length) return
+      let bucket: RedLogEvent[] = []
+      let curBi = NaN
+      const flush = (): void => {
+        if (!bucket.length) return
+        const x = bucket.reduce((a, e) => a + toX(e.timestamp), 0) / bucket.length
+        out.push({ key: `${lane}-${bucket[0].id}`, lane, li, x, y: li * laneH + laneH / 2, events: bucket })
+        bucket = []
+      }
+      for (const e of evs) {
+        const bi = Math.floor(toX(e.timestamp) / CLUSTER_PX)
+        if (bucket.length && bi !== curBi) flush()
+        curBi = bi
+        bucket.push(e)
+      }
+      flush()
+    })
+    return out
+  }, [visibleLanes, laneEvents, toX, laneH])
+
   const recentEvents = useMemo(() => {
     const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType)))
     return [...visible].reverse().slice(0, 50)
@@ -210,6 +239,7 @@ export default function TimelinePanel(): JSX.Element {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
+      setCluster(null)
       // Anchor the zoom at the cursor: remember which fraction of the track sits
       // under the pointer and where the pointer is, so the layout effect below can
       // keep that same instant stationary after TRACK_W changes.
@@ -224,6 +254,7 @@ export default function TimelinePanel(): JSX.Element {
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
+    setCluster(null)
     isDragging.current = true
     dragStart.current = { x: e.clientX, scroll: scrollRef.current?.scrollLeft ?? 0 }
     document.body.classList.add('timeline-grabbing')
@@ -430,30 +461,61 @@ export default function TimelinePanel(): JSX.Element {
                 {Date.now() >= timeStart && Date.now() <= timeEnd && (
                   <div className="absolute top-0 w-px bg-red-500/70" style={{ left: toX(Date.now()), height: totalH }} />
                 )}
-                {/* Event dots */}
-                {visibleLanes.map((lane, li) =>
-                  laneEvents[lane].map((evt) => {
-                    const x = toX(evt.timestamp)
-                    const y = li * laneH + laneH / 2
-                    const sel = selectedEvent?.id === evt.id
-                    return (
+                {/* Event markers — single dot, or a counted cluster when dense */}
+                {clusters.map((c) => {
+                  const single = c.events.length === 1
+                  const evt = c.events[0]
+                  const sel = single && selectedEvent?.id === evt.id
+                  const dot = single ? 9 : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
+                  const hit = Math.max(20, dot + 8)
+                  return (
+                    <div
+                      key={c.key}
+                      className="absolute cursor-pointer flex items-center justify-center"
+                      style={{ left: c.x - hit / 2, top: c.y - hit / 2, width: hit, height: hit, zIndex: sel ? 10 : 2 }}
+                      title={single
+                        ? `${new Date(evt.timestamp).toLocaleTimeString()} — ${eventTitle(evt)}`
+                        : `${c.events.length} ${t('timeline.title')} · ${new Date(c.events[0].timestamp).toLocaleTimeString()}`}
+                      onClick={() => single ? setSelectedEvent(sel ? null : evt) : setCluster({ x: c.x, y: c.y, events: c.events })}
+                    >
                       <div
-                        key={evt.id}
-                        className="absolute cursor-pointer transition-transform hover:scale-[1.8]"
+                        className="flex items-center justify-center transition-transform hover:scale-125"
                         style={{
-                          left: x - 4, top: y - 4, width: 8, height: 8,
-                          borderRadius: '50%',
-                          backgroundColor: LANE_COLORS[lane],
+                          width: dot, height: dot,
+                          borderRadius: single ? '50%' : 5,
+                          backgroundColor: LANE_COLORS[c.lane],
+                          border: single ? undefined : '1px solid rgba(0,0,0,0.45)',
                           boxShadow: sel
-                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[lane]}, 0 0 12px ${LANE_COLORS[lane]}60`
-                            : `0 0 6px ${LANE_COLORS[lane]}30`,
-                          zIndex: sel ? 10 : 1
+                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
+                            : `0 0 6px ${LANE_COLORS[c.lane]}40`
                         }}
-                        title={`${new Date(evt.timestamp).toLocaleTimeString()} — ${eventTitle(evt)}`}
-                        onClick={() => setSelectedEvent(sel ? null : evt)}
-                      />
-                    )
-                  })
+                      >
+                        {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+                {/* Cluster contents popover */}
+                {cluster && (
+                  <div className="absolute z-30" style={{ left: Math.max(0, Math.min(cluster.x + 10, TRACK_W - 236)), top: cluster.y + 12, width: 228 }}>
+                    <div className="rounded-md border border-zinc-700 bg-zinc-900/95 shadow-xl max-h-[210px] overflow-y-auto">
+                      <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800 sticky top-0 bg-zinc-900/95">
+                        <span className="text-[10px] text-zinc-400 font-mono">{cluster.events.length} {t('timeline.title')}</span>
+                        <button className="text-zinc-500 hover:text-zinc-200 text-xs leading-none" onClick={() => setCluster(null)}>×</button>
+                      </div>
+                      {cluster.events.map((evt) => (
+                        <button
+                          key={evt.id}
+                          className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
+                          onClick={() => { setSelectedEvent(evt); setCluster(null) }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType)] }} />
+                          <span className="text-zinc-600 font-mono text-[9px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                          <span className="text-zinc-300 text-[10px] truncate">{eventTitle(evt)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
