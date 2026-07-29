@@ -126,6 +126,9 @@
   "loot.empty": "No credentials or secrets detected yet.",
   "loot.emptyDesc": "Auto-scans shell output for password hashes, API keys, JWTs, private keys, database URLs, and CTF flags.",
   "loot.items": "{{count}} item(s)",
+  "loot.from": "from",
+  "loot.openInTimeline": "View in timeline",
+  "loot.openInTimelineHint": "Jump to this discovery on the timeline to see the surrounding activity.",
 
   "marks.title": "Marks ({{count}})",
   "marks.capture": "+ Capture",

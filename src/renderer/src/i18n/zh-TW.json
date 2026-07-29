@@ -126,6 +126,9 @@
   "loot.empty": "尚未偵測到憑證或機密。",
   "loot.emptyDesc": "自動掃描 Shell 輸出中的密碼雜湊、API 金鑰、JWT、私鑰、資料庫 URL 和 CTF Flag。",
   "loot.items": "{{count}} 項",
+  "loot.from": "來源",
+  "loot.openInTimeline": "在時間軸檢視",
+  "loot.openInTimelineHint": "跳到時間軸上這筆發現,查看前後的相關活動。",
 
   "marks.title": "標記（{{count}}）",
   "marks.capture": "+ 擷取",
