@@ -6,6 +6,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     id: string
     timestamp: number
     targetId: string | null
+    source: string | null
     matches: Array<{ type: string; confidence: string; preview: string }>
   }>>([])
   const [lootCount, setLootCount] = useState(0)
@@ -31,6 +32,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         id: e.id,
         timestamp: e.timestamp,
         targetId: e.targetId,
+        source: (e.data.source as string) ?? null,
         matches: (e.data.matches as Array<{ type: string; confidence: string; preview: string }>) ?? []
       }))
     )
@@ -74,23 +76,27 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
       ) : (
         <div className="space-y-2">
           {lootEvents.map((le, i) => (
-            <div key={le.id || i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+            <div
+              key={le.id || i}
+              onClick={() => onOpenInTimeline?.(le.id, le.timestamp)}
+              className={`bg-zinc-900 border border-zinc-800 rounded-lg p-3 ${onOpenInTimeline ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-zinc-900/60 transition-colors' : ''}`}
+              title={onOpenInTimeline ? t('loot.openInTimelineHint') : undefined}
+            >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="text-zinc-500 text-xs">
                   <span className="text-zinc-400 tabular-nums">{new Date(le.timestamp).toLocaleString()}</span>
+                  {le.source && (
+                    <span> · {t('loot.from')} <span className="text-zinc-300 font-mono">{le.source}</span></span>
+                  )}
                   {le.targetId && (
-                    <span> · {t('loot.from')} <span className="text-zinc-300 font-mono">{le.targetId}</span></span>
+                    <span> · {t('loot.target')} <span className="text-zinc-300 font-mono">{le.targetId}</span></span>
                   )}
                   <span> · {t('loot.items', { count: le.matches.length })}</span>
                 </div>
                 {onOpenInTimeline && (
-                  <button
-                    onClick={() => onOpenInTimeline(le.id, le.timestamp)}
-                    className="text-[10px] text-cyan-400/80 hover:text-cyan-300 whitespace-nowrap shrink-0 transition-colors"
-                    title={t('loot.openInTimelineHint')}
-                  >
+                  <span className="text-[10px] text-cyan-400/80 whitespace-nowrap shrink-0">
                     {t('loot.openInTimeline')} →
-                  </button>
+                  </span>
                 )}
               </div>
               {le.matches.map((m, j) => (

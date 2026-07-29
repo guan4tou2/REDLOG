@@ -46,7 +46,7 @@ let primaryOperatorName = ''
 
 let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
 
-let lootDetectorRef: { scan: (text: string, targetId?: string) => Array<{ type: string; value: string; confidence: string }> } | null = null
+let lootDetectorRef: { scan: (text: string, targetId?: string, source?: string) => Array<{ type: string; value: string; confidence: string }> } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
 let scopeMonitorRef: {
@@ -155,7 +155,7 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
 
       case 'redlog_loot_scan': {
         if (!lootDetectorRef) return { findings: [] }
-        return { findings: lootDetectorRef.scan(String(args.text ?? '')) }
+        return { findings: lootDetectorRef.scan(String(args.text ?? ''), args.targetId ? String(args.targetId) : undefined, args.source ? String(args.source) : undefined) }
       }
 
       case 'redlog_screenshot': {
@@ -323,7 +323,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         if (!isStart && lootDetectorRef) {
           const textToScan = [cmd, data.output].filter(Boolean).join('\n')
           if (textToScan) {
-            const matches = lootDetectorRef.scan(textToScan, targetId)
+            const matches = lootDetectorRef.scan(textToScan, targetId, cmd)
             lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
           }
         }
@@ -415,7 +415,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 503, { error: 'Loot detector not available' })
         return
       }
-      const findings = lootDetectorRef.scan(body.text || '')
+      const findings = lootDetectorRef.scan(body.text || '', body.targetId || undefined, body.source || undefined)
       json(res, 200, { findings })
       return
     }
