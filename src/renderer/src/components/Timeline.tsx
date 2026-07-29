@@ -5,12 +5,13 @@ import { toast } from './Toast'
 const MIN_LANE_H = 36
 const LABEL_W = 92
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'agent', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
+const LANES = ['shell', 'agent', 'http_navigation', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'scope', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
   agent: '#84cc16',
+  http_navigation: '#6366f1',
   dns: '#14b8a6',
   pivot: '#0ea5e9',
   screenshot: '#3b82f6',
@@ -20,6 +21,7 @@ const LANE_COLORS: Record<LaneId, string> = {
   c2_checkin: '#f43f5e',
   marker: '#ef4444',
   loot: '#f97316',
+  scope: '#ef4444',
   system: '#52525b'
 }
 
@@ -35,6 +37,8 @@ function eventTitle(event: RedLogEvent): string {
       return 'Shell event'
     case 'dns':
       return `DNS ${d.subtype === 'dns_response' ? '⇐' : '⇒'} ${d.dest_host || d.command || ''}`
+    case 'http_navigation':
+      return `⇢ ${d.host || d.url || ''} ${d.title ? `— ${(d.title as string).slice(0, 60)}` : ''}`.trim()
     case 'screenshot':
       return `Screenshot (${d.trigger})`
     case 'clipboard':
@@ -53,12 +57,24 @@ function eventTitle(event: RedLogEvent): string {
       const m = (d.matches as Array<{ type: string; confidence: string }>)?.[0]
       return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${d.count ?? 0} detected`
     }
+    case 'system':
+      if (d.subtype === 'scope_violation') return `⚠ Scope violation: ${d.target || d.command || ''}`
+      if (d.subtype === 'ip_transition') return `⇋ ${d.description || 'IP transition'}`
+      if (d.subtype === 'recording_paused') return `⏸ Recording paused`
+      if (d.subtype === 'recording_resumed') return `⏺ Recording resumed`
+      if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
+      if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
+      return `${event.agentType}: ${d.subtype || ''}`
     default:
       return `${event.agentType}: ${d.subtype || ''}`
   }
 }
 
-function toLane(agentType: string): LaneId {
+function toLane(agentType: string, subtype?: string): LaneId {
+  // Scope violations are stored under agent_type='system' for historical reasons
+  // (the deconfliction webhook filter watches 'system'). Route them into their own
+  // lane at render time so they don't drown in the system-lane housekeeping.
+  if (agentType === 'system' && subtype === 'scope_violation') return 'scope'
   return LANES.includes(agentType as LaneId) ? (agentType as LaneId) : 'system'
 }
 
@@ -154,6 +170,8 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
   const laneLabels: Record<LaneId, string> = useMemo(() => ({
     shell: t('timeline.shell'),
+    agent: t('timeline.agent'),
+    http_navigation: t('timeline.http'),
     dns: t('timeline.dns'),
     pivot: t('timeline.pivot'),
     screenshot: t('timeline.screenshot'),
@@ -163,6 +181,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     c2_checkin: t('timeline.c2Checkin'),
     marker: t('timeline.markers'),
     loot: t('timeline.loot'),
+    scope: t('timeline.scope'),
     system: t('timeline.system')
   }), [t])
 
@@ -178,7 +197,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   // the lane exists, but don't give it a row until something lands in it.
   const populatedLanes = useMemo(() => {
     const seen = new Set<LaneId>()
-    for (const e of events) seen.add(toLane(e.agentType))
+    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined))
     return seen
   }, [events])
 
@@ -248,7 +267,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
   const laneEvents = useMemo(() => {
     const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
-    for (const e of events) map[toLane(e.agentType)].push(e)
+    for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined)].push(e)
     return map
   }, [events])
 
@@ -333,7 +352,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   }, [timeStart, timeEnd, TRACK_W, updateView])
 
   const recentEvents = useMemo(() => {
-    const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType)))
+    const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined)))
     return [...visible].reverse().slice(0, 50)
   }, [events, hiddenLanes])
 
@@ -669,7 +688,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                             setCluster(null)
                           }}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType)] }} />
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined)] }} />
                           <span className="text-zinc-600 font-mono text-[9px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
                           <span className="text-zinc-300 text-[10px] truncate">{eventTitle(evt)}</span>
                         </button>
@@ -690,7 +709,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           </div>
           <div className="overflow-y-auto" style={{ height: selectedEvent ? 128 : 148 }}>
             {recentEvents.map((evt) => {
-              const lane = toLane(evt.agentType)
+              const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined)
               const isSel = selectedEvent?.id === evt.id
               return (
                 <div
@@ -722,8 +741,8 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
         <div className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[240px] overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType)] }} />
-              <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType)] }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }} />
+              <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }}>
                 {selectedEvent.agentType}
               </span>
               <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>

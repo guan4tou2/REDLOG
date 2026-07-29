@@ -44,6 +44,15 @@ export interface RedLogConfig {
   terminal: {
     maxCastBytes: number
   }
+  clipboard: {
+    /** default off — clipboard is highly sensitive; opt-in per engagement */
+    enabled: boolean
+    /** poll interval in ms — Electron has no clipboard-change event, so we sample */
+    pollMs: number
+    /** store the redacted preview (first N chars) alongside hash+length; still
+        runs redaction; when false, only hash+length+loot-match-types are stored */
+    storePreview: boolean
+  }
   browser: {
     binary: string
     proxy: string
@@ -103,6 +112,11 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024
+  },
+  clipboard: {
+    enabled: false,
+    pollMs: 1500,
+    storePreview: false
   },
   browser: {
     binary: '',

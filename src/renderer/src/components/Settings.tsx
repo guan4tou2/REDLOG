@@ -14,6 +14,7 @@ interface ConfigState {
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
   overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean }
+  clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   browser?: {
     binary: string
     proxy: string
@@ -265,6 +266,32 @@ export default function Settings(): JSX.Element {
                   </label>
                   <p className="text-[10px] text-zinc-600">{t('settings.overlayShowInDockHint')}</p>
                 </>
+              )}
+            </FieldGroup>
+            <FieldGroup title={t('settings.clipboardGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.clipboard?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.clipboardEnable')}</span>
+              </label>
+              <p className="text-[10px] text-zinc-600">{t('settings.clipboardEnableHint')}</p>
+              {config.clipboard?.enabled && (
+                <label className="flex items-center gap-2 cursor-pointer mt-2">
+                  <input
+                    type="checkbox"
+                    checked={config.clipboard?.storePreview === true}
+                    onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: true, storePreview: e.target.checked } })}
+                    className="accent-red-600"
+                  />
+                  <span className="text-xs text-zinc-300">{t('settings.clipboardStorePreview')}</span>
+                </label>
+              )}
+              {config.clipboard?.enabled && (
+                <p className="text-[10px] text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
               )}
             </FieldGroup>
             <FieldGroup title={t('settings.updateGroup')}>

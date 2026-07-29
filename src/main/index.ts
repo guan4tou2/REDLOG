@@ -12,7 +12,7 @@ import { insertEvent, queryEvents, getEventCount, searchEvents, queryScopeFilter
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
-import { getActiveBrowserTab, setCdpPort } from './services/cdp-connector'
+import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -38,6 +38,7 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
+import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
@@ -337,6 +338,13 @@ function startProject(project: ProjectMeta): void {
 
   ipMonitor.start()
   startLinkMonitor()
+  configureClipboardMonitor({
+    enabled: config.clipboard?.enabled ?? false,
+    pollMs: config.clipboard?.pollMs ?? 1500,
+    storePreview: config.clipboard?.storePreview ?? false,
+    engagementId, operatorId, lootDetector
+  })
+  startClipboardMonitor()
 
   configureApi({
     engagementId,
@@ -385,6 +393,8 @@ function stopProject(): void {
   stopNtpLoop()
   stopApiServer()
   ipMonitor.stop()
+  stopClipboardMonitor()
+  stopCdpMonitor()
   closeDB()
   activeProject = null
   currentEngagementId = null
@@ -509,6 +519,12 @@ app.whenReady().then(() => {
     })
     screenshotAgent.configure({ quality: newConfig.screenshot.quality })
     configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
+    configureClipboardMonitor({
+      enabled: newConfig.clipboard?.enabled ?? false,
+      pollMs: newConfig.clipboard?.pollMs ?? 1500,
+      storePreview: newConfig.clipboard?.storePreview ?? false,
+      engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, lootDetector
+    })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     // The HUD reads its config once at mount — push overlay settings so toggling
@@ -667,6 +683,14 @@ app.whenReady().then(() => {
 
     if (result.ok) {
       setCdpPort(browserCfg.cdpPort)
+      // Start polling the browser for URL changes so every navigation lands in
+      // the timeline as an http_navigation event. Silent no-op once the browser
+      // exits — the poll fails, no event fires.
+      configureCdpMonitor({
+        engagementId: cfg.engagement.id,
+        operatorId: cfg.operator.id,
+        enabled: true
+      })
       const event = insertEvent('system', {
         subtype: 'browser_launched',
         binary: result.binary,
@@ -679,7 +703,7 @@ app.whenReady().then(() => {
     }
     return result
   })
-  ipcMain.handle('browser:stop', () => ({ stopped: stopBrowser() }))
+  ipcMain.handle('browser:stop', () => { stopCdpMonitor(); return { stopped: stopBrowser() } })
 
   // --- CDP ---
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
