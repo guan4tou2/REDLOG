@@ -100,6 +100,7 @@
   "timeline.agent": "Agent",
   "timeline.http": "HTTP",
   "timeline.scope": "Scope",
+  "timeline.cleanup": "Cleanup",
   "timeline.laneEmpty": "{{lane}} — no events yet",
   "timeline.shellEvent": "Shell event",
 
