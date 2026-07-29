@@ -169,7 +169,8 @@ function startProject(project: ProjectMeta): void {
     blacklist: config.network.blacklist,
     checkInterval: config.network.checkInterval,
     providers: config.network.providers,
-    confirmations: config.network.confirmations
+    confirmations: config.network.confirmations,
+    ipMode: config.network.ipMode
   })
   screenshotAgent.configure({ engagementId, operatorId, quality: config.screenshot.quality })
 
@@ -340,6 +341,7 @@ app.whenReady().then(() => {
     ipMonitor.configure({
       whitelist: newConfig.network.whitelist,
       blacklist: newConfig.network.blacklist,
+      ipMode: newConfig.network.ipMode,
       checkInterval: newConfig.network.checkInterval,
       providers: newConfig.network.providers,
       confirmations: newConfig.network.confirmations
@@ -357,6 +359,9 @@ app.whenReady().then(() => {
     screenshotAgent.configure({ quality: newConfig.screenshot.quality })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
+    // The HUD reads its config once at mount — push overlay settings so toggling
+    // "show Mark button" takes effect live instead of only after a restart.
+    send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
     return true
   })
   // The renderer measures its own content and reports the exact height it needs
