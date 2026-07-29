@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
+import { usePivots } from '../lib/usePivots'
 
 function useTimeAgo(): (ts: number) => string {
   const { t } = useI18n()
@@ -12,11 +13,9 @@ function useTimeAgo(): (ts: number) => string {
   }
 }
 
-interface ActivePivot { via: string; tool: string; route?: string; ts: number }
-
 export default function IPStatusCard(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
-  const [pivots, setPivots] = useState<ActivePivot[]>([])
+  const pivots = usePivots()
   const [, setTick] = useState(0)
   const { t } = useI18n()
   const timeAgo = useTimeAgo()
@@ -29,15 +28,6 @@ export default function IPStatusCard(): JSX.Element {
       unsub()
       clearInterval(timer)
     }
-  }, [])
-
-  useEffect(() => {
-    const pv = (window.redlog as unknown as { pivots?: {
-      getActive?: () => Promise<ActivePivot[]>
-      onChange?: (cb: (p: ActivePivot[]) => void) => () => void
-    } }).pivots
-    pv?.getActive?.().then(setPivots).catch(() => {})
-    return pv?.onChange?.(setPivots)
   }, [])
 
   if (!status) {
