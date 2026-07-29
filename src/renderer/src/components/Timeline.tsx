@@ -309,7 +309,11 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
         setCluster(null)
         const cursorX = e.clientX - el.getBoundingClientRect().left
         pendingZoomAnchor.current = { frac: (el.scrollLeft + cursorX) / TRACK_W, cursorX }
-        setZoom((prev) => Math.min(6, Math.max(0.25, prev + (e.deltaY < 0 ? 0.15 : -0.15))))
+        // Proportional zoom: a trackpad pinch (macOS sends it as ctrl+wheel) fires
+        // many small events — a fixed step per event slammed straight to the limit
+        // and felt like nothing happened. Scaling by deltaY makes pinch smooth and
+        // still gives a mouse wheel a reasonable step.
+        setZoom((prev) => Math.min(6, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
       } else if (e.deltaY !== 0) {
         e.preventDefault()
         el.scrollLeft += e.deltaY
