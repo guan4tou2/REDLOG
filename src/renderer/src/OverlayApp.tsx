@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
-import { HUD, hexA, CHAMFER } from './lib/hud'
+import { HUD, hexA } from './lib/hud'
 
 interface ActivePivot { via: string; tool: string; route?: string; ts: number }
 
@@ -109,11 +109,11 @@ export default function OverlayApp(): JSX.Element {
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
     >
       {/* frame (neon edge) */}
-      <div style={{ position: 'relative', height: '100%', clipPath: CHAMFER, background: FRAME, opacity: interactive ? 1 : 0.94, transition: 'background 0.2s, opacity 0.15s', boxShadow: `0 0 16px ${FRAME}44` }}>
+      <div style={{ position: 'relative', height: '100%', borderRadius: 5, background: FRAME, opacity: interactive ? 1 : 0.94, transition: 'background 0.2s, opacity 0.15s', boxShadow: `0 0 16px ${FRAME}44` }}>
         {/* panel (inset fill) */}
         <div
           style={{
-            position: 'absolute', inset: 1, clipPath: CHAMFER,
+            position: 'absolute', inset: 1, borderRadius: 4,
             background: 'rgba(7,12,17,0.80)',
             backdropFilter: 'blur(16px) saturate(1.5)',
             overflow: 'hidden',
@@ -247,10 +247,11 @@ export default function OverlayApp(): JSX.Element {
           </div>
         </div>
 
-        {/* brackets on the SQUARE corners only (TL+BR are chamfered → a bracket
-            there gets clipped and vanishes). TR + BL stay put on hover. */}
+        {/* L-brackets on all four (now square) corners — no chamfered triangles. */}
+        {bracket({ top: 4, left: 4, borderTop: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
         {bracket({ top: 4, right: 4, borderTop: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
         {bracket({ bottom: 4, left: 4, borderBottom: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
+        {bracket({ bottom: 4, right: 4, borderBottom: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
 
         <style>{`
           @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
