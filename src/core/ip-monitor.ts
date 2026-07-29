@@ -1,5 +1,38 @@
 import { EventEmitter } from 'events'
 import os from 'os'
+import { Resolver } from 'dns/promises'
+
+export type IPMode = 'dns' | 'http' | 'auto'
+
+// DNS-based external-IP lookup — quieter on the wire than an HTTP GET and
+// effectively immune to the rate limits public IP-echo services impose. Queries
+// the resolver DIRECTLY (bypassing system DNS), so restrictive networks can
+// block it — that's why 'auto' falls back to HTTP.
+const DNS_LOOKUPS: Array<{ server: string; host: string; type: 'A' | 'TXT' }> = [
+  { server: '208.67.222.222', host: 'myip.opendns.com', type: 'A' },          // OpenDNS resolver1
+  { server: '216.239.32.10', host: 'o-o.myaddr.l.google.com', type: 'TXT' }   // Google ns1
+]
+
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/
+
+async function getExternalIPviaDNS(): Promise<string> {
+  for (const q of DNS_LOOKUPS) {
+    try {
+      const resolver = new Resolver({ timeout: 3000, tries: 1 })
+      resolver.setServers([q.server])
+      if (q.type === 'A') {
+        const ips = await resolver.resolve4(q.host)
+        const ip = ips.find((s) => IPV4_RE.test(s))
+        if (ip) return ip
+      } else {
+        const rows = await resolver.resolveTxt(q.host)
+        const ip = rows?.[0]?.join('').replace(/"/g, '').trim()
+        if (ip && IPV4_RE.test(ip)) return ip
+      }
+    } catch { /* try the next resolver */ }
+  }
+  throw new Error('All DNS resolvers failed')
+}
 
 export interface IPStatus {
   externalIP: string | null
@@ -47,7 +80,7 @@ function getInternalIP(): string | null {
   return null
 }
 
-async function getExternalIP(providers: string[]): Promise<string> {
+async function getExternalIPviaHTTP(providers: string[]): Promise<string> {
   for (const url of providers) {
     try {
       const controller = new AbortController()
@@ -71,6 +104,7 @@ export class IPMonitor extends EventEmitter {
   private checkIntervalMs = 10_000
   private providers: string[] = [...DEFAULT_IP_PROVIDERS]
   private confirmations = DEFAULT_CONFIRMATIONS
+  private ipMode: IPMode = 'auto'
   private pendingIP: string | null = null
   private pendingCount = 0
   private _status: IPStatus = {
@@ -92,6 +126,7 @@ export class IPMonitor extends EventEmitter {
     checkInterval?: number
     providers?: string[]
     confirmations?: number
+    ipMode?: IPMode
   }): void {
     if (opts.whitelist) this.whitelist = opts.whitelist
     if (opts.blacklist) this.blacklist = opts.blacklist
@@ -100,6 +135,15 @@ export class IPMonitor extends EventEmitter {
     if (typeof opts.confirmations === 'number' && opts.confirmations > 0) {
       this.confirmations = opts.confirmations
     }
+    if (opts.ipMode) this.ipMode = opts.ipMode
+  }
+
+  // Fetch the external IP per the configured mode. 'auto' prefers the quiet DNS
+  // path and only falls back to HTTP when DNS is unavailable/blocked.
+  private fetchExternalIP(): Promise<string> {
+    if (this.ipMode === 'dns') return getExternalIPviaDNS()
+    if (this.ipMode === 'http') return getExternalIPviaHTTP(this.providers)
+    return getExternalIPviaDNS().catch(() => getExternalIPviaHTTP(this.providers))
   }
 
   private classify(ip: string): IPStatus['ipSafety'] {
@@ -127,7 +171,7 @@ export class IPMonitor extends EventEmitter {
   private async check(): Promise<void> {
     try {
       const [externalIP, internalIP] = await Promise.all([
-        getExternalIP(this.providers),
+        this.fetchExternalIP(),
         Promise.resolve(getInternalIP())
       ])
 

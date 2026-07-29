@@ -5,7 +5,7 @@ import { toast } from './Toast'
 interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
-  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number }
+  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
   overlay?: { showMarkButton: boolean }
@@ -149,6 +149,23 @@ export default function Settings(): JSX.Element {
               />
             </FieldGroup>
             <FieldGroup title={t('settings.polling')}>
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1">{t('settings.ipMode')}</label>
+                <div className="flex gap-1">
+                  {(['auto', 'dns', 'http'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setConfig({ ...config, network: { ...config.network, ipMode: m } })}
+                      className={`px-3 py-1 text-[10px] rounded transition-colors ${
+                        (config.network.ipMode ?? 'auto') === m ? 'bg-red-600/80 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {t(`settings.ipMode.${m}`)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
+              </div>
               <Field
                 label={t('settings.checkInterval')}
                 value={String(config.network.checkInterval)}

@@ -36,7 +36,12 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   config: {
-    get: (): Promise<unknown> => ipcRenderer.invoke('config:get')
+    get: (): Promise<unknown> => ipcRenderer.invoke('config:get'),
+    onShowMark: (cb: (show: boolean) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, show: boolean): void => cb(show)
+      ipcRenderer.on('overlay:showMark', handler)
+      return () => ipcRenderer.removeListener('overlay:showMark', handler)
+    }
   },
   overlay: {
     setExpanded: (expanded: boolean) =>
