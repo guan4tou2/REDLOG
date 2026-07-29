@@ -98,7 +98,11 @@ const PLUGIN_REGISTRY: PluginManifest[] = [
 
 function commandExists(cmd: string): boolean {
   try {
-    execSync(`which ${cmd}`, { stdio: 'ignore' })
+    // Windows has no `which` — it's `where`. Without this, every requires-based
+    // hook (claude-code, codex, mitmproxy) throws here and reports unavailable
+    // on Windows, greying out the whole panel.
+    const probe = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`
+    execSync(probe, { stdio: 'ignore' })
     return true
   } catch {
     return false
@@ -166,6 +170,17 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
         }
       ]
     case 'codex':
+      // codex-wrapper.sh is a bash script using POSIX-shell idioms (and the
+      // `SHELL=… cmd` inline-env prefix). Those don't run in cmd/PowerShell, so
+      // on Windows point at WSL/Git Bash with a note instead of a command that
+      // would just error when pasted.
+      if (process.platform === 'win32') {
+        return [
+          {
+            label: 'The Codex wrapper is a bash script — run it inside WSL or Git Bash (cmd/PowerShell cannot execute it). Inside that shell, use the same commands shown on macOS/Linux, adjusting the path for that environment.'
+          }
+        ]
+      }
       return [
         {
           label: 'Wrap a whole shell the agent will use — every command it runs is captured',

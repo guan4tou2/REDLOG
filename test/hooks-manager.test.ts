@@ -29,10 +29,17 @@ describe('hooks-manager guided setup', () => {
     expect(cmd).toContain('mitmproxy-addon.py')
   })
 
-  it('codex is guided-manual and references the wrapper by absolute path', () => {
+  it('codex is guided-manual with platform-appropriate steps', () => {
     const c = byId('codex')
     expect(c.installMethod).toBe('manual')
-    expect(c.manualSteps?.some((s) => s.command?.includes(c.hookFile))).toBe(true)
-    expect(c.manualSteps?.some((s) => s.command?.includes('codex run'))).toBe(true)
+    expect(c.manualSteps?.length).toBeGreaterThan(0)
+    if (process.platform === 'win32') {
+      // Windows: a note, not a broken bash command
+      expect(c.manualSteps?.every((s) => !s.command)).toBe(true)
+      expect(c.manualSteps?.[0].label).toMatch(/WSL|Git Bash/)
+    } else {
+      expect(c.manualSteps?.some((s) => s.command?.includes(c.hookFile))).toBe(true)
+      expect(c.manualSteps?.some((s) => s.command?.includes('codex run'))).toBe(true)
+    }
   })
 })
