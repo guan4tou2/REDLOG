@@ -31,15 +31,22 @@ async function detectMac(): Promise<NetworkLink> {
   const wifiDev = ports.match(/Hardware Port:\s*Wi-Fi[\s\S]*?Device:\s*(\S+)/)?.[1] ?? ''
 
   if (defaultDev && wifiDev && defaultDev === wifiDev) {
-    // `ipconfig getsummary` exposes the SSID WITHOUT Location Services, which
-    // modern macOS (14/15+) now requires for `networksetup -getairportnetwork`
-    // (it returns "You are not associated…" without the grant). Try it first.
+    // macOS 14+ (Sonoma/Sequoia) treats the SSID as location-sensitive: without
+    // a Location Services grant, `ipconfig getsummary` returns the literal string
+    // "<redacted>" and `networksetup -getairportnetwork` says "not associated".
+    // Reject those placeholders and fall back to an unnamed Wi-Fi link so the UI
+    // shows a generic "Wi-Fi" label instead of the raw "<redacted>".
+    const usable = (s?: string): string => {
+      const v = s?.trim() ?? ''
+      if (!v || /^<.*>$/.test(v) || /redacted|not associated/i.test(v)) return ''
+      return v
+    }
     const summary = await run(`ipconfig getsummary ${wifiDev}`)
-    const ssid = summary.match(/^\s*SSID\s*:\s*(.+)$/im)?.[1]?.trim()
+    const ssid = usable(summary.match(/^\s*SSID\s*:\s*(.+)$/im)?.[1])
     if (ssid) return { type: 'wifi', name: ssid }
     const ssidOut = await run(`networksetup -getairportnetwork ${wifiDev}`)
-    const ssid2 = ssidOut.match(/Current Wi-Fi Network:\s*(.+)/)?.[1]?.trim()
-    if (ssid2 && !/not associated/i.test(ssid2)) return { type: 'wifi', name: ssid2 }
+    const ssid2 = usable(ssidOut.match(/Current Wi-Fi Network:\s*(.+)/)?.[1])
+    if (ssid2) return { type: 'wifi', name: ssid2 }
     return { type: 'wifi', name: '' }
   }
   if (defaultDev) return { type: 'wired', name: '' }

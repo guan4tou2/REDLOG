@@ -21,6 +21,9 @@ export interface RedLogConfig {
     confirmations: number
     /** how to fetch the external IP: quiet DNS, HTTP echo, or DNS→HTTP fallback */
     ipMode: 'dns' | 'http' | 'auto'
+    /** macOS gates the Wi-Fi SSID behind Location Services; opt in to request it
+        so the HUD can show the real network name instead of a generic "Wi-Fi". */
+    showWifiName: boolean
   }
   scope: {
     enforcement: string
@@ -77,7 +80,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     checkInterval: 60,
     providers: [],
     confirmations: 3,
-    ipMode: 'auto'
+    ipMode: 'auto',
+    showWifiName: false
   },
   scope: {
     enforcement: 'warn',
