@@ -65,7 +65,7 @@ function formatTimeLabel(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function TimelinePanel(): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?: string; focusTs?: number } = {}): JSX.Element {
   const [events, setEvents] = useState<RedLogEvent[]>([])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
@@ -342,10 +342,20 @@ export default function TimelinePanel(): JSX.Element {
     if (loading || didScrollToNow.current) return
     const el = scrollRef.current
     if (!el || el.clientWidth === 0) return
-    const target = toX(Date.now()) - el.clientWidth + 80
-    el.scrollLeft = Math.max(0, Math.min(target, TRACK_W - el.clientWidth))
+    // Jumping from Loot (or elsewhere) focuses a specific event: select it and
+    // centre it. Otherwise land on the present, latest activity in view.
+    const focused = focusEventId ? events.find((e) => e.id === focusEventId) : null
+    if (focused) {
+      setSelectedEvent(focused)
+      el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+    } else if (focusEventId && focusTs) {
+      // event not in the loaded window — at least scroll to its time
+      el.scrollLeft = Math.max(0, Math.min(toX(focusTs) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+    } else {
+      el.scrollLeft = Math.max(0, Math.min(toX(Date.now()) - el.clientWidth + 80, TRACK_W - el.clientWidth))
+    }
     didScrollToNow.current = true
-  }, [loading, toX, TRACK_W])
+  }, [loading, toX, TRACK_W, focusEventId, focusTs, events])
 
   // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
   // scroll so the timestamp that was under the pointer stays under the pointer.

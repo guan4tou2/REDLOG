@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 
-export function LootPanel(): JSX.Element {
+export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
+    id: string
     timestamp: number
+    targetId: string | null
     matches: Array<{ type: string; confidence: string; preview: string }>
   }>>([])
   const [lootCount, setLootCount] = useState(0)
@@ -26,7 +28,9 @@ export function LootPanel(): JSX.Element {
     const events = await window.redlog.events.query({ agentType: 'loot' })
     setLootEvents(
       events.map((e) => ({
+        id: e.id,
         timestamp: e.timestamp,
+        targetId: e.targetId,
         matches: (e.data.matches as Array<{ type: string; confidence: string; preview: string }>) ?? []
       }))
     )
@@ -70,9 +74,24 @@ export function LootPanel(): JSX.Element {
       ) : (
         <div className="space-y-2">
           {lootEvents.map((le, i) => (
-            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
-              <div className="text-zinc-500 text-xs mb-2">
-                {new Date(le.timestamp).toLocaleTimeString()} · {t('loot.items', { count: le.matches.length })}
+            <div key={le.id || i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="text-zinc-500 text-xs">
+                  <span className="text-zinc-400 tabular-nums">{new Date(le.timestamp).toLocaleString()}</span>
+                  {le.targetId && (
+                    <span> · {t('loot.from')} <span className="text-zinc-300 font-mono">{le.targetId}</span></span>
+                  )}
+                  <span> · {t('loot.items', { count: le.matches.length })}</span>
+                </div>
+                {onOpenInTimeline && (
+                  <button
+                    onClick={() => onOpenInTimeline(le.id, le.timestamp)}
+                    className="text-[10px] text-cyan-400/80 hover:text-cyan-300 whitespace-nowrap shrink-0 transition-colors"
+                    title={t('loot.openInTimelineHint')}
+                  >
+                    {t('loot.openInTimeline')} →
+                  </button>
+                )}
               </div>
               {le.matches.map((m, j) => (
                 <div key={j} className="border-t border-zinc-800 pt-1 mt-1 first:border-0 first:pt-0 first:mt-0">

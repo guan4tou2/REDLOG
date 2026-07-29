@@ -31,6 +31,9 @@ const modKey = isMac ? '⌘' : 'Ctrl+'
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [view, setView] = useState<View>('dashboard')
+  // Event to focus when the Timeline opens (set when jumping from Loot); cleared
+  // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
+  const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
   const [showMarker, setShowMarker] = useState(false)
   const { t } = useI18n()
 
@@ -106,17 +109,17 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => setView(v as View)} />
+        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
 
         <div className="flex-1 min-w-0">
           <ErrorBoundary label={view}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
             {view === 'terminal' && <TerminalView />}
-            {view === 'timeline' && <TimelinePanel />}
+            {view === 'timeline' && <TimelinePanel focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} />}
             {view === 'screenshots' && <ScreenshotsView />}
             {view === 'targets' && <TargetView />}
             {view === 'scope' && <ScopeStatus />}
-            {view === 'loot' && <LootPanel />}
+            {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'marks' && <QuickMarksView />}
             {view === 'settings' && <Settings />}
             {view === 'search' && <SearchPanel />}
