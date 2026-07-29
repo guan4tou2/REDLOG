@@ -7,11 +7,12 @@
 // searing #ff3b5c to a calmer rose so long sessions don't fatigue the eye.
 
 export const HUD = {
-  // frame / system / live / pivot
+  // frame / system / live / pivot — MUST match tailwind's soften map (config)
+  // so the overlay and the app render the exact same accents.
   cyan: '#3fc7d6',
   sky: '#57b8d6',
-  // states
-  red: '#dd5e63',      // danger / exposed / recording
+  // states — identical hexes to tailwind red-400/green-400/amber-400
+  red: '#d75f63',      // danger / exposed / recording
   green: '#5ecf9c',    // safe
   amber: '#d4ac5a',    // unknown / idle / partial
   // neutrals

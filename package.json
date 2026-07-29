@@ -15,10 +15,12 @@
     "redlog-cli": "./cli/redlog-cli.js"
   },
   "scripts": {
+    "predev": "electron-rebuild",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f",
+    "pretest": "npm rebuild better-sqlite3",
     "test": "vitest run",
     "test:watch": "vitest"
   },
