@@ -1,0 +1,8 @@
+# Shell scripts must keep LF endings — a CRLF in the shebang breaks them under
+# bash/WSL ("bad interpreter"). Applies to all hooks and shell helpers.
+*.sh   text eol=lf
+*.zsh  text eol=lf
+*.bash text eol=lf
+
+# Python hooks (e.g. mitmproxy addon) also run under Unix interpreters.
+*.py   text eol=lf
