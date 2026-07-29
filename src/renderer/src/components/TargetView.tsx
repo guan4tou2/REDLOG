@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { HudPanel } from './Hud'
 
 interface TargetEntry {
   target: string
@@ -111,12 +112,8 @@ export function TargetView(): JSX.Element {
         <div className="space-y-2">
           {filtered.map((tgt) => (
             <div key={tgt.target}>
-              <div
-                onClick={() => loadEvidence(tgt.target)}
-                className={`bg-zinc-900 border rounded-lg p-3 cursor-pointer transition-colors ${
-                  selected === tgt.target ? 'border-red-600' : 'border-zinc-800 hover:border-zinc-700'
-                }`}
-              >
+              <HudPanel tone={tgt.inScope === false ? 'red' : selected === tgt.target ? 'cyan' : 'neutral'}>
+              <div onClick={() => loadEvidence(tgt.target)} className="p-3 cursor-pointer">
                 <div className="flex items-center justify-between">
                   <span className="text-white font-mono text-sm">{tgt.target}</span>
                   <div className="flex items-center gap-2">
@@ -131,6 +128,7 @@ export function TargetView(): JSX.Element {
                   {t('targets.first', { time: new Date(tgt.firstSeen).toLocaleTimeString() })} · {t('targets.last', { time: new Date(tgt.lastSeen).toLocaleTimeString() })}
                 </div>
               </div>
+              </HudPanel>
 
               {selected === tgt.target && (
                 <div className="ml-4 mt-1 border-l-2 border-zinc-800 pl-3 space-y-1 py-2">

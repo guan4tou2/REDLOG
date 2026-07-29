@@ -1,9 +1,27 @@
 /** @type {import('tailwindcss').Config} */
+const colors = require('tailwindcss/colors')
+
+// App-wide comfort remap: pull the accent shades used across the UI down to the
+// desaturated HUD palette so nothing "vibrates" against the dark surface (a
+// known dark-mode eye-strain cause). One place, whole app — every text-red-400 /
+// text-green-400 / text-amber-400 etc. picks these up, keeping the app unified
+// with the HUD (see lib/hud.ts) instead of split between bright and calm reds.
+const soften = {
+  red: { ...colors.red, 300: '#e4989b', 400: '#d75f63', 500: '#cf5459', 600: '#b84d51' },
+  rose: { ...colors.rose, 400: '#d75f63' },
+  emerald: { ...colors.emerald, 300: '#8fddb6', 400: '#5ecf9c', 500: '#4bbf8a' },
+  green: { ...colors.green, 300: '#8fddb6', 400: '#5ecf9c', 500: '#4bbf8a' },
+  amber: { ...colors.amber, 300: '#e2c886', 400: '#d4ac5a', 500: '#c69a45' },
+  yellow: { ...colors.yellow, 300: '#e2c886', 400: '#d4ac5a', 500: '#c69a45' },
+  cyan: { ...colors.cyan, 300: '#7fe0ea', 400: '#3fc7d6', 500: '#2ba9b8' }
+}
+
 module.exports = {
   content: ['./src/renderer/src/**/*.{tsx,ts,html}'],
   theme: {
     extend: {
       colors: {
+        ...soften,
         redlog: {
           bg: '#0a0a0a',
           surface: '#141414',

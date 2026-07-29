@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
+import { HudPanel } from './Hud'
 
 export function ScopeStatus(): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -36,7 +37,7 @@ export function ScopeStatus(): JSX.Element {
     <div className="p-4 space-y-4 overflow-auto h-full">
       <h2 className="text-lg font-semibold text-white">{t('scope.title')}</h2>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
+      <HudPanel tone={violations.length > 0 ? 'red' : configured ? 'green' : 'neutral'}><div className="p-3 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-zinc-300 text-sm font-medium">{t('scope.monitor')}</span>
           {configured ? (
@@ -63,14 +64,14 @@ export function ScopeStatus(): JSX.Element {
             </p>
           </div>
         )}
-      </div>
+      </div></HudPanel>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+      <HudPanel tone="cyan"><div className="p-3">
         <div className="flex items-center justify-between">
           <span className="text-zinc-300 text-sm font-medium">{t('scope.evidenceLog')}</span>
           <span className="text-zinc-500 text-xs">{t('scope.entries', { count: chainLen })}</span>
         </div>
-      </div>
+      </div></HudPanel>
 
       {violations.length > 0 && (
         <div className="space-y-1">
