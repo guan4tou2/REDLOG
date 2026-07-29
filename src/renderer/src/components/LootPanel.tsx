@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
-import { HudPanel } from './Hud'
 
 export function LootPanel(): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -71,7 +70,7 @@ export function LootPanel(): JSX.Element {
       ) : (
         <div className="space-y-2">
           {lootEvents.map((le, i) => (
-            <HudPanel key={i} tone="red"><div className="p-3">
+            <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
               <div className="text-zinc-500 text-xs mb-2">
                 {new Date(le.timestamp).toLocaleTimeString()} · {t('loot.items', { count: le.matches.length })}
               </div>
@@ -90,7 +89,7 @@ export function LootPanel(): JSX.Element {
                   <div className="text-zinc-400 text-xs font-mono mt-0.5 truncate">{m.preview}</div>
                 </div>
               ))}
-            </div></HudPanel>
+            </div>
           ))}
         </div>
       )}

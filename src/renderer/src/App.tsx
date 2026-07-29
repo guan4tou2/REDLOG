@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
-import { HudPanel } from './components/Hud'
-import { HUD } from './lib/hud'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
@@ -147,13 +145,15 @@ function CaptureHealthCard({ capture, onNavigate }: {
 
   const dark = capture.verdict === 'dark'
   const partial = capture.verdict === 'partial'
-  const tone = dark ? 'red' : partial ? 'amber' : 'green'
+  const barColor = dark ? 'bg-red-500' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
     <section>
-      <HudPanel tone={tone} live={dark} scan={dark}>
-        <div className="p-4">
+      <div className={`rounded-lg border p-4 shadow-card relative overflow-hidden ${
+        dark ? 'bg-red-950/30 border-red-900/50' : partial ? 'bg-amber-950/20 border-amber-900/40' : 'bg-redlog-surface border-redlog-border'
+      }`}>
+        <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-[0.15em]">{t('capture.title')}</h2>
           <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
@@ -178,8 +178,7 @@ function CaptureHealthCard({ capture, onNavigate }: {
             </div>
           ))}
         </div>
-        </div>
-      </HudPanel>
+      </div>
     </section>
   )
 }
@@ -317,7 +316,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
           <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </h2>
-          <HudPanel tone="neutral"><div className="p-4">
+          <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
             <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
               <div>
                 <span className="text-zinc-500 text-xs">{t('dashboard.id')}</span>
@@ -340,11 +339,11 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             </div>
             <button
               onClick={() => onNavigate('settings')}
-              className="mt-3 text-[10px] text-redlog-cyan/80 hover:text-redlog-cyan transition-colors"
+              className="mt-3 text-[10px] text-red-400/80 hover:text-red-300 transition-colors"
             >
               {t('dashboard.editSettings')}
             </button>
-          </div></HudPanel>
+          </div>
         </section>
       )}
 
@@ -352,7 +351,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
           {t('dashboard.shortcuts')}
         </h2>
-        <HudPanel tone="neutral"><div className="p-4">
+        <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {[
               ...VIEW_KEYS.map((v, i) => [`⌘${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
@@ -365,7 +364,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               </div>
             ))}
           </div>
-        </div></HudPanel>
+        </div>
       </section>
     </div>
   )
@@ -376,16 +375,17 @@ type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 function StatCard({ label, value, sub, tone = 'neutral' }: {
   label: string; value: string; sub?: string; tone?: HudTone
 }): JSX.Element {
-  const valueColor = tone === 'red' ? HUD.red : tone === 'green' ? HUD.green
-    : tone === 'amber' ? HUD.amber : tone === 'cyan' ? HUD.cyan : '#e5e5e5'
+  const bar = tone === 'red' ? 'bg-red-500' : tone === 'green' ? 'bg-emerald-500'
+    : tone === 'amber' ? 'bg-amber-500' : tone === 'cyan' ? 'bg-cyan-500' : 'bg-zinc-700'
+  const valueColor = tone === 'red' ? 'text-red-400' : tone === 'green' ? 'text-emerald-400'
+    : tone === 'amber' ? 'text-amber-400' : tone === 'cyan' ? 'text-cyan-400' : 'text-zinc-200'
   return (
-    <HudPanel tone={tone}>
-      <div className="p-4">
-        <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
-        <p className="text-lg font-mono mt-1.5 font-semibold tabular-nums" style={{ color: valueColor }}>{value}</p>
-        {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
-      </div>
-    </HudPanel>
+    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
+      <span className={`absolute top-0 left-0 right-0 h-[2px] ${bar}`} />
+      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
+      {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
+    </div>
   )
 }
 
