@@ -5,7 +5,7 @@ import { toast } from './Toast'
 const MIN_LANE_H = 36
 const LABEL_W = 92
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'agent', 'http_navigation', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'scope', 'system'] as const
+const LANES = ['shell', 'agent', 'http_navigation', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 const LANE_COLORS: Record<LaneId, string> = {
@@ -21,6 +21,7 @@ const LANE_COLORS: Record<LaneId, string> = {
   c2_checkin: '#f43f5e',
   marker: '#ef4444',
   loot: '#f97316',
+  cleanup: '#dc2626',
   scope: '#ef4444',
   system: '#52525b'
 }
@@ -51,6 +52,8 @@ function eventTitle(event: RedLogEvent): string {
       return `C2 beacon ← ${d.dest_ip || d.dest_host || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
     case 'pivot':
       return `Pivot [${d.tool}] ${d.subtype || ''}${d.via ? ` → ${d.via}` : ''}${d.route ? ` (${d.route})` : ''}`.trim()
+    case 'cleanup':
+      return `⚠ Cleanup [${d.tool}] ${d.subtype || ''}${d.target ? ` → ${d.target}` : ''}`.trim()
     case 'marker':
       return `${(d.severity as string || 'info').toUpperCase()}: ${d.title}`
     case 'loot': {
@@ -181,6 +184,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     c2_checkin: t('timeline.c2Checkin'),
     marker: t('timeline.markers'),
     loot: t('timeline.loot'),
+    cleanup: t('timeline.cleanup'),
     scope: t('timeline.scope'),
     system: t('timeline.system')
   }), [t])
