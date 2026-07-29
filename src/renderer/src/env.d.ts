@@ -239,7 +239,7 @@ interface ChainAnchorInfo {
 interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
-  network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number }
+  network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope?: { enforcement?: string; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null }
   screenshot?: { quality?: number }
 }

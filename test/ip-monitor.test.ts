@@ -24,7 +24,8 @@ describe('IPMonitor settling', () => {
     m.configure({
       whitelist: ['10.8.0.0/24'],
       blacklist: ['203.0.113.0/24'],
-      confirmations: 3
+      confirmations: 3,
+      ipMode: 'http'
     })
   })
 
@@ -88,7 +89,7 @@ describe('IPMonitor settling', () => {
   })
 
   it('blacklist (own IP) wins over whitelist — identity leak must not be masked', async () => {
-    m.configure({ whitelist: ['203.0.113.0/24'], blacklist: ['203.0.113.0/24'] })
+    m.configure({ whitelist: ['203.0.113.0/24'], blacklist: ['203.0.113.0/24'], ipMode: 'http' })
     mockIPs('203.0.113.9')
     await tick(m)
     expect(m.status.ipSafety).toBe('exposed')
@@ -96,7 +97,7 @@ describe('IPMonitor settling', () => {
 
   it('blacklist mode: IP not in blacklist is implicitly safe', async () => {
     const b = new IPMonitor()
-    b.configure({ blacklist: ['203.0.113.0/24'], confirmations: 1 })
+    b.configure({ blacklist: ['203.0.113.0/24'], confirmations: 1, ipMode: 'http' })
     mockIPs('198.51.100.5')
     await tick(b)
     expect(b.status.externalIP).toBe('198.51.100.5')
@@ -106,7 +107,7 @@ describe('IPMonitor settling', () => {
   it('honours a custom provider list so an operator can self-host', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ip: '10.8.0.5' }) } as unknown as Response))
     vi.stubGlobal('fetch', fetchMock)
-    m.configure({ providers: ['https://ip.internal.example/json'] })
+    m.configure({ providers: ['https://ip.internal.example/json'], ipMode: 'http' })
     await tick(m)
     expect(fetchMock.mock.calls[0][0]).toBe('https://ip.internal.example/json')
   })

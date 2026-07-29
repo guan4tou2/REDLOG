@@ -70,6 +70,9 @@ export function createOverlayWindow(): BrowserWindow {
   })
 
   win.setIgnoreMouseEvents(true, { forward: true })
+  // 'screen-saver' is the highest window level — the HUD stays above other
+  // always-on-top windows (and over fullscreen apps, via visibleOnFullScreen).
+  win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

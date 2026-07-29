@@ -31,11 +31,16 @@ export default function OverlayApp(): JSX.Element {
   })
 
   useEffect(() => {
-    const cfg = window.redlog.config as { get?: () => Promise<unknown> } | undefined
+    const cfg = window.redlog.config as {
+      get?: () => Promise<unknown>
+      onShowMark?: (cb: (show: boolean) => void) => () => void
+    } | undefined
     cfg?.get?.().then((c) => {
       const ov = (c as { overlay?: { showMarkButton?: boolean } } | null)?.overlay
       setShowMark(ov?.showMarkButton !== false)
     }).catch(() => {})
+    // live-update when the setting is toggled in Settings
+    return cfg?.onShowMark?.(setShowMark)
   }, [])
 
   useEffect(() => {

@@ -19,6 +19,8 @@ export interface RedLogConfig {
     checkInterval: number
     providers: string[]
     confirmations: number
+    /** how to fetch the external IP: quiet DNS, HTTP echo, or DNS→HTTP fallback */
+    ipMode: 'dns' | 'http' | 'auto'
   }
   scope: {
     enforcement: string
@@ -74,7 +76,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     blacklist: [],
     checkInterval: 60,
     providers: [],
-    confirmations: 3
+    confirmations: 3,
+    ipMode: 'auto'
   },
   scope: {
     enforcement: 'warn',
