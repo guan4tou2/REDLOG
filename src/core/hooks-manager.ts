@@ -106,6 +106,15 @@ const PLUGIN_REGISTRY: PluginManifest[] = [
     requires: [],
     hookFile: 'hooks/shell-hook.ps1',
     installMethod: 'manual'
+  },
+  {
+    id: 'shell-wsl',
+    name: 'WSL (Bash)',
+    description: 'Captures commands from WSL bash sessions — auto-resolves Windows token path',
+    agentType: 'shell',
+    requires: [],
+    hookFile: 'hooks/shell-preexec-hook.sh',
+    installMethod: 'manual'
   }
 ]
 
@@ -219,6 +228,10 @@ function checkInstalled(plugin: PluginManifest): boolean {
 function checkAvailable(plugin: PluginManifest): boolean {
   if (plugin.requires.length === 0) {
     if (plugin.id === 'shell-powershell') return process.platform === 'win32'
+    if (plugin.id === 'shell-wsl') {
+      if (process.platform !== 'win32') return false
+      try { execSync('where wsl', { stdio: 'ignore' }); return true } catch { return false }
+    }
     if (plugin.id === 'shell-zsh') return process.env.SHELL?.includes('zsh') || existsSync('/bin/zsh')
     if (plugin.id === 'shell-bash') {
       return existsSync('/bin/bash') || (process.platform === 'win32' && commandExists('bash'))
@@ -277,6 +290,19 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
           command: `. "${hookFile}"`
         }
       ]
+    case 'shell-wsl': {
+      const wslHookPath = hookFile.replace(/\\/g, '/').replace(/^([A-Z]):/, (_m, d: string) => `/mnt/${d.toLowerCase()}`)
+      return [
+        {
+          label: 'Add to your WSL ~/.bashrc so it loads on every session',
+          command: `echo 'source "${wslHookPath}"' >> ~/.bashrc`
+        },
+        {
+          label: 'Or source it manually in the current WSL session',
+          command: `source "${wslHookPath}"`
+        }
+      ]
+    }
     default:
       return undefined
   }
