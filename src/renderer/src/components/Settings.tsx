@@ -13,7 +13,7 @@ interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
-  overlay?: { showMarkButton: boolean; showInDock?: boolean }
+  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean }
   browser?: {
     binary: string
     proxy: string
@@ -242,6 +242,16 @@ export default function Settings(): JSX.Element {
                 <span className="text-xs text-zinc-300">{t('settings.overlayShowMark')}</span>
               </label>
               <p className="text-[10px] text-zinc-600">{t('settings.overlayShowMarkHint')}</p>
+              <label className="flex items-center gap-2 cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  checked={config.overlay?.flashOnExposed !== false}
+                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, flashOnExposed: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.overlayFlashExposed')}</span>
+              </label>
+              <p className="text-[10px] text-zinc-600">{t('settings.overlayFlashExposedHint')}</p>
               {isMacOS && (
                 <>
                   <label className="flex items-center gap-2 cursor-pointer mt-2">
