@@ -80,6 +80,7 @@
   "ip.externalIp": "外部 IP",
   "ip.internalIp": "內部 IP",
   "ip.safetyHint": "在「設定 ▸ 網路」設定白名單(攻擊 IP)與黑名單(自己 IP),以啟用判定",
+  "ip.exposedHint": "暴露:目前外部 IP 命中黑名單(你自己的 IP)—— 代表流量沒走 VPN/tunnel,真實身分正在外露。請先檢查 VPN/proxy 連線再繼續。",
 
   "timeline.title": "攻擊時間軸",
   "timeline.events": "（{{count}} 個事件）",
@@ -100,6 +101,7 @@
   "timeline.shellEvent": "Shell 事件",
 
   "targets.title": "目標（{{count}}）",
+  "targets.subtitle": "目標由記錄到的指令自動收集(例如 nmap 10.0.0.1),與「範圍」設定無關。範圍是你設定的允許清單,用來判定是否在範圍內。",
   "targets.all": "全部",
   "targets.inScope": "範圍內",
   "targets.outOfScope": "範圍外",
@@ -277,6 +279,7 @@
   "settings.exportFailed": "匯出失敗",
   "settings.savedTo": "已儲存至：{{path}}",
   "settings.scopeEnforcement": "範圍執行模式",
+  "settings.scopeEnforcementHint": "WARN:碰到範圍外目標會示警(紅色徽章 + 通知藍隊 deconfliction);LOG:一樣記錄但不示警。明確排除的目標兩者都會示警。RedLog 只記錄,不會擋指令。",
   "settings.inScopeTargets": "範圍內目標",
   "settings.targetsLabel": "目標（IP、CIDR、*.domain）",
   "settings.targetsPlaceholder": "例如 192.168.1.0/24 或 *.example.com",

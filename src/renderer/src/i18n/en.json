@@ -80,6 +80,7 @@
   "ip.externalIp": "External IP",
   "ip.internalIp": "Internal IP",
   "ip.safetyHint": "Set the whitelist (attack IPs) and blacklist (your own IPs) in Settings ▸ Network to enable classification",
+  "ip.exposedHint": "EXPOSED: your external IP matches the blacklist (your own IP) — traffic is not going through your VPN/tunnel, so your real identity is showing. Check your VPN/proxy before continuing.",
 
   "timeline.title": "Attack Timeline",
   "timeline.events": "({{count}} events)",
@@ -100,6 +101,7 @@
   "timeline.shellEvent": "Shell event",
 
   "targets.title": "Targets ({{count}})",
+  "targets.subtitle": "Targets are auto-collected from your logged commands (e.g. nmap 10.0.0.1) — independent of Scope. Scope is the allowlist you set to decide in/out of scope.",
   "targets.all": "All",
   "targets.inScope": "In Scope",
   "targets.outOfScope": "Out of Scope",
@@ -277,6 +279,7 @@
   "settings.exportFailed": "Export failed",
   "settings.savedTo": "Saved to: {{path}}",
   "settings.scopeEnforcement": "Scope Enforcement",
+  "settings.scopeEnforcementHint": "WARN flags out-of-scope targets (red badge + deconfliction alert to the blue team). LOG records them without alerting. Explicitly excluded targets are flagged in both. RedLog only records — it never blocks commands.",
   "settings.inScopeTargets": "In-Scope Targets",
   "settings.targetsLabel": "Targets (IPs, CIDRs, *.domain)",
   "settings.targetsPlaceholder": "e.g. 192.168.1.0/24 or *.example.com",

@@ -375,6 +375,7 @@ export default function Settings(): JSX.Element {
                   </button>
                 ))}
               </div>
+              <p className="text-[10px] text-zinc-600 mt-2 leading-relaxed">{t('settings.scopeEnforcementHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.inScopeTargets')}>
               <ListField
