@@ -296,6 +296,11 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.redlog')
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
 
+  // Guarantee a Dock presence on macOS. A CLI-launched dev build (electron-vite)
+  // registers as an accessory (UIElement) and gets no Dock icon; force 'regular'
+  // so RedLog always shows in the Dock, matching the packaged app.
+  if (process.platform === 'darwin') app.dock?.show()
+
   const savedState = loadWindowState()
   mainWindow = createMainWindow(savedState?.bounds)
   if (savedState?.isMaximized) mainWindow.maximize()
