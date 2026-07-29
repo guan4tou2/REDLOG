@@ -301,9 +301,16 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
       let lootValues: string[] = []
       let pivot: ReturnType<typeof detectPivot> = null
+      let pivotClose: ReturnType<typeof detectPivot> = null
       if (agentType === 'shell' && data.command) {
         const cmd = data.command as string
         const isStart = data.subtype === 'command_start'
+        // A command_end for a foreground pivot (ssh -D running until Ctrl-C, etc.)
+        // is our closest signal that the tunnel actually shut down. The near-zero
+        // duration guard skips backgrounded `-fN`/`&` variants that exit instantly
+        // while the tunnel keeps running — we can't tell those from a live pivot.
+        const isEnd = data.subtype === 'command_end' && Number(data.duration_sec ?? 0) >= 2
+        if (isEnd) pivotClose = detectPivot(cmd)
 
         const detected = extractTarget(cmd)
         if (detected) {
@@ -363,6 +370,20 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           }, { engagementId, operatorId: operator.id, targetId: pivot.via ?? targetId })
           if (pv) eventBus.publish(pv)
         } catch { /* pivot event is additive; ignore failures */ }
+      }
+      // Closed foreground pivot — a separate event so the audit trail shows both
+      // ends of the tunnel, not only when it opened.
+      if (pivotClose) {
+        try {
+          const pv = insertEvent('pivot', {
+            subtype: 'closed', tool: pivotClose.tool, via: pivotClose.via,
+            route: pivotClose.route, forward: pivotClose.forward,
+            command: data.command, exit_code: data.exit_code,
+            duration_sec: data.duration_sec,
+            description: `Pivot closed [${pivotClose.tool}]${pivotClose.via ? ` → ${pivotClose.via}` : ''}`
+          }, { engagementId, operatorId: operator.id, targetId: pivotClose.via ?? targetId })
+          if (pv) eventBus.publish(pv)
+        } catch { /* additive */ }
       }
 
       json(res, 201, event)
