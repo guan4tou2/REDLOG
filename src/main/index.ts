@@ -43,6 +43,7 @@ import { createPluginHost } from '../core/plugins/host'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
+import { checkForUpdates } from './services/updater'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -155,6 +156,16 @@ function getActivePivots(): ActivePivot[] {
 // broadcast path; the last-known value rides along with every ip:status.
 let currentLink: { type: 'wifi' | 'wired' | 'unknown'; name: string } = { type: 'unknown', name: '' }
 let linkTimer: ReturnType<typeof setInterval> | null = null
+
+// Whether RedLog keeps a macOS Dock icon. Showing the overlay flips the app to an
+// accessory (no Dock icon); this lets the operator choose to keep it (default) or
+// run Dock-less. Applied on overlay show and on settings change.
+let keepDockIcon = true
+function applyDock(): void {
+  if (process.platform !== 'darwin') return
+  if (keepDockIcon) app.dock?.show()
+  else app.dock?.hide()
+}
 function startLinkMonitor(): void {
   const refresh = (): void => { detectLink().then((l) => { currentLink = l }).catch(() => {}) }
   refresh()
@@ -173,6 +184,8 @@ function startProject(project: ProjectMeta): void {
   const projectDir = getProjectPath(project)
   const config = loadConfig(projectDir)
   saveConfig(projectDir, config)
+  keepDockIcon = config.overlay?.showInDock !== false
+  applyDock()
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
 
@@ -257,6 +270,14 @@ function startProject(project: ProjectMeta): void {
 
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow()
+    // The overlay joins all Spaces / floats over fullscreen, which flips the app
+    // to an accessory on macOS and drops the Dock icon. Re-apply the operator's
+    // Dock preference whenever the overlay appears so it isn't silently changed.
+    if (process.platform === 'darwin') {
+      overlayWindow.on('show', applyDock)
+      applyDock()
+      setTimeout(applyDock, 250)
+    }
     startOverlayMouseTracking()
     if (tray) {
       tray.destroy()
@@ -365,6 +386,8 @@ app.whenReady().then(() => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
     saveConfig(projectDir, newConfig)
+    keepDockIcon = newConfig.overlay?.showInDock !== false
+    applyDock()
     ipMonitor.configure({
       whitelist: newConfig.network.whitelist,
       blacklist: newConfig.network.blacklist,
@@ -773,6 +796,11 @@ app.whenReady().then(() => {
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register('CommandOrControl+Shift+M', triggerQuickMark)
   ipcMain.on('overlay:quickMark', triggerQuickMark)
+
+  // --- Updates ---
+  ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  // Silent check shortly after launch (packaged builds only).
+  setTimeout(() => { checkForUpdates().catch(() => {}) }, 5000)
 
   app.on('activate', () => {
     mainWindow?.show()
