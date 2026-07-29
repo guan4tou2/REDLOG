@@ -96,6 +96,7 @@ export default function TimelinePanel(): JSX.Element {
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, scroll: 0 })
+  const didScrollToNow = useRef(false)
   const { t } = useI18n()
 
   const laneLabels: Record<LaneId, string> = useMemo(() => ({
@@ -230,6 +231,18 @@ export default function TimelinePanel(): JSX.Element {
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
+
+  // On open, jump the viewport to the present so the newest activity is in view
+  // rather than the oldest. Runs once, after the first events have loaded and the
+  // track has a real width. Manual pan/zoom afterwards is left untouched.
+  useEffect(() => {
+    if (loading || didScrollToNow.current) return
+    const el = scrollRef.current
+    if (!el || el.clientWidth === 0) return
+    const target = toX(Date.now()) - el.clientWidth + 80
+    el.scrollLeft = Math.max(0, Math.min(target, TRACK_W - el.clientWidth))
+    didScrollToNow.current = true
+  }, [loading, toX, TRACK_W])
 
   const toggleLane = useCallback((lane: LaneId) => {
     setHiddenLanes((prev) => {
