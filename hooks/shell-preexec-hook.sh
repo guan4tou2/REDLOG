@@ -72,7 +72,7 @@ _redlog_send_event() {
 
   local payload
   payload=$(python3 -c "
-import json, sys
+import json, sys, os
 d = {
     'agent_type': 'shell',
     'data': {
@@ -82,6 +82,8 @@ d = {
         'pid': $$$
     }
 }
+if os.environ.get('REDLOG_TERMINAL') == '1':
+    d['data']['source'] = 'builtin-terminal'
 if sys.argv[3]:
     d['data'].update(json.loads(sys.argv[3]))
 print(json.dumps(d))
