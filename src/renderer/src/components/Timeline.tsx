@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 
@@ -28,6 +28,9 @@ function eventTitle(event: RedLogEvent): string {
     case 'shell':
       if (d.subtype === 'command_start') return `$ ${(d.command as string).slice(0, 100)}`
       if (d.subtype === 'command_end') return `$ ${(d.command as string).slice(0, 80)} → exit ${d.exit_code}`
+      if (d.subtype === 'command' && d.command) return `$ ${(d.command as string).slice(0, 100)}`
+      if (d.subtype === 'session_start') return `▸ terminal opened`
+      if (d.subtype === 'session_end') return `▪ terminal closed${d.exitCode != null ? ` (exit ${d.exitCode})` : ''}`
       return 'Shell event'
     case 'dns':
       return `DNS ${d.subtype === 'dns_response' ? '⇐' : '⇒'} ${d.dest_host || d.command || ''}`
@@ -97,6 +100,7 @@ export default function TimelinePanel(): JSX.Element {
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, scroll: 0 })
   const didScrollToNow = useRef(false)
+  const pendingZoomAnchor = useRef<{ frac: number; cursorX: number } | null>(null)
   const { t } = useI18n()
 
   const laneLabels: Record<LaneId, string> = useMemo(() => ({
@@ -206,9 +210,17 @@ export default function TimelinePanel(): JSX.Element {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
+      // Anchor the zoom at the cursor: remember which fraction of the track sits
+      // under the pointer and where the pointer is, so the layout effect below can
+      // keep that same instant stationary after TRACK_W changes.
+      const el = scrollRef.current
+      if (el) {
+        const cursorX = e.clientX - el.getBoundingClientRect().left
+        pendingZoomAnchor.current = { frac: (el.scrollLeft + cursorX) / TRACK_W, cursorX }
+      }
       setZoom((prev) => Math.min(6, Math.max(0.25, prev + (e.deltaY < 0 ? 0.15 : -0.15))))
     }
-  }, [])
+  }, [TRACK_W])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
@@ -243,6 +255,16 @@ export default function TimelinePanel(): JSX.Element {
     el.scrollLeft = Math.max(0, Math.min(target, TRACK_W - el.clientWidth))
     didScrollToNow.current = true
   }, [loading, toX, TRACK_W])
+
+  // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
+  // scroll so the timestamp that was under the pointer stays under the pointer.
+  useLayoutEffect(() => {
+    const a = pendingZoomAnchor.current
+    const el = scrollRef.current
+    if (!a || !el) return
+    pendingZoomAnchor.current = null
+    el.scrollLeft = a.frac * TRACK_W - a.cursorX
+  }, [TRACK_W])
 
   const toggleLane = useCallback((lane: LaneId) => {
     setHiddenLanes((prev) => {
