@@ -59,7 +59,7 @@ export class LootDetector {
     if (opts.operatorId) this.operatorId = opts.operatorId
   }
 
-  scan(text: string, targetId?: string): LootMatch[] {
+  scan(text: string, targetId?: string, source?: string): LootMatch[] {
     const matches: LootMatch[] = []
 
     for (const { type, pattern, confidence } of [...LOOT_PATTERNS, ...externalPatterns]) {
@@ -84,7 +84,10 @@ export class LootDetector {
         const evt = insertEvent('loot', {
           subtype: 'credential_detected',
           matches: matches.map((m) => ({ type: m.type, confidence: m.confidence, preview: m.line })),
-          count: matches.length
+          count: matches.length,
+          // Optional provenance the caller can attach: the tool/command/host the
+          // text came from. Trimmed + capped so a rogue caller can't bloat it.
+          ...(source && source.trim() ? { source: source.trim().slice(0, 200) } : {})
         }, {
           engagementId: this.engagementId,
           operatorId: this.operatorId,

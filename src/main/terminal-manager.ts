@@ -209,9 +209,12 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   const hookPath = resolveShellHook(shell)
   if (hookPath) {
     const isPowerShell = /powershell|pwsh/i.test(shell)
+    // Source the hook quietly: a leading space keeps it out of shell history,
+    // output is discarded, and the screen is cleared so the operator sees a clean
+    // prompt instead of the `source …` line and the hook's banner.
     const sourceCmd = isPowerShell
-      ? `. "${hookPath}"\r`
-      : `source "${hookPath.replace(/\\/g, '/')}"\r`
+      ? ` . "${hookPath}" *> $null; Clear-Host\r`
+      : ` source "${hookPath.replace(/\\/g, '/')}" >/dev/null 2>&1; clear\r`
     setTimeout(() => {
       if (!session.finalised) term.write(sourceCmd)
     }, 600)

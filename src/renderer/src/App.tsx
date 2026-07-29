@@ -120,7 +120,7 @@ export default function App(): JSX.Element {
             {view === 'targets' && <TargetView />}
             {view === 'scope' && <ScopeStatus />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'marks' && <QuickMarksView />}
+            {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}
             {view === 'search' && <SearchPanel />}
           </ErrorBoundary>

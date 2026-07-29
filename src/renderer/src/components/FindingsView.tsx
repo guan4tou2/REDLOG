@@ -19,7 +19,7 @@ function getTagColor(title: string): typeof TAG_COLORS[0] {
   return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
 }
 
-export function QuickMarksView(): JSX.Element {
+export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [marks, setMarks] = useState<QuickMark[]>([])
   const [selected, setSelected] = useState<QuickMark | null>(null)
   const [creating, setCreating] = useState(false)
@@ -115,6 +115,7 @@ export function QuickMarksView(): JSX.Element {
             mark={selected}
             onUpdate={() => { refresh(); window.redlog.quickmarks.get(selected.id).then((m) => m && setSelected(m)) }}
             onDelete={() => { setSelected(null); refresh() }}
+            onOpenInTimeline={onOpenInTimeline}
           />
         )}
         {!selected && !creating && (
@@ -196,10 +197,11 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
   )
 }
 
-function QuickMarkDetail({ mark, onUpdate, onDelete }: {
+function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline }: {
   mark: QuickMark
   onUpdate: () => void
   onDelete: () => void
+  onOpenInTimeline?: (ts: number) => void
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
   const { t } = useI18n()
@@ -228,6 +230,9 @@ function QuickMarkDetail({ mark, onUpdate, onDelete }: {
           </div>
         </div>
         <div className="flex gap-1">
+          {onOpenInTimeline && (
+            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-[10px] bg-zinc-800 text-cyan-400 rounded hover:bg-zinc-700">{t('loot.openInTimeline')}</button>
+          )}
           <button onClick={() => setEditing(true)} className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700">{t('marks.edit')}</button>
           <button onClick={handleDelete} className="px-2 py-1 text-[10px] bg-zinc-800 text-red-400 rounded hover:bg-zinc-700">{t('marks.delete')}</button>
         </div>
