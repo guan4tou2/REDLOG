@@ -59,7 +59,6 @@ if [[ -z "${_REDLOG_HOST:-}" ]]; then
   if ! curl -sf --connect-timeout 1 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
     # WSL2 NAT mode: try the Windows host gateway
     if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-      local gw
       gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
       if [[ -n "$gw" ]] && curl -sf --connect-timeout 1 "http://${gw}:${PORT}/api/health" >/dev/null 2>&1; then
         _REDLOG_HOST="$gw"
