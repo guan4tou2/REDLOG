@@ -29,8 +29,11 @@ function loadOrder(): string[] {
   return DEFAULT_ORDER
 }
 
-// Vertical travel before a press counts as a reorder instead of a click.
-const DRAG_THRESHOLD_PX = 6
+// Vertical travel before a press counts as a reorder instead of a click. Kept
+// comfortably above the few px a normal click/tap drifts on a trackpad — a
+// smaller value reclassified ordinary clicks as drags and swallowed the first
+// navigation (the "first click does nothing" bug).
+const DRAG_THRESHOLD_PX = 12
 const ITEM_STRIDE_PX = 34 // h-8 button + space-y-0.5 gap
 
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
