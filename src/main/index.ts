@@ -360,11 +360,12 @@ app.whenReady().then(() => {
     return true
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
-    // grow the expanded panel to fit the pivot topology (header + chain that
-    // wraps ~2 nodes per line). Generous so nothing clips.
+    // grow the expanded panel to fit the status grid, the unknown-IP hint, and
+    // the pivot topology (chain wraps ~2 nodes per line), so the Mark button at
+    // the bottom is never clipped. Generous base + per-pivot headroom.
     const pivotCount = Math.min(getActivePivots().length, 4)
-    const extra = pivotCount > 0 ? 34 + pivotCount * 30 : 0
-    overlayWindow?.setSize(440, expanded ? 172 + extra : 50)
+    const extra = pivotCount > 0 ? 40 + pivotCount * 34 : 0
+    overlayWindow?.setSize(440, expanded ? 206 + extra : 50)
   })
   ipcMain.on('overlay:hide', () => {
     overlayWindow?.hide()

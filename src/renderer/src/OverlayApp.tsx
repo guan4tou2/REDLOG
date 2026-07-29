@@ -211,11 +211,10 @@ export default function OverlayApp(): JSX.Element {
           )}
         </div>
 
-        {/* corner brackets — incomplete frame = active scan */}
-        {bracket({ top: 4, left: 4, borderTop: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
+        {/* brackets on the SQUARE corners only (TL+BR are chamfered → a bracket
+            there gets clipped and vanishes). TR + BL stay put on hover. */}
         {bracket({ top: 4, right: 4, borderTop: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
         {bracket({ bottom: 4, left: 4, borderBottom: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
-        {bracket({ bottom: 4, right: 4, borderBottom: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
 
         <style>{`
           @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }

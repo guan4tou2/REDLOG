@@ -4,7 +4,7 @@ import { HUD, hexA, CHAMFER } from '../lib/hud'
 type Tone = 'cyan' | 'red' | 'green' | 'amber' | 'neutral'
 
 const TONE: Record<Tone, string> = {
-  cyan: HUD.cyan, red: HUD.red, green: HUD.green, amber: HUD.amber, neutral: '#3a3a3d'
+  cyan: HUD.cyan, red: HUD.red, green: HUD.green, amber: HUD.amber, neutral: '#4d4d52'
 }
 
 // A chamfered HUD panel with angular corner brackets (framing without enclosing
@@ -36,10 +36,10 @@ export function HudPanel({
         )}
         <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
       </div>
-      {brk({ top: 3, left: 3, borderTop: `1.5px solid ${c}`, borderLeft: `1.5px solid ${c}` })}
+      {/* brackets only on the SQUARE corners — the chamfer cuts TL+BR, so a
+          bracket there would be clipped. TR + BL keeps them always visible. */}
       {brk({ top: 3, right: 3, borderTop: `1.5px solid ${c}`, borderRight: `1.5px solid ${c}` })}
       {brk({ bottom: 3, left: 3, borderBottom: `1.5px solid ${c}`, borderLeft: `1.5px solid ${c}` })}
-      {brk({ bottom: 3, right: 3, borderBottom: `1.5px solid ${c}`, borderRight: `1.5px solid ${c}` })}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
 import { HudPanel } from './components/Hud'
+import { HUD } from './lib/hud'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
@@ -146,7 +147,7 @@ function CaptureHealthCard({ capture, onNavigate }: {
 
   const dark = capture.verdict === 'dark'
   const partial = capture.verdict === 'partial'
-  const tone = dark ? 'red' : partial ? 'amber' : 'cyan'
+  const tone = dark ? 'red' : partial ? 'amber' : 'green'
   const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
@@ -300,14 +301,13 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
           </button>
         </div>
         <div className="grid grid-cols-4 gap-3">
-          <StatCard label={t('dashboard.events')} value={String(eventCount)} />
-          <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} />
-          <StatCard label={t('dashboard.loot')} value={String(lootCount)} color={lootCount > 0 ? 'text-red-400' : undefined} accent={lootCount > 0 ? 'red' : undefined} />
+          <StatCard label={t('dashboard.events')} value={String(eventCount)} tone="neutral" />
+          <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} tone="cyan" />
+          <StatCard label={t('dashboard.loot')} value={String(lootCount)} tone={lootCount > 0 ? 'red' : 'neutral'} />
           <StatCard
             label={t('dashboard.scope')}
             value={scopeViolations > 0 ? String(scopeViolations) : t('dashboard.scopeOk')}
-            color={scopeViolations > 0 ? 'text-red-400' : 'text-emerald-400'}
-            accent={scopeViolations > 0 ? 'red' : 'green'}
+            tone={scopeViolations > 0 ? 'red' : 'green'}
           />
         </div>
       </section>
@@ -317,7 +317,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
           <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </h2>
-          <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+          <HudPanel tone="neutral"><div className="p-4">
             <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
               <div>
                 <span className="text-zinc-500 text-xs">{t('dashboard.id')}</span>
@@ -340,11 +340,11 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             </div>
             <button
               onClick={() => onNavigate('settings')}
-              className="mt-3 text-[10px] text-red-400/80 hover:text-red-300 transition-colors"
+              className="mt-3 text-[10px] text-redlog-cyan/80 hover:text-redlog-cyan transition-colors"
             >
               {t('dashboard.editSettings')}
             </button>
-          </div>
+          </div></HudPanel>
         </section>
       )}
 
@@ -352,7 +352,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
           {t('dashboard.shortcuts')}
         </h2>
-        <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
+        <HudPanel tone="neutral"><div className="p-4">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {[
               ...VIEW_KEYS.map((v, i) => [`⌘${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
@@ -365,23 +365,27 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               </div>
             ))}
           </div>
-        </div>
+        </div></HudPanel>
       </section>
     </div>
   )
 }
 
-function StatCard({ label, value, color, sub, accent }: {
-  label: string; value: string; color?: string; sub?: string; accent?: 'red' | 'green'
+type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
+
+function StatCard({ label, value, sub, tone = 'neutral' }: {
+  label: string; value: string; sub?: string; tone?: HudTone
 }): JSX.Element {
-  const accentColor = accent === 'red' ? 'bg-red-500' : accent === 'green' ? 'bg-emerald-500' : 'bg-zinc-700'
+  const valueColor = tone === 'red' ? HUD.red : tone === 'green' ? HUD.green
+    : tone === 'amber' ? HUD.amber : tone === 'cyan' ? HUD.cyan : '#e5e5e5'
   return (
-    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
-      <span className={`absolute top-0 left-0 right-0 h-[2px] ${accentColor}`} />
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
-      <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${color ?? 'text-zinc-200'}`}>{value}</p>
-      {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
-    </div>
+    <HudPanel tone={tone}>
+      <div className="p-4">
+        <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
+        <p className="text-lg font-mono mt-1.5 font-semibold tabular-nums" style={{ color: valueColor }}>{value}</p>
+        {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
+      </div>
+    </HudPanel>
   )
 }
 
