@@ -90,6 +90,7 @@ npx electron-builder --mac    # or --win / --linux
 ### Overlay
 
 - **IP Widget** — always-on-top floating display showing external/internal IP, VPN status, and recording state
+- **Live pivot chain** — shows the active internal-network pivot nodes (tool · node · route) so you can see your lateral-movement path at a glance
 - **Click-through Mode** — overlay passes mouse events through to windows below; hover to reactivate for interaction
 - **Draggable** — grab the overlay to reposition it anywhere on screen
 
