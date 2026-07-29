@@ -15,8 +15,10 @@ import {
   toolName, methodAllowed
 } from '../src/core/plugins/tool-registry'
 
-// Isolate all plugin stores (trust/state) + userRoot under a temp HOME.
+// Isolate all plugin stores (trust/state) + userRoot under a temp home dir.
+// os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
 let realHome: string | undefined
+let realUserProfile: string | undefined
 let tmp: string
 
 function writePlugin(id: string, manifest: object, files: Record<string, string> = {}): string {
@@ -33,11 +35,14 @@ function writePlugin(id: string, manifest: object, files: Record<string, string>
 
 beforeEach(() => {
   realHome = process.env.HOME
+  realUserProfile = process.env.USERPROFILE
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-plug-'))
   process.env.HOME = tmp
+  process.env.USERPROFILE = tmp
 })
 afterEach(() => {
   process.env.HOME = realHome
+  process.env.USERPROFILE = realUserProfile
   fs.rmSync(tmp, { recursive: true, force: true })
 })
 
