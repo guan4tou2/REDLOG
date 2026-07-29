@@ -164,7 +164,7 @@ export function TargetView(): JSX.Element {
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
                             {e.agentType === 'file_transfer' && `${e.data.direction}: ${e.data.filename || e.data.localPath || e.data.remotePath}`}
                             {e.agentType === 'marker' && `[${e.data.severity}] ${e.data.title}`}
-                            {e.agentType === 'loot' && `Loot: ${e.data.type} (${e.data.confidence})`}
+                            {e.agentType === 'loot' && (() => { const m = (e.data.matches as Array<{ type: string; confidence: string }>)?.[0]; return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${e.data.count ?? 0} detected` })()}
                             {!['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot'].includes(e.agentType) && JSON.stringify(e.data).slice(0, 80)}
                           </span>
                         </div>

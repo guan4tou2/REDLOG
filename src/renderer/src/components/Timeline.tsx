@@ -48,8 +48,10 @@ function eventTitle(event: RedLogEvent): string {
       return `Pivot [${d.tool}] ${d.subtype || ''}${d.via ? ` → ${d.via}` : ''}${d.route ? ` (${d.route})` : ''}`.trim()
     case 'marker':
       return `${(d.severity as string || 'info').toUpperCase()}: ${d.title}`
-    case 'loot':
-      return `Loot: ${d.type} (${d.confidence})`
+    case 'loot': {
+      const m = (d.matches as Array<{ type: string; confidence: string }>)?.[0]
+      return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${d.count ?? 0} detected`
+    }
     default:
       return `${event.agentType}: ${d.subtype || ''}`
   }
@@ -291,20 +293,23 @@ export default function TimelinePanel(): JSX.Element {
     return [...visible].reverse().slice(0, 50)
   }, [events, hiddenLanes])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      setCluster(null)
-      // Anchor the zoom at the cursor: remember which fraction of the track sits
-      // under the pointer and where the pointer is, so the layout effect below can
-      // keep that same instant stationary after TRACK_W changes.
-      const el = scrollRef.current
-      if (el) {
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent): void => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        setCluster(null)
         const cursorX = e.clientX - el.getBoundingClientRect().left
         pendingZoomAnchor.current = { frac: (el.scrollLeft + cursorX) / TRACK_W, cursorX }
+        setZoom((prev) => Math.min(6, Math.max(0.25, prev + (e.deltaY < 0 ? 0.15 : -0.15))))
+      } else if (e.deltaY !== 0) {
+        e.preventDefault()
+        el.scrollLeft += e.deltaY
       }
-      setZoom((prev) => Math.min(6, Math.max(0.25, prev + (e.deltaY < 0 ? 0.15 : -0.15))))
     }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
   }, [TRACK_W])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -512,7 +517,6 @@ export default function TimelinePanel(): JSX.Element {
           <div
             ref={scrollRef}
             className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
-            onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onScroll={updateView}
           >
