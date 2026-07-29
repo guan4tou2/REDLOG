@@ -41,6 +41,7 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end
 - **Built-in MCP server (HTTP)** — the app hosts its own MCP endpoint, live the moment RedLog opens; agents operate the app (markers, scope, anchoring) without spawning a subprocess ([details](docs/agent-integration.md#2-mcp-server-operate-the-app))
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
+- **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology ([details](docs/event-schema.md#pivot-events))
 - **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (agent-operable MCP tools) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
@@ -76,7 +77,7 @@ npx electron-builder --mac    # or --win / --linux
 
 ### Timeline & UI
 
-- **Swim-lane Timeline** — shell, dns, screenshot, clipboard, file transfer, credential use, c2 check-in, marker, loot, system. Lanes with no events collapse away, so the chart only shows what this engagement actually touched
+- **Swim-lane Timeline** — shell, dns, pivot, screenshot, clipboard, file transfer, credential use, c2 check-in, marker, loot, system. Lanes with no events collapse away, so the chart only shows what this engagement actually touched
 - **Pause / Resume** — click the status bar recording indicator to pause/resume capture
 - **Global Search** — full-text search across all event types with highlighted results
 - **Target View** — auto-cataloged targets with per-target evidence drill-down
