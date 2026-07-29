@@ -82,8 +82,16 @@ export function configureTerminal(opts: { engagementId: string; operatorId: stri
 }
 
 export function spawnTerminal(id: string, cols: number, rows: number): { pid: number } {
-  if (sessions.has(id)) {
-    return { pid: sessions.get(id)!.pty.pid }
+  const existing = sessions.get(id)
+  if (existing) {
+    // A re-attaching renderer (StrictMode remount, tab re-render) gets a brand
+    // new xterm that missed everything printed so far — replay the buffer so it
+    // shows the current prompt/scrollback instead of a blank screen.
+    if (existing.buffer) {
+      const buf = existing.buffer
+      setTimeout(() => sendToWindow(`terminal:data:${id}`, buf), 0)
+    }
+    return { pid: existing.pty.pid }
   }
   if (!operatorId) {
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')

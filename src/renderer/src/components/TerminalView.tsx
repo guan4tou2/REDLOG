@@ -37,7 +37,10 @@ export default function TerminalView(): JSX.Element {
     })
   }, [activeTab])
 
+  const didInit = useRef(false)
   useEffect(() => {
+    if (didInit.current) return   // StrictMode runs this twice in dev
+    didInit.current = true
     if (tabs.length === 0) addTab()
   }, [])
 
@@ -117,12 +120,16 @@ function TerminalPane({ id, active, onPid, onExit }: {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
-  const spawnedRef = useRef(false)
 
   useEffect(() => {
-    if (!containerRef.current || spawnedRef.current) return
-    spawnedRef.current = true
+    const el = containerRef.current
+    if (!el) return
 
+    // Recreate the xterm on every mount. StrictMode (dev) mounts→unmounts→
+    // mounts; the cleanup disposes the term, so we must rebuild it — a guard
+    // that skipped recreation left a disposed, blank terminal. The pty side is
+    // idempotent: spawnTerminal returns the existing session and replays its
+    // buffer, so the fresh term catches up on the shell prompt.
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -163,28 +170,19 @@ function TerminalPane({ id, active, onPid, onExit }: {
     termRef.current = term
     fitRef.current = fitAddon
 
-    requestAnimationFrame(() => {
-      fitAddon.fit()
-
-      window.redlog.terminal.spawn(id, term.cols, term.rows).then(({ pid }) => {
-        onPid(pid)
-      })
-    })
-
+    // Subscribe to pty output BEFORE spawning, so the buffer the main process
+    // replays for an existing session lands in this fresh term.
     const unsubData = window.redlog.terminal.onData(id, (data) => {
       term.write(data)
     })
-
     const unsubExit = window.redlog.terminal.onExit(id, () => {
       term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
       onExit()
     })
-
-    term.onData((data) => {
+    const dispInput = term.onData((data) => {
       window.redlog.terminal.write(id, data)
     })
-
-    term.onResize(({ cols, rows }) => {
+    const dispResize = term.onResize(({ cols, rows }) => {
       window.redlog.terminal.resize(id, cols, rows)
     })
 
@@ -193,12 +191,21 @@ function TerminalPane({ id, active, onPid, onExit }: {
         try { fitAddon.fit() } catch {}
       })
     })
-    resizeObserver.observe(containerRef.current)
+    resizeObserver.observe(el)
+
+    requestAnimationFrame(() => {
+      try { fitAddon.fit() } catch {}
+      window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24)
+        .then(({ pid }) => onPid(pid))
+        .catch(() => {})
+    })
 
     return () => {
       resizeObserver.disconnect()
       unsubData()
       unsubExit()
+      dispInput.dispose()
+      dispResize.dispose()
       term.dispose()
     }
   }, [id])
