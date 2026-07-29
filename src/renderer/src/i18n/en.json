@@ -261,6 +261,8 @@
   "settings.overlayGroup": "HUD",
   "settings.overlayShowMark": "Show Mark button in the expanded overlay",
   "settings.overlayShowMarkHint": "Keeps the collapsed overlay minimal; the Mark button only appears when expanded.",
+  "settings.overlayFlashExposed": "Flash HUD when IP exposed",
+  "settings.overlayFlashExposedHint": "When the external IP hits the blacklist (EXPOSED), flash the whole HUD frame red so it's hard to miss. Off leaves just the red status dot pulsing.",
   "settings.overlayShowInDock": "Keep Dock icon (macOS)",
   "settings.overlayShowInDockHint": "Opening the HUD otherwise makes RedLog Dock-less. Off = run from the menu bar / HUD only, no Dock icon.",
   "settings.updateGroup": "Updates",
