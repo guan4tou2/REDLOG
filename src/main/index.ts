@@ -362,8 +362,8 @@ app.whenReady().then(() => {
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
     // grow the expanded panel to fit the pivots section (header + up to 3 rows)
     const pivotRows = Math.min(getActivePivots().length, 3)
-    const extra = pivotRows > 0 ? 24 + pivotRows * 16 : 0
-    overlayWindow?.setSize(440, expanded ? 210 + extra : 52)
+    const extra = pivotRows > 0 ? 22 + pivotRows * 15 : 0
+    overlayWindow?.setSize(440, expanded ? 172 + extra : 50)
   })
   ipcMain.on('overlay:hide', () => {
     overlayWindow?.hide()
