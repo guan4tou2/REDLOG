@@ -177,6 +177,8 @@
   "statusBar.scopeOk": "範圍 OK",
   "statusBar.loot": "{{count}} 戰利品",
   "statusBar.events": "{{count}} 事件",
+  "statusBar.stamp": "時戳",
+  "statusBar.stamped": "已標記",
   "statusBar.timestampTitle": "時間戳記 — 標記此刻（自動擷取上下文）",
   "statusBar.overlay": "HUD",
   "statusBar.toggleOverlay": "切換 HUD",

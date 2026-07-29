@@ -177,6 +177,8 @@
   "statusBar.scopeOk": "SCOPE OK",
   "statusBar.loot": "{{count}} loot",
   "statusBar.events": "{{count}} events",
+  "statusBar.stamp": "Stamp",
+  "statusBar.stamped": "Stamped",
   "statusBar.timestampTitle": "Timestamp — mark this moment (auto-captures context)",
   "statusBar.overlay": "HUD",
   "statusBar.toggleOverlay": "Toggle HUD",

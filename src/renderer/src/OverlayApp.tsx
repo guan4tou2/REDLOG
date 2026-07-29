@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
 import { HUD, hexA, CHAMFER } from './lib/hud'
 
@@ -20,7 +20,15 @@ export default function OverlayApp(): JSX.Element {
   const [showMark, setShowMark] = useState(true)
   const [pivots, setPivots] = useState<ActivePivot[]>([])
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
+
+  // Report the exact content height so the window fits it — no clipping, no
+  // empty gap. Runs after every layout-affecting change.
+  useLayoutEffect(() => {
+    const h = contentRef.current?.offsetHeight
+    if (h) (window.redlog.overlay as { autosize?: (n: number) => void })?.autosize?.(h + 8)
+  })
 
   useEffect(() => {
     const cfg = window.redlog.config as { get?: () => Promise<unknown> } | undefined
@@ -113,6 +121,8 @@ export default function OverlayApp(): JSX.Element {
             <div onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')}>✕</div>
           </div>
 
+          {/* measured content — window auto-sizes to this */}
+          <div ref={contentRef}>
           {/* compact bar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 54px 0 14px', height: 40, fontSize: 12, position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
@@ -209,6 +219,7 @@ export default function OverlayApp(): JSX.Element {
               )}
             </div>
           )}
+          </div>
         </div>
 
         {/* brackets on the SQUARE corners only (TL+BR are chamfered → a bracket

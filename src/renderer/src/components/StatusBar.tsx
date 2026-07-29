@@ -111,10 +111,11 @@ export default function StatusBar(): JSX.Element {
             setStamped(true)
             setTimeout(() => setStamped(false), 1500)
           }}
-          className={`transition-colors ${stamped ? 'text-emerald-400' : 'text-zinc-600 hover:text-red-400'}`}
+          className={`flex items-center gap-1 transition-colors ${stamped ? 'text-emerald-400' : 'text-zinc-500 hover:text-red-400'}`}
           title={t('statusBar.timestampTitle')}
         >
-          {stamped ? '✓' : '⏱'}
+          <span>{stamped ? '✓' : '⏱'}</span>
+          <span>{stamped ? t('statusBar.stamped') : t('statusBar.stamp')}</span>
         </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}

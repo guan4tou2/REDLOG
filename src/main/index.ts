@@ -359,14 +359,15 @@ app.whenReady().then(() => {
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     return true
   })
-  ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
-    // grow the expanded panel to fit the status grid, the unknown-IP hint, and
-    // the pivot topology (chain wraps ~2 nodes per line), so the Mark button at
-    // the bottom is never clipped. Generous base + per-pivot headroom.
-    const pivotCount = Math.min(getActivePivots().length, 4)
-    const extra = pivotCount > 0 ? 40 + pivotCount * 34 : 0
-    overlayWindow?.setSize(440, expanded ? 206 + extra : 50)
+  // The renderer measures its own content and reports the exact height it needs
+  // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
+  // big empty gap. Clamp to sane bounds.
+  ipcMain.on('overlay:autosize', (_e, height: number) => {
+    const h = Math.max(46, Math.min(560, Math.round(Number(height) || 46)))
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.setSize(440, h)
   })
+  // setExpanded only toggles state now; the height comes from autosize.
+  ipcMain.on('overlay:setExpanded', () => { /* height handled by overlay:autosize */ })
   ipcMain.on('overlay:hide', () => {
     overlayWindow?.hide()
     send(mainWindow, 'overlay:visibilityChanged', false)

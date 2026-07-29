@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('redlog', {
   overlay: {
     setExpanded: (expanded: boolean) =>
       ipcRenderer.send('overlay:setExpanded', expanded),
+    autosize: (height: number) => ipcRenderer.send('overlay:autosize', height),
     hide: () => ipcRenderer.send('overlay:hide'),
     quickMark: () => ipcRenderer.send('overlay:quickMark'),
     mouseEnter: () => ipcRenderer.send('overlay:mouseEnter'),
