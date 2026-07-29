@@ -23,7 +23,9 @@ type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 
 
 const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks', 'settings']
 
-const isMac = window.redlog.platform === 'darwin'
+// Read defensively — this runs at module load, before the preload bridge is
+// guaranteed present (e.g. in tests). Default to mac styling.
+const isMac = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
 const modKey = isMac ? '⌘' : 'Ctrl+'
 
 export default function App(): JSX.Element {
