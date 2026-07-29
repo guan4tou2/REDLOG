@@ -87,9 +87,9 @@ npx electron-builder --mac    # or --win / --linux
 - **Multi-tab Terminal** — multiple concurrent terminal sessions
 - **Error Boundary** — per-view crash recovery with retry
 
-### Overlay
+### HUD (heads-up overlay)
 
-- **IP Widget** — always-on-top floating display showing external/internal IP, VPN status, and recording state
+- **IP Widget** — always-on-top floating display showing external/internal IP, whitelist/blacklist status, live pivot chain, and recording state
 - **Live pivot chain** — shows the active internal-network pivot nodes (tool · node · route) so you can see your lateral-movement path at a glance
 - **Click-through Mode** — overlay passes mouse events through to windows below; hover to reactivate for interaction
 - **Draggable** — grab the overlay to reposition it anywhere on screen
@@ -107,7 +107,7 @@ RedLog's scope monitor uses root-domain matching for smart violation detection:
 ### Project Management
 
 - Per-project isolation (config, database, screenshots, terminal recordings)
-- Advanced setup at creation: pre-configure scope targets, VPN IPs, enforcement mode
+- Advanced setup at creation: pre-configure scope targets, IP whitelist/blacklist, enforcement mode
 - Config profile export/import (YAML or JSON) for team synchronization
 - Hot-reload on config save — no restart needed
 
