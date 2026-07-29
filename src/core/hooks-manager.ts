@@ -16,6 +16,13 @@ export interface PluginManifest {
   claudeSettingsMatcher?: string
 }
 
+export interface ManualStep {
+  /** what this step accomplishes */
+  label: string
+  /** copy-paste shell command, with the absolute hook path already resolved */
+  command?: string
+}
+
 export interface PluginInfo {
   id: string
   name: string
@@ -25,6 +32,8 @@ export interface PluginInfo {
   available: boolean
   installMethod: 'claude-settings' | 'shell-source' | 'manual'
   hookFile: string
+  /** for installMethod 'manual': ordered, copy-paste setup steps */
+  manualSteps?: ManualStep[]
 }
 
 const HOOKS_DIR = join(__dirname, '../../../hooks')
@@ -140,6 +149,38 @@ function checkAvailable(plugin: PluginManifest): boolean {
   return plugin.requires.some((cmd) => commandExists(cmd))
 }
 
+// Manual hooks can't be a persistent one-click install: mitmproxy needs a
+// running external process and codex changes how the agent's shell is launched.
+// Instead of a dead "Manual" label, hand the operator exact copy-paste commands
+// with the absolute hook path already resolved for this install.
+function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | undefined {
+  switch (pluginId) {
+    case 'mitmproxy':
+      return [
+        {
+          label: 'Start mitmproxy with the RedLog addon (keep it running during the engagement)',
+          command: `mitmdump -s "${hookFile}"`
+        },
+        {
+          label: 'Route traffic through it — proxy your browser/tools at 127.0.0.1:8080, or use Launch Browser in RedLog which wires the proxy for you'
+        }
+      ]
+    case 'codex':
+      return [
+        {
+          label: 'Wrap a whole shell the agent will use — every command it runs is captured',
+          command: `"${hookFile}"`
+        },
+        {
+          label: 'Or point Codex CLI at the wrapper as its shell',
+          command: `SHELL="${hookFile}" codex run "scan the target"`
+        }
+      ]
+    default:
+      return undefined
+  }
+}
+
 export function detectHooks(): PluginInfo[] {
   return PLUGIN_REGISTRY.map((plugin) => {
     const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
@@ -156,7 +197,8 @@ export function detectHooks(): PluginInfo[] {
       installed: checkInstalled(plugin),
       available: checkAvailable(plugin),
       installMethod: plugin.installMethod,
-      hookFile
+      hookFile,
+      manualSteps: plugin.installMethod === 'manual' ? buildManualSteps(plugin.id, hookFile) : undefined
     }
   })
 }

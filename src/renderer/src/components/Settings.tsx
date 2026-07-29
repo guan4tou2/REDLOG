@@ -28,6 +28,11 @@ interface ConfigState {
   }
 }
 
+interface ManualStep {
+  label: string
+  command?: string
+}
+
 interface HookInfo {
   id: string
   name: string
@@ -36,6 +41,8 @@ interface HookInfo {
   installed: boolean
   available: boolean
   installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  hookFile: string
+  manualSteps?: ManualStep[]
 }
 
 const LOCALE_LABELS: Record<Locale, string> = {
@@ -382,9 +389,16 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   setHookLoading: (id: string | null) => void
   t: (key: string) => string
 }): JSX.Element {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
   useEffect(() => {
     (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks)
   }, [])
+
+  const copy = (text: string): void => {
+    navigator.clipboard.writeText(text)
+    toast(t('toast.copied'), 'success')
+  }
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
     setHookLoading(hook.id)
@@ -408,47 +422,89 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
           <p className="text-zinc-500 text-xs">{t('common.loading')}</p>
         )}
         <div className="space-y-2">
-          {hooks.map((hook) => (
-            <div
-              key={hook.id}
-              className={`flex items-center justify-between p-3 rounded border ${
-                hook.available ? 'border-zinc-700 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-900/20 opacity-50'
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-zinc-200">{hook.name}</span>
-                  {hook.installed && (
-                    <span className="text-[9px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
-                      {t('settings.hookActive')}
-                    </span>
+          {hooks.map((hook) => {
+            const isManual = hook.available && hook.installMethod === 'manual'
+            const hasSteps = isManual && !!hook.manualSteps?.length
+            const isOpen = expanded === hook.id
+            return (
+              <div
+                key={hook.id}
+                className={`rounded border ${
+                  hook.available ? 'border-zinc-700 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-900/20 opacity-50'
+                }`}
+              >
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-zinc-200">{hook.name}</span>
+                      {hook.installed && (
+                        <span className="text-[9px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
+                          {t('settings.hookActive')}
+                        </span>
+                      )}
+                      {isManual && (
+                        <span className="text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">
+                          {t('settings.hookManual')}
+                        </span>
+                      )}
+                      {!hook.available && (
+                        <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
+                          {t('settings.hookNotFound')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">{hook.description}</p>
+                  </div>
+                  {hook.available && hook.installMethod !== 'manual' && (
+                    <button
+                      disabled={hookLoading === hook.id}
+                      onClick={() => handleToggle(hook)}
+                      className={`px-3 py-1 text-[10px] rounded ml-3 transition-colors ${
+                        hook.installed
+                          ? 'bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400'
+                          : 'bg-red-600/80 text-white hover:bg-red-600'
+                      } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
+                    >
+                      {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
+                    </button>
                   )}
-                  {!hook.available && (
-                    <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
-                      {t('settings.hookNotFound')}
-                    </span>
+                  {hasSteps && (
+                    <button
+                      onClick={() => setExpanded(isOpen ? null : hook.id)}
+                      className="px-3 py-1 text-[10px] rounded ml-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
+                    >
+                      {isOpen ? t('settings.hookHideSetup') : t('settings.hookShowSetup')}
+                    </button>
                   )}
                 </div>
-                <p className="text-[10px] text-zinc-500 mt-0.5">{hook.description}</p>
+                {hasSteps && isOpen && (
+                  <div className="border-t border-zinc-800 px-3 py-2.5 space-y-2.5">
+                    {hook.manualSteps!.map((step, i) => (
+                      <div key={i}>
+                        <p className="text-[10px] text-zinc-400 leading-relaxed">
+                          <span className="text-zinc-500">{i + 1}.</span> {step.label}
+                        </p>
+                        {step.command && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <code className="flex-1 min-w-0 truncate bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-300 font-mono">
+                              {step.command}
+                            </code>
+                            <button
+                              onClick={() => copy(step.command!)}
+                              className="text-[10px] px-2 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
+                            >
+                              {t('settings.hookCopy')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-[9px] text-zinc-600 pt-0.5">{t('settings.hookManualNote')}</p>
+                  </div>
+                )}
               </div>
-              {hook.available && hook.installMethod !== 'manual' && (
-                <button
-                  disabled={hookLoading === hook.id}
-                  onClick={() => handleToggle(hook)}
-                  className={`px-3 py-1 text-[10px] rounded ml-3 transition-colors ${
-                    hook.installed
-                      ? 'bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400'
-                      : 'bg-red-600/80 text-white hover:bg-red-600'
-                  } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
-                >
-                  {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
-                </button>
-              )}
-              {hook.available && hook.installMethod === 'manual' && (
-                <span className="text-[9px] text-zinc-600 ml-3">{t('settings.hookManual')}</span>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       </FieldGroup>
     </>

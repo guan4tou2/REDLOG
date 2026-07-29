@@ -381,6 +381,10 @@
   "settings.hookEnable": "啟用",
   "settings.hookDisable": "停用",
   "settings.hookManual": "手動設定",
+  "settings.hookShowSetup": "設定步驟",
+  "settings.hookHideSetup": "隱藏步驟",
+  "settings.hookCopy": "複製",
+  "settings.hookManualNote": "RedLog 必須開啟中 —— 這些 hook 只在 app 執行時才會記錄。",
   "settings.scopeExport": "範圍過濾匯出",
   "settings.exportScopeJson": "匯出範圍內 JSON",
   "settings.scopeExportHint": "僅匯出符合已設定範圍目標的事件。適用於上傳日誌至遠端伺服器時——排除範圍外資料。"

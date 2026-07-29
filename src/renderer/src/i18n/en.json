@@ -381,6 +381,10 @@
   "settings.hookEnable": "Enable",
   "settings.hookDisable": "Disable",
   "settings.hookManual": "Manual setup",
+  "settings.hookShowSetup": "Setup steps",
+  "settings.hookHideSetup": "Hide steps",
+  "settings.hookCopy": "Copy",
+  "settings.hookManualNote": "RedLog must be running — these hooks only record while the app is open.",
   "settings.scopeExport": "Scope-Filtered Export",
   "settings.exportScopeJson": "Export Scope-Only JSON",
   "settings.scopeExportHint": "Exports only events matching configured scope targets. Use this when uploading logs to a remote server — out-of-scope data is excluded."
