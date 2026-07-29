@@ -5,11 +5,12 @@ import { toast } from './Toast'
 const MIN_LANE_H = 36
 const LABEL_W = 92
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
+const LANES = ['shell', 'agent', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
+  agent: '#84cc16',
   dns: '#14b8a6',
   pivot: '#0ea5e9',
   screenshot: '#3b82f6',
@@ -61,10 +62,43 @@ function toLane(agentType: string): LaneId {
   return LANES.includes(agentType as LaneId) ? (agentType as LaneId) : 'system'
 }
 
-// RedLog's own lifecycle noise (API server + session bootstrap) — kept in the DB
-// for the record but hidden from the timeline so it doesn't clutter the view.
+// Lifecycle noise kept in the DB for the record but hidden from the timeline so
+// it doesn't drown the actual operation. Real user/agent actions still show; only
+// the app's own plumbing is suppressed:
+//   • system.api_started / session_start — RedLog boot, once per app open
+//   • system.deconfliction_test — manual test button in Settings
+//   • shell.session_start / session_end — user opened/closed a terminal pane
+//   • terminal.session_start — duplicate write-path for the same pane-open event
+//   • command_start whose command IS just sourcing the shell hook (the "silent"
+//     hook install runs as a real preexec, so the hook itself logs it as a
+//     command; that's plumbing, not a user command)
+function isHookSource(cmd: unknown): boolean {
+  return typeof cmd === 'string' && /shell-preexec-hook\.sh/.test(cmd)
+}
 function isHousekeeping(e: RedLogEvent): boolean {
-  return e.agentType === 'system' && (e.data?.subtype === 'api_started' || e.data?.subtype === 'session_start')
+  const s = e.data?.subtype as string | undefined
+  if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start' || s === 'deconfliction_test')) return true
+  if (e.agentType === 'shell' && (s === 'session_start' || s === 'session_end')) return true
+  if (e.agentType === 'terminal' && s === 'session_start') return true
+  if (e.agentType === 'shell' && (s === 'command_start' || s === 'command') && isHookSource(e.data?.command)) return true
+  return false
+}
+
+// A shell command_start is only interesting on its own if no command_end ever
+// arrives (still-running command). When the pair completes, the end has all the
+// signal (exit code + duration), so hide the redundant start. Match on pid+cmd.
+function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
+  const closed = new Set<string>()
+  for (const e of events) {
+    if (e.agentType !== 'shell' || e.data?.subtype !== 'command_end') continue
+    const key = `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
+    closed.add(key)
+  }
+  return events.filter((e) => {
+    if (e.agentType !== 'shell' || e.data?.subtype !== 'command_start') return true
+    const key = `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
+    return !closed.has(key)
+  })
 }
 
 function formatTimeLabel(date: Date): string {
@@ -72,7 +106,10 @@ function formatTimeLabel(date: Date): string {
 }
 
 export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?: string; focusTs?: number } = {}): JSX.Element {
-  const [events, setEvents] = useState<RedLogEvent[]>([])
+  const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
+  // Hide command_start once its matching command_end lands — the end has the
+  // exit code + duration, so the start would just be a duplicate row.
+  const events = useMemo(() => collapseCommandPairs(rawEvents), [rawEvents])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
