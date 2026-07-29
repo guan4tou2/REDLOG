@@ -42,6 +42,7 @@ import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabl
 import { createPluginHost } from '../core/plugins/host'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
+import { detectLink } from './services/network-info'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -149,9 +150,22 @@ function getActivePivots(): ActivePivot[] {
   } catch { return [] }
 }
 
+// Active network link (Wi-Fi SSID / wired), read from local system tools. Cached
+// and refreshed on a timer so the (blocking-ish) shell-outs never sit on the IP
+// broadcast path; the last-known value rides along with every ip:status.
+let currentLink: { type: 'wifi' | 'wired' | 'unknown'; name: string } = { type: 'unknown', name: '' }
+let linkTimer: ReturnType<typeof setInterval> | null = null
+function startLinkMonitor(): void {
+  const refresh = (): void => { detectLink().then((l) => { currentLink = l }).catch(() => {}) }
+  refresh()
+  if (linkTimer) clearInterval(linkTimer)
+  linkTimer = setInterval(refresh, 20_000)
+}
+
 function broadcastIPStatus(status: IPStatus): void {
-  send(mainWindow, 'ip:status', status)
-  send(overlayWindow, 'ip:status', status)
+  const s = { ...status, link: currentLink }
+  send(mainWindow, 'ip:status', s)
+  send(overlayWindow, 'ip:status', s)
 }
 
 function startProject(project: ProjectMeta): void {
@@ -217,6 +231,7 @@ function startProject(project: ProjectMeta): void {
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
 
   ipMonitor.start()
+  startLinkMonitor()
 
   configureApi({
     engagementId,

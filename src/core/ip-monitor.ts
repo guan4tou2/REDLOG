@@ -42,6 +42,8 @@ export interface IPStatus {
   error: string | null
   /** True while a new address is being confirmed — the displayed one is the last stable read. */
   settling: boolean
+  /** active link: Wi-Fi SSID or wired (populated by main, not the monitor) */
+  link?: { type: 'wifi' | 'wired' | 'unknown'; name: string }
 }
 
 const DEFAULT_IP_PROVIDERS = [

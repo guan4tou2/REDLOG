@@ -80,6 +80,9 @@ export default function OverlayApp(): JSX.Element {
   }
 
   const safety = status?.ipSafety ?? 'unknown'
+  const link = status?.link
+  const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
+    : link?.type === 'wired' ? t('overlay.wired') : ''
   const STATE = { safe: HUD.green, exposed: HUD.red, unknown: HUD.amber }[safety]
   const LABEL = { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
   const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
@@ -145,6 +148,12 @@ export default function OverlayApp(): JSX.Element {
               <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
               <span style={{ color: '#9fd8e6', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
             </span>
+            {linkText && (
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
+                <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
+                <span style={{ color: '#9fd8e6', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkText}</span>
+              </span>
+            )}
             {latestPivot && (
               <span
                 style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: hexA(CYAN, 0.22), border: `1px solid ${hexA(CYAN, 0.7)}`, boxShadow: `0 0 6px ${hexA(CYAN, 0.25)}` }}
@@ -168,6 +177,8 @@ export default function OverlayApp(): JSX.Element {
                 <span style={{ color: VALUE }}>{status?.externalIP ?? '—'}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.internal')}</span>
                 <span style={{ color: VALUE }}>{status?.internalIP ?? '—'}</span>
+                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.network')}</span>
+                <span style={{ color: VALUE }}>{link?.type === 'wifi' ? `⌁ ${linkText}` : linkText || '—'}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.lastCheck')}</span>
                 <span style={{ color: '#9fd8e6' }}>{status?.lastCheck ? new Date(status.lastCheck).toLocaleTimeString() : '—'}</span>
               </div>

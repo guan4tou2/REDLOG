@@ -16,6 +16,7 @@ interface IPStatus {
   ipSafety: 'safe' | 'exposed' | 'unknown'
   lastCheck: number
   error: string | null
+    link?: { type: 'wifi' | 'wired' | 'unknown'; name: string }
 }
 
 interface RedLogEvent {
