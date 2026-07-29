@@ -100,6 +100,7 @@
   "timeline.agent": "代理",
   "timeline.http": "HTTP",
   "timeline.scope": "範圍",
+  "timeline.cleanup": "清理痕跡",
   "timeline.laneEmpty": "{{lane}} — 尚無事件",
   "timeline.shellEvent": "Shell 事件",
 

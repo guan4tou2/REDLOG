@@ -21,6 +21,7 @@ import {
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
 import { detectPivot } from './pivot-detector'
+import { tagTechnique, detectCleanup, detectFileTransfer } from './technique-tagger'
 import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
@@ -302,6 +303,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let lootValues: string[] = []
       let pivot: ReturnType<typeof detectPivot> = null
       let pivotClose: ReturnType<typeof detectPivot> = null
+      let cleanup: ReturnType<typeof detectCleanup> = null
+      let fileXfer: ReturnType<typeof detectFileTransfer> = null
       if (agentType === 'shell' && data.command) {
         const cmd = data.command as string
         const isStart = data.subtype === 'command_start'
@@ -311,6 +314,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         // while the tunnel keeps running — we can't tell those from a live pivot.
         const isEnd = data.subtype === 'command_end' && Number(data.duration_sec ?? 0) >= 2
         if (isEnd) pivotClose = detectPivot(cmd)
+        // Stamp a MITRE technique on the shell event itself so downstream
+        // Ghostwriter/VECTR ingestion can map each row to an ATT&CK procedure.
+        // Runs on command_start (the tool is knowable from the command line).
+        if (isStart) {
+          const tech = tagTechnique(cmd)
+          if (tech && !data.mitre_ttp) {
+            data.mitre_ttp = tech.mitreTtp
+            data.technique_tool = tech.tool
+            data.technique_category = tech.category
+          }
+          cleanup = detectCleanup(cmd)
+          fileXfer = detectFileTransfer(cmd)
+        }
 
         const detected = extractTarget(cmd)
         if (detected) {
@@ -370,6 +386,33 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           }, { engagementId, operatorId: operator.id, targetId: pivot.via ?? targetId })
           if (pv) eventBus.publish(pv)
         } catch { /* pivot event is additive; ignore failures */ }
+      }
+      // Anti-forensics / cleanup — first-class event so log-clearing or timestomp
+      // never hides in a plain shell row (NIST SP 800-86 requires tracking these).
+      if (cleanup) {
+        try {
+          const cv = insertEvent('cleanup', {
+            subtype: cleanup.subtype, tool: cleanup.tool,
+            target: cleanup.target, mitre_ttp: cleanup.mitreTtp,
+            command: data.command,
+            description: `Cleanup [${cleanup.tool}] ${cleanup.subtype}${cleanup.target ? ` → ${cleanup.target}` : ''}`
+          }, { engagementId, operatorId: operator.id, targetId })
+          if (cv) eventBus.publish(cv)
+        } catch { /* additive */ }
+      }
+      // File transfer detected in a shell command — companion event so the
+      // dedicated file_transfer lane shows ingress/exfil independent of shell noise.
+      if (fileXfer) {
+        try {
+          const fv = insertEvent('file_transfer', {
+            subtype: fileXfer.direction, tool: fileXfer.tool,
+            url: fileXfer.url, localPath: fileXfer.localPath, remotePath: fileXfer.remotePath,
+            mitre_ttp: fileXfer.mitreTtp,
+            command: data.command,
+            description: `${fileXfer.direction === 'download' ? '↓' : '↑'} ${fileXfer.tool}: ${fileXfer.url || fileXfer.remotePath || fileXfer.localPath || ''}`.trim()
+          }, { engagementId, operatorId: operator.id, targetId })
+          if (fv) eventBus.publish(fv)
+        } catch { /* additive */ }
       }
       // Closed foreground pivot — a separate event so the audit trail shows both
       // ends of the tunnel, not only when it opened.
