@@ -92,6 +92,13 @@ export class ScopeMonitor {
       }
     }
 
+    // 'log' mode records the out-of-scope activity (it still lands in the timeline)
+    // but does NOT raise a violation — no red badge, no deconfliction alert.
+    // 'warn' mode flags it as a violation. (Excluded targets above are always
+    // flagged regardless of mode.)
+    if (this.config.enforcement === 'log') {
+      return { inScope: false, violation: false }
+    }
     this.recordViolation(target, command, 'out_of_scope')
     return { inScope: false, violation: true }
   }
