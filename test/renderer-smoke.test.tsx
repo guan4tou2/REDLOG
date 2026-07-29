@@ -12,6 +12,7 @@ import { render, cleanup } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
+import OverlayApp from '../src/renderer/src/OverlayApp'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import Settings from '../src/renderer/src/components/Settings'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
@@ -166,13 +167,19 @@ function installBridge(): void {
       })
     },
     recording: { get: async () => true, toggle: async () => true, onChange: () => unsub },
+    pivots: {
+      getActive: async () => [{ via: '10.0.0.5', tool: 'ligolo-ng', route: '10.10.20.0/24', ts: Date.now() }],
+      onChange: () => unsub
+    },
     terminal: {
       spawn: async () => ({ pid: 1 }), write: () => {}, resize: () => {}, kill: () => {},
       list: async () => [], onData: () => unsub, onExit: () => unsub
     },
     overlay: {
       toggle: () => {}, hide: () => {}, show: () => {},
-      isVisible: async () => false, onVisibilityChanged: () => unsub
+      isVisible: async () => false, onVisibilityChanged: () => unsub,
+      onInteractive: () => unsub, setExpanded: () => {}, quickMark: () => {},
+      mouseEnter: () => {}, mouseLeave: () => {}
     }
   }
 }
@@ -210,7 +217,8 @@ describe('renderer views render without throwing', () => {
     ['ScopeStatus', () => <ScopeStatus />],
     ['LootPanel', () => <LootPanel />],
     ['SearchPanel', () => <SearchPanel />],
-    ['QuickMarksView', () => <QuickMarksView />]
+    ['QuickMarksView', () => <QuickMarksView />],
+    ['OverlayApp', () => <OverlayApp />]
   ]
 
   for (const [name, make] of views) {

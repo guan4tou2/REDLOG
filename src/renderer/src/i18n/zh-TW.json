@@ -194,6 +194,7 @@
   "overlay.status": "狀態",
   "overlay.external": "外部",
   "overlay.internal": "內部",
+  "overlay.pivots": "跳板節點",
   "overlay.lastCheck": "最後檢查",
 
   "browser.launch": "開啟瀏覽器",

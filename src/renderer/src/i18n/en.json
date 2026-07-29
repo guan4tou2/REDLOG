@@ -194,6 +194,7 @@
   "overlay.status": "Status",
   "overlay.external": "External",
   "overlay.internal": "Internal",
+  "overlay.pivots": "Pivots",
   "overlay.lastCheck": "Last check",
 
   "browser.launch": "Launch Browser",

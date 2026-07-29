@@ -129,6 +129,26 @@ const screenshotAgent = new ScreenshotAgent()
 const scopeMonitor = new ScopeMonitor()
 const lootDetector = new LootDetector()
 
+// Recent distinct pivot nodes for the overlay — dedup by intermediate node,
+// most-recent first, capped. Lets the floating window show the live pivot chain.
+interface ActivePivot { via: string; tool: string; route?: string; ts: number }
+function getActivePivots(): ActivePivot[] {
+  try {
+    const evs = queryEvents({ agentType: 'pivot', limit: 40 })
+    const seen = new Set<string>()
+    const out: ActivePivot[] = []
+    for (const e of evs) {
+      const d = (e.data ?? {}) as Record<string, unknown>
+      const via = (d.via as string) || ''
+      if (!via || seen.has(via)) continue
+      seen.add(via)
+      out.push({ via, tool: String(d.tool ?? 'pivot'), route: d.route as string | undefined, ts: e.timestamp })
+      if (out.length >= 5) break
+    }
+    return out
+  } catch { return [] }
+}
+
 function broadcastIPStatus(status: IPStatus): void {
   send(mainWindow, 'ip:status', status)
   send(overlayWindow, 'ip:status', status)
@@ -340,7 +360,10 @@ app.whenReady().then(() => {
     return true
   })
   ipcMain.on('overlay:setExpanded', (_e, expanded: boolean) => {
-    overlayWindow?.setSize(440, expanded ? 210 : 52)
+    // grow the expanded panel to fit the pivots section (header + up to 3 rows)
+    const pivotRows = Math.min(getActivePivots().length, 3)
+    const extra = pivotRows > 0 ? 24 + pivotRows * 16 : 0
+    overlayWindow?.setSize(440, expanded ? 210 + extra : 52)
   })
   ipcMain.on('overlay:hide', () => {
     overlayWindow?.hide()
@@ -384,7 +407,10 @@ app.whenReady().then(() => {
   eventBus.on('event', (event) => {
     send(mainWindow, 'events:new', event)
     notifyDeconfliction(event)
+    // keep the overlay's pivot list live
+    if (event.agentType === 'pivot') send(overlayWindow, 'pivots:changed', getActivePivots())
   })
+  ipcMain.handle('pivots:getActive', () => getActivePivots())
 
   // --- Markers ---
   ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
