@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
-
-interface ActivePivot { via: string; tool: string; route?: string; ts: number }
+import { usePivots } from './lib/usePivots'
 
 // HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
 // cyan frame identity, calmer state accents, angular corner brackets that frame
@@ -18,7 +17,7 @@ export default function OverlayApp(): JSX.Element {
   const [recording, setRecording] = useState(true)
   const [interactive, setInteractive] = useState(false)
   const [showMark, setShowMark] = useState(true)
-  const [pivots, setPivots] = useState<ActivePivot[]>([])
+  const pivots = usePivots()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const { t } = useI18n()
@@ -58,14 +57,6 @@ export default function OverlayApp(): JSX.Element {
     return window.redlog.recording.onChange(setRecording)
   }, [])
 
-  useEffect(() => {
-    const pv = window.redlog.pivots as {
-      getActive?: () => Promise<ActivePivot[]>
-      onChange?: (cb: (p: ActivePivot[]) => void) => () => void
-    } | undefined
-    pv?.getActive?.().then(setPivots).catch(() => {})
-    return pv?.onChange?.(setPivots)
-  }, [])
 
   useEffect(() => {
     if (expanded) timerRef.current = setTimeout(() => collapse(), 8000)
