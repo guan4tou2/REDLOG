@@ -36,6 +36,8 @@ export interface RedLogConfig {
   }
   overlay: {
     showMarkButton: boolean
+    /** macOS: keep a Dock icon (opening the HUD otherwise makes the app Dock-less) */
+    showInDock: boolean
   }
   terminal: {
     maxCastBytes: number
@@ -93,7 +95,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     quality: 85
   },
   overlay: {
-    showMarkButton: true
+    showMarkButton: true,
+    showInDock: true
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024

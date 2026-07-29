@@ -13,7 +13,7 @@ interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
-  overlay?: { showMarkButton: boolean }
+  overlay?: { showMarkButton: boolean; showInDock?: boolean }
   browser?: {
     binary: string
     proxy: string
@@ -242,6 +242,32 @@ export default function Settings(): JSX.Element {
                 <span className="text-xs text-zinc-300">{t('settings.overlayShowMark')}</span>
               </label>
               <p className="text-[10px] text-zinc-600">{t('settings.overlayShowMarkHint')}</p>
+              {isMacOS && (
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      checked={config.overlay?.showInDock !== false}
+                      onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, showInDock: e.target.checked } })}
+                      className="accent-red-600"
+                    />
+                    <span className="text-xs text-zinc-300">{t('settings.overlayShowInDock')}</span>
+                  </label>
+                  <p className="text-[10px] text-zinc-600">{t('settings.overlayShowInDockHint')}</p>
+                </>
+              )}
+            </FieldGroup>
+            <FieldGroup title={t('settings.updateGroup')}>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => window.redlog.app.checkForUpdates()}
+                  className="px-3 py-1 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                >
+                  {t('settings.checkUpdate')}
+                </button>
+                <span className="text-[10px] text-zinc-600 font-mono">v{__APP_VERSION__}</span>
+              </div>
+              <p className="text-[10px] text-zinc-600">{t('settings.checkUpdateHint')}</p>
             </FieldGroup>
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
