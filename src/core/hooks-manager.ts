@@ -14,6 +14,10 @@ export interface PluginManifest {
   installTarget?: string
   shellRcFile?: string
   claudeSettingsMatcher?: string
+  /** for installMethod 'manual', plugin-supplied setup steps (absolute paths filled at register time) */
+  manualSteps?: ManualStep[]
+  /** absolute plugin dir — set for capture entries contributed by a plugin. */
+  _dir?: string
 }
 
 export interface ManualStep {
@@ -96,6 +100,59 @@ const PLUGIN_REGISTRY: PluginManifest[] = [
   }
 ]
 
+// Capture integrations contributed by plugins (🟢). Registered at load time and
+// merged with the built-in registry, so plugin captures appear in the Hooks
+// panel and can be installed/guided exactly like the built-ins.
+const externalCaptures: PluginManifest[] = []
+
+export function registerCapturePlugins(
+  pluginId: string,
+  dir: string,
+  entries: Array<Omit<PluginManifest, 'requires'> & { requires?: string[] }>
+): void {
+  for (const e of entries) {
+    // namespace the id so two plugins can't collide with each other or a built-in
+    const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
+    externalCaptures.push({ ...e, id, requires: e.requires ?? [], _dir: dir })
+  }
+}
+
+export function unregisterCapturePlugins(pluginId: string): void {
+  for (let i = externalCaptures.length - 1; i >= 0; i--) {
+    if (externalCaptures[i].id.startsWith(`${pluginId}.`)) externalCaptures.splice(i, 1)
+  }
+}
+
+function allManifests(): PluginManifest[] {
+  return [...PLUGIN_REGISTRY, ...externalCaptures]
+}
+
+// Absolute path to a manifest's hook script source. Plugin captures resolve
+// inside the plugin dir; built-ins resolve against the shipped hooks/ or shell/.
+function srcPathFor(plugin: PluginManifest): string {
+  if (plugin._dir) return join(plugin._dir, plugin.hookFile)
+  const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
+  const shellDir = resolveDir(SHELL_DIR, join(__dirname, '../../shell'))
+  return plugin.hookFile.startsWith('shell/')
+    ? join(shellDir, plugin.hookFile.replace('shell/', ''))
+    : join(hooksDir, plugin.hookFile.replace('hooks/', ''))
+}
+
+// For shell-source plugin captures without an explicit target, drop the hook in
+// ~/.redlog under its own basename.
+function installTargetFor(plugin: PluginManifest): string {
+  if (plugin.installTarget) return plugin.installTarget
+  const base = plugin.hookFile.split(/[\\/]/).pop() ?? `${plugin.id}.sh`
+  return join(homedir(), '.redlog', base)
+}
+
+// Which shell rc a shell-source hook appends to. Explicit wins; otherwise pick
+// by the operator's login shell.
+function shellRcFor(plugin: PluginManifest): string {
+  if (plugin.shellRcFile) return plugin.shellRcFile
+  return process.env.SHELL?.includes('zsh') ? '.zshrc' : '.bashrc'
+}
+
 function commandExists(cmd: string): boolean {
   try {
     // Windows has no `which` — it's `where`. Without this, every requires-based
@@ -133,12 +190,18 @@ function isShellSourceInstalled(rcFile: string, hookPath: string): boolean {
   return content.includes(hookName)
 }
 
+// Default claude-settings matcher for a plugin capture: the hook's basename, so
+// install/uninstall/detect all key off the same string.
+function matcherFor(plugin: PluginManifest): string {
+  return plugin.claudeSettingsMatcher ?? (plugin._dir ? (plugin.hookFile.split(/[\\/]/).pop() ?? plugin.id) : plugin.id)
+}
+
 function checkInstalled(plugin: PluginManifest): boolean {
   switch (plugin.installMethod) {
     case 'claude-settings':
-      return isClaudeSettingsInstalled(plugin.claudeSettingsMatcher ?? plugin.id)
+      return isClaudeSettingsInstalled(matcherFor(plugin))
     case 'shell-source':
-      return isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', plugin.installTarget ?? '')
+      return isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin))
     case 'manual':
       return false
   }
@@ -197,12 +260,12 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
 }
 
 export function detectHooks(): PluginInfo[] {
-  return PLUGIN_REGISTRY.map((plugin) => {
-    const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
-    const shellDir = resolveDir(SHELL_DIR, join(__dirname, '../../shell'))
-    const hookFile = plugin.hookFile.startsWith('shell/')
-      ? join(shellDir, plugin.hookFile.replace('shell/', ''))
-      : join(hooksDir, plugin.hookFile.replace('hooks/', ''))
+  return allManifests().map((plugin) => {
+    const hookFile = srcPathFor(plugin)
+    // Plugin captures carry their own manualSteps; built-ins compute theirs.
+    const manualSteps = plugin.installMethod === 'manual'
+      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
+      : undefined
 
     return {
       id: plugin.id,
@@ -213,19 +276,18 @@ export function detectHooks(): PluginInfo[] {
       available: checkAvailable(plugin),
       installMethod: plugin.installMethod,
       hookFile,
-      manualSteps: plugin.installMethod === 'manual' ? buildManualSteps(plugin.id, hookFile) : undefined
+      manualSteps
     }
   })
 }
 
 export function installHook(pluginId: string): { success: boolean; message: string } {
-  const plugin = PLUGIN_REGISTRY.find((p) => p.id === pluginId)
+  const plugin = allManifests().find((p) => p.id === pluginId)
   if (!plugin) return { success: false, message: `Unknown plugin: ${pluginId}` }
 
   switch (plugin.installMethod) {
     case 'claude-settings': {
-      const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
-      const hookFile = join(hooksDir, plugin.hookFile.replace('hooks/', ''))
+      const hookFile = srcPathFor(plugin)
       const settingsPath = join(homedir(), '.claude', 'settings.json')
       try {
         mkdirSync(join(homedir(), '.claude'), { recursive: true })
@@ -237,7 +299,7 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         const hooks = settings.hooks as Record<string, unknown>
         if (!hooks.PostToolUse) hooks.PostToolUse = []
         const postTool = hooks.PostToolUse as Array<Record<string, unknown>>
-        const matcher = plugin.claudeSettingsMatcher ?? plugin.id
+        const matcher = matcherFor(plugin)
         const exists = postTool.some((h) =>
           (h.hooks as Array<{ command?: string }>)?.some((hk) => hk.command?.includes(matcher))
         )
@@ -255,22 +317,19 @@ export function installHook(pluginId: string): { success: boolean; message: stri
     }
     case 'shell-source': {
       try {
-        const dest = plugin.installTarget!
-        const shellDir = resolveDir(SHELL_DIR, join(__dirname, '../../shell'))
-        const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
-        const src = plugin.hookFile.startsWith('shell/')
-          ? join(shellDir, plugin.hookFile.replace('shell/', ''))
-          : join(hooksDir, plugin.hookFile.replace('hooks/', ''))
+        const dest = installTargetFor(plugin)
+        const src = srcPathFor(plugin)
         mkdirSync(join(homedir(), '.redlog'), { recursive: true })
         if (existsSync(src)) copyFileSync(src, dest)
-        const rcPath = join(homedir(), plugin.shellRcFile!)
+        const rcFile = shellRcFor(plugin)
+        const rcPath = join(homedir(), rcFile)
         let content = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
         const hookName = dest.split('/').pop()
         if (!content.includes(hookName!)) {
           content += `\n# RedLog shell hook\nsource ${dest}\n`
           writeFileSync(rcPath, content)
         }
-        return { success: true, message: `${plugin.name} hook installed. Run: source ~/${plugin.shellRcFile}` }
+        return { success: true, message: `${plugin.name} hook installed. Run: source ~/${rcFile}` }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }
@@ -281,7 +340,7 @@ export function installHook(pluginId: string): { success: boolean; message: stri
 }
 
 export function uninstallHook(pluginId: string): { success: boolean; message: string } {
-  const plugin = PLUGIN_REGISTRY.find((p) => p.id === pluginId)
+  const plugin = allManifests().find((p) => p.id === pluginId)
   if (!plugin) return { success: false, message: `Unknown plugin: ${pluginId}` }
 
   switch (plugin.installMethod) {
@@ -291,7 +350,7 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
         if (!existsSync(settingsPath)) return { success: true, message: 'Already removed' }
         const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'))
         const postTool = settings?.hooks?.PostToolUse as Array<Record<string, unknown>> | undefined
-        const matcher = plugin.claudeSettingsMatcher ?? plugin.id
+        const matcher = matcherFor(plugin)
         if (postTool) {
           settings.hooks.PostToolUse = postTool.filter((h) =>
             !(h.hooks as Array<{ command?: string }>)?.some((hk) => hk.command?.includes(matcher))
@@ -305,15 +364,16 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
     }
     case 'shell-source': {
       try {
-        const rcPath = join(homedir(), plugin.shellRcFile!)
-        const dest = plugin.installTarget!
+        const rcFile = shellRcFor(plugin)
+        const rcPath = join(homedir(), rcFile)
+        const dest = installTargetFor(plugin)
         if (existsSync(rcPath)) {
           let content = readFileSync(rcPath, 'utf-8')
           const escapedDest = dest.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
           content = content.replace(new RegExp(`\\n?# RedLog shell hook\\nsource ${escapedDest}\\n?`, 'g'), '\n')
           writeFileSync(rcPath, content)
         }
-        return { success: true, message: `${plugin.name} hook removed. Run: source ~/${plugin.shellRcFile}` }
+        return { success: true, message: `${plugin.name} hook removed. Run: source ~/${rcFile}` }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }

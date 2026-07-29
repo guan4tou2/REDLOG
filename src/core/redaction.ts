@@ -14,12 +14,36 @@ export const DEFAULT_RULES: RedactionRules = {
 
 let activeRules: RedactionRules = { ...DEFAULT_RULES }
 
+// Additive plugin layer (🟢 declarative): denylist/allowlist entries contributed
+// by plugins, kept per-plugin so they survive config reloads and can be removed
+// on disable. Merged into the effective rules at read time.
+const pluginRules = new Map<string, { denylist: string[]; allowlist: string[] }>()
+
+export function registerRedactionRules(pluginId: string, rules: { denylist?: string[]; allowlist?: string[] }): void {
+  pluginRules.set(pluginId, { denylist: rules.denylist ?? [], allowlist: rules.allowlist ?? [] })
+}
+
+export function unregisterRedactionRules(pluginId: string): void {
+  pluginRules.delete(pluginId)
+}
+
+function effectiveRules(): RedactionRules {
+  if (pluginRules.size === 0) return activeRules
+  const denylist = [...activeRules.denylist]
+  const allowlist = [...activeRules.allowlist]
+  for (const r of pluginRules.values()) {
+    denylist.push(...r.denylist)
+    allowlist.push(...r.allowlist)
+  }
+  return { ...activeRules, denylist: [...new Set(denylist)], allowlist: [...new Set(allowlist)] }
+}
+
 export function configureRedaction(rules: Partial<RedactionRules>): void {
   activeRules = { ...activeRules, ...rules }
 }
 
 export function getRules(): RedactionRules {
-  return { ...activeRules }
+  return effectiveRules()
 }
 
 export function shannonEntropy(s: string): number {
@@ -56,7 +80,7 @@ export interface RedactionResult {
   redacted: Array<{ pattern: 'entropy' | 'denylist'; hint: string; start: number; end: number }>
 }
 
-export function redact(text: string, rules: RedactionRules = activeRules): RedactionResult {
+export function redact(text: string, rules: RedactionRules = effectiveRules()): RedactionResult {
   if (!text) return { text, redacted: [] }
   const redacted: RedactionResult['redacted'] = []
   const out = text.replace(TOKEN_RE, (token, offset: number) => {

@@ -86,6 +86,14 @@ contextBridge.exposeInMainWorld('redlog', {
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
     uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
   },
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    eventTypes: () => ipcRenderer.invoke('plugins:eventTypes'),
+    reload: () => ipcRenderer.invoke('plugins:reload'),
+    setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('plugins:setEnabled', id, enabled),
+    grant: (id: string) => ipcRenderer.invoke('plugins:grant', id),
+    revoke: (id: string) => ipcRenderer.invoke('plugins:revoke', id)
+  },
   capture: {
     health: () => ipcRenderer.invoke('capture:health')
   },

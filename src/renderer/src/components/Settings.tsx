@@ -52,7 +52,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'team' | 'network' | 'scope' | 'data' | 'hooks'>('general')
+  const [tab, setTab] = useState<'general' | 'team' | 'network' | 'scope' | 'data' | 'hooks' | 'plugins'>('general')
   const [saved, setSaved] = useState(false)
   const [cdpPort, setCdpPort] = useState('9222')
   const [exportResult, setExportResult] = useState<string | null>(null)
@@ -72,6 +72,7 @@ export default function Settings(): JSX.Element {
     { id: 'network' as const, label: t('settings.networkIp') },
     { id: 'scope' as const, label: t('settings.scope') },
     { id: 'hooks' as const, label: t('settings.hooks') },
+    { id: 'plugins' as const, label: t('settings.plugins') },
     { id: 'data' as const, label: t('settings.data') }
   ]
 
@@ -336,6 +337,7 @@ export default function Settings(): JSX.Element {
         {tab === 'hooks' && (
           <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
         )}
+        {tab === 'plugins' && <PluginsPanel t={t} />}
       </div>
 
       <div className="px-4 py-3 border-t border-redlog-border shrink-0">
@@ -508,6 +510,168 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
         </div>
       </FieldGroup>
     </>
+  )
+}
+
+interface PluginView {
+  id: string
+  name: string
+  version: string
+  description: string
+  author: string
+  source: 'bundled' | 'user'
+  tier: 'declarative' | 'privileged'
+  status: 'active' | 'needs-consent' | 'hash-changed' | 'disabled' | 'error'
+  capabilities: string[]
+  contributes: string[]
+  error?: string
+}
+
+function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const [plugins, setPlugins] = useState<PluginView[]>([])
+  const [busy, setBusy] = useState<string | null>(null)
+  const [confirmGrant, setConfirmGrant] = useState<PluginView | null>(null)
+
+  const api = (window.redlog as unknown as { plugins: {
+    list: () => Promise<PluginView[]>
+    reload: () => Promise<PluginView[]>
+    setEnabled: (id: string, enabled: boolean) => Promise<PluginView[]>
+    grant: (id: string) => Promise<{ ok: boolean; error?: string; plugins: PluginView[] }>
+    revoke: (id: string) => Promise<PluginView[]>
+  } }).plugins
+
+  useEffect(() => { api.list().then(setPlugins) }, [])
+
+  const doReload = async (): Promise<void> => { setBusy('*'); setPlugins(await api.reload()); setBusy(null) }
+  const toggle = async (p: PluginView, enabled: boolean): Promise<void> => {
+    setBusy(p.id); setPlugins(await api.setEnabled(p.id, enabled)); setBusy(null)
+  }
+  const grant = async (p: PluginView): Promise<void> => {
+    setBusy(p.id); setConfirmGrant(null)
+    const r = await api.grant(p.id)
+    setPlugins(r.plugins); setBusy(null)
+    toast(r.ok ? t('plugins.granted') : (r.error ?? 'Failed'), r.ok ? 'success' : 'error')
+  }
+  const revoke = async (p: PluginView): Promise<void> => { setBusy(p.id); setPlugins(await api.revoke(p.id)); setBusy(null) }
+
+  const STATUS_STYLE: Record<PluginView['status'], string> = {
+    active: 'bg-green-900/50 text-green-400',
+    'needs-consent': 'bg-amber-900/50 text-amber-400',
+    'hash-changed': 'bg-amber-900/50 text-amber-400',
+    disabled: 'bg-zinc-800 text-zinc-500',
+    error: 'bg-red-900/50 text-red-400'
+  }
+
+  return (
+    <FieldGroup title={t('settings.plugins')}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[10px] text-zinc-600 flex-1 pr-3">{t('plugins.hint')}</p>
+        <button onClick={doReload} disabled={busy === '*'}
+          className="px-2.5 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0">
+          {busy === '*' ? '…' : t('plugins.reload')}
+        </button>
+      </div>
+
+      {plugins.length === 0 && (
+        <p className="text-[10px] text-zinc-600 py-3">{t('plugins.empty')}</p>
+      )}
+
+      <div className="space-y-2">
+        {plugins.map((p) => {
+          const privileged = p.tier === 'privileged'
+          const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
+          return (
+            <div key={p.id} className="rounded border border-zinc-700 bg-zinc-900/50">
+              <div className="flex items-start justify-between p-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-medium text-zinc-200">{p.name}</span>
+                    <span className="text-[9px] text-zinc-500">v{p.version}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
+                      {t(`plugins.status.${p.status}`)}
+                    </span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
+                      {privileged ? t('plugins.tier.privileged') : t('plugins.tier.declarative')}
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">{p.source}</span>
+                  </div>
+                  {p.description && <p className="text-[10px] text-zinc-500 mt-0.5">{p.description}</p>}
+                  {p.contributes.length > 0 && (
+                    <p className="text-[9px] text-zinc-600 mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
+                  )}
+                  {privileged && p.capabilities.length > 0 && (
+                    <p className="text-[9px] text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
+                  )}
+                  {p.status === 'error' && p.error && <p className="text-[9px] text-red-400 mt-0.5">{p.error}</p>}
+                </div>
+
+                <div className="ml-3 shrink-0 flex flex-col gap-1 items-end">
+                  {/* declarative (or already-trusted privileged): enable/disable */}
+                  {p.status !== 'error' && !needsConsent && (
+                    <button
+                      disabled={busy === p.id}
+                      onClick={() => toggle(p, p.status === 'disabled')}
+                      className={`px-3 py-1 text-[10px] rounded ${
+                        p.status === 'disabled' ? 'bg-red-600/80 text-white hover:bg-red-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {busy === p.id ? '…' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
+                    </button>
+                  )}
+                  {/* privileged awaiting consent */}
+                  {needsConsent && (
+                    <button
+                      disabled={busy === p.id}
+                      onClick={() => setConfirmGrant(p)}
+                      className="px-3 py-1 text-[10px] rounded bg-amber-600/80 text-white hover:bg-amber-600"
+                    >
+                      {t('plugins.review')}
+                    </button>
+                  )}
+                  {/* trusted privileged: allow revoke */}
+                  {privileged && p.status === 'active' && (
+                    <button onClick={() => revoke(p)} disabled={busy === p.id}
+                      className="px-3 py-1 text-[10px] rounded bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400">
+                      {t('plugins.revoke')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <p className="text-[9px] text-zinc-600 mt-3">{t('plugins.dir')}</p>
+
+      {/* trust consent dialog for 🔴 code plugins */}
+      {confirmGrant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setConfirmGrant(null)}>
+          <div className="bg-zinc-900 border border-red-900/50 rounded-lg p-4 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-red-400 mb-1">{t('plugins.consentTitle')}</h3>
+            <p className="text-[11px] text-zinc-400 mb-2">
+              {t('plugins.consentBody', { name: confirmGrant.name })}
+            </p>
+            <div className="bg-zinc-950 border border-zinc-800 rounded p-2 mb-2">
+              <p className="text-[10px] text-zinc-500 mb-1">{t('plugins.capabilities')}:</p>
+              <ul className="text-[10px] text-amber-400 space-y-0.5">
+                {confirmGrant.capabilities.length === 0 && <li className="text-zinc-500">—</li>}
+                {confirmGrant.capabilities.map((c) => <li key={c}>• {c}</li>)}
+              </ul>
+            </div>
+            <p className="text-[10px] text-zinc-500 mb-3">{t('plugins.consentWarn')}</p>
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+                {t('common.cancel')}
+              </button>
+              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-[10px] rounded bg-red-600 text-white hover:bg-red-500">
+                {t('plugins.grantRun')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </FieldGroup>
   )
 }
 

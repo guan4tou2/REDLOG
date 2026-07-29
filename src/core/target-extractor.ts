@@ -61,8 +61,40 @@ function lastIPOrDomain(args: string): string | null {
   return null
 }
 
+// Plugin-contributed extractors (🟢 declarative). Each is a cmd matcher plus a
+// single-capture-group regex whose group 1 (or full match) is the host.
+const externalPatterns: Array<{ cmd: RegExp; extract: RegExp; pluginId: string }> = []
+
+export function registerTargetExtractors(
+  pluginId: string,
+  extractors: Array<{ cmd: string; extract: string; flags?: string }>
+): number {
+  let added = 0
+  for (const e of extractors) {
+    try {
+      externalPatterns.push({ cmd: new RegExp(e.cmd), extract: new RegExp(e.extract, e.flags), pluginId })
+      added++
+    } catch { /* bad regex — skip */ }
+  }
+  return added
+}
+
+export function unregisterTargetExtractors(pluginId: string): void {
+  for (let i = externalPatterns.length - 1; i >= 0; i--) {
+    if (externalPatterns[i].pluginId === pluginId) externalPatterns.splice(i, 1)
+  }
+}
+
 export function extractTarget(command: string): string | null {
   const trimmed = command.trim()
+  // Plugin extractors take precedence — they let an engagement teach RedLog
+  // about bespoke tooling the built-in list doesn't know.
+  for (const p of externalPatterns) {
+    if (p.cmd.test(trimmed)) {
+      const m = trimmed.match(p.extract)
+      if (m) return m[1] ?? m[0]
+    }
+  }
   for (const pattern of PATTERNS) {
     if (pattern.cmd.test(trimmed)) {
       return pattern.extract(trimmed)

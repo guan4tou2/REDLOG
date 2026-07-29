@@ -38,6 +38,7 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
+import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust } from '../core/plugins'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 
@@ -165,6 +166,13 @@ function startProject(project: ProjectMeta): void {
   })
   lootDetector.configure({ engagementId, operatorId })
   configureRedaction(config.redaction)
+  // Load plugins after core config so their 🟢 contributions (loot/redaction/
+  // target/event-type/capture) layer on top. 🔴 code plugins only start if the
+  // trust gate already passed (host wired below).
+  try {
+    const psum = initPlugins()
+    if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)
+  } catch (e) { console.error('[plugins] init failed:', e) }
   configureDeconfliction(config.deconfliction)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
@@ -574,6 +582,24 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); return uninstallHook(hookId) })
+
+  // --- Plugins ---
+  // Serialise LoadedPlugin to a UI-friendly shape (drop absolute dirs/hashes we
+  // don't need in the renderer; keep what the panel renders + acts on).
+  const pluginView = () => listPlugins().map((p) => ({
+    id: p.manifest.id, name: p.manifest.name, version: p.manifest.version,
+    description: p.manifest.description ?? '', author: p.manifest.author ?? '',
+    source: p.source, tier: p.tier, status: p.status,
+    capabilities: p.manifest.capabilities ?? [],
+    contributes: Object.keys(p.manifest.contributes ?? {}),
+    error: p.error
+  }))
+  ipcMain.handle('plugins:list', () => pluginView())
+  ipcMain.handle('plugins:eventTypes', () => listEventTypes())
+  ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); reloadPlugins(); return pluginView() })
+  ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); return pluginView() })
+  ipcMain.handle('plugins:grant', (_e, id: string) => { const r = grantPluginTrust(id, operatorId); return { ...r, plugins: pluginView() } })
+  ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)

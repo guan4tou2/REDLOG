@@ -1,0 +1,38 @@
+{
+  "id": "recon-pack",
+  "name": "Recon Pack",
+  "version": "1.0.0",
+  "description": "Example declarative plugin: bespoke loot patterns, a target extractor for a custom scanner, a redaction rule, and a new timeline event type. Runs no code inside RedLog.",
+  "author": "your-handle",
+  "homepage": "https://github.com/your/recon-pack",
+  "redlogApi": 1,
+  "contributes": {
+    "lootPatterns": [
+      { "type": "acme_session", "pattern": "ACME-[A-Z0-9]{16}", "confidence": "high" },
+      { "type": "internal_jwt", "pattern": "corp_eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+", "confidence": "medium" }
+    ],
+    "redaction": {
+      "denylist": ["/CORP_[A-Z0-9]{20,}/"]
+    },
+    "targetExtractors": [
+      { "cmd": "^acme-scan\\s", "extract": "--target\\s+(\\S+)" }
+    ],
+    "eventTypes": [
+      { "agentType": "acme_scan", "label": "ACME Scan", "lane": "scanner", "color": "#7c3aed", "icon": "🔭" }
+    ],
+    "capture": [
+      {
+        "id": "acme-cli",
+        "name": "ACME CLI",
+        "description": "Capture commands run through the acme-cli wrapper",
+        "agentType": "shell",
+        "requires": ["acme-cli"],
+        "hookFile": "hooks/acme-wrapper.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Wrap the acme-cli so RedLog captures each invocation", "command": "\"{hookFile}\" --help" }
+        ]
+      }
+    ]
+  }
+}
