@@ -22,6 +22,11 @@ extraResources:
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
+  extendInfo:
+    # macOS gates the Wi-Fi SSID behind Location Services; this lets RedLog
+    # request it (opt-in) so the HUD can show the real network name.
+    NSLocationWhenInUseUsageDescription: RedLog uses your location only to read the current Wi-Fi network name for the operator HUD. No location data leaves your machine.
+    NSLocationUsageDescription: RedLog uses your location only to read the current Wi-Fi network name for the operator HUD. No location data leaves your machine.
   target:
     - target: dmg
       arch:

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen, session } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
@@ -300,6 +300,13 @@ app.whenReady().then(() => {
   // registers as an accessory (UIElement) and gets no Dock icon; force 'regular'
   // so RedLog always shows in the Dock, matching the packaged app.
   if (process.platform === 'darwin') app.dock?.show()
+
+  // Allow the renderer's opt-in geolocation request (Settings ▸ 網路 ▸ show Wi-Fi
+  // name). Granting macOS Location Services un-redacts the SSID for `ipconfig`.
+  // Nothing else is permitted.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => {
+    cb(permission === 'geolocation')
+  })
 
   const savedState = loadWindowState()
   mainWindow = createMainWindow(savedState?.bounds)

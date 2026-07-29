@@ -241,6 +241,8 @@
   "settings.polling": "輪詢",
   "settings.checkInterval": "檢查間隔（秒）",
   "settings.ipModeHint": "如何抓外網 IP。DNS 較安靜、不受 rate limit,但受限網路可能被擋;自動會先試 DNS 再退回 HTTP。",
+  "settings.showWifiName": "顯示 Wi-Fi 名稱(需定位權限)",
+  "settings.showWifiNameHint": "macOS 把 Wi-Fi 名稱(SSID)藏在定位服務後面。開啟後會請求一次權限,HUD 才能顯示實際網路名稱而非籠統的「Wi-Fi」。定位資料不會離開你的電腦。",
   "settings.ipMode": "IP 偵測方式",
   "settings.ipMode.auto": "自動(DNS→HTTP)",
   "settings.ipMode.dns": "DNS",
