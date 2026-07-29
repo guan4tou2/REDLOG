@@ -134,12 +134,19 @@ const lootDetector = new LootDetector()
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,
 // most-recent first, capped. Lets the floating window show the live pivot chain.
 interface ActivePivot { via: string; tool: string; route?: string; ts: number }
+// A pivot is only shown while it's plausibly still open. RedLog detects pivots
+// from the command that creates them (ssh -D/-L/-R, chisel, ligolo…) but never
+// sees the tunnel close, so without this window a single ssh command would pin a
+// pivot to the HUD forever. Treat one as inactive after 30 min of no re-detection.
+const PIVOT_ACTIVE_WINDOW_MS = 30 * 60 * 1000
 function getActivePivots(): ActivePivot[] {
   try {
     const evs = queryEvents({ agentType: 'pivot', limit: 40 })
+    const cutoff = Date.now() - PIVOT_ACTIVE_WINDOW_MS
     const seen = new Set<string>()
     const out: ActivePivot[] = []
     for (const e of evs) {
+      if (e.timestamp < cutoff) continue
       const d = (e.data ?? {}) as Record<string, unknown>
       const via = (d.via as string) || ''
       if (!via || seen.has(via)) continue
@@ -407,6 +414,7 @@ app.whenReady().then(() => {
       excludeTargets: newConfig.scope.excludeTargets
     })
     screenshotAgent.configure({ quality: newConfig.screenshot.quality })
+    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     // The HUD reads its config once at mount — push overlay settings so toggling
