@@ -56,6 +56,7 @@ interface BrowserTabInfo {
 }
 
 interface RedLogAPI {
+  platform: string
   project: {
     list: () => Promise<ProjectMeta[]>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>

@@ -97,6 +97,15 @@ const PLUGIN_REGISTRY: PluginManifest[] = [
     requires: ['mitmproxy', 'mitmdump'],
     hookFile: 'hooks/mitmproxy-addon.py',
     installMethod: 'manual'
+  },
+  {
+    id: 'shell-powershell',
+    name: 'PowerShell',
+    description: 'Captures commands from PowerShell via prompt hook',
+    agentType: 'shell',
+    requires: [],
+    hookFile: 'hooks/shell-hook.ps1',
+    installMethod: 'manual'
   }
 ]
 
@@ -209,8 +218,11 @@ function checkInstalled(plugin: PluginManifest): boolean {
 
 function checkAvailable(plugin: PluginManifest): boolean {
   if (plugin.requires.length === 0) {
+    if (plugin.id === 'shell-powershell') return process.platform === 'win32'
     if (plugin.id === 'shell-zsh') return process.env.SHELL?.includes('zsh') || existsSync('/bin/zsh')
-    if (plugin.id === 'shell-bash') return existsSync('/bin/bash')
+    if (plugin.id === 'shell-bash') {
+      return existsSync('/bin/bash') || (process.platform === 'win32' && commandExists('bash'))
+    }
     return true
   }
   return plugin.requires.some((cmd) => commandExists(cmd))
@@ -252,6 +264,17 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
         {
           label: 'Or point Codex CLI at the wrapper as its shell',
           command: `SHELL="${hookFile}" codex run "scan the target"`
+        }
+      ]
+    case 'shell-powershell':
+      return [
+        {
+          label: 'Add to your PowerShell profile so it loads on every session',
+          command: `Add-Content $PROFILE '. "${hookFile}"'`
+        },
+        {
+          label: 'Or source it manually in the current session',
+          command: `. "${hookFile}"`
         }
       ]
     default:
