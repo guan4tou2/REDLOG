@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
+import { HudPanel } from './components/Hud'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
@@ -145,15 +146,13 @@ function CaptureHealthCard({ capture, onNavigate }: {
 
   const dark = capture.verdict === 'dark'
   const partial = capture.verdict === 'partial'
-  const barColor = dark ? 'bg-red-500' : partial ? 'bg-amber-500' : 'bg-emerald-500'
+  const tone = dark ? 'red' : partial ? 'amber' : 'cyan'
   const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
     <section>
-      <div className={`rounded-lg border p-4 shadow-card relative overflow-hidden ${
-        dark ? 'bg-red-950/30 border-red-900/50' : partial ? 'bg-amber-950/20 border-amber-900/40' : 'bg-redlog-surface border-redlog-border'
-      }`}>
-        <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
+      <HudPanel tone={tone} live={dark} scan={dark}>
+        <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-[0.15em]">{t('capture.title')}</h2>
           <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
@@ -178,7 +177,8 @@ function CaptureHealthCard({ capture, onNavigate }: {
             </div>
           ))}
         </div>
-      </div>
+        </div>
+      </HudPanel>
     </section>
   )
 }

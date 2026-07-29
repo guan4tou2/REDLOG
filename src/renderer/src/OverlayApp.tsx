@@ -1,15 +1,16 @@
 import { useEffect, useState, useRef } from 'react'
 import { useI18n } from './i18n'
+import { HUD, hexA, CHAMFER } from './lib/hud'
 
 interface ActivePivot { via: string; tool: string; route?: string; ts: number }
 
-// HUD palette — Iron-Man / cyberpunk: cyan frame identity, neon state accents,
-// angular corner brackets that frame without enclosing (reads as an active scan).
-const CYAN = '#22d3ee'
-const SKY = '#38bdf8'
-const MUTED = '#5b7a86'
-const VALUE = '#d6f5ff'
-const CHAMFER = 'polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px)'
+// HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
+// cyan frame identity, calmer state accents, angular corner brackets that frame
+// without enclosing (reads as an active scan), low-alpha glows.
+const CYAN = HUD.cyan
+const SKY = HUD.sky
+const MUTED = HUD.muted
+const VALUE = HUD.value
 
 export default function OverlayApp(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
@@ -66,15 +67,15 @@ export default function OverlayApp(): JSX.Element {
   }
 
   const safety = status?.ipSafety ?? 'unknown'
-  const STATE = { safe: '#2dffb0', exposed: '#ff3b5c', unknown: '#ffcc44' }[safety]
+  const STATE = { safe: HUD.green, exposed: HUD.red, unknown: HUD.amber }[safety]
   const LABEL = { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
   const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
   // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
-  const FRAME = safety === 'exposed' ? '#ff3b5c' : CYAN
+  const FRAME = safety === 'exposed' ? HUD.red : CYAN
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
   const bracket = (pos: React.CSSProperties): JSX.Element => (
-    <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}88`, pointerEvents: 'none', ...pos }} />
+    <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...pos }} />
   )
   const iconBtn: React.CSSProperties = {
     color: CYAN, fontSize: 10, cursor: 'pointer', width: 18, height: 16,
@@ -115,12 +116,12 @@ export default function OverlayApp(): JSX.Element {
           {/* compact bar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 54px 0 14px', height: 40, fontSize: 12, position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-              <span style={{ ...tick(recording ? '#ff3b5c' : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#ff6b82' : '#4a5a62', textShadow: recording ? '0 0 8px rgba(255,59,92,0.6)' : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
+              <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
             {hair}
             <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined }} />
-            <span style={{ color: STATE, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.09em', textShadow: `0 0 9px ${STATE}77`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
+            <span style={{ color: STATE, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
               <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
               <span style={{ color: VALUE, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
@@ -131,7 +132,7 @@ export default function OverlayApp(): JSX.Element {
             </span>
             {latestPivot && (
               <span
-                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: 'rgba(34,211,238,0.14)', border: `1px solid ${SKY}66` }}
+                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: hexA(CYAN, 0.12), border: `1px solid ${SKY}55` }}
                 title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
               >
                 <span style={{ color: CYAN, fontSize: 10, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
@@ -183,22 +184,22 @@ export default function OverlayApp(): JSX.Element {
                       {chain.map((p) => (
                         <span key={p.via + p.ts} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           {arrow}
-                          {pill('#bff2ff', 'rgba(34,211,238,0.12)', `${SKY}55`, p.via, p.tool)}
+                          {pill('#bfeff5', hexA(CYAN, 0.12), `${SKY}55`, p.via, p.tool)}
                         </span>
                       ))}
                       {arrow}
-                      {pill('#7dffc4', 'rgba(45,255,176,0.10)', 'rgba(45,255,176,0.4)', deepest, t('overlay.internalNet'))}
+                      {pill('#8fddb6', hexA(HUD.green, 0.12), hexA(HUD.green, 0.42), deepest, t('overlay.internalNet'))}
                     </div>
                   </>
                 )
               })()}
 
-              {status?.error && <p style={{ color: '#ff6b82', marginTop: 6, fontSize: 10 }}>{status.error}</p>}
+              {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: 10 }}>{status.error}</p>}
 
               {showMark && (
                 <button
                   onClick={() => window.redlog.overlay?.quickMark()}
-                  style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: 'rgba(34,211,238,0.08)', border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 8px ${CYAN}66`, transition: 'background 0.12s' }}
+                  style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.18)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.08)')}
                   title="⌘⇧M"

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
+import { HudPanel } from './Hud'
 
 function useTimeAgo(): (ts: number) => string {
   const { t } = useI18n()
@@ -42,13 +43,14 @@ export default function IPStatusCard(): JSX.Element {
 
   if (!status) {
     return (
-      <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
-        <p className="text-neutral-500">{t('ip.checking')}</p>
-      </div>
+      <HudPanel tone="cyan">
+        <div className="p-4"><p className="text-neutral-500">{t('ip.checking')}</p></div>
+      </HudPanel>
     )
   }
 
   const safety = status.ipSafety
+  const tone = safety === 'exposed' ? 'red' : safety === 'safe' ? 'green' : 'amber'
   const STATUS_CONFIG = {
     safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400' },
     exposed: { indicator: 'bg-red-500', label: t('ip.exposedIp'), color: 'text-red-400' },
@@ -57,7 +59,8 @@ export default function IPStatusCard(): JSX.Element {
   const cfg = STATUS_CONFIG[safety]
 
   return (
-    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
+    <HudPanel tone={tone} live={safety === 'exposed'}>
+      <div className="p-4 space-y-3">
       <div className="flex items-center gap-3">
         <span className={`w-3 h-3 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`} />
         <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
@@ -120,6 +123,7 @@ export default function IPStatusCard(): JSX.Element {
       {status.error && (
         <p className="text-xs text-red-400 mt-2">{status.error}</p>
       )}
-    </div>
+      </div>
+    </HudPanel>
   )
 }

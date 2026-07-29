@@ -10,8 +10,10 @@ module.exports = {
           elevated: '#1a1a1a',
           border: '#262626',
           'border-subtle': '#1e1e1e',
-          accent: '#ef4444',
-          'accent-dim': '#dc2626',
+          accent: '#d75f63',
+          'accent-dim': '#b84d51',
+          cyan: '#3fc7d6',
+          'cyan-dim': '#0e7490',
           muted: '#71717a',
           text: '#e5e5e5',
           'text-dim': '#a1a1aa'
@@ -20,6 +22,8 @@ module.exports = {
       boxShadow: {
         'glow-red': '0 0 12px 0 rgba(239, 68, 68, 0.15)',
         'glow-red-sm': '0 0 6px 0 rgba(239, 68, 68, 0.1)',
+        'glow-cyan': '0 0 14px 0 rgba(34, 211, 238, 0.18)',
+        'glow-cyan-sm': '0 0 6px 0 rgba(34, 211, 238, 0.25)',
         'card': '0 1px 3px 0 rgba(0, 0, 0, 0.4)',
         'card-hover': '0 4px 12px 0 rgba(0, 0, 0, 0.5)'
       },
