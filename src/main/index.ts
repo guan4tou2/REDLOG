@@ -408,8 +408,12 @@ app.whenReady().then(() => {
   eventBus.on('event', (event) => {
     send(mainWindow, 'events:new', event)
     notifyDeconfliction(event)
-    // keep the overlay's pivot list live
-    if (event.agentType === 'pivot') send(overlayWindow, 'pivots:changed', getActivePivots())
+    // keep the overlay + dashboard pivot views live
+    if (event.agentType === 'pivot') {
+      const p = getActivePivots()
+      send(overlayWindow, 'pivots:changed', p)
+      send(mainWindow, 'pivots:changed', p)
+    }
   })
   ipcMain.handle('pivots:getActive', () => getActivePivots())
 

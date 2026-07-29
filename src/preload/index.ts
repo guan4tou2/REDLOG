@@ -122,6 +122,15 @@ contextBridge.exposeInMainWorld('redlog', {
       return () => ipcRenderer.removeListener('recording:changed', handler)
     }
   },
+  pivots: {
+    getActive: (): Promise<Array<{ via: string; tool: string; route?: string; ts: number }>> =>
+      ipcRenderer.invoke('pivots:getActive'),
+    onChange: (cb: (pivots: Array<{ via: string; tool: string; route?: string; ts: number }>) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, p: Array<{ via: string; tool: string; route?: string; ts: number }>) => cb(p)
+      ipcRenderer.on('pivots:changed', handler)
+      return () => ipcRenderer.removeListener('pivots:changed', handler)
+    }
+  },
   terminal: {
     spawn: (id: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:spawn', id, cols, rows),
     write: (id: string, data: string) => ipcRenderer.send('terminal:write', id, data),

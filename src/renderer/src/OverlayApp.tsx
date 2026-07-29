@@ -3,6 +3,14 @@ import { useI18n } from './i18n'
 
 interface ActivePivot { via: string; tool: string; route?: string; ts: number }
 
+// HUD palette — Iron-Man / cyberpunk: cyan frame identity, neon state accents,
+// angular corner brackets that frame without enclosing (reads as an active scan).
+const CYAN = '#22d3ee'
+const SKY = '#38bdf8'
+const MUTED = '#5b7a86'
+const VALUE = '#d6f5ff'
+const CHAMFER = 'polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px)'
+
 export default function OverlayApp(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)
@@ -58,160 +66,159 @@ export default function OverlayApp(): JSX.Element {
   }
 
   const safety = status?.ipSafety ?? 'unknown'
-  // State drives ONLY the accent dot/label + a thin left rail — the chrome
-  // itself stays neutral so the widget reads as a clean instrument, not a
-  // full-box colour warning.
-  const ACCENT = { safe: '#22c55e', exposed: '#ef4444', unknown: '#eab308' }[safety]
+  const STATE = { safe: '#2dffb0', exposed: '#ff3b5c', unknown: '#ffcc44' }[safety]
   const LABEL = { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
   const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
-
-  const PIVOT = '#38bdf8'
-  const MUTED = '#71717a'
-  const LABELC = '#9aa0a6'
-  const VALUE = '#ededf0'
+  // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
+  const FRAME = safety === 'exposed' ? '#ff3b5c' : CYAN
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
+  const bracket = (pos: React.CSSProperties): JSX.Element => (
+    <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}88`, pointerEvents: 'none', ...pos }} />
+  )
   const iconBtn: React.CSSProperties = {
-    color: '#8b8b93', fontSize: 10, cursor: 'pointer',
-    width: 20, height: 20, borderRadius: 6,
-    background: interactive ? 'rgba(255,255,255,0.06)' : 'transparent',
+    color: CYAN, fontSize: 10, cursor: 'pointer', width: 18, height: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'background 0.12s, color 0.12s'
+    background: interactive ? 'rgba(34,211,238,0.10)' : 'transparent',
+    border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
+    transition: 'background 0.12s, border-color 0.12s'
   }
-  const sep = <span style={{ width: 1, height: 15, background: 'rgba(255,255,255,0.09)', flexShrink: 0 }} />
+  const hair = <span style={{ width: 1, height: 13, background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
   const latestPivot = pivots[0]
+  const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
 
   return (
     <div
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
     >
-      <div
-        style={{
-          display: 'flex',
-          background: 'rgba(17,17,20,0.86)',
-          border: `1px solid rgba(255,255,255,${interactive ? 0.16 : 0.08})`,
-          borderRadius: 11,
-          backdropFilter: 'blur(20px) saturate(1.4)',
-          boxShadow: '0 6px 22px rgba(0,0,0,0.40)',
-          overflow: 'hidden', height: '100%', userSelect: 'none',
-          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
-          opacity: interactive ? 1 : 0.92,
-          transition: 'opacity 0.15s, border-color 0.15s'
-        }}
-      >
-        {/* thin state rail */}
-        <div style={{ width: 3, flexShrink: 0, background: ACCENT, opacity: 0.85 }} />
+      {/* frame (neon edge) */}
+      <div style={{ position: 'relative', height: '100%', clipPath: CHAMFER, background: FRAME, opacity: interactive ? 1 : 0.94, transition: 'background 0.2s, opacity 0.15s', boxShadow: `0 0 16px ${FRAME}44` }}>
+        {/* panel (inset fill) */}
+        <div
+          style={{
+            position: 'absolute', inset: 1, clipPath: CHAMFER,
+            background: 'rgba(7,12,17,0.80)',
+            backdropFilter: 'blur(16px) saturate(1.5)',
+            overflow: 'hidden',
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace'
+          }}
+        >
+          {/* scanlines */}
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
 
-        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
           {/* buttons */}
-          <div style={{ position: 'absolute', top: 5, right: 6, zIndex: 10, display: 'flex', alignItems: 'center', gap: 2, ...noDrag }}>
-            <div onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▴' : '▾'}</div>
+          <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag }}>
+            <div onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</div>
             <div onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')}>✕</div>
           </div>
 
           {/* compact bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 52px 0 12px', height: 40, fontSize: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 54px 0 14px', height: 40, fontSize: 12, position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: recording ? '#ef4444' : '#52525b', boxShadow: recording ? '0 0 6px #ef4444' : 'none', animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: recording ? '#f87171' : '#71717a' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
+              <span style={{ ...tick(recording ? '#ff3b5c' : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#ff6b82' : '#4a5a62', textShadow: recording ? '0 0 8px rgba(255,59,92,0.6)' : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
-
-            {sep}
-
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: ACCENT, boxShadow: `0 0 6px ${ACCENT}`, animation: safety === 'exposed' ? 'pulse 1.5s infinite' : undefined, flexShrink: 0 }} />
-            <span style={{ color: ACCENT, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.04em', flexShrink: 0 }}>{status ? LABEL : '…'}</span>
-
+            {hair}
+            <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined }} />
+            <span style={{ color: STATE, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.09em', textShadow: `0 0 9px ${STATE}77`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
-              <span style={{ color: MUTED, fontSize: 9, flexShrink: 0 }}>{t('overlay.ext')}</span>
+              <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
               <span style={{ color: VALUE, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
             </span>
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
-              <span style={{ color: MUTED, fontSize: 9, flexShrink: 0 }}>{t('overlay.int')}</span>
-              <span style={{ color: '#b8bcc2', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
+              <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
+              <span style={{ color: '#9fd8e6', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
             </span>
-
             {latestPivot && (
               <span
-                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 7px', borderRadius: 999, background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.28)' }}
+                style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, padding: '2px 8px', clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)', background: 'rgba(34,211,238,0.14)', border: `1px solid ${SKY}66` }}
                 title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
               >
-                <span style={{ color: PIVOT, fontSize: 10 }}>⇄</span>
-                <span style={{ color: '#bae6fd', fontSize: 10, fontWeight: 600, maxWidth: 84, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
-                {pivots.length > 1 && <span style={{ color: PIVOT, fontSize: 9, fontWeight: 700 }}>+{pivots.length - 1}</span>}
+                <span style={{ color: CYAN, fontSize: 10, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
+                <span style={{ color: '#bff2ff', fontSize: 10, fontWeight: 600, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
+                {pivots.length > 1 && <span style={{ color: CYAN, fontSize: 9, fontWeight: 700 }}>+{pivots.length - 1}</span>}
               </span>
             )}
           </div>
 
           {/* expanded */}
           {expanded && (
-            <div style={{ padding: '0 12px 10px', fontSize: 11 }}>
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '0 0 7px' }} />
-              <div style={{ display: 'grid', gridTemplateColumns: '68px 1fr', rowGap: 4, alignItems: 'baseline' }}>
-                <span style={{ color: LABELC }}>{t('overlay.status')}</span>
-                <span style={{ color: ACCENT, fontWeight: 600 }}>{STATUS_TXT}</span>
-                <span style={{ color: LABELC }}>{t('overlay.external')}</span>
+            <div style={{ padding: '0 14px 11px', fontSize: 11, position: 'relative', zIndex: 2 }}>
+              <div style={{ height: 1, background: `linear-gradient(90deg, ${FRAME}55, transparent)`, margin: '0 0 8px' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', rowGap: 5, alignItems: 'baseline' }}>
+                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.status')}</span>
+                <span style={{ color: STATE, fontWeight: 600, textShadow: `0 0 8px ${STATE}55` }}>{STATUS_TXT}</span>
+                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.external')}</span>
                 <span style={{ color: VALUE }}>{status?.externalIP ?? '—'}</span>
-                <span style={{ color: LABELC }}>{t('overlay.internal')}</span>
+                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.internal')}</span>
                 <span style={{ color: VALUE }}>{status?.internalIP ?? '—'}</span>
-                <span style={{ color: LABELC }}>{t('overlay.lastCheck')}</span>
-                <span style={{ color: '#9aa0a6' }}>{status?.lastCheck ? new Date(status.lastCheck).toLocaleTimeString() : '—'}</span>
+                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.lastCheck')}</span>
+                <span style={{ color: '#9fd8e6' }}>{status?.lastCheck ? new Date(status.lastCheck).toLocaleTimeString() : '—'}</span>
               </div>
 
+              {safety === 'unknown' && (
+                <p style={{ color: '#ffcc44', fontSize: 9, marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint')}</p>
+              )}
+
               {pivots.length > 0 && (() => {
-                // External → pivot hop(s) → internal, as a left-to-right chain.
-                // Oldest pivot sits closest to the external edge; the deepest
-                // route (or internal IP) is the internal endpoint.
                 const chain = [...pivots].sort((a, b) => a.ts - b.ts)
                 const deepest = [...chain].reverse().find((p) => p.route)?.route ?? status?.internalIP ?? t('overlay.internalNet')
-                const arrow = <span style={{ color: 'rgba(56,189,248,0.55)', fontSize: 11, flexShrink: 0 }}>→</span>
-                const endPill = (color: string, bg: string, brd: string, top: string, sub?: string): JSX.Element => (
-                  <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', padding: '3px 8px', borderRadius: 7, background: bg, border: `1px solid ${brd}`, flexShrink: 0, maxWidth: 150 }}>
+                const arrow = <span style={{ color: `${SKY}99`, fontSize: 11, flexShrink: 0 }}>▸</span>
+                const nodeClip = 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)'
+                const pill = (color: string, bg: string, brd: string, top: string, sub: string): JSX.Element => (
+                  <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', padding: '3px 8px', clipPath: nodeClip, background: bg, border: `1px solid ${brd}`, flexShrink: 0, maxWidth: 150 }}>
                     <span style={{ color, fontSize: 10, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 134 }}>{top}</span>
-                    {sub && <span style={{ color: MUTED, fontSize: 8, letterSpacing: '0.04em' }}>{sub}</span>}
+                    <span style={{ color: MUTED, fontSize: 8, letterSpacing: '0.08em' }}>{sub.toUpperCase()}</span>
                   </span>
                 )
                 return (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
-                      <span style={{ color: PIVOT, fontSize: 10 }}>⇄</span>
-                      <span style={{ color: '#7dd3fc', fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em' }}>{t('overlay.topology').toUpperCase()}</span>
-                      <span style={{ flex: 1, height: 1, background: 'rgba(56,189,248,0.16)' }} />
+                      <span style={{ color: CYAN, fontSize: 10, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
+                      <span style={{ color: '#7fe6f7', fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em' }}>{t('overlay.topology').toUpperCase()}</span>
+                      <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, rowGap: 6 }}>
-                      {endPill('#d4d4d8', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.12)', status?.externalIP ?? '—', t('overlay.external'))}
+                      {pill('#d6f5ff', 'rgba(255,255,255,0.04)', 'rgba(120,140,150,0.4)', status?.externalIP ?? '—', t('overlay.external'))}
                       {chain.map((p) => (
                         <span key={p.via + p.ts} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           {arrow}
-                          {endPill('#bae6fd', 'rgba(56,189,248,0.12)', 'rgba(56,189,248,0.30)', p.via, p.tool)}
+                          {pill('#bff2ff', 'rgba(34,211,238,0.12)', `${SKY}55`, p.via, p.tool)}
                         </span>
                       ))}
                       {arrow}
-                      {endPill('#86efac', 'rgba(34,197,94,0.12)', 'rgba(34,197,94,0.30)', deepest, t('overlay.internalNet'))}
+                      {pill('#7dffc4', 'rgba(45,255,176,0.10)', 'rgba(45,255,176,0.4)', deepest, t('overlay.internalNet'))}
                     </div>
                   </>
                 )
               })()}
 
-              {status?.error && <p style={{ color: '#f87171', marginTop: 6, fontSize: 10 }}>{status.error}</p>}
+              {status?.error && <p style={{ color: '#ff6b82', marginTop: 6, fontSize: 10 }}>{status.error}</p>}
 
               {showMark && (
                 <button
                   onClick={() => window.redlog.overlay?.quickMark()}
-                  style={{ ...noDrag, marginTop: 9, width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', color: '#d4d4d8', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, border-color 0.12s' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.16)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)'; e.currentTarget.style.color = '#fca5a5' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)'; e.currentTarget.style.color = '#d4d4d8' }}
+                  style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: 'rgba(34,211,238,0.08)', border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 8px ${CYAN}66`, transition: 'background 0.12s' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.18)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.08)')}
                   title="⌘⇧M"
                 >
-                  ⚑ {t('overlay.mark')}
+                  ⚑ {t('overlay.mark').toUpperCase()}
                 </button>
               )}
             </div>
           )}
         </div>
 
+        {/* corner brackets — incomplete frame = active scan */}
+        {bracket({ top: 4, left: 4, borderTop: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
+        {bracket({ top: 4, right: 4, borderTop: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
+        {bracket({ bottom: 4, left: 4, borderBottom: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
+        {bracket({ bottom: 4, right: 4, borderBottom: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
+
         <style>{`
-          @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-          @keyframes blinkRec { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+          @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+          @keyframes blinkRec { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
         `}</style>
       </div>
     </div>

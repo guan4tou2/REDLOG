@@ -12,8 +12,11 @@ function useTimeAgo(): (ts: number) => string {
   }
 }
 
+interface ActivePivot { via: string; tool: string; route?: string; ts: number }
+
 export default function IPStatusCard(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
+  const [pivots, setPivots] = useState<ActivePivot[]>([])
   const [, setTick] = useState(0)
   const { t } = useI18n()
   const timeAgo = useTimeAgo()
@@ -26,6 +29,15 @@ export default function IPStatusCard(): JSX.Element {
       unsub()
       clearInterval(timer)
     }
+  }, [])
+
+  useEffect(() => {
+    const pv = (window.redlog as unknown as { pivots?: {
+      getActive?: () => Promise<ActivePivot[]>
+      onChange?: (cb: (p: ActivePivot[]) => void) => () => void
+    } }).pivots
+    pv?.getActive?.().then(setPivots).catch(() => {})
+    return pv?.onChange?.(setPivots)
   }, [])
 
   if (!status) {
@@ -63,9 +75,45 @@ export default function IPStatusCard(): JSX.Element {
         </div>
       </div>
 
+      {pivots.length > 0 && (() => {
+        const chain = [...pivots].sort((a, b) => a.ts - b.ts)
+        const deepest = [...chain].reverse().find((p) => p.route)?.route ?? status.internalIP ?? t('overlay.internalNet')
+        const Arrow = (): JSX.Element => <span className="text-cyan-500/50 text-sm shrink-0">→</span>
+        const Pill = ({ top, sub, tone }: { top: string; sub: string; tone: 'ext' | 'pivot' | 'int' }): JSX.Element => {
+          const c = tone === 'ext'
+            ? 'bg-neutral-800/60 border-neutral-600/50 text-neutral-200'
+            : tone === 'pivot'
+              ? 'bg-cyan-500/10 border-cyan-400/30 text-cyan-200'
+              : 'bg-green-500/10 border-green-400/30 text-green-300'
+          return (
+            <span className={`inline-flex flex-col items-start px-2 py-1 rounded border ${c} shrink-0 max-w-[140px]`}>
+              <span className="text-xs font-mono font-medium truncate max-w-[124px]">{top}</span>
+              <span className="text-[9px] text-neutral-500 uppercase tracking-wide">{sub}</span>
+            </span>
+          )
+        }
+        return (
+          <div className="pt-2 border-t border-redlog-border">
+            <p className="text-[10px] text-cyan-400/80 font-medium uppercase tracking-wider mb-2">⇄ {t('overlay.topology')}</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Pill top={status.externalIP ?? '—'} sub={t('ip.externalIp')} tone="ext" />
+              {chain.map((p) => (
+                <span key={p.via + p.ts} className="flex items-center gap-1.5">
+                  <Arrow />
+                  <Pill top={p.via} sub={p.tool} tone="pivot" />
+                </span>
+              ))}
+              <Arrow />
+              <Pill top={deepest} sub={t('overlay.internalNet')} tone="int" />
+            </div>
+          </div>
+        )
+      })()}
+
       {safety === 'unknown' && (
-        <p className="text-xs text-yellow-500">
-          {t('ip.safetyHint')}
+        <p className="text-xs text-yellow-500/90 flex items-start gap-1.5">
+          <span className="shrink-0">ⓘ</span>
+          <span>{t('ip.safetyHint')}</span>
         </p>
       )}
 
