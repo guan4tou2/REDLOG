@@ -2,6 +2,8 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
+const isMac = process.platform === 'darwin'
+
 export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
     width: savedBounds?.width ?? 1100,
@@ -13,7 +15,16 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
     show: false,
     icon: join(__dirname, '../../resources/icon-256.png'),
     backgroundColor: '#0a0a0a',
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac
+      ? {}
+      : {
+          titleBarOverlay: {
+            color: '#0a0a0a',
+            symbolColor: '#a1a1aa',
+            height: 40
+          }
+        }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
