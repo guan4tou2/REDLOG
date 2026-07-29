@@ -73,6 +73,7 @@ const unsub = (): void => {}
 
 function installBridge(): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
+    platform: 'darwin',
     project: {
       list: async () => [{ id: 'p1', name: 'Proj', createdAt: 1, lastOpened: 2, path: '/tmp/p1' }],
       create: async () => ({ id: 'p1', name: 'Proj', createdAt: 1, lastOpened: 2, path: '/tmp/p1' }),
