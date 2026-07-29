@@ -134,7 +134,9 @@ function TerminalPane({ id, active, onPid, onExit }: {
       cursorBlink: true,
       cursorStyle: 'bar',
       fontSize: 13,
-      fontFamily: "'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace",
+      // Prefer a Nerd Font if the operator has one installed, so powerline
+      // separators and prompt glyphs render instead of showing as tofu.
+      fontFamily: "'MesloLGS NF', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', 'Hack Nerd Font', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace",
       lineHeight: 1.3,
       theme: {
         background: '#0a0a0a',
@@ -171,7 +173,9 @@ function TerminalPane({ id, active, onPid, onExit }: {
     fitRef.current = fitAddon
 
     // Subscribe to pty output BEFORE spawning, so the buffer the main process
-    // replays for an existing session lands in this fresh term.
+    // replays for an existing session lands in this fresh term. Per-command
+    // logging is handled by the shell hook (command_start/command_end) — the
+    // full session is also recorded to the tamper-evident .cast.
     const unsubData = window.redlog.terminal.onData(id, (data) => {
       term.write(data)
     })

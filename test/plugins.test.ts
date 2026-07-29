@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+
+// These tests write and load real plugin files from a temp home dir. On Windows
+// CI (Defender scanning every written file) that occasionally exceeds the 5s
+// default; give the whole suite generous headroom so a slow disk isn't a flake.
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
 
 import { validateManifest, computeContentHash, tierOf } from '../src/core/plugins/manifest'
 import { loadPlugins } from '../src/core/plugins/loader'
