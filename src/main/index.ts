@@ -135,14 +135,33 @@ const lootDetector = new LootDetector()
 // most-recent first, capped. Lets the floating window show the live pivot chain.
 interface ActivePivot { via: string; tool: string; route?: string; ts: number }
 // A pivot is only shown while it's plausibly still open. RedLog detects pivots
-// from the command that creates them (ssh -D/-L/-R, chisel, ligolo…) but never
-// sees the tunnel close, so without this window a single ssh command would pin a
-// pivot to the HUD forever. Treat one as inactive after 30 min of no re-detection.
+// from the command that creates them (ssh -D/-L/-R, chisel, ligolo…). It closes
+// them on two signals, best-to-worst:
+//   1. command_end for a foreground tunnel — the shell hook fires it when the
+//      ssh/chisel process actually exits, so a Ctrl-C'd SOCKS tunnel drops at
+//      once. (A backgrounded `-f`/`&` pivot ends its command instantly while the
+//      tunnel lives on, so we ignore near-zero-duration ends.)
+//   2. a 30-min recency window — the fallback for backgrounded/remote pivots we
+//      can't observe closing; without it a single ssh command would pin a pivot
+//      to the HUD forever.
+// (PID liveness isn't viable: command_start fires before the process exists, the
+// hook's pid is the shell's $$, and -fN self-daemonizes — plus remote/agent-run
+// pivots have no PID this host could check.)
 const PIVOT_ACTIVE_WINDOW_MS = 30 * 60 * 1000
+const PIVOT_FOREGROUND_MIN_SEC = 2
 function getActivePivots(): ActivePivot[] {
   try {
     const evs = queryEvents({ agentType: 'pivot', limit: 40 })
     const cutoff = Date.now() - PIVOT_ACTIVE_WINDOW_MS
+    // command_end events that closed a foreground tunnel → command text of a pivot
+    // that has since exited. Matched by the exact command that opened the pivot.
+    const closedCmds = new Set<string>()
+    for (const e of queryEvents({ agentType: 'shell', limit: 120 })) {
+      const d = (e.data ?? {}) as Record<string, unknown>
+      if (d.subtype !== 'command_end') continue
+      const cmd = (d.command as string) || ''
+      if (cmd && Number(d.duration_sec ?? 0) >= PIVOT_FOREGROUND_MIN_SEC) closedCmds.add(cmd)
+    }
     const seen = new Set<string>()
     const out: ActivePivot[] = []
     for (const e of evs) {
@@ -150,6 +169,8 @@ function getActivePivots(): ActivePivot[] {
       const d = (e.data ?? {}) as Record<string, unknown>
       const via = (d.via as string) || ''
       if (!via || seen.has(via)) continue
+      const cmd = (d.command as string) || ''
+      if (cmd && closedCmds.has(cmd)) continue // foreground tunnel has since exited
       seen.add(via)
       out.push({ via, tool: String(d.tool ?? 'pivot'), route: d.route as string | undefined, ts: e.timestamp })
       if (out.length >= 5) break
@@ -420,6 +441,7 @@ app.whenReady().then(() => {
     // The HUD reads its config once at mount — push overlay settings so toggling
     // "show Mark button" takes effect live instead of only after a restart.
     send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
+    send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
     return true
   })
   // The renderer measures its own content and reports the exact height it needs
@@ -473,8 +495,10 @@ app.whenReady().then(() => {
   eventBus.on('event', (event) => {
     send(mainWindow, 'events:new', event)
     notifyDeconfliction(event)
-    // keep the overlay + dashboard pivot views live
-    if (event.agentType === 'pivot') {
+    // keep the overlay + dashboard pivot views live — on new pivots, and on the
+    // command_end that closes a foreground tunnel so it drops from the HUD at once.
+    const d = (event.data ?? {}) as Record<string, unknown>
+    if (event.agentType === 'pivot' || (event.agentType === 'shell' && d.subtype === 'command_end')) {
       const p = getActivePivots()
       send(overlayWindow, 'pivots:changed', p)
       send(mainWindow, 'pivots:changed', p)

@@ -38,6 +38,8 @@ export interface RedLogConfig {
     showMarkButton: boolean
     /** macOS: keep a Dock icon (opening the HUD otherwise makes the app Dock-less) */
     showInDock: boolean
+    /** flash the whole HUD frame while the external IP is EXPOSED (blacklist hit) */
+    flashOnExposed: boolean
   }
   terminal: {
     maxCastBytes: number
@@ -96,7 +98,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   overlay: {
     showMarkButton: true,
-    showInDock: true
+    showInDock: true,
+    flashOnExposed: true
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024

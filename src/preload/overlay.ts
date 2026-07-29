@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld('redlog', {
       const handler = (_e: Electron.IpcRendererEvent, show: boolean): void => cb(show)
       ipcRenderer.on('overlay:showMark', handler)
       return () => ipcRenderer.removeListener('overlay:showMark', handler)
+    },
+    onFlashExposed: (cb: (on: boolean) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, on: boolean): void => cb(on)
+      ipcRenderer.on('overlay:flashExposed', handler)
+      return () => ipcRenderer.removeListener('overlay:flashExposed', handler)
     }
   },
   overlay: {

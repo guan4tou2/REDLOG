@@ -17,6 +17,7 @@ export default function OverlayApp(): JSX.Element {
   const [recording, setRecording] = useState(true)
   const [interactive, setInteractive] = useState(false)
   const [showMark, setShowMark] = useState(true)
+  const [flashExposed, setFlashExposed] = useState(true)
   const pivots = usePivots()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -33,13 +34,17 @@ export default function OverlayApp(): JSX.Element {
     const cfg = window.redlog.config as {
       get?: () => Promise<unknown>
       onShowMark?: (cb: (show: boolean) => void) => () => void
+      onFlashExposed?: (cb: (on: boolean) => void) => () => void
     } | undefined
     cfg?.get?.().then((c) => {
-      const ov = (c as { overlay?: { showMarkButton?: boolean } } | null)?.overlay
+      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean } } | null)?.overlay
       setShowMark(ov?.showMarkButton !== false)
+      setFlashExposed(ov?.flashOnExposed !== false)
     }).catch(() => {})
-    // live-update when the setting is toggled in Settings
-    return cfg?.onShowMark?.(setShowMark)
+    // live-update when the settings are toggled in Settings
+    const off1 = cfg?.onShowMark?.(setShowMark)
+    const off2 = cfg?.onFlashExposed?.(setFlashExposed)
+    return () => { off1?.(); off2?.() }
   }, [])
 
   useEffect(() => {
@@ -79,6 +84,8 @@ export default function OverlayApp(): JSX.Element {
   const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
   // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
   const FRAME = safety === 'exposed' ? HUD.red : CYAN
+  // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
+  const alarm = safety === 'exposed' && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
   const bracket = (pos: React.CSSProperties): JSX.Element => (
@@ -100,7 +107,7 @@ export default function OverlayApp(): JSX.Element {
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
     >
       {/* frame (neon edge) */}
-      <div style={{ position: 'relative', height: '100%', borderRadius: 5, background: FRAME, opacity: interactive ? 1 : 0.94, transition: 'background 0.2s, opacity 0.15s', boxShadow: `0 0 16px ${FRAME}44` }}>
+      <div style={{ position: 'relative', height: '100%', borderRadius: 5, background: FRAME, opacity: interactive ? 1 : 0.94, transition: 'background 0.2s, opacity 0.15s', boxShadow: `0 0 16px ${FRAME}44`, animation: alarm ? 'alarm 0.9s ease-in-out infinite' : undefined }}>
         {/* panel (inset fill) */}
         <div
           style={{
@@ -247,6 +254,10 @@ export default function OverlayApp(): JSX.Element {
         <style>{`
           @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
           @keyframes blinkRec { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
+          @keyframes alarm {
+            0%,100% { box-shadow: 0 0 16px ${HUD.red}44; filter: brightness(1); }
+            50% { box-shadow: 0 0 26px ${HUD.red}dd, 0 0 44px ${HUD.red}88; filter: brightness(1.5); }
+          }
         `}</style>
       </div>
     </div>

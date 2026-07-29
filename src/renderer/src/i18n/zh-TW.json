@@ -261,6 +261,8 @@
   "settings.overlayGroup": "HUD",
   "settings.overlayShowMark": "在展開的懸浮視窗顯示標記按鈕",
   "settings.overlayShowMarkHint": "收合狀態保持簡潔;標記按鈕只在展開時出現。",
+  "settings.overlayFlashExposed": "IP 暴露時閃爍警示",
+  "settings.overlayFlashExposedHint": "外部 IP 命中黑名單(暴露)時,讓整個 HUD 邊框閃爍紅色警示,更難忽略。關掉則只有紅色狀態點會閃。",
   "settings.overlayShowInDock": "在 Dock 顯示圖示(macOS)",
   "settings.overlayShowInDockHint": "開啟 HUD 後預設會讓 RedLog 從 Dock 消失。關掉此項=只從選單列 / HUD 執行,不佔 Dock。",
   "settings.updateGroup": "更新",
