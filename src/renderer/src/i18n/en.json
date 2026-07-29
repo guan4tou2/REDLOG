@@ -87,6 +87,7 @@
   "timeline.target": "Target: {{target}}",
   "timeline.shell": "Shell",
   "timeline.dns": "DNS",
+  "timeline.pivot": "Pivot",
   "timeline.screenshot": "Screenshot",
   "timeline.clipboard": "Clipboard",
   "timeline.files": "Files",

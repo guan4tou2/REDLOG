@@ -5,12 +5,13 @@ import { toast } from './Toast'
 const MIN_LANE_H = 36
 const LABEL_W = 92
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'dns', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
+const LANES = ['shell', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
   dns: '#14b8a6',
+  pivot: '#0ea5e9',
   screenshot: '#3b82f6',
   clipboard: '#a855f7',
   file_transfer: '#a78bfa',
@@ -40,6 +41,8 @@ function eventTitle(event: RedLogEvent): string {
       return `${d.subtype || 'cred'}: ${d.user_context || '?'} @ ${d.dest_host || d.dest_ip || ''}`
     case 'c2_checkin':
       return `C2 beacon ← ${d.dest_ip || d.dest_host || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
+    case 'pivot':
+      return `Pivot [${d.tool}] ${d.subtype || ''}${d.via ? ` → ${d.via}` : ''}${d.route ? ` (${d.route})` : ''}`.trim()
     case 'marker':
       return `${(d.severity as string || 'info').toUpperCase()}: ${d.title}`
     case 'loot':
@@ -98,6 +101,7 @@ export default function TimelinePanel(): JSX.Element {
   const laneLabels: Record<LaneId, string> = useMemo(() => ({
     shell: t('timeline.shell'),
     dns: t('timeline.dns'),
+    pivot: t('timeline.pivot'),
     screenshot: t('timeline.screenshot'),
     clipboard: t('timeline.clipboard'),
     file_transfer: t('timeline.files'),

@@ -41,6 +41,31 @@ Recommended additions (Timeline recognises these as first-class lanes):
 - `dns` — DNS resolutions and probes (with `subtype: dns_query` / `dns_response`)
 - `credential_use` — every attempted / successful credential use
 - `c2_checkin` — C2 beacon / callback
+- `pivot` — internal-network pivot / tunnel establishment (lateral movement)
+
+### `pivot` events
+
+RedLog **auto-detects** pivots from shell commands (ligolo-ng, chisel, `ssh -D/-L/-R`,
+sshuttle, proxychains, socat) and emits a `pivot` event alongside the command, so
+the timeline shows the intermediate node and route — not just the raw command.
+Agents can also log them explicitly. Keys:
+
+| Key | Meaning |
+|-----|---------|
+| `subtype` | `tunnel_start` / `socks_up` / `port_forward` / `route_add` / `agent_connect` / `proxied` |
+| `tool` | `ligolo-ng` / `chisel` / `ssh` / `sshuttle` / `proxychains` / `socat` |
+| `via` | the intermediate / jump node the pivot goes through |
+| `route` | CIDR reachable through the pivot (e.g. `10.10.0.0/16`) |
+| `socks_port` | local SOCKS port opened, if any |
+| `forward` | raw forward spec (e.g. `8080:10.0.0.5:80`) |
+| `mitre_ttp` | `T1090` (Proxy) or `T1572` (Protocol Tunneling) |
+
+```json
+{
+  "agent_type": "pivot",
+  "data": { "subtype": "route_add", "tool": "sshuttle", "via": "jump.corp", "route": "10.10.0.0/16", "mitre_ttp": "T1090" }
+}
+```
 
 ## Examples
 

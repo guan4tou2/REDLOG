@@ -20,6 +20,7 @@ import {
 } from './db/operators'
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
+import { detectPivot } from './pivot-detector'
 import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
@@ -299,6 +300,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let targetId = body.target_id || body.targetId || undefined
 
       let lootValues: string[] = []
+      let pivot: ReturnType<typeof detectPivot> = null
       if (agentType === 'shell' && data.command) {
         const cmd = data.command as string
         const isStart = data.subtype === 'command_start'
@@ -312,6 +314,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         if (isStart && detected && scopeMonitorRef) {
           scopeMonitorRef.checkTarget(detected, cmd)
         }
+
+        // Internal-network pivots (ligolo-ng, chisel, ssh -D/-L/-R, sshuttle,
+        // proxychains, socat) get a first-class `pivot` event so the timeline
+        // records the intermediate node / route, not just the raw command.
+        if (isStart) pivot = detectPivot(cmd)
 
         if (!isStart && lootDetectorRef) {
           const textToScan = [cmd, data.output].filter(Boolean).join('\n')
@@ -345,6 +352,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       })
       if (!event) { json(res, 409, { error: 'Duplicate event (dedup window)' }); return }
       eventBus.publish(event)
+
+      // Emit the companion pivot event (best-effort; never blocks the shell event).
+      if (pivot) {
+        try {
+          const pv = insertEvent('pivot', {
+            subtype: pivot.subtype, tool: pivot.tool, via: pivot.via, route: pivot.route,
+            socks_port: pivot.socksPort, forward: pivot.forward, mitre_ttp: pivot.mitreTtp,
+            command: data.command, description: `Pivot via ${pivot.tool}${pivot.via ? ` → ${pivot.via}` : ''}${pivot.route ? ` (${pivot.route})` : ''}`
+          }, { engagementId, operatorId: operator.id, targetId: pivot.via ?? targetId })
+          if (pv) eventBus.publish(pv)
+        } catch { /* pivot event is additive; ignore failures */ }
+      }
+
       json(res, 201, event)
       return
     }

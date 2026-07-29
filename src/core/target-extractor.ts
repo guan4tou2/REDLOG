@@ -36,6 +36,11 @@ const PATTERNS: CommandPattern[] = [
   { cmd: /^ldapsearch\s/, extract: (a) => a.match(/-[hH]\s+([^\s]+)/)?.[1] ?? null },
   { cmd: /^bloodhound-python\s|^bloodhound\s/, extract: (a) => a.match(/-d\s+([^\s]+)/)?.[1] ?? null },
   { cmd: /^set\s+RHOSTS?\s/i, extract: (a) => a.match(/RHOSTS?\s+([^\s]+)/i)?.[1] ?? null },
+  // Internal-network pivots — catalog the node reached through the pivot.
+  { cmd: /^proxychains4?\s/, extract: (a) => lastIPOrDomain(a.replace(/^proxychains4?\s+(-q\s+|-f\s+\S+\s+)*/, '')) },
+  { cmd: /^sshuttle\s/, extract: (a) => a.match(/-r\s+(?:[^@\s]+@)?([^\s]+)/)?.[1] ?? null },
+  { cmd: /^chisel\s/, extract: (a) => a.match(/client\s+(?:https?:\/\/)?([^\s:/]+)/)?.[1] ?? null },
+  { cmd: /ligolo|(^|\s)agent\s+.*-connect/, extract: (a) => a.match(/-connect\s+([^\s:]+)/)?.[1] ?? null },
 ]
 
 function hostFromUrl(url: string): string | null {

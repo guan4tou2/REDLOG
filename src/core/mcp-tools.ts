@@ -31,7 +31,7 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'redlog_log_event',
-    description: 'Log a raw event with custom agent_type and data — only for actions no hook captured (GUI clicks, manual observations). Do NOT use for shell commands the hooks already log. Prefer standard agent_type (shell, agent, scanner, dns, credential_use, c2_checkin, file_transfer) and standard data keys (subtype, tool, dest_ip, dest_host, dest_port, user_context, mitre_ttp, description, sha256, bytes). See docs/event-schema.md.',
+    description: 'Log a raw event with custom agent_type and data — only for actions no hook captured (GUI clicks, manual observations). Do NOT use for shell commands the hooks already log. Prefer standard agent_type (shell, agent, scanner, dns, credential_use, c2_checkin, file_transfer, pivot) and standard data keys (subtype, tool, dest_ip, dest_host, dest_port, user_context, mitre_ttp, description, sha256, bytes; for pivot: via, route, socks_port, forward). See docs/event-schema.md.',
     inputSchema: {
       type: 'object',
       properties: {
