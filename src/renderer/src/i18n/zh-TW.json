@@ -358,6 +358,7 @@
   "terminal.newTab": "新增終端",
 
   "timeline.zoomIn": "放大（Ctrl+滾輪）",
+  "timeline.minimapHint": "拖曳選取時間範圍以放大 · 點擊跳至該時間",
   "timeline.zoomOut": "縮小（Ctrl+滾輪）",
   "timeline.resetZoom": "重置縮放",
   "timeline.noEvents": "尚未記錄任何事件",

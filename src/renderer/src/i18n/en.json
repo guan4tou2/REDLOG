@@ -358,6 +358,7 @@
   "terminal.newTab": "New Terminal",
 
   "timeline.zoomIn": "Zoom in (Ctrl+scroll)",
+  "timeline.minimapHint": "Drag to zoom to a time window · click to jump",
   "timeline.zoomOut": "Zoom out (Ctrl+scroll)",
   "timeline.resetZoom": "Reset zoom",
   "timeline.noEvents": "No events recorded yet",

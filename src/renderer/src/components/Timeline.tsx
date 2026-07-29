@@ -71,6 +71,9 @@ export default function TimelinePanel(): JSX.Element {
   const [containerH, setContainerH] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
+  const [view, setView] = useState({ left: 0, width: 100 })
+  const [drag, setDrag] = useState<{ x0: number; x1: number; w: number } | null>(null)
+  const pendingView = useRef<{ t0: number } | null>(null)
   const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
   const [showJson, setShowJson] = useState(false)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
@@ -231,6 +234,58 @@ export default function TimelinePanel(): JSX.Element {
     return out
   }, [visibleLanes, laneEvents, toX, laneH])
 
+  // Density minimap: event counts over the full range, binned into fixed cells.
+  const bins = useMemo(() => {
+    const N = 120
+    const counts = new Array(N).fill(0)
+    const span = (timeEnd - timeStart) || 1
+    for (const e of events) {
+      let i = Math.floor(((e.timestamp - timeStart) / span) * N)
+      i = i < 0 ? 0 : i >= N ? N - 1 : i
+      counts[i]++
+    }
+    return { counts, max: Math.max(1, ...counts), N }
+  }, [events, timeStart, timeEnd])
+
+  // Keep the minimap's "current viewport" window in sync with the scroll/zoom.
+  const updateView = useCallback(() => {
+    const el = scrollRef.current
+    if (!el || TRACK_W <= 0) return
+    setView({ left: (el.scrollLeft / TRACK_W) * 100, width: Math.min(100, (el.clientWidth / TRACK_W) * 100) })
+  }, [TRACK_W])
+
+  // Drag across the minimap to zoom the main view to that window; click to jump.
+  const onMinimapDown = useCallback((e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const w = rect.width
+    const clamp = (v: number): number => Math.max(0, Math.min(v, w))
+    const startX = clamp(e.clientX - rect.left)
+    setCluster(null)
+    const onMove = (me: MouseEvent): void => setDrag({ x0: startX, x1: clamp(me.clientX - rect.left), w })
+    const onUp = (ue: MouseEvent): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setDrag(null)
+      const el = scrollRef.current
+      if (!el) return
+      const endX = clamp(ue.clientX - rect.left)
+      const span = (timeEnd - timeStart) || 1
+      if (Math.abs(endX - startX) > 4) {
+        const f0 = Math.min(startX, endX) / w
+        const frac = Math.max(0.01, Math.abs(endX - startX) / w)
+        pendingView.current = { t0: timeStart + f0 * span }
+        setZoom(Math.max(0.25, Math.min(6, el.clientWidth / (BASE_TRACK_W * frac))))
+      } else {
+        const t = timeStart + (startX / w) * span
+        el.scrollLeft = Math.max(0, Math.min(((t - timeStart) / span) * TRACK_W - el.clientWidth / 2, TRACK_W - el.clientWidth))
+        updateView()
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    setDrag({ x0: startX, x1: startX, w })
+  }, [timeStart, timeEnd, TRACK_W, updateView])
+
   const recentEvents = useMemo(() => {
     const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType)))
     return [...visible].reverse().slice(0, 50)
@@ -296,6 +351,19 @@ export default function TimelinePanel(): JSX.Element {
     pendingZoomAnchor.current = null
     el.scrollLeft = a.frac * TRACK_W - a.cursorX
   }, [TRACK_W])
+
+  // After a minimap drag-to-zoom re-renders, place the selected window at the
+  // left edge; then refresh the viewport indicator whenever the track resizes.
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el && pendingView.current) {
+      const { t0 } = pendingView.current
+      pendingView.current = null
+      const span = (timeEnd - timeStart) || 1
+      el.scrollLeft = Math.max(0, Math.min(((t0 - timeStart) / span) * TRACK_W, TRACK_W - el.clientWidth))
+    }
+    updateView()
+  }, [TRACK_W, updateView, timeStart, timeEnd, loading])
 
   const toggleLane = useCallback((lane: LaneId) => {
     setHiddenLanes((prev) => {
@@ -397,6 +465,30 @@ export default function TimelinePanel(): JSX.Element {
         </div>
       </div>
 
+      {/* Density minimap — overview of the whole engagement. Drag to zoom to a
+          window, click to jump. The bright frame marks the current viewport. */}
+      <div
+        className="relative h-9 border-b border-zinc-800/80 bg-zinc-950/40 cursor-crosshair select-none shrink-0"
+        onMouseDown={onMinimapDown}
+        title={t('timeline.minimapHint')}
+      >
+        <div className="absolute inset-0 flex items-end gap-px px-1 pb-0.5">
+          {bins.counts.map((c, i) => (
+            <div key={i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: c ? `${18 + (c / bins.max) * 72}%` : '0%' }} />
+          ))}
+        </div>
+        <div
+          className="absolute inset-y-0 border-x-2 border-cyan-300/70 bg-cyan-300/10 pointer-events-none"
+          style={{ left: `${view.left}%`, width: `${Math.max(1, view.width)}%` }}
+        />
+        {drag && (
+          <div
+            className="absolute inset-y-0 bg-white/15 border border-white/50 pointer-events-none"
+            style={{ left: `${(Math.min(drag.x0, drag.x1) / drag.w) * 100}%`, width: `${(Math.abs(drag.x1 - drag.x0) / drag.w) * 100}%` }}
+          />
+        )}
+      </div>
+
       {/* Timeline + event list split */}
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Swim lanes */}
@@ -422,6 +514,7 @@ export default function TimelinePanel(): JSX.Element {
             className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
+            onScroll={updateView}
           >
             <div style={{ width: TRACK_W, position: 'relative' }}>
               {/* Time axis */}
