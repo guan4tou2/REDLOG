@@ -290,7 +290,7 @@
   "settings.scopeFileLabel": "Load targets from file (JSON or plain text, one per line)",
   "settings.scopeFileHint": "Absolute path to a scope file. Targets are merged with the list above.",
   "settings.saveApply": "Save & Apply",
-  "settings.restartHint": "Requires restart to apply network/scope changes",
+  "settings.restartHint": "Applies immediately (changing engagement/operator id needs reopening the project)",
 
   "settings.mcp": "MCP Server (for AI agents)",
   "settings.mcpHint": "RedLog hosts its own MCP server over HTTP — it's live whenever the app is open, no subprocess to launch. Use it to let Claude Code / Cursor operate the app: create markers, check scope, anchor the chain. Logging still goes through the hooks, not MCP.",

@@ -48,20 +48,31 @@ function getPausedIcon(): Electron.NativeImage {
   return pausedIcon
 }
 
+// Blink the recording icon in place of a text title — a pulsing red dot reads at
+// a glance and doesn't eat menu-bar width the way " REC" does.
+let blinkTimer: ReturnType<typeof setInterval> | null = null
+function stopBlink(): void {
+  if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null }
+}
+
 export function setTrayRecording(tray: Tray, recording: boolean | null): void {
+  stopBlink()
+  tray.setTitle('') // no text label — keep the menu bar compact
   if (recording === null) {
     tray.setImage(getTemplateIcon())
-    tray.setTitle('')
     tray.setToolTip('RedLog — Red Team Operation Log')
     return
   }
   if (recording) {
-    tray.setImage(getRecIcon())
-    tray.setTitle(' REC', { fontType: 'monospacedDigit' })
     tray.setToolTip('RedLog — Recording')
+    let on = true
+    tray.setImage(getRecIcon())
+    blinkTimer = setInterval(() => {
+      on = !on
+      try { tray.setImage(on ? getRecIcon() : getTemplateIcon()) } catch { stopBlink() }
+    }, 750)
   } else {
     tray.setImage(getPausedIcon())
-    tray.setTitle(' PAUSED', { fontType: 'monospacedDigit' })
     tray.setToolTip('RedLog — Paused')
   }
 }
