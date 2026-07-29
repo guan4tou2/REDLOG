@@ -117,7 +117,7 @@ export default function OverlayApp(): JSX.Element {
             background: 'rgba(7,12,17,0.80)',
             backdropFilter: 'blur(16px) saturate(1.5)',
             overflow: 'hidden',
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace'
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace'
           }}
         >
           {/* scanlines */}
@@ -237,7 +237,7 @@ export default function OverlayApp(): JSX.Element {
                   style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.18)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.08)')}
-                  title="⌘⇧M"
+                  title={navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}
                 >
                   ⚑ {t('overlay.mark').toUpperCase()}
                 </button>

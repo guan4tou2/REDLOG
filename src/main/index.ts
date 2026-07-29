@@ -704,7 +704,10 @@ app.whenReady().then(() => {
   ipcMain.handle('plugins:eventTypes', () => listEventTypes())
   ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); reloadPlugins(); return pluginView() })
   ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); return pluginView() })
-  ipcMain.handle('plugins:grant', (_e, id: string) => { const r = grantPluginTrust(id, operatorId); return { ...r, plugins: pluginView() } })
+  ipcMain.handle('plugins:grant', (_e, id: string) => {
+    const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
+    const r = grantPluginTrust(id, opId); return { ...r, plugins: pluginView() }
+  })
   ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
   // --- Recording ---

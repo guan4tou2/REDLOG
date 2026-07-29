@@ -16,7 +16,9 @@ const SYS_PATH = ['/sbin', '/usr/sbin', '/usr/bin', '/bin'].join(':')
 
 function run(cmd: string, timeout = 2500): Promise<string> {
   return new Promise((resolve) => {
-    const env = { ...process.env, PATH: `${SYS_PATH}:${process.env.PATH ?? ''}` }
+    const env = process.platform === 'win32'
+      ? process.env
+      : { ...process.env, PATH: `${SYS_PATH}:${process.env.PATH ?? ''}` }
     exec(cmd, { timeout, windowsHide: true, env }, (err, stdout) => resolve(err ? '' : stdout))
   })
 }
