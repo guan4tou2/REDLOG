@@ -62,6 +62,8 @@ npm run build
 npx electron-builder --mac    # or --win / --linux
 ```
 
+> **Windows / WSL users** — see [docs/windows-setup.md](docs/windows-setup.md) for build prerequisites, PowerShell hooks, and WSL integration.
+
 ## Features
 
 ### Recording Engine
