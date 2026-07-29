@@ -157,24 +157,40 @@ export default function OverlayApp(): JSX.Element {
                 <span style={{ color: '#9aa0a6' }}>{status?.lastCheck ? new Date(status.lastCheck).toLocaleTimeString() : '—'}</span>
               </div>
 
-              {pivots.length > 0 && (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '8px 0 5px' }}>
-                    <span style={{ color: PIVOT, fontSize: 10 }}>⇄</span>
-                    <span style={{ color: '#7dd3fc', fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em' }}>{t('overlay.pivots').toUpperCase()}</span>
-                    <span style={{ flex: 1, height: 1, background: 'rgba(56,189,248,0.16)' }} />
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {pivots.slice(0, 3).map((p) => (
-                      <div key={p.via} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, minWidth: 0 }}>
-                        <span style={{ color: '#7dd3fc', fontWeight: 600, fontSize: 8, padding: '1px 5px', borderRadius: 4, background: 'rgba(56,189,248,0.12)', flexShrink: 0 }}>{p.tool}</span>
-                        <span style={{ color: '#e0f2fe', fontWeight: 500, flexShrink: 0 }}>{p.via}</span>
-                        {p.route && <span style={{ color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>→ {p.route}</span>}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+              {pivots.length > 0 && (() => {
+                // External → pivot hop(s) → internal, as a left-to-right chain.
+                // Oldest pivot sits closest to the external edge; the deepest
+                // route (or internal IP) is the internal endpoint.
+                const chain = [...pivots].sort((a, b) => a.ts - b.ts)
+                const deepest = [...chain].reverse().find((p) => p.route)?.route ?? status?.internalIP ?? t('overlay.internalNet')
+                const arrow = <span style={{ color: 'rgba(56,189,248,0.55)', fontSize: 11, flexShrink: 0 }}>→</span>
+                const endPill = (color: string, bg: string, brd: string, top: string, sub?: string): JSX.Element => (
+                  <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', padding: '3px 8px', borderRadius: 7, background: bg, border: `1px solid ${brd}`, flexShrink: 0, maxWidth: 150 }}>
+                    <span style={{ color, fontSize: 10, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 134 }}>{top}</span>
+                    {sub && <span style={{ color: MUTED, fontSize: 8, letterSpacing: '0.04em' }}>{sub}</span>}
+                  </span>
+                )
+                return (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
+                      <span style={{ color: PIVOT, fontSize: 10 }}>⇄</span>
+                      <span style={{ color: '#7dd3fc', fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em' }}>{t('overlay.topology').toUpperCase()}</span>
+                      <span style={{ flex: 1, height: 1, background: 'rgba(56,189,248,0.16)' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, rowGap: 6 }}>
+                      {endPill('#d4d4d8', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.12)', status?.externalIP ?? '—', t('overlay.external'))}
+                      {chain.map((p) => (
+                        <span key={p.via + p.ts} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          {arrow}
+                          {endPill('#bae6fd', 'rgba(56,189,248,0.12)', 'rgba(56,189,248,0.30)', p.via, p.tool)}
+                        </span>
+                      ))}
+                      {arrow}
+                      {endPill('#86efac', 'rgba(34,197,94,0.12)', 'rgba(34,197,94,0.30)', deepest, t('overlay.internalNet'))}
+                    </div>
+                  </>
+                )
+              })()}
 
               {status?.error && <p style={{ color: '#f87171', marginTop: 6, fontSize: 10 }}>{status.error}</p>}
 

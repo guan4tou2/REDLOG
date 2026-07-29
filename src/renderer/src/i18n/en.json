@@ -194,6 +194,8 @@
   "overlay.status": "Status",
   "overlay.external": "External",
   "overlay.internal": "Internal",
+  "overlay.topology": "Topology",
+  "overlay.internalNet": "internal",
   "overlay.pivots": "Pivots",
   "overlay.lastCheck": "Last check",
 
