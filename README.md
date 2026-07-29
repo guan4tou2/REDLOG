@@ -11,14 +11,14 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.3.5**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.4.0**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.3.5-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.3.5/RedLog-0.3.5-arm64.dmg) |
-| macOS (Intel) | [`RedLog-0.3.5.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.3.5/RedLog-0.3.5.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.3.5.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.3.5/RedLog.Setup.0.3.5.exe) |
-| Windows (portable) | [`RedLog.0.3.5.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.3.5/RedLog.0.3.5.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.4.0-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.4.0/RedLog-0.4.0-arm64.dmg) |
+| macOS (Intel) | [`RedLog-0.4.0.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.4.0/RedLog-0.4.0.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.4.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.4.0/RedLog.Setup.0.4.0.exe) |
+| Windows (portable) | [`RedLog.0.4.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.4.0/RedLog.0.4.0.exe) |
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
@@ -41,6 +41,7 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end
 - **Built-in MCP server (HTTP)** — the app hosts its own MCP endpoint, live the moment RedLog opens; agents operate the app (markers, scope, anchoring) without spawning a subprocess ([details](docs/agent-integration.md#2-mcp-server-operate-the-app))
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
+- **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (agent-operable MCP tools) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Quick Start
