@@ -16,8 +16,8 @@ class RedLogEventBus extends EventEmitter {
     this.emit('recording', true)
   }
 
-  publish(event: RedLogEvent): void {
-    if (this._paused) return
+  publish(event: RedLogEvent, opts?: { bypassPause?: boolean }): void {
+    if (this._paused && !opts?.bypassPause) return
     this.emit('event', event)
     this.emit(`event:${event.agentType}`, event)
   }
