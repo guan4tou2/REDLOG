@@ -5,7 +5,7 @@ import { toast } from './Toast'
 interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
-  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto' }
+  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean }
   scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
   overlay?: { showMarkButton: boolean }
@@ -165,6 +165,26 @@ export default function Settings(): JSX.Element {
                   ))}
                 </div>
                 <p className="text-[10px] text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
+              </div>
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.network.showWifiName ?? false}
+                    onChange={(e) => {
+                      const on = e.target.checked
+                      setConfig({ ...config, network: { ...config.network, showWifiName: on } })
+                      // Trigger the macOS Location Services prompt; once granted,
+                      // the OS un-redacts the SSID for the next network poll.
+                      if (on && navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
+                      }
+                    }}
+                    className="accent-red-600"
+                  />
+                  <span className="text-[11px] text-zinc-300">{t('settings.showWifiName')}</span>
+                </label>
+                <p className="text-[10px] text-zinc-600 mt-1">{t('settings.showWifiNameHint')}</p>
               </div>
               <Field
                 label={t('settings.checkInterval')}
