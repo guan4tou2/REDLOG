@@ -140,14 +140,12 @@ export default function OverlayApp(): JSX.Element {
             {hair}
             <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined }} />
             <span style={{ color: STATE, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
+            <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
               <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
-              <span style={{ color: VALUE, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
+              <span style={{ color: VALUE, fontWeight: 500, whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
             </span>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
-              <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
-              <span style={{ color: '#9fd8e6', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
-            </span>
+            {/* internal IP lives in the expanded panel — kept out of the compact bar so
+                the external IP and Wi-Fi name stay readable instead of truncating */}
             {linkText && (
               <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, minWidth: 0, flexShrink: 1 }}>
                 <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
