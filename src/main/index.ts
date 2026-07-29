@@ -49,6 +49,11 @@ let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let activeProject: ProjectMeta | null = null
+// Cached IDs of the currently-open project, so background sources (IP monitor,
+// recording toggle) can insert attributed events without re-reading config.yaml
+// from disk on every tick. Cleared in stopProject.
+let currentEngagementId: string | null = null
+let currentOperatorId: string | null = null
 let forceQuit = false
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
@@ -201,10 +206,67 @@ function startLinkMonitor(): void {
   linkTimer = setInterval(refresh, 20_000)
 }
 
+// Last broadcast state, kept module-level to detect transitions. A change in
+// ipSafety (safe/exposed/unknown) or in the externalIP itself is an OPSEC signal
+// worth preserving — VPN dropped mid-op, egress switched pools, etc. Only the
+// current state was ever in the HUD; now every transition lands in the audit log.
+let lastBroadcastSafety: IPStatus['ipSafety'] | null = null
+let lastBroadcastIP: string | null = null
 function broadcastIPStatus(status: IPStatus): void {
   const s = { ...status, link: currentLink }
   send(mainWindow, 'ip:status', s)
   send(overlayWindow, 'ip:status', s)
+  // Record safety/IP transitions (skip the very first broadcast — it's the seed
+  // state, not a change; and skip if no project is open yet).
+  if (lastBroadcastSafety !== null && currentEngagementId && currentOperatorId) {
+    const safetyChanged = status.ipSafety !== lastBroadcastSafety
+    const ipChanged = status.externalIP != null && status.externalIP !== lastBroadcastIP
+    if (safetyChanged || ipChanged) {
+      try {
+        const ev = insertEvent('system', {
+          subtype: 'ip_transition',
+          from_safety: lastBroadcastSafety, to_safety: status.ipSafety,
+          from_ip: lastBroadcastIP, to_ip: status.externalIP ?? null,
+          description: safetyChanged
+            ? `IP safety ${lastBroadcastSafety} → ${status.ipSafety}${ipChanged ? ` (${lastBroadcastIP ?? '?'} → ${status.externalIP})` : ''}`
+            : `External IP changed ${lastBroadcastIP} → ${status.externalIP}`
+        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+        if (ev) eventBus.publish(ev)
+      } catch { /* audit-additive; never block IP broadcasting */ }
+    }
+  }
+  lastBroadcastSafety = status.ipSafety
+  if (status.externalIP != null) lastBroadcastIP = status.externalIP
+}
+
+// Log the security-relevant fields that changed on config:save. Cosmetic changes
+// (Dock icon, HUD flash toggle) stay silent — we only record settings that would
+// affect enforcement or attribution if silently loosened.
+function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
+  if (!currentEngagementId || !currentOperatorId) return
+  const changed: Record<string, { from: unknown; to: unknown }> = {}
+  const check = (path: string, from: unknown, to: unknown): void => {
+    if (JSON.stringify(from) !== JSON.stringify(to)) changed[path] = { from, to }
+  }
+  check('scope.enforcement', oldCfg.scope?.enforcement, newCfg.scope?.enforcement)
+  check('scope.targets', oldCfg.scope?.targets, newCfg.scope?.targets)
+  check('scope.excludeTargets', oldCfg.scope?.excludeTargets, newCfg.scope?.excludeTargets)
+  check('scope.scopeFile', oldCfg.scope?.scopeFile, newCfg.scope?.scopeFile)
+  check('network.blacklist', oldCfg.network?.blacklist, newCfg.network?.blacklist)
+  check('network.whitelist', oldCfg.network?.whitelist, newCfg.network?.whitelist)
+  check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
+  check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
+  check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
+  check('deconfliction.endpoint', oldCfg.deconfliction?.endpoint, newCfg.deconfliction?.endpoint)
+  if (Object.keys(changed).length === 0) return
+  try {
+    const ev = insertEvent('system', {
+      subtype: 'config_changed',
+      changed,
+      description: `Config changed: ${Object.keys(changed).join(', ')}`
+    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    if (ev) eventBus.publish(ev)
+  } catch { /* additive */ }
 }
 
 function startProject(project: ProjectMeta): void {
@@ -216,6 +278,8 @@ function startProject(project: ProjectMeta): void {
   applyDock()
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
+  currentEngagementId = engagementId
+  currentOperatorId = operatorId
 
   initDB(projectDir)
 
@@ -323,6 +387,8 @@ function stopProject(): void {
   ipMonitor.stop()
   closeDB()
   activeProject = null
+  currentEngagementId = null
+  currentOperatorId = null
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each
@@ -413,7 +479,14 @@ app.whenReady().then(() => {
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
+    const oldConfig = loadConfig(projectDir)
     saveConfig(projectDir, newConfig)
+    currentEngagementId = newConfig.engagement.id
+    currentOperatorId = newConfig.operator.id
+    // Audit trail — log security-relevant setting changes so a reviewer can see
+    // when scope loosened or the IP blacklist changed. Only diffs the fields
+    // that affect enforcement or attribution; cosmetic changes stay silent.
+    logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
     applyDock()
     ipMonitor.configure({
@@ -749,6 +822,18 @@ app.whenReady().then(() => {
     send(mainWindow, 'recording:changed', recording)
     send(overlayWindow, 'recording:changed', recording)
     if (tray) setTrayRecording(tray, recording)
+    // Log the toggle so a reviewer can explain gaps in the timeline — "no events
+    // for 20 min" reads very differently as "recording was paused" vs "idle".
+    // Bypass the paused gate for this one write: pause events must always land.
+    if (currentEngagementId && currentOperatorId) {
+      try {
+        const ev = insertEvent('system', {
+          subtype: recording ? 'recording_resumed' : 'recording_paused',
+          description: recording ? 'Recording resumed' : 'Recording paused'
+        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+        if (ev) eventBus.publish(ev, { bypassPause: true })
+      } catch { /* additive */ }
+    }
   })
 
   // --- MCP (app-hosted HTTP server) ---
