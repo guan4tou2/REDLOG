@@ -107,6 +107,8 @@ export class IPMonitor extends EventEmitter {
     // leaking, which is the alert that must never be masked by a whitelist hit.
     if (this.blacklist.length > 0 && this.blacklist.some((cidr) => ipInCIDR(ip, cidr))) return 'exposed'
     if (this.whitelist.length > 0 && this.whitelist.some((cidr) => ipInCIDR(ip, cidr))) return 'safe'
+    // Blacklist mode: blacklist configured but IP didn't match → behind VPN/tunnel → safe
+    if (this.blacklist.length > 0) return 'safe'
     return 'unknown'
   }
 
