@@ -34,6 +34,9 @@ function _RedLogSendEvent {
             shell   = 'powershell'
             pid     = $PID
         }
+        if ($env:REDLOG_TERMINAL -eq '1') {
+            $data['source'] = 'builtin-terminal'
+        }
         foreach ($k in $Extra.Keys) { $data[$k] = $Extra[$k] }
 
         $body = @{ agent_type = 'shell'; data = $data } | ConvertTo-Json -Depth 4 -Compress

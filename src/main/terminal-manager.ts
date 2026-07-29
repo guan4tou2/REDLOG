@@ -58,6 +58,18 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   } catch { /* project already closed — nothing left to record into */ }
 }
 
+function resolveShellHook(shell: string): string | null {
+  const candidates = [
+    path.join(__dirname, '../../../hooks'),
+    path.join(__dirname, '../../hooks')
+  ]
+  const dir = candidates.find(d => fs.existsSync(d))
+  if (!dir) return null
+  const file = /powershell|pwsh/i.test(shell) ? 'shell-hook.ps1' : 'shell-preexec-hook.sh'
+  const p = path.join(dir, file)
+  return fs.existsSync(p) ? p : null
+}
+
 const sessions = new Map<string, TerminalSession>()
 let mainWindow: BrowserWindow | null = null
 let engagementId = ''
@@ -192,6 +204,18 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castPath
   }, { engagementId, operatorId })
   if (event) eventBus.publish(event)
+
+  // Auto-source the shell hook so individual commands appear in the timeline
+  const hookPath = resolveShellHook(shell)
+  if (hookPath) {
+    const isPowerShell = /powershell|pwsh/i.test(shell)
+    const sourceCmd = isPowerShell
+      ? `. "${hookPath}"\r`
+      : `source "${hookPath.replace(/\\/g, '/')}"\r`
+    setTimeout(() => {
+      if (!session.finalised) term.write(sourceCmd)
+    }, 600)
+  }
 
   return { pid: term.pid }
 }
