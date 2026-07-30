@@ -406,6 +406,10 @@
   "timeline.noEventsDesc": "Events will appear here as they are captured from shell, clipboard, screenshots, and other monitors.",
   "timeline.copyJson": "Copy JSON",
   "timeline.fullData": "Full Data",
+  "timeline.reveal.show": "Reveal {{n}} secret(s)",
+  "timeline.reveal.showHint": "Show the raw bytes in {{fields}} — logs a chained system.secret_revealed event to the audit trail",
+  "timeline.reveal.hide": "Re-mask",
+  "timeline.reveal.hideHint": "Hide the raw bytes again",
 
   "dashboard.exportData": "Export Data",
 

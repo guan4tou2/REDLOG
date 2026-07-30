@@ -53,6 +53,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `recording_paused` / `recording_resumed` — operator toggled recording
   - `config_changed` — security-relevant setting saved (scope targets, warn-on-violation, IP blacklist…) with a from→to diff
   - `browser_launched` — proxied browser opened
+  - `secret_revealed` — reviewer clicked "Reveal" on an event whose data has redaction spans; records `source_event`, `fields`, and the viewing operator (four-layer redaction, layer 3 — see [redaction-design.md](redaction-design.md))
   - `api_started`, `session_start`, `deconfliction_test` — housekeeping, hidden from Timeline by default
 
 ### `pivot` events

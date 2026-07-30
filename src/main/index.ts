@@ -639,6 +639,22 @@ app.whenReady().then(() => {
   ipcMain.handle('events:query', (_e, opts) => queryEvents(opts))
   ipcMain.handle('events:getCount', () => getEventCount())
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => searchEvents(query, limit))
+  // Four-layer redaction, layer 3 — reveal action logs a chained event so
+  // the audit trail shows raw secret bytes were viewed, by whom, when.
+  ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
+    if (!currentEngagementId || !currentOperatorId) return { ok: false, error: 'no active project' }
+    try {
+      const ev = insertEvent('system', {
+        subtype: 'secret_revealed',
+        source_event: sourceEventId,
+        fields: Array.isArray(fields) ? fields : []
+      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+      if (ev) eventBus.publish(ev)
+      return { ok: true, id: ev?.id }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
   eventBus.on('event', (event) => {
     send(mainWindow, 'events:new', event)
     notifyDeconfliction(event)

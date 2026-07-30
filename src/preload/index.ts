@@ -34,7 +34,12 @@ contextBridge.exposeInMainWorld('redlog', {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
       ipcRenderer.on('events:new', handler)
       return () => ipcRenderer.removeListener('events:new', handler)
-    }
+    },
+    // Layer 3 (four-layer redaction): every time the reviewer reveals raw
+    // bytes of a redacted span, we log a chained system.secret_revealed event
+    // so the audit trail shows who saw what and when.
+    logSecretRevealed: (sourceEventId: string, fields: string[]) =>
+      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields)
   },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),

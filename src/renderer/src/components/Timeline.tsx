@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/mask'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -68,6 +69,7 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'recording_resumed') return `⏺ Recording resumed`
       if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
       if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
+      if (d.subtype === 'secret_revealed') return `👁 Secret revealed: ${(d.fields as string[])?.join(', ') || 'unknown fields'}`
       return `${event.agentType}: ${d.subtype || ''}`
     default:
       return `${event.agentType}: ${d.subtype || ''}`
@@ -145,6 +147,11 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   const pendingCenterTs = useRef<number | null>(null)
   const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
   const [showJson, setShowJson] = useState(false)
+  // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
+  // hidden by default in the detail view. The reviewer opts into a per-event
+  // reveal; each reveal appends a chained system.secret_revealed event so the
+  // audit trail shows raw bytes were viewed.
+  const [revealedEvents, setRevealedEvents] = useState<Set<string>>(new Set())
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -776,6 +783,31 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {(() => {
+                const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
+                const fields = fieldsWithRedactions(spans)
+                if (fields.length === 0) return null
+                const revealed = revealedEvents.has(selectedEvent.id)
+                return (
+                  <button
+                    onClick={async () => {
+                      const next = new Set(revealedEvents)
+                      if (revealed) {
+                        next.delete(selectedEvent.id)
+                      } else {
+                        next.add(selectedEvent.id)
+                        // Log the reveal — additive event, never blocks the UI.
+                        try { await window.redlog.events.logSecretRevealed(selectedEvent.id, fields) } catch { /* ignore */ }
+                      }
+                      setRevealedEvents(next)
+                    }}
+                    title={revealed ? t('timeline.reveal.hideHint') : t('timeline.reveal.showHint', { fields: fields.join(', ') })}
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${revealed ? 'bg-amber-700/60 text-amber-100' : 'bg-amber-900/40 text-amber-400 hover:bg-amber-900/60'}`}
+                  >
+                    {revealed ? t('timeline.reveal.hide') : t('timeline.reveal.show', { n: spans?.length ?? 0 })}
+                  </button>
+                )
+              })()}
               <button
                 onClick={() => setShowJson(!showJson)}
                 className={`text-[10px] px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
@@ -801,11 +833,20 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           {selectedEvent.targetId && (
             <p className="text-[10px] text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}
-          {showJson && (
-            <pre className="mt-2 p-3 bg-zinc-950 rounded border border-zinc-800 text-[10px] text-zinc-400 font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
-              {JSON.stringify(selectedEvent.data, null, 2)}
-            </pre>
-          )}
+          {showJson && (() => {
+            const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
+            const revealed = revealedEvents.has(selectedEvent.id)
+            // Mask string fields that have redaction spans unless the reviewer
+            // opted into reveal. copyJson still copies the RAW event by design —
+            // an operator investigating on their own machine needs the raw
+            // bytes; the mask is UX, not the security boundary (that's Layer 4).
+            const shown = revealed ? selectedEvent.data : maskEventData(selectedEvent.data ?? {}, spans)
+            return (
+              <pre className="mt-2 p-3 bg-zinc-950 rounded border border-zinc-800 text-[10px] text-zinc-400 font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
+                {JSON.stringify(shown, null, 2)}
+              </pre>
+            )
+          })()}
         </div>
       )}
     </div>
