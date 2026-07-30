@@ -140,6 +140,7 @@ interface RedLogAPI {
     list: () => Promise<Array<{ id: string; pid: number; lastActivity: number }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
+    replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
   }
   overlay: {
     toggle: () => void

@@ -79,11 +79,14 @@ d = {
         'subtype': sys.argv[1],
         'command': sys.argv[2],
         'shell': '${SHELL##*/}',
-        'pid': $$$
+        'pid': $$
     }
 }
 if os.environ.get('REDLOG_TERMINAL') == '1':
     d['data']['source'] = 'builtin-terminal'
+tid = os.environ.get('REDLOG_TERMINAL_ID')
+if tid:
+    d['data']['terminalId'] = tid
 if sys.argv[3]:
     d['data'].update(json.loads(sys.argv[3]))
 print(json.dumps(d))

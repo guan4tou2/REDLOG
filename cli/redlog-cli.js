@@ -113,6 +113,7 @@ Usage:
   redlog-cli screenshot
   redlog-cli recording [status|pause|resume|toggle]
   redlog-cli quickmark [list|add <title> [--url <url>] [--note <text>]]
+  redlog-cli replay <event_id>
   redlog-cli status
   redlog-cli health
   redlog-cli token
@@ -265,6 +266,20 @@ Examples:
         else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       } else {
         console.error('Usage: redlog-cli recording [status|pause|resume|toggle]'); process.exit(1)
+      }
+      break
+    }
+
+    case 'replay': {
+      const evId = positional[0]
+      if (!evId) { console.error('Usage: redlog-cli replay <event_id>'); process.exit(1) }
+      const res = await request('POST', '/api/terminal/replay', { eventId: evId })
+      if (res.status === 200) {
+        const d = res.data
+        console.log(`# ${d.command}  (exit ${d.exitCode}, ${d.durationSec}s)`)
+        console.log(d.text || '(no output)')
+      } else {
+        console.error(`Error ${res.status}:`, res.data); process.exit(1)
       }
       break
     }
