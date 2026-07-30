@@ -398,6 +398,9 @@
   "screenshots.emptyDesc": "截圖會在閒置時自動擷取，或透過擷取按鈕手動觸發。",
 
   "project.advancedSetup": "進階設定（選填）",
+  "project.advancedSummary": "範圍 {scope}／白 {safe}／黑 {exposed}",
+  "project.done": "完成",
+  "project.close": "關閉",
   "project.scopeTargets": "範圍目標（IP、CIDR、*.domain）",
   "project.scopePlaceholder": "例如 192.168.1.0/24 或 *.example.com",
   "project.whitelist": "白名單 —— 攻擊 IP(綠色)",

@@ -398,6 +398,9 @@
   "screenshots.emptyDesc": "Screenshots are captured automatically on idle or manually via the capture button.",
 
   "project.advancedSetup": "Advanced Setup (optional)",
+  "project.advancedSummary": "scope {scope} / safe {safe} / exposed {exposed}",
+  "project.done": "Done",
+  "project.close": "Close",
   "project.scopeTargets": "Scope Targets (IPs, CIDRs, *.domain)",
   "project.scopePlaceholder": "e.g. 192.168.1.0/24 or *.example.com",
   "project.whitelist": "Whitelist — attack IPs (green)",
