@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
+import { confirm } from './ConfirmDialog'
 
 interface Tab {
   id: string
@@ -19,14 +20,25 @@ export default function TerminalView(): JSX.Element {
   const { t } = useI18n()
 
   const addTab = useCallback(() => {
-    const id = `term-${Date.now()}-${++tabCounter}`
-    const label = `${t('terminal.shell')} ${tabs.length + 1}`
+    const n = ++tabCounter
+    const id = `term-${Date.now()}-${n}`
+    // Monotonic counter — using tabs.length + 1 caused collisions after close
+    // ("Shell 2" reused if tab 3 was closed before adding a new one). Audit P1 #16.
+    const label = `${t('terminal.shell')} ${n}`
     const tab: Tab = { id, label, pid: 0, alive: true }
     setTabs((prev) => [...prev, tab])
     setActiveTab(id)
-  }, [tabs.length, t])
+  }, [t])
 
-  const closeTab = useCallback((id: string) => {
+  const closeTab = useCallback(async (id: string) => {
+    // Terminal panes host live PTY sessions (with shell hook capturing every
+    // command); closing kills the child process and loses the interactive
+    // state. Confirm so a stray middle-click doesn't drop work (audit P1 #17).
+    const tab = tabs.find((t) => t.id === id)
+    if (tab?.alive) {
+      const ok = await confirm(t('terminal.closeTitle'), t('terminal.closeConfirm', { label: tab.label }), true)
+      if (!ok) return
+    }
     window.redlog.terminal.kill(id)
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id)
@@ -35,7 +47,7 @@ export default function TerminalView(): JSX.Element {
       }
       return next
     })
-  }, [activeTab])
+  }, [activeTab, tabs, t])
 
   const didInit = useRef(false)
   useEffect(() => {

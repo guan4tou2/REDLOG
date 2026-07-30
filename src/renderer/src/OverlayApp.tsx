@@ -87,10 +87,16 @@ export default function OverlayApp(): JSX.Element {
   }, [])
 
 
+  // Auto-collapse the expanded HUD after 8s of inactivity — but reset the
+  // timer while the pointer is on the overlay so a reviewer reading the
+  // topology chain / Reveal button doesn't get it yanked out from under
+  // them (audit finding P1 #15). `interactive` flips true when the mouse
+  // enters the overlay window (main-process tracker).
   useEffect(() => {
-    if (expanded) timerRef.current = setTimeout(() => collapse(), 8000)
+    if (!expanded || interactive) return
+    timerRef.current = setTimeout(() => collapse(), 8000)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [expanded])
+  }, [expanded, interactive])
 
   const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded(false) }
   const toggleExpand = (): void => {

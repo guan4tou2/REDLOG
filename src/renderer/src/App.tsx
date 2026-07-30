@@ -112,7 +112,7 @@ export default function App(): JSX.Element {
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
-            title="Ctrl+Shift+M"
+            title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
           >
             {t('app.mark')}
           </button>
