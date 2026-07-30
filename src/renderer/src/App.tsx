@@ -86,19 +86,24 @@ export default function App(): JSX.Element {
         }).catch(() => {})
         return
       }
-      // ⌘⌥ + arrow snaps the HUD to a corner of the display it's currently on
-      // (audit finding #53). Skip if any focused element is a textbox — arrow
-      // keys need to work in inputs.
-      if (cmd && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      // ⌘⇧⌥ + arrow snaps the HUD to a corner of the display it's currently
+      // on (audit finding #53). Was ⌘⌥ initially but macOS Sequoia's built-in
+      // window tiling grabs that combo before the app sees it, so add Shift
+      // as a third modifier — nothing on stock macOS uses ⌘⇧⌥ + Arrow. Skip
+      // when a text field has focus so arrow keys still move the caret.
+      // Mapping is symmetric: Up/Left → top-left, Up+Right → top-right,
+      // Down/Left → bottom-left, Down+Right → bottom-right — but with a
+      // single arrow we pick ↑=tl, ↓=bl, ←=tl, →=br so every combo maps.
+      if (cmd && e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
         if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
-        const corner = e.key === 'ArrowUp'
-          ? (e.shiftKey ? 'tr' : 'tl')
-          : e.key === 'ArrowDown'
-          ? (e.shiftKey ? 'br' : 'bl')
-          : e.key === 'ArrowLeft'
-          ? 'bl'
-          : 'br'
+        // Clockwise around the four corners: ↑ = TL, → = TR, ↓ = BR, ← = BL.
+        // Reads as "pick the corner in that direction on a compass rose."
+        const corner: 'tl' | 'tr' | 'bl' | 'br' =
+          e.key === 'ArrowUp' ? 'tl'
+          : e.key === 'ArrowRight' ? 'tr'
+          : e.key === 'ArrowDown' ? 'br'
+          : 'bl'
         e.preventDefault()
         window.redlog.overlay.moveToCorner?.(corner)
         return

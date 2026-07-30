@@ -143,35 +143,26 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             const tagColor = getTagColor(m.title)
             const isPinned = pinned.has(m.id)
             return (
-              <div
+              <button
                 key={m.id}
-                className={`group relative border-b border-redlog-border hover:bg-zinc-800/50 ${
+                onClick={() => { setSelected(m); setCreating(false) }}
+                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-zinc-800/50 ${
                   selected?.id === m.id ? 'bg-zinc-800' : ''
                 }`}
               >
-                <button
-                  onClick={() => { setSelected(m); setCreating(false) }}
-                  className="w-full text-left px-3 py-2.5"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
-                    <span className="text-xs text-zinc-200 truncate flex-1">{m.title}</span>
-                    {isPinned && <span className="text-[10px] text-amber-400 shrink-0" aria-hidden="true">📌</span>}
-                  </div>
-                  {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
-                  <div className="text-[10px] text-zinc-600 mt-0.5 pl-4">
-                    {new Date(m.createdAt).toLocaleString()}
-                  </div>
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); togglePin(m.id) }}
-                  className={`absolute top-1 right-1 w-6 h-6 rounded flex items-center justify-center text-[11px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 transition-opacity ${
-                    isPinned ? 'text-amber-400 opacity-100' : 'text-zinc-600 hover:text-amber-400 opacity-0 group-hover:opacity-100'
-                  }`}
-                  title={isPinned ? t('marks.unpin') : t('marks.pin')}
-                  aria-label={isPinned ? t('marks.unpin') : t('marks.pin')}
-                >{isPinned ? '📌' : '📍'}</button>
-              </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
+                  <span className="text-xs text-zinc-200 truncate flex-1">{m.title}</span>
+                  {/* Pinned marks get a small star indicator; pin/unpin action
+                      lives in the detail panel (low-frequency action, keep
+                      the list clean). */}
+                  {isPinned && <span className="text-[10px] text-amber-400 shrink-0" aria-hidden="true">★</span>}
+                </div>
+                {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                <div className="text-[10px] text-zinc-600 mt-0.5 pl-4">
+                  {new Date(m.createdAt).toLocaleString()}
+                </div>
+              </button>
             )
           })}
           {filteredMarks.length === 0 && !creating && (
@@ -196,6 +187,8 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             onUpdate={() => { refresh(); window.redlog.quickmarks.get(selected.id).then((m) => m && setSelected(m)) }}
             onDelete={() => { setSelected(null); refresh() }}
             onOpenInTimeline={onOpenInTimeline}
+            isPinned={pinned.has(selected.id)}
+            onTogglePin={() => togglePin(selected.id)}
           />
         )}
         {!selected && !creating && (
@@ -277,11 +270,13 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
   )
 }
 
-function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline }: {
+function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin }: {
   mark: QuickMark
   onUpdate: () => void
   onDelete: () => void
   onOpenInTimeline?: (ts: number) => void
+  isPinned?: boolean
+  onTogglePin?: () => void
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
   const { t } = useI18n()
@@ -323,6 +318,20 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline }: {
           <button onClick={handleDelete} className="px-2 py-1 text-[10px] bg-zinc-800 text-red-400 rounded hover:bg-zinc-700">{t('marks.delete')}</button>
         </div>
       </div>
+
+      {/* Pin toggle lives here (low-frequency action, out of the mark list). */}
+      {onTogglePin && (
+        <button
+          onClick={onTogglePin}
+          className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 ${
+            isPinned ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'bg-zinc-800 text-zinc-500 hover:text-amber-400 hover:bg-zinc-700'
+          }`}
+          aria-pressed={!!isPinned}
+        >
+          <span>{isPinned ? '★' : '☆'}</span>
+          <span>{isPinned ? t('marks.unpin') : t('marks.pin')}</span>
+        </button>
+      )}
 
       {mark.note && (
         <div>
