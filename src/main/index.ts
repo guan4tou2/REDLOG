@@ -48,6 +48,13 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 
+// Windows text rendering: DirectComposition improves font clarity on low-DPI
+// screens; DirectWrite uses the native font rasterizer for crisper CJK glyphs.
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('enable-features', 'DirectComposition,DirectWriteAntiAliasing')
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
+}
+
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -588,7 +595,8 @@ app.whenReady().then(() => {
   // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
   // big empty gap. Clamp to sane bounds.
   ipcMain.on('overlay:autosize', (_e, height: number, width?: number) => {
-    const h = Math.max(46, Math.min(560, Math.round(Number(height) || 46)))
+    const maxH = screen.getPrimaryDisplay().workAreaSize.height - 40
+    const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       const cur = overlayWindow.getBounds()
       // Width scales with content (larger HUD scale + emphasize IP need more

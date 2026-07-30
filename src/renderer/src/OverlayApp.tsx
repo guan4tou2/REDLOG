@@ -33,22 +33,9 @@ export default function OverlayApp(): JSX.Element {
   useLayoutEffect(() => {
     const el = contentRef.current
     if (!el) return
-    // Height comes from real measurement (offsetHeight) — it's a clean function
-    // of scale + which sections are visible (expanded / pivot pill / etc).
-    //
-    // WIDTH is computed deterministically from scale + emphasizeIp instead of
-    // measured, because measuring creates a feedback loop: once we resize the
-    // window wider, scrollWidth catches up to offsetWidth, and next tick the
-    // reported width would grow again, and again — the HUD would inflate to
-    // the max on every render. Given the layout (two IPv4-shaped values + a
-    // few labels), a linear projection is accurate enough.
     const h = el.offsetHeight
-    // Scale the window PROPORTIONALLY so shrinking the text also tightens the
-    // left-right whitespace (marginLeft: auto on the internal-IP column would
-    // otherwise inflate the middle gap at small scale). Base 440 for scale=1;
-    // clamps in main keep the result on-screen.
     const w = Math.round(440 * scale) + (emphasizeIp ? Math.round(44 * scale) : 0)
-    if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })?.autosize?.(h + 8, w)
+    if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })?.autosize?.(h + 18, w)
   })
 
   useEffect(() => {
@@ -160,7 +147,7 @@ export default function OverlayApp(): JSX.Element {
             background: 'rgba(7,12,17,0.80)',
             backdropFilter: 'blur(16px) saturate(1.5)',
             overflow: 'hidden',
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Code", Consolas, monospace'
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Code", Consolas, "Microsoft JhengHei UI", monospace'
           }}
         >
           {/* scanlines */}
