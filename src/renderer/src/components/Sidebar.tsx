@@ -14,8 +14,10 @@ interface NavItem {
   badgeColor?: string
 }
 
-const STORAGE_KEY = 'redlog-sidebar-order'
-const DEFAULT_ORDER = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks']
+// Bumped in v0.6.18 so existing users pick up the new default (timeline
+// promoted to second slot). Reorder via drag still persists per-user.
+const STORAGE_KEY = 'redlog-sidebar-order-v2'
+const DEFAULT_ORDER = ['dashboard', 'timeline', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks']
 
 function loadOrder(): string[] {
   try {

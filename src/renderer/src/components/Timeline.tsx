@@ -139,6 +139,10 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   const [view, setView] = useState({ left: 0, width: 100 })
   const [drag, setDrag] = useState<{ x0: number; x1: number; w: number } | null>(null)
   const pendingView = useRef<{ t0: number } | null>(null)
+  // Cluster-item click needs a two-frame handshake: bump zoom so the events
+  // split into distinct dots, then center on the picked one after re-render.
+  // We can't scroll synchronously because TRACK_W hasn't grown yet.
+  const pendingCenterTs = useRef<number | null>(null)
   const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
   const [showJson, setShowJson] = useState(false)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
@@ -449,6 +453,12 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
       const span = (timeEnd - timeStart) || 1
       el.scrollLeft = Math.max(0, Math.min(((t0 - timeStart) / span) * TRACK_W, TRACK_W - el.clientWidth))
     }
+    // Cluster-item click scheduled a center-scroll for after zoom re-render.
+    if (el && pendingCenterTs.current !== null) {
+      const ts = pendingCenterTs.current
+      pendingCenterTs.current = null
+      el.scrollLeft = Math.max(0, Math.min(toX(ts) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+    }
     updateView()
   }, [TRACK_W, updateView, timeStart, timeEnd, loading])
 
@@ -688,9 +698,20 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                           className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
                           onClick={() => {
                             setSelectedEvent(evt)
-                            const el = scrollRef.current
-                            if (el) el.scrollLeft = Math.max(0, Math.min(toX(evt.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
                             setCluster(null)
+                            // Force a zoom level where the events in this cluster
+                            // will split into distinct dots — otherwise scrolling
+                            // to the event's X is invisible (still inside the same
+                            // cluster). 8× is enough to spread a 5-event burst
+                            // over several hundred pixels at typical resolutions.
+                            const targetZoom = Math.max(zoom, 8)
+                            if (targetZoom !== zoom) {
+                              pendingCenterTs.current = evt.timestamp
+                              setZoom(targetZoom)
+                            } else {
+                              const el = scrollRef.current
+                              if (el) el.scrollLeft = Math.max(0, Math.min(toX(evt.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+                            }
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined)] }} />
