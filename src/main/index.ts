@@ -609,6 +609,21 @@ app.whenReady().then(() => {
   })
   // setExpanded only toggles state now; the height comes from autosize.
   ipcMain.on('overlay:setExpanded', () => { /* height handled by overlay:autosize */ })
+  // Snap HUD to one of the four corners of the display it's currently on —
+  // driven by the main window's ⌘⌥ arrow shortcuts (audit finding #53). The
+  // renderer just sends the compass direction; we compute bounds here so we
+  // can pick the right display without asking the renderer to guess.
+  ipcMain.on('overlay:moveToCorner', (_e, corner: 'tl' | 'tr' | 'bl' | 'br') => {
+    if (!overlayWindow || overlayWindow.isDestroyed()) return
+    const b = overlayWindow.getBounds()
+    try {
+      const disp = screen.getDisplayNearestPoint({ x: b.x, y: b.y }).workArea
+      const pad = 16
+      const x = corner === 'tl' || corner === 'bl' ? disp.x + pad : disp.x + disp.width - b.width - pad
+      const y = corner === 'tl' || corner === 'tr' ? disp.y + pad : disp.y + disp.height - b.height - pad
+      overlayWindow.setBounds({ x, y, width: b.width, height: b.height })
+    } catch { /* no display — bail */ }
+  })
   ipcMain.on('overlay:hide', () => {
     overlayWindow?.hide()
     send(mainWindow, 'overlay:visibilityChanged', false)
