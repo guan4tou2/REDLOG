@@ -39,6 +39,7 @@ import {
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
+import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
@@ -270,6 +271,27 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   } catch { /* additive */ }
 }
 
+// Compress an OpsecStateDelta into a one-line human description for the event
+// row. Prioritized: VPN state comes first (biggest OPSEC impact), then MAC
+// (randomization signal), then DNS (leak signal), then hostname.
+function describeOpsecDelta(d: OpsecStateDelta): string {
+  const parts: string[] = []
+  if (d.vpn) {
+    const added = d.vpn.to.filter((x) => !d.vpn!.from.includes(x))
+    const removed = d.vpn.from.filter((x) => !d.vpn!.to.includes(x))
+    if (added.length) parts.push(`VPN up: ${added.join(', ')}`)
+    if (removed.length) parts.push(`VPN down: ${removed.join(', ')}`)
+  }
+  if (d.primaryMac) parts.push(`MAC ${d.primaryMac.from ?? '?'} → ${d.primaryMac.to ?? '?'}`)
+  if (d.dns) {
+    const added = d.dns.to.filter((x) => !d.dns!.from.includes(x))
+    const removed = d.dns.from.filter((x) => !d.dns!.to.includes(x))
+    if (added.length || removed.length) parts.push(`DNS ${d.dns.from.join(',') || '∅'} → ${d.dns.to.join(',') || '∅'}`)
+  }
+  if (d.hostname) parts.push(`hostname ${d.hostname.from} → ${d.hostname.to}`)
+  return parts.join('; ') || 'OPSEC state changed'
+}
+
 function startProject(project: ProjectMeta): void {
   activeProject = project
   const projectDir = getProjectPath(project)
@@ -338,6 +360,19 @@ function startProject(project: ProjectMeta): void {
 
   ipMonitor.start()
   startLinkMonitor()
+  configureOpsecMonitor((delta, current) => {
+    if (!currentEngagementId || !currentOperatorId) return
+    try {
+      const ev = insertEvent('system', {
+        subtype: 'opsec_state_changed',
+        changed: delta,
+        current: { vpnInterfaces: current.vpnInterfaces, primaryMac: current.primaryMac, hostname: current.hostname, dnsServers: current.dnsServers },
+        description: describeOpsecDelta(delta)
+      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+      if (ev) eventBus.publish(ev)
+    } catch { /* additive */ }
+  })
+  startOpsecMonitor()
   configureClipboardMonitor({
     enabled: config.clipboard?.enabled ?? false,
     pollMs: config.clipboard?.pollMs ?? 1500,
@@ -395,6 +430,7 @@ function stopProject(): void {
   ipMonitor.stop()
   stopClipboardMonitor()
   stopCdpMonitor()
+  stopOpsecMonitor()
   closeDB()
   activeProject = null
   currentEngagementId = null
