@@ -63,8 +63,14 @@ function ipToLong(ip: string): number {
   return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0
 }
 
+function isIPv6(ip: string): boolean {
+  return ip.includes(':')
+}
+
 function ipInCIDR(ip: string, cidr: string): boolean {
   if (!cidr.includes('/')) return ip === cidr
+  if (isIPv6(ip) !== isIPv6(cidr)) return false
+  if (isIPv6(ip)) return ip === cidr.split('/')[0]
   const [network, bits] = cidr.split('/')
   const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0
   return (ipToLong(ip) & mask) === (ipToLong(network) & mask)
@@ -72,14 +78,17 @@ function ipInCIDR(ip: string, cidr: string): boolean {
 
 function getInternalIP(): string | null {
   const interfaces = os.networkInterfaces()
+  let v6Fallback: string | null = null
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] ?? []) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address
+      if (iface.internal) continue
+      if (iface.family === 'IPv4') return iface.address
+      if (iface.family === 'IPv6' && !iface.address.startsWith('fe80') && !v6Fallback) {
+        v6Fallback = iface.address
       }
     }
   }
-  return null
+  return v6Fallback
 }
 
 async function getExternalIPviaHTTP(providers: string[]): Promise<string> {
@@ -170,7 +179,11 @@ export class IPMonitor extends EventEmitter {
     }
   }
 
+  private checking = false
+
   private async check(): Promise<void> {
+    if (this.checking) return
+    this.checking = true
     try {
       const [externalIP, internalIP] = await Promise.all([
         this.fetchExternalIP(),
@@ -223,6 +236,8 @@ export class IPMonitor extends EventEmitter {
         lastCheck: Date.now(),
         error: err instanceof Error ? err.message : 'Unknown error'
       }
+    } finally {
+      this.checking = false
     }
     this.emit('status', this._status)
   }
