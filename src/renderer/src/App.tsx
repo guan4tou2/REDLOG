@@ -14,6 +14,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
+import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { useI18n } from './i18n'
@@ -454,9 +455,7 @@ function ScreenshotsView(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
-      </div>
+      <LoadingSpinner />
     )
   }
 
