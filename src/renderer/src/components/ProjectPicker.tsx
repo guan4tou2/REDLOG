@@ -111,7 +111,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !showAdvanced && handleCreate()}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               placeholder={t('project.placeholder')}
               autoFocus
               className="flex-1 bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-sm text-zinc-200 font-mono focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 placeholder-zinc-700 transition-all"
@@ -125,78 +125,114 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             </button>
           </div>
 
-          {/* Advanced toggle */}
+          {/* Advanced toggle — opens a modal instead of expanding inline. The
+              inline version pushed the recent-projects list off the viewport
+              on smaller windows; the modal keeps the picker at a fixed size. */}
           <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
+            onClick={() => setShowAdvanced(true)}
             className="mt-3 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors flex items-center gap-1"
           >
-            <span className="text-zinc-700">{showAdvanced ? '▾' : '▸'}</span>
+            <span className="text-zinc-700">▸</span>
             {t('project.advancedSetup')}
+            {(scopeTargets.length + whitelist.length + blacklist.length > 0) && (
+              <span className="ml-1 text-zinc-500">
+                ({t('project.advancedSummary', {
+                  scope: scopeTargets.length,
+                  safe: whitelist.length,
+                  exposed: blacklist.length
+                })})
+              </span>
+            )}
           </button>
-
-          {/* Advanced setup */}
-          {showAdvanced && (
-            <div className="mt-3 space-y-3 border-t border-redlog-border pt-3">
-              {/* Scope targets */}
-              <MiniListField
-                label={t('project.scopeTargets')}
-                items={scopeTargets}
-                onChange={setScopeTargets}
-                placeholder={t('project.scopePlaceholder')}
-              />
-
-              {/* Safe IPs */}
-              <MiniListField
-                label={t('project.whitelist')}
-                items={whitelist}
-                onChange={setWhitelist}
-                placeholder={t('settings.safeIpPlaceholder')}
-              />
-
-              {/* Exposed IPs */}
-              <MiniListField
-                label={t('project.blacklist')}
-                items={blacklist}
-                onChange={setBlacklist}
-                placeholder={t('settings.exposedIpPlaceholder')}
-              />
-
-              {/* Enforcement mode */}
-              <div>
-                <label className="text-[10px] text-zinc-500 block mb-1">{t('project.enforcement')}</label>
-                <div className="flex gap-1.5">
-                  {['warn', 'log'].map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setEnforcement(mode)}
-                      className={`px-3 py-1 text-[10px] rounded ${
-                        enforcement === mode
-                          ? 'bg-red-600 text-white'
-                          : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
-                      }`}
-                    >
-                      {mode.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Import profile divider */}
-              <div className="flex items-center gap-3 pt-1">
-                <div className="flex-1 border-t border-zinc-800" />
-                <span className="text-[10px] text-zinc-700">{t('project.or')}</span>
-                <div className="flex-1 border-t border-zinc-800" />
-              </div>
-
-              <button
-                onClick={handleImportProfile}
-                className="w-full py-2 bg-zinc-800/50 border border-dashed border-zinc-700 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
-              >
-                {t('project.importProfile')}
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* Advanced setup modal */}
+        {showAdvanced && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowAdvanced(false)}
+          >
+            <div
+              className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card w-full max-w-md max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-zinc-300 text-[11px] font-semibold uppercase tracking-[0.15em]">
+                  {t('project.advancedSetup')}
+                </h2>
+                <button
+                  onClick={() => setShowAdvanced(false)}
+                  className="text-zinc-600 hover:text-zinc-300 text-lg leading-none"
+                  aria-label={t('project.close')}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <MiniListField
+                  label={t('project.scopeTargets')}
+                  items={scopeTargets}
+                  onChange={setScopeTargets}
+                  placeholder={t('project.scopePlaceholder')}
+                />
+                <MiniListField
+                  label={t('project.whitelist')}
+                  items={whitelist}
+                  onChange={setWhitelist}
+                  placeholder={t('settings.safeIpPlaceholder')}
+                />
+                <MiniListField
+                  label={t('project.blacklist')}
+                  items={blacklist}
+                  onChange={setBlacklist}
+                  placeholder={t('settings.exposedIpPlaceholder')}
+                />
+
+                <div>
+                  <label className="text-[10px] text-zinc-500 block mb-1">{t('project.enforcement')}</label>
+                  <div className="flex gap-1.5">
+                    {['warn', 'log'].map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setEnforcement(mode)}
+                        className={`px-3 py-1 text-[10px] rounded ${
+                          enforcement === mode
+                            ? 'bg-red-600 text-white'
+                            : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {mode.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex-1 border-t border-zinc-800" />
+                  <span className="text-[10px] text-zinc-700">{t('project.or')}</span>
+                  <div className="flex-1 border-t border-zinc-800" />
+                </div>
+
+                <button
+                  onClick={handleImportProfile}
+                  className="w-full py-2 bg-zinc-800/50 border border-dashed border-zinc-700 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+                >
+                  {t('project.importProfile')}
+                </button>
+              </div>
+
+              <div className="flex justify-end mt-5 pt-3 border-t border-redlog-border">
+                <button
+                  onClick={() => setShowAdvanced(false)}
+                  className="px-4 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors"
+                >
+                  {t('project.done')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Recent projects */}
         {projects.length > 0 && (
