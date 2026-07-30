@@ -392,7 +392,7 @@ Returns scope configuration, target list, violations, and violation count.
 {
   "targets": ["*.example.com", "10.0.0.0/8"],
   "excludeTargets": ["10.0.0.1"],
-  "enforcement": "warn",
+  "warnOnViolation": true,
   "violations": [...],
   "violationCount": 3
 }
@@ -587,7 +587,7 @@ engagement:
   id: client-pentest-q3
   name: "Client Pentest Q3"
 scope:
-  enforcement: warn
+  warnOnViolation: true
   targets:
     - "192.168.1.0/24"
     - "*.example.com"

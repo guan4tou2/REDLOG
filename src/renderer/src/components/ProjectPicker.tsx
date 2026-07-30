@@ -16,7 +16,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
-  const [enforcement, setEnforcement] = useState('warn')
+  const [warnOnViolation, setWarnOnViolation] = useState(true)
   const { t } = useI18n()
 
   // The whole UI runs on the preload bridge. If it's missing (e.g. the page was
@@ -36,7 +36,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     try {
       const initialConfig = (showAdvanced && (scopeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0))
         ? {
-          scope: { targets: scopeTargets, excludeTargets: [], enforcement, scopeFile: null },
+          scope: { targets: scopeTargets, excludeTargets: [], warnOnViolation, scopeFile: null },
           network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
@@ -71,7 +71,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
     if (profile.network?.whitelist ?? profile.network?.safeIPs) setWhitelist(profile.network.whitelist ?? profile.network.safeIPs)
     if (profile.network?.blacklist ?? profile.network?.exposedIPs) setBlacklist(profile.network.blacklist ?? profile.network.exposedIPs)
-    if (profile.scope?.enforcement) setEnforcement(profile.scope.enforcement)
+    // Migrate legacy 'log' → warnings off; 'warn' or unset → on. Direct boolean wins.
+    if (profile.scope?.warnOnViolation !== undefined) setWarnOnViolation(profile.scope.warnOnViolation)
+    else if (profile.scope?.enforcement) setWarnOnViolation(profile.scope.enforcement !== 'log')
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
   }
@@ -189,24 +191,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                   placeholder={t('settings.exposedIpPlaceholder')}
                 />
 
-                <div>
-                  <label className="text-[10px] text-zinc-500 block mb-1">{t('project.enforcement')}</label>
-                  <div className="flex gap-1.5">
-                    {['warn', 'log'].map((mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => setEnforcement(mode)}
-                        className={`px-3 py-1 text-[10px] rounded ${
-                          enforcement === mode
-                            ? 'bg-red-600 text-white'
-                            : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'
-                        }`}
-                      >
-                        {mode.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={warnOnViolation}
+                    onChange={(e) => setWarnOnViolation(e.target.checked)}
+                    className="accent-red-600"
+                  />
+                  <span className="text-xs text-zinc-300">{t('project.warnOnViolation')}</span>
+                </label>
+                <p className="text-[10px] text-zinc-600 -mt-1">{t('project.warnOnViolationHint')}</p>
 
                 <div className="flex items-center gap-3 pt-1">
                   <div className="flex-1 border-t border-zinc-800" />

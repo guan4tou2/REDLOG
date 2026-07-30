@@ -93,7 +93,7 @@ function installBridge(): void {
         engagement: { id: 'eng', name: 'Engagement' },
         operator: { id: 'op-1', name: 'Operator' },
         network: { safeIPs: [], exposedIPs: [], checkInterval: 10 },
-        scope: { enforcement: 'warn', targets: [], excludeTargets: [], scopeFile: '' },
+        scope: { warnOnViolation: true, targets: [], excludeTargets: [], scopeFile: '' },
         screenshot: { quality: 85 },
         terminal: { maxCastBytes: 1024 },
         redaction: { allowlist: [], denylist: [], entropyThreshold: 4.5, minLength: 20 },

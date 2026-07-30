@@ -341,7 +341,10 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               <div>
                 <span className="text-zinc-500 text-xs">{t('dashboard.scopeLabel')}</span>
                 <p className="text-zinc-200 text-sm mt-0.5">
-                  {t('dashboard.targets', { count: (config.scope?.targets as string[])?.length || 0, mode: config.scope?.enforcement as string })}
+                  {t('dashboard.targets', {
+                    count: (config.scope?.targets as string[])?.length || 0,
+                    mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
+                  })}
                 </p>
               </div>
             </div>
