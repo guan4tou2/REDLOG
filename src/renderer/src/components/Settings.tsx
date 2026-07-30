@@ -157,6 +157,7 @@ export default function Settings(): JSX.Element {
         {tab === 'integrations' && (
           <>
             <McpPanel t={t} />
+            <HookWatchPathsPanel t={t} />
             <OperatorsPanel t={t} />
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
@@ -1588,5 +1589,68 @@ function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
       ))}
       <span className="text-xs text-zinc-600 ml-2 font-mono">{Math.round(scale * 100)}%</span>
     </div>
+  )
+}
+
+// Whitelist of cwd prefixes that the Claude Code hook records against. Both
+// gates must open before an event is logged: (1) the cwd matches one of
+// these paths, and (2) RedLog is currently recording. An empty list here
+// means the hook records NOTHING — privacy-first default so a fresh install
+// doesn't quietly log a user's daily / hobby coding.
+function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element {
+  const [paths, setPaths] = useState<string[]>([])
+  const [draft, setDraft] = useState('')
+  const [dirty, setDirty] = useState(false)
+  useEffect(() => {
+    window.redlog.hookConfig.get().then((c) => setPaths(c.watchPaths || [])).catch(() => {})
+  }, [])
+  const commit = async (next: string[]): Promise<void> => {
+    setPaths(next)
+    setDirty(true)
+    await window.redlog.hookConfig.save({ watchPaths: next })
+    setDirty(false)
+    toast(t('settings.hookWatchPaths.saved'), 'success')
+  }
+  const addPath = async (): Promise<void> => {
+    const p = draft.trim()
+    if (!p) return
+    if (paths.includes(p)) { setDraft(''); return }
+    setDraft('')
+    await commit([...paths, p])
+  }
+  const removePath = async (p: string): Promise<void> => {
+    await commit(paths.filter((x) => x !== p))
+  }
+  return (
+    <FieldGroup title={t('settings.hookWatchPaths.title')}>
+      <p className="text-xs text-zinc-500 mb-3">{t('settings.hookWatchPaths.hint')}</p>
+      <div className="space-y-1 mb-2">
+        {paths.length === 0 ? (
+          <p className="text-xs text-amber-500 font-mono px-2 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded">
+            {t('settings.hookWatchPaths.empty')}
+          </p>
+        ) : paths.map((p) => (
+          <div key={p} className="flex items-center gap-2 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded">
+            <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{p}</span>
+            <button
+              onClick={() => removePath(p)}
+              className="text-xs text-red-400 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+              title={t('settings.hookWatchPaths.remove')}
+              aria-label={t('settings.hookWatchPaths.remove')}
+            >✕</button>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPath() } }}
+          placeholder="~/Desktop/BugBounty"
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+        />
+        <button onClick={addPath} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
+      </div>
+    </FieldGroup>
   )
 }

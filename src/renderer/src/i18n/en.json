@@ -388,6 +388,11 @@
   "settings.autoSaveHint": "Changes save automatically and apply live (changing engagement/operator id needs reopening the project)",
 
   "settings.mcp": "MCP Server (for AI agents)",
+  "settings.hookWatchPaths.title": "Claude Code Hook — Engagement Paths",
+  "settings.hookWatchPaths.hint": "Only Claude Code Bash calls whose cwd sits under one of these paths get logged, AND only while RedLog is recording. Empty list = nothing logged (privacy-first default so your daily coding doesn't leak into the audit chain). Add each engagement folder root here.",
+  "settings.hookWatchPaths.empty": "⚠ Empty list — Claude Code hook logs NOTHING right now. Add an engagement path below to start recording.",
+  "settings.hookWatchPaths.remove": "Remove this path",
+  "settings.hookWatchPaths.saved": "Hook watch paths saved.",
   "settings.mcpHint": "RedLog hosts its own MCP server over HTTP — it's live whenever the app is open, no subprocess to launch. Use it to let Claude Code / Cursor operate the app: create markers, check scope, anchor the chain. Logging still goes through the hooks, not MCP.",
   "settings.mcpLive": "MCP live at {{endpoint}}",
   "settings.mcpOffline": "MCP endpoint starts when a project is open.",
