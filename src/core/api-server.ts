@@ -21,7 +21,8 @@ import {
 import { eventBus } from './event-bus'
 import { extractTarget } from './target-extractor'
 import { detectPivot } from './pivot-detector'
-import { tagTechnique, detectCleanup, detectFileTransfer } from './technique-tagger'
+import { detectCleanup, detectFileTransfer } from './technique-tagger'
+import { tagCommand } from './command-tagger'
 import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
@@ -314,15 +315,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         // while the tunnel keeps running — we can't tell those from a live pivot.
         const isEnd = data.subtype === 'command_end' && Number(data.duration_sec ?? 0) >= 2
         if (isEnd) pivotClose = detectPivot(cmd)
-        // Stamp a MITRE technique on the shell event itself so downstream
-        // Ghostwriter/VECTR ingestion can map each row to an ATT&CK procedure.
-        // Runs on command_start (the tool is knowable from the command line).
+        // Stamp fields contributed by commandTag plugins (e.g. the bundled
+        // mitre-common-tools plugin). Zero-config by default — no core patterns.
+        // Downstream tagging (ELK/Splunk on the SIEM side) can replace this
+        // entirely by disabling the plugin.
         if (isStart) {
-          const tech = tagTechnique(cmd)
-          if (tech && !data.mitre_ttp) {
-            data.mitre_ttp = tech.mitreTtp
-            data.technique_tool = tech.tool
-            data.technique_category = tech.category
+          const tagStamp = tagCommand(cmd)
+          for (const [k, v] of Object.entries(tagStamp)) {
+            if (data[k] === undefined) data[k] = v
           }
           cleanup = detectCleanup(cmd)
           fileXfer = detectFileTransfer(cmd)
