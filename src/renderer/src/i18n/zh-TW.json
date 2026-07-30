@@ -56,6 +56,8 @@
   "dashboard.events": "事件",
   "dashboard.chain": "證據鏈",
   "dashboard.evidenceEntries": "筆證據",
+  "dashboard.chainMatches": "證據鏈同步 · {{n}} 筆",
+  "dashboard.chainDrift": "⚠ 證據鏈 {{chain}} ≠ 事件 {{events}}",
   "dashboard.loot": "戰利品",
   "dashboard.scope": "範圍",
   "dashboard.scopeOk": "正常",
