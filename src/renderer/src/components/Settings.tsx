@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
 import { toast } from './Toast'
 
@@ -69,6 +69,26 @@ export default function Settings(): JSX.Element {
   useEffect(() => {
     window.redlog.config.get().then((c) => setConfig(c as ConfigState))
   }, [])
+
+  // Auto-save on every change so toggles apply live to the HUD / event pipeline
+  // without a manual "save & apply" click. Debounced 350ms so text-input typing
+  // coalesces into a single write instead of one per keystroke. The initial
+  // fetch is skipped by tracking whether we've seen a user-driven change.
+  const dirty = useRef(false)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!config) return
+    if (!dirty.current) { dirty.current = true; return }  // ignore the setConfig from the initial fetch
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      window.redlog.config.save(config).then(() => {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 1500)
+      }).catch(() => {})
+    }, 350)
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config])
 
   if (!config) return <div className="p-4 text-zinc-500">{t('settings.loading')}</div>
 
@@ -483,15 +503,19 @@ export default function Settings(): JSX.Element {
         <div className="flex items-center gap-2">
           <button
             onClick={async () => {
+              // Auto-save already writes on every change; this is now a
+              // "force save now" escape hatch — useful if the user wants to
+              // flush before the 350ms debounce window closes.
+              if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
               await window.redlog.config.save(config)
               setSaved(true)
-              setTimeout(() => setSaved(false), 3000)
+              setTimeout(() => setSaved(false), 1500)
             }}
             className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
           >
-            {t('settings.saveApply')}
+            {t('settings.save')}
           </button>
-          <span className="text-zinc-600 text-[10px]">{t('settings.restartHint')}</span>
+          <span className="text-zinc-600 text-[10px]">{t('settings.autoSaveHint')}</span>
         </div>
       </div>
     </div>
