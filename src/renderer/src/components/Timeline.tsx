@@ -501,6 +501,33 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     })
   }, [])
 
+  // Alt/Option-click a lane chip: solo that lane (hide every other populated
+  // lane). Alt-click again on the same solo'd lane: show all. Audit #4 —
+  // reviewing an engagement typically starts with "show only shell", which
+  // took 13 clicks before.
+  const soloLane = useCallback((lane: LaneId, populated: Set<LaneId>) => {
+    setHiddenLanes((prev) => {
+      const others = new Set<LaneId>()
+      for (const l of populated) if (l !== lane) others.add(l)
+      // If already solo'd (this lane is the ONLY visible one), toggle back
+      // to show all — otherwise apply the solo.
+      const isSolo = !prev.has(lane) && [...populated].every((l) => l === lane || prev.has(l))
+      return isSolo ? new Set() : others
+    })
+  }, [])
+  const showAllLanes = useCallback(() => setHiddenLanes(new Set()), [])
+
+  // Escape closes the event detail panel (audit finding #78 — Escape was
+  // wired into ConfirmDialog + modals but not here).
+  useEffect(() => {
+    if (!selectedEvent) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { setSelectedEvent(null); setShowJson(false) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedEvent])
+
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
     // Respect the current mask/reveal state (audit finding #2). If the panel
@@ -576,8 +603,17 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           >+</button>
         </div>
 
-        {/* Lane filter toggles */}
-        <div className="ml-auto flex gap-1">
+        {/* Lane filter toggles — click toggles; Alt/Option-click solos the
+            lane (hides every other populated lane); solo'd-lane Alt-click
+            again shows all. Audit finding #4. */}
+        <div className="ml-auto flex gap-1 items-center">
+          {hiddenLanes.size > 0 && (
+            <button
+              onClick={showAllLanes}
+              className="text-[10px] px-1.5 py-0.5 rounded font-mono text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+              title={t('timeline.showAllLanes')}
+            >{t('timeline.showAll')}</button>
+          )}
           {LANES.map((id) => {
             const empty = !populatedLanes.has(id)
             const hidden = hiddenLanes.has(id)
@@ -585,16 +621,16 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
             return (
               <button
                 key={id}
-                onClick={() => !empty && toggleLane(id)}
+                onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
                 disabled={empty}
-                className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition-all ${
+                className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${
                   hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
                   color: off ? '#525252' : LANE_COLORS[id],
                   backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
                 }}
-                title={empty ? t('timeline.laneEmpty', { lane: laneLabels[id] }) : `${hidden ? 'Show' : 'Hide'} ${laneLabels[id]}`}
+                title={empty ? t('timeline.laneEmpty', { lane: laneLabels[id] }) : t('timeline.laneChipHint', { lane: laneLabels[id] })}
               >
                 {laneLabels[id]}
               </button>
