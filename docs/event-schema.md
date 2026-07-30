@@ -27,21 +27,33 @@ To make the timeline both **usable inside RedLog** and **portable to Ghostwriter
 
 ## Standard `agent_type` values
 
-Existing:
-- `shell` — commands captured via hooks or terminal pane
-- `agent` — Claude Code / Codex tool calls
-- `scanner` — mitmproxy / port scan / vuln scan output
-- `screenshot` — desktop captures
-- `marker` — human/agent-created finding markers
-- `loot` — credential/secret detections
-- `system` — RedLog itself (session start, API start, scope violations)
-- `file_transfer` — file movements
+All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 
-Recommended additions (Timeline recognises these as first-class lanes):
-- `dns` — DNS resolutions and probes (with `subtype: dns_query` / `dns_response`)
+**Recorded from operator / agent activity:**
+- `shell` — commands captured via hooks or the built-in terminal
+- `agent` — Claude Code / Codex tool calls (via MCP)
+- `http_navigation` — page loads inside the built-in CDP-connected browser
+- `dns` — DNS resolutions and probes (`subtype: dns_query` / `dns_response`)
+- `pivot` — tunnel/pivot lifecycle — RedLog auto-detects from shell (see below)
+- `screenshot` — desktop captures (periodic + on-demand, SHA-256 hashed)
+- `clipboard` — clipboard changes (opt-in; SHA-256 + length always, redacted preview optional)
+- `file_transfer` — ingress/exfil — RedLog auto-detects from shell (see below)
 - `credential_use` — every attempted / successful credential use
 - `c2_checkin` — C2 beacon / callback
-- `pivot` — internal-network pivot / tunnel establishment (lateral movement)
+- `cleanup` — anti-forensics actions (T1070.\*, T1564.001) — RedLog auto-detects (see below)
+- `marker` — human-created finding notes / severity marks
+- `loot` — credential/secret detections (auto from output, or explicit via `redlog_loot_scan`)
+- `scanner` — mitmproxy / port scan / vuln scan output (open agent_type)
+
+**System / drift-detection:**
+- `system` — RedLog's own audit trail. Distinct subtypes:
+  - `scope_violation` — command touched a target outside allowed scope (own timeline lane `scope`)
+  - `ip_transition` — external IP or safety state (safe/exposed/unknown) changed
+  - `opsec_state_changed` — VPN interfaces, DNS resolvers, primary MAC, or hostname changed
+  - `recording_paused` / `recording_resumed` — operator toggled recording
+  - `config_changed` — security-relevant setting saved (scope, blacklist, enforcement…) with a from→to diff
+  - `browser_launched` — proxied browser opened
+  - `api_started`, `session_start`, `deconfliction_test` — housekeeping, hidden from Timeline by default
 
 ### `pivot` events
 
@@ -66,6 +78,84 @@ Agents can also log them explicitly. Keys:
   "data": { "subtype": "route_add", "tool": "sshuttle", "via": "jump.corp", "route": "10.10.0.0/16", "mitre_ttp": "T1090" }
 }
 ```
+
+A `pivot` also fires with `subtype: "closed"` when the foreground tunnel's
+`command_end` lands (durations ≥ 2s only; backgrounded `-fN`/`&` variants can't
+be reliably closed and drop off the HUD via the 30-min recency window instead).
+
+### `cleanup` events (anti-forensics)
+
+Auto-detected from shell commands: history clearing, log wiping (`journalctl
+--vacuum`, `wevtutil cl`, `rm /var/log/…`), secure delete (`shred`/`srm`/
+`sdelete`/`wipe`), timestomp (`touch -t`, SetMace), file-attribute hiding
+(`chattr +i`, `attrib +h`). NIST SP 800-86 requires these tracked distinctly.
+
+| Key | Meaning |
+|-----|---------|
+| `subtype` | `history_clear` / `log_clear` / `file_shred` / `timestomp` / `attr_hide` |
+| `tool` | `shell` / `wevtutil` / `journalctl` / `rm` / `shred` / `touch` / `chattr` / … |
+| `target` | the file/path named in the command, if any |
+| `mitre_ttp` | `T1070.001` (Win logs) / `T1070.002` (Linux logs) / `T1070.003` (history) / `T1070.004` (shred) / `T1070.006` (timestomp) / `T1564.001` (attr hide) |
+| `command` | verbatim command that triggered detection |
+
+### `file_transfer` auto-detection
+
+RedLog auto-emits a `file_transfer` companion event when a shell command matches:
+`curl -o/-O` / `wget -O` / `aria2c -o` / `scp` / `rsync` / `sftp` / `python -m
+http.server`. Agents can still emit explicit `file_transfer` events via API.
+
+| Key | Meaning |
+|-----|---------|
+| `subtype` | `download` / `upload` |
+| `tool` | `curl` / `wget` / `scp` / `rsync` / `python-http.server` / … |
+| `url`, `localPath`, `remotePath` | any of these populated depending on tool |
+| `mitre_ttp` | `T1105` (ingress-tool-transfer) for download; `T1041` (exfil over C2) for upload |
+| `command` | verbatim command that triggered detection |
+
+### `http_navigation` events
+
+Written every 3 s by the CDP monitor when a page URL changes in the built-in
+browser. `chrome://`, `about:`, `devtools:`, `view-source:` filtered out.
+
+| Key | Meaning |
+|-----|---------|
+| `subtype` | `navigation` |
+| `url`, `prev_url`, `host`, `title`, `tab_id` | the new location and its predecessor |
+| `mitre_ttp` | `T1071.001` (application-layer, web) |
+
+### `clipboard` events (opt-in)
+
+Off by default. When enabled in Settings ▸ Clipboard, RedLog polls (default
+1500 ms), hashes with SHA-256, dedupes by hash, and runs the loot detector.
+Credentials found in the content emit their own `loot` event; the clipboard
+event itself records only:
+
+| Key | Meaning |
+|-----|---------|
+| `subtype` | `clipboard_changed` |
+| `sha256` | SHA-256 of raw text (proves "this content was seen") |
+| `length`, `lines` | shape metrics |
+| `lootTypes` | credential types found (`aws_key`, `jwt`, …) — never the values |
+| `preview` | first 120 chars, run through redaction — **null** unless `storePreview` is on |
+
+### `system.opsec_state_changed` events
+
+One event per polling cycle (30 s) with a delta of what changed. Delta keys:
+`vpn` (VPN-shaped interfaces up/down), `primaryMac` (randomization signal),
+`dns` (resolver list), `hostname`. Detected via Node's `os.networkInterfaces()`
+plus `scutil --dns` / `/etc/resolv.conf` / `Get-DnsClientServerAddress`.
+
+### `system.config_changed` events
+
+Emitted on every `config:save` where a security-relevant field changed. Diffed
+fields: scope enforcement/targets/excludeTargets/scopeFile, network white/blacklist,
+engagement id, operator id/name, deconfliction endpoint. Cosmetic changes stay silent.
+
+| Key | Meaning |
+|-----|---------|
+| `subtype` | `config_changed` |
+| `changed` | `{ "scope.enforcement": { "from": "warn", "to": "log" }, ... }` |
+| `description` | comma-joined list of changed paths |
 
 ## Examples
 
