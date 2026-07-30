@@ -162,6 +162,7 @@
   "marks.delete": "刪除",
   "marks.autoContext": "自動擷取的上下文",
   "marks.browserUrl": "瀏覽器 URL：",
+  "marks.openUrl": "在外部瀏覽器開啟",
   "marks.pageTitle": "頁面標題：",
   "marks.ipLabel": "IP：",
 
@@ -189,6 +190,7 @@
   "search.hint": "輸入至少 2 個字元以跨所有事件搜尋",
   "search.noResults": "「{{query}}」沒有結果",
   "search.results": "{{count}} 項結果",
+  "search.openInTimeline": "在時間軸開啟",
 
   "statusBar.rec": "錄製",
   "statusBar.paused": "已暫停",

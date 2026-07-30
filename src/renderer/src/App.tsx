@@ -134,7 +134,7 @@ export default function App(): JSX.Element {
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}
-            {view === 'search' && <SearchPanel />}
+            {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
           </ErrorBoundary>
         </div>
       </div>

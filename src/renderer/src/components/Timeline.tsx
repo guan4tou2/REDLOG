@@ -552,9 +552,11 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           >−</button>
           <button
             onClick={() => setZoom(1)}
-            className="px-1.5 h-5 flex items-center justify-center text-[10px] text-zinc-600 hover:text-zinc-300 bg-zinc-800/50 rounded font-mono tabular-nums transition-colors"
+            disabled={Math.abs(zoom - 1) < 0.01}
+            className="px-1.5 h-5 flex items-center justify-center text-[10px] text-zinc-600 hover:text-zinc-300 bg-zinc-800/50 rounded font-mono tabular-nums transition-colors disabled:cursor-default disabled:hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
             title={t('timeline.resetZoom')}
-          >{Math.round(zoom * 100)}%</button>
+            aria-label={t('timeline.resetZoom')}
+          >{Math.round(zoom * 100)}% ↺</button>
           <button
             onClick={() => setZoom((z) => Math.min(6, z + 0.25))}
             className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors"
@@ -713,7 +715,14 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                 })}
                 {/* Cluster contents popover */}
                 {cluster && (
-                  <div className="absolute z-30" style={{ left: Math.max(0, Math.min(cluster.x + 10, TRACK_W - 236)), top: cluster.y + 12, width: 228 }}>
+                  <div className="absolute z-30" style={{
+                    left: Math.max(0, Math.min(cluster.x + 10, TRACK_W - 236)),
+                    // Clamp so the popover never drops off the bottom for clusters
+                    // in the last lane. If the natural anchor + max popover height
+                    // would exceed totalH, flip above the cluster instead. Audit P2 #37.
+                    top: cluster.y + 12 + 210 > totalH ? Math.max(0, cluster.y - 210 - 4) : cluster.y + 12,
+                    width: 228
+                  }}>
                     <div className="rounded-md border border-zinc-700 bg-zinc-900/95 shadow-xl max-h-[210px] overflow-y-auto">
                       <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800 sticky top-0 bg-zinc-900/95">
                         <span className="text-[10px] text-zinc-400 font-mono">{cluster.events.length} {t('timeline.title')}</span>
