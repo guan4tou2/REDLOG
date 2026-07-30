@@ -298,10 +298,19 @@ RedLog's extension points, and their tier:
 | Loot / secret detectors | 🟢 | ✅ shipped (`lootPatterns`) |
 | Redaction rule-packs | 🟢 | ✅ shipped (`redaction`) |
 | Target extractors | 🟢 | ✅ shipped (`targetExtractors`) |
+| Command taggers (MITRE / custom stamping) | 🟢 | ✅ shipped v0.6.15 (`commandTags`) |
 | Event types + timeline lanes | 🟢 | ✅ shipped (`eventTypes`) |
 | MCP tools (agent-operable) | 🔴 | ✅ shipped (`mcpTools`) |
 | Exporters / reporters | 🔴 | 🛣️ reserved (`exporters`) |
 | Background monitors | 🔴 | 🛣️ reserved (`monitors`) |
+
+**Deliberately NOT extension points:**
+
+| Would-be extension | Why it lives outside RedLog |
+|-----|-----|
+| Report writers (Ghostwriter / HackerOne / Bugcrowd format) | External tools do this better with fuller context — RedLog's job is the audit log, not the report |
+| STIX 2.1 / VECTR / adversary-emulation-plan export | Same — feed a downstream converter from the evidence bundle |
+| Downstream ATT&CK correlation | A SIEM (ELK / Splunk / Chronicle) does this with more signal than a pattern list |
 
 **Design principle:** anything that can be expressed as **data** (patterns,
 rules, metadata) or as an **out-of-process script** stays 🟢 and needs no trust,
