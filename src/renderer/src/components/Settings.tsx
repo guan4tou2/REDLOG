@@ -169,8 +169,8 @@ export default function Settings(): JSX.Element {
                 <button
                   onClick={async () => {
                     await window.redlog.cdp.setPort(parseInt(cdpPort) || 9222)
-                    const tab = await window.redlog.cdp.getTab()
-                    if (tab.connected) toast(t('settings.cdpConnected', { title: tab.title, url: tab.url }), 'success')
+                    const cdpTab = await window.redlog.cdp.getTab()
+                    if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
                     else toast(t('settings.cdpNotConnected', { port: cdpPort }), 'error')
                   }}
                   className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
