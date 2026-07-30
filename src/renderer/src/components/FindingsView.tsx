@@ -33,11 +33,19 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
   useEffect(() => { refresh() }, [refresh])
 
   useEffect(() => {
-    window.redlog.cdp.getTab().then(setBrowserTab)
-    const interval = setInterval(() => {
-      window.redlog.cdp.getTab().then(setBrowserTab)
-    }, 3000)
-    return () => clearInterval(interval)
+    // Poll CDP for the currently-focused tab. 3s while connected is fine, but
+    // if the CDP browser isn't running there's no point polling every 3s —
+    // back off to 10s until it reconnects (audit finding P1 #25).
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const tick = async (): Promise<void> => {
+      const tab = await window.redlog.cdp.getTab().catch(() => ({ connected: false } as never))
+      if (stopped) return
+      setBrowserTab(tab)
+      timer = setTimeout(tick, tab.connected ? 3000 : 10000)
+    }
+    tick()
+    return () => { stopped = true; if (timer) clearTimeout(timer) }
   }, [])
 
   const quickCapture = async (): Promise<void> => {
@@ -223,7 +231,13 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline }: {
         <div>
           <h3 className="text-base font-semibold text-zinc-200">{mark.title}</h3>
           {mark.url && (
-            <div className="text-xs text-blue-400 font-mono mt-1 break-all">{mark.url}</div>
+            <button
+              onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.url as string) }}
+              className="text-xs text-blue-400 font-mono mt-1 break-all text-left hover:text-blue-300 hover:underline transition-colors cursor-pointer"
+              title={t('marks.openUrl')}
+            >
+              {mark.url} ↗
+            </button>
           )}
           <div className="text-[10px] text-zinc-500 mt-1">
             {new Date(mark.createdAt).toLocaleString()}
@@ -252,7 +266,13 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline }: {
             {mark.context.browserUrl && (
               <div className="text-[10px]">
                 <span className="text-zinc-500">{t('marks.browserUrl')}</span>{' '}
-                <span className="text-blue-400 font-mono">{mark.context.browserUrl}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
+                  className="text-blue-400 font-mono hover:text-blue-300 hover:underline transition-colors cursor-pointer"
+                  title={t('marks.openUrl')}
+                >
+                  {mark.context.browserUrl} ↗
+                </button>
               </div>
             )}
             {mark.context.browserTitle && (

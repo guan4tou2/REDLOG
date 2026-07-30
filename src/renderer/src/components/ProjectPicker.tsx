@@ -246,7 +246,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(p.id) }}
-                    className="text-zinc-700 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-all"
+                    className="text-zinc-700 hover:text-red-400 focus:text-red-400 text-xs opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-all"
                     title={t('project.delete')}
                   >
                     ✕

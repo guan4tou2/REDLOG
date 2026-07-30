@@ -22,7 +22,11 @@ function eventSummary(e: RedLogEvent): string {
   return `${e.agentType}: ${d.subtype || JSON.stringify(d).slice(0, 60)}`
 }
 
-export function SearchPanel(): JSX.Element {
+interface SearchPanelProps {
+  onOpenInTimeline?: (eventId: string, ts: number) => void
+}
+
+export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.Element {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<RedLogEvent[]>([])
   const [searching, setSearching] = useState(false)
@@ -31,7 +35,9 @@ export function SearchPanel(): JSX.Element {
   const { t } = useI18n()
 
   const doSearch = useCallback((q: string) => {
-    if (q.length < 2) {
+    // Single-char search intents are real (IP octet, short tag) — down from
+    // the prior q<2 gate. 0-char still shows the placeholder hint. Audit P1 #27.
+    if (q.length < 1) {
       setResults([])
       setSearched(false)
       return
@@ -81,7 +87,13 @@ export function SearchPanel(): JSX.Element {
             <div className="text-zinc-500 text-xs mb-2">{t('search.results', { count: results.length })}</div>
             <div className="space-y-1">
               {results.map((e) => (
-                <div key={e.id} className="flex items-start gap-2 px-3 py-2 rounded hover:bg-zinc-800/50 text-xs">
+                <button
+                  key={e.id}
+                  onClick={() => onOpenInTimeline?.(e.id, e.timestamp)}
+                  disabled={!onOpenInTimeline}
+                  className="w-full text-left flex items-start gap-2 px-3 py-2 rounded hover:bg-zinc-800/50 text-xs disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+                  title={onOpenInTimeline ? t('search.openInTimeline') : undefined}
+                >
                   <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-zinc-400'}`}>
                     {e.agentType.slice(0, 6)}
                   </span>
@@ -94,7 +106,7 @@ export function SearchPanel(): JSX.Element {
                   {e.targetId && (
                     <span className="text-zinc-500 shrink-0 ml-1">→ {e.targetId}</span>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           </>

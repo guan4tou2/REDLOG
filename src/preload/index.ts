@@ -3,7 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('redlog', {
   platform: process.platform,
   app: {
-    checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates')
+    checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
   },
   project: {
     list: () => ipcRenderer.invoke('project:list'),

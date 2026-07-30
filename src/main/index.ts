@@ -1025,6 +1025,20 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  // Renderer needs a way to open a URL in the operator's real browser (marks
+  // page, plugin homepage, etc.). Only http/https allowed — Electron's
+  // openExternal can dispatch file:/// and other schemes with unbounded side
+  // effects, and untrusted plugin content might reach this handler.
+  ipcMain.handle('app:openExternal', async (_e, url: string) => {
+    try {
+      const u = new URL(url)
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, error: 'scheme not allowed' }
+      await shell.openExternal(url)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
   // Silent check shortly after launch (packaged builds only).
   setTimeout(() => { checkForUpdates().catch(() => {}) }, 5000)
 
