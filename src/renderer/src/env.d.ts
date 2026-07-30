@@ -148,6 +148,7 @@ interface RedLogAPI {
     isVisible: () => Promise<boolean>
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
+    moveToCorner?: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
   }
   operators: {
     list: () => Promise<OperatorInfo[]>

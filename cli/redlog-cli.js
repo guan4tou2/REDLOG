@@ -111,6 +111,8 @@ Usage:
   redlog-cli events [--agent_type <type>] [--limit N] [--target <id>]
   redlog-cli loot <text>
   redlog-cli screenshot
+  redlog-cli recording [status|pause|resume|toggle]
+  redlog-cli quickmark [list|add <title> [--url <url>] [--note <text>]]
   redlog-cli status
   redlog-cli health
   redlog-cli token
@@ -247,6 +249,44 @@ Examples:
         console.log(res.data.captured ? `Screenshot saved: ${res.data.filePath}` : 'Screenshot failed')
       } else {
         console.error(`Error ${res.status}:`, res.data)
+      }
+      break
+    }
+
+    case 'recording': {
+      const sub = positional[0] || 'status'
+      if (sub === 'status') {
+        const res = await request('GET', '/api/recording')
+        if (res.status === 200) console.log(res.data.recording ? 'recording' : 'paused')
+        else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'pause' || sub === 'resume' || sub === 'toggle') {
+        const res = await request('POST', '/api/recording', { action: sub })
+        if (res.status === 200) console.log(res.data.recording ? 'recording' : 'paused')
+        else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else {
+        console.error('Usage: redlog-cli recording [status|pause|resume|toggle]'); process.exit(1)
+      }
+      break
+    }
+
+    case 'quickmark':
+    case 'quickmarks': {
+      const sub = positional[0] || 'list'
+      if (sub === 'list') {
+        const res = await request('GET', '/api/quickmarks')
+        if (res.status === 200) {
+          const list = res.data.quickmarks || []
+          if (list.length === 0) console.log('(no quickmarks)')
+          for (const m of list) console.log(`${m.id}  ${m.title}${m.url ? '  ' + m.url : ''}`)
+        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else if (sub === 'add' || sub === 'create') {
+        const title = positional[1]
+        if (!title) { console.error('Usage: redlog-cli quickmark add <title> [--url <url>] [--note <text>]'); process.exit(1) }
+        const res = await request('POST', '/api/quickmarks', { title, url: flags.url, note: flags.note })
+        if (res.status === 201) console.log(`Quickmark created: ${res.data.id}`)
+        else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
+      } else {
+        console.error('Usage: redlog-cli quickmark [list|add <title> [--url <url>] [--note <text>]]'); process.exit(1)
       }
       break
     }

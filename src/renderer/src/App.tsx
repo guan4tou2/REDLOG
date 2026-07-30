@@ -86,6 +86,23 @@ export default function App(): JSX.Element {
         }).catch(() => {})
         return
       }
+      // ⌘⌥ + arrow snaps the HUD to a corner of the display it's currently on
+      // (audit finding #53). Skip if any focused element is a textbox — arrow
+      // keys need to work in inputs.
+      if (cmd && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+        const corner = e.key === 'ArrowUp'
+          ? (e.shiftKey ? 'tr' : 'tl')
+          : e.key === 'ArrowDown'
+          ? (e.shiftKey ? 'br' : 'bl')
+          : e.key === 'ArrowLeft'
+          ? 'bl'
+          : 'br'
+        e.preventDefault()
+        window.redlog.overlay.moveToCorner?.(corner)
+        return
+      }
       if (cmd && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key)
         if (Number.isNaN(num)) return
