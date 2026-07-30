@@ -28,6 +28,7 @@ const loadOrder = loadSidebarOrder
 // navigation (the "first click does nothing" bug).
 const DRAG_THRESHOLD_PX = 12
 const ITEM_STRIDE_PX = 34 // h-8 button + space-y-0.5 gap
+const isMac = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
 
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
@@ -117,7 +118,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
   return (
     <nav className="w-[140px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
       <div className="space-y-0.5">
-        {items.map((item) => {
+        {items.map((item, index) => {
           const isActive = active === item.id
           return (
             <button
@@ -127,8 +128,10 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
               onClick={() => onItemClick(item.id)}
-              title={t('sidebar.reorderHint')}
-              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none ${
+              title={`${item.label} · ${isMac ? '⌘' : 'Ctrl+'}${index + 1}${index === 0 ? '  (' + t('sidebar.reorderHint') + ')' : ''}`}
+              aria-label={`${item.label} — ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
+              aria-current={isActive ? 'page' : undefined}
+              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
                 draggingId === item.id ? 'bg-white/[0.07] cursor-grabbing' : ''
               } ${
                 isActive

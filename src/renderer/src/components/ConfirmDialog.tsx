@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 
 interface ConfirmOpts {
@@ -45,10 +45,25 @@ export function ConfirmDialogContainer(): JSX.Element | null {
     setState(null)
   }
 
+  return <ConfirmDialogInner state={state} close={close} t={t} />
+}
+
+function ConfirmDialogInner({ state, close, t }: {
+  state: ConfirmOpts & { resolve: (v: boolean) => void }
+  close: (result: boolean) => void
+  t: (key: string) => string
+}): JSX.Element {
+  // Autofocus the confirm button so keyboard users have a visible focus target
+  // (audit finding P1 #31 — the dialog had no focus at all before).
+  const confirmBtn = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => { confirmBtn.current?.focus() }, [])
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => close(false)}>
       <div
-        className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-2xl max-w-sm w-full mx-4 animate-toast-in"
+        role="dialog"
+        aria-modal="true"
+        aria-label={state.title}
+        className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-2xl max-w-sm w-full mx-4 animate-toast-in outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold text-zinc-200">{state.title}</h3>
@@ -56,16 +71,17 @@ export function ConfirmDialogContainer(): JSX.Element | null {
         <div className="flex justify-end gap-2 mt-5">
           <button
             onClick={() => close(false)}
-            className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 text-zinc-400 hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-500 transition-colors"
           >
             {t('confirm.cancel')}
           </button>
           <button
+            ref={confirmBtn}
             onClick={() => close(true)}
-            className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
+            className={`px-3 py-1.5 text-xs rounded-md font-medium focus:outline-none focus:ring-2 transition-colors ${
               state.destructive
-                ? 'bg-red-600 text-white hover:bg-red-700'
-                : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
+                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-400'
+                : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:ring-zinc-400'
             }`}
           >
             {state.confirmLabel || (state.destructive ? t('confirm.delete') : t('confirm.confirm'))}
