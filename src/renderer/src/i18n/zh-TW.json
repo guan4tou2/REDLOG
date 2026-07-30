@@ -416,6 +416,7 @@
   "toast.exported": "資料匯出成功",
   "toast.exportFailed": "匯出失敗",
   "toast.copied": "已複製到剪貼簿",
+  "toast.copiedMasked": "已複製(遮蔽後版本 — 點「顯示機密」後再複製可得原始位元組)",
 
   "terminal.shell": "終端",
   "terminal.newTab": "新增終端",

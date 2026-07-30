@@ -10,23 +10,62 @@ interface TargetEntry {
   eventCount: number
 }
 
+// Match a target string against a scope pattern (subset of scope-monitor's rules
+// — enough for UI classification, not enforcement). Handles wildcard subdomains
+// (`*.example.com`) and CIDR (`10.0.0.0/24`). Anything else is exact-match.
+function ipToLong(ip: string): number {
+  return ip.split('.').reduce((acc, o) => (acc << 8) + parseInt(o), 0) >>> 0
+}
+function matchesScope(target: string, pattern: string): boolean {
+  if (pattern.startsWith('*.')) {
+    const bare = pattern.slice(2)
+    return target === bare || target.endsWith('.' + bare)
+  }
+  if (pattern.includes('/')) {
+    const [net, bits] = pattern.split('/')
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(target)) return false
+    const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0
+    return (ipToLong(target) & mask) === (ipToLong(net) & mask)
+  }
+  return target === pattern
+}
+
 export function TargetView(): JSX.Element {
   const [targets, setTargets] = useState<TargetEntry[]>([])
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
+  // Scope target list from project config — used to compute the inScope column
+  // on each target. Empty when config isn't set (in which case every target
+  // shows as "in-scope" since there's no rule to violate).
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const { t } = useI18n()
 
   useEffect(() => {
+    // Refresh both on mount and whenever the operator saves settings — the
+    // auto-save (v0.6.21) doesn't broadcast, but any nav back to this view
+    // will re-mount and pick up the current config.
+    window.redlog.config.get().then((c) => {
+      const cfg = c as { scope?: { targets?: string[] } } | null
+      setScopeTargets(cfg?.scope?.targets ?? [])
+    }).catch(() => {})
     loadTargets()
     const unsub = window.redlog.events.onNew((evt) => {
       if (evt.data?.detectedTarget) loadTargets()
     })
     return unsub
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Reclassify existing targets whenever scope config changes (e.g. operator
+  // added a scope entry after seeing an out-of-scope hit).
+  useEffect(() => { if (targets.length > 0) loadTargets() }, [scopeTargets])
+
   async function loadTargets(): Promise<void> {
-    const events = await window.redlog.events.query({ agentType: 'shell' })
+    // Include every event type that carries detectedTarget in data — not only
+    // shell (audit finding #34). Loot / http_navigation / screenshots can all
+    // reference targets and were invisible here before.
+    const events = await window.redlog.events.query({ limit: 1000 })
     const map = new Map<string, TargetEntry>()
     for (const evt of events) {
       const tgt = evt.data?.detectedTarget as string | undefined
@@ -48,7 +87,16 @@ export function TargetView(): JSX.Element {
         })
       }
     }
-    setTargets(Array.from(map.values()).sort((a, b) => b.lastSeen - a.lastSeen))
+    // Classify each target as in-scope / out-of-scope based on the current
+    // scope config (audit finding #33 — before this the field was set to null
+    // and both filter chips returned empty). If scope is unset, treat every
+    // target as in-scope (no rule to violate).
+    const list = Array.from(map.values()).sort((a, b) => b.lastSeen - a.lastSeen)
+    for (const entry of list) {
+      if (scopeTargets.length === 0) { entry.inScope = true; continue }
+      entry.inScope = scopeTargets.some((p) => matchesScope(entry.target, p))
+    }
+    setTargets(list)
   }
 
   const loadEvidence = useCallback(async (target: string) => {

@@ -160,12 +160,14 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
 
-  // On new selection, snap the detail panel back to the top and collapse the
-  // JSON dump — otherwise clicking through a cluster popover lands you on
-  // whatever scroll offset + expanded state the previous event left behind,
-  // and the new event's title can end up scrolled off-screen.
+  // On new selection: snap the detail panel back to the top, collapse the JSON
+  // dump, and RE-MASK any previously-revealed events (audit finding #1).
+  // Reveal was sticky per-session — leaving and coming back kept everything
+  // unmasked, which weakens the mask-by-default contract. Now reveal only
+  // applies to the actively-focused event.
   useEffect(() => {
     setShowJson(false)
+    setRevealedEvents(new Set())
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
   }, [selectedEvent?.id])
 
@@ -501,9 +503,19 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
-    navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
-    toast(t('toast.copied'), 'success')
-  }, [selectedEvent, t])
+    // Respect the current mask/reveal state (audit finding #2). If the panel
+    // shows a masked view, the clipboard gets the masked view too — a
+    // reviewer copying an event to paste into chat / a report shouldn't have
+    // to remember to hit Reveal first to know what they're leaking. Click
+    // Reveal → then Copy → gets raw. Default (mask) → Copy → gets masked.
+    const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
+    const revealed = revealedEvents.has(selectedEvent.id)
+    const shown = revealed || !spans?.length
+      ? selectedEvent
+      : { ...selectedEvent, data: maskEventData(selectedEvent.data ?? {}, spans) }
+    navigator.clipboard.writeText(JSON.stringify(shown, null, 2))
+    toast(t(revealed || !spans?.length ? 'toast.copied' : 'toast.copiedMasked'), 'success')
+  }, [selectedEvent, revealedEvents, t])
 
   if (loading && events.length === 0) {
     return (

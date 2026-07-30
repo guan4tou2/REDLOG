@@ -416,6 +416,7 @@
   "toast.exported": "Data exported successfully",
   "toast.exportFailed": "Export failed",
   "toast.copied": "Copied to clipboard",
+  "toast.copiedMasked": "Copied (masked view — click Reveal first then Copy for raw bytes)",
 
   "terminal.shell": "Shell",
   "terminal.newTab": "New Terminal",
