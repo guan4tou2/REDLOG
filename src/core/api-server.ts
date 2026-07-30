@@ -57,6 +57,13 @@ let scopeMonitorRef: {
   getViolationCount: () => number
   checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean }
 } | null = null
+// Built-in terminals attach their per-command stdout buffer to the matching
+// command_end event. This ref is set by main so the api-server (core, no
+// electron deps) doesn't have to reach into the main-process module directly.
+let terminalCaptureRef: {
+  beginCommandCapture: (terminalId: string) => void
+  takeCommandOutput: (terminalId: string) => { output: string; truncated: boolean; bytes: number } | null
+} | null = null
 
 export function configureApi(opts: {
   engagementId: string
@@ -67,6 +74,7 @@ export function configureApi(opts: {
   screenshotAgent?: typeof screenshotAgentRef
   ipMonitor?: typeof ipMonitorRef
   scopeMonitor?: typeof scopeMonitorRef
+  terminalCapture?: typeof terminalCaptureRef
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
@@ -76,6 +84,7 @@ export function configureApi(opts: {
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.ipMonitor) ipMonitorRef = opts.ipMonitor
   if (opts.scopeMonitor) scopeMonitorRef = opts.scopeMonitor
+  if (opts.terminalCapture) terminalCaptureRef = opts.terminalCapture
 }
 
 // Runs an MCP tool directly against the same internal functions the REST
@@ -307,6 +316,25 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let pivotClose: ReturnType<typeof detectPivot> = null
       let cleanup: ReturnType<typeof detectCleanup> = null
       let fileXfer: ReturnType<typeof detectFileTransfer> = null
+      // Built-in-terminal stdout capture: on command_start, reset the buffer
+      // so the prompt/echo before this command doesn't leak into its output;
+      // on command_end, drain the buffer and stamp it as `output` + a
+      // truncation flag. Redaction below handles it just like external hook
+      // output. Guarded by data.source and data.terminalId so external hooks
+      // that don't share our pty are unaffected.
+      if (agentType === 'shell' && terminalCaptureRef && data.source === 'builtin-terminal' && typeof data.terminalId === 'string') {
+        if (data.subtype === 'command_start') {
+          terminalCaptureRef.beginCommandCapture(data.terminalId as string)
+        } else if (data.subtype === 'command_end') {
+          const captured = terminalCaptureRef.takeCommandOutput(data.terminalId as string)
+          if (captured && captured.output && !data.output) {
+            data.output = captured.output
+            data.output_bytes = captured.bytes
+            if (captured.truncated) data.output_truncated = true
+          }
+        }
+      }
+
       if (agentType === 'shell' && data.command) {
         const cmd = data.command as string
         const isStart = data.subtype === 'command_start'
