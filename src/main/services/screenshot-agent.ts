@@ -11,16 +11,38 @@ export class ScreenshotAgent {
   private engagementId = 'default'
   private operatorId = ''
   private quality = 85
+  private intervalSec = 0
+  private timer: ReturnType<typeof setInterval> | null = null
 
   configure(opts: {
     engagementId?: string
     operatorId?: string
     quality?: number
+    intervalSec?: number
   }): void {
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
     if (opts.quality) this.quality = opts.quality
+    if (opts.intervalSec !== undefined) {
+      this.intervalSec = Math.max(0, Math.floor(opts.intervalSec))
+      this.applyInterval()
+    }
   }
+
+  // Start / stop the periodic loop when settings change. Called on configure
+  // and on start/stop; safe to call multiple times. `captureNow('periodic')`
+  // stays deduped against lastHash, so an idle screen won't fill the chain.
+  private applyInterval(): void {
+    if (this.timer) { clearInterval(this.timer); this.timer = null }
+    if (this.intervalSec > 0 && this.operatorId) {
+      this.timer = setInterval(() => {
+        this.captureNow('periodic').catch(() => { /* transient failure — retry next tick */ })
+      }, this.intervalSec * 1000)
+    }
+  }
+
+  start(): void { this.applyInterval() }
+  stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null } }
 
   async captureNow(trigger: string): Promise<string | null> {
     if (!this.operatorId) return null

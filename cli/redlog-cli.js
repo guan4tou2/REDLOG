@@ -422,11 +422,11 @@ Examples:
         console.error('Usage: redlog-cli sanitize <event-id> [<event-id> …] [--fields output,command] [--dry-run|--confirm] [--reason "..."]')
         process.exit(1)
       }
-      const fields = (opts.fields ? String(opts.fields).split(',') : ['output', 'output_preview', 'command']).map((s) => s.trim()).filter(Boolean)
-      const dryRun = !opts.confirm
+      const fields = (flags.fields ? String(flags.fields).split(',') : ['output', 'output_preview', 'command']).map((s) => s.trim()).filter(Boolean)
+      const dryRun = !flags.confirm
       const res = await request('POST', '/api/sanitize', {
         event_ids: eventIds, fields,
-        reason: opts.reason || undefined,
+        reason: flags.reason || undefined,
         dry_run: dryRun
       })
       if (res.status !== 200 && res.status !== 201) {
