@@ -3,6 +3,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
 const isMac = process.platform === 'darwin'
+const isWin = process.platform === 'win32'
 
 export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
@@ -34,6 +35,10 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
   })
 
   win.on('ready-to-show', () => {
+    if (isWin) {
+      const dpi = screen.getPrimaryDisplay().scaleFactor
+      if (dpi <= 1) win.webContents.setZoomFactor(1.1)
+    }
     win.show()
   })
 
