@@ -40,7 +40,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: npm ci
+        # `npm ci` is strict about lockfile↔node/npm version parity and the
+        # solo-dev workflow here doesn't pin a node runtime, so lock drift
+        # blocks releases. `npm install --no-audit --no-fund` is one step
+        # looser and reconciles at install time — dep resolution still deterministic
+        # via the lock, just tolerant of the optional-platform-entry drift
+        # between different npm majors.
+        run: npm install --no-audit --no-fund
 
       - name: Run tests (Node ABI)
         run: npm test
