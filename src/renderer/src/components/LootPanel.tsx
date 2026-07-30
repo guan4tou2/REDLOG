@@ -76,7 +76,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
               if (p) toast(t('toast.exportedTo', { path: p }), 'success')
               else toast(t('toast.exportFailed'), 'error')
             }}
-            className="px-2.5 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+            className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
             title={t('loot.exportHint')}
           >{t('loot.export')}</button>
         )}
@@ -94,14 +94,14 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
               <button
                 key={type}
                 onClick={() => setTypeFilter(typeFilter === type ? null : type)}
-                className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
                   typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
                 }`}
               >
                 <span className={typeColor[type] || ''}>{type.replace(/_/g, ' ')}</span> <span className="text-zinc-600">·{count}</span>
               </button>
             ))}
-            <span className="ml-auto text-[10px] text-zinc-600">
+            <span className="ml-auto text-xs text-zinc-600">
               <label className="cursor-pointer inline-flex items-center gap-1">
                 <input type="checkbox" checked={dedupOn} onChange={(e) => setDedupOn(e.target.checked)} className="accent-red-600" />
                 {t('loot.dedup')}
@@ -169,7 +169,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                   <span> · {t('loot.items', { count: le.matches.length })}</span>
                 </div>
                 {onOpenInTimeline && (
-                  <span className="text-[10px] text-cyan-400/80 whitespace-nowrap shrink-0">
+                  <span className="text-xs text-cyan-400/80 whitespace-nowrap shrink-0">
                     {t('loot.openInTimeline')} →
                   </span>
                 )}

@@ -120,7 +120,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
         {/* New project */}
         <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
-          <h2 className="text-zinc-500 text-[10px] font-semibold uppercase tracking-[0.15em] mb-3">{t('project.new')}</h2>
+          <h2 className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.new')}</h2>
           <div className="flex gap-2">
             <input
               value={newName}
@@ -144,7 +144,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               on smaller windows; the modal keeps the picker at a fixed size. */}
           <button
             onClick={() => setShowAdvanced(true)}
-            className="mt-3 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors flex items-center gap-1"
+            className="mt-3 text-xs text-zinc-600 hover:text-zinc-400 transition-colors flex items-center gap-1"
           >
             <span className="text-zinc-700">▸</span>
             {t('project.advancedSetup')}
@@ -219,11 +219,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                   />
                   <span className="text-xs text-zinc-300">{t('project.warnOnViolation')}</span>
                 </label>
-                <p className="text-[10px] text-zinc-600 -mt-1">{t('project.warnOnViolationHint')}</p>
+                <p className="text-xs text-zinc-600 -mt-1">{t('project.warnOnViolationHint')}</p>
 
                 <div className="flex items-center gap-3 pt-1">
                   <div className="flex-1 border-t border-zinc-800" />
-                  <span className="text-[10px] text-zinc-700">{t('project.or')}</span>
+                  <span className="text-xs text-zinc-700">{t('project.or')}</span>
                   <div className="flex-1 border-t border-zinc-800" />
                 </div>
 
@@ -250,7 +250,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         {/* Recent projects */}
         {projects.length > 0 && (
           <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
-            <h2 className="text-zinc-500 text-[10px] font-semibold uppercase tracking-[0.15em] mb-3">{t('project.recent')}</h2>
+            <h2 className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.recent')}</h2>
             <div className="space-y-0.5">
               {projects.map((p) => (
                 <div
@@ -276,7 +276,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                     ) : (
                       <div className="text-zinc-200 text-[13px] font-medium truncate">{p.name}</div>
                     )}
-                    <div className="text-zinc-600 text-[10px] font-mono">{timeAgo(p.lastOpened)}</div>
+                    <div className="text-zinc-600 text-xs font-mono">{timeAgo(p.lastOpened)}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }}
@@ -300,7 +300,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
-        <p className="text-zinc-700 text-[10px] text-center font-mono">
+        <p className="text-zinc-700 text-xs text-center font-mono">
           {t('project.description')}
         </p>
       </div>
@@ -323,7 +323,7 @@ function MiniListField({ label, items, onChange, placeholder }: {
 
   return (
     <div>
-      <label className="text-[10px] text-zinc-500 block mb-1">{label}</label>
+      <label className="text-xs text-zinc-500 block mb-1">{label}</label>
       <div className="flex gap-1">
         <input
           value={input}
@@ -332,12 +332,12 @@ function MiniListField({ label, items, onChange, placeholder }: {
           placeholder={placeholder}
           className="flex-1 bg-redlog-bg border border-zinc-800 rounded px-2 py-1 text-[11px] text-zinc-200 font-mono focus:outline-none focus:border-red-500/50"
         />
-        <button onClick={addItem} className="px-2 py-1 bg-zinc-800 text-zinc-500 text-[10px] rounded hover:bg-zinc-700">+</button>
+        <button onClick={addItem} className="px-2 py-1 bg-zinc-800 text-zinc-500 text-xs rounded hover:bg-zinc-700">+</button>
       </div>
       {items.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1">
           {items.map((item, i) => (
-            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-400 text-[10px] font-mono px-1.5 py-0.5 rounded">
+            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-400 text-xs font-mono px-1.5 py-0.5 rounded">
               {item}
               <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-zinc-600 hover:text-red-400">×</button>
             </span>

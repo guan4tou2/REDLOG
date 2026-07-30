@@ -597,7 +597,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           {t('timeline.events', { count: events.length })}
         </span>
         {!allLoaded && (
-          <button onClick={loadMore} className="text-[10px] text-zinc-600 hover:text-zinc-300 ml-1 transition-colors">
+          <button onClick={loadMore} className="text-xs text-zinc-600 hover:text-zinc-300 ml-1 transition-colors">
             {t('timeline.loadMore')}
           </button>
         )}
@@ -613,7 +613,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           <button
             onClick={() => setZoom(1)}
             disabled={Math.abs(zoom - 1) < 0.01}
-            className="px-1.5 h-5 flex items-center justify-center text-[10px] text-zinc-600 hover:text-zinc-300 bg-zinc-800/50 rounded font-mono tabular-nums transition-colors disabled:cursor-default disabled:hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="px-1.5 h-5 flex items-center justify-center text-xs text-zinc-600 hover:text-zinc-300 bg-zinc-800/50 rounded font-mono tabular-nums transition-colors disabled:cursor-default disabled:hover:text-zinc-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
             title={t('timeline.resetZoom')}
             aria-label={t('timeline.resetZoom')}
           >{Math.round(zoom * 100)}% ↺</button>
@@ -632,7 +632,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}
-              className="text-[10px] px-1.5 py-0.5 rounded font-mono text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+              className="text-xs px-1.5 py-0.5 rounded font-mono text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
               title={t('timeline.showAllLanes')}
             >{t('timeline.showAll')}</button>
           )}
@@ -645,7 +645,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                 key={id}
                 onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
                 disabled={empty}
-                className={`text-[10px] px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${
+                className={`text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${
                   hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
@@ -717,7 +717,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                 {ticks.map((ts) => (
                   <span
                     key={ts}
-                    className="absolute text-[10px] text-zinc-600 font-mono tabular-nums -translate-x-1/2"
+                    className="absolute text-xs text-zinc-600 font-mono tabular-nums -translate-x-1/2"
                     style={{ left: toX(ts), top: 6 }}
                   >
                     {formatTimeLabel(new Date(ts))}
@@ -795,7 +795,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                   }}>
                     <div className="rounded-md border border-zinc-700 bg-zinc-900/95 shadow-xl max-h-[210px] overflow-y-auto">
                       <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800 sticky top-0 bg-zinc-900/95">
-                        <span className="text-[10px] text-zinc-400 font-mono">{cluster.events.length} {t('timeline.title')}</span>
+                        <span className="text-xs text-zinc-400 font-mono">{cluster.events.length} {t('timeline.title')}</span>
                         <button className="text-zinc-500 hover:text-zinc-200 text-xs leading-none" onClick={() => setCluster(null)}>×</button>
                       </div>
                       {cluster.events.map((evt) => (
@@ -821,8 +821,8 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined)] }} />
-                          <span className="text-zinc-600 font-mono text-[9px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
-                          <span className="text-zinc-300 text-[10px] truncate">{eventTitle(evt)}</span>
+                          <span className="text-zinc-600 font-mono text-[11px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                          <span className="text-zinc-300 text-xs truncate">{eventTitle(evt)}</span>
                         </button>
                       ))}
                     </div>
@@ -836,8 +836,8 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
         {/* Event log — bottom panel */}
         <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/50" style={{ height: selectedEvent ? 160 : 180 }}>
           <div className="px-3 py-1.5 border-b border-zinc-800/40 flex items-center justify-between">
-            <span className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider">{t('timeline.title')}</span>
-            <span className="text-[10px] text-zinc-600 font-mono tabular-nums">{recentEvents.length}</span>
+            <span className="text-xs text-zinc-500 font-mono uppercase tracking-wider">{t('timeline.title')}</span>
+            <span className="text-xs text-zinc-600 font-mono tabular-nums">{recentEvents.length}</span>
           </div>
           <div className="overflow-y-auto" style={{ height: selectedEvent ? 128 : 148 }}>
             {recentEvents.map((evt) => {
@@ -877,7 +877,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
               <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }}>
                 {selectedEvent.agentType}
               </span>
-              <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
+              <span className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
                 {operatorLabel(selectedEvent.operatorId)}
               </span>
             </div>
@@ -901,7 +901,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                       setRevealedEvents(next)
                     }}
                     title={revealed ? t('timeline.reveal.hideHint') : t('timeline.reveal.showHint', { fields: fields.join(', ') })}
-                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${revealed ? 'bg-amber-700/60 text-amber-100' : 'bg-amber-900/40 text-amber-400 hover:bg-amber-900/60'}`}
+                    className={`text-xs px-2 py-0.5 rounded transition-colors ${revealed ? 'bg-amber-700/60 text-amber-100' : 'bg-amber-900/40 text-amber-400 hover:bg-amber-900/60'}`}
                   >
                     {revealed ? t('timeline.reveal.hide') : t('timeline.reveal.show', { n: spans?.length ?? 0 })}
                   </button>
@@ -909,28 +909,28 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
               })()}
               <button
                 onClick={() => setShowJson(!showJson)}
-                className={`text-[10px] px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
+                className={`text-xs px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
               >
                 {t('timeline.fullData')}
               </button>
               <button
                 onClick={copyEventJson}
-                className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors"
               >
                 {t('timeline.copyJson')}
               </button>
               <button
                 onClick={() => { setSelectedEvent(null); setShowJson(false) }}
-                className="text-[10px] text-zinc-600 hover:text-zinc-300 transition-colors ml-1"
+                className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors ml-1"
               >
                 ✕
               </button>
-              <span className="text-[10px] text-zinc-600 font-mono tabular-nums">{new Date(selectedEvent.timestamp).toLocaleString()}</span>
+              <span className="text-xs text-zinc-600 font-mono tabular-nums">{new Date(selectedEvent.timestamp).toLocaleString()}</span>
             </div>
           </div>
           <p className="text-[12px] text-zinc-300 mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
           {selectedEvent.targetId && (
-            <p className="text-[10px] text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
+            <p className="text-xs text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}
           {/* Replay this command: only for shell.command_end from a builtin
               terminal — pulls the stdout window out of the session's .cast
@@ -950,7 +950,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
             // bytes; the mask is UX, not the security boundary (that's Layer 4).
             const shown = revealed ? selectedEvent.data : maskEventData(selectedEvent.data ?? {}, spans)
             return (
-              <pre className="mt-2 p-3 bg-zinc-950 rounded border border-zinc-800 text-[10px] text-zinc-400 font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
+              <pre className="mt-2 p-3 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-400 font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
                 {JSON.stringify(shown, null, 2)}
               </pre>
             )
@@ -987,13 +987,13 @@ function ReplayCommand({ eventId }: { eventId: string }): JSX.Element {
       <button
         onClick={load}
         disabled={loading}
-        className="mt-1.5 text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
+        className="mt-1.5 text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
       >{loading ? t('timeline.replay.loading') : t('timeline.replay.button')}</button>
     )
   }
-  if (error) return <p className="mt-1.5 text-[10px] text-red-400">{t('timeline.replay.failed', { error })}</p>
+  if (error) return <p className="mt-1.5 text-xs text-red-400">{t('timeline.replay.failed', { error })}</p>
   return (
-    <pre className="mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-[10px] text-zinc-300 font-mono overflow-x-auto leading-relaxed max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+    <pre className="mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed max-h-[200px] overflow-y-auto whitespace-pre-wrap">
       {text || t('timeline.replay.empty')}
     </pre>
   )

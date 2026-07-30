@@ -23,6 +23,13 @@ export default function OverlayApp(): JSX.Element {
   // Pin: when true, the expanded HUD never auto-collapses. Session-local (not
   // persisted). Toggle via a pin button in the compact bar. Audit finding #52.
   const [pinned, setPinned] = useState(false)
+  // Pass-through visual state — dims non-critical HUD chrome while keeping the
+  // external IP fully readable (user asked for exactly that: "外部IP可以保持
+  // 透明度嗎"). Applied via CSS opacity on the root, IP nodes opt back to 1
+  // via `data-critical` — window opacity stays at 1 so the ip's colour isn't
+  // washed out by the compositor.
+  const [passThrough, setPassThrough] = useState(false)
+  const [passThroughOpacity, setPassThroughOpacity] = useState(0.4)
   const pivots = usePivots()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -45,20 +52,24 @@ export default function OverlayApp(): JSX.Element {
       onFlashExposed?: (cb: (on: boolean) => void) => () => void
       onScale?: (cb: (s: number) => void) => () => void
       onEmphasizeIp?: (cb: (on: boolean) => void) => () => void
+      onPassThrough?: (cb: (on: boolean, opacity: number) => void) => () => void
     } | undefined
     cfg?.get?.().then((c) => {
-      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean } } | null)?.overlay
+      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number } } | null)?.overlay
       setShowMark(ov?.showMarkButton !== false)
       setFlashExposed(ov?.flashOnExposed !== false)
       if (typeof ov?.scale === 'number' && ov.scale > 0) setScale(ov.scale)
       setEmphasizeIp(ov?.emphasizeExternalIp === true)
+      setPassThrough(ov?.passThrough === true)
+      if (typeof ov?.passThroughOpacity === 'number' && ov.passThroughOpacity > 0) setPassThroughOpacity(ov.passThroughOpacity)
     }).catch(() => {})
     // live-update when the settings are toggled in Settings
     const off1 = cfg?.onShowMark?.(setShowMark)
     const off2 = cfg?.onFlashExposed?.(setFlashExposed)
     const off3 = cfg?.onScale?.(setScale)
     const off4 = cfg?.onEmphasizeIp?.(setEmphasizeIp)
-    return () => { off1?.(); off2?.(); off3?.(); off4?.() }
+    const off5 = cfg?.onPassThrough?.((on, op) => { setPassThrough(on); if (op > 0) setPassThroughOpacity(op) })
+    return () => { off1?.(); off2?.(); off3?.(); off4?.(); off5?.() }
   }, [])
 
   useEffect(() => {
@@ -134,6 +145,13 @@ export default function OverlayApp(): JSX.Element {
   const latestPivot = pivots[0]
   const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
 
+  // Pass-through dimming — applied to individual "chrome" children instead
+  // of the outer wrapper. CSS opacity on a parent forces every descendant
+  // to composite at the reduced alpha, so children can never opt back to
+  // opacity 1. Instead we sprinkle `...dimStyle` on non-critical rows and
+  // leave the external IP row untouched, so the whole point of the HUD
+  // (the IP) stays fully readable regardless of pass-through state.
+  const dimStyle: React.CSSProperties = passThrough ? { opacity: passThroughOpacity } : {}
   return (
     <div
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
@@ -154,7 +172,7 @@ export default function OverlayApp(): JSX.Element {
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
 
           {/* buttons */}
-          <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag }}>
+          <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag, ...dimStyle }}>
             {expanded && (
               <div
                 onClick={() => setPinned((p) => !p)}
@@ -173,13 +191,13 @@ export default function OverlayApp(): JSX.Element {
               beneath it. Keeping the pivot in the external column stops it crowding
               the internal IP. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: px(10), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(14)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, ...dimStyle }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
               <span style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
-            {hair}
-            <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined }} />
-            <span style={{ color: STATE, fontWeight: 700, fontSize: fs(10.5), letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
+            <span style={dimStyle}>{hair}</span>
+            <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined, ...dimStyle }} />
+            <span style={{ color: STATE, fontWeight: 700, fontSize: fs(10.5), letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0, ...dimStyle }}>{status ? LABEL : '···'}</span>
             {/* external IP + pivot (left column) */}
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, flexShrink: 0, minWidth: 0, lineHeight: 1.15 }}>
               <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
@@ -198,7 +216,7 @@ export default function OverlayApp(): JSX.Element {
               )}
             </span>
             {/* internal IP + network name (right column) */}
-            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15 }}>
+            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15, ...dimStyle }}>
               <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
                 <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
                 <span style={{ color: '#9fd8e6', fontWeight: 500, whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
@@ -214,7 +232,7 @@ export default function OverlayApp(): JSX.Element {
 
           {/* expanded */}
           {expanded && (
-            <div style={{ padding: '0 14px 11px', fontSize: fs(11), position: 'relative', zIndex: 2 }}>
+            <div style={{ padding: '0 14px 11px', fontSize: fs(11), position: 'relative', zIndex: 2, ...dimStyle }}>
               <div style={{ height: 1, background: `linear-gradient(90deg, ${FRAME}55, transparent)`, margin: '0 0 8px' }} />
               <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', rowGap: 5, alignItems: 'baseline' }}>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.status')}</span>

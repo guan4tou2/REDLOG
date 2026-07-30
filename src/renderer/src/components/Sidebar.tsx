@@ -55,7 +55,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const badge = (count: number, color: string): JSX.Element | null =>
     count > 0 ? (
-      <span className={`ml-auto min-w-[18px] h-[18px] rounded-full ${color} text-[9px] text-white font-bold flex items-center justify-center px-1`}>
+      <span className={`ml-auto min-w-[18px] h-[18px] rounded-full ${color} text-[11px] text-white font-bold flex items-center justify-center px-1`}>
         {count > 99 ? '99+' : count}
       </span>
     ) : null

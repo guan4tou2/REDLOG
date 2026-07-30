@@ -191,7 +191,7 @@ export function TargetView(): JSX.Element {
                             await window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
                             setScopeTargets((prev) => prev.includes(tgt.target) ? prev : [...prev, tgt.target])
                           }}
-                          className="text-[10px] text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
+                          className="text-xs text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
                           title={t('targets.addToScope')}
                           aria-label={t('targets.addToScope')}
                         >+ 範圍</button>
@@ -218,7 +218,7 @@ export function TargetView(): JSX.Element {
                             return acc
                           }, {})
                         ).map(([type, count]) => (
-                          <span key={type} className={`text-[10px] ${agentColor[type] || 'text-zinc-400'} bg-zinc-800 px-1.5 py-0.5 rounded`}>
+                          <span key={type} className={`text-xs ${agentColor[type] || 'text-zinc-400'} bg-zinc-800 px-1.5 py-0.5 rounded`}>
                             {type}: {count}
                           </span>
                         ))}
@@ -243,7 +243,7 @@ export function TargetView(): JSX.Element {
                         </div>
                       ))}
                       {evidence.length > 20 && (
-                        <p className="text-zinc-600 text-[10px]">{t('targets.andMore', { count: evidence.length - 20 })}</p>
+                        <p className="text-zinc-600 text-xs">{t('targets.andMore', { count: evidence.length - 20 })}</p>
                       )}
                     </>
                   )}
