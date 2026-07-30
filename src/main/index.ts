@@ -578,6 +578,28 @@ app.whenReady().then(() => {
     if (!activeProject) return null
     return loadConfig(getProjectPath(activeProject))
   })
+
+  // Hook-config lives in ~/.redlog/hook-config.json — outside the project so
+  // it applies across every project (user's Claude Code hook is global).
+  // The two gates are readable/writable through this IPC pair so the
+  // Settings ▸ 整合 panel can maintain the watchPaths whitelist without
+  // shelling out.
+  const HOOK_CONFIG_PATH = path.join(homedir(), '.redlog', 'hook-config.json')
+  ipcMain.handle('hookConfig:get', () => {
+    try {
+      const raw = fs.readFileSync(HOOK_CONFIG_PATH, 'utf-8')
+      const parsed = JSON.parse(raw)
+      return { watchPaths: Array.isArray(parsed.watchPaths) ? parsed.watchPaths : [] }
+    } catch { return { watchPaths: [] } }
+  })
+  ipcMain.handle('hookConfig:save', (_e, cfg: { watchPaths: string[] }) => {
+    try {
+      fs.mkdirSync(path.dirname(HOOK_CONFIG_PATH), { recursive: true })
+      const clean = { watchPaths: (cfg.watchPaths ?? []).map((s) => String(s).trim()).filter(Boolean) }
+      fs.writeFileSync(HOOK_CONFIG_PATH, JSON.stringify(clean, null, 2) + '\n')
+      return true
+    } catch { return false }
+  })
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)

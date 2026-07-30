@@ -78,6 +78,10 @@ interface RedLogAPI {
     exportProfile: () => Promise<string | null>
     importProfile: () => Promise<unknown | null>
   }
+  hookConfig: {
+    get: () => Promise<{ watchPaths: string[] }>
+    save: (cfg: { watchPaths: string[] }) => Promise<boolean>
+  }
   events: {
     query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
     getCount: () => Promise<number>
