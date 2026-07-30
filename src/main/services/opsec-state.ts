@@ -1,5 +1,6 @@
 import { networkInterfaces, hostname } from 'os'
 import { exec } from 'child_process'
+import type { VpnAdapter } from '../../core/config'
 
 // OPSEC state a red-teamer needs preserved in the audit log:
 //   • VPN interfaces up/down       — proves the tunnel was actually up
@@ -29,10 +30,15 @@ function run(cmd: string, timeout = 2000): Promise<string> {
   })
 }
 
-// VPN-shaped interface names: utun (macOS), tun/tap (Linux), ppp (both),
-// wg (WireGuard), ipsec, and common VPN adapter prefixes. On Windows,
-// os.networkInterfaces() returns display names so we also match known VPN
-// product names (WireGuard Tunnel, Cisco AnyConnect, Fortinet, etc.).
+let vpnPatterns: RegExp[] = []
+
+export function setVpnAdapters(adapters: VpnAdapter[]): void {
+  vpnPatterns = adapters
+    .filter((a) => a.enabled)
+    .map((a) => { try { return new RegExp(a.pattern, 'i') } catch { return null } })
+    .filter((r): r is RegExp => r !== null)
+}
+
 function detectVpnInterfaces(): string[] {
   const ifaces = networkInterfaces()
   const vpn: string[] = []
@@ -40,8 +46,7 @@ function detectVpnInterfaces(): string[] {
     if (!addrs || addrs.length === 0) continue
     const hasReal = addrs.some((a) => !a.internal && a.address)
     if (!hasReal) continue
-    if (/^(utun|tun|tap|wg|ppp|ipsec|nordlynx|proton|tailscale)/i.test(name)) vpn.push(name)
-    else if (process.platform === 'win32' && /(wireguard|cisco\s*anyconnect|fortinet|forticlient|juniper|pulse\s*secure|globalprotect|vpn)/i.test(name)) vpn.push(name)
+    if (vpnPatterns.some((re) => re.test(name))) vpn.push(name)
   }
   return vpn.sort()
 }
