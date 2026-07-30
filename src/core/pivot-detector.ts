@@ -72,6 +72,19 @@ export function detectPivot(command: string): PivotInfo | null {
     if (d) return { tool: 'ssh', subtype: 'socks_up', via: host, socksPort: Number(d[1]), mitreTtp: T_PROXY }
     const l = cmd.match(/-[LR]\s*([^\s]+)/)
     if (l) return { tool: 'ssh', subtype: 'port_forward', via: host, forward: l[1], mitreTtp: T_TUNNEL }
+    // Plain interactive ssh (no -D/-L/-R). We record it because subsequent
+    // commands in that pty are the remote shell — the operator asked to
+    // surface this in the pivot lane so timeline reflects "attention has
+    // moved to a remote host" until the ssh session ends.
+    // Filter out flag-only invocations (e.g. `ssh -V`, `ssh -Q cipher`) by
+    // requiring a hostname candidate that isn't a flag.
+    if (host && !host.startsWith('-') && host.includes('.')) {
+      return { tool: 'ssh', subtype: 'interactive', via: host, mitreTtp: T_TUNNEL }
+    }
+    // Bare `ssh user@short-host` (no dot) still counts.
+    if (host && !host.startsWith('-') && /@/.test(cmd)) {
+      return { tool: 'ssh', subtype: 'interactive', via: host, mitreTtp: T_TUNNEL }
+    }
   }
 
   // socat relay: `socat TCP-LISTEN:9000,fork TCP:10.0.0.5:80`
