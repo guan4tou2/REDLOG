@@ -175,6 +175,7 @@ contextBridge.exposeInMainWorld('redlog', {
       const handler = (_e: Electron.IpcRendererEvent, visible: boolean): void => cb(visible)
       ipcRenderer.on('overlay:visibilityChanged', handler)
       return () => ipcRenderer.removeListener('overlay:visibilityChanged', handler)
-    }
+    },
+    moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => ipcRenderer.send('overlay:moveToCorner', corner)
   }
 })
