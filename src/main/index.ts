@@ -266,7 +266,11 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
   check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
   check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
-  check('deconfliction.endpoint', oldCfg.deconfliction?.endpoint, newCfg.deconfliction?.endpoint)
+  check('deconfliction.enabled', oldCfg.deconfliction?.enabled, newCfg.deconfliction?.enabled)
+  check('deconfliction.url', oldCfg.deconfliction?.url, newCfg.deconfliction?.url)
+  check('clipboard.enabled', oldCfg.clipboard?.enabled, newCfg.clipboard?.enabled)
+  check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
+  check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
   if (Object.keys(changed).length === 0) return
   try {
     const ev = insertEvent('system', {
@@ -300,6 +304,7 @@ function describeOpsecDelta(d: OpsecStateDelta): string {
 }
 
 function startProject(project: ProjectMeta): void {
+  if (activeProject) stopProject()
   activeProject = project
   const projectDir = getProjectPath(project)
   const config = loadConfig(projectDir)
@@ -395,7 +400,7 @@ function startProject(project: ProjectMeta): void {
     operatorName: config.operator.name,
     configLoader: {
       getConfig: () => loadConfig(projectDir),
-      getTargets: () => config.scope.targets
+      getTargets: () => loadConfig(projectDir).scope.targets
     },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
