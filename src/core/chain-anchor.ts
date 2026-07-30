@@ -409,7 +409,7 @@ export function verifyChainFull(): FullVerifyResult {
       }
     }
 
-    const reconstructed: Record<string, unknown> = {
+    const base: Record<string, unknown> = {
       id: row.id,
       timestamp: row.timestamp,
       engagementId: row.engagement_id,
@@ -422,21 +422,35 @@ export function verifyChainFull(): FullVerifyResult {
       data: JSON.parse(row.data),
       hash: undefined,
       prevHash: row.prev_hash,
-      createdAt: row.created_at,
-      monotonicNs: row.monotonic_ns ?? null,
-      ntpOffsetMs: row.ntp_offset_ms ?? null
+      createdAt: row.created_at
     }
+    // monotonicNs / ntpOffsetMs handling: schema evolved over the v0.6.x
+    // line. Two historical shapes exist:
+    //   (a) both keys were absent from the hashed object
+    //   (b) both keys were present with the row's stored value (which may
+    //       itself be null on rows that predated the clock-integrity work)
+    // Try shape (a) first, fall back to shape (b). Either matching the
+    // stored hash is a good verification; only reject when BOTH differ.
+    const reconstructed = { ...base }
+    if (row.monotonic_ns != null) reconstructed.monotonicNs = row.monotonic_ns
+    if (row.ntp_offset_ms != null) reconstructed.ntpOffsetMs = row.ntp_offset_ms
     const expectedHash = crypto.createHash('sha256').update(JSON.stringify(reconstructed)).digest('hex')
     if (expectedHash !== row.hash) {
-      return {
-        ok: false,
-        walked,
-        brokenAtEventId: row.id,
-        brokenReason: `hash mismatch (recomputed ${expectedHash.slice(0, 16)}..., stored ${(row.hash ?? '').slice(0, 16)}...)`,
-        currentHead: currentHead?.hash ?? null,
-        anchor,
-        anchorMatchesWalkedHead: false,
-        clockAnomalies
+      // Fallback: try the null-inclusive shape (some older code paths set
+      // monotonicNs / ntpOffsetMs to null explicitly and hashed that in).
+      const alt: Record<string, unknown> = { ...base, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
+      const altHash = crypto.createHash('sha256').update(JSON.stringify(alt)).digest('hex')
+      if (altHash !== row.hash) {
+        return {
+          ok: false,
+          walked,
+          brokenAtEventId: row.id,
+          brokenReason: `hash mismatch (recomputed ${expectedHash.slice(0, 16)}..., stored ${(row.hash ?? '').slice(0, 16)}...)`,
+          currentHead: currentHead?.hash ?? null,
+          anchor,
+          anchorMatchesWalkedHead: false,
+          clockAnomalies
+        }
       }
     }
 
