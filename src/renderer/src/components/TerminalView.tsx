@@ -11,6 +11,12 @@ interface Tab {
   label: string
   pid: number
   alive: boolean
+  // cwd basename + last-command exit code — audit #16. Both come from the
+  // shell hook via `redlog:` OSC 6 escapes that xterm.js dispatches; we set
+  // them from TerminalPane so the tab bar shows where a shell is + whether
+  // the last thing that ran failed.
+  cwd?: string
+  lastExit?: number
 }
 
 let tabCounter = 0
@@ -72,6 +78,21 @@ export default function TerminalView(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Watch shell events → update tab cwd + last exit code (audit #16). Every
+  // command_end from a builtin terminal carries source + terminalId + exit +
+  // cwd; we match by terminalId and stamp the label. Cheap because command_end
+  // is at most one per prompt.
+  useEffect(() => {
+    return window.redlog.events.onNew((evt) => {
+      if (evt.agentType !== 'shell') return
+      const d = evt.data as { subtype?: string; source?: string; terminalId?: string; cwd?: string; exit_code?: number }
+      if (d.source !== 'builtin-terminal' || d.subtype !== 'command_end' || !d.terminalId) return
+      setTabs((prev) => prev.map((tab) => tab.id === d.terminalId
+        ? { ...tab, cwd: d.cwd?.split('/').pop() || tab.cwd, lastExit: d.exit_code }
+        : tab))
+    })
+  }, [])
+
   // Tab-nav shortcuts scoped to the Terminal view. Audit finding #78: ⌘T new,
   // ⌘W close active, ⌘⇧] next, ⌘⇧[ prev. Bound at window scope but active
   // only while this component is mounted (view === 'terminal' in App.tsx).
@@ -113,6 +134,15 @@ export default function TerminalView(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
             <span className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-zinc-600'}`}>{tab.label}</span>
+            {tab.cwd && tab.alive && (
+              <span className="text-[10px] font-mono text-zinc-500 truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
+            )}
+            {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
+              <span
+                className="text-[9px] font-mono text-red-400 bg-red-500/10 px-1 rounded"
+                title={t('terminal.lastExit', { code: tab.lastExit })}
+              >✕{tab.lastExit}</span>
+            )}
             {tab.pid > 0 && tab.alive && (
               <span className="text-[9px] text-zinc-600 font-mono">{tab.pid}</span>
             )}

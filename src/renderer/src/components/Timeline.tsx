@@ -350,7 +350,12 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     const el = scrollRef.current
     if (!el || TRACK_W <= 0) return
     setView({ left: (el.scrollLeft / TRACK_W) * 100, width: Math.min(100, (el.clientWidth / TRACK_W) * 100) })
-  }, [TRACK_W])
+    // Auto-load-more when scrolled to the earliest edge (audit #3). Was
+    // click-driven with a "load more" chip; users hitting the left edge with
+    // more history to pull would just see empty space and not realise there
+    // was a button.
+    if (!allLoaded && !loading && el.scrollLeft < 80) loadMore()
+  }, [TRACK_W, allLoaded, loading, loadMore])
 
   // Drag across the minimap to zoom the main view to that window; click to jump.
   const onMinimapDown = useCallback((e: React.MouseEvent) => {
