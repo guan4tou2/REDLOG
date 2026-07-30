@@ -62,7 +62,10 @@ export function TargetView(): JSX.Element {
     const filtered = allEvents.filter((e) => {
       if (e.targetId === target) return true
       if (e.data?.detectedTarget === target) return true
-      if (e.agentType === 'scope_violation' && e.data?.target === target) return true
+      // Scope violations are agent_type='system' with subtype='scope_violation';
+      // the prior code checked agent_type='scope_violation' which never matched
+      // (audit finding P0 #4), so this target's scope hits were invisible.
+      if (e.agentType === 'system' && e.data?.subtype === 'scope_violation' && e.data?.target === target) return true
       return false
     })
     setEvidence(filtered.sort((a, b) => b.timestamp - a.timestamp))

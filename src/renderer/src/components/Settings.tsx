@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
 import { toast } from './Toast'
+import { confirm as confirmDialog } from './ConfirmDialog'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -169,7 +170,8 @@ export default function Settings(): JSX.Element {
                   onClick={async () => {
                     await window.redlog.cdp.setPort(parseInt(cdpPort) || 9222)
                     const tab = await window.redlog.cdp.getTab()
-                    alert(tab.connected ? `Connected: ${tab.title}\n${tab.url}` : 'Not connected. Launch Chrome with:\n--remote-debugging-port=' + cdpPort)
+                    if (tab.connected) toast(t('settings.cdpConnected', { title: tab.title, url: tab.url }), 'success')
+                    else toast(t('settings.cdpNotConnected', { port: cdpPort }), 'error')
                   }}
                   className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
                 >
@@ -1263,7 +1265,9 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
   }
 
   const handleDelete = async (id: string): Promise<void> => {
-    if (!confirm(t('settings.operatorDeleteConfirm'))) return
+    // Use the app's ConfirmDialog instead of native window.confirm() — matches
+    // every other destructive action + is themable + not blocking (audit P0 #2).
+    if (!await confirmDialog(t('settings.operatorDeleteTitle'), t('settings.operatorDeleteConfirm'), true)) return
     setBusy(id + ':delete')
     await window.redlog.operators.delete(id)
     setBusy(null)

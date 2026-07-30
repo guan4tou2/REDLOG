@@ -435,6 +435,12 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   // On open, jump the viewport to the present so the newest activity is in view
   // rather than the oldest. Runs once, after the first events have loaded and the
   // track has a real width. Manual pan/zoom afterwards is left untouched.
+  // Reset the "already scrolled" flag whenever the caller changes what we
+  // should scroll to. Prior behaviour set the ref once at first-open and
+  // never cleared it — so a second click on a Loot item (after coming back
+  // to Timeline) would silently short-circuit (audit finding P0 #7).
+  useEffect(() => { didScrollToNow.current = false }, [focusEventId, focusTs])
+
   useEffect(() => {
     if (loading || didScrollToNow.current) return
     const el = scrollRef.current
