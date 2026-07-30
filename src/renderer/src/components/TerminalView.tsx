@@ -69,7 +69,33 @@ export default function TerminalView(): JSX.Element {
     if (didInit.current) return   // StrictMode runs this twice in dev
     didInit.current = true
     if (tabs.length === 0) addTab()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Tab-nav shortcuts scoped to the Terminal view. Audit finding #78: ⌘T new,
+  // ⌘W close active, ⌘⇧] next, ⌘⇧[ prev. Bound at window scope but active
+  // only while this component is mounted (view === 'terminal' in App.tsx).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const cmd = e.ctrlKey || e.metaKey
+      if (!cmd) return
+      if (e.key === 't' && !e.shiftKey && !e.altKey) { e.preventDefault(); addTab() }
+      else if (e.key === 'w' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        if (activeTab) closeTab(activeTab)
+      }
+      else if (e.shiftKey && (e.key === ']' || e.key === '}')) {
+        e.preventDefault()
+        setTabs((prev) => { const i = prev.findIndex((t) => t.id === activeTab); if (i >= 0 && prev.length > 1) setActiveTab(prev[(i + 1) % prev.length].id); return prev })
+      }
+      else if (e.shiftKey && (e.key === '[' || e.key === '{')) {
+        e.preventDefault()
+        setTabs((prev) => { const i = prev.findIndex((t) => t.id === activeTab); if (i >= 0 && prev.length > 1) setActiveTab(prev[(i - 1 + prev.length) % prev.length].id); return prev })
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeTab, addTab, closeTab])
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a]">

@@ -63,15 +63,30 @@ export default function App(): JSX.Element {
   // ⌘/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
   // Re-read fresh inside the handler so a drag-reorder in the sidebar takes
   // effect immediately, without needing to re-attach the listener.
+  //
+  // Also handles a few app-wide shortcuts that don't fit the numeric-nav bucket.
+  // Audit finding #78 batched here; per-view shortcuts (⌘T new tab, ⌘W close
+  // tab) are handled inside the terminal view where they can hit the right
+  // handler without conflicting with system shortcuts elsewhere.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!project) return
-      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      const cmd = e.ctrlKey || e.metaKey
+      if (cmd && e.key === '/') {
         e.preventDefault()
         setView('search')
         return
       }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      // ⌘/Ctrl+. pause/resume recording — matches the "period = pause"
+      // convention macOS uses for stop-download / stop-loading.
+      if (cmd && e.key === '.') {
+        e.preventDefault()
+        window.redlog.recording.toggle().then((on) => {
+          toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
+        }).catch(() => {})
+        return
+      }
+      if (cmd && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key)
         if (Number.isNaN(num)) return
         const order = currentShortcutOrder()
@@ -83,7 +98,7 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [project])
+  }, [project, t])
 
   if (!project) {
     return (
