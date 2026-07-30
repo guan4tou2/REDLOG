@@ -635,7 +635,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         const bundle = exportBundle(engagementId)
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
       } catch (e) {
-        json(res, 500, { error: (e as Error).message })
+        const err = e as Error
+        // Log stack to main-process stderr so the failure is diagnosable
+        // from an installed .app (`Console.app` or CLI). The JSON body still
+        // gets only the message so tokens/paths don't leak to logs the caller
+        // may forward.
+        console.error('[export/bundle] failed:', err.stack || err.message)
+        json(res, 500, { error: err.message, stack: err.stack })
       }
       return
     }
