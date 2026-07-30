@@ -63,6 +63,7 @@ function eventTitle(event: RedLogEvent): string {
     case 'system':
       if (d.subtype === 'scope_violation') return `⚠ Scope violation: ${d.target || d.command || ''}`
       if (d.subtype === 'ip_transition') return `⇋ ${d.description || 'IP transition'}`
+      if (d.subtype === 'opsec_state_changed') return `⇋ OPSEC: ${d.description || 'state changed'}`
       if (d.subtype === 'recording_paused') return `⏸ Recording paused`
       if (d.subtype === 'recording_resumed') return `⏺ Recording resumed`
       if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
