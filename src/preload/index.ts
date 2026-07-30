@@ -169,7 +169,8 @@ contextBridge.exposeInMainWorld('redlog', {
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
     },
-    replay: (eventId: string) => ipcRenderer.invoke('terminal:replay', eventId)
+    replay: (eventId: string) => ipcRenderer.invoke('terminal:replay', eventId),
+    replaySession: (eventId: string) => ipcRenderer.invoke('terminal:replaySession', eventId)
   },
   overlay: {
     toggle: () => ipcRenderer.send('overlay:toggle'),
