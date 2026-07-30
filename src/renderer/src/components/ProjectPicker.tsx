@@ -153,9 +153,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
             onClick={() => setShowAdvanced(false)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setShowAdvanced(false) }}
+            role="presentation"
           >
             <div
-              className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card w-full max-w-md max-h-[90vh] overflow-y-auto"
+              ref={(el) => el?.focus()}
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('project.advancedSetup')}
+              tabIndex={-1}
+              className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card w-full max-w-md max-h-[90vh] overflow-y-auto outline-none"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">

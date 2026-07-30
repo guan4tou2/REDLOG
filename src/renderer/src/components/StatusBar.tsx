@@ -57,8 +57,9 @@ export default function StatusBar(): JSX.Element {
     <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
       <button
         onClick={handleToggleRecording}
-        className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+        className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
         title={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
+        aria-label={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${recording ? 'bg-red-500 animate-pulse-slow' : 'bg-zinc-500'}`} />
         <span className={recording ? 'text-red-400/80' : 'text-zinc-500'}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
@@ -119,8 +120,9 @@ export default function StatusBar(): JSX.Element {
         </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}
-          className={`flex items-center gap-1.5 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+          className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-500 hover:text-zinc-300'}`}
           title={t('statusBar.toggleOverlay')}
+          aria-label={t('statusBar.toggleOverlay')}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-zinc-600'}`} />
           <span>{t('statusBar.overlay')}</span>

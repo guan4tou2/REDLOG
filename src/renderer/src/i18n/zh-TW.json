@@ -2,6 +2,7 @@
   "app.title": "REDLOG",
   "app.subtitle": "紅隊行動日誌",
   "app.mark": "+ 標記",
+  "app.copyVersionHint": "點兩下選取版號複製",
 
   "project.new": "新專案",
   "project.create": "建立",

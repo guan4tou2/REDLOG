@@ -2,6 +2,7 @@
   "app.title": "REDLOG",
   "app.subtitle": "Red Team Operation Log",
   "app.mark": "+ Mark",
+  "app.copyVersionHint": "Double-click to select for copying",
 
   "project.new": "New Project",
   "project.create": "Create",

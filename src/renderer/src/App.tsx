@@ -104,7 +104,13 @@ export default function App(): JSX.Element {
         <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
           <img src={logoUrl} alt="" className="w-4 h-4 rounded" />
           <span className="text-red-500 font-bold text-[13px] tracking-[0.2em]">{t('app.title')}</span>
-          <span className="text-zinc-800 text-[10px] font-mono">v{__APP_VERSION__}</span>
+          {/* Take the version out of the drag zone so users reporting bugs can
+              actually copy it — audit finding P2 #36. */}
+          <span
+            className="text-zinc-800 text-[10px] font-mono select-text cursor-text"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={t('app.copyVersionHint')}
+          >v{__APP_VERSION__}</span>
         </div>
         <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
