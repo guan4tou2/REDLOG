@@ -58,6 +58,10 @@ export interface RedLogConfig {
   }
   screenshot: {
     quality: number
+    /** Periodic auto-capture interval in seconds. 0 = disabled. Deduped
+     *  against the previous frame's SHA-256 (see ScreenshotAgent), so a
+     *  30s interval on an idle screen doesn't produce 120 dupes/hour. */
+    intervalSec: number
   }
   overlay: {
     showMarkButton: boolean
@@ -71,6 +75,14 @@ export interface RedLogConfig {
     /** bump the external IP an extra ~1.4× on top of `scale`, since it's the
      *  single most important number on the bar for OPSEC glances. */
     emphasizeExternalIp: boolean
+    /** When true, HUD is permanently click-through — hover-tracking is
+     *  disabled, mouse events pass to whatever is behind, and opacity drops
+     *  to `passThroughOpacity` so operator SEES it's non-interactive. Useful
+     *  when the HUD sits over a target's window and you don't want a stray
+     *  drag to steal focus from Burp / a browser. Toggle via Settings ▸ HUD. */
+    passThrough: boolean
+    /** Opacity while passThrough is on. 0.4 = clearly ghost-mode. */
+    passThroughOpacity: number
   }
   terminal: {
     maxCastBytes: number
@@ -135,14 +147,17 @@ const DEFAULT_CONFIG: RedLogConfig = {
     scopeFile: null
   },
   screenshot: {
-    quality: 85
+    quality: 85,
+    intervalSec: 0
   },
   overlay: {
     showMarkButton: true,
     showInDock: true,
     flashOnExposed: true,
     scale: 1.0,
-    emphasizeExternalIp: false
+    emphasizeExternalIp: false,
+    passThrough: false,
+    passThroughOpacity: 0.4
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024
