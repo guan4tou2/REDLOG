@@ -574,7 +574,14 @@ app.whenReady().then(() => {
   // big empty gap. Clamp to sane bounds.
   ipcMain.on('overlay:autosize', (_e, height: number) => {
     const h = Math.max(46, Math.min(560, Math.round(Number(height) || 46)))
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.setSize(440, h)
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      const { x, y } = overlayWindow.getBounds()
+      overlayWindow.setBounds({ x, y, width: 440, height: h })
+      if (process.platform === 'win32') {
+        overlayWindow.setOpacity(0.99)
+        setImmediate(() => { if (!overlayWindow!.isDestroyed()) overlayWindow!.setOpacity(1) })
+      }
+    }
   })
   // setExpanded only toggles state now; the height comes from autosize.
   ipcMain.on('overlay:setExpanded', () => { /* height handled by overlay:autosize */ })
