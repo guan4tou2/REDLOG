@@ -79,16 +79,27 @@ function ipInCIDR(ip: string, cidr: string): boolean {
 function getInternalIP(): string | null {
   const interfaces = os.networkInterfaces()
   let v6Fallback: string | null = null
+  let v4Fallback: string | null = null
+  const VIRTUAL_RE = /vmware|virtualbox|vbox|hyper-v|docker|veth|br-|virbr/i
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] ?? []) {
       if (iface.internal) continue
-      if (iface.family === 'IPv4') return iface.address
+      if (iface.family === 'IPv4') {
+        // Skip link-local (169.254.x.x) — means the adapter has no real connection
+        if (iface.address.startsWith('169.254.')) continue
+        // Skip virtual adapters — they're not the real egress
+        if (VIRTUAL_RE.test(name)) {
+          if (!v4Fallback) v4Fallback = iface.address
+          continue
+        }
+        return iface.address
+      }
       if (iface.family === 'IPv6' && !iface.address.startsWith('fe80') && !v6Fallback) {
         v6Fallback = iface.address
       }
     }
   }
-  return v6Fallback
+  return v4Fallback ?? v6Fallback
 }
 
 async function getExternalIPviaHTTP(providers: string[]): Promise<string> {
