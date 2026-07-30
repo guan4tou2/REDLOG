@@ -162,6 +162,7 @@
   "marks.delete": "Delete",
   "marks.autoContext": "Auto-captured Context",
   "marks.browserUrl": "Browser URL:",
+  "marks.openUrl": "Open in external browser",
   "marks.pageTitle": "Page Title:",
   "marks.ipLabel": "IP:",
 
@@ -189,6 +190,7 @@
   "search.hint": "Type at least 2 characters to search across all events",
   "search.noResults": "No results for \"{{query}}\"",
   "search.results": "{{count}} results",
+  "search.openInTimeline": "Open in timeline",
 
   "statusBar.rec": "REC",
   "statusBar.paused": "PAUSED",
