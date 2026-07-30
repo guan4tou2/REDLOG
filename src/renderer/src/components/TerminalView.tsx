@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
@@ -14,9 +15,23 @@ interface Tab {
 
 let tabCounter = 0
 
+const FONT_SIZE_KEY = 'redlog-terminal-fontsize'
+const DEFAULT_FONT_SIZE = 13
+
 export default function TerminalView(): JSX.Element {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTab, setActiveTab] = useState<string | null>(null)
+  // Persist font-size across sessions; ⌘+ / ⌘- adjust it live.
+  const [fontSize, setFontSize] = useState<number>(() => {
+    const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY) || '')
+    return Number.isFinite(saved) && saved >= 8 && saved <= 32 ? saved : DEFAULT_FONT_SIZE
+  })
+  useEffect(() => { localStorage.setItem(FONT_SIZE_KEY, String(fontSize)) }, [fontSize])
+  // In-buffer search (per active pane): the input toggles + a small state
+  // holds the current query. Enter → next match, Shift+Enter → previous.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const paneSearchRefs = useRef<Map<string, SearchAddon>>(new Map())
   const { t } = useI18n()
 
   const addTab = useCallback(() => {
@@ -87,10 +102,72 @@ export default function TerminalView(): JSX.Element {
           onClick={addTab}
           className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] transition-colors text-sm"
           title={t('terminal.newTab')}
+          aria-label={t('terminal.newTab')}
         >
           +
         </button>
+
+        {/* Font-size + search on the right — audit findings #14 (SearchAddon)
+            and #15 (font size adjustable). */}
+        <div className="ml-auto flex items-center gap-1 pr-1">
+          <button
+            onClick={() => setFontSize((s) => Math.max(8, s - 1))}
+            className="w-6 h-6 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            title={t('terminal.fontSmaller')}
+            aria-label={t('terminal.fontSmaller')}
+          >A−</button>
+          <span className="text-[10px] text-zinc-600 font-mono tabular-nums w-6 text-center">{fontSize}</span>
+          <button
+            onClick={() => setFontSize((s) => Math.min(32, s + 1))}
+            className="w-6 h-6 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            title={t('terminal.fontLarger')}
+            aria-label={t('terminal.fontLarger')}
+          >A+</button>
+          <button
+            onClick={() => setSearchOpen((s) => !s)}
+            className={`w-6 h-6 rounded flex items-center justify-center hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${searchOpen ? 'text-zinc-200 bg-white/[0.05]' : 'text-zinc-600 hover:text-zinc-300'}`}
+            title={t('terminal.searchToggle')}
+            aria-label={t('terminal.searchToggle')}
+          >⌕</button>
+        </div>
       </div>
+
+      {/* Search bar (visible when toggled) */}
+      {searchOpen && (
+        <div className="flex items-center gap-2 px-2 py-1 border-b border-redlog-border bg-[#0f0f0f]">
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              const addon = activeTab ? paneSearchRefs.current.get(activeTab) : null
+              if (!addon) return
+              if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? addon.findPrevious(searchQuery) : addon.findNext(searchQuery) }
+              if (e.key === 'Escape') { e.preventDefault(); setSearchOpen(false); setSearchQuery('') }
+            }}
+            placeholder={t('terminal.searchPlaceholder')}
+            className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500/40"
+          />
+          <button
+            onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findPrevious(searchQuery) }}
+            className="w-6 h-6 rounded text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+            title={t('terminal.searchPrev')}
+            aria-label={t('terminal.searchPrev')}
+          >↑</button>
+          <button
+            onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findNext(searchQuery) }}
+            className="w-6 h-6 rounded text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+            title={t('terminal.searchNext')}
+            aria-label={t('terminal.searchNext')}
+          >↓</button>
+          <button
+            onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+            className="w-6 h-6 rounded text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+            title={t('terminal.searchClose')}
+            aria-label={t('terminal.searchClose')}
+          >×</button>
+        </div>
+      )}
 
       {/* Terminal panes */}
       <div className="flex-1 min-h-0 relative">
@@ -103,8 +180,11 @@ export default function TerminalView(): JSX.Element {
             <TerminalPane
               id={tab.id}
               active={activeTab === tab.id}
+              fontSize={fontSize}
+              onSearch={() => setSearchOpen(true)}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
+              onSearchAddon={(addon) => { paneSearchRefs.current.set(tab.id, addon) }}
             />
           </div>
         ))}
@@ -123,15 +203,19 @@ export default function TerminalView(): JSX.Element {
   )
 }
 
-function TerminalPane({ id, active, onPid, onExit }: {
+function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchAddon }: {
   id: string
   active: boolean
   onPid: (pid: number) => void
   onExit: () => void
+  fontSize: number
+  onSearch: () => void
+  onSearchAddon: (addon: SearchAddon) => void
 }): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const searchRef = useRef<SearchAddon | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -145,7 +229,7 @@ function TerminalPane({ id, active, onPid, onExit }: {
     const term = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
-      fontSize: 13,
+      fontSize,
       // Prefer a Nerd Font if the operator has one installed, so powerline
       // separators and prompt glyphs render instead of showing as tofu.
       fontFamily: "'MesloLGS NF', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', 'Hack Nerd Font', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace",
@@ -178,11 +262,41 @@ function TerminalPane({ id, active, onPid, onExit }: {
     })
 
     const fitAddon = new FitAddon()
+    const searchAddon = new SearchAddon()
     term.loadAddon(fitAddon)
+    term.loadAddon(searchAddon)
+
+    // Native-feeling clipboard on macOS: ⌘C copies the selection when there
+    // IS one, else falls through to xterm's default (which sends SIGINT).
+    // ⌘V pastes clipboard text as if typed. Without this handler xterm on
+    // macOS captures ⌘C as SIGINT unconditionally — audit finding #13.
+    term.attachCustomKeyEventHandler((e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.type !== 'keydown') return true
+      if (e.key === 'c' && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+        e.preventDefault()
+        return false
+      }
+      if (e.key === 'v') {
+        navigator.clipboard.readText().then((t) => window.redlog.terminal.write(id, t)).catch(() => {})
+        e.preventDefault()
+        return false
+      }
+      if (e.key === 'f') {
+        // Trigger the shared search input at the top of the pane.
+        onSearch()
+        e.preventDefault()
+        return false
+      }
+      return true
+    })
+
     term.open(containerRef.current)
 
     termRef.current = term
     fitRef.current = fitAddon
+    searchRef.current = searchAddon
+    onSearchAddon(searchAddon)
 
     // Subscribe to pty output BEFORE spawning, so the buffer the main process
     // replays for an existing session lands in this fresh term. Per-command
@@ -224,7 +338,15 @@ function TerminalPane({ id, active, onPid, onExit }: {
       dispResize.dispose()
       term.dispose()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Live-apply font-size changes without recreating the terminal.
+  useEffect(() => {
+    if (!termRef.current) return
+    termRef.current.options.fontSize = fontSize
+    fitRef.current?.fit()
+  }, [fontSize])
 
   useEffect(() => {
     if (active && fitRef.current) {

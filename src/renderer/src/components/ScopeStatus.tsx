@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 
-export function ScopeStatus(): JSX.Element {
+export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
   const [configured, setConfigured] = useState(false)
   const [chainLen, setChainLen] = useState(0)
@@ -75,11 +75,17 @@ export function ScopeStatus(): JSX.Element {
         <div className="space-y-1">
           <h3 className="text-sm text-zinc-400">{t('scope.recentViolations')}</h3>
           {violations.slice(0, 10).map((v, i) => (
-            <div key={i} className="bg-red-900/20 border border-red-800/30 rounded p-2">
+            <button
+              key={i}
+              onClick={() => onOpenInTimeline?.(v.timestamp)}
+              disabled={!onOpenInTimeline}
+              className="w-full text-left bg-red-900/20 border border-red-800/30 rounded p-2 hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 disabled:cursor-default disabled:hover:bg-red-900/20 transition-colors"
+              title={onOpenInTimeline ? t('scope.openInTimeline') : undefined}
+            >
               <div className="text-red-300 text-xs font-mono">{v.target}</div>
               <div className="text-zinc-500 text-xs truncate">{v.command}</div>
               <div className="text-zinc-600 text-xs">{new Date(v.timestamp).toLocaleTimeString()}</div>
-            </div>
+            </button>
           ))}
         </div>
       )}
