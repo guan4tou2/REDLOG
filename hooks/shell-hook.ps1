@@ -37,6 +37,9 @@ function _RedLogSendEvent {
         if ($env:REDLOG_TERMINAL -eq '1') {
             $data['source'] = 'builtin-terminal'
         }
+        if ($env:REDLOG_TERMINAL_ID) {
+            $data['terminalId'] = $env:REDLOG_TERMINAL_ID
+        }
         foreach ($k in $Extra.Keys) { $data[$k] = $Extra[$k] }
 
         $body = @{ agent_type = 'shell'; data = $data } | ConvertTo-Json -Depth 4 -Compress

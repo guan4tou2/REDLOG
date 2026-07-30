@@ -61,8 +61,20 @@ function rowToAnchor(row: AnchorRow): ChainAnchor {
   }
 }
 
-export function computeChainHead(): { hash: string; headEventId: string | null; eventCount: number } | null {
+export function computeChainHead(maxEvents?: number): { hash: string; headEventId: string | null; eventCount: number } | null {
   const db = getDB()
+  if (maxEvents !== undefined) {
+    const rows = db.prepare(
+      `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at ASC, rowid ASC LIMIT ?`
+    ).all(maxEvents) as { id: string; hash: string }[]
+    if (!rows.length) return null
+    const last = rows[rows.length - 1]
+    const hash = crypto.createHash('sha256')
+      .update(last.hash)
+      .update(String(rows.length))
+      .digest('hex')
+    return { hash, headEventId: last.id, eventCount: rows.length }
+  }
   const row = db.prepare(
     `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1`
   ).get() as { id: string; hash: string } | undefined
@@ -214,8 +226,10 @@ export function verifyLatestAnchor(): { ok: boolean; anchor: ChainAnchor | null;
   const last = getLastAnchor()
   const head = computeChainHead()
   if (!last || !head) return { ok: false, anchor: last, currentHead: head?.hash ?? null }
-  const ok = last.eventCount <= head.eventCount
-  return { ok, anchor: last, currentHead: head.hash }
+  const countOk = last.eventCount <= head.eventCount
+  const recomputedAtAnchor = computeChainHead(last.eventCount)
+  const hashOk = recomputedAtAnchor ? recomputedAtAnchor.hash === last.headHash : false
+  return { ok: countOk && hashOk, anchor: last, currentHead: head.hash }
 }
 
 const OTS_MAGIC = Buffer.from([

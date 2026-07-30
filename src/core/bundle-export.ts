@@ -57,7 +57,7 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
   // 1. events.jsonl (in insertion order)
   const db = getDB()
   const eventsPath = path.join(bundleDir, 'events.jsonl')
-  const stream = fs.createWriteStream(eventsPath)
+  const fd = fs.openSync(eventsPath, 'w')
   const rowIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
@@ -82,9 +82,9 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
         sanitizedRowsWritten++
       } catch { /* leave row as-is if data isn't parseable */ }
     }
-    stream.write(JSON.stringify(row) + '\n')
+    fs.writeSync(fd, JSON.stringify(row) + '\n')
   }
-  stream.end()
+  fs.closeSync(fd)
   files.push({ path: 'events.jsonl', ...sha256File(eventsPath) })
 
   // 2. quickmarks.json

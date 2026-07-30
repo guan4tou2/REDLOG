@@ -110,9 +110,11 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   }
 
   const shell = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
+  const isPowerShell = /powershell|pwsh/i.test(shell)
+  const shellArgs = isPowerShell ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : []
   const cwd = process.env.HOME || os.homedir()
 
-  const term = pty.spawn(shell, [], {
+  const term = pty.spawn(shell, shellArgs, {
     name: 'xterm-256color',
     cols,
     rows,
@@ -212,7 +214,6 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   // Auto-source the shell hook so individual commands appear in the timeline
   const hookPath = resolveShellHook(shell)
   if (hookPath) {
-    const isPowerShell = /powershell|pwsh/i.test(shell)
     // Source the hook quietly: a leading space keeps it out of shell history,
     // output is discarded, and the screen is cleared so the operator sees a clean
     // prompt instead of the `source …` line and the hook's banner.
