@@ -357,10 +357,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         ? { ...baseRules, denylist: [...baseRules.denylist, ...lootValues] }
         : baseRules
 
+      // Four-layer redaction (see docs/redaction-design.md): DETECT spans here,
+      // but leave the raw bytes in data[field] so the hash chain closes over the
+      // true text. The UI masks by default (layer 3) and `redlog-cli sanitize`
+      // does the actual byte replacement at export time (layer 4).
       for (const field of ['output', 'output_preview']) {
         if (typeof data[field] === 'string' && data[field]) {
           const result = redact(data[field] as string, perEventRules)
-          data[field] = result.text
           if (result.redacted.length > 0) {
             const redactions = (data.redactions as unknown[] | undefined) ?? []
             data.redactions = [...redactions, ...result.redacted.map((r) => ({ ...r, field }))]

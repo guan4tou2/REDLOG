@@ -2,7 +2,7 @@ import { clipboard } from 'electron'
 import { createHash } from 'crypto'
 import { insertEvent } from '../core/db/events'
 import { eventBus } from '../core/event-bus'
-import { redact, getRules } from '../core/redaction'
+import { redact, maskText, getRules } from '../core/redaction'
 import type { LootDetector } from '../core/loot-detector'
 
 // Clipboard capture is off by default — the clipboard often holds passwords,
@@ -40,13 +40,15 @@ function sample(): void {
   const hash = sha256(text)
   if (hash === lastHash) return
   lastHash = hash
-  // Redact the preview before it hits the DB. Even if loot patterns miss
-  // something, the operator's own redaction rules (allowlist/denylist/entropy)
-  // strip secrets. Full text is never stored — only a short preview at most.
+  // Clipboard is a special case in the four-layer model: even for evidence
+  // integrity we DON'T want raw clipboard text on disk (credentials pasted
+  // through clipboard are the user's biggest exposure). Detect spans via
+  // redact() but store the MASKED preview — clipboard events skip layers 3+4
+  // and mask at capture time. Full text never lands.
   const rules = getRules()
   const previewRaw = text.slice(0, 120)
   const redacted = redact(previewRaw, rules)
-  const preview = cfg.storePreview ? redacted.text : null
+  const preview = cfg.storePreview ? maskText(previewRaw, redacted.redacted) : null
   // Loot detector emits its OWN 'loot' event when it finds a credential — the
   // clipboard event just records that clipboard state changed. This keeps
   // credential-detection semantics identical to command-output detection.
