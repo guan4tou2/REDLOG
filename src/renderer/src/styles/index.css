@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* App-wide text scale (user-facing feedback: default text is too small).
+ * Two mechanisms combined:
+ *   1. html font-size 17px → every `text-xs`/`text-sm`/`text-base`/rem-based
+ *      utility scales up ~6% since Tailwind's `rem` bases derive from this.
+ *   2. `--app-zoom` CSS var applied via Chromium's non-standard `zoom` at the
+ *      body level → the ~155 hardcoded `text-[10px]` / `text-[11px]` / SVG /
+ *      images / layout scale too. Users can override in Settings ▸ 一般
+ *      (persisted to localStorage as `redlog-app-zoom`).
+ * HUD overlay window is a separate BrowserWindow and unaffected — it has its
+ * own scale setting already. */
+html {
+  font-size: 17px;
+}
 body {
   margin: 0;
   background: #0a0a0a;
@@ -10,6 +23,7 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  zoom: var(--app-zoom, 1.1);
 }
 
 ::-webkit-scrollbar {
