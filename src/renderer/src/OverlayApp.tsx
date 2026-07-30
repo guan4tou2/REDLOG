@@ -171,15 +171,12 @@ export default function OverlayApp(): JSX.Element {
           {/* scanlines */}
           <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
 
-          {/* buttons */}
+          {/* buttons (top-right): expand + hide only. The pin toggle used to
+              live here too, but the operator asked to move it into the
+              expanded pane's bottom row — it's a low-frequency action and
+              a fixed-position icon in the corner competed with the more
+              important expand button for glances. */}
           <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag, ...dimStyle }}>
-            {expanded && (
-              <div
-                onClick={() => setPinned((p) => !p)}
-                style={{ ...iconBtn, color: pinned ? HUD.red : CYAN }}
-                title={pinned ? t('overlay.unpin') : t('overlay.pin')}
-              >{pinned ? '📍' : '📌'}</div>
-            )}
             <div onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</div>
             <div onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</div>
           </div>
@@ -286,17 +283,27 @@ export default function OverlayApp(): JSX.Element {
 
               {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: fs(10) }}>{status.error}</p>}
 
-              {showMark && (
+              {/* Bottom action row — MARK button + PIN toggle side-by-side.
+                  Both are low-frequency actions kept out of the top-right
+                  chrome so ▲/✕ stay uncluttered for glance operation. */}
+              <div style={{ ...noDrag, display: 'flex', gap: 6, marginTop: 10 }}>
+                {showMark && (
+                  <button
+                    onClick={() => window.redlog.overlay?.quickMark()}
+                    style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.18)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.08)')}
+                    title={navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}
+                  >
+                    ⚑ {t('overlay.mark').toUpperCase()}
+                  </button>
+                )}
                 <button
-                  onClick={() => window.redlog.overlay?.quickMark()}
-                  style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.18)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.08)')}
-                  title={navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}
-                >
-                  ⚑ {t('overlay.mark').toUpperCase()}
-                </button>
-              )}
+                  onClick={() => setPinned((p) => !p)}
+                  style={{ padding: '6px 12px', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.14em', color: pinned ? HUD.red : CYAN, background: pinned ? hexA(HUD.red, 0.12) : hexA(CYAN, 0.09), border: `1px solid ${pinned ? HUD.red : CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s' }}
+                  title={pinned ? t('overlay.unpin') : t('overlay.pin')}
+                >{pinned ? '📍' : '📌'}</button>
+              </div>
             </div>
           )}
           </div>

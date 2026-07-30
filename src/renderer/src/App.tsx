@@ -348,7 +348,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   }
 
   return (
-    <div className="p-5 space-y-5 overflow-auto h-full">
+    <div className="p-4 space-y-3 overflow-auto h-full">
       {capture && <CaptureHealthCard capture={capture} onNavigate={onNavigate} />}
 
       <section>
