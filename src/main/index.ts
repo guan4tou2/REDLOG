@@ -574,11 +574,22 @@ app.whenReady().then(() => {
   // The renderer measures its own content and reports the exact height it needs
   // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
   // big empty gap. Clamp to sane bounds.
-  ipcMain.on('overlay:autosize', (_e, height: number) => {
+  ipcMain.on('overlay:autosize', (_e, height: number, width?: number) => {
     const h = Math.max(46, Math.min(560, Math.round(Number(height) || 46)))
     if (overlayWindow && !overlayWindow.isDestroyed()) {
-      const { x, y } = overlayWindow.getBounds()
-      overlayWindow.setBounds({ x, y, width: 440, height: h })
+      const cur = overlayWindow.getBounds()
+      // Width scales with content (larger HUD scale + emphasize IP need more
+      // horizontal room). Clamp to a sane range and keep the HUD on-screen —
+      // if growing wider would push it off the right edge, slide it back.
+      const w = width != null
+        ? Math.max(380, Math.min(720, Math.round(Number(width))))
+        : cur.width
+      let x = cur.x
+      try {
+        const disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea
+        if (x + w > disp.x + disp.width) x = Math.max(disp.x, disp.x + disp.width - w)
+      } catch { /* no display info — leave x alone */ }
+      overlayWindow.setBounds({ x, y: cur.y, width: w, height: h })
       if (process.platform === 'win32') {
         overlayWindow.setOpacity(0.99)
         setImmediate(() => { if (!overlayWindow!.isDestroyed()) overlayWindow!.setOpacity(1) })
