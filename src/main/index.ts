@@ -515,7 +515,9 @@ app.whenReady().then(() => {
     return project
   })
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
-  ipcMain.handle('project:active', () => activeProject ? { id: activeProject.id, name: activeProject.name } : null)
+  ipcMain.handle('project:active', () => activeProject
+    ? { id: activeProject.id, name: activeProject.name, createdAt: activeProject.createdAt }
+    : null)
 
   // --- IP ---
   ipcMain.handle('ip:getStatus', () => ipMonitor.status)
