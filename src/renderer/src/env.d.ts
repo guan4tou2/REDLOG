@@ -66,7 +66,7 @@ interface RedLogAPI {
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>
-    active: () => Promise<{ id: string; name: string } | null>
+    active: () => Promise<{ id: string; name: string; createdAt: number } | null>
   }
   ip: {
     getStatus: () => Promise<IPStatus>

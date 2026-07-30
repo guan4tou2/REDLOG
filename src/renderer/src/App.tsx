@@ -485,8 +485,12 @@ function ScreenshotsView(): JSX.Element {
           {screenshots.map((s) => (
             <div
               key={s.id}
-              className="rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-zinc-600 transition-colors"
+              role="button"
+              tabIndex={0}
+              aria-label={`Screenshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+              className="rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
               onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
             >
               <div className="aspect-video bg-neutral-900 flex items-center justify-center overflow-hidden">
                 {thumbs[s.id] ? (
@@ -509,8 +513,14 @@ function ScreenshotsView(): JSX.Element {
       )}
       {expanded && thumbs[expanded] && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Screenshot preview"
+          tabIndex={-1}
+          ref={(el) => el?.focus()}
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer outline-none"
           onClick={() => setExpanded(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setExpanded(null) }}
         >
           <img src={thumbs[expanded]} alt="" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
         </div>
