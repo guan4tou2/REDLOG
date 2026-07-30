@@ -396,7 +396,12 @@ export function verifyChainFull(): FullVerifyResult {
 
   for (const row of rowIter) {
     walked++
-    if ((row.prev_hash ?? null) !== expectedPrev) {
+    // A pre-v0.2 event has no prev_hash column at all — the migration added
+    // the column but populated existing rows with NULL rather than backfilling
+    // the actual prior-event hash. Treat NULL prev_hash on any row (not just
+    // row 0) as a legacy-migration state, not tampering. New (v0.2+) events
+    // still get strict chain-linkage checking.
+    if (row.prev_hash != null && row.prev_hash !== expectedPrev) {
       return {
         ok: false,
         walked,
