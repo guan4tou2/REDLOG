@@ -250,7 +250,7 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   const check = (path: string, from: unknown, to: unknown): void => {
     if (JSON.stringify(from) !== JSON.stringify(to)) changed[path] = { from, to }
   }
-  check('scope.enforcement', oldCfg.scope?.enforcement, newCfg.scope?.enforcement)
+  check('scope.warnOnViolation', oldCfg.scope?.warnOnViolation, newCfg.scope?.warnOnViolation)
   check('scope.targets', oldCfg.scope?.targets, newCfg.scope?.targets)
   check('scope.excludeTargets', oldCfg.scope?.excludeTargets, newCfg.scope?.excludeTargets)
   check('scope.scopeFile', oldCfg.scope?.scopeFile, newCfg.scope?.scopeFile)
@@ -322,7 +322,7 @@ function startProject(project: ProjectMeta): void {
     if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
   }
   scopeMonitor.configure({
-    enforcement: config.scope.enforcement,
+    warnOnViolation: config.scope.warnOnViolation !== false,
     targets: scopeTargets,
     excludeTargets: config.scope.excludeTargets,
     engagementId,
@@ -549,7 +549,7 @@ app.whenReady().then(() => {
       if (loaded.length > 0) targets = [...targets, ...loaded]
     }
     scopeMonitor.configure({
-      enforcement: newConfig.scope.enforcement,
+      warnOnViolation: newConfig.scope.warnOnViolation !== false,
       targets,
       excludeTargets: newConfig.scope.excludeTargets
     })

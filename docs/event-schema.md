@@ -51,7 +51,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `ip_transition` — external IP or safety state (safe/exposed/unknown) changed
   - `opsec_state_changed` — VPN interfaces, DNS resolvers, primary MAC, or hostname changed
   - `recording_paused` / `recording_resumed` — operator toggled recording
-  - `config_changed` — security-relevant setting saved (scope, blacklist, enforcement…) with a from→to diff
+  - `config_changed` — security-relevant setting saved (scope targets, warn-on-violation, IP blacklist…) with a from→to diff
   - `browser_launched` — proxied browser opened
   - `api_started`, `session_start`, `deconfliction_test` — housekeeping, hidden from Timeline by default
 
@@ -148,13 +148,13 @@ plus `scutil --dns` / `/etc/resolv.conf` / `Get-DnsClientServerAddress`.
 ### `system.config_changed` events
 
 Emitted on every `config:save` where a security-relevant field changed. Diffed
-fields: scope enforcement/targets/excludeTargets/scopeFile, network white/blacklist,
+fields: scope warnOnViolation/targets/excludeTargets/scopeFile, network white/blacklist,
 engagement id, operator id/name, deconfliction endpoint. Cosmetic changes stay silent.
 
 | Key | Meaning |
 |-----|---------|
 | `subtype` | `config_changed` |
-| `changed` | `{ "scope.enforcement": { "from": "warn", "to": "log" }, ... }` |
+| `changed` | `{ "scope.warnOnViolation": { "from": true, "to": false }, ... }` |
 | `description` | comma-joined list of changed paths |
 
 ## Examples

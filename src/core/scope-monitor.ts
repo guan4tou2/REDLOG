@@ -2,7 +2,10 @@ import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 
 interface ScopeConfig {
-  enforcement: 'warn' | 'log'
+  /** When a command's target is out-of-scope AND shares a root domain with a
+   *  scope target, raise a violation event + red badge. Excluded targets always
+   *  raise regardless. False = silent (no badge, no event, no alert). */
+  warnOnViolation: boolean
   targets: string[]
   excludeTargets: string[]
 }
@@ -44,20 +47,20 @@ function extractRootDomains(targets: string[]): Set<string> {
 const IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
 
 export class ScopeMonitor {
-  private config: ScopeConfig = { enforcement: 'warn', targets: [], excludeTargets: [] }
+  private config: ScopeConfig = { warnOnViolation: true, targets: [], excludeTargets: [] }
   private engagementId = 'default'
   private operatorId = ''
   private violations: Array<{ target: string; command: string; timestamp: number }> = []
   private rootDomains: Set<string> = new Set()
 
   configure(opts: {
-    enforcement?: string
+    warnOnViolation?: boolean
     targets?: string[]
     excludeTargets?: string[]
     engagementId?: string
     operatorId?: string
   }): void {
-    if (opts.enforcement) this.config.enforcement = opts.enforcement as ScopeConfig['enforcement']
+    if (opts.warnOnViolation !== undefined) this.config.warnOnViolation = opts.warnOnViolation
     if (opts.targets) this.config.targets = opts.targets
     if (opts.excludeTargets) this.config.excludeTargets = opts.excludeTargets
     if (opts.engagementId) this.engagementId = opts.engagementId
@@ -92,11 +95,11 @@ export class ScopeMonitor {
       }
     }
 
-    // 'log' mode records the out-of-scope activity (it still lands in the timeline)
-    // but does NOT raise a violation — no red badge, no deconfliction alert.
-    // 'warn' mode flags it as a violation. (Excluded targets above are always
-    // flagged regardless of mode.)
-    if (this.config.enforcement === 'log') {
+    // Warnings off = silent. No badge, no event, no deconfliction alert. The raw
+    // shell command still lands in the timeline like any other command — RedLog
+    // never blocks. (Excluded targets above always warn regardless — if you
+    // explicitly told RedLog to keep off X, hitting X is not a preference call.)
+    if (!this.config.warnOnViolation) {
       return { inScope: false, violation: false }
     }
     this.recordViolation(target, command, 'out_of_scope')
@@ -112,8 +115,7 @@ export class ScopeMonitor {
         subtype: 'scope_violation',
         target,
         command: command.slice(0, 200),
-        reason,
-        enforcement: this.config.enforcement
+        reason
       }, { engagementId: this.engagementId, operatorId: this.operatorId, targetId: target })
       if (evt) eventBus.publish(evt)
     } catch { /* DB may not be ready */ }
