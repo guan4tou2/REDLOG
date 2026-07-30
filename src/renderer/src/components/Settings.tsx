@@ -14,7 +14,7 @@ interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
-  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean }
+  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   browser?: {
     binary: string
@@ -324,6 +324,32 @@ export default function Settings(): JSX.Element {
               </label>
               <p className="text-[10px] text-zinc-600">{t('settings.overlayEmphasizeIpHint')}</p>
 
+              <label className="flex items-center gap-2 cursor-pointer mt-3">
+                <input
+                  type="checkbox"
+                  checked={config.overlay?.passThrough === true}
+                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThrough: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.overlayPassThrough')}</span>
+              </label>
+              <p className="text-[10px] text-zinc-600">{t('settings.overlayPassThroughHint')}</p>
+              {config.overlay?.passThrough === true && (
+                <div className="mt-2 flex items-center gap-3 pl-6">
+                  <span className="text-[10px] text-zinc-500">{t('settings.overlayPassThroughOpacity')}</span>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="0.9"
+                    step="0.05"
+                    value={config.overlay?.passThroughOpacity ?? 0.4}
+                    onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThroughOpacity: parseFloat(e.target.value) } })}
+                    className="accent-red-600 w-40"
+                  />
+                  <span className="text-[10px] text-zinc-400 font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
+                </div>
+              )}
+
               {isMacOS && (
                 <>
                   <label className="flex items-center gap-2 cursor-pointer mt-2">
@@ -387,6 +413,27 @@ export default function Settings(): JSX.Element {
 
         {tab === 'data' && (
           <>
+            <FieldGroup title={t('settings.screenshotGroup')}>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { v: 0, k: 'settings.screenshot.interval.off' },
+                  { v: 30, k: 'settings.screenshot.interval.30s' },
+                  { v: 60, k: 'settings.screenshot.interval.60s' },
+                  { v: 300, k: 'settings.screenshot.interval.5m' }
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
+                    className={`px-3 py-1 text-xs rounded ${
+                      (config.screenshot.intervalSec ?? 0) === opt.v
+                        ? 'bg-red-600 text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >{t(opt.k)}</button>
+                ))}
+              </div>
+              <p className="text-[10px] text-zinc-600 mt-2">{t('settings.screenshot.intervalHint')}</p>
+            </FieldGroup>
             <FieldGroup title={t('settings.updateGroup')}>
               <div className="flex items-center gap-3">
                 <button

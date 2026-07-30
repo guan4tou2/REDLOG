@@ -11,14 +11,14 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.50**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.51**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.6.50-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.50/RedLog-0.6.50-arm64.dmg) |
-| macOS (Intel) | [`RedLog-0.6.50.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.50/RedLog-0.6.50.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.6.50.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.50/RedLog.Setup.0.6.50.exe) |
-| Windows (portable) | [`RedLog.0.6.50.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.50/RedLog.0.6.50.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.6.51-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.51/RedLog-0.6.51-arm64.dmg) |
+| macOS (Intel) | [`RedLog-0.6.51.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.51/RedLog-0.6.51.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.6.51.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.51/RedLog.Setup.0.6.51.exe) |
+| Windows (portable) | [`RedLog.0.6.51.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.51/RedLog.0.6.51.exe) |
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 

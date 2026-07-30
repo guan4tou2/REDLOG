@@ -67,7 +67,29 @@ let forceQuit = false
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 
+// While `overlayPassThrough` is on, mouse tracking is disabled entirely —
+// the HUD stays ignore-mouse regardless of cursor position. Users who want
+// the HUD to never steal a stray click (e.g. it's sitting over Burp) enable
+// this in Settings ▸ HUD; the opacity drops so it's clearly ghost-mode.
+let overlayPassThrough = false
+let overlayPassThroughOpacity = 0.4
+
+function applyOverlayPassThrough(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  if (overlayPassThrough) {
+    stopOverlayMouseTracking()
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true })
+    overlayWindow.setOpacity(overlayPassThroughOpacity)
+    send(overlayWindow, 'overlay:interactive', false)
+    overlayMouseInside = false
+  } else {
+    overlayWindow.setOpacity(1)
+    startOverlayMouseTracking()
+  }
+}
+
 function startOverlayMouseTracking(): void {
+  if (overlayPassThrough) return
   if (overlayTrackingInterval) clearInterval(overlayTrackingInterval)
   overlayTrackingInterval = setInterval(() => {
     if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return
@@ -326,7 +348,12 @@ function startProject(project: ProjectMeta): void {
     confirmations: config.network.confirmations,
     ipMode: config.network.ipMode
   })
-  screenshotAgent.configure({ engagementId, operatorId, quality: config.screenshot.quality })
+  screenshotAgent.configure({
+    engagementId,
+    operatorId,
+    quality: config.screenshot.quality,
+    intervalSec: config.screenshot.intervalSec ?? 0
+  })
 
   let scopeTargets = config.scope.targets
   if (config.scope.scopeFile) {
@@ -426,7 +453,9 @@ function startProject(project: ProjectMeta): void {
       applyDock()
       setTimeout(applyDock, 250)
     }
-    startOverlayMouseTracking()
+    overlayPassThrough = !!config.overlay?.passThrough
+    overlayPassThroughOpacity = config.overlay?.passThroughOpacity ?? 0.4
+    applyOverlayPassThrough()
     if (tray) {
       tray.destroy()
       tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerQuickMark)
@@ -444,6 +473,7 @@ function stopProject(): void {
   stopClipboardMonitor()
   stopCdpMonitor()
   stopOpsecMonitor()
+  screenshotAgent.stop()
   closeDB()
   activeProject = null
   currentEngagementId = null
@@ -575,7 +605,10 @@ app.whenReady().then(() => {
       targets,
       excludeTargets: newConfig.scope.excludeTargets
     })
-    screenshotAgent.configure({ quality: newConfig.screenshot.quality })
+    screenshotAgent.configure({
+      quality: newConfig.screenshot.quality,
+      intervalSec: newConfig.screenshot.intervalSec ?? 0
+    })
     configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
     configureClipboardMonitor({
       enabled: newConfig.clipboard?.enabled ?? false,
@@ -592,6 +625,9 @@ app.whenReady().then(() => {
     send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
     send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
     send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
+    overlayPassThrough = !!newConfig.overlay?.passThrough
+    overlayPassThroughOpacity = newConfig.overlay?.passThroughOpacity ?? 0.4
+    applyOverlayPassThrough()
     return true
   })
   // The renderer measures its own content and reports the exact height it needs
