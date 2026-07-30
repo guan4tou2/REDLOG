@@ -58,7 +58,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'team' | 'network' | 'scope' | 'data' | 'hooks' | 'plugins'>('general')
+  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
   const [saved, setSaved] = useState(false)
   const [cdpPort, setCdpPort] = useState('9222')
   const [exportResult, setExportResult] = useState<string | null>(null)
@@ -94,12 +94,13 @@ export default function Settings(): JSX.Element {
 
   const tabs = [
     { id: 'general' as const, label: t('settings.general') },
-    { id: 'team' as const, label: t('settings.team') },
+    { id: 'hud' as const, label: t('settings.hud') },
+    { id: 'capture' as const, label: t('settings.capture') },
     { id: 'network' as const, label: t('settings.networkIp') },
     { id: 'scope' as const, label: t('settings.scope') },
-    { id: 'hooks' as const, label: t('settings.hooks') },
-    { id: 'plugins' as const, label: t('settings.plugins') },
-    { id: 'data' as const, label: t('settings.data') }
+    { id: 'integrations' as const, label: t('settings.integrations') },
+    { id: 'data' as const, label: t('settings.data') },
+    { id: 'plugins' as const, label: t('settings.plugins') }
   ]
 
   return (
@@ -130,7 +131,7 @@ export default function Settings(): JSX.Element {
               <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
               <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
             </FieldGroup>
-            <FieldGroup title="Language">
+            <FieldGroup title={t('settings.language')}>
               <div className="flex gap-2">
                 {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
                   <button
@@ -150,11 +151,35 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {tab === 'team' && (
+        {tab === 'integrations' && (
           <>
             <McpPanel t={t} />
             <OperatorsPanel t={t} />
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
+            <BrowserPanel t={t} config={config} setConfig={setConfig} />
+            <FieldGroup title={t('settings.cdp')}>
+              <div className="space-y-2">
+                <Field
+                  label={t('settings.cdpPort')}
+                  value={cdpPort}
+                  onChange={(v) => setCdpPort(v)}
+                  type="number"
+                />
+                <button
+                  onClick={async () => {
+                    await window.redlog.cdp.setPort(parseInt(cdpPort) || 9222)
+                    const tab = await window.redlog.cdp.getTab()
+                    alert(tab.connected ? `Connected: ${tab.title}\n${tab.url}` : 'Not connected. Launch Chrome with:\n--remote-debugging-port=' + cdpPort)
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                >
+                  {t('settings.testConnection')}
+                </button>
+                <p className="text-[10px] text-zinc-600">
+                  {t('settings.cdpHint')}
+                </p>
+              </div>
+            </FieldGroup>
           </>
         )}
 
@@ -240,19 +265,8 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {tab === 'data' && (
+        {tab === 'hud' && (
           <>
-            <FieldGroup title={t('settings.screenshotQuality')}>
-              <Field
-                label={t('settings.jpegQuality')}
-                value={String(config.screenshot?.quality ?? 85)}
-                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
-                type="number"
-              />
-              <p className="text-[10px] text-zinc-600">
-                {t('settings.qualityHint')}
-              </p>
-            </FieldGroup>
             <FieldGroup title={t('settings.overlayGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -268,7 +282,7 @@ export default function Settings(): JSX.Element {
                 <input
                   type="checkbox"
                   checked={config.overlay?.flashOnExposed !== false}
-                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, flashOnExposed: e.target.checked } })}
+                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: e.target.checked } })}
                   className="accent-red-600"
                 />
                 <span className="text-xs text-zinc-300">{t('settings.overlayFlashExposed')}</span>
@@ -289,7 +303,7 @@ export default function Settings(): JSX.Element {
                     return (
                       <button
                         key={k}
-                        onClick={() => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, scale: v } })}
+                        onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: v } })}
                         className={`px-3 py-1 text-[10px] rounded ${active ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
                       >
                         {t(`settings.overlayScale.${k}`)}
@@ -304,7 +318,7 @@ export default function Settings(): JSX.Element {
                 <input
                   type="checkbox"
                   checked={config.overlay?.emphasizeExternalIp === true}
-                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, emphasizeExternalIp: e.target.checked } })}
+                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: e.target.checked } })}
                   className="accent-red-600"
                 />
                 <span className="text-xs text-zinc-300">{t('settings.overlayEmphasizeIp')}</span>
@@ -317,7 +331,7 @@ export default function Settings(): JSX.Element {
                     <input
                       type="checkbox"
                       checked={config.overlay?.showInDock !== false}
-                      onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, showInDock: e.target.checked } })}
+                      onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: e.target.checked } })}
                       className="accent-red-600"
                     />
                     <span className="text-xs text-zinc-300">{t('settings.overlayShowInDock')}</span>
@@ -325,6 +339,23 @@ export default function Settings(): JSX.Element {
                   <p className="text-[10px] text-zinc-600">{t('settings.overlayShowInDockHint')}</p>
                 </>
               )}
+            </FieldGroup>
+          </>
+        )}
+
+        {tab === 'capture' && (
+          <>
+            <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
+            <FieldGroup title={t('settings.screenshotQuality')}>
+              <Field
+                label={t('settings.jpegQuality')}
+                value={String(config.screenshot?.quality ?? 85)}
+                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+                type="number"
+              />
+              <p className="text-[10px] text-zinc-600">
+                {t('settings.qualityHint')}
+              </p>
             </FieldGroup>
             <FieldGroup title={t('settings.clipboardGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
@@ -352,6 +383,11 @@ export default function Settings(): JSX.Element {
                 <p className="text-[10px] text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
               )}
             </FieldGroup>
+          </>
+        )}
+
+        {tab === 'data' && (
+          <>
             <FieldGroup title={t('settings.updateGroup')}>
               <div className="flex items-center gap-3">
                 <button
@@ -363,30 +399,6 @@ export default function Settings(): JSX.Element {
                 <span className="text-[10px] text-zinc-600 font-mono">v{__APP_VERSION__}</span>
               </div>
               <p className="text-[10px] text-zinc-600">{t('settings.checkUpdateHint')}</p>
-            </FieldGroup>
-            <BrowserPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.cdp')}>
-              <div className="space-y-2">
-                <Field
-                  label={t('settings.cdpPort')}
-                  value={cdpPort}
-                  onChange={(v) => setCdpPort(v)}
-                  type="number"
-                />
-                <button
-                  onClick={async () => {
-                    await window.redlog.cdp.setPort(parseInt(cdpPort) || 9222)
-                    const tab = await window.redlog.cdp.getTab()
-                    alert(tab.connected ? `Connected: ${tab.title}\n${tab.url}` : 'Not connected. Launch Chrome with:\n--remote-debugging-port=' + cdpPort)
-                  }}
-                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
-                >
-                  {t('settings.testConnection')}
-                </button>
-                <p className="text-[10px] text-zinc-600">
-                  {t('settings.cdpHint')}
-                </p>
-              </div>
             </FieldGroup>
             <FieldGroup title={t('settings.exportAll')}>
               <button
@@ -493,9 +505,6 @@ export default function Settings(): JSX.Element {
               </p>
             </FieldGroup>
           </>
-        )}
-        {tab === 'hooks' && (
-          <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
         )}
         {tab === 'plugins' && <PluginsPanel t={t} />}
       </div>

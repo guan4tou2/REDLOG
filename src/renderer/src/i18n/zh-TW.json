@@ -235,6 +235,10 @@
   "settings.browserNotFound": "找不到 Chromium 系瀏覽器 — 請在上方指定路徑",
 
   "settings.general": "一般",
+  "settings.language": "語言",
+  "settings.hud": "HUD",
+  "settings.capture": "擷取",
+  "settings.integrations": "整合",
   "settings.team": "團隊與整合",
   "settings.networkIp": "網路 / IP",
   "settings.scope": "範圍",
