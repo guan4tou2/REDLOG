@@ -68,33 +68,50 @@ npx electron-builder --mac    # or --win / --linux
 
 ### Recording Engine
 
-| Module | What it captures | Dedup |
+| Module | What it captures | Notes |
 |--------|-----------------|-------|
-| Terminal Agent | All shell commands + output (via node-pty) | — |
-| Clipboard Monitor | 200ms polling, auto-redacts passwords/keys | SHA-256 |
-| Screenshot Agent | Idle-triggered desktop capture | SHA-256 + pixelmatch |
-| File Transfer Tracker | ~/Downloads watcher with auto-hash | — |
-| Scope Monitor | DNS queries + target scope enforcement | — |
-| Loot Detector | AWS keys, JWTs, password hashes, flags, PII | regex patterns |
+| Shell hook (bash/zsh preexec) | Every command with pid, exit code, duration | Auto-installed for the built-in terminal; opt-in `source` for external shells |
+| Built-in terminal (node-pty) | Terminal-pane lifecycle + asciinema `.cast` recording | SHA-256'd, size-capped (default 50 MB) |
+| Pivot auto-detector | ssh -D/-L/-R, chisel, ligolo, sshuttle, proxychains, socat → structured `pivot` events | Foreground close detected via `command_end`; 30-min recency window fallback |
+| Cleanup auto-detector | `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` → `cleanup` events | NIST SP 800-86 anti-forensics tracking |
+| File-transfer auto-detector | `curl -o`, `wget -O`, `scp`, `rsync`, `python -m http.server` → `file_transfer` events | T1105 ingress / T1041 exfil |
+| Browser CDP monitor | Every URL change in the built-in browser → `http_navigation` (T1071.001) | Filters `chrome://`, `about:`, `devtools:`, `view-source:` |
+| Clipboard monitor *(opt-in)* | SHA-256 + length + line count always; loot detector runs on content; 120-char redacted preview optional | Off by default — clipboard is sensitive |
+| Screenshot agent | Periodic + on-demand desktop captures | SHA-256 in event, quality configurable |
+| IP monitor | External IP + safety hysteresis (safe/exposed/unknown) | `system.ip_transition` on every state or IP change |
+| OPSEC state monitor | VPN interfaces (utun/tun/tap/wg/ppp/…), DNS resolvers, primary MAC, hostname | `system.opsec_state_changed` on any drift (30 s poll) |
+| Scope monitor | Command targets vs allowed scope | Own `scope` lane; `warn` (violation) or `log` (silent record) enforcement |
+| Loot detector | AWS keys, JWTs, tokens, password hashes, flags, PII | Regex + entropy; plugin-extensible via `lootPatterns` |
+| Config diff | Security-relevant setting changes on save | `system.config_changed` with from→to diff on scope / blacklist / enforcement |
+| Recording toggle | Every pause/resume | `system.recording_paused` / `recording_resumed` so timeline gaps are explainable |
 
 ### Timeline & UI
 
-- **Swim-lane Timeline** — shell, dns, pivot, screenshot, clipboard, file transfer, credential use, c2 check-in, marker, loot, system. Lanes with no events collapse away, so the chart only shows what this engagement actually touched
-- **Pause / Resume** — click the status bar recording indicator to pause/resume capture
-- **Global Search** — full-text search across all event types with highlighted results
+- **Swim-lane Timeline** — 15 lanes: shell, agent, http_navigation, dns, pivot, screenshot, clipboard, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, system. Empty lanes auto-collapse — only what this engagement touched
+- **Housekeeping filter** — RedLog's own lifecycle (api_started, session_start, terminal-pane open/close, the "silent" hook auto-source) stays in the DB for the record but is hidden from the timeline
+- **Command pair collapse** — a `shell.command_start` disappears once its matching `command_end` lands (same pid+cmd); still-running commands keep showing
+- **Cursor-anchored zoom** — trackpad pinch and wheel zoom stay locked to what's under the cursor
+- **Cluster popover** — a burst of events on one lane collapses into a dot; click to expand and jump to any event
+- **Focus jumps** — clicking a loot/mark scrolls the timeline to that event and highlights it
+- **Density minimap** — drag-to-zoom over a time range
+- **Pause / Resume** — status-bar indicator; every toggle lands as an event so the timeline gap is explainable
+- **Global Search** — full-text across all event types
 - **Target View** — auto-cataloged targets with per-target evidence drill-down
-- **Loot Panel** — detected credentials/secrets organized by type
+- **Loot Panel** — detected credentials/secrets by type, with source (command/host) and jump-to-timeline
 - **Scope Status** — violation log with enforcement mode (warn / log)
-- **Screenshot Gallery** — thumbnail grid with lightbox preview
-- **Multi-tab Terminal** — multiple concurrent terminal sessions
-- **Error Boundary** — per-view crash recovery with retry
+- **Screenshot Gallery** — thumbnail grid with lightbox
+- **Multi-tab Terminal** — concurrent PTY sessions; asciinema recording per pane
+- **Error Boundary** — per-view crash recovery
 
 ### HUD (heads-up overlay)
 
-- **IP Widget** — always-on-top floating display showing external/internal IP, whitelist/blacklist status, live pivot chain, and recording state
-- **Live pivot chain** — shows the active internal-network pivot nodes (tool · node · route) so you can see your lateral-movement path at a glance
-- **Click-through Mode** — overlay passes mouse events through to windows below; hover to reactivate for interaction
-- **Draggable** — grab the overlay to reposition it anywhere on screen
+- **IP Widget** — always-on-top floating display: external IP (primary), internal IP + Wi-Fi/wired name, live pivot chain, recording state, capture health
+- **EXPOSED alarm** — when the external IP hits the blacklist, the whole frame flashes red (toggle in Settings ▸ Overlay); default on
+- **Live pivot chain** — active internal-network pivot nodes (tool · node · route); topology view shows internal → external → pivot hops
+- **macOS Dock icon** — configurable (Settings ▸ Overlay); opening the HUD otherwise flips the app to accessory activation and drops the Dock icon
+- **Click-through Mode** — passes mouse events through to windows below; hover to reactivate
+- **Draggable** — grab the overlay to reposition
+- **Menubar / tray** — red pulsing dot while recording (no text label — keeps the menu-bar compact)
 
 ### Scope Engine
 
@@ -112,6 +129,15 @@ RedLog's scope monitor uses root-domain matching for smart violation detection:
 - Advanced setup at creation: pre-configure scope targets, IP whitelist/blacklist, enforcement mode
 - Config profile export/import (YAML or JSON) for team synchronization
 - Hot-reload on config save — no restart needed
+
+### Plugins
+
+Trust-tiered plugin system for shop-specific patterns (see [docs/plugin-development.md](docs/plugin-development.md)):
+
+- 🟢 **Declarative** (no code): `lootPatterns`, `redaction`, `commandTags` (stamp MITRE / custom fields onto shell events), `targetExtractors`, `eventTypes`, `capture` integrations
+- 🔴 **Privileged** (code): custom MCP tools, exporters, monitors — content-hash pinned + operator consent + capability-scoped, run in an isolated utility process
+
+RedLog ships with **no** `commandTags` installed — MITRE tagging is opinionated per shop, so either drop a plugin into `~/.redlog/plugins/` (Settings ▸ Plugins ▸ Open folder) or let your SIEM tag downstream. Hot-reload from Settings ▸ Plugins ▸ Reload.
 
 ### i18n
 

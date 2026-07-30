@@ -12,7 +12,7 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
        │                │                │
   ┌────▼────┐    ┌──────▼──────┐   ┌─────▼─────┐
   │ Terminal │    │ MCP Server  │   │ HTTP API  │
-  │  Hooks   │    │ (18 tools)  │   │ (REST)    │
+  │  Hooks   │    │ (19 tools)  │   │ (REST)    │
   │  (log)   │    │ (operate)   │   │(universal)│
   └────┬────┘    └──────┬──────┘   └─────┬─────┘
        │                │                │
