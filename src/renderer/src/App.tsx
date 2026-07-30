@@ -137,7 +137,7 @@ export default function App(): JSX.Element {
             {view === 'timeline' && <TimelinePanel focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} />}
             {view === 'screenshots' && <ScreenshotsView />}
             {view === 'targets' && <TargetView />}
-            {view === 'scope' && <ScopeStatus />}
+            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}

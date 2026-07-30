@@ -1,6 +1,6 @@
 {
   "name": "redlog",
-  "version": "0.6.36",
+  "version": "0.6.37",
   "description": "Red Team Operation Log",
   "author": "guan4tou2",
   "repository": {
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^5.5.0",
     "better-sqlite3": "^11.7.0",
     "js-yaml": "^4.1.0",
