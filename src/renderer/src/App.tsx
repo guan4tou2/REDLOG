@@ -72,7 +72,14 @@ export default function App(): JSX.Element {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!project) return
       const cmd = e.ctrlKey || e.metaKey
-      if (cmd && e.key === '/') {
+      // Search: ⌘/ was the original shortcut but macOS sends `Unidentified`
+      // as e.key for that combo (system-level Help-menu grab), so it never
+      // matched. Fall back to `e.code === 'Slash'` which stays 'Slash'
+      // regardless of layout/system grab, and also accept ⌘K (common command-
+      // palette pattern in Slack/Notion/Linear so muscle memory works).
+      if (cmd && (e.key === '/' || e.code === 'Slash' || e.key === 'k' || e.key === 'K')) {
+        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
         e.preventDefault()
         setView('search')
         return
