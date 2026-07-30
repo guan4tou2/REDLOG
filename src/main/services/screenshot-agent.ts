@@ -13,6 +13,18 @@ export class ScreenshotAgent {
   private quality = 85
   private intervalSec = 0
   private timer: ReturnType<typeof setInterval> | null = null
+  // Perceptual hash of the last stored frame (dHash — 64-bit). SHA-256 catches
+  // only byte-identical duplicates, which almost never trigger for a live
+  // desktop (a moving mouse cursor / ticking clock changes the JPEG bytes even
+  // when the operator sees no change). dHash compares an 8x8 downsampled
+  // grayscale bitmap, so cursor/clock jitter falls under the threshold and
+  // the frame is skipped — the .cast stream still has the raw bytes if
+  // needed.
+  private lastDHash: bigint | null = null
+  // Hamming distance below which two frames count as visually identical. 5
+  // out of 64 bits is empirically forgiving: mouse cursor moved but no window
+  // changed = ~2-3, one line of new terminal output = ~6-10.
+  private static readonly DHASH_SKIP_THRESHOLD = 5
 
   configure(opts: {
     engagementId?: string
@@ -61,7 +73,18 @@ export class ScreenshotAgent {
       const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
       const dedupKey = sha256.slice(0, 16)
 
-      if (trigger !== 'manual' && dedupKey === this.lastHash) return null
+      if (trigger !== 'manual') {
+        // First-pass exact-bytes dedup (rare hit, but zero-cost).
+        if (dedupKey === this.lastHash) return null
+        // Perceptual dedup — only for automatic triggers (periodic / idle).
+        // Manual captures always land regardless of similarity.
+        const dHash = this.computeDHash(image)
+        if (this.lastDHash != null) {
+          const dist = ScreenshotAgent.hammingDistance(dHash, this.lastDHash)
+          if (dist < ScreenshotAgent.DHASH_SKIP_THRESHOLD) return null
+        }
+        this.lastDHash = dHash
+      }
       this.lastHash = dedupKey
 
       const dir = path.join(getProjectDir(), 'screenshots')
@@ -87,5 +110,42 @@ export class ScreenshotAgent {
     } catch {
       return null
     }
+  }
+
+  // dHash (difference hash) — compare each pixel against its right-hand
+  // neighbor in an 8x9 grayscale downsample, produce a 64-bit signature.
+  // Small visual changes (mouse cursor, one-line terminal scroll) shift a
+  // handful of bits; a whole new window shifts dozens. Cheap enough to run
+  // every tick even at 30s cadence.
+  private computeDHash(image: Electron.NativeImage): bigint {
+    // resize returns a fresh nativeImage; toBitmap returns BGRA row-major.
+    const small = image.resize({ width: 9, height: 8, quality: 'good' })
+    const buf = small.toBitmap()
+    // Build a hash by walking each row and comparing pixel i to pixel i+1.
+    // Result: 8 rows × 8 bits = 64 bits total.
+    let hash = 0n
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const i = (row * 9 + col) * 4
+        const j = (row * 9 + col + 1) * 4
+        // Sum-of-channels stand-in for luminance — perfect luma would use
+        // 0.299R + 0.587G + 0.114B, but for a difference comparison the
+        // exact weighting doesn't matter.
+        const a = buf[i] + buf[i + 1] + buf[i + 2]
+        const b = buf[j] + buf[j + 1] + buf[j + 2]
+        hash = (hash << 1n) | (a > b ? 1n : 0n)
+      }
+    }
+    return hash
+  }
+
+  private static hammingDistance(a: bigint, b: bigint): number {
+    let x = a ^ b
+    let count = 0
+    while (x > 0n) {
+      count += Number(x & 1n)
+      x >>= 1n
+    }
+    return count
   }
 }
