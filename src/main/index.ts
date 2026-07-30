@@ -25,7 +25,7 @@ import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook } from '../core/deconfliction'
 import {
-  listProjects, createProject, openProject, deleteProject,
+  listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort } from '../core/api-server'
@@ -515,6 +515,13 @@ app.whenReady().then(() => {
     return project
   })
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+  ipcMain.handle('project:rename', (_e, id: string, name: string) => {
+    const updated = renameProject(id, name)
+    // Keep activeProject.name in sync if the renamed project is the current one
+    // — main-window title bar reads this on subsequent renders.
+    if (updated && activeProject?.id === id) activeProject = { ...activeProject, name: updated.name }
+    return updated
+  })
   ipcMain.handle('project:active', () => activeProject
     ? { id: activeProject.id, name: activeProject.name, createdAt: activeProject.createdAt }
     : null)
