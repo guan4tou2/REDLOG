@@ -374,9 +374,20 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             {t('dashboard.exportData')}
           </button>
         </div>
-        <div className="grid grid-cols-4 gap-3">
-          <StatCard label={t('dashboard.events')} value={String(eventCount)} tone="neutral" />
-          <StatCard label={t('dashboard.chain')} value={String(chainLen)} sub={t('dashboard.evidenceEntries')} tone="cyan" />
+        <div className="grid grid-cols-3 gap-3">
+          {/* Events + chain length were two cards showing the same number —
+              every event is one chain entry so they moved in lockstep. Merged
+              here: the big number is events, the sub-line calls out that the
+              chain covers the same count (or flags a drift if it ever
+              differs, which would itself be a tamper signal). */}
+          <StatCard
+            label={t('dashboard.events')}
+            value={String(eventCount)}
+            sub={chainLen === eventCount
+              ? t('dashboard.chainMatches', { n: chainLen })
+              : t('dashboard.chainDrift', { chain: chainLen, events: eventCount })}
+            tone={chainLen === eventCount ? 'cyan' : 'red'}
+          />
           <StatCard label={t('dashboard.loot')} value={String(lootCount)} tone={lootCount > 0 ? 'red' : 'neutral'} />
           <StatCard
             label={t('dashboard.scope')}
