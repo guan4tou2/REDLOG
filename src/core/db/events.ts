@@ -91,6 +91,10 @@ export function queryEvents(opts: {
   agentType?: string
   limit?: number
   since?: number
+  // Pagination anchor: return events strictly older than this timestamp.
+  // Timeline's loadMore uses it to walk backwards through history — without
+  // this the callers just kept re-fetching the same latest N events.
+  before?: number
   targetId?: string
 }): RedLogEvent[] {
   const db = getDB()
@@ -104,6 +108,10 @@ export function queryEvents(opts: {
   if (opts.since) {
     conditions.push('timestamp >= ?')
     params.push(opts.since)
+  }
+  if (opts.before) {
+    conditions.push('timestamp < ?')
+    params.push(opts.before)
   }
   if (opts.targetId) {
     conditions.push('target_id = ?')
