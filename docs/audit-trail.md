@@ -1,9 +1,10 @@
 # Audit trail: hash chain + OpenTimestamps
 
-RedLog's timeline is designed to be **tamper-evident**, not tamper-proof. Anyone with local root on the machine can rewrite the SQLite file — nothing stops that. But two layers make silent rewrites very hard to hide:
+RedLog's timeline is designed to be **tamper-evident**, not tamper-proof. Anyone with local root on the machine can rewrite the SQLite file — nothing stops that. But three layers make silent rewrites very hard to hide:
 
 1. **Per-event SHA-256 hash chain** — every event's hash covers the previous event's hash. Any single-row edit invalidates every event after it.
 2. **Hourly OpenTimestamps anchoring** — the chain head is submitted to public Bitcoin-backed timestamp servers, so an auditor can prove the chain existed at that time from evidence that is not on the operator's machine.
+3. **Drift-detection events** — RedLog logs every observable state change of its own configuration and network posture (config edits, recording pauses, IP flips, VPN/DNS changes, scope violations, cleanup commands, pivot closures) as chained events, so a reviewer can distinguish "nothing happened" from "the rules were quietly changed".
 
 ## Layer 1: the SHA-256 hash chain
 
@@ -60,6 +61,30 @@ The hourly loop retries any failed head at the next tick. Manual retry:
 - CLI: `redlog-cli chain anchor` (and `redlog-cli chain status` / `chain verify` / `chain anchors`).
 - MCP: `redlog_chain_anchor_now`.
 - REST: `POST /api/anchors`.
+
+## Layer 3: drift-detection events
+
+Layers 1 and 2 prove the log wasn't edited. Layer 3 makes the log **honest by
+construction** — RedLog writes attributed, chained events every time its own
+observable state shifts, so a reviewer can distinguish "nothing happened" from
+"someone silently changed the rules and then acted". All of these are ordinary
+events subject to the hash chain, so an attacker who scrubs them breaks the
+chain (layer 1 → layer 2 detection).
+
+| Event | Fires when | Why it matters for review |
+|---|---|---|
+| `system.recording_paused` / `recording_resumed` | Operator toggles the recording indicator | A 20-min timeline gap without a `recording_paused` = operator was idle. With one = the gap is authorized and dated |
+| `system.config_changed` | Any security-relevant setting saved (scope enforcement/targets/excludeTargets/scopeFile, IP whitelist/blacklist, engagement/operator id, deconfliction endpoint) — with a from→to diff | Silently loosening scope from `warn` to `log` or removing an IP from the blacklist leaves a chained record naming *when*, *by whom*, and *what changed* |
+| `system.scope_violation` (own `scope` lane) | Command target falls outside allowed scope | Chained record of every action that RedLog itself flagged as out-of-scope |
+| `system.ip_transition` | External IP or safety state (safe/exposed/unknown) changes | VPN dropped mid-op, egress switched pool, IP flipped to EXPOSED — the moment is dated, not only shown in the HUD |
+| `system.opsec_state_changed` | VPN interfaces up/down, DNS resolvers, primary MAC, or hostname change (30 s poll) | Proves the tunnel was actually up during a given command, and catches DNS leaks / MAC randomization events |
+| `pivot` `subtype: closed` | A foreground pivot's `command_end` lands (duration ≥ 2 s) | Both ends of a tunnel appear in the audit trail, not only when it opened |
+| `cleanup` events (own `cleanup` lane) | `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` detected in a shell command | NIST SP 800-86 mandates anti-forensics actions be tracked distinctly — buried in a shell row they can hide, on their own lane they can't |
+
+The `system.*` and `pivot.closed` events are best-effort — RedLog can't
+observe things it can't see (a tunnel closed on the remote side, a config
+edit made by bypassing the UI to write `config.yaml` directly). But when RedLog
+*does* observe them, they land in the chain like any other event.
 
 ## Verifying a receipt independently
 
@@ -118,6 +143,7 @@ redlog-cli chain verify --full
 - Tampering with events in the window between the last anchor and now (up to 1 hour by default). Anchor more often via `redlog_chain_anchor_now` right after critical actions to shrink this window.
 - An attacker who compromises RedLog **before** any anchor is made, and who never lets one succeed. The `chain_anchors` table is local and can itself be deleted. Mitigation: export anchors off-machine periodically.
 - An attacker who compromises OTS calendars **and** RedLog simultaneously. Bitcoin backs the calendars, so this is expensive and detectable to third parties.
+- State changes RedLog can't observe (a pivot closed on the remote side, a `config.yaml` edited directly on disk while the app is closed). Layer 3 catches everything RedLog *does* observe; anything invisible to the process is invisible to the log.
 
 ## Retention & export
 
