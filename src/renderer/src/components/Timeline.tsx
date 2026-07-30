@@ -547,8 +547,9 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
         <div className="flex items-center gap-1 ml-2">
           <button
             onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors"
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
             title={t('timeline.zoomOut')}
+            aria-label={t('timeline.zoomOut')}
           >−</button>
           <button
             onClick={() => setZoom(1)}
@@ -559,8 +560,9 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           >{Math.round(zoom * 100)}% ↺</button>
           <button
             onClick={() => setZoom((z) => Math.min(6, z + 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors"
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
             title={t('timeline.zoomIn')}
+            aria-label={t('timeline.zoomIn')}
           >+</button>
         </div>
 
