@@ -80,6 +80,8 @@ chain (layer 1 → layer 2 detection).
 | `system.opsec_state_changed` | VPN interfaces up/down, DNS resolvers, primary MAC, or hostname change (30 s poll) | Proves the tunnel was actually up during a given command, and catches DNS leaks / MAC randomization events |
 | `pivot` `subtype: closed` | A foreground pivot's `command_end` lands (duration ≥ 2 s) | Both ends of a tunnel appear in the audit trail, not only when it opened |
 | `cleanup` events (own `cleanup` lane) | `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` detected in a shell command | NIST SP 800-86 mandates anti-forensics actions be tracked distinctly — buried in a shell row they can hide, on their own lane they can't |
+| `system.secret_revealed` | Reviewer clicked "Reveal" on an event with redaction spans (four-layer redaction, layer 3) | Raw secret bytes stay in the chain; a viewer who unmasks them leaves a chained record of *when*, *by whom*, and *which fields* — impossible to peek "silently" during review |
+| `system.sanitized` | `redlog-cli sanitize --confirm` wrote a masked copy for pre-delivery scrub (four-layer redaction, layer 4) | Bundle carries sanitized copies of the named fields; a bundle where a field looks masked without a matching `system.sanitized` event is detectably tampered |
 
 The `system.*` and `pivot.closed` events are best-effort — RedLog can't
 observe things it can't see (a tunnel closed on the remote side, a config

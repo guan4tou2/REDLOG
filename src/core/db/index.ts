@@ -80,6 +80,22 @@ export function initDB(projectDir: string): Database.Database {
       completed_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_anchor_ts ON chain_anchors(created_at);
+
+    -- Four-layer redaction, layer 4 (docs/redaction-design.md): the source
+    -- 'events' row is never mutated; instead a sanitized replacement copy is
+    -- written here and the bundle export serves it in place of the raw bytes.
+    -- Every sanitize pass also appends a chained system.sanitized event, so a
+    -- bundle without matching events is detectable as tampering.
+    CREATE TABLE IF NOT EXISTS sanitized_events (
+      source_event_id TEXT NOT NULL,
+      field TEXT NOT NULL,
+      sanitized_value TEXT NOT NULL,
+      replacement_sha256 TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      sanitized_event_id TEXT NOT NULL,   -- the system.sanitized chain event
+      PRIMARY KEY (source_event_id, field)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sanitized_source ON sanitized_events(source_event_id);
   `)
 
   // Migrate: add columns if missing (older DB versions)

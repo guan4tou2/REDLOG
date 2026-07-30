@@ -43,7 +43,7 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 ## Evidence & tamper-evidence
 
-- **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring + full re-walk verify (with wall-vs-monotonic clock-anomaly detection) + `.ots` bundle export. Threat model, what's detected, what isn't.
+- **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring + full re-walk verify (with wall-vs-monotonic clock-anomaly detection) + `.ots` bundle export + four-layer redaction. Threat model, what's detected, what isn't.
 - **[Event schema](event-schema.md)** — standard `agent_type` values and data keys (Ghostwriter-compatible). Read before designing a new event source.
 - **[Redaction design](redaction-design.md)** — design note (proposed, not yet implemented). Four-layer model: capture full → detect spans → mask in UI → sanitize on export. Why capture-time redaction is the wrong default for an evidence tool, and how the append-only chain makes deferred sanitization safe. Tracks [#6](https://github.com/guan4tou2/REDLOG/issues/6).
 
