@@ -46,6 +46,16 @@ contextBridge.exposeInMainWorld('redlog', {
       const handler = (_e: Electron.IpcRendererEvent, on: boolean): void => cb(on)
       ipcRenderer.on('overlay:flashExposed', handler)
       return () => ipcRenderer.removeListener('overlay:flashExposed', handler)
+    },
+    onScale: (cb: (n: number) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, n: number): void => cb(n)
+      ipcRenderer.on('overlay:scale', handler)
+      return () => ipcRenderer.removeListener('overlay:scale', handler)
+    },
+    onEmphasizeIp: (cb: (on: boolean) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, on: boolean): void => cb(on)
+      ipcRenderer.on('overlay:emphasizeIp', handler)
+      return () => ipcRenderer.removeListener('overlay:emphasizeIp', handler)
     }
   },
   overlay: {

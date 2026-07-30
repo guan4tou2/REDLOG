@@ -43,6 +43,12 @@ export interface RedLogConfig {
     showInDock: boolean
     /** flash the whole HUD frame while the external IP is EXPOSED (blacklist hit) */
     flashOnExposed: boolean
+    /** overall HUD text scale — multiplier applied to every font size + window
+     *  padding. 1.0 = default; 0.85 shrinks; 1.25 / 1.5 for higher-DPI eyes. */
+    scale: number
+    /** bump the external IP an extra ~1.4× on top of `scale`, since it's the
+     *  single most important number on the bar for OPSEC glances. */
+    emphasizeExternalIp: boolean
   }
   terminal: {
     maxCastBytes: number
@@ -111,7 +117,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   overlay: {
     showMarkButton: true,
     showInDock: true,
-    flashOnExposed: true
+    flashOnExposed: true,
+    scale: 1.0,
+    emphasizeExternalIp: false
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024

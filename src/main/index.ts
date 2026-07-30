@@ -567,6 +567,8 @@ app.whenReady().then(() => {
     // "show Mark button" takes effect live instead of only after a restart.
     send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
     send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
+    send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
+    send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
     return true
   })
   // The renderer measures its own content and reports the exact height it needs
