@@ -28,8 +28,20 @@ export default function OverlayApp(): JSX.Element {
   // Report the exact content height so the window fits it — no clipping, no
   // empty gap. Runs after every layout-affecting change.
   useLayoutEffect(() => {
-    const h = contentRef.current?.offsetHeight
-    if (h) (window.redlog.overlay as { autosize?: (n: number) => void })?.autosize?.(h + 8)
+    const el = contentRef.current
+    if (!el) return
+    // Height comes from real measurement (offsetHeight) — it's a clean function
+    // of scale + which sections are visible (expanded / pivot pill / etc).
+    //
+    // WIDTH is computed deterministically from scale + emphasizeIp instead of
+    // measured, because measuring creates a feedback loop: once we resize the
+    // window wider, scrollWidth catches up to offsetWidth, and next tick the
+    // reported width would grow again, and again — the HUD would inflate to
+    // the max on every render. Given the layout (two IPv4-shaped values + a
+    // few labels), a linear projection is accurate enough.
+    const h = el.offsetHeight
+    const w = 440 + Math.round((scale - 1) * 180) + (emphasizeIp ? 44 : 0)
+    if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })?.autosize?.(h + 8, w)
   })
 
   useEffect(() => {
