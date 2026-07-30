@@ -14,18 +14,33 @@
 #     }
 #   }
 #
-# Environment variables set by Claude Code:
-#   CLAUDE_TOOL_NAME    — tool name (e.g. "Bash")
-#   CLAUDE_TOOL_INPUT   — JSON string of tool input
-#   CLAUDE_TOOL_OUTPUT  — JSON string of tool output (PostToolUse only)
-#   CLAUDE_SESSION_ID   — current session ID
+# Claude Code hook API (as of 2026): the tool payload is delivered on STDIN
+# as a single JSON object. The old CLAUDE_TOOL_* env-var contract that this
+# file used to read is gone; anything that expects it silently no-ops. Shape:
+#   {
+#     "session_id": "...",
+#     "transcript_path": "...",   ← pointer to full conversation .jsonl
+#     "cwd": "...",
+#     "hook_event_name": "PostToolUse",
+#     "tool_name": "Bash",
+#     "tool_input":  {"command": "...", ...},
+#     "tool_response": {"output": "...", "stderr": "...", ...}   // PostToolUse
+#   }
+#
+# We record the command + output preview + a POINTER to the transcript. We
+# deliberately do NOT copy the surrounding conversation content into the
+# chain: it's Anthropic-owned content, it would bloat the chain by orders
+# of magnitude, and the transcript_path already provides audit trail on
+# demand.
 #
 # Privacy controls (set in your shell profile or project .env):
 #   REDLOG_CAPTURE_OUTPUT=0     — disable output capture entirely (default: 1)
 #   REDLOG_MAX_OUTPUT=500       — max output chars to capture (default: 500)
 #   REDLOG_REDACT_SECRETS=1     — redact API keys/tokens/passwords (default: 1)
 
-set -euo pipefail
+# NOTE: intentionally NOT using `set -euo pipefail`. A hook that fires per
+# tool call is a hot path — a stray failure inside jq/python or the API
+# server being down must never surface as a Claude-Code UX error.
 
 # --- Resolve RedLog dir (native or WSL) ---
 _resolve_redlog_dir() {
@@ -58,44 +73,54 @@ REDLOG_TOKEN_FILE="$REDLOG_DIR/api-token"
 PORT=$(<"$REDLOG_PORT_FILE")
 TOKEN=$(<"$REDLOG_TOKEN_FILE")
 
-TOOL_NAME="${CLAUDE_TOOL_NAME:-}"
-TOOL_INPUT="${CLAUDE_TOOL_INPUT:-{}}"
+# --- Read Claude Code's JSON payload from stdin ---
+# Timeout guards against a hook wiring that happens to leave stdin open.
+INPUT=$(timeout 2 cat 2>/dev/null)
+[[ -n "$INPUT" ]] || exit 0
 
-[[ "$TOOL_NAME" == "Bash" ]] || exit 0
+export INPUT
+export CAPTURE_OUTPUT="${REDLOG_CAPTURE_OUTPUT:-1}"
+export MAX_OUTPUT="${REDLOG_MAX_OUTPUT:-500}"
+export REDACT_SECRETS="${REDLOG_REDACT_SECRETS:-1}"
 
-COMMAND=$(echo "$TOOL_INPUT" | python3 -c '
-import sys, json
+# One python3 call handles JSON parse + redaction + payload build so nothing
+# has to shuttle raw command text through the shell. Stderr suppressed —
+# a hook error must not leak to Claude Code's terminal.
+PAYLOAD=$(python3 <<'PY' 2>/dev/null
+import json, os, re, sys
+
+raw = os.environ.get("INPUT", "")
 try:
-    d = json.load(sys.stdin)
-    print(d.get("command", ""))
-except: pass
-' 2>/dev/null)
+    payload = json.loads(raw)
+except Exception:
+    sys.exit(0)
 
-[[ -n "$COMMAND" ]] || exit 0
+if payload.get("tool_name") != "Bash":
+    sys.exit(0)
 
-CAPTURE_OUTPUT="${REDLOG_CAPTURE_OUTPUT:-1}"
-MAX_OUTPUT="${REDLOG_MAX_OUTPUT:-500}"
-REDACT_SECRETS="${REDLOG_REDACT_SECRETS:-1}"
+tool_input = payload.get("tool_input") or {}
+command = tool_input.get("command", "")
+if not command:
+    sys.exit(0)
 
-OUTPUT_PREVIEW=""
-if [[ "$CAPTURE_OUTPUT" == "1" ]]; then
-  OUTPUT_PREVIEW="${CLAUDE_TOOL_OUTPUT:-}"
-  if [[ ${#OUTPUT_PREVIEW} -gt $MAX_OUTPUT ]]; then
-    OUTPUT_PREVIEW="${OUTPUT_PREVIEW:0:$MAX_OUTPUT}..."
-  fi
-fi
+capture = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
+max_out = int(os.environ.get("MAX_OUTPUT", "500") or 500)
+redact = os.environ.get("REDACT_SECRETS", "1") == "1"
 
-export COMMAND OUTPUT_PREVIEW REDACT_SECRETS
+output = ""
+if capture:
+    resp = payload.get("tool_response") or {}
+    # Different Claude Code versions used "output" and "stdout"; try both.
+    output = resp.get("output") or resp.get("stdout") or ""
+    if not output and isinstance(resp, dict):
+        try:
+            output = json.dumps(resp)[:max_out]
+        except Exception:
+            output = ""
+    if len(output) > max_out:
+        output = output[:max_out] + "..."
 
-PAYLOAD=$(python3 -c '
-import json, os, re
-
-output = os.environ.get("OUTPUT_PREVIEW", "")
-command = os.environ.get("COMMAND", "")
-redact = os.environ.get("REDACT_SECRETS", "1")
-
-# Redact sensitive patterns from output
-if redact == "1" and output:
+if redact and output:
     patterns = [
         (r"(?i)(api[_-]?key|api[_-]?secret|token|password|passwd|secret|authorization)[=: ]+\S+", r"\1=[REDACTED]"),
         (r"(?i)bearer\s+[A-Za-z0-9_\-\.]+", "Bearer [REDACTED]"),
@@ -106,27 +131,39 @@ if redact == "1" and output:
         (r"ghp_[A-Za-z0-9]{36}", "[GITHUB_TOKEN_REDACTED]"),
         (r"glpat-[A-Za-z0-9_\-]{20}", "[GITLAB_TOKEN_REDACTED]"),
     ]
-    for pattern, replacement in patterns:
-        output = re.sub(pattern, replacement, output)
+    for pat, repl in patterns:
+        output = re.sub(pat, repl, output)
 
-# Redact sensitive file reads from command
+# Redact sensitive-path reads at the command level too — the operator doesn't
+# want a screen full of API tokens even if the hook is running with elevated
+# visibility.
 sensitive_paths = [".claude/", ".ssh/", ".env", ".netrc", "credentials", ".aws/"]
-cmd_reads_sensitive = any(p in command for p in sensitive_paths)
+if any(p in command for p in sensitive_paths):
+    output = "[output hidden — sensitive path]"
 
 data = {
     "agent_type": "agent",
     "data": {
         "subtype": "claude_code_bash",
         "command": command,
-        "output_preview": "[output hidden — sensitive path]" if cmd_reads_sensitive else output,
-        "session_id": os.environ.get("CLAUDE_SESSION_ID", ""),
-        "tool": "Bash"
-    }
+        "output_preview": output,
+        # transcript_path lets an auditor open the full conversation on
+        # demand without inflating the chain with copied AI content.
+        "transcript_path": payload.get("transcript_path", ""),
+        "session_id": payload.get("session_id", ""),
+        "cwd": payload.get("cwd", ""),
+        "tool": "Bash",
+    },
 }
 print(json.dumps(data))
-' 2>/dev/null)
+PY
+)
 
-# --- Resolve reachable host ---
+# python3 exited without writing (empty output, wrong tool, missing keys) —
+# nothing to log for this event.
+[[ -n "$PAYLOAD" ]] || exit 0
+
+# --- Resolve reachable host (WSL bridges through the Windows host) ---
 REDLOG_HOST="127.0.0.1"
 if ! curl -sf --connect-timeout 1 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
@@ -142,3 +179,6 @@ curl -sf -X POST "http://${REDLOG_HOST}:${PORT}/api/events" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" \
   --connect-timeout 1 --max-time 2 >/dev/null 2>&1 || true
+
+# Always succeed — a failed audit send must never break Claude Code's flow.
+exit 0
