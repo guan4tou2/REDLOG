@@ -26,7 +26,10 @@ export interface RedLogConfig {
     showWifiName: boolean
   }
   scope: {
-    enforcement: string
+    /** Whether to raise a violation event + red badge when a command's target
+     *  falls out of scope but shares a root domain with a scope target.
+     *  Excluded targets always raise a violation regardless. Default: true. */
+    warnOnViolation: boolean
     targets: string[]
     excludeTargets: string[]
     scopeFile: string | null
@@ -97,7 +100,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     showWifiName: false
   },
   scope: {
-    enforcement: 'warn',
+    warnOnViolation: true,
     targets: [],
     excludeTargets: [],
     scopeFile: null
@@ -164,6 +167,15 @@ function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown>
     // blacklist (your own IPs): dailyIPs → exposedIPs → blacklist
     if (network.dailyIPs && !network.blacklist && !network.exposedIPs) { network.blacklist = network.dailyIPs; delete network.dailyIPs }
     if (network.exposedIPs && !network.blacklist) { network.blacklist = network.exposedIPs; delete network.exposedIPs }
+  }
+  // scope.enforcement: 'warn'|'log' → scope.warnOnViolation: boolean.
+  // The old 'log' mode was misleading — it didn't actually log, it silently did
+  // nothing. Treat both as "warnings on" so existing users get the safer default
+  // instead of silently losing the badge; they can turn it off in Settings.
+  const scope = parsed.scope as Record<string, unknown> | undefined
+  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope)) {
+    scope.warnOnViolation = scope.enforcement === 'warn' || scope.enforcement === undefined
+    delete scope.enforcement
   }
   return parsed
 }

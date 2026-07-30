@@ -21,7 +21,7 @@ describe('loadConfig', () => {
     expect(config.network.whitelist).toEqual([])
     expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
-    expect(config.scope.enforcement).toBe('warn')
+    expect(config.scope.warnOnViolation).toBe(true)
   })
 
   it('merges partial config with defaults', () => {
@@ -49,6 +49,20 @@ describe('loadConfig', () => {
       'network:\n  safeIPs:\n    - 10.0.0.0/8\n  vpnIPs:\n    - 172.16.0.0/12\n')
     const config = loadConfig(tmpDir)
     expect(config.network.whitelist).toEqual(['10.0.0.0/8'])
+  })
+
+  it('migrates scope.enforcement: warn → warnOnViolation: true', () => {
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'scope:\n  enforcement: warn\n')
+    const config = loadConfig(tmpDir)
+    expect(config.scope.warnOnViolation).toBe(true)
+    expect((config.scope as unknown as { enforcement?: string }).enforcement).toBeUndefined()
+  })
+
+  it('migrates scope.enforcement: log → warnOnViolation: false', () => {
+    // Old 'log' mode did nothing; the direct semantic equivalent is warnings off.
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'scope:\n  enforcement: log\n')
+    const config = loadConfig(tmpDir)
+    expect(config.scope.warnOnViolation).toBe(false)
   })
 })
 

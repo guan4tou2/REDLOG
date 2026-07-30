@@ -11,7 +11,7 @@ interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean }
-  scope: { enforcement: string; targets: string[]; excludeTargets: string[]; scopeFile: string }
+  scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
   overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
@@ -397,22 +397,16 @@ export default function Settings(): JSX.Element {
         {tab === 'scope' && (
           <>
             <FieldGroup title={t('settings.scopeEnforcement')}>
-              <div className="flex gap-2">
-                {['warn', 'log'].map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setConfig({ ...config, scope: { ...config.scope, enforcement: mode } })}
-                    className={`px-3 py-1.5 text-xs rounded ${
-                      config.scope.enforcement === mode
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                    }`}
-                  >
-                    {mode.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-zinc-600 mt-2 leading-relaxed">{t('settings.scopeEnforcementHint')}</p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.scope.warnOnViolation !== false}
+                  onChange={(e) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
+              </label>
+              <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.inScopeTargets')}>
               <ListField
