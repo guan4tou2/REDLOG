@@ -56,6 +56,15 @@ contextBridge.exposeInMainWorld('redlog', {
       const handler = (_e: Electron.IpcRendererEvent, on: boolean): void => cb(on)
       ipcRenderer.on('overlay:emphasizeIp', handler)
       return () => ipcRenderer.removeListener('overlay:emphasizeIp', handler)
+    },
+    // Pass-through style. Emitted alongside main setting overlay.passThrough
+    // so the overlay renderer can dim non-critical UI while keeping the
+    // external IP fully readable. Payload is the resolved opacity from
+    // config.overlay.passThroughOpacity (falsy → off, restore full opacity).
+    onPassThrough: (cb: (on: boolean, opacity: number) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, on: boolean, opacity: number): void => cb(on, opacity)
+      ipcRenderer.on('overlay:passThrough', handler)
+      return () => ipcRenderer.removeListener('overlay:passThrough', handler)
     }
   },
   overlay: {

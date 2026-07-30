@@ -76,16 +76,20 @@ let overlayPassThroughOpacity = 0.4
 
 function applyOverlayPassThrough(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
+  // Window opacity stays at 1 in both modes now — the renderer dims the
+  // non-critical HUD chrome via CSS while the external IP row keeps full
+  // opacity. If we lowered window opacity here, IP would fade too and defeat
+  // the whole "IP always readable" ask.
+  overlayWindow.setOpacity(1)
   if (overlayPassThrough) {
     stopOverlayMouseTracking()
     overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-    overlayWindow.setOpacity(overlayPassThroughOpacity)
     send(overlayWindow, 'overlay:interactive', false)
     overlayMouseInside = false
   } else {
-    overlayWindow.setOpacity(1)
     startOverlayMouseTracking()
   }
+  send(overlayWindow, 'overlay:passThrough', overlayPassThrough, overlayPassThroughOpacity)
 }
 
 function startOverlayMouseTracking(): void {

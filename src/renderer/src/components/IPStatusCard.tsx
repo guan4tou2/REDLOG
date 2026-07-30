@@ -77,13 +77,13 @@ export default function IPStatusCard(): JSX.Element {
           return (
             <span className={`inline-flex flex-col items-start px-2 py-1 rounded border ${c} shrink-0 max-w-[140px]`}>
               <span className="text-xs font-mono font-medium truncate max-w-[124px]">{top}</span>
-              <span className="text-[9px] text-neutral-500 uppercase tracking-wide">{sub}</span>
+              <span className="text-[11px] text-neutral-500 uppercase tracking-wide">{sub}</span>
             </span>
           )
         }
         return (
           <div className="pt-2 border-t border-redlog-border">
-            <p className="text-[10px] text-cyan-400/80 font-medium uppercase tracking-wider mb-2">⇄ {t('overlay.topology')}</p>
+            <p className="text-xs text-cyan-400/80 font-medium uppercase tracking-wider mb-2">⇄ {t('overlay.topology')}</p>
             {/* our host outward: internal → external egress → pivot hops */}
             <div className="flex flex-wrap items-center gap-1.5">
               <Pill top={status.internalIP ?? t('overlay.internalNet')} sub={t('overlay.internalNet')} tone="int" />

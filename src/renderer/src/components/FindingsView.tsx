@@ -103,7 +103,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                   if (p) toast(t('toast.exportedTo', { path: p }), 'success')
                   else toast(t('toast.exportFailed'), 'error')
                 }}
-                className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+                className="px-2 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                 title={t('marks.exportHint')}
               >
                 {t('marks.export')}
@@ -111,12 +111,12 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             )}
             <button
               onClick={quickCapture}
-              className="px-2 py-1 text-[10px] bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"
+              className="px-2 py-1 text-xs bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"
             >
               {t('marks.capture')}
             </button>
           </div>
-          <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] ${
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
             browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-zinc-800 text-zinc-500'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${browserTab?.connected ? 'bg-green-400' : 'bg-zinc-600'}`} />
@@ -156,10 +156,10 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                   {/* Pinned marks get a small star indicator; pin/unpin action
                       lives in the detail panel (low-frequency action, keep
                       the list clean). */}
-                  {isPinned && <span className="text-[10px] text-amber-400 shrink-0" aria-hidden="true">★</span>}
+                  {isPinned && <span className="text-xs text-amber-400 shrink-0" aria-hidden="true">★</span>}
                 </div>
-                {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
-                <div className="text-[10px] text-zinc-600 mt-0.5 pl-4">
+                {m.url && <div className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                <div className="text-xs text-zinc-600 mt-0.5 pl-4">
                   {new Date(m.createdAt).toLocaleString()}
                 </div>
               </button>
@@ -194,7 +194,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
         {!selected && !creating && (
           <div className="flex flex-col items-center justify-center h-full text-zinc-600 text-sm gap-2">
             <span>{t('marks.placeholder')}</span>
-            <span className="text-[10px] text-zinc-700">{t('marks.placeholderSub')}</span>
+            <span className="text-xs text-zinc-700">{t('marks.placeholderSub')}</span>
           </div>
         )}
       </div>
@@ -227,32 +227,32 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
       <h3 className="text-sm font-semibold text-zinc-300">{initial ? t('marks.editMark') : t('marks.quickCapture')}</h3>
 
       {!initial && browserTab?.connected && (
-        <div className="bg-green-500/10 border border-green-500/20 rounded px-3 py-2 text-[10px] text-green-400">
+        <div className="bg-green-500/10 border border-green-500/20 rounded px-3 py-2 text-xs text-green-400">
           {t('marks.autoCaptured', { title: browserTab.title || '' })}
         </div>
       )}
       {!initial && !browserTab?.connected && (
-        <div className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-[10px] text-zinc-500">
+        <div className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-500">
           {t('marks.cdpHint')}
         </div>
       )}
 
       <div>
-        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('marks.fieldTitle')}</label>
+        <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldTitle')}</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={t('marks.fieldTitlePlaceholder')}
           className="w-full mt-0.5 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 focus:border-red-500 outline-none" />
       </div>
 
       <div>
-        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('marks.fieldUrl')}</label>
+        <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldUrl')}</label>
         <input value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://..."
           className="w-full mt-0.5 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 focus:border-red-500 outline-none font-mono text-xs" />
       </div>
 
       <div>
-        <label className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('marks.fieldNote')}</label>
+        <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldNote')}</label>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={4}
           placeholder={t('marks.fieldNotePlaceholder')}
           className="w-full mt-0.5 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 outline-none resize-y" />
@@ -306,16 +306,16 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
               {mark.url} ↗
             </button>
           )}
-          <div className="text-[10px] text-zinc-500 mt-1">
+          <div className="text-xs text-zinc-500 mt-1">
             {new Date(mark.createdAt).toLocaleString()}
           </div>
         </div>
         <div className="flex gap-1">
           {onOpenInTimeline && (
-            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-[10px] bg-zinc-800 text-cyan-400 rounded hover:bg-zinc-700">{t('loot.openInTimeline')}</button>
+            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-zinc-800 text-cyan-400 rounded hover:bg-zinc-700">{t('loot.openInTimeline')}</button>
           )}
-          <button onClick={() => setEditing(true)} className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700">{t('marks.edit')}</button>
-          <button onClick={handleDelete} className="px-2 py-1 text-[10px] bg-zinc-800 text-red-400 rounded hover:bg-zinc-700">{t('marks.delete')}</button>
+          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700">{t('marks.edit')}</button>
+          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-zinc-800 text-red-400 rounded hover:bg-zinc-700">{t('marks.delete')}</button>
         </div>
       </div>
 
@@ -323,7 +323,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
       {onTogglePin && (
         <button
           onClick={onTogglePin}
-          className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 ${
+          className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 ${
             isPinned ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'bg-zinc-800 text-zinc-500 hover:text-amber-400 hover:bg-zinc-700'
           }`}
           aria-pressed={!!isPinned}
@@ -335,17 +335,17 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
 
       {mark.note && (
         <div>
-          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('marks.fieldNote')}</label>
+          <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldNote')}</label>
           <div className="mt-1 text-xs text-zinc-300 whitespace-pre-wrap bg-zinc-900 rounded p-3 border border-zinc-800">{mark.note}</div>
         </div>
       )}
 
       {Object.keys(mark.context).length > 0 && (
         <div>
-          <label className="text-[10px] text-zinc-500 uppercase tracking-wider">{t('marks.autoContext')}</label>
+          <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.autoContext')}</label>
           <div className="mt-1 bg-zinc-900 rounded p-3 border border-zinc-800 space-y-1">
             {mark.context.browserUrl && (
-              <div className="text-[10px]">
+              <div className="text-xs">
                 <span className="text-zinc-500">{t('marks.browserUrl')}</span>{' '}
                 <button
                   onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
@@ -357,13 +357,13 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
               </div>
             )}
             {mark.context.browserTitle && (
-              <div className="text-[10px]">
+              <div className="text-xs">
                 <span className="text-zinc-500">{t('marks.pageTitle')}</span>{' '}
                 <span className="text-zinc-300">{mark.context.browserTitle}</span>
               </div>
             )}
             {mark.context.externalIP && (
-              <div className="text-[10px]">
+              <div className="text-xs">
                 <span className="text-zinc-500">{t('marks.ipLabel')}</span>{' '}
                 <span className="text-zinc-300 font-mono">{mark.context.externalIP}</span>
               </div>

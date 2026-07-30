@@ -161,7 +161,7 @@ export default function Settings(): JSX.Element {
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
-              <p className="text-[10px] text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
+              <p className="text-xs text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
               <button
                 onClick={async () => {
                   // Uses the CDP port from BrowserPanel above (config.browser.
@@ -206,7 +206,7 @@ export default function Settings(): JSX.Element {
                     <button
                       key={m}
                       onClick={() => setConfig({ ...config, network: { ...config.network, ipMode: m } })}
-                      className={`px-3 py-1 text-[10px] rounded transition-colors ${
+                      className={`px-3 py-1 text-xs rounded transition-colors ${
                         (config.network.ipMode ?? 'auto') === m ? 'bg-red-600/80 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                       }`}
                     >
@@ -214,7 +214,7 @@ export default function Settings(): JSX.Element {
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
+                <p className="text-xs text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
               </div>
               {isMacOS && (
                 <div>
@@ -235,7 +235,7 @@ export default function Settings(): JSX.Element {
                     />
                     <span className="text-[11px] text-zinc-300">{t('settings.showWifiName')}</span>
                   </label>
-                  <p className="text-[10px] text-zinc-600 mt-1">{t('settings.showWifiNameHint')}</p>
+                  <p className="text-xs text-zinc-600 mt-1">{t('settings.showWifiNameHint')}</p>
                 </div>
               )}
               <Field
@@ -244,21 +244,21 @@ export default function Settings(): JSX.Element {
                 onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 60 } })}
                 type="number"
               />
-              <p className="text-[10px] text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
+              <p className="text-xs text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
               <Field
                 label={t('settings.confirmations')}
                 value={String(config.network.confirmations ?? 3)}
                 onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
                 type="number"
               />
-              <p className="text-[10px] text-zinc-600">{t('settings.confirmationsHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.confirmationsHint')}</p>
               <ListField
                 label={t('settings.ipProviders')}
                 items={config.network.providers ?? []}
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, providers: items } })}
                 placeholder="https://ip.internal.example/json"
               />
-              <p className="text-[10px] text-zinc-600">{t('settings.ipProvidersHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.ipProvidersHint')}</p>
             </FieldGroup>
             <VpnAdaptersField config={config} setConfig={setConfig} />
           </>
@@ -276,7 +276,7 @@ export default function Settings(): JSX.Element {
                 />
                 <span className="text-xs text-zinc-300">{t('settings.overlayShowMark')}</span>
               </label>
-              <p className="text-[10px] text-zinc-600">{t('settings.overlayShowMarkHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.overlayShowMarkHint')}</p>
               <label className="flex items-center gap-2 cursor-pointer mt-2">
                 <input
                   type="checkbox"
@@ -286,10 +286,10 @@ export default function Settings(): JSX.Element {
                 />
                 <span className="text-xs text-zinc-300">{t('settings.overlayFlashExposed')}</span>
               </label>
-              <p className="text-[10px] text-zinc-600">{t('settings.overlayFlashExposedHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.overlayFlashExposedHint')}</p>
 
               <div className="mt-3">
-                <label className="text-[10px] text-zinc-500 block mb-1">{t('settings.overlayScale')}</label>
+                <label className="text-xs text-zinc-500 block mb-1">{t('settings.overlayScale')}</label>
                 <div className="flex gap-1.5">
                   {[
                     { v: 0.85, k: 'small' },
@@ -303,14 +303,14 @@ export default function Settings(): JSX.Element {
                       <button
                         key={k}
                         onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: v } })}
-                        className={`px-3 py-1 text-[10px] rounded ${active ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
+                        className={`px-3 py-1 text-xs rounded ${active ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
                       >
                         {t(`settings.overlayScale.${k}`)}
                       </button>
                     )
                   })}
                 </div>
-                <p className="text-[10px] text-zinc-600 mt-1">{t('settings.overlayScaleHint')}</p>
+                <p className="text-xs text-zinc-600 mt-1">{t('settings.overlayScaleHint')}</p>
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer mt-3">
@@ -322,7 +322,7 @@ export default function Settings(): JSX.Element {
                 />
                 <span className="text-xs text-zinc-300">{t('settings.overlayEmphasizeIp')}</span>
               </label>
-              <p className="text-[10px] text-zinc-600">{t('settings.overlayEmphasizeIpHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.overlayEmphasizeIpHint')}</p>
 
               <label className="flex items-center gap-2 cursor-pointer mt-3">
                 <input
@@ -333,10 +333,10 @@ export default function Settings(): JSX.Element {
                 />
                 <span className="text-xs text-zinc-300">{t('settings.overlayPassThrough')}</span>
               </label>
-              <p className="text-[10px] text-zinc-600">{t('settings.overlayPassThroughHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.overlayPassThroughHint')}</p>
               {config.overlay?.passThrough === true && (
                 <div className="mt-2 flex items-center gap-3 pl-6">
-                  <span className="text-[10px] text-zinc-500">{t('settings.overlayPassThroughOpacity')}</span>
+                  <span className="text-xs text-zinc-500">{t('settings.overlayPassThroughOpacity')}</span>
                   <input
                     type="range"
                     min="0.1"
@@ -346,7 +346,7 @@ export default function Settings(): JSX.Element {
                     onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThroughOpacity: parseFloat(e.target.value) } })}
                     className="accent-red-600 w-40"
                   />
-                  <span className="text-[10px] text-zinc-400 font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
+                  <span className="text-xs text-zinc-400 font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
                 </div>
               )}
 
@@ -361,7 +361,7 @@ export default function Settings(): JSX.Element {
                     />
                     <span className="text-xs text-zinc-300">{t('settings.overlayShowInDock')}</span>
                   </label>
-                  <p className="text-[10px] text-zinc-600">{t('settings.overlayShowInDockHint')}</p>
+                  <p className="text-xs text-zinc-600">{t('settings.overlayShowInDockHint')}</p>
                 </>
               )}
             </FieldGroup>
@@ -378,7 +378,7 @@ export default function Settings(): JSX.Element {
                 onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
                 type="number"
               />
-              <p className="text-[10px] text-zinc-600">
+              <p className="text-xs text-zinc-600">
                 {t('settings.qualityHint')}
               </p>
             </FieldGroup>
@@ -392,7 +392,7 @@ export default function Settings(): JSX.Element {
                 />
                 <span className="text-xs text-zinc-300">{t('settings.clipboardEnable')}</span>
               </label>
-              <p className="text-[10px] text-zinc-600">{t('settings.clipboardEnableHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.clipboardEnableHint')}</p>
               {config.clipboard?.enabled && (
                 <label className="flex items-center gap-2 cursor-pointer mt-2">
                   <input
@@ -405,7 +405,7 @@ export default function Settings(): JSX.Element {
                 </label>
               )}
               {config.clipboard?.enabled && (
-                <p className="text-[10px] text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
+                <p className="text-xs text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
               )}
             </FieldGroup>
           </>
@@ -432,7 +432,7 @@ export default function Settings(): JSX.Element {
                   >{t(opt.k)}</button>
                 ))}
               </div>
-              <p className="text-[10px] text-zinc-600 mt-2">{t('settings.screenshot.intervalHint')}</p>
+              <p className="text-xs text-zinc-600 mt-2">{t('settings.screenshot.intervalHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.updateGroup')}>
               <div className="flex items-center gap-3">
@@ -442,9 +442,9 @@ export default function Settings(): JSX.Element {
                 >
                   {t('settings.checkUpdate')}
                 </button>
-                <span className="text-[10px] text-zinc-600 font-mono">v{__APP_VERSION__}</span>
+                <span className="text-xs text-zinc-600 font-mono">v{__APP_VERSION__}</span>
               </div>
-              <p className="text-[10px] text-zinc-600">{t('settings.checkUpdateHint')}</p>
+              <p className="text-xs text-zinc-600">{t('settings.checkUpdateHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.exportAll')}>
               <button
@@ -457,8 +457,8 @@ export default function Settings(): JSX.Element {
               >
                 {t('settings.exportJson')}
               </button>
-              {exportResult && <p className="text-[10px] text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
-              <p className="text-[10px] text-zinc-600">
+              {exportResult && <p className="text-xs text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
+              <p className="text-xs text-zinc-600">
                 {t('settings.exportHint')}
               </p>
             </FieldGroup>
@@ -474,7 +474,7 @@ export default function Settings(): JSX.Element {
               >
                 {t('settings.exportScopeJson')}
               </button>
-              <p className="text-[10px] text-zinc-600">
+              <p className="text-xs text-zinc-600">
                 {t('settings.scopeExportHint')}
               </p>
             </FieldGroup>
@@ -503,7 +503,7 @@ export default function Settings(): JSX.Element {
                   {t('settings.importProfile')}
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-600">
+              <p className="text-xs text-zinc-600">
                 {t('settings.profileHint')}
               </p>
             </FieldGroup>
@@ -522,7 +522,7 @@ export default function Settings(): JSX.Element {
                 />
                 <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
               </label>
-              <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
+              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.inScopeTargets')}>
               <ListField
@@ -546,7 +546,7 @@ export default function Settings(): JSX.Element {
                 value={config.scope.scopeFile || ''}
                 onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
               />
-              <p className="text-[10px] text-zinc-600">
+              <p className="text-xs text-zinc-600">
                 {t('settings.scopeFileHint')}
               </p>
             </FieldGroup>
@@ -571,7 +571,7 @@ export default function Settings(): JSX.Element {
           >
             {t('settings.save')}
           </button>
-          <span className="text-zinc-600 text-[10px]">{t('settings.autoSaveHint')}</span>
+          <span className="text-zinc-600 text-xs">{t('settings.autoSaveHint')}</span>
         </div>
       </div>
     </div>
@@ -636,7 +636,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   return (
     <>
       <FieldGroup title={t('settings.hooksDetected')}>
-        <p className="text-[10px] text-zinc-600 mb-2">
+        <p className="text-xs text-zinc-600 mb-2">
           {t('settings.hooksHint')}
         </p>
         {hooks.length === 0 && (
@@ -659,28 +659,28 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-zinc-200">{hook.name}</span>
                       {hook.installed && (
-                        <span className="text-[9px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
+                        <span className="text-[11px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
                           {t('settings.hookActive')}
                         </span>
                       )}
                       {isManual && (
-                        <span className="text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">
+                        <span className="text-[11px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">
                           {t('settings.hookManual')}
                         </span>
                       )}
                       {!hook.available && (
-                        <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
+                        <span className="text-[11px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
                           {t('settings.hookNotFound')}
                         </span>
                       )}
                     </div>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">{hook.description}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">{hook.description}</p>
                   </div>
                   {hook.available && hook.installMethod !== 'manual' && (
                     <button
                       disabled={hookLoading === hook.id}
                       onClick={() => handleToggle(hook)}
-                      className={`px-3 py-1 text-[10px] rounded ml-3 transition-colors ${
+                      className={`px-3 py-1 text-xs rounded ml-3 transition-colors ${
                         hook.installed
                           ? 'bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400'
                           : 'bg-red-600/80 text-white hover:bg-red-600'
@@ -692,7 +692,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                   {hasSteps && (
                     <button
                       onClick={() => setExpanded(isOpen ? null : hook.id)}
-                      className="px-3 py-1 text-[10px] rounded ml-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
+                      className="px-3 py-1 text-xs rounded ml-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
                     >
                       {isOpen ? t('settings.hookHideSetup') : t('settings.hookShowSetup')}
                     </button>
@@ -702,17 +702,17 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                   <div className="border-t border-zinc-800 px-3 py-2.5 space-y-2.5">
                     {hook.manualSteps!.map((step, i) => (
                       <div key={i}>
-                        <p className="text-[10px] text-zinc-400 leading-relaxed">
+                        <p className="text-xs text-zinc-400 leading-relaxed">
                           <span className="text-zinc-500">{i + 1}.</span> {step.label}
                         </p>
                         {step.command && (
                           <div className="flex items-center gap-2 mt-1">
-                            <code className="flex-1 min-w-0 truncate bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-300 font-mono">
+                            <code className="flex-1 min-w-0 truncate bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-300 font-mono">
                               {step.command}
                             </code>
                             <button
                               onClick={() => copy(step.command!)}
-                              className="text-[10px] px-2 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
+                              className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
                             >
                               {t('settings.hookCopy')}
                             </button>
@@ -720,7 +720,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                         )}
                       </div>
                     ))}
-                    <p className="text-[9px] text-zinc-600 pt-0.5">{t('settings.hookManualNote')}</p>
+                    <p className="text-[11px] text-zinc-600 pt-0.5">{t('settings.hookManualNote')}</p>
                   </div>
                 )}
               </div>
@@ -785,20 +785,20 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
   return (
     <FieldGroup title={t('settings.plugins')}>
       <div className="flex items-center justify-between mb-2 gap-2">
-        <p className="text-[10px] text-zinc-600 flex-1 pr-3">{t('plugins.hint')}</p>
+        <p className="text-xs text-zinc-600 flex-1 pr-3">{t('plugins.hint')}</p>
         <button onClick={() => api.openFolder()}
-          className="px-2.5 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0"
+          className="px-2.5 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0"
           title={t('plugins.openFolderHint')}>
           {t('plugins.openFolder')}
         </button>
         <button onClick={doReload} disabled={busy === '*'}
-          className="px-2.5 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0">
+          className="px-2.5 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0">
           {busy === '*' ? '…' : t('plugins.reload')}
         </button>
       </div>
 
       {plugins.length === 0 && (
-        <p className="text-[10px] text-zinc-600 py-3">{t('plugins.empty')}</p>
+        <p className="text-xs text-zinc-600 py-3">{t('plugins.empty')}</p>
       )}
 
       <div className="space-y-2">
@@ -811,23 +811,23 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-medium text-zinc-200">{p.name}</span>
-                    <span className="text-[9px] text-zinc-500">v{p.version}</span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
+                    <span className="text-[11px] text-zinc-500">v{p.version}</span>
+                    <span className={`text-[11px] px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
                       {t(`plugins.status.${p.status}`)}
                     </span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
+                    <span className={`text-[11px] px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
                       {privileged ? t('plugins.tier.privileged') : t('plugins.tier.declarative')}
                     </span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">{p.source}</span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">{p.source}</span>
                   </div>
-                  {p.description && <p className="text-[10px] text-zinc-500 mt-0.5">{p.description}</p>}
+                  {p.description && <p className="text-xs text-zinc-500 mt-0.5">{p.description}</p>}
                   {p.contributes.length > 0 && (
-                    <p className="text-[9px] text-zinc-600 mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
+                    <p className="text-[11px] text-zinc-600 mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
                   )}
                   {privileged && p.capabilities.length > 0 && (
-                    <p className="text-[9px] text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
+                    <p className="text-[11px] text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
                   )}
-                  {p.status === 'error' && p.error && <p className="text-[9px] text-red-400 mt-0.5">{p.error}</p>}
+                  {p.status === 'error' && p.error && <p className="text-[11px] text-red-400 mt-0.5">{p.error}</p>}
                 </div>
 
                 <div className="ml-3 shrink-0 flex flex-col gap-1 items-end">
@@ -836,7 +836,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                     <button
                       disabled={busy === p.id}
                       onClick={() => toggle(p, p.status === 'disabled')}
-                      className={`px-3 py-1 text-[10px] rounded ${
+                      className={`px-3 py-1 text-xs rounded ${
                         p.status === 'disabled' ? 'bg-red-600/80 text-white hover:bg-red-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                       }`}
                     >
@@ -848,7 +848,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                     <button
                       disabled={busy === p.id}
                       onClick={() => setConfirmGrant(p)}
-                      className="px-3 py-1 text-[10px] rounded bg-amber-600/80 text-white hover:bg-amber-600"
+                      className="px-3 py-1 text-xs rounded bg-amber-600/80 text-white hover:bg-amber-600"
                     >
                       {t('plugins.review')}
                     </button>
@@ -856,7 +856,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                   {/* trusted privileged: allow revoke */}
                   {privileged && p.status === 'active' && (
                     <button onClick={() => revoke(p)} disabled={busy === p.id}
-                      className="px-3 py-1 text-[10px] rounded bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400">
+                      className="px-3 py-1 text-xs rounded bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400">
                       {t('plugins.revoke')}
                     </button>
                   )}
@@ -867,7 +867,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
         })}
       </div>
 
-      <p className="text-[9px] text-zinc-600 mt-3">{t('plugins.dir')}</p>
+      <p className="text-[11px] text-zinc-600 mt-3">{t('plugins.dir')}</p>
 
       {/* trust consent dialog for 🔴 code plugins */}
       {confirmGrant && (
@@ -878,18 +878,18 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
               {t('plugins.consentBody', { name: confirmGrant.name })}
             </p>
             <div className="bg-zinc-950 border border-zinc-800 rounded p-2 mb-2">
-              <p className="text-[10px] text-zinc-500 mb-1">{t('plugins.capabilities')}:</p>
-              <ul className="text-[10px] text-amber-400 space-y-0.5">
+              <p className="text-xs text-zinc-500 mb-1">{t('plugins.capabilities')}:</p>
+              <ul className="text-xs text-amber-400 space-y-0.5">
                 {confirmGrant.capabilities.length === 0 && <li className="text-zinc-500">—</li>}
                 {confirmGrant.capabilities.map((c) => <li key={c}>• {c}</li>)}
               </ul>
             </div>
-            <p className="text-[10px] text-zinc-500 mb-3">{t('plugins.consentWarn')}</p>
+            <p className="text-xs text-zinc-500 mb-3">{t('plugins.consentWarn')}</p>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+              <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
                 {t('common.cancel')}
               </button>
-              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-[10px] rounded bg-red-600 text-white hover:bg-red-500">
+              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-500">
                 {t('plugins.grantRun')}
               </button>
             </div>
@@ -923,9 +923,9 @@ function BrowserPanel({
 
   return (
     <FieldGroup title={t('settings.browser')}>
-      <p className="text-[10px] text-zinc-600">{t('settings.browserHint')}</p>
+      <p className="text-xs text-zinc-600">{t('settings.browserHint')}</p>
       <Field label={t('settings.browserBinary')} value={b.binary} onChange={(v) => patch({ binary: v })} />
-      <p className="text-[10px] text-zinc-600 font-mono break-all">
+      <p className="text-xs text-zinc-600 font-mono break-all">
         {detected ? t('settings.browserDetected', { path: detected }) : t('settings.browserNotFound')}
       </p>
       <Field label={t('settings.browserProxy')} value={b.proxy} onChange={(v) => patch({ proxy: v })} />
@@ -1019,7 +1019,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
 
   return (
     <FieldGroup title={t('settings.integrity')}>
-      <p className="text-[10px] text-zinc-600">{t('settings.integrityHint')}</p>
+      <p className="text-xs text-zinc-600">{t('settings.integrityHint')}</p>
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={handleAnchor}
@@ -1045,25 +1045,25 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
           {t('settings.integrityUpgradeAll')}
         </button>
       </div>
-      {verifyMsg && <p className="text-[10px] text-zinc-300 font-mono">{verifyMsg}</p>}
+      {verifyMsg && <p className="text-xs text-zinc-300 font-mono">{verifyMsg}</p>}
       {anchors.length === 0 ? (
-        <p className="text-[10px] text-zinc-500">{t('settings.integrityNoAnchors')}</p>
+        <p className="text-xs text-zinc-500">{t('settings.integrityNoAnchors')}</p>
       ) : (
         <div className="space-y-1 max-h-[240px] overflow-y-auto">
           {anchors.map((a) => (
             <div key={a.id} className="p-2 rounded border border-zinc-700 bg-zinc-900/50">
               <div className="flex items-center gap-2 text-xs">
-                <span className={`text-[9px] px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
+                <span className={`text-[11px] px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
                   {statusLabel(a.status)}
                 </span>
-                <span className="text-zinc-500 font-mono tabular-nums text-[10px]">
+                <span className="text-zinc-500 font-mono tabular-nums text-xs">
                   {new Date(a.createdAt).toLocaleString()}
                 </span>
-                <span className="text-zinc-500 text-[10px]">
+                <span className="text-zinc-500 text-xs">
                   {t('settings.integrityEvents').replace('{{n}}', String(a.eventCount))}
                 </span>
               </div>
-              <p className="text-[10px] text-zinc-500 font-mono mt-1 break-all">
+              <p className="text-xs text-zinc-500 font-mono mt-1 break-all">
                 <span className="text-zinc-600">{t('settings.integrityHeadHash')}: </span>{a.headHash.slice(0, 32)}...
               </p>
               <div className="flex flex-wrap gap-1 mt-1">
@@ -1073,7 +1073,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                     title={r.ok
                       ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}`
                       : `${r.calendar} — ${r.error}`}
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
                       r.upgraded ? 'bg-blue-900/50 text-blue-300' :
                       r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
                     }`}
@@ -1122,14 +1122,14 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
 
   return (
     <FieldGroup title={t('settings.mcp')}>
-      <p className="text-[10px] text-zinc-600">{t('settings.mcpHint')}</p>
+      <p className="text-xs text-zinc-600">{t('settings.mcpHint')}</p>
 
       {info ? (
-        <p className="text-[10px] text-emerald-400 font-mono">
+        <p className="text-xs text-emerald-400 font-mono">
           ● {t('settings.mcpLive', { endpoint: info.endpoint })}
         </p>
       ) : (
-        <p className="text-[10px] text-zinc-500">{t('settings.mcpOffline')}</p>
+        <p className="text-xs text-zinc-500">{t('settings.mcpOffline')}</p>
       )}
 
       <button
@@ -1144,20 +1144,20 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
           <p className="text-[11px] text-red-300">{t('settings.mcpCreated')}</p>
           <div className="flex items-start gap-1">
-            <code className="flex-1 bg-black/40 text-zinc-200 text-[10px] font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
-            <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
+            <code className="flex-1 bg-black/40 text-zinc-200 text-xs font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
+            <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
           </div>
         </div>
       )}
 
       {stdioCmd && (
         <details className="mt-1">
-          <summary className="text-[10px] text-zinc-600 cursor-pointer">{t('settings.mcpStdio')}</summary>
+          <summary className="text-xs text-zinc-600 cursor-pointer">{t('settings.mcpStdio')}</summary>
           <div className="flex items-start gap-1 mt-1">
-            <code className="flex-1 bg-black/40 text-zinc-400 text-[10px] font-mono px-2 py-1.5 rounded break-all">{stdioCmd}</code>
-            <button onClick={() => copy(stdioCmd)} className="px-2 py-1.5 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
+            <code className="flex-1 bg-black/40 text-zinc-400 text-xs font-mono px-2 py-1.5 rounded break-all">{stdioCmd}</code>
+            <button onClick={() => copy(stdioCmd)} className="px-2 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
           </div>
-          <p className="text-[10px] text-zinc-600 mt-1">{t('settings.mcpStdioHint')}</p>
+          <p className="text-xs text-zinc-600 mt-1">{t('settings.mcpStdioHint')}</p>
         </details>
       )}
     </FieldGroup>
@@ -1195,7 +1195,7 @@ function DeconflictionPanel({
 
   return (
     <FieldGroup title={t('settings.deconfliction')}>
-      <p className="text-[10px] text-zinc-600">{t('settings.deconflictionHint')}</p>
+      <p className="text-xs text-zinc-600">{t('settings.deconflictionHint')}</p>
       <label className="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
@@ -1223,7 +1223,7 @@ function DeconflictionPanel({
               />
               <button
                 onClick={() => setSecretVisible(!secretVisible)}
-                className="px-2 py-1 bg-zinc-800 text-zinc-400 text-[10px] rounded hover:bg-zinc-700"
+                className="px-2 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700"
               >
                 {secretVisible ? t('settings.deconflictionHide') : t('settings.deconflictionShow')}
               </button>
@@ -1320,7 +1320,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
 
   return (
     <FieldGroup title={t('settings.operators')}>
-      <p className="text-[10px] text-zinc-600">{t('settings.operatorsHint')}</p>
+      <p className="text-xs text-zinc-600">{t('settings.operatorsHint')}</p>
 
       <div className="space-y-1">
         {operators.map((op) => (
@@ -1334,23 +1334,23 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
               <div className="flex items-center gap-2">
                 <span className="text-zinc-200 font-medium truncate">{op.name}</span>
                 {op.isPrimary && (
-                  <span className="text-[9px] bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
                     {t('settings.operatorPrimary')}
                   </span>
                 )}
                 {op.revokedAt && (
-                  <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
                     {t('settings.operatorRevoked')}
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-zinc-500 font-mono truncate">{op.id}</p>
+              <p className="text-xs text-zinc-500 font-mono truncate">{op.id}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
                 disabled={busy === op.id + ':rotate'}
                 onClick={() => handleRotate(op.id)}
-                className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50"
+                className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50"
               >
                 {busy === op.id + ':rotate' ? '...' : t('settings.operatorRotate')}
               </button>
@@ -1358,7 +1358,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 <button
                   disabled={busy === op.id + ':revoke'}
                   onClick={() => handleRevoke(op.id)}
-                  className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                  className="px-2 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
                 >
                   {busy === op.id + ':revoke' ? '...' : t('settings.operatorRevoke')}
                 </button>
@@ -1367,7 +1367,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 <button
                   disabled={busy === op.id + ':delete'}
                   onClick={() => handleDelete(op.id)}
-                  className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-500 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                  className="px-2 py-1 text-xs bg-zinc-800 text-zinc-500 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
                 >
                   {busy === op.id + ':delete' ? '...' : t('settings.operatorDelete')}
                 </button>
@@ -1388,7 +1388,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <button
           onClick={handleAdd}
           disabled={busy === 'add' || !newName.trim()}
-          className="px-3 py-1 bg-red-600/80 text-white text-[10px] rounded hover:bg-red-600 disabled:opacity-50"
+          className="px-3 py-1 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
         >
           {busy === 'add' ? '...' : t('settings.operatorAdd')}
         </button>
@@ -1398,7 +1398,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
           <p className="text-[11px] text-red-300">{pendingToken.note}</p>
           <div className="flex items-center gap-1">
-            <code className="flex-1 bg-black/40 text-zinc-200 text-[10px] font-mono px-2 py-1.5 rounded truncate">
+            <code className="flex-1 bg-black/40 text-zinc-200 text-xs font-mono px-2 py-1.5 rounded truncate">
               {pendingToken.token}
             </code>
             <button
@@ -1406,13 +1406,13 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 navigator.clipboard.writeText(pendingToken.token)
                 toast(t('toast.copied'), 'success')
               }}
-              className="px-2 py-1.5 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+              className="px-2 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
             >
               {t('settings.operatorTokenCopy')}
             </button>
             <button
               onClick={() => setPendingToken(null)}
-              className="px-2 py-1.5 text-[10px] bg-red-600/80 text-white rounded hover:bg-red-600"
+              className="px-2 py-1.5 text-xs bg-red-600/80 text-white rounded hover:bg-red-600"
             >
               {t('settings.operatorTokenClose')}
             </button>
@@ -1452,7 +1452,7 @@ function ListField({ label, items, onChange, placeholder }: {
       {items.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {items.map((item, i) => (
-            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-300 text-[10px] font-mono px-2 py-0.5 rounded">
+            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs font-mono px-2 py-0.5 rounded">
               {item}
               <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-zinc-500 hover:text-red-400">×</button>
             </span>
@@ -1510,7 +1510,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
 
   return (
     <FieldGroup title={t('settings.vpnAdapters')}>
-      <p className="text-[10px] text-zinc-600 -mt-1 mb-2">{t('settings.vpnAdaptersHint')}</p>
+      <p className="text-xs text-zinc-600 -mt-1 mb-2">{t('settings.vpnAdaptersHint')}</p>
       <div className="space-y-1">
         {adapters.map((a, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -1523,15 +1523,15 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
               />
               <span className="text-[11px] text-zinc-300">{a.name}</span>
             </label>
-            <span className="text-[9px] text-zinc-600 font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
+            <span className="text-[11px] text-zinc-600 font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
-              <button onClick={() => remove(i)} className="text-zinc-600 hover:text-red-400 text-[10px]">×</button>
+              <button onClick={() => remove(i)} className="text-zinc-600 hover:text-red-400 text-xs">×</button>
             )}
           </div>
         ))}
       </div>
       <div className="mt-3 pt-2 border-t border-zinc-800">
-        <p className="text-[10px] text-zinc-500 mb-1">{t('settings.vpnAddCustom')}</p>
+        <p className="text-xs text-zinc-500 mb-1">{t('settings.vpnAddCustom')}</p>
         <div className="flex gap-1">
           <input
             value={newName}
@@ -1586,7 +1586,7 @@ function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
           }`}
         >{t(opt.labelKey)}</button>
       ))}
-      <span className="text-[10px] text-zinc-600 ml-2 font-mono">{Math.round(scale * 100)}%</span>
+      <span className="text-xs text-zinc-600 ml-2 font-mono">{Math.round(scale * 100)}%</span>
     </div>
   )
 }

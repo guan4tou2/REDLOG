@@ -135,16 +135,16 @@ export default function TerminalView(): JSX.Element {
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
             <span className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-zinc-600'}`}>{tab.label}</span>
             {tab.cwd && tab.alive && (
-              <span className="text-[10px] font-mono text-zinc-500 truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
+              <span className="text-xs font-mono text-zinc-500 truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
             )}
             {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
               <span
-                className="text-[9px] font-mono text-red-400 bg-red-500/10 px-1 rounded"
+                className="text-[11px] font-mono text-red-400 bg-red-500/10 px-1 rounded"
                 title={t('terminal.lastExit', { code: tab.lastExit })}
               >✕{tab.lastExit}</span>
             )}
             {tab.pid > 0 && tab.alive && (
-              <span className="text-[9px] text-zinc-600 font-mono">{tab.pid}</span>
+              <span className="text-[11px] text-zinc-600 font-mono">{tab.pid}</span>
             )}
             {!tab.alive && (
               <button
@@ -193,7 +193,7 @@ export default function TerminalView(): JSX.Element {
             title={t('terminal.fontSmaller')}
             aria-label={t('terminal.fontSmaller')}
           >A−</button>
-          <span className="text-[10px] text-zinc-600 font-mono tabular-nums w-6 text-center">{fontSize}</span>
+          <span className="text-xs text-zinc-600 font-mono tabular-nums w-6 text-center">{fontSize}</span>
           <button
             onClick={() => setFontSize((s) => Math.min(32, s + 1))}
             className="w-6 h-6 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"

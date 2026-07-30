@@ -152,7 +152,7 @@ export default function App(): JSX.Element {
           {/* Take the version out of the drag zone so users reporting bugs can
               actually copy it — audit finding P2 #36. */}
           <span
-            className="text-zinc-800 text-[10px] font-mono select-text cursor-text"
+            className="text-zinc-800 text-xs font-mono select-text cursor-text"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title={t('app.copyVersionHint')}
           >v{__APP_VERSION__}</span>
@@ -162,7 +162,7 @@ export default function App(): JSX.Element {
           <LaunchBrowserButton />
           <button
             onClick={() => setShowMarker(true)}
-            className="px-2.5 py-1 text-[10px] font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
+            className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
             title={isMac ? '⌘⇧M' : 'Ctrl+Shift+M'}
           >
             {t('app.mark')}
@@ -243,7 +243,7 @@ function CaptureHealthCard({ capture, onNavigate }: {
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
               <span className="text-zinc-300 flex-1 truncate">{SOURCE_LABEL[s.id] ?? s.id}</span>
-              <span className="text-zinc-600 text-[10px]">
+              <span className="text-zinc-600 text-xs">
                 {s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
             </div>
@@ -286,7 +286,7 @@ function LaunchBrowserButton(): JSX.Element {
       onClick={handleClick}
       disabled={busy}
       title={t('browser.hint')}
-      className={`px-2.5 py-1 text-[10px] font-medium rounded-md border transition-colors disabled:opacity-50 ${
+      className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
         running
           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
           : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700/60 hover:text-zinc-200'
@@ -369,7 +369,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               if (path) toast(t('toast.exported'), 'success')
               else toast(t('toast.exportFailed'), 'error')
             }}
-            className="px-2.5 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
+            className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
           >
             {t('dashboard.exportData')}
           </button>
@@ -428,7 +428,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             </div>
             <button
               onClick={() => onNavigate('settings')}
-              className="mt-3 text-[10px] text-red-400/80 hover:text-red-300 transition-colors"
+              className="mt-3 text-xs text-red-400/80 hover:text-red-300 transition-colors"
             >
               {t('dashboard.editSettings')}
             </button>
@@ -471,9 +471,9 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   return (
     <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
       <span className={`absolute top-0 left-0 right-0 h-[2px] ${bar}`} />
-      <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
       <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
-      {sub && <p className="text-[10px] text-zinc-600 mt-0.5">{sub}</p>}
+      {sub && <p className="text-xs text-zinc-600 mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -536,7 +536,7 @@ function ScreenshotsView(): JSX.Element {
         </h2>
         <button
           onClick={() => window.redlog.screenshot.capture()}
-          className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+          className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
         >
           {t('screenshots.captureNow')}
         </button>
@@ -564,7 +564,7 @@ function ScreenshotsView(): JSX.Element {
               <button
                 key={trigger}
                 onClick={() => setTriggerFilter(triggerFilter === trigger ? null : trigger)}
-                className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
                   triggerFilter === trigger ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
                 }`}
               >{trigger} <span className="text-zinc-600">·{count}</span></button>
@@ -592,7 +592,7 @@ function ScreenshotsView(): JSX.Element {
                 )}
               </div>
               <div className="px-2 py-1 flex items-center justify-between gap-1">
-                <p className="text-[10px] text-neutral-500 flex-1 min-w-0 truncate">
+                <p className="text-xs text-neutral-500 flex-1 min-w-0 truncate">
                   {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
                     <span className="ml-1 text-zinc-600">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
@@ -615,7 +615,7 @@ function ScreenshotsView(): JSX.Element {
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[10px] text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
                     title={t('screenshots.deleteTitle')}
                     aria-label={t('screenshots.deleteTitle')}
                   >×</button>
