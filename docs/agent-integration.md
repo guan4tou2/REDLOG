@@ -508,7 +508,8 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | GET | `/api/anchors/verify` | yes | Fast prefix check (add `?full=1` for full re-walk) |
 | GET | `/api/anchors/:id/ots` | yes | Download standard `.ots` bundle (`?calendar=<url>` optional) |
 | GET | `/api/clock` | yes | NTP offset + last query time + host wall clock |
-| POST | `/api/export/bundle` | yes | Produce signed evidence bundle in project's `exports/` dir |
+| POST | `/api/export/bundle` | yes | Produce signed evidence bundle in project's `exports/` dir. Events with sanitized copies (see below) are served with the masked bytes in `events.jsonl` |
+| POST | `/api/sanitize` | yes | Layer 4 of four-layer redaction: `{ event_ids, fields?, reason?, dry_run? }` → writes masked bytes to `sanitized_events` table + appends chained `system.sanitized` event. Default fields: `output`, `output_preview`, `command`. Same as `redlog-cli sanitize <id> [--fields …] --confirm` |
 | GET | `/api/deconfliction` | yes | Current deconfliction config (secret redacted) |
 | POST | `/api/deconfliction/test` | yes | Send a test payload to the configured webhook |
 

@@ -7,6 +7,7 @@ import { queryEvents } from './db/events'
 import { listQuickMarks } from './db/findings'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
+import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 
 interface ManifestFile {
   path: string
@@ -27,6 +28,10 @@ interface ManifestPayload {
   signedBy: { operatorId: string; operatorName: string; tokenHashPrefix: string } | null
   chainHead: { hash: string; eventCount: number } | null
   lastAnchor: { id: string; headHash: string; eventCount: number; status: string; createdAt: number } | null
+  /** How many events in this bundle carry sanitized bytes instead of raw
+   *  captured bytes (four-layer redaction, layer 4). Every one has a paired
+   *  system.sanitized event in events.jsonl proving the swap was audited. */
+  sanitized: { events: number; totalInDb: number }
   files: ManifestFile[]
 }
 
@@ -59,7 +64,24 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
             monotonic_ns, ntp_offset_ms
      FROM events ORDER BY created_at ASC, rowid ASC`
   ).iterate() as IterableIterator<Record<string, unknown>>
+  // Four-layer redaction, layer 4: when an event has a sanitized replacement
+  // in the sanitized_events table, swap the raw field bytes for the sanitized
+  // copy AS WRITTEN TO THE BUNDLE. The source DB row is untouched — the swap
+  // only affects the exported file. The row's `hash` field still refers to
+  // the original bytes; auditors verifying the chain need the source DB or
+  // the paired system.sanitized event to reconcile.
+  let sanitizedRowsWritten = 0
   for (const row of rowIter) {
+    const eventId = row.id as string
+    const replacements = getSanitizedFields(eventId)
+    if (Object.keys(replacements).length > 0) {
+      try {
+        const data = JSON.parse(row.data as string) as Record<string, unknown>
+        for (const [field, value] of Object.entries(replacements)) data[field] = value
+        row.data = JSON.stringify(data)
+        sanitizedRowsWritten++
+      } catch { /* leave row as-is if data isn't parseable */ }
+    }
     stream.write(JSON.stringify(row) + '\n')
   }
   stream.end()
@@ -141,6 +163,7 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
       status: lastAnchor.status,
       createdAt: lastAnchor.createdAt
     } : null,
+    sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
     files
   }
 

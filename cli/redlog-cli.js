@@ -357,6 +357,38 @@ Examples:
       break
     }
 
+    case 'sanitize': {
+      // Layer 4 of four-layer redaction (docs/redaction-design.md). Rewrites
+      // event bytes for pre-delivery scrub by writing a masked copy to the
+      // sanitized_events table + appending a system.sanitized chain event.
+      // The source events row is never mutated.
+      const eventIds = positional.filter((p) => !p.startsWith('--'))
+      if (eventIds.length === 0) {
+        console.error('Usage: redlog-cli sanitize <event-id> [<event-id> …] [--fields output,command] [--dry-run|--confirm] [--reason "..."]')
+        process.exit(1)
+      }
+      const fields = (opts.fields ? String(opts.fields).split(',') : ['output', 'output_preview', 'command']).map((s) => s.trim()).filter(Boolean)
+      const dryRun = !opts.confirm
+      const res = await request('POST', '/api/sanitize', {
+        event_ids: eventIds, fields,
+        reason: opts.reason || undefined,
+        dry_run: dryRun
+      })
+      if (res.status !== 200 && res.status !== 201) {
+        console.error(`Error ${res.status}:`, res.data); process.exit(1)
+      }
+      const r = res.data
+      if (r.planned.length === 0) {
+        console.log('No sanitizable fields (event has no redaction spans, or fields not string).')
+        break
+      }
+      console.log(dryRun ? '── Dry run — nothing written ──' : '── Applied ──')
+      for (const p of r.planned) console.log(`  ${p.eventId}  ${p.field}  ${p.spanCount} span(s)  sha256=${p.replacementSha256.slice(0, 16)}…`)
+      if (dryRun) console.log('Re-run with --confirm to write.')
+      else console.log(`Wrote ${r.applied} row(s). system.sanitized event: ${r.sanitizedEventId}`)
+      break
+    }
+
     case 'export': {
       const sub = positional[0]
       if (sub === 'bundle') {
