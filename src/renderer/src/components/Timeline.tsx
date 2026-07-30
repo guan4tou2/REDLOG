@@ -152,7 +152,21 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   // reveal; each reveal appends a chained system.secret_revealed event so the
   // audit trail shows raw bytes were viewed.
   const [revealedEvents, setRevealedEvents] = useState<Set<string>>(new Set())
+  // Detail panel container. Reset scroll to top on every selectedEvent change
+  // so a cluster-popover click always lands you on the new item's title —
+  // otherwise the panel keeps whatever scroll offset the prior event left
+  // (with JSON expanded the title easily scrolls off screen).
+  const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
+
+  // On new selection, snap the detail panel back to the top and collapse the
+  // JSON dump — otherwise clicking through a cluster popover lands you on
+  // whatever scroll offset + expanded state the previous event left behind,
+  // and the new event's title can end up scrolled off-screen.
+  useEffect(() => {
+    setShowJson(false)
+    if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
+  }, [selectedEvent?.id])
 
   useEffect(() => {
     const load = (): void => {
@@ -771,7 +785,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
       {/* Enhanced detail panel */}
       {selectedEvent && (
-        <div className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[240px] overflow-y-auto">
+        <div ref={detailPanelRef} className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[240px] overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }} />
