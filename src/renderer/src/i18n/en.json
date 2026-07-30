@@ -348,7 +348,10 @@
   "settings.operatorCreated": "Created. Copy the token — it will not be shown again.",
   "settings.operatorTokenCopy": "Copy token",
   "settings.operatorTokenClose": "I have copied it",
+  "settings.operatorDeleteTitle": "Delete operator",
   "settings.operatorDeleteConfirm": "Delete this operator? Their past events remain in the log but the token becomes invalid.",
+  "settings.cdpConnected": "Connected: {{title}} — {{url}}",
+  "settings.cdpNotConnected": "Not connected. Launch Chrome with --remote-debugging-port={{port}}",
   "settings.operatorPrimaryLocked": "Primary operator cannot be revoked or deleted from the UI.",
 
   "settings.integrity": "Timeline Integrity",

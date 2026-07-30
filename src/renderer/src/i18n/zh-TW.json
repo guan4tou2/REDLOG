@@ -348,7 +348,10 @@
   "settings.operatorCreated": "已建立。請立刻複製 token — 不會再顯示。",
   "settings.operatorTokenCopy": "複製 token",
   "settings.operatorTokenClose": "我已複製",
+  "settings.operatorDeleteTitle": "刪除 operator",
   "settings.operatorDeleteConfirm": "刪除此 operator？過去的事件仍會留在紀錄裡，但這組 token 會失效。",
+  "settings.cdpConnected": "已連線:{{title}} — {{url}}",
+  "settings.cdpNotConnected": "未連線。請以 --remote-debugging-port={{port}} 啟動 Chrome",
   "settings.operatorPrimaryLocked": "主 operator 無法從 UI 撤銷或刪除。",
 
   "settings.integrity": "Timeline 完整性",

@@ -4,6 +4,7 @@ interface ToastData {
   id: number
   message: string
   type: 'success' | 'error' | 'info' | 'warning'
+  createdAt: number
 }
 
 type ToastFn = (message: string, type?: ToastData['type']) => void
@@ -31,7 +32,7 @@ export function ToastContainer(): JSX.Element | null {
   const [toasts, setToasts] = useState<ToastData[]>([])
 
   const push = useCallback<ToastFn>((message, type = 'info') => {
-    setToasts((prev) => [...prev, { id: Date.now() + Math.random(), message, type }])
+    setToasts((prev) => [...prev, { id: Date.now() + Math.random(), message, type, createdAt: Date.now() }])
   }, [])
 
   useEffect(() => {
@@ -39,11 +40,19 @@ export function ToastContainer(): JSX.Element | null {
     return (): void => { _pushToast = () => {} }
   }, [push])
 
+  // Each toast expires on its own 3s clock (audit finding P0 #6): the prior
+  // effect used a single shared timer keyed on `toasts`, so every new push
+  // reset the 3s window for the OLDEST toast — bursts of toasts extended each
+  // other indefinitely. Prune by age on a steady interval instead.
   useEffect(() => {
     if (toasts.length === 0) return
-    const timer = setTimeout(() => setToasts((prev) => prev.slice(1)), 3000)
-    return () => clearTimeout(timer)
-  }, [toasts])
+    const tick = (): void => {
+      const cutoff = Date.now() - 3000
+      setToasts((prev) => prev.filter((t) => t.createdAt > cutoff))
+    }
+    const iv = setInterval(tick, 500)
+    return () => clearInterval(iv)
+  }, [toasts.length === 0])
 
   if (toasts.length === 0) return null
 

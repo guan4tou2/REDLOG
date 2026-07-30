@@ -17,11 +17,17 @@ import { ToastContainer } from './components/Toast'
 import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { useI18n } from './i18n'
+import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
 import logoUrl from './assets/logo.svg'
 
-type View = 'dashboard' | 'terminal' | 'timeline' | 'screenshots' | 'targets' | 'scope' | 'loot' | 'marks' | 'settings' | 'search'
+type View = SidebarViewId | 'settings' | 'search'
 
-const VIEW_KEYS: View[] = ['dashboard', 'terminal', 'timeline', 'screenshots', 'targets', 'scope', 'loot', 'marks', 'settings']
+// ⌘/Ctrl+1..8 map to the sidebar order (which the user can reorder); ⌘9 =
+// Settings (pinned at the sidebar's bottom, not part of the reorderable list).
+// Reads fresh on demand so a drag-reorder immediately updates the shortcuts.
+function currentShortcutOrder(): View[] {
+  return [...loadSidebarOrder(), 'settings'] as View[]
+}
 
 // Read defensively — this runs at module load, before the preload bridge is
 // guaranteed present (e.g. in tests). Default to mac styling.
@@ -43,18 +49,22 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  // Global marker shortcut (⌘/Ctrl+Shift+M) is registered in the main process
+  // via Electron globalShortcut so it fires whether the window has focus or
+  // not. Do NOT also listen for it in the renderer — audit finding P0 #5
+  // pointed out the dialog would open twice when the RedLog window was in
+  // front (both handlers ran). Renderer only handles ⌘/ and ⌘1..N which
+  // must be scoped to the app window.
   useEffect(() => {
     return window.redlog.marker.onShortcut(() => setShowMarker(true))
   }, [])
 
+  // ⌘/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
+  // Re-read fresh inside the handler so a drag-reorder in the sidebar takes
+  // effect immediately, without needing to re-attach the listener.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!project) return
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
-        e.preventDefault()
-        setShowMarker(true)
-        return
-      }
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault()
         setView('search')
@@ -62,9 +72,11 @@ export default function App(): JSX.Element {
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key)
-        if (num >= 1 && num <= VIEW_KEYS.length) {
+        if (Number.isNaN(num)) return
+        const order = currentShortcutOrder()
+        if (num >= 1 && num <= order.length) {
           e.preventDefault()
-          setView(VIEW_KEYS[num - 1])
+          setView(order[num - 1])
         }
       }
     }
@@ -242,6 +254,10 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  // Shortcut order — kept in state + subscribed so a drag-reorder in the sidebar
+  // updates the cheatsheet immediately, no view switch required.
+  const [shortcutOrder, setShortcutOrder] = useState(currentShortcutOrder)
+  useEffect(() => onSidebarOrderChanged(() => setShortcutOrder(currentShortcutOrder())), [])
   const { t } = useI18n()
 
   useEffect(() => {
@@ -365,7 +381,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {[
-              ...VIEW_KEYS.map((v, i) => [`${modKey}${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
+              ...shortcutOrder.map((v, i) => [`${modKey}${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
               [isMac ? '⌘⇧M' : 'Ctrl+Shift+M', t('dashboard.addMarker')] as [string, string],
               [`${modKey}/`, t('dashboard.search')] as [string, string]
             ].map(([key, label]) => (
