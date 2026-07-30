@@ -9,12 +9,33 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "title": { "type": "string", "description": "What happened (e.g. 'Found SQLi in /api/users')" },
-            "notes": { "type": "string", "description": "Additional context, reproduction steps, or technical details" },
-            "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"], "description": "Finding severity" },
-            "target": { "type": "string", "description": "Target host, IP, or URL this relates to" }
+            "title": {
+              "type": "string",
+              "description": "What happened (e.g. 'Found SQLi in /api/users')"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Additional context, reproduction steps, or technical details"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "info",
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "description": "Finding severity"
+            },
+            "target": {
+              "type": "string",
+              "description": "Target host, IP, or URL this relates to"
+            }
           },
-          "required": ["title"]
+          "required": [
+            "title"
+          ]
         }
       }
     },
@@ -26,11 +47,23 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "agent_type": { "type": "string", "description": "Event source category. Prefer: shell / agent / scanner / dns / credential_use / c2_checkin / file_transfer / marker / loot" },
-            "data": { "type": "object", "description": "Event payload. Populate standard keys when applicable." },
-            "target": { "type": "string", "description": "Target host/IP" }
+            "agent_type": {
+              "type": "string",
+              "description": "Event source category. Prefer: shell / agent / scanner / dns / credential_use / c2_checkin / file_transfer / marker / loot"
+            },
+            "data": {
+              "type": "object",
+              "description": "Event payload. Populate standard keys when applicable."
+            },
+            "target": {
+              "type": "string",
+              "description": "Target host/IP"
+            }
           },
-          "required": ["agent_type", "data"]
+          "required": [
+            "agent_type",
+            "data"
+          ]
         }
       }
     },
@@ -42,10 +75,18 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "query": { "type": "string", "description": "Search query (minimum 2 characters)" },
-            "limit": { "type": "number", "description": "Maximum results to return (default 20)" }
+            "query": {
+              "type": "string",
+              "description": "Search query (minimum 2 characters)"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Maximum results to return (default 20)"
+            }
           },
-          "required": ["query"]
+          "required": [
+            "query"
+          ]
         }
       }
     },
@@ -54,7 +95,11 @@
       "function": {
         "name": "redlog_status",
         "description": "Get the current RedLog status including IP/VPN state, event count, scope violations, and recording state.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -62,7 +107,11 @@
       "function": {
         "name": "redlog_scope",
         "description": "Get the current scope configuration: in-scope targets, exclusions, and any scope violations detected.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -73,9 +122,14 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "text": { "type": "string", "description": "Text to scan for embedded secrets or credentials" }
+            "text": {
+              "type": "string",
+              "description": "Text to scan for embedded secrets or credentials"
+            }
           },
-          "required": ["text"]
+          "required": [
+            "text"
+          ]
         }
       }
     },
@@ -87,11 +141,22 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "title": { "type": "string", "description": "Bookmark title" },
-            "url": { "type": "string", "description": "URL to bookmark" },
-            "note": { "type": "string", "description": "Notes about why this is interesting" }
+            "title": {
+              "type": "string",
+              "description": "Bookmark title"
+            },
+            "url": {
+              "type": "string",
+              "description": "URL to bookmark"
+            },
+            "note": {
+              "type": "string",
+              "description": "Notes about why this is interesting"
+            }
           },
-          "required": ["title"]
+          "required": [
+            "title"
+          ]
         }
       }
     },
@@ -100,7 +165,11 @@
       "function": {
         "name": "redlog_screenshot",
         "description": "Capture a screenshot of the current desktop state.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -108,7 +177,11 @@
       "function": {
         "name": "redlog_whoami",
         "description": "Return the operator identity this API token resolves to. Call once at session start to confirm your events are being attributed correctly.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -116,7 +189,11 @@
       "function": {
         "name": "redlog_operators_list",
         "description": "List every operator token registered on this RedLog instance.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -124,7 +201,11 @@
       "function": {
         "name": "redlog_chain_status",
         "description": "Return evidence-chain length plus the latest OpenTimestamps anchor status (complete/partial/failed/pending).",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -132,7 +213,11 @@
       "function": {
         "name": "redlog_chain_anchor_now",
         "description": "Submit the current chain head to public OpenTimestamps calendars immediately. Use before ending a session or right after a critical finding to lock its timestamp into the Bitcoin blockchain via OTS.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -140,7 +225,11 @@
       "function": {
         "name": "redlog_chain_verify",
         "description": "Fast integrity check: confirm the latest anchor still describes a prefix of the current event chain.",
-        "parameters": { "type": "object", "properties": {}, "required": [] }
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
       }
     },
     {
@@ -151,9 +240,83 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "anchor_id": { "type": "string", "description": "Specific anchor id. Omit to upgrade all pending." }
+            "anchor_id": {
+              "type": "string",
+              "description": "Specific anchor id. Omit to upgrade all pending."
+            }
           },
           "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_config",
+        "description": "Get the current RedLog project configuration (engagement, operator, network, scope).",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_events",
+        "description": "Query recent timeline events, optionally filtered by type or target.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "agent_type": {
+              "type": "string",
+              "description": "Filter by type: shell, agent, dns, pivot, screenshot, marker, loot, cleanup, file_transfer, http_navigation, clipboard, credential_use, c2_checkin, system"
+            },
+            "target": {
+              "type": "string",
+              "description": "Filter by target host/IP"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max results (default 50, max 500)"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_quickmarks_list",
+        "description": "List all QuickMark bookmarks in the current project.",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "redlog_recording",
+        "description": "Control recording state: check, pause, resume, or toggle. Pauses/resumes are logged as system.recording_paused/resumed events so timeline gaps stay explainable.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "status",
+                "pause",
+                "resume",
+                "toggle"
+              ],
+              "description": "Action to perform"
+            }
+          },
+          "required": [
+            "action"
+          ]
         }
       }
     }
