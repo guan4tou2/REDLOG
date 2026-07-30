@@ -28,6 +28,13 @@ deconfliction:
     - system
   subtypes:               # also forward events with these subtype values
     - scope_violation
+    # Since v0.6, RedLog also emits these system subtypes that are usually
+    # worth forwarding to the SOC — uncomment as needed:
+    # - ip_transition          # external IP or safety state (safe/exposed/unknown) changed
+    # - opsec_state_changed    # VPN interfaces / DNS resolvers / MAC / hostname changed
+    # - config_changed         # scope / blacklist / enforcement changed (with a from→to diff)
+    # - recording_paused       # operator paused recording — explains any timeline gap
+    # - recording_resumed
   includeData: false      # if true, include full event.data — mind PII
 ```
 

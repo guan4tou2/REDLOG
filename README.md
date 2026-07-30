@@ -310,14 +310,18 @@ Electron Main Process
   ├── SQLite DB (WAL)       events table + evidence chain table
   ├── EventBus              pub/sub with pause/resume support
   └── Services
-        ├── IPMonitor         external IP polling, VPN status detection
-        ├── ClipboardMonitor  200ms polling, auto-redact credentials
-        ├── ScreenshotAgent   idle-triggered capture, 2-tier dedup
-        ├── ScopeMonitor      target scope check (root-domain matching)
-        ├── LootDetector      regex-based credential/secret scanning
-        ├── FileTransferTracker   ~/Downloads watcher with auto-hash
-        ├── EvidenceChain     append-only chain of event IDs
-        └── APIServer         localhost HTTP API for external agents
+        ├── IPMonitor          external IP + safety hysteresis; emits system.ip_transition
+        ├── OpsecStateMonitor  VPN/DNS/MAC/hostname drift; emits system.opsec_state_changed (30s)
+        ├── ClipboardMonitor   opt-in; SHA-256 + length + loot scan; raw text never stored
+        ├── ScreenshotAgent    periodic + on-demand; SHA-256 on each capture
+        ├── ScopeMonitor       root-domain / CIDR matching; own `scope` timeline lane
+        ├── LootDetector       regex + entropy scan; plugin-extensible via lootPatterns
+        ├── CDPConnector       polls the built-in browser; emits http_navigation per URL change
+        ├── CommandTagger      plugin registry for stamping MITRE / custom fields on shell events
+        ├── PivotDetector      auto-detects tunnels from shell (ssh -D/-L/-R, chisel, ligolo, …)
+        ├── TechniqueTagger    auto-detects cleanup (T1070) + file-transfer (T1105/T1041)
+        ├── EvidenceChain      SHA-256 chain + OpenTimestamps anchor (hourly + on-demand)
+        └── APIServer          localhost HTTP + MCP (18 tools) + REST
 
 Renderer (React 18 + Tailwind CSS 3)
   ├── ProjectPicker         create (with advanced scope setup) / open / delete
@@ -488,7 +492,8 @@ Export your project config as a `.yaml` or `.json` profile:
 | Database | better-sqlite3 (WAL mode) |
 | UI | React 18 + Tailwind CSS 3 |
 | Timeline | Custom HTML/CSS swim-lane (zero dependencies) |
-| Screenshot dedup | pixelmatch + pngjs |
+| Screenshot capture | electron `desktopCapturer` + SHA-256 dedup (hash-suffix key) |
+| Terminal | node-pty + @xterm/xterm; asciinema `.cast` recording per pane |
 | DNS logging | dns2 |
 | Config | js-yaml |
 | i18n | Custom React context |
