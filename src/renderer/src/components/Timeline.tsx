@@ -926,6 +926,15 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           {selectedEvent.targetId && (
             <p className="text-[10px] text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}
+          {/* Replay this command: only for shell.command_end from a builtin
+              terminal — pulls the stdout window out of the session's .cast
+              file instead of storing it in the chain. */}
+          {selectedEvent.agentType === 'shell'
+            && selectedEvent.data?.subtype === 'command_end'
+            && selectedEvent.data?.source === 'builtin-terminal'
+            && (
+              <ReplayCommand eventId={selectedEvent.id} />
+            )}
           {showJson && (() => {
             const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
             const revealed = revealedEvents.has(selectedEvent.id)
@@ -945,3 +954,42 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     </div>
   )
 }
+
+// Pulled from the session's asciinema .cast on disk — not from the event
+// row. Rendering here keeps the chain event clean (command + exit + duration
+// only) while still letting the operator see what actually printed.
+function ReplayCommand({ eventId }: { eventId: string }): JSX.Element {
+  const [text, setText] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const { t } = useI18n()
+  const load = async (): Promise<void> => {
+    setLoading(true)
+    try {
+      const r = await window.redlog.terminal.replay?.(eventId)
+      if (!r) { setError('unsupported'); return }
+      if (!r.ok) { setError(r.error ?? 'failed'); return }
+      setText(r.text ?? '')
+      setExpanded(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+  if (!expanded) {
+    return (
+      <button
+        onClick={load}
+        disabled={loading}
+        className="mt-1.5 text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
+      >{loading ? t('timeline.replay.loading') : t('timeline.replay.button')}</button>
+    )
+  }
+  if (error) return <p className="mt-1.5 text-[10px] text-red-400">{t('timeline.replay.failed', { error })}</p>
+  return (
+    <pre className="mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-[10px] text-zinc-300 font-mono overflow-x-auto leading-relaxed max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+      {text || t('timeline.replay.empty')}
+    </pre>
+  )
+}
+

@@ -35,8 +35,7 @@ import {
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
-  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal,
-  beginCommandCapture, takeCommandOutput
+  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -401,8 +400,7 @@ function startProject(project: ProjectMeta): void {
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
     ipMonitor: ipMonitor,
-    scopeMonitor: scopeMonitor,
-    terminalCapture: { beginCommandCapture, takeCommandOutput }
+    scopeMonitor: scopeMonitor
   })
   startApiServer(6660).then((port) => {
     insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
@@ -932,6 +930,33 @@ app.whenReady().then(() => {
   ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) => resizeTerminal(id, cols, rows))
   ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
   ipcMain.handle('terminal:list', () => listTerminals())
+  // Replay a command_end event by slicing its session's .cast file — see
+  // api-server /api/terminal/replay for the logic; this IPC surface just
+  // forwards to the same function so the UI doesn't need a token round-trip.
+  ipcMain.handle('terminal:replay', async (_e, eventId: string) => {
+    try {
+      const { queryEvents } = await import('../core/db/events')
+      const { readCastSlice } = await import('../core/cast-slice')
+      const target = queryEvents({ limit: 5000 }).find((ev) => ev.id === eventId)
+      if (!target) return { ok: false, error: 'event not found' }
+      const td = target.data as Record<string, unknown>
+      const tid = td.terminalId as string | undefined
+      if (target.agentType !== 'shell' || td.subtype !== 'command_end' || td.source !== 'builtin-terminal' || !tid) {
+        return { ok: false, error: 'not a builtin-terminal command_end event' }
+      }
+      const sess = queryEvents({ agentType: 'shell', limit: 5000 })
+        .filter((ev) => ev.data?.subtype === 'session_start' && ev.data.terminalId === tid && ev.timestamp <= target.timestamp)[0]
+      const castPath = sess?.data?.castPath as string | undefined
+      if (!castPath) return { ok: false, error: 'no cast file for this session' }
+      const duration = Number(td.duration_sec ?? 0) * 1000
+      const startMs = target.timestamp - Math.max(duration, 100)
+      const slice = readCastSlice(castPath, startMs, target.timestamp)
+      if (!slice) return { ok: false, error: 'failed to read cast file' }
+      return { ok: true, command: td.command, exitCode: td.exit_code, durationSec: td.duration_sec, text: slice.text, bytes: slice.bytes }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
 
   // --- Scope-filtered export ---
   ipcMain.handle('data:exportScopeFiltered', () => {
