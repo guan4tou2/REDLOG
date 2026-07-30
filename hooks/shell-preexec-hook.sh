@@ -112,7 +112,7 @@ if [[ -n "${ZSH_VERSION:-}" ]]; then
         duration=$(( EPOCHSECONDS - _REDLOG_CMD_START ))
       fi
       _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" \
-        "{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0}}"
+        "{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\"}"
       _REDLOG_LAST_CMD=""
       _REDLOG_CMD_START=""
     fi
@@ -140,7 +140,7 @@ elif [[ -n "${BASH_VERSION:-}" ]]; then
         duration=$(( SECONDS - _REDLOG_CMD_START ))
       fi
       _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" \
-        "{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0}}"
+        "{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\"}"
       _REDLOG_LAST_CMD=""
       _REDLOG_CMD_START=""
     fi

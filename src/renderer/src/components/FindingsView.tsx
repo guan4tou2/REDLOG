@@ -26,16 +26,38 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
   const [creating, setCreating] = useState(false)
   const [browserTab, setBrowserTab] = useState<BrowserTabInfo | null>(null)
   const [search, setSearch] = useState('')
+  // Pinned mark ids — persisted to localStorage. Chain-immutable events can't
+  // be reordered in the DB, so pin state is a UI overlay: pinned float to the
+  // top of the list, keeping their timestamp intact.
+  const [pinned, setPinned] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('redlog-marks-pinned') || '[]')) } catch { return new Set() }
+  })
+  const togglePin = useCallback((id: string) => {
+    setPinned((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      localStorage.setItem('redlog-marks-pinned', JSON.stringify([...next]))
+      return next
+    })
+  }, [])
   const { t } = useI18n()
 
-  const filteredMarks = search.trim()
-    ? marks.filter((m) => {
-        const q = search.toLowerCase()
-        return m.title.toLowerCase().includes(q)
-          || (m.url ?? '').toLowerCase().includes(q)
-          || (m.note ?? '').toLowerCase().includes(q)
-      })
-    : marks
+  const filteredMarks = (() => {
+    const list = search.trim()
+      ? marks.filter((m) => {
+          const q = search.toLowerCase()
+          return m.title.toLowerCase().includes(q)
+            || (m.url ?? '').toLowerCase().includes(q)
+            || (m.note ?? '').toLowerCase().includes(q)
+        })
+      : marks
+    return [...list].sort((a, b) => {
+      const ap = pinned.has(a.id) ? 1 : 0
+      const bp = pinned.has(b.id) ? 1 : 0
+      if (ap !== bp) return bp - ap
+      return b.createdAt - a.createdAt
+    })
+  })()
 
   const refresh = useCallback(() => {
     window.redlog.quickmarks.list().then(setMarks)
@@ -119,23 +141,37 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
         <div className="flex-1 overflow-auto">
           {filteredMarks.map((m) => {
             const tagColor = getTagColor(m.title)
+            const isPinned = pinned.has(m.id)
             return (
-              <button
+              <div
                 key={m.id}
-                onClick={() => { setSelected(m); setCreating(false) }}
-                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-zinc-800/50 ${
+                className={`group relative border-b border-redlog-border hover:bg-zinc-800/50 ${
                   selected?.id === m.id ? 'bg-zinc-800' : ''
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
-                  <span className="text-xs text-zinc-200 truncate">{m.title}</span>
-                </div>
-                {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
-                <div className="text-[10px] text-zinc-600 mt-0.5 pl-4">
-                  {new Date(m.createdAt).toLocaleString()}
-                </div>
-              </button>
+                <button
+                  onClick={() => { setSelected(m); setCreating(false) }}
+                  className="w-full text-left px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
+                    <span className="text-xs text-zinc-200 truncate flex-1">{m.title}</span>
+                    {isPinned && <span className="text-[10px] text-amber-400 shrink-0" aria-hidden="true">📌</span>}
+                  </div>
+                  {m.url && <div className="text-[10px] text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                  <div className="text-[10px] text-zinc-600 mt-0.5 pl-4">
+                    {new Date(m.createdAt).toLocaleString()}
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); togglePin(m.id) }}
+                  className={`absolute top-1 right-1 w-6 h-6 rounded flex items-center justify-center text-[11px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 transition-opacity ${
+                    isPinned ? 'text-amber-400 opacity-100' : 'text-zinc-600 hover:text-amber-400 opacity-0 group-hover:opacity-100'
+                  }`}
+                  title={isPinned ? t('marks.unpin') : t('marks.pin')}
+                  aria-label={isPinned ? t('marks.unpin') : t('marks.pin')}
+                >{isPinned ? '📌' : '📍'}</button>
+              </div>
             )
           })}
           {filteredMarks.length === 0 && !creating && (

@@ -35,7 +35,8 @@ import {
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
-  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
+  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal,
+  beginCommandCapture, takeCommandOutput
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -393,7 +394,8 @@ function startProject(project: ProjectMeta): void {
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
     ipMonitor: ipMonitor,
-    scopeMonitor: scopeMonitor
+    scopeMonitor: scopeMonitor,
+    terminalCapture: { beginCommandCapture, takeCommandOutput }
   })
   startApiServer(6660).then((port) => {
     insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
