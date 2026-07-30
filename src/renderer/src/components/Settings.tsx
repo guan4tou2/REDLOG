@@ -61,7 +61,6 @@ export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
   const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
   const [saved, setSaved] = useState(false)
-  const [cdpPort, setCdpPort] = useState('9222')
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
   const [hookLoading, setHookLoading] = useState<string | null>(null)
@@ -159,28 +158,23 @@ export default function Settings(): JSX.Element {
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
-              <div className="space-y-2">
-                <Field
-                  label={t('settings.cdpPort')}
-                  value={cdpPort}
-                  onChange={(v) => setCdpPort(v)}
-                  type="number"
-                />
-                <button
-                  onClick={async () => {
-                    await window.redlog.cdp.setPort(parseInt(cdpPort) || 9222)
-                    const cdpTab = await window.redlog.cdp.getTab()
-                    if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
-                    else toast(t('settings.cdpNotConnected', { port: cdpPort }), 'error')
-                  }}
-                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
-                >
-                  {t('settings.testConnection')}
-                </button>
-                <p className="text-[10px] text-zinc-600">
-                  {t('settings.cdpHint')}
-                </p>
-              </div>
+              <p className="text-[10px] text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
+              <button
+                onClick={async () => {
+                  // Uses the CDP port from BrowserPanel above (config.browser.
+                  // cdpPort) — the previous separate field silently didn't
+                  // auto-save so users often set two different ports without
+                  // knowing (audit finding P0 #43).
+                  const port = config.browser?.cdpPort ?? 9222
+                  await window.redlog.cdp.setPort(port)
+                  const cdpTab = await window.redlog.cdp.getTab()
+                  if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
+                  else toast(t('settings.cdpNotConnected', { port: String(port) }), 'error')
+                }}
+                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+              >
+                {t('settings.testConnection')}
+              </button>
             </FieldGroup>
           </>
         )}
