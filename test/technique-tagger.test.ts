@@ -1,35 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tagTechnique, detectCleanup, detectFileTransfer } from '../src/core/technique-tagger'
-
-describe('tagTechnique', () => {
-  it('nmap → T1046', () => {
-    const t = tagTechnique('nmap -sV -sC 10.0.0.5')
-    expect(t?.tool).toBe('nmap')
-    expect(t?.mitreTtp).toBe('T1046')
-    expect(t?.category).toBe('recon')
-  })
-  it('hydra → T1110.001', () => {
-    const t = tagTechnique('hydra -l root -P pass.txt ssh://10.0.0.1')
-    expect(t?.tool).toBe('hydra')
-    expect(t?.mitreTtp).toBe('T1110.001')
-  })
-  it('mimikatz basename or embedded', () => {
-    expect(tagTechnique('mimikatz.exe "sekurlsa::logonpasswords"')?.mitreTtp).toBe('T1003.001')
-    expect(tagTechnique('./x86/mimikatz.exe')?.mitreTtp).toBe('T1003.001')
-  })
-  it('base64-decoded shell exec → defense_evasion T1027', () => {
-    const t = tagTechnique('echo Zm9v | base64 -d | bash')
-    expect(t?.mitreTtp).toBe('T1027')
-    expect(t?.category).toBe('defense_evasion')
-  })
-  it('curl without -o is NOT tagged as file transfer', () => {
-    // curl-that-just-fetches is left alone; only -o/-O counts as ingress
-    expect(tagTechnique('curl https://example.com')?.mitreTtp).toBeUndefined()
-  })
-  it('unrelated command returns null', () => {
-    expect(tagTechnique('ls -la')).toBeNull()
-  })
-})
+import { detectCleanup, detectFileTransfer } from '../src/core/technique-tagger'
 
 describe('detectCleanup', () => {
   it('history -c', () => {

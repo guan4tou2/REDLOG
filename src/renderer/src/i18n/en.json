@@ -431,6 +431,8 @@
   "common.cancel": "Cancel",
   "plugins.hint": "Plugins extend RedLog with capture integrations, detection rules, event types and — when you trust them — tools. Drop a plugin folder in the plugins directory and reload.",
   "plugins.reload": "Reload",
+  "plugins.openFolder": "Open folder",
+  "plugins.openFolderHint": "Opens ~/.redlog/plugins in Finder / Explorer",
   "plugins.empty": "No plugins found. Add one under ~/.redlog/plugins/<id>/ (with a plugin.json) and Reload.",
   "plugins.dir": "User plugins load from ~/.redlog/plugins/. See docs/plugin-development.md to build one.",
   "plugins.contributes": "Contributes",

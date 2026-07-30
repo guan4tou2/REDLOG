@@ -119,6 +119,29 @@ For a command matching `cmd`, capture group 1 of `extract` (or the whole match)
 becomes the target. **Plugin extractors take precedence** over the built-ins, so
 you can teach RedLog about tools it doesn't ship knowledge of.
 
+### `commandTags` — stamp fields onto shell events when a pattern matches
+
+```jsonc
+"commandTags": [
+  { "name": "mitre:nmap",       "match": "^nmap\\b",         "stamp": { "mitre_ttp": "T1046",     "technique_tool": "nmap",   "technique_category": "recon" } },
+  { "name": "mitre:mimikatz",   "match": "mimikatz",        "flags": "i",
+    "stamp": { "mitre_ttp": "T1003.001", "technique_tool": "mimikatz", "technique_category": "cred_access" } },
+  { "name": "mitre:hashcat",    "match": "^(hashcat|john)\\b","stamp": { "mitre_ttp": "T1110.002", "technique_category": "cred_access" } }
+]
+```
+
+For every `shell.command_start` event, each pattern is tested. First-match-wins
+per field — an earlier pattern can shadow a later one for the same key. The
+`stamp` object's keys are free-form; reserved names that downstream tooling
+(Ghostwriter, VECTR) understands are `mitre_ttp`, `technique_tool`, and
+`technique_category`, but you can add your own for org-specific pipelines.
+
+**Why this is a plugin instead of a core feature:** ATT&CK tagging is opinionated,
+tool lists go stale, and most mature shops let a SIEM (ELK, Splunk, Chronicle)
+do the tagging with richer context. RedLog ships **no** commandTags out of the
+box — install one (or write your own, or leave the shell events raw and tag
+them downstream).
+
 ### `eventTypes` — give a new `agent_type` a timeline identity
 
 ```jsonc

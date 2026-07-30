@@ -643,6 +643,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
   const api = (window.redlog as unknown as { plugins: {
     list: () => Promise<PluginView[]>
     reload: () => Promise<PluginView[]>
+    openFolder: () => Promise<string>
     setEnabled: (id: string, enabled: boolean) => Promise<PluginView[]>
     grant: (id: string) => Promise<{ ok: boolean; error?: string; plugins: PluginView[] }>
     revoke: (id: string) => Promise<PluginView[]>
@@ -672,8 +673,13 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
 
   return (
     <FieldGroup title={t('settings.plugins')}>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <p className="text-[10px] text-zinc-600 flex-1 pr-3">{t('plugins.hint')}</p>
+        <button onClick={() => api.openFolder()}
+          className="px-2.5 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0"
+          title={t('plugins.openFolderHint')}>
+          {t('plugins.openFolder')}
+        </button>
         <button onClick={doReload} disabled={busy === '*'}
           className="px-2.5 py-1 text-[10px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0">
           {busy === '*' ? '…' : t('plugins.reload')}

@@ -431,6 +431,8 @@
   "common.cancel": "取消",
   "plugins.hint": "外掛可擴充 RedLog：擷取整合、偵測規則、事件類型，以及（在你信任後）工具。把外掛資料夾放進外掛目錄後重新載入。",
   "plugins.reload": "重新載入",
+  "plugins.openFolder": "開啟資料夾",
+  "plugins.openFolderHint": "在 Finder / Explorer 中開啟 ~/.redlog/plugins",
   "plugins.empty": "找不到外掛。在 ~/.redlog/plugins/<id>/ 放一個含 plugin.json 的資料夾後重新載入。",
   "plugins.dir": "使用者外掛從 ~/.redlog/plugins/ 載入。開發方式見 docs/plugin-development.md。",
   "plugins.contributes": "提供",

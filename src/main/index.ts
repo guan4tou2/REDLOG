@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen, session } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen, session, shell } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
@@ -868,6 +868,14 @@ app.whenReady().then(() => {
   ipcMain.handle('plugins:list', () => pluginView())
   ipcMain.handle('plugins:eventTypes', () => listEventTypes())
   ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); reloadPlugins(); return pluginView() })
+  // Open the user plugin dir in Finder/Explorer so operators can drop new
+  // plugin folders in and reload without hunting for the path.
+  ipcMain.handle('plugins:openFolder', async () => {
+    const dir = path.join(homedir(), '.redlog', 'plugins')
+    try { await require('fs').promises.mkdir(dir, { recursive: true }) } catch { /* ignore */ }
+    shell.openPath(dir)
+    return dir
+  })
   ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); return pluginView() })
   ipcMain.handle('plugins:grant', (_e, id: string) => {
     const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
