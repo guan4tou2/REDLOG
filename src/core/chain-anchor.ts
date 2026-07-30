@@ -409,50 +409,66 @@ export function verifyChainFull(): FullVerifyResult {
       }
     }
 
-    const base: Record<string, unknown> = {
-      id: row.id,
-      timestamp: row.timestamp,
-      engagementId: row.engagement_id,
-      sessionId: row.session_id,
-      operatorId: row.operator_id,
-      agentType: row.agent_type,
-      hostname: row.hostname,
-      sourceIP: row.source_ip,
-      targetId: row.target_id,
-      data: JSON.parse(row.data),
+    // Schema evolved over the v0.x line — an event's stored hash may have
+    // been computed over one of THREE object shapes:
+    //   (v0.1) no prevHash, no monotonicNs/ntpOffsetMs
+    //   (v0.2) prevHash present, no monotonicNs/ntpOffsetMs
+    //   (v0.6) prevHash + monotonicNs + ntpOffsetMs (null-inclusive)
+    // Rebuild each explicitly (don't rely on Object.spread ordering) and
+    // try in order; only reject when all three differ. Rewriting old hashes
+    // would defeat the point of the chain (an operator couldn't distinguish
+    // schema evolution from tampering), so this stays a read-side shim.
+    const parsedData = JSON.parse(row.data)
+    const shapeV01: Record<string, unknown> = {
+      id: row.id, timestamp: row.timestamp,
+      engagementId: row.engagement_id, sessionId: row.session_id,
+      operatorId: row.operator_id, agentType: row.agent_type,
+      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+      data: parsedData,
+      hash: undefined,
+      createdAt: row.created_at
+    }
+    const shapeV02: Record<string, unknown> = {
+      id: row.id, timestamp: row.timestamp,
+      engagementId: row.engagement_id, sessionId: row.session_id,
+      operatorId: row.operator_id, agentType: row.agent_type,
+      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+      data: parsedData,
       hash: undefined,
       prevHash: row.prev_hash,
       createdAt: row.created_at
     }
-    // monotonicNs / ntpOffsetMs handling: schema evolved over the v0.6.x
-    // line. Two historical shapes exist:
-    //   (a) both keys were absent from the hashed object
-    //   (b) both keys were present with the row's stored value (which may
-    //       itself be null on rows that predated the clock-integrity work)
-    // Try shape (a) first, fall back to shape (b). Either matching the
-    // stored hash is a good verification; only reject when BOTH differ.
-    const reconstructed = { ...base }
-    if (row.monotonic_ns != null) reconstructed.monotonicNs = row.monotonic_ns
-    if (row.ntp_offset_ms != null) reconstructed.ntpOffsetMs = row.ntp_offset_ms
-    const expectedHash = crypto.createHash('sha256').update(JSON.stringify(reconstructed)).digest('hex')
-    if (expectedHash !== row.hash) {
-      // Fallback: try the null-inclusive shape (some older code paths set
-      // monotonicNs / ntpOffsetMs to null explicitly and hashed that in).
-      const alt: Record<string, unknown> = { ...base, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
-      const altHash = crypto.createHash('sha256').update(JSON.stringify(alt)).digest('hex')
-      if (altHash !== row.hash) {
-        return {
-          ok: false,
-          walked,
-          brokenAtEventId: row.id,
-          brokenReason: `hash mismatch (recomputed ${expectedHash.slice(0, 16)}..., stored ${(row.hash ?? '').slice(0, 16)}...)`,
-          currentHead: currentHead?.hash ?? null,
-          anchor,
-          anchorMatchesWalkedHead: false,
-          clockAnomalies
-        }
+    const shapeV06: Record<string, unknown> = { ...shapeV02 }
+    if (row.monotonic_ns != null) shapeV06.monotonicNs = row.monotonic_ns
+    if (row.ntp_offset_ms != null) shapeV06.ntpOffsetMs = row.ntp_offset_ms
+    // Additional variant: v0.6 with explicit null values (some code paths
+    // spread the event object even when monotonicNs was null).
+    const shapeV06Null: Record<string, unknown> = { ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
+    const reconstructed = shapeV06
+    const sha = (obj: Record<string, unknown>): string =>
+      crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
+    const target = row.hash
+    // Try shapes in newest-first order — most events on a modern chain are v0.6.
+    const attempts: Array<{ label: string; hash: string }> = [
+      { label: 'v0.6', hash: sha(shapeV06) },
+      { label: 'v0.6+null', hash: sha(shapeV06Null) },
+      { label: 'v0.2', hash: sha(shapeV02) },
+      { label: 'v0.1', hash: sha(shapeV01) }
+    ]
+    const matched = attempts.find((a) => a.hash === target)
+    if (!matched) {
+      return {
+        ok: false,
+        walked,
+        brokenAtEventId: row.id,
+        brokenReason: `hash mismatch (tried ${attempts.map((a) => `${a.label}=${a.hash.slice(0, 8)}`).join(', ')}, stored ${(target ?? '').slice(0, 16)}...)`,
+        currentHead: currentHead?.hash ?? null,
+        anchor,
+        anchorMatchesWalkedHead: false,
+        clockAnomalies
       }
     }
+    void reconstructed  // shape-dependent, kept in scope for potential downstream use
 
     const key = `${row.hostname}|${row.session_id}`
     const prev = prevByHostSession.get(key)
