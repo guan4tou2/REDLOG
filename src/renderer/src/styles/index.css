@@ -36,3 +36,20 @@ body {
 .timeline-grabbing * {
   cursor: grabbing !important;
 }
+
+/* Respect prefers-reduced-motion (a11y). We use recording pulse, HUD alarm,
+ * EXPOSED-IP pulse, toast-in, spin-slow (loading), blinkRec, animate-pulse-slow
+ * and Tailwind's default animate-* utilities — none of which respected this
+ * OS-level setting before (ui-ux-pro-max-skill checklist / WCAG SC 2.3.3).
+ * We keep animations that are essential information (e.g. the recording dot
+ * still colours red) but freeze motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
