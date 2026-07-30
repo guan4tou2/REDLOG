@@ -56,15 +56,23 @@ export function ToastContainer(): JSX.Element | null {
 
   if (toasts.length === 0) return null
 
+  const dismiss = (id: number): void => setToasts((prev) => prev.filter((t) => t.id !== id))
+
   return (
     <div className="fixed bottom-12 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
       {toasts.map((t) => (
         <div
           key={t.id}
+          role="status"
           className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border backdrop-blur-md text-xs font-medium shadow-lg animate-toast-in pointer-events-auto ${TYPE_STYLES[t.type]}`}
         >
           <span className="text-[11px] opacity-70">{TYPE_ICONS[t.type]}</span>
-          {t.message}
+          <span>{t.message}</span>
+          <button
+            onClick={() => dismiss(t.id)}
+            className="ml-2 -mr-1 text-[10px] opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity"
+            aria-label="Dismiss"
+          >×</button>
         </div>
       ))}
     </div>
