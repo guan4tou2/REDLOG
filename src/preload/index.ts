@@ -164,7 +164,8 @@ contextBridge.exposeInMainWorld('redlog', {
       const handler = (_e: Electron.IpcRendererEvent, code: number) => cb(code)
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
-    }
+    },
+    replay: (eventId: string) => ipcRenderer.invoke('terminal:replay', eventId)
   },
   overlay: {
     toggle: () => ipcRenderer.send('overlay:toggle'),

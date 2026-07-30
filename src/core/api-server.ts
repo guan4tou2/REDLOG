@@ -25,6 +25,7 @@ import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
 import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
+import { readCastSlice } from './cast-slice'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
@@ -44,6 +45,7 @@ let server: http.Server | null = null
 let primaryToken = ''
 let listeningPort = 6660
 let engagementId = 'default'
+
 let primaryOperatorId = ''
 let primaryOperatorName = ''
 
@@ -57,13 +59,6 @@ let scopeMonitorRef: {
   getViolationCount: () => number
   checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean }
 } | null = null
-// Built-in terminals attach their per-command stdout buffer to the matching
-// command_end event. This ref is set by main so the api-server (core, no
-// electron deps) doesn't have to reach into the main-process module directly.
-let terminalCaptureRef: {
-  beginCommandCapture: (terminalId: string) => void
-  takeCommandOutput: (terminalId: string) => { output: string; truncated: boolean; bytes: number } | null
-} | null = null
 
 export function configureApi(opts: {
   engagementId: string
@@ -74,7 +69,6 @@ export function configureApi(opts: {
   screenshotAgent?: typeof screenshotAgentRef
   ipMonitor?: typeof ipMonitorRef
   scopeMonitor?: typeof scopeMonitorRef
-  terminalCapture?: typeof terminalCaptureRef
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
@@ -84,7 +78,6 @@ export function configureApi(opts: {
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.ipMonitor) ipMonitorRef = opts.ipMonitor
   if (opts.scopeMonitor) scopeMonitorRef = opts.scopeMonitor
-  if (opts.terminalCapture) terminalCaptureRef = opts.terminalCapture
 }
 
 // Runs an MCP tool directly against the same internal functions the REST
@@ -316,24 +309,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let pivotClose: ReturnType<typeof detectPivot> = null
       let cleanup: ReturnType<typeof detectCleanup> = null
       let fileXfer: ReturnType<typeof detectFileTransfer> = null
-      // Built-in-terminal stdout capture: on command_start, reset the buffer
-      // so the prompt/echo before this command doesn't leak into its output;
-      // on command_end, drain the buffer and stamp it as `output` + a
-      // truncation flag. Redaction below handles it just like external hook
-      // output. Guarded by data.source and data.terminalId so external hooks
-      // that don't share our pty are unaffected.
-      if (agentType === 'shell' && terminalCaptureRef && data.source === 'builtin-terminal' && typeof data.terminalId === 'string') {
-        if (data.subtype === 'command_start') {
-          terminalCaptureRef.beginCommandCapture(data.terminalId as string)
-        } else if (data.subtype === 'command_end') {
-          const captured = terminalCaptureRef.takeCommandOutput(data.terminalId as string)
-          if (captured && captured.output && !data.output) {
-            data.output = captured.output
-            data.output_bytes = captured.bytes
-            if (captured.truncated) data.output_truncated = true
-          }
-        }
-      }
 
       if (agentType === 'shell' && data.command) {
         const cmd = data.command as string
@@ -591,6 +566,48 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/operators' && req.method === 'GET') {
       json(res, 200, { operators: listOperators().map(publicOperator) })
+      return
+    }
+
+    // Replay a builtin-terminal command by pulling its stdout out of the
+    // asciinema .cast on disk instead of storing it in the chain. Given a
+    // command_end event id, we find the matching session_start (same
+    // terminalId) to get its castPath, then slice the .cast from the
+    // preceding command_start to command_end.
+    if (route === '/api/terminal/replay' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req)) as { eventId?: string }
+      const eventId = body.eventId
+      if (!eventId) { json(res, 400, { error: 'eventId required' }); return }
+      const target = queryEvents({ limit: 5000 }).find((e) => e.id === eventId)
+      if (!target) { json(res, 404, { error: 'event not found' }); return }
+      const td = target.data as Record<string, unknown>
+      const tid = td.terminalId as string | undefined
+      if (target.agentType !== 'shell' || td.subtype !== 'command_end' || td.source !== 'builtin-terminal' || !tid) {
+        json(res, 400, { error: 'not a builtin-terminal command_end event' }); return
+      }
+      // Find the session_start with matching terminalId (most recent one before target.timestamp)
+      const sessions = queryEvents({ agentType: 'shell', limit: 5000 })
+        .filter((e) => e.data?.subtype === 'session_start' && e.data.terminalId === tid && e.timestamp <= target.timestamp)
+      const sess = sessions[0]
+      const castPath = sess?.data?.castPath as string | undefined
+      if (!castPath) { json(res, 404, { error: 'no cast file for this session' }); return }
+      const duration = Number(td.duration_sec ?? 0) * 1000
+      // Guard against zero-duration events (instantaneous commands still get
+      // a small window so echoed prompt/output isn't lost to rounding).
+      const startMs = target.timestamp - Math.max(duration, 100)
+      const slice = readCastSlice(castPath, startMs, target.timestamp)
+      if (!slice) { json(res, 500, { error: 'failed to read cast file' }); return }
+      json(res, 200, {
+        command: td.command,
+        exitCode: td.exit_code,
+        durationSec: td.duration_sec,
+        castPath,
+        startMs,
+        endMs: target.timestamp,
+        bytes: slice.bytes,
+        text: slice.text,
+        truncated: slice.truncated
+      })
       return
     }
 

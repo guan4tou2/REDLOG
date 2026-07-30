@@ -19,13 +19,6 @@ interface TerminalSession {
   castBytes: number
   castTruncated: boolean
   finalised: boolean
-  // Per-command output buffer (audit — record full stdout so post-mortem can
-  // trace what actually printed, not just exit code). Starts fresh on
-  // command_start and gets attached to the matching command_end event; the
-  // API server pulls it out via takeCommandOutput() and runs it through
-  // redaction/spans just like external hook-sent output.
-  cmdBuffer: string
-  cmdBufferBytes: number
 }
 
 // Writes the session_end event (with the cast's SHA-256) exactly once.
@@ -82,11 +75,6 @@ let mainWindow: BrowserWindow | null = null
 let engagementId = ''
 let operatorId = ''
 let maxCastBytes = 50 * 1024 * 1024
-// Per-command stdout cap. 256 KB is a compromise: enough to keep the tail of a
-// full `id`/`whoami`/exploit run, small enough that a runaway `tail -f` won't
-// bloat the event row. Truncation is flagged on the event so the operator
-// knows to look at the .cast if they need the missing bytes.
-let maxCommandOutputBytes = 256 * 1024
 
 export function setTerminalWindow(win: BrowserWindow): void {
   mainWindow = win
@@ -133,7 +121,11 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
       ...process.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      REDLOG_TERMINAL: '1'
+      REDLOG_TERMINAL: '1',
+      // Terminal id in env so the hook can round-trip it back on command_end
+      // events. The api-server needs it to look up which session's stdout
+      // buffer to attach (see /api/events terminalCaptureRef.takeCommandOutput).
+      REDLOG_TERMINAL_ID: id
     } as Record<string, string>
   })
 
@@ -170,9 +162,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castStart,
     castBytes: 0,
     castTruncated: false,
-    finalised: false,
-    cmdBuffer: '',
-    cmdBufferBytes: 0
+    finalised: false
   }
 
   term.onData((data: string) => {
@@ -180,16 +170,6 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     session.buffer += data
     if (session.buffer.length > 8192) {
       session.buffer = session.buffer.slice(-4096)
-    }
-    // Grow the current-command output buffer. Capped at maxCommandOutputBytes
-    // to keep runaway commands (tail -f, cat huge file) from blowing up the DB
-    // row — anything past the cap is silently dropped and marked truncated on
-    // the command_end event.
-    if (session.cmdBufferBytes < maxCommandOutputBytes) {
-      const room = maxCommandOutputBytes - session.cmdBufferBytes
-      const chunk = data.length > room ? data.slice(0, room) : data
-      session.cmdBuffer += chunk
-      session.cmdBufferBytes += chunk.length
     }
     if (session.castStream && !session.castTruncated) {
       const encoded = JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', data]) + '\n'
@@ -265,31 +245,6 @@ export function killTerminal(id: string): void {
     session.pty.kill()
   } catch {}
   sessions.delete(id)
-}
-
-// Reset the current-command output buffer for a terminal session. Called by
-// the API server on command_start events with source: 'builtin-terminal' so
-// the prompt/echo that arrived before the hook fired isn't attributed to the
-// command that just started.
-export function beginCommandCapture(terminalId: string): void {
-  const s = sessions.get(terminalId)
-  if (!s) return
-  s.cmdBuffer = ''
-  s.cmdBufferBytes = 0
-}
-
-// Return + clear the accumulated stdout for a terminal session. Called by
-// the API server on command_end events; returns null if the session is gone
-// or capture never started.
-export function takeCommandOutput(terminalId: string): { output: string; truncated: boolean; bytes: number } | null {
-  const s = sessions.get(terminalId)
-  if (!s) return null
-  const output = s.cmdBuffer
-  const truncated = s.cmdBufferBytes >= maxCommandOutputBytes
-  const bytes = s.cmdBufferBytes
-  s.cmdBuffer = ''
-  s.cmdBufferBytes = 0
-  return { output, truncated, bytes }
 }
 
 export function listTerminals(): Array<{ id: string; pid: number; lastActivity: number }> {
