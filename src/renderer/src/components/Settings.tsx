@@ -13,7 +13,7 @@ interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number }
-  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean }
+  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   browser?: {
     binary: string
@@ -253,6 +253,43 @@ export default function Settings(): JSX.Element {
                 <span className="text-xs text-zinc-300">{t('settings.overlayFlashExposed')}</span>
               </label>
               <p className="text-[10px] text-zinc-600">{t('settings.overlayFlashExposedHint')}</p>
+
+              <div className="mt-3">
+                <label className="text-[10px] text-zinc-500 block mb-1">{t('settings.overlayScale')}</label>
+                <div className="flex gap-1.5">
+                  {[
+                    { v: 0.85, k: 'small' },
+                    { v: 1.0, k: 'normal' },
+                    { v: 1.25, k: 'large' },
+                    { v: 1.5, k: 'xlarge' }
+                  ].map(({ v, k }) => {
+                    const cur = config.overlay?.scale ?? 1.0
+                    const active = Math.abs(cur - v) < 0.01
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, scale: v } })}
+                        className={`px-3 py-1 text-[10px] rounded ${active ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
+                      >
+                        {t(`settings.overlayScale.${k}`)}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-zinc-600 mt-1">{t('settings.overlayScaleHint')}</p>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer mt-3">
+                <input
+                  type="checkbox"
+                  checked={config.overlay?.emphasizeExternalIp === true}
+                  onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: config.overlay?.showMarkButton !== false, emphasizeExternalIp: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.overlayEmphasizeIp')}</span>
+              </label>
+              <p className="text-[10px] text-zinc-600">{t('settings.overlayEmphasizeIpHint')}</p>
+
               {isMacOS && (
                 <>
                   <label className="flex items-center gap-2 cursor-pointer mt-2">

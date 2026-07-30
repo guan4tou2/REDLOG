@@ -18,6 +18,8 @@ export default function OverlayApp(): JSX.Element {
   const [interactive, setInteractive] = useState(false)
   const [showMark, setShowMark] = useState(true)
   const [flashExposed, setFlashExposed] = useState(true)
+  const [scale, setScale] = useState(1.0)
+  const [emphasizeIp, setEmphasizeIp] = useState(false)
   const pivots = usePivots()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -35,16 +37,22 @@ export default function OverlayApp(): JSX.Element {
       get?: () => Promise<unknown>
       onShowMark?: (cb: (show: boolean) => void) => () => void
       onFlashExposed?: (cb: (on: boolean) => void) => () => void
+      onScale?: (cb: (s: number) => void) => () => void
+      onEmphasizeIp?: (cb: (on: boolean) => void) => () => void
     } | undefined
     cfg?.get?.().then((c) => {
-      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean } } | null)?.overlay
+      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean } } | null)?.overlay
       setShowMark(ov?.showMarkButton !== false)
       setFlashExposed(ov?.flashOnExposed !== false)
+      if (typeof ov?.scale === 'number' && ov.scale > 0) setScale(ov.scale)
+      setEmphasizeIp(ov?.emphasizeExternalIp === true)
     }).catch(() => {})
     // live-update when the settings are toggled in Settings
     const off1 = cfg?.onShowMark?.(setShowMark)
     const off2 = cfg?.onFlashExposed?.(setFlashExposed)
-    return () => { off1?.(); off2?.() }
+    const off3 = cfg?.onScale?.(setScale)
+    const off4 = cfg?.onEmphasizeIp?.(setEmphasizeIp)
+    return () => { off1?.(); off2?.(); off3?.(); off4?.() }
   }, [])
 
   useEffect(() => {
@@ -75,6 +83,14 @@ export default function OverlayApp(): JSX.Element {
     window.redlog.overlay?.setExpanded(next)
   }
 
+  // fs = font-size scaler; ip = extra emphasis for the external IP.
+  // Clamp scale to a sane band so a rogue config can't blow the HUD up beyond
+  // useful. `autosize` picks up the new content height on every render so the
+  // window still fits without clipping.
+  const s = Math.max(0.75, Math.min(2, scale))
+  const fs = (n: number): number => Math.round(n * s * 10) / 10
+  const fsIp = (n: number): number => Math.round(n * s * (emphasizeIp ? 1.4 : 1) * 10) / 10
+
   const safety = status?.ipSafety ?? 'unknown'
   const link = status?.link
   const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
@@ -92,7 +108,7 @@ export default function OverlayApp(): JSX.Element {
     <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...pos }} />
   )
   const iconBtn: React.CSSProperties = {
-    color: CYAN, fontSize: 10, cursor: 'pointer', width: 18, height: 16,
+    color: CYAN, fontSize: fs(10), cursor: 'pointer', width: 18, height: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: interactive ? 'rgba(34,211,238,0.10)' : 'transparent',
     border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
@@ -133,41 +149,41 @@ export default function OverlayApp(): JSX.Element {
               stacked beneath it, and internal IP (right) with the Wi-Fi/wired name
               beneath it. Keeping the pivot in the external column stops it crowding
               the internal IP. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 54px 4px 14px', minHeight: 40, fontSize: 12, position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 54px 4px 14px', minHeight: 40, fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
+              <span style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
             {hair}
             <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined }} />
-            <span style={{ color: STATE, fontWeight: 700, fontSize: 10.5, letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
+            <span style={{ color: STATE, fontWeight: 700, fontSize: fs(10.5), letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0 }}>{status ? LABEL : '···'}</span>
             {/* external IP + pivot (left column) */}
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, flexShrink: 0, minWidth: 0, lineHeight: 1.15 }}>
               <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
-                <span style={{ color: VALUE, fontWeight: 600, whiteSpace: 'nowrap' }}>{status?.externalIP ?? '—'}</span>
+                <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
+                <span style={{ color: VALUE, fontWeight: 600, whiteSpace: 'nowrap', fontSize: fsIp(12) }}>{status?.externalIP ?? '—'}</span>
               </span>
               {latestPivot && (
                 <span
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', clipPath: 'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)', background: hexA(CYAN, 0.2), border: `1px solid ${hexA(CYAN, 0.6)}`, boxShadow: `0 0 5px ${hexA(CYAN, 0.2)}`, maxWidth: 160 }}
                   title={pivots.map((p) => `${p.tool} → ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
                 >
-                  <span style={{ color: CYAN, fontSize: 9, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                  <span style={{ color: '#bff2ff', fontSize: 9.5, fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
-                  {pivots.length > 1 && <span style={{ color: CYAN, fontSize: 8.5, fontWeight: 700 }}>+{pivots.length - 1}</span>}
+                  <span style={{ color: CYAN, fontSize: fs(9), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
+                  <span style={{ color: '#bff2ff', fontSize: fs(9.5), fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
+                  {pivots.length > 1 && <span style={{ color: CYAN, fontSize: fs(8.5), fontWeight: 700 }}>+{pivots.length - 1}</span>}
                 </span>
               )}
             </span>
             {/* internal IP + network name (right column) */}
             <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15 }}>
               <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
-                <span style={{ color: MUTED, fontSize: 8.5, letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
+                <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
                 <span style={{ color: '#9fd8e6', fontWeight: 500, whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
               </span>
               {linkText && (
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%', minWidth: 0 }}>
-                  <span style={{ color: MUTED, fontSize: 8, letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
-                  <span style={{ color: '#7fb8c6', fontWeight: 500, fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkText}</span>
+                  <span style={{ color: MUTED, fontSize: fs(8), letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
+                  <span style={{ color: '#7fb8c6', fontWeight: 500, fontSize: fs(10), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkText}</span>
                 </span>
               )}
             </span>
@@ -175,13 +191,13 @@ export default function OverlayApp(): JSX.Element {
 
           {/* expanded */}
           {expanded && (
-            <div style={{ padding: '0 14px 11px', fontSize: 11, position: 'relative', zIndex: 2 }}>
+            <div style={{ padding: '0 14px 11px', fontSize: fs(11), position: 'relative', zIndex: 2 }}>
               <div style={{ height: 1, background: `linear-gradient(90deg, ${FRAME}55, transparent)`, margin: '0 0 8px' }} />
               <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', rowGap: 5, alignItems: 'baseline' }}>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.status')}</span>
                 <span style={{ color: STATE, fontWeight: 600, textShadow: `0 0 8px ${STATE}55` }}>{STATUS_TXT}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.external')}</span>
-                <span style={{ color: VALUE }}>{status?.externalIP ?? '—'}</span>
+                <span style={{ color: VALUE, fontSize: fsIp(11) }}>{status?.externalIP ?? '—'}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.internal')}</span>
                 <span style={{ color: VALUE }}>{status?.internalIP ?? '—'}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.network')}</span>
@@ -191,24 +207,24 @@ export default function OverlayApp(): JSX.Element {
               </div>
 
               {safety === 'unknown' && (
-                <p style={{ color: '#ffcc44', fontSize: 9, marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint')}</p>
+                <p style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint')}</p>
               )}
 
               {pivots.length > 0 && (() => {
                 const chain = [...pivots].sort((a, b) => a.ts - b.ts)
-                const arrow = <span style={{ color: hexA(CYAN, 0.8), fontSize: 11, flexShrink: 0 }}>▸</span>
+                const arrow = <span style={{ color: hexA(CYAN, 0.8), fontSize: fs(11), flexShrink: 0 }}>▸</span>
                 const nodeClip = 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)'
                 const pill = (color: string, bg: string, brd: string, top: string, sub: string): JSX.Element => (
                   <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', padding: '3px 8px', clipPath: nodeClip, background: bg, border: `1px solid ${brd}`, flexShrink: 0, maxWidth: 150 }}>
-                    <span style={{ color, fontSize: 10, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 134 }}>{top}</span>
-                    <span style={{ color: MUTED, fontSize: 8, letterSpacing: '0.08em' }}>{sub.toUpperCase()}</span>
+                    <span style={{ color, fontSize: fs(10), fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 134 }}>{top}</span>
+                    <span style={{ color: MUTED, fontSize: fs(8), letterSpacing: '0.08em' }}>{sub.toUpperCase()}</span>
                   </span>
                 )
                 return (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
-                      <span style={{ color: CYAN, fontSize: 10, textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                      <span style={{ color: '#7fe6f7', fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em' }}>{t('overlay.topology').toUpperCase()}</span>
+                      <span style={{ color: CYAN, fontSize: fs(10), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
+                      <span style={{ color: '#7fe6f7', fontSize: fs(8.5), fontWeight: 700, letterSpacing: '0.14em' }}>{t('overlay.topology').toUpperCase()}</span>
                       <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
                     </div>
                     {/* our host outward: internal → external egress → pivot hops */}
@@ -227,12 +243,12 @@ export default function OverlayApp(): JSX.Element {
                 )
               })()}
 
-              {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: 10 }}>{status.error}</p>}
+              {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: fs(10) }}>{status.error}</p>}
 
               {showMark && (
                 <button
                   onClick={() => window.redlog.overlay?.quickMark()}
-                  style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
+                  style={{ ...noDrag, marginTop: 10, width: '100%', padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.14em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)', cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.18)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(34,211,238,0.08)')}
                   title={navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}
