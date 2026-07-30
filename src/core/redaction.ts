@@ -76,6 +76,10 @@ function matchesAny(patterns: string[], token: string): boolean {
 }
 
 export interface RedactionResult {
+  /** The ORIGINAL text, unchanged. The hash chain closes over this — the four-
+   *  layer design (see docs/redaction-design.md) treats capture as immutable and
+   *  only sanitizes bytes at export time. Callers that want the masked view
+   *  compose it via maskText() from the raw text + spans. */
   text: string
   redacted: Array<{ pattern: 'entropy' | 'denylist'; hint: string; start: number; end: number }>
 }
@@ -83,11 +87,17 @@ export interface RedactionResult {
 export function redact(text: string, rules: RedactionRules = effectiveRules()): RedactionResult {
   if (!text) return { text, redacted: [] }
   const redacted: RedactionResult['redacted'] = []
-  const out = text.replace(TOKEN_RE, (token, offset: number) => {
-    if (matchesAny(rules.allowlist, token)) return token
+  let m: RegExpExecArray | null
+  // Clone the regex per call so shared `TOKEN_RE.lastIndex` state can't leak
+  // between concurrent redact() calls (the module-level regex has /g).
+  const re = new RegExp(TOKEN_RE.source, TOKEN_RE.flags)
+  while ((m = re.exec(text)) !== null) {
+    const token = m[0]
+    const offset = m.index
+    if (matchesAny(rules.allowlist, token)) continue
     if (matchesAny(rules.denylist, token)) {
       redacted.push({ pattern: 'denylist', hint: `${token.length} chars`, start: offset, end: offset + token.length })
-      return '[REDACTED_DENY]'
+      continue
     }
     if (token.length >= rules.minLength) {
       const entropy = shannonEntropy(token)
@@ -98,10 +108,30 @@ export function redact(text: string, rules: RedactionRules = effectiveRules()): 
           start: offset,
           end: offset + token.length
         })
-        return `[REDACTED_ENTROPY_${entropy.toFixed(1)}]`
       }
     }
-    return token
-  })
-  return { text: out, redacted }
+  }
+  return { text, redacted }
+}
+
+/** Compose the masked view — replace each span with `char` repeated span-length
+ *  times. Used by the UI (mask-by-default), by clipboard-monitor's preview when
+ *  the operator has opted into a stored preview, and by `redlog-cli sanitize`
+ *  when writing an export bundle. The source text is never mutated in place —
+ *  callers get a new string. */
+export function maskText(text: string, spans: RedactionResult['redacted'], char = '•'): string {
+  if (!spans.length) return text
+  // Assume spans don't overlap (redact() emits non-overlapping matches). Sort
+  // by start ascending so a single-pass rebuild is straightforward.
+  const sorted = [...spans].sort((a, b) => a.start - b.start)
+  const parts: string[] = []
+  let cursor = 0
+  for (const s of sorted) {
+    if (s.start < cursor) continue // defensive: skip overlap with previous
+    parts.push(text.slice(cursor, s.start))
+    parts.push(char.repeat(Math.max(1, s.end - s.start)))
+    cursor = s.end
+  }
+  parts.push(text.slice(cursor))
+  return parts.join('')
 }
