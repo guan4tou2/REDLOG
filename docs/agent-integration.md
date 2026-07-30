@@ -12,7 +12,7 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
        │                │                │
   ┌────▼────┐    ┌──────▼──────┐   ┌─────▼─────┐
   │ Terminal │    │ MCP Server  │   │ HTTP API  │
-  │  Hooks   │    │ (19 tools)  │   │ (REST)    │
+  │  Hooks   │    │ (18 tools)  │   │ (REST)    │
   │  (log)   │    │ (operate)   │   │(universal)│
   └────┬────┘    └──────┬──────┘   └─────┬─────┘
        │                │                │
@@ -316,6 +316,14 @@ Submit the current chain head to public OpenTimestamps calendars immediately. Us
 Fast check: does the latest anchor still describe a prefix of the current chain? Compares event counts (not a full re-walk).
 
 **Returns:** `{ "ok": true, "anchor": { … }, "currentHead": "9f2c…" }`
+
+#### `redlog_chain_upgrade`
+
+Fetch upgraded OpenTimestamps proofs for `pending` anchors. Calendars need a few hours to fold your digest into a Bitcoin block; before that, receipts are proto-proofs. RedLog auto-upgrades every 6 hours; call this to force it (e.g. right before exporting a bundle).
+
+**Parameters:** `anchor_id?: string` — omit to upgrade all pending anchors.
+
+**Returns:** `{ "upgraded": 3, "totalPending": 3, "anchors": [ … ] }`
 
 #### `redlog_mark`
 

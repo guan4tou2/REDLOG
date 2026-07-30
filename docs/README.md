@@ -10,7 +10,7 @@ Wiki-style index for **v0.6.15**. Every page is self-contained; follow the links
 
 ## Start here
 
-- **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, the app-hosted MCP server (19 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing. If you're wiring an agent to RedLog, start here.
+- **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing. If you're wiring an agent to RedLog, start here.
 
 ## Integrations
 
@@ -60,7 +60,7 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 ## Machine-readable
 
-- **[codex-tools.json](codex-tools.json)** — OpenAI function-calling schema (14 functions). The MCP surface is broader (19 tools); use MCP for the full set.
+- **[codex-tools.json](codex-tools.json)** — OpenAI function-calling schema (18 functions, matches the MCP surface).
 
 ## Related source
 
