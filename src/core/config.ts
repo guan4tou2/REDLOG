@@ -2,6 +2,27 @@ import fs from 'fs'
 import path from 'path'
 import yaml from 'js-yaml'
 
+export interface VpnAdapter {
+  name: string
+  pattern: string
+  enabled: boolean
+}
+
+export const DEFAULT_VPN_ADAPTERS: VpnAdapter[] = [
+  { name: 'WireGuard', pattern: 'wireguard|^wg\\d', enabled: true },
+  { name: 'OpenVPN (tun/tap)', pattern: '^(tun|tap)\\d|openvpn', enabled: true },
+  { name: 'Tailscale', pattern: 'tailscale', enabled: true },
+  { name: 'NordVPN', pattern: 'nordlynx|nordvpn', enabled: true },
+  { name: 'ProtonVPN', pattern: 'proton', enabled: true },
+  { name: 'Cisco AnyConnect', pattern: 'cisco\\s*anyconnect', enabled: true },
+  { name: 'Fortinet / FortiClient', pattern: 'fortinet|forticlient', enabled: true },
+  { name: 'GlobalProtect', pattern: 'globalprotect', enabled: true },
+  { name: 'Juniper / Pulse Secure', pattern: 'juniper|pulse\\s*secure', enabled: true },
+  { name: 'IPSec', pattern: '^ipsec', enabled: true },
+  { name: 'PPP', pattern: '^ppp', enabled: true },
+  { name: 'macOS utun', pattern: '^utun', enabled: true },
+]
+
 export interface RedLogConfig {
   engagement: {
     id: string
@@ -24,6 +45,7 @@ export interface RedLogConfig {
     /** macOS gates the Wi-Fi SSID behind Location Services; opt in to request it
         so the HUD can show the real network name instead of a generic "Wi-Fi". */
     showWifiName: boolean
+    vpnAdapters: VpnAdapter[]
   }
   scope: {
     /** Whether to raise a violation event + red badge when a command's target
@@ -103,7 +125,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     providers: [],
     confirmations: 3,
     ipMode: 'auto',
-    showWifiName: false
+    showWifiName: false,
+    vpnAdapters: DEFAULT_VPN_ADAPTERS
   },
   scope: {
     warnOnViolation: true,
