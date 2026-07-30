@@ -39,7 +39,7 @@ import {
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
-import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, OpsecStateDelta } from './services/opsec-state'
+import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
 import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
@@ -355,6 +355,7 @@ function startProject(project: ProjectMeta): void {
     if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)
   } catch (e) { console.error('[plugins] init failed:', e) }
   configureDeconfliction(config.deconfliction)
+  setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
 
@@ -563,6 +564,7 @@ app.whenReady().then(() => {
     })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
+    setVpnAdapters(newConfig.network.vpnAdapters)
     // The HUD reads its config once at mount — push overlay settings so toggling
     // "show Mark button" takes effect live instead of only after a restart.
     send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
