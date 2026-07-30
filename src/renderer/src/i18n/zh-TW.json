@@ -388,6 +388,11 @@
   "settings.autoSaveHint": "修改後會自動儲存並即時套用(變更任務/操作員 ID 需重開專案)",
 
   "settings.mcp": "MCP 伺服器（給 AI agent）",
+  "settings.hookWatchPaths.title": "Claude Code Hook — Engagement 白名單",
+  "settings.hookWatchPaths.hint": "Claude Code 的 Bash tool 只有在 cwd 落在下列目錄之下 + RedLog 正在錄製時才會進 log。清單空白 = 什麼都不記（隱私優先，日常寫 code 不會流進 audit chain）。每個 engagement 專案的根目錄各加一條。",
+  "settings.hookWatchPaths.empty": "⚠ 清單空白 — 目前 Claude Code hook 什麼都不會記。加一條 engagement 路徑就會開始記錄。",
+  "settings.hookWatchPaths.remove": "移除此路徑",
+  "settings.hookWatchPaths.saved": "Hook 白名單已儲存。",
   "settings.mcpHint": "RedLog 自己用 HTTP 提供 MCP 伺服器 —— app 一開就上線,不用另外啟動子程序。用來讓 Claude Code / Cursor 操作 app:建立標記、檢查範圍、錨定證據鏈。記 log 仍走 hook,不走 MCP。",
   "settings.mcpLive": "MCP 已上線於 {{endpoint}}",
   "settings.mcpOffline": "開啟專案後 MCP 端點才會啟動。",

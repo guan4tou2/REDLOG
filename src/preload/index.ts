@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('redlog', {
     exportProfile: () => ipcRenderer.invoke('config:exportProfile'),
     importProfile: () => ipcRenderer.invoke('config:importProfile')
   },
+  hookConfig: {
+    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ watchPaths: string[] }>,
+    save: (cfg: { watchPaths: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>
+  },
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
     getCount: () => ipcRenderer.invoke('events:getCount'),

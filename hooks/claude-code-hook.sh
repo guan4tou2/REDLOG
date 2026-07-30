@@ -78,7 +78,27 @@ TOKEN=$(<"$REDLOG_TOKEN_FILE")
 INPUT=$(timeout 2 cat 2>/dev/null)
 [[ -n "$INPUT" ]] || exit 0
 
+# --- Privacy gate: only log Claude Code Bash calls when BOTH gates open ---
+# (1) RedLog is actively recording — a paused RedLog means the operator
+#     stepped away from the engagement.
+# (2) The cwd is inside one of the user's declared "engagement" paths —
+#     stops daily/hobby coding in unrelated directories from bleeding into
+#     the audit log.
+# The config file is $REDLOG_DIR/hook-config.json:
+#   {
+#     "watchPaths": [
+#       "~/Desktop/BugBounty",
+#       "~/Desktop/redlog"
+#     ]
+#   }
+# Missing file, missing "watchPaths", or empty list → NOTHING is logged
+# (privacy-first default; users have to opt in per path).
+HOOK_CONFIG="$REDLOG_DIR/hook-config.json"
+
 export INPUT
+export REDLOG_PORT="$PORT"
+export REDLOG_TOKEN="$TOKEN"
+export HOOK_CONFIG
 export CAPTURE_OUTPUT="${REDLOG_CAPTURE_OUTPUT:-1}"
 export MAX_OUTPUT="${REDLOG_MAX_OUTPUT:-500}"
 export REDACT_SECRETS="${REDLOG_REDACT_SECRETS:-1}"
@@ -87,7 +107,7 @@ export REDACT_SECRETS="${REDLOG_REDACT_SECRETS:-1}"
 # has to shuttle raw command text through the shell. Stderr suppressed —
 # a hook error must not leak to Claude Code's terminal.
 PAYLOAD=$(python3 <<'PY' 2>/dev/null
-import json, os, re, sys
+import json, os, re, sys, urllib.request
 
 raw = os.environ.get("INPUT", "")
 try:
@@ -101,6 +121,43 @@ if payload.get("tool_name") != "Bash":
 tool_input = payload.get("tool_input") or {}
 command = tool_input.get("command", "")
 if not command:
+    sys.exit(0)
+
+# --- Gate 1: cwd whitelist ---
+# Cheapest check first (local file read, no network). Missing / empty list
+# = privacy-first skip.
+cwd = payload.get("cwd", "") or ""
+watch_paths = []
+try:
+    with open(os.environ["HOOK_CONFIG"]) as f:
+        cfg = json.load(f)
+        watch_paths = cfg.get("watchPaths") or []
+except Exception:
+    watch_paths = []
+
+if not watch_paths:
+    sys.exit(0)
+
+expanded = [os.path.expanduser(p).rstrip("/") for p in watch_paths if p]
+if not any(cwd == p or cwd.startswith(p + "/") for p in expanded):
+    sys.exit(0)
+
+# --- Gate 2: RedLog is recording right now ---
+# One short HTTP call to the local API. Short timeout so a paused/stopped
+# RedLog doesn't wedge Claude Code's tool loop.
+try:
+    port = os.environ["REDLOG_PORT"]
+    token = os.environ["REDLOG_TOKEN"]
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/recording",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req, timeout=1) as resp:
+        rec = json.loads(resp.read().decode()).get("recording", False)
+except Exception:
+    # Can't reach the API — treat as "not recording", skip.
+    sys.exit(0)
+if not rec:
     sys.exit(0)
 
 capture = os.environ.get("CAPTURE_OUTPUT", "1") == "1"
