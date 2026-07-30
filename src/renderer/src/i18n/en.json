@@ -483,6 +483,7 @@
   "timeline.noEventsDesc": "Events will appear here as they are captured from shell, clipboard, screenshots, and other monitors.",
   "timeline.copyJson": "Copy JSON",
   "timeline.replay.button": "▶ Replay stdout (from .cast)",
+  "timeline.replay.sessionButton": "▶ Replay entire session (from .cast)",
   "timeline.replay.loading": "Loading…",
   "timeline.replay.failed": "Replay failed: {{error}}",
   "timeline.replay.empty": "(no output captured)",

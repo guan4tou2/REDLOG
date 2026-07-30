@@ -939,7 +939,17 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
             && selectedEvent.data?.subtype === 'command_end'
             && selectedEvent.data?.source === 'builtin-terminal'
             && (
-              <ReplayCommand eventId={selectedEvent.id} />
+              <ReplayCommand eventId={selectedEvent.id} mode="command" />
+            )}
+          {/* Session-level replay: for session_start / session_end, replays
+              the ENTIRE pty session. Critical when the operator ssh'd into
+              a remote host — command_end only shows the local `ssh` line;
+              session replay shows every keystroke and screen after that. */}
+          {selectedEvent.agentType === 'shell'
+            && (selectedEvent.data?.subtype === 'session_start' || selectedEvent.data?.subtype === 'session_end')
+            && selectedEvent.data?.source === 'builtin-terminal'
+            && (
+              <ReplayCommand eventId={selectedEvent.id} mode="session" />
             )}
           {showJson && (() => {
             const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
@@ -964,7 +974,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 // Pulled from the session's asciinema .cast on disk — not from the event
 // row. Rendering here keeps the chain event clean (command + exit + duration
 // only) while still letting the operator see what actually printed.
-function ReplayCommand({ eventId }: { eventId: string }): JSX.Element {
+function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 'command' | 'session' }): JSX.Element {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -973,7 +983,10 @@ function ReplayCommand({ eventId }: { eventId: string }): JSX.Element {
   const load = async (): Promise<void> => {
     setLoading(true)
     try {
-      const r = await window.redlog.terminal.replay?.(eventId)
+      const fn = mode === 'session'
+        ? window.redlog.terminal.replaySession
+        : window.redlog.terminal.replay
+      const r = await fn?.(eventId)
       if (!r) { setError('unsupported'); return }
       if (!r.ok) { setError(r.error ?? 'failed'); return }
       setText(r.text ?? '')
@@ -982,18 +995,21 @@ function ReplayCommand({ eventId }: { eventId: string }): JSX.Element {
       setLoading(false)
     }
   }
+  const btnLabel = mode === 'session' ? 'timeline.replay.sessionButton' : 'timeline.replay.button'
   if (!expanded) {
     return (
       <button
         onClick={load}
         disabled={loading}
         className="mt-1.5 text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
-      >{loading ? t('timeline.replay.loading') : t('timeline.replay.button')}</button>
+      >{loading ? t('timeline.replay.loading') : t(btnLabel)}</button>
     )
   }
   if (error) return <p className="mt-1.5 text-xs text-red-400">{t('timeline.replay.failed', { error })}</p>
+  // Session replays can be huge (whole ssh session); tall + scrollable.
+  const heightCls = mode === 'session' ? 'max-h-[400px]' : 'max-h-[200px]'
   return (
-    <pre className="mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+    <pre className={`mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed ${heightCls} overflow-y-auto whitespace-pre-wrap`}>
       {text || t('timeline.replay.empty')}
     </pre>
   )

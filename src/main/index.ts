@@ -1025,6 +1025,42 @@ app.whenReady().then(() => {
     }
   })
 
+  // Session-level replay: given a session_start or session_end event, walk
+  // the ENTIRE .cast file for that terminal. Used when the operator ssh'd
+  // into a remote host and needs to see everything that scrolled by after
+  // that — command_end alone only exposes the local `ssh` line.
+  ipcMain.handle('terminal:replaySession', async (_e, eventId: string) => {
+    try {
+      const { queryEvents } = await import('../core/db/events')
+      const { readCastSlice } = await import('../core/cast-slice')
+      const target = queryEvents({ limit: 5000 }).find((ev) => ev.id === eventId)
+      if (!target) return { ok: false, error: 'event not found' }
+      const td = target.data as Record<string, unknown>
+      const tid = td.terminalId as string | undefined
+      const subtype = td.subtype
+      if (target.agentType !== 'shell' || (subtype !== 'session_start' && subtype !== 'session_end') || td.source !== 'builtin-terminal' || !tid) {
+        return { ok: false, error: 'not a builtin-terminal session event' }
+      }
+      // For session_end the castPath is on that event itself; for
+      // session_start we look up the matching session_end (or use the
+      // session_start's own castPath if set).
+      let castPath = td.castPath as string | undefined
+      if (!castPath) {
+        const other = queryEvents({ agentType: 'shell', limit: 5000 })
+          .find((ev) => ev.data?.terminalId === tid && (ev.data?.subtype === 'session_start' || ev.data?.subtype === 'session_end') && ev.data?.castPath)
+        castPath = other?.data?.castPath as string | undefined
+      }
+      if (!castPath) return { ok: false, error: 'no cast file for this session' }
+      // Slice from 0 to a far future — readCastSlice bounds against the file
+      // itself. text captures the whole session, ANSI-stripped.
+      const slice = readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
+      if (!slice) return { ok: false, error: 'failed to read cast file' }
+      return { ok: true, castPath, text: slice.text, bytes: slice.bytes, truncated: slice.truncated }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
   // --- Scope-filtered export ---
   ipcMain.handle('data:exportScopeFiltered', () => {
     if (!activeProject) return null

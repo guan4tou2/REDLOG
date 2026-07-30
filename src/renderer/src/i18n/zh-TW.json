@@ -483,6 +483,7 @@
   "timeline.noEventsDesc": "來自 Shell、剪貼簿、截圖及其他監控的事件將顯示在此。",
   "timeline.copyJson": "複製 JSON",
   "timeline.replay.button": "▶ 回放此指令輸出(從 .cast)",
+  "timeline.replay.sessionButton": "▶ 回放整個 session(從 .cast)",
   "timeline.replay.loading": "載入中…",
   "timeline.replay.failed": "回放失敗：{{error}}",
   "timeline.replay.empty": "(沒有輸出)",
