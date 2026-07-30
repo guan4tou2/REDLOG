@@ -37,6 +37,25 @@ export interface RedactionContribution {
   allowlist?: string[]
 }
 
+/** 🟢 A command-pattern tagger: when the pattern matches a shell command, stamp
+ *  the listed fields onto the event's data. Used for tagging (e.g. MITRE
+ *  ATT&CK techniques) that shouldn't be hardcoded in the core since different
+ *  engagements use different tools — write your own patterns per shop, or let
+ *  the SIEM/backend (ELK, Splunk) do the tagging instead and disable this
+ *  plugin. All patterns whose match succeeds contribute their fields; later
+ *  matches don't overwrite fields already set by an earlier one. */
+export interface CommandTagContribution {
+  /** debug/dedup id — shown in Settings ▸ Plugins for individual disabling */
+  name: string
+  /** JS RegExp source matched against the full command string */
+  match: string
+  flags?: string
+  /** Fields to stamp onto the shell event's data. Values are constant strings.
+      Reserved: mitre_ttp, technique_tool, technique_category; anything else is
+      a free-form field the operator can filter/export on. */
+  stamp: Record<string, string>
+}
+
 /** 🟢 A target-extraction rule: for commands matching `cmd`, pull a host with `extract`. */
 export interface TargetExtractorContribution {
   /** JS RegExp source matched against the command's first token(s) */
@@ -92,6 +111,7 @@ export interface PluginContributes {
   // 🟢 declarative
   lootPatterns?: LootPatternContribution[]
   redaction?: RedactionContribution
+  commandTags?: CommandTagContribution[]
   targetExtractors?: TargetExtractorContribution[]
   eventTypes?: EventTypeContribution[]
   capture?: CaptureContribution[]

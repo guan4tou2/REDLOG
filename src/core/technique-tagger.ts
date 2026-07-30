@@ -1,29 +1,16 @@
-// MITRE ATT&CK auto-tagging for common red-team commands.
+// First-class detectors for actions that produce their own STRUCTURED companion
+// event (not just field tagging):
+//   • detectCleanup — anti-forensics; NIST SP 800-86 requires distinct tracking
+//   • detectFileTransfer — ingress/exfil, so file_transfer lane isn't dependent
+//     on an agent explicitly emitting one
 //
-// The pivot detector already emits a first-class `pivot` event with a MITRE
-// technique. This module extends the same pattern to two more axes:
-//
-//   1. Stampable tagging (tagTechnique) — recognizes recon, cred-access,
-//      execution, and defense-evasion patterns and returns {mitreTtp, tool} so
-//      the shell event itself carries an ATT&CK technique. Callers stamp the
-//      returned fields into event.data (Ghostwriter/VECTR ingestion can then
-//      map RedLog rows straight to ATT&CK procedures — a gap flagged in the
-//      2026 audit against Ghostwriter/VECTR/Bishop Fox conventions).
-//
-//   2. First-class cleanup events (detectCleanup) — anti-forensics actions are
-//      too important to bury inside a shell event; NIST SP 800-86 and "30 Days
-//      of Red Team" require them tracked distinctly so the operator has proof
-//      they did (or didn't) tamper with target logs.
+// MITRE technique tagging that used to live here moved to the plugin registry
+// (see src/core/command-tagger.ts + `commandTags` in docs/plugin-development.md).
+// Tagging is opinionated and stale-prone; a backend SIEM (ELK/Splunk) can
+// often do it better with more context. RedLog ships no commandTags out of the
+// box — install a plugin, or leave the raw shell events for the backend to tag.
 //
 // Both detectors are pure functions over a command string — no side effects.
-
-export interface Technique {
-  tool: string
-  /** MITRE ATT&CK technique ID (T####[.###]) */
-  mitreTtp: string
-  /** short human-readable category label */
-  category: 'recon' | 'cred_access' | 'execution' | 'defense_evasion' | 'discovery' | 'exfil'
-}
 
 export interface CleanupInfo {
   tool: string
@@ -39,45 +26,6 @@ function head(cmd: string): string {
 }
 
 /** Stamp a MITRE technique on the shell event when the tool is recognized. */
-export function tagTechnique(command: string): Technique | null {
-  const cmd = command.trim()
-  const first = head(cmd)
-
-  // --- Recon / Discovery ---
-  if (first === 'nmap' || first === 'masscan' || first === 'rustscan') return { tool: first, mitreTtp: 'T1046', category: 'recon' }
-  if (first === 'gobuster' || first === 'dirb' || first === 'dirbuster' || first === 'feroxbuster' || first === 'ffuf' || first === 'wfuzz') return { tool: first, mitreTtp: 'T1595.003', category: 'recon' }
-  if (first === 'nikto' || first === 'wpscan' || first === 'nuclei') return { tool: first, mitreTtp: 'T1595.002', category: 'recon' }
-  if (first === 'enum4linux' || first === 'smbclient' || first === 'smbmap' || first === 'rpcclient') return { tool: first, mitreTtp: 'T1135', category: 'discovery' }
-  if (first === 'dig' || first === 'nslookup' || first === 'host' || first === 'dnsrecon' || first === 'dnsenum' || first === 'amass' || first === 'subfinder') return { tool: first, mitreTtp: 'T1590.002', category: 'recon' }
-  if (first === 'theharvester' || first === 'recon-ng') return { tool: first, mitreTtp: 'T1589', category: 'recon' }
-
-  // --- Credential Access ---
-  if (first === 'hydra' || first === 'medusa' || first === 'ncrack' || first === 'patator') return { tool: first, mitreTtp: 'T1110.001', category: 'cred_access' }
-  if (first === 'hashcat' || first === 'john') return { tool: first, mitreTtp: 'T1110.002', category: 'cred_access' }
-  if (/mimikatz/i.test(first) || /mimikatz/i.test(cmd)) return { tool: 'mimikatz', mitreTtp: 'T1003.001', category: 'cred_access' }
-  if (first === 'secretsdump.py' || /secretsdump\.py/.test(cmd)) return { tool: 'secretsdump', mitreTtp: 'T1003.003', category: 'cred_access' }
-  if (first === 'crackmapexec' || first === 'cme' || first === 'netexec' || first === 'nxc') return { tool: first, mitreTtp: 'T1110', category: 'cred_access' }
-  if (first === 'kerbrute' || /GetUserSPNs\.py/.test(cmd) || /GetNPUsers\.py/.test(cmd)) return { tool: first || 'impacket', mitreTtp: 'T1558', category: 'cred_access' }
-  if (first === 'responder' || first === 'ntlmrelayx.py' || /ntlmrelayx/.test(cmd)) return { tool: first, mitreTtp: 'T1557.001', category: 'cred_access' }
-
-  // --- Execution ---
-  if (first === 'psexec.py' || /psexec\.py/.test(cmd) || first === 'wmiexec.py' || /wmiexec\.py/.test(cmd) || first === 'smbexec.py' || /smbexec\.py/.test(cmd)) return { tool: 'impacket', mitreTtp: 'T1021.002', category: 'execution' }
-  if (first === 'powershell' || first === 'pwsh') return { tool: first, mitreTtp: 'T1059.001', category: 'execution' }
-  if (first === 'msfconsole' || first === 'msfvenom') return { tool: first, mitreTtp: 'T1588.002', category: 'execution' }
-
-  // --- Defense Evasion / Payload staging ---
-  if (/base64\s+-d|base64\s+--decode/.test(cmd) && /(bash|sh|python|perl|node)/.test(cmd)) return { tool: 'base64-decode-exec', mitreTtp: 'T1027', category: 'defense_evasion' }
-
-  // --- File transfer (data-staging / ingress-tool-transfer) ---
-  // Detected here (not just in a separate file-transfer event) so recon-only
-  // wgets still get ATT&CK tagging. The dedicated file-transfer sibling event
-  // is emitted from detectFileTransfer.
-  if ((first === 'curl' || first === 'wget' || first === 'aria2c') && /-o\b|-O\b|--output|--remote-name/.test(cmd)) return { tool: first, mitreTtp: 'T1105', category: 'exfil' }
-  if (first === 'scp' || first === 'rsync' || first === 'sftp') return { tool: first, mitreTtp: 'T1105', category: 'exfil' }
-
-  return null
-}
-
 /** Anti-forensics / cleanup — always emit a dedicated cleanup event, not just a tag. */
 export function detectCleanup(command: string): CleanupInfo | null {
   const cmd = command.trim()
