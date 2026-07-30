@@ -40,7 +40,11 @@ export default function OverlayApp(): JSX.Element {
     // the max on every render. Given the layout (two IPv4-shaped values + a
     // few labels), a linear projection is accurate enough.
     const h = el.offsetHeight
-    const w = 440 + Math.round((scale - 1) * 180) + (emphasizeIp ? 44 : 0)
+    // Scale the window PROPORTIONALLY so shrinking the text also tightens the
+    // left-right whitespace (marginLeft: auto on the internal-IP column would
+    // otherwise inflate the middle gap at small scale). Base 440 for scale=1;
+    // clamps in main keep the result on-screen.
+    const w = Math.round(440 * scale) + (emphasizeIp ? Math.round(44 * scale) : 0)
     if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })?.autosize?.(h + 8, w)
   })
 
@@ -102,6 +106,11 @@ export default function OverlayApp(): JSX.Element {
   const s = Math.max(0.75, Math.min(2, scale))
   const fs = (n: number): number => Math.round(n * s * 10) / 10
   const fsIp = (n: number): number => Math.round(n * s * (emphasizeIp ? 1.4 : 1) * 10) / 10
+  // px() scales layout dimensions (padding, gap, separator sizes) with the
+  // same factor. Without this the middle gap stays fixed while text shrinks —
+  // small scale looks loose, large scale looks cramped.
+  const px = (n: number): number => Math.round(n * s)
+  const hair = <span style={{ width: 1, height: px(13), background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
 
   const safety = status?.ipSafety ?? 'unknown'
   const link = status?.link
@@ -126,7 +135,6 @@ export default function OverlayApp(): JSX.Element {
     border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
     transition: 'background 0.12s, border-color 0.12s'
   }
-  const hair = <span style={{ width: 1, height: 13, background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
   const latestPivot = pivots[0]
   const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
 
@@ -161,7 +169,7 @@ export default function OverlayApp(): JSX.Element {
               stacked beneath it, and internal IP (right) with the Wi-Fi/wired name
               beneath it. Keeping the pivot in the external column stops it crowding
               the internal IP. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 54px 4px 14px', minHeight: 40, fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: px(10), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(14)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
               <span style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
