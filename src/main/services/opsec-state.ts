@@ -30,8 +30,9 @@ function run(cmd: string, timeout = 2000): Promise<string> {
 }
 
 // VPN-shaped interface names: utun (macOS), tun/tap (Linux), ppp (both),
-// wg (WireGuard), ipsec, and common Windows VPN adapter prefixes. Non-active
-// interfaces (no assigned address) are ignored.
+// wg (WireGuard), ipsec, and common VPN adapter prefixes. On Windows,
+// os.networkInterfaces() returns display names so we also match known VPN
+// product names (WireGuard Tunnel, Cisco AnyConnect, Fortinet, etc.).
 function detectVpnInterfaces(): string[] {
   const ifaces = networkInterfaces()
   const vpn: string[] = []
@@ -40,6 +41,7 @@ function detectVpnInterfaces(): string[] {
     const hasReal = addrs.some((a) => !a.internal && a.address)
     if (!hasReal) continue
     if (/^(utun|tun|tap|wg|ppp|ipsec|nordlynx|proton|tailscale)/i.test(name)) vpn.push(name)
+    else if (process.platform === 'win32' && /(wireguard|cisco\s*anyconnect|fortinet|forticlient|juniper|pulse\s*secure|globalprotect|vpn)/i.test(name)) vpn.push(name)
   }
   return vpn.sort()
 }
@@ -62,7 +64,7 @@ function detectPrimaryMac(): string | null {
 async function detectDns(): Promise<string[]> {
   if (process.platform === 'win32') {
     // Get-DnsClientServerAddress returns one line per adapter+family; grab v4 servers.
-    const out = await run('powershell -NoProfile -Command "(Get-DnsClientServerAddress -AddressFamily IPv4 | ForEach-Object { $_.ServerAddresses }) -join \'\\n\'"')
+    const out = await run('powershell -NoProfile -Command "(Get-DnsClientServerAddress -AddressFamily IPv4 | ForEach-Object { $_.ServerAddresses }) -join [char]10"')
     return dedupe(out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))
   }
   if (process.platform === 'darwin') {
