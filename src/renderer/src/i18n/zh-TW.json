@@ -406,6 +406,10 @@
   "timeline.noEventsDesc": "來自 Shell、剪貼簿、截圖及其他監控的事件將顯示在此。",
   "timeline.copyJson": "複製 JSON",
   "timeline.fullData": "完整資料",
+  "timeline.reveal.show": "顯示 {{n}} 個機密",
+  "timeline.reveal.showHint": "顯示 {{fields}} 欄位的原始字元(會記錄一筆 system.secret_revealed 事件到 audit 鏈)",
+  "timeline.reveal.hide": "重新遮蔽",
+  "timeline.reveal.hideHint": "把原始字元隱藏起來",
 
   "dashboard.exportData": "匯出資料",
 
