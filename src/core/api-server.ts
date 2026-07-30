@@ -444,8 +444,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const agentType = url.searchParams.get('agent_type') || undefined
       const limit = parseInt(url.searchParams.get('limit') || '100')
       const since = url.searchParams.get('since') ? parseInt(url.searchParams.get('since')!) : undefined
+      const before = url.searchParams.get('before') ? parseInt(url.searchParams.get('before')!) : undefined
       const targetId = url.searchParams.get('target_id') || undefined
-      const events = queryEvents({ agentType, limit, since, targetId })
+      const events = queryEvents({ agentType, limit, since, before, targetId })
       json(res, 200, { count: events.length, events })
       return
     }

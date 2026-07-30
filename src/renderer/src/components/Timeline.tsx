@@ -249,9 +249,15 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   const loadMore = useCallback(() => {
     if (loading || allLoaded) return
     setLoading(true)
-    window.redlog.events.query({ limit: 200 }).then((fetched) => {
+    // Pagination anchor: the oldest timestamp we already have. Without this
+    // the query kept returning the same latest 200 and the auto-load
+    // triggered but never advanced (audit #3 follow-up).
+    const oldest = Array.from(eventsMapRef.current.values())
+      .reduce((min, e) => (e.timestamp < min ? e.timestamp : min), Number.MAX_SAFE_INTEGER)
+    const before = oldest !== Number.MAX_SAFE_INTEGER ? oldest : undefined
+    window.redlog.events.query({ limit: 200, before }).then((fetched) => {
       const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id) && !isHousekeeping(e))
-      if (fetched.every((e) => eventsMapRef.current.has(e.id) || isHousekeeping(e))) setAllLoaded(true)
+      if (fetched.length < 200) setAllLoaded(true)
       if (newOnes.length > 0) {
         newOnes.forEach((e) => eventsMapRef.current.set(e.id, e))
         setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
