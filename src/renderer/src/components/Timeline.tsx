@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } fr
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/mask'
+import { LoadingSpinner } from './Feedback'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -507,10 +508,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   if (loading && events.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
-          <span className="text-xs text-zinc-600">{t('common.loading')}</span>
-        </div>
+        <LoadingSpinner label={t('common.loading')} />
       </div>
     )
   }
