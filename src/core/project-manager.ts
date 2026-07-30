@@ -75,6 +75,20 @@ export function openProject(id: string): ProjectMeta | null {
   return project
 }
 
+// Rename display name only. The project ID + on-disk path stay stable so
+// existing hashes, evidence bundles, and cli references keep working — the
+// name change is UI-visible metadata, not a schema change.
+export function renameProject(id: string, name: string): ProjectMeta | null {
+  const clean = name.trim().slice(0, 120)
+  if (!clean) return null
+  const index = loadIndex()
+  const project = index.recent.find((p) => p.id === id)
+  if (!project) return null
+  project.name = clean
+  saveIndex(index)
+  return project
+}
+
 export function deleteProject(id: string): boolean {
   const index = loadIndex()
   const project = index.recent.find((p) => p.id === id)

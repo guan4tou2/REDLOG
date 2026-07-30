@@ -112,13 +112,34 @@ export default function TerminalView(): JSX.Element {
             }`}
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
-            <span className="truncate max-w-[100px]">{tab.label}</span>
-            {tab.pid > 0 && (
+            <span className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-zinc-600'}`}>{tab.label}</span>
+            {tab.pid > 0 && tab.alive && (
               <span className="text-[9px] text-zinc-600 font-mono">{tab.pid}</span>
+            )}
+            {!tab.alive && (
+              <button
+                onClick={(e) => {
+                  // Restart in place: swap the tab's id for a fresh one — React
+                  // unmounts the dead TerminalPane and mounts a new one at the
+                  // same slot with a new pty session. Preserves label + tab
+                  // order + active-tab focus. Audit finding #12.
+                  e.stopPropagation()
+                  const newId = `term-${Date.now()}-r${++tabCounter}`
+                  setTabs((prev) => prev.map((tb) => tb.id === tab.id ? { ...tb, id: newId, pid: 0, alive: true } : tb))
+                  if (activeTab === tab.id) setActiveTab(newId)
+                  // Clean up the dead pane's search-addon ref
+                  paneSearchRefs.current.delete(tab.id)
+                }}
+                className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-emerald-500/70 hover:text-emerald-400 hover:bg-emerald-950/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
+                title={t('terminal.restart')}
+                aria-label={t('terminal.restart')}
+              >↻</button>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-              className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 transition-opacity"
+              title={t('terminal.closeTitle')}
+              aria-label={t('terminal.closeTitle')}
             >
               ×
             </button>

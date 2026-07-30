@@ -17,7 +17,19 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
   const [warnOnViolation, setWarnOnViolation] = useState(true)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const { t } = useI18n()
+
+  async function handleRenameCommit(id: string): Promise<void> {
+    const name = renameValue.trim()
+    setRenamingId(null)
+    if (!name) return
+    const orig = projects.find((p) => p.id === id)?.name
+    if (name === orig) return
+    const updated = await (window.redlog.project as { rename?: (id: string, n: string) => Promise<ProjectMeta | null> }).rename?.(id, name)
+    if (updated) setProjects((prev) => prev.map((p) => p.id === id ? updated : p))
+  }
 
   // The whole UI runs on the preload bridge. If it's missing (e.g. the page was
   // opened in a plain browser instead of the RedLog app), every button silently
@@ -244,17 +256,41 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                 <div
                   key={p.id}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.03] cursor-pointer group transition-colors"
-                  onClick={() => handleOpen(p.id)}
+                  onClick={() => renamingId === p.id ? undefined : handleOpen(p.id)}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-red-500/40 group-hover:bg-red-500/80 transition-colors shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-zinc-200 text-[13px] font-medium truncate">{p.name}</div>
+                    {renamingId === p.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); handleRenameCommit(p.id) }
+                          if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
+                        }}
+                        onBlur={() => handleRenameCommit(p.id)}
+                        className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-zinc-200 text-[13px] font-medium font-mono focus:outline-none focus:border-red-500/50"
+                      />
+                    ) : (
+                      <div className="text-zinc-200 text-[13px] font-medium truncate">{p.name}</div>
+                    )}
                     <div className="text-zinc-600 text-[10px] font-mono">{timeAgo(p.lastOpened)}</div>
                   </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }}
+                    className="text-zinc-700 hover:text-zinc-300 focus:text-zinc-300 text-xs opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 transition-all px-1"
+                    title={t('project.rename')}
+                    aria-label={t('project.rename')}
+                  >
+                    ✎
+                  </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(p.id) }}
                     className="text-zinc-700 hover:text-red-400 focus:text-red-400 text-xs opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-all"
                     title={t('project.delete')}
+                    aria-label={t('project.delete')}
                   >
                     ✕
                   </button>

@@ -25,7 +25,17 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
   const [selected, setSelected] = useState<QuickMark | null>(null)
   const [creating, setCreating] = useState(false)
   const [browserTab, setBrowserTab] = useState<BrowserTabInfo | null>(null)
+  const [search, setSearch] = useState('')
   const { t } = useI18n()
+
+  const filteredMarks = search.trim()
+    ? marks.filter((m) => {
+        const q = search.toLowerCase()
+        return m.title.toLowerCase().includes(q)
+          || (m.url ?? '').toLowerCase().includes(q)
+          || (m.note ?? '').toLowerCase().includes(q)
+      })
+    : marks
 
   const refresh = useCallback(() => {
     window.redlog.quickmarks.list().then(setMarks)
@@ -94,8 +104,20 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             }
           </div>
         </div>
+        {/* Search bar — hidden until 5+ marks (audit #22). Filters title / URL /
+            note case-insensitively; live as the user types. */}
+        {marks.length >= 5 && (
+          <div className="px-2 py-1.5 border-b border-redlog-border">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('marks.searchPlaceholder')}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[11px] text-zinc-200 font-mono focus:outline-none focus:border-red-500/40 placeholder-zinc-700"
+            />
+          </div>
+        )}
         <div className="flex-1 overflow-auto">
-          {marks.map((m) => {
+          {filteredMarks.map((m) => {
             const tagColor = getTagColor(m.title)
             return (
               <button
@@ -116,9 +138,9 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
               </button>
             )
           })}
-          {marks.length === 0 && !creating && (
+          {filteredMarks.length === 0 && !creating && (
             <div className="p-4 text-xs text-zinc-600 text-center">
-              {t('marks.empty')}
+              {marks.length === 0 ? t('marks.empty') : t('marks.noSearchMatches', { query: search })}
             </div>
           )}
         </div>

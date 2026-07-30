@@ -176,7 +176,26 @@ export function TargetView(): JSX.Element {
                   <div className="flex items-center gap-2">
                     <span className="text-zinc-500 text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
                     {tgt.inScope === false && (
-                      <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
+                      <>
+                        <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
+                        <button
+                          onClick={async (e) => {
+                            // One-click round-trip to Settings ▸ Scope: append
+                            // this target to config.scope.targets and reload
+                            // scope config (audit #36).
+                            e.stopPropagation()
+                            const cfg = await window.redlog.config.get() as { scope?: { targets?: string[] } } | null
+                            const cur = cfg?.scope?.targets ?? []
+                            if (cur.includes(tgt.target)) return
+                            const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
+                            await window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
+                            setScopeTargets((prev) => prev.includes(tgt.target) ? prev : [...prev, tgt.target])
+                          }}
+                          className="text-[10px] text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
+                          title={t('targets.addToScope')}
+                          aria-label={t('targets.addToScope')}
+                        >+ 範圍</button>
+                      </>
                     )}
                     <span className="text-zinc-600 text-xs">{selected === tgt.target ? '▾' : '▸'}</span>
                   </div>

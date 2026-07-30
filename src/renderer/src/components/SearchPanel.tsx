@@ -31,6 +31,11 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [results, setResults] = useState<RedLogEvent[]>([])
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
+  // Type-filter chips: null = show all, non-null = only that agentType. Audit
+  // finding #57 — before this, "192.168" matching 200 shell events left no
+  // way to say "only screenshots". Kept client-side because the search
+  // backend uses full-text LIKE that doesn't take a WHERE agent_type filter.
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { t } = useI18n()
 
@@ -82,11 +87,35 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             {t('search.noResults', { query })}
           </div>
         )}
-        {results.length > 0 && (
+        {results.length > 0 && (() => {
+          // Bucket by agentType so the filter chips can show counts inline.
+          const byType = new Map<string, number>()
+          for (const e of results) byType.set(e.agentType, (byType.get(e.agentType) ?? 0) + 1)
+          const filtered = typeFilter ? results.filter((e) => e.agentType === typeFilter) : results
+          const types = [...byType.entries()].sort((a, b) => b[1] - a[1])
+          return (
           <>
-            <div className="text-zinc-500 text-xs mb-2">{t('search.results', { count: results.length })}</div>
+            <div className="text-zinc-500 text-xs mb-2">
+              {t('search.results', { count: filtered.length })}
+              {typeFilter && <> · <button onClick={() => setTypeFilter(null)} className="text-zinc-400 hover:text-zinc-200 underline">{t('search.clearFilter')}</button></>}
+            </div>
+            {types.length > 1 && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {types.map(([type, count]) => (
+                  <button
+                    key={type}
+                    onClick={() => setTypeFilter(typeFilter === type ? null : type)}
+                    className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                      typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                    }`}
+                  >
+                    <span className={TYPE_COLORS[type] || ''}>{type}</span> <span className="text-zinc-600">·{count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="space-y-1">
-              {results.map((e) => (
+              {filtered.map((e) => (
                 <button
                   key={e.id}
                   onClick={() => onOpenInTimeline?.(e.id, e.timestamp)}
@@ -110,7 +139,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
               ))}
             </div>
           </>
-        )}
+        )})()}
       </div>
     </div>
   )
