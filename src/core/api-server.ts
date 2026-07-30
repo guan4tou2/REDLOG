@@ -27,6 +27,7 @@ import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorB
 import { getChainLength } from './evidence-chain'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
+import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
@@ -587,6 +588,25 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       try {
         const bundle = exportBundle(engagementId)
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
+      } catch (e) {
+        json(res, 500, { error: (e as Error).message })
+      }
+      return
+    }
+
+    // Four-layer redaction, layer 4 — sanitize event bytes for pre-delivery.
+    // POST /api/sanitize { event_ids, fields, reason?, dry_run? }
+    if (route === '/api/sanitize' && req.method === 'POST') {
+      try {
+        const body = JSON.parse(await readBody(req))
+        const result = sanitize({
+          eventIds: Array.isArray(body.event_ids) ? body.event_ids : [],
+          fields: Array.isArray(body.fields) && body.fields.length ? body.fields : ['output', 'output_preview', 'command'],
+          engagementId, operatorId: operator.id,
+          reason: typeof body.reason === 'string' ? body.reason : undefined,
+          dryRun: body.dry_run === true
+        })
+        json(res, result.dryRun ? 200 : 201, result)
       } catch (e) {
         json(res, 500, { error: (e as Error).message })
       }

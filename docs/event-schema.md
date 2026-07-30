@@ -54,6 +54,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `config_changed` — security-relevant setting saved (scope targets, warn-on-violation, IP blacklist…) with a from→to diff
   - `browser_launched` — proxied browser opened
   - `secret_revealed` — reviewer clicked "Reveal" on an event whose data has redaction spans; records `source_event`, `fields`, and the viewing operator (four-layer redaction, layer 3 — see [redaction-design.md](redaction-design.md))
+  - `sanitized` — `redlog-cli sanitize --confirm` (or the REST equivalent) wrote sanitized bytes to the `sanitized_events` table for pre-delivery scrub; records `source_events`, `fields`, per-field `replacement_sha256`, and an optional `reason`. Source events are never mutated (four-layer redaction, layer 4)
   - `api_started`, `session_start`, `deconfliction_test` — housekeeping, hidden from Timeline by default
 
 ### `pivot` events
