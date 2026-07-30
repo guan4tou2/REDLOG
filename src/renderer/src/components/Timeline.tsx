@@ -517,16 +517,27 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   }, [])
   const showAllLanes = useCallback(() => setHiddenLanes(new Set()), [])
 
-  // Escape closes the event detail panel (audit finding #78 — Escape was
-  // wired into ConfirmDialog + modals but not here).
+  // Escape closes the event detail panel (audit finding #78). ↑/↓ walk the
+  // selected event across the visible list, respecting hidden-lane filters —
+  // audit #5. Skips inputs/textareas so typing in the search bar isn't hijacked.
   useEffect(() => {
     if (!selectedEvent) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') { setSelectedEvent(null); setShowJson(false) }
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+      if (e.key === 'Escape') { setSelectedEvent(null); setShowJson(false); return }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined)))
+        const i = visible.findIndex((ev) => ev.id === selectedEvent.id)
+        if (i < 0) return
+        const dir = e.key === 'ArrowUp' ? -1 : 1
+        const next = visible[i + dir]
+        if (next) { e.preventDefault(); setSelectedEvent(next) }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent])
+  }, [selectedEvent, events, hiddenLanes])
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return

@@ -155,6 +155,8 @@
   "marks.exportHint": "把所有 QuickMark 存成 JSON 檔",
   "loot.export": "匯出",
   "loot.exportHint": "把所有 loot 事件存成 JSON",
+  "loot.dedup": "去重",
+  "loot.noMatches": "沒有符合目前篩選的 loot。",
   "scope.export": "匯出",
   "scope.exportHint": "把所有 scope violation 存成 JSON",
   "marks.connected": "已連線",

@@ -448,6 +448,7 @@ function ScreenshotsView(): JSX.Element {
   // The event STAYS in the DB — we only unlink the JPEG, and a system.
   // screenshot_deleted audit event is appended (see main:screenshot:deleteFile).
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
+  const [triggerFilter, setTriggerFilter] = useState<string | null>(null)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -508,9 +509,30 @@ function ScreenshotsView(): JSX.Element {
           <p className="text-zinc-500 text-sm">{t('screenshots.empty')}</p>
           <p className="text-zinc-700 text-xs">{t('screenshots.emptyDesc')}</p>
         </div>
-      ) : (
+      ) : (() => {
+        // Trigger filter (audit #32) — all captures land in one grid mixing
+        // periodic / manual / mark-triggered. Chip toggles narrow the view.
+        const triggerCounts = new Map<string, number>()
+        for (const s of screenshots) triggerCounts.set(s.data.trigger as string, (triggerCounts.get(s.data.trigger as string) ?? 0) + 1)
+        const triggers = [...triggerCounts.entries()].sort((a, b) => b[1] - a[1])
+        const visibleShots = triggerFilter ? screenshots.filter((s) => s.data.trigger === triggerFilter) : screenshots
+        return (
+        <>
+        {triggers.length > 1 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {triggers.map(([trigger, count]) => (
+              <button
+                key={trigger}
+                onClick={() => setTriggerFilter(triggerFilter === trigger ? null : trigger)}
+                className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                  triggerFilter === trigger ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                }`}
+              >{trigger} <span className="text-zinc-600">·{count}</span></button>
+            ))}
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-2">
-          {screenshots.map((s) => (
+          {visibleShots.map((s) => (
             <div
               key={s.id}
               role="button"
@@ -562,7 +584,9 @@ function ScreenshotsView(): JSX.Element {
             </div>
           ))}
         </div>
-      )}
+        </>
+        )
+      })()}
       {expanded && thumbs[expanded] && (
         <div
           role="dialog"

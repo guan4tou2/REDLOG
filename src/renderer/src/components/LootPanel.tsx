@@ -13,6 +13,12 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   }>>([])
   const [lootCount, setLootCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  // Filter by loot type; null = show all. Chips appear at the top with counts.
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  // Dedup toggle: same (type, preview) captured from two commands used to
+  // appear twice — audit finding #18. Default on; a chip toggles it off if
+  // the operator wants the raw stream (e.g. verifying detection cadence).
+  const [dedupOn, setDedupOn] = useState(true)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -76,6 +82,35 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         )}
       </div>
 
+      {/* Filter + dedup chips (only when there's enough loot to matter) */}
+      {lootEvents.length > 0 && (() => {
+        const typeCounts = new Map<string, number>()
+        for (const le of lootEvents) for (const m of le.matches) typeCounts.set(m.type, (typeCounts.get(m.type) ?? 0) + 1)
+        const types = [...typeCounts.entries()].sort((a, b) => b[1] - a[1])
+        if (types.length < 2 && lootEvents.length < 5) return null
+        return (
+          <div className="flex flex-wrap gap-1 items-center">
+            {types.length > 1 && types.map(([type, count]) => (
+              <button
+                key={type}
+                onClick={() => setTypeFilter(typeFilter === type ? null : type)}
+                className={`px-2 py-0.5 text-[10px] font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                  typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                }`}
+              >
+                <span className={typeColor[type] || ''}>{type.replace(/_/g, ' ')}</span> <span className="text-zinc-600">·{count}</span>
+              </button>
+            ))}
+            <span className="ml-auto text-[10px] text-zinc-600">
+              <label className="cursor-pointer inline-flex items-center gap-1">
+                <input type="checkbox" checked={dedupOn} onChange={(e) => setDedupOn(e.target.checked)} className="accent-red-600" />
+                {t('loot.dedup')}
+              </label>
+            </span>
+          </div>
+        )
+      })()}
+
       {lootEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
@@ -84,9 +119,35 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
           <p className="text-sm text-zinc-500">{t('loot.empty')}</p>
           <p className="text-xs text-zinc-700 text-center max-w-xs">{t('loot.emptyDesc')}</p>
         </div>
-      ) : (
+      ) : (() => {
+        // Apply chip filter + optional dedup. Each source event keeps its own
+        // grouping so the "click card → jump to timeline" flow still lands on
+        // a real event id. Dedup collapses matches WITHIN + ACROSS events by
+        // (type, preview): a repeated aws_key from two commands shows once,
+        // attributed to its earliest sighting.
+        let list = lootEvents.map((le) => ({
+          ...le,
+          matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
+        })).filter((le) => le.matches.length > 0)
+        if (dedupOn) {
+          const seen = new Set<string>()
+          list = list.map((le) => ({
+            ...le,
+            matches: le.matches.filter((m) => {
+              const k = `${m.type}|${m.preview}`
+              if (seen.has(k)) return false
+              seen.add(k)
+              return true
+            })
+          })).filter((le) => le.matches.length > 0)
+        }
+        const filtered = list
+        return (
         <div className="space-y-2">
-          {lootEvents.map((le, i) => (
+          {filtered.length === 0 && (
+            <p className="text-zinc-600 text-xs">{t('loot.noMatches')}</p>
+          )}
+          {filtered.map((le, i) => (
             <div
               key={le.id || i}
               role={onOpenInTimeline ? 'button' : undefined}
@@ -131,7 +192,8 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             </div>
           ))}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

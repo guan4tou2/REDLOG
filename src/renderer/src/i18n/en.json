@@ -155,6 +155,8 @@
   "marks.exportHint": "Save all QuickMarks as JSON",
   "loot.export": "Export",
   "loot.exportHint": "Save all loot events as JSON",
+  "loot.dedup": "dedup",
+  "loot.noMatches": "No loot matches the current filter.",
   "scope.export": "Export",
   "scope.exportHint": "Save all scope violations as JSON",
   "marks.connected": "Connected",
