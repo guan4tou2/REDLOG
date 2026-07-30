@@ -14,22 +14,13 @@ interface NavItem {
   badgeColor?: string
 }
 
-// Bumped in v0.6.18 so existing users pick up the new default (timeline
-// promoted to second slot). Reorder via drag still persists per-user.
-const STORAGE_KEY = 'redlog-sidebar-order-v2'
-const DEFAULT_ORDER = ['dashboard', 'timeline', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks']
+// Shared with App.tsx's ⌘1..9 shortcut handler so the two orders can't
+// drift. See src/renderer/src/lib/sidebarOrder.ts.
+import { DEFAULT_ORDER, loadSidebarOrder, saveSidebarOrder } from '../lib/sidebarOrder'
 
-function loadOrder(): string[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      const parsed = JSON.parse(saved) as string[]
-      const hasAllItems = DEFAULT_ORDER.every((id) => parsed.includes(id))
-      if (Array.isArray(parsed) && hasAllItems) return parsed
-    }
-  } catch {}
-  return DEFAULT_ORDER
-}
+// Aliased so existing call sites don't need to change; the persistence lives
+// in the shared module now so App.tsx's ⌘1..9 handler sees the same order.
+const loadOrder = loadSidebarOrder
 
 // Vertical travel before a press counts as a reorder instead of a click. Kept
 // comfortably above the few px a normal click/tap drifts on a trackpad — a
@@ -109,7 +100,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
   }, [order])
 
   const onPointerUp = useCallback(() => {
-    if (didDrag.current) localStorage.setItem(STORAGE_KEY, JSON.stringify(order))
+    if (didDrag.current) saveSidebarOrder(order as import('../lib/sidebarOrder').SidebarViewId[])
     press.current = null
     setDraggingId(null)
   }, [order])
