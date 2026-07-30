@@ -696,6 +696,32 @@ app.whenReady().then(() => {
       return `data:image/jpeg;base64,${data.toString('base64')}`
     } catch { return null }
   })
+  // Delete only the underlying JPEG. The screenshot EVENT stays in the DB —
+  // rewriting it would break the hash chain (which is the whole point of the
+  // chain). Emits a system.screenshot_deleted event so the audit trail names
+  // when a file was purged, by whom, and its sha256 for later verification.
+  ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
+    try {
+      const screenshotDir = path.join(getProjectDir(), 'screenshots')
+      const resolved = path.resolve(filePath)
+      if (!resolved.startsWith(screenshotDir)) return { ok: false, error: 'path outside project' }
+      let sha256: string | null = null
+      try { sha256 = require('crypto').createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
+      fs.unlinkSync(resolved)
+      if (currentEngagementId && currentOperatorId) {
+        const ev = insertEvent('system', {
+          subtype: 'screenshot_deleted',
+          source_event: eventId,
+          path: path.basename(resolved),
+          sha256_pre_delete: sha256
+        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+        if (ev) eventBus.publish(ev)
+      }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
 
   // --- Scope ---
   ipcMain.handle('scope:getViolations', () => scopeMonitor.getViolations())
@@ -808,6 +834,23 @@ app.whenReady().then(() => {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
     return filePath
   })
+  // Per-view slice exports — audit finding #80. Same target directory + naming
+  // as the full export so the operator has one place to look. Each returns a
+  // path or null (no active project). Callers open the containing dir via
+  // shell.openPath after a successful save.
+  const sliceExport = (name: string, payload: unknown): string | null => {
+    if (!activeProject) return null
+    const projectDir = getProjectPath(activeProject)
+    const outDir = path.join(projectDir, 'exports')
+    fs.mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const filePath = path.join(outDir, `redlog-${name}-${ts}.json`)
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2))
+    return filePath
+  }
+  ipcMain.handle('data:exportMarks', () => sliceExport('marks', listQuickMarks()))
+  ipcMain.handle('data:exportLoot', () => sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })))
+  ipcMain.handle('data:exportViolations', () => sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 }).filter((e) => e.data?.subtype === 'scope_violation')))
 
   // --- Config Profile Export/Import ---
   ipcMain.handle('config:exportProfile', async () => {

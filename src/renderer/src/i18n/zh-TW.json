@@ -75,6 +75,10 @@
   "screenshots.captureNow": "立即擷取",
   "screenshots.empty": "擷取後截圖將顯示在此",
   "screenshots.diff": "差異 {{pct}}%",
+  "screenshots.deleted": "(檔案已刪除)",
+  "screenshots.deletedToast": "檔案已刪除;事件仍留在 hash chain 內",
+  "screenshots.deleteTitle": "刪除截圖檔案",
+  "screenshots.deleteConfirm": "只刪除 JPEG 檔;事件本體會留在 hash chain 內,並額外寫入一筆 system.screenshot_deleted 到 audit trail。確定?",
 
   "ip.checking": "正在檢查 IP...",
   "ip.safeIp": "安全 IP",
@@ -143,6 +147,12 @@
 
   "marks.title": "標記（{{count}}）",
   "marks.capture": "+ 擷取",
+  "marks.export": "匯出",
+  "marks.exportHint": "把所有 QuickMark 存成 JSON 檔",
+  "loot.export": "匯出",
+  "loot.exportHint": "把所有 loot 事件存成 JSON",
+  "scope.export": "匯出",
+  "scope.exportHint": "把所有 scope violation 存成 JSON",
   "marks.connected": "已連線",
   "marks.cdpDisconnected": "Chrome CDP 未連線",
   "marks.empty": "尚無標記。點擊 + 擷取 來書籤目前的瀏覽器狀態。",
@@ -426,6 +436,8 @@
   "toast.exported": "資料匯出成功",
   "toast.exportFailed": "匯出失敗",
   "toast.copied": "已複製到剪貼簿",
+  "toast.exportedTo": "已匯出至 {{path}}",
+  "toast.exportFailed": "匯出失敗",
   "toast.copiedMasked": "已複製(遮蔽後版本 — 點「顯示機密」後再複製可得原始位元組)",
 
   "terminal.shell": "終端",

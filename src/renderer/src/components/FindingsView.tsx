@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
+import { toast } from './Toast'
 
 const TAG_COLORS = [
   { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
@@ -59,10 +60,23 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
     <div className="flex h-full">
       <div className="w-80 border-r border-redlog-border flex flex-col">
         <div className="p-2 border-b border-redlog-border">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          <div className="flex items-center justify-between mb-2 gap-1">
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex-1 truncate">
               {t('marks.title', { count: marks.length })}
             </span>
+            {marks.length > 0 && (
+              <button
+                onClick={async () => {
+                  const p = await (window.redlog.data as { exportMarks?: () => Promise<string | null> }).exportMarks?.()
+                  if (p) toast(t('toast.exportedTo', { path: p }), 'success')
+                  else toast(t('toast.exportFailed'), 'error')
+                }}
+                className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+                title={t('marks.exportHint')}
+              >
+                {t('marks.export')}
+              </button>
+            )}
             <button
               onClick={quickCapture}
               className="px-2 py-1 text-[10px] bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"

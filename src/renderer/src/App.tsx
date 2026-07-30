@@ -15,7 +15,7 @@ import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
 import { LoadingSpinner } from './components/Feedback'
-import { ConfirmDialogContainer } from './components/ConfirmDialog'
+import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
@@ -443,16 +443,29 @@ function ScreenshotsView(): JSX.Element {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Track which screenshots have had their file purged in this session so the
+  // grid shows a placeholder + a "(deleted)" hint even before the next reload.
+  // The event STAYS in the DB — we only unlink the JPEG, and a system.
+  // screenshot_deleted audit event is appended (see main:screenshot:deleteFile).
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const { t } = useI18n()
 
   useEffect(() => {
-    window.redlog.events.query({ agentType: 'screenshot', limit: 50 }).then((s) => {
+    // Cap of 50 was hardcoded (audit finding #30). Bumped to 500 — matches the
+    // default limit used elsewhere in the app; for engagements with thousands
+    // of shots we'd want pagination but 500 covers the common case cleanly.
+    window.redlog.events.query({ agentType: 'screenshot', limit: 500 }).then((s) => {
       setScreenshots(s)
       setLoading(false)
     })
     return window.redlog.events.onNew((event) => {
       if (event.agentType === 'screenshot') {
-        setScreenshots((prev) => [event, ...prev].slice(0, 50))
+        setScreenshots((prev) => [event, ...prev].slice(0, 500))
+      }
+      // Someone else (e.g. the CLI) deleted a shot's file → mark it locally too.
+      if (event.agentType === 'system' && event.data?.subtype === 'screenshot_deleted') {
+        const src = event.data?.source_event as string | undefined
+        if (src) setDeletedIds((prev) => { const n = new Set(prev); n.add(src); return n })
       }
     })
   }, [])
@@ -503,24 +516,48 @@ function ScreenshotsView(): JSX.Element {
               role="button"
               tabIndex={0}
               aria-label={`Screenshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
-              className="rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
-              onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
+              className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
+              onClick={() => !deletedIds.has(s.id) && setExpanded(expanded === s.id ? null : s.id)}
+              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !deletedIds.has(s.id)) { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
             >
               <div className="aspect-video bg-neutral-900 flex items-center justify-center overflow-hidden">
-                {thumbs[s.id] ? (
+                {deletedIds.has(s.id) ? (
+                  <span className="text-zinc-700 text-xs italic">{t('screenshots.deleted')}</span>
+                ) : thumbs[s.id] ? (
                   <img src={thumbs[s.id]} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-neutral-700 text-xs">{(s.data.filename as string) ?? '...'}</span>
                 )}
               </div>
-              <div className="px-2 py-1">
-                <p className="text-[10px] text-neutral-500">
+              <div className="px-2 py-1 flex items-center justify-between gap-1">
+                <p className="text-[10px] text-neutral-500 flex-1 min-w-0 truncate">
                   {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
                     <span className="ml-1 text-zinc-600">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
                   )}
                 </p>
+                {!deletedIds.has(s.id) && (
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      const ok = await confirmDialog(t('screenshots.deleteTitle'), t('screenshots.deleteConfirm'), true)
+                      if (!ok) return
+                      const fp = s.data.filePath as string | undefined
+                      if (!fp) return
+                      const res = await (window.redlog.screenshot as unknown as { deleteFile: (id: string, p: string) => Promise<{ ok: boolean; error?: string }> }).deleteFile(s.id, fp)
+                      if (res.ok) {
+                        setDeletedIds((prev) => { const n = new Set(prev); n.add(s.id); return n })
+                        toast(t('screenshots.deletedToast'), 'success')
+                      } else {
+                        toast(res.error || 'Delete failed', 'error')
+                      }
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-[10px] text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
+                    title={t('screenshots.deleteTitle')}
+                    aria-label={t('screenshots.deleteTitle')}
+                  >×</button>
+                )}
               </div>
             </div>
           ))}

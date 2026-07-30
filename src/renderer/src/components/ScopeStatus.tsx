@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
+import { toast } from './Toast'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -33,7 +34,20 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
 
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
-      <h2 className="text-lg font-semibold text-white">{t('scope.title')}</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">{t('scope.title')}</h2>
+        {violations.length > 0 && (
+          <button
+            onClick={async () => {
+              const p = await (window.redlog.data as { exportViolations?: () => Promise<string | null> }).exportViolations?.()
+              if (p) toast(t('toast.exportedTo', { path: p }), 'success')
+              else toast(t('toast.exportFailed'), 'error')
+            }}
+            className="px-2.5 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+            title={t('scope.exportHint')}
+          >{t('scope.export')}</button>
+        )}
+      </div>
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
         <div className="flex items-center justify-between">

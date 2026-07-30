@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   screenshot: {
     capture: () => ipcRenderer.invoke('screenshot:capture'),
+    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath),
     read: (filePath: string): Promise<string | null> =>
       ipcRenderer.invoke('screenshot:read', filePath)
   },
@@ -89,7 +90,10 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson'),
-    exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered')
+    exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
+    exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
+    exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
+    exportViolations: () => ipcRenderer.invoke('data:exportViolations')
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),

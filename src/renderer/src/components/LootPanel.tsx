@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
+import { toast } from './Toast'
 
 export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -62,6 +63,17 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     <div className="p-4 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-white">{t('loot.title', { count: lootCount })}</h2>
+        {lootEvents.length > 0 && (
+          <button
+            onClick={async () => {
+              const p = await (window.redlog.data as { exportLoot?: () => Promise<string | null> }).exportLoot?.()
+              if (p) toast(t('toast.exportedTo', { path: p }), 'success')
+              else toast(t('toast.exportFailed'), 'error')
+            }}
+            className="px-2.5 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+            title={t('loot.exportHint')}
+          >{t('loot.export')}</button>
+        )}
       </div>
 
       {lootEvents.length === 0 ? (

@@ -75,6 +75,10 @@
   "screenshots.captureNow": "Capture Now",
   "screenshots.empty": "Screenshots will appear here when captured",
   "screenshots.diff": "{{pct}}% diff",
+  "screenshots.deleted": "(file deleted)",
+  "screenshots.deletedToast": "File deleted; the event stays in the hash chain",
+  "screenshots.deleteTitle": "Delete screenshot file",
+  "screenshots.deleteConfirm": "Deletes the JPEG file only. The event itself stays in the hash chain and a system.screenshot_deleted audit event is appended. Continue?",
 
   "ip.checking": "Checking IP...",
   "ip.safeIp": "Safe IP",
@@ -143,6 +147,12 @@
 
   "marks.title": "Marks ({{count}})",
   "marks.capture": "+ Capture",
+  "marks.export": "Export",
+  "marks.exportHint": "Save all QuickMarks as JSON",
+  "loot.export": "Export",
+  "loot.exportHint": "Save all loot events as JSON",
+  "scope.export": "Export",
+  "scope.exportHint": "Save all scope violations as JSON",
   "marks.connected": "Connected",
   "marks.cdpDisconnected": "Chrome CDP not connected",
   "marks.empty": "No marks yet. Click + Capture to bookmark the current browser state.",
@@ -426,6 +436,8 @@
   "toast.exported": "Data exported successfully",
   "toast.exportFailed": "Export failed",
   "toast.copied": "Copied to clipboard",
+  "toast.exportedTo": "Exported to {{path}}",
+  "toast.exportFailed": "Export failed",
   "toast.copiedMasked": "Copied (masked view — click Reveal first then Copy for raw bytes)",
 
   "terminal.shell": "Shell",
