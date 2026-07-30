@@ -235,6 +235,10 @@
   "settings.browserNotFound": "No Chromium-based browser found — set a path above",
 
   "settings.general": "General",
+  "settings.language": "Language",
+  "settings.hud": "HUD",
+  "settings.capture": "Capture",
+  "settings.integrations": "Integrations",
   "settings.team": "Team & Integrations",
   "settings.networkIp": "Network / IP",
   "settings.scope": "Scope",
