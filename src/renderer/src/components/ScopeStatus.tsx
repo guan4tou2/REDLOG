@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
+import { LoadingSpinner } from './Feedback'
 
 export function ScopeStatus(): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -26,9 +27,7 @@ export function ScopeStatus(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" />
-      </div>
+      <LoadingSpinner />
     )
   }
 
