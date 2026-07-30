@@ -20,6 +20,9 @@ export default function OverlayApp(): JSX.Element {
   const [flashExposed, setFlashExposed] = useState(true)
   const [scale, setScale] = useState(1.0)
   const [emphasizeIp, setEmphasizeIp] = useState(false)
+  // Pin: when true, the expanded HUD never auto-collapses. Session-local (not
+  // persisted). Toggle via a pin button in the compact bar. Audit finding #52.
+  const [pinned, setPinned] = useState(false)
   const pivots = usePivots()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -93,10 +96,10 @@ export default function OverlayApp(): JSX.Element {
   // them (audit finding P1 #15). `interactive` flips true when the mouse
   // enters the overlay window (main-process tracker).
   useEffect(() => {
-    if (!expanded || interactive) return
+    if (!expanded || interactive || pinned) return
     timerRef.current = setTimeout(() => collapse(), 8000)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [expanded, interactive])
+  }, [expanded, interactive, pinned])
 
   const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded(false) }
   const toggleExpand = (): void => {
@@ -165,8 +168,15 @@ export default function OverlayApp(): JSX.Element {
 
           {/* buttons */}
           <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag }}>
-            <div onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</div>
-            <div onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')}>✕</div>
+            {expanded && (
+              <div
+                onClick={() => setPinned((p) => !p)}
+                style={{ ...iconBtn, color: pinned ? HUD.red : CYAN }}
+                title={pinned ? t('overlay.unpin') : t('overlay.pin')}
+              >{pinned ? '📍' : '📌'}</div>
+            )}
+            <div onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</div>
+            <div onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</div>
           </div>
 
           {/* measured content — window auto-sizes to this */}
