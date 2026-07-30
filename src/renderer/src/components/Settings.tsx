@@ -148,6 +148,9 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
             </FieldGroup>
+            <FieldGroup title={t('settings.uiScale')}>
+              <UiScaleControl t={t} />
+            </FieldGroup>
           </>
         )}
 
@@ -1500,5 +1503,43 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
         </div>
       </div>
     </FieldGroup>
+  )
+}
+
+// Per-user UI zoom. Persisted to localStorage and applied to `document.body`
+// via a CSS var (`--app-zoom`), which body's zoom rule in index.css consumes.
+// Not part of engagement config: it's a personal viewing preference and
+// shouldn't sync across teammates on the same project.
+const UI_SCALE_KEY = 'redlog-app-zoom'
+const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
+  { value: 1.0, labelKey: 'settings.uiScale.small' },
+  { value: 1.1, labelKey: 'settings.uiScale.normal' },
+  { value: 1.2, labelKey: 'settings.uiScale.large' },
+  { value: 1.35, labelKey: 'settings.uiScale.xlarge' }
+]
+function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
+  const [scale, setScale] = useState<number>(() => {
+    const raw = parseFloat(localStorage.getItem(UI_SCALE_KEY) || '')
+    return Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1.1
+  })
+  useEffect(() => {
+    document.body.style.setProperty('--app-zoom', String(scale))
+    localStorage.setItem(UI_SCALE_KEY, String(scale))
+  }, [scale])
+  return (
+    <div className="flex gap-2 items-center">
+      {UI_SCALE_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => setScale(opt.value)}
+          className={`px-3 py-1.5 text-xs rounded ${
+            Math.abs(scale - opt.value) < 0.01
+              ? 'bg-red-600 text-white'
+              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+          }`}
+        >{t(opt.labelKey)}</button>
+      ))}
+      <span className="text-[10px] text-zinc-600 ml-2 font-mono">{Math.round(scale * 100)}%</span>
+    </div>
   )
 }

@@ -282,6 +282,11 @@
 
   "settings.general": "General",
   "settings.language": "Language",
+  "settings.uiScale": "Interface text size",
+  "settings.uiScale.small": "Compact",
+  "settings.uiScale.normal": "Normal",
+  "settings.uiScale.large": "Large",
+  "settings.uiScale.xlarge": "Extra large",
   "settings.hud": "HUD",
   "settings.capture": "Capture",
   "settings.integrations": "Integrations",

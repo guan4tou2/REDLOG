@@ -282,6 +282,11 @@
 
   "settings.general": "一般",
   "settings.language": "語言",
+  "settings.uiScale": "介面文字大小",
+  "settings.uiScale.small": "緊湊",
+  "settings.uiScale.normal": "正常",
+  "settings.uiScale.large": "大",
+  "settings.uiScale.xlarge": "特大",
   "settings.hud": "HUD",
   "settings.capture": "擷取",
   "settings.integrations": "整合",
