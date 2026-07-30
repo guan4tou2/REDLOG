@@ -14,7 +14,15 @@ export default function StatusBar(): JSX.Element {
   const { t } = useI18n()
 
   useEffect(() => {
-    const start = Date.now()
+    // Uptime is engagement-scoped: how long since the project was created,
+    // NOT how long since this window opened. Audit finding P1 #33 — closing
+    // and reopening the app used to reset the counter mid-engagement.
+    // Falls back to now() if project.active() hasn't resolved yet; the very
+    // first render can be off by a second, subsequent poll ticks correct.
+    let start = Date.now()
+    window.redlog.project.active().then((p) => {
+      if (p?.createdAt) start = p.createdAt
+    })
     window.redlog.ip.getStatus().then(setIpStatus)
     window.redlog.events.getCount().then(setEventCount)
     window.redlog.loot.getCount().then(setLootCount)

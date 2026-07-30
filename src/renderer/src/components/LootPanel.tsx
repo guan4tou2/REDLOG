@@ -77,8 +77,11 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
           {lootEvents.map((le, i) => (
             <div
               key={le.id || i}
+              role={onOpenInTimeline ? 'button' : undefined}
+              tabIndex={onOpenInTimeline ? 0 : undefined}
               onClick={() => onOpenInTimeline?.(le.id, le.timestamp)}
-              className={`bg-zinc-900 border border-zinc-800 rounded-lg p-3 ${onOpenInTimeline ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-zinc-900/60 transition-colors' : ''}`}
+              onKeyDown={onOpenInTimeline ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenInTimeline(le.id, le.timestamp) } } : undefined}
+              className={`bg-zinc-900 border border-zinc-800 rounded-lg p-3 ${onOpenInTimeline ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-zinc-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors' : ''}`}
               title={onOpenInTimeline ? t('loot.openInTimelineHint') : undefined}
             >
               <div className="flex items-start justify-between gap-2 mb-2">
