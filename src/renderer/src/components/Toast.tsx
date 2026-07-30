@@ -70,7 +70,7 @@ export function ToastContainer(): JSX.Element | null {
           <span>{t.message}</span>
           <button
             onClick={() => dismiss(t.id)}
-            className="ml-2 -mr-1 text-[10px] opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity"
+            className="ml-2 -mr-1 text-xs opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity"
             aria-label="Dismiss"
           >×</button>
         </div>

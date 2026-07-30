@@ -43,7 +43,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               if (p) toast(t('toast.exportedTo', { path: p }), 'success')
               else toast(t('toast.exportFailed'), 'error')
             }}
-            className="px-2.5 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+            className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
             title={t('scope.exportHint')}
           >{t('scope.export')}</button>
         )}
