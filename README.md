@@ -11,14 +11,14 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.65**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.66**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.6.65-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.65/RedLog-0.6.65-arm64.dmg) |
-| macOS (Intel) | [`RedLog-0.6.65.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.65/RedLog-0.6.65.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.6.65.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.65/RedLog.Setup.0.6.65.exe) |
-| Windows (portable) | [`RedLog.0.6.65.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.65/RedLog.0.6.65.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.6.66-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.66/RedLog-0.6.66-arm64.dmg) |
+| macOS (Intel) | [`RedLog-0.6.66.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.66/RedLog-0.6.66.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.66/RedLog.Setup.0.6.66.exe) |
+| Windows (portable) | [`RedLog.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.66/RedLog.0.6.66.exe) |
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
@@ -38,10 +38,12 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Entropy-based redaction** — high-entropy tokens and per-project allow/denylist patterns are auto-redacted from captured output
 - **Clock hardening** — every event carries wall-clock, monotonic, and NTP offset
 - **Deconfliction webhook** — optional signed feed to the blue team's SOC on marker / scope-violation / cred-use events ([details](docs/deconfliction.md))
-- **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end
+- **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end; the timeline exposes both **per-command replay** (▶ Replay stdout) and **full-session replay** (▶ Replay entire session) — critical when the operator ssh'd into a remote host and the local `ssh` command_end is the only chain entry from that stretch
 - **Built-in MCP server (HTTP)** — the app hosts its own MCP endpoint, live the moment RedLog opens; agents operate the app (markers, scope, anchoring) without spawning a subprocess ([details](docs/agent-integration.md#2-mcp-server-operate-the-app))
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
-- **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology ([details](docs/event-schema.md#pivot-events))
+- **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology; plain `ssh user@host` also fires a pivot so the timeline reflects "attention moved to a remote host" ([details](docs/event-schema.md#pivot-events))
+- **VPS deployment** — `hooks/vps-deploy.sh install user@vps && hooks/vps-deploy.sh tunnel user@vps` copies the shell hook to a remote box and opens a reverse-tunnel session, so every command run on the VPS lands in the local chain in real time
+- **Two-gate hook privacy** — the Claude Code hook only fires when RedLog is recording AND the cwd is not in the operator's exclusion list, so daily/hobby coding stays off the audit chain by default
 - **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (agent-operable MCP tools) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
@@ -514,6 +516,11 @@ npx electron-builder --linux
 ```
 
 Built artifacts go to `dist/`.
+
+## Release notes
+
+Per-version summary lives in [`CHANGELOG.md`](CHANGELOG.md); full commit
+messages via `gh release view v0.6.x`.
 
 ## License
 
