@@ -67,4 +67,29 @@ describe('extractTarget', () => {
   it('extracts from unknown command with URL', () => {
     expect(extractTarget('xh https://api.target.com/v1')).toBe('api.target.com')
   })
+
+  // v0.6.64 regression tests — fallback must NOT run DOMAIN_RE across arbitrary
+  // shell strings, otherwise dotted identifiers like `json.dumps` land in the
+  // targets panel as if they were hosts.
+  describe('unknown-command fallback (://-scheme required)', () => {
+    it('does not treat python module-paths as targets', () => {
+      expect(extractTarget('python -c "import json.dumps"')).toBeNull()
+      expect(extractTarget('python3 -m http.server')).toBeNull()
+    })
+
+    it('does not treat sourced hook paths as targets', () => {
+      expect(extractTarget('source ~/.redlog/shell-preexec-hook.sh')).toBeNull()
+      expect(extractTarget('. /opt/hooks/wrapper.sh')).toBeNull()
+    })
+
+    it('does not treat filenames-with-extensions as targets', () => {
+      expect(extractTarget('cat notes.txt')).toBeNull()
+      expect(extractTarget('open report.pdf')).toBeNull()
+    })
+
+    it('still extracts host when an unknown command carries an http(s) URL', () => {
+      expect(extractTarget('xh https://api.target.com/v1')).toBe('api.target.com')
+      expect(extractTarget('unknown-tool http://192.168.1.1:8080/foo')).toBe('192.168.1.1')
+    })
+  })
 })

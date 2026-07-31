@@ -3,6 +3,31 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.67 — 2026-08-01
+- **Fix**: `⌘/Ctrl+1..9` nav shortcuts silently missed the very first press
+  after launch. The renderer's `window.addEventListener('keydown')` only fires
+  when the webview has keyboard focus, and a fresh Electron launch (or a
+  project-picker unmount) can leave the window "active" at the OS level but
+  focus-less. `windows.ts` now calls `win.focus() + webContents.focus()` from
+  `ready-to-show`, so the first shortcut works.
+- **Tests**: new coverage for the three v0.6.60–64 modules that shipped
+  without unit tests — `cast-slice` (window slicing, ANSI strip, malformed
+  lines), `target-extractor` (the `://`-scheme fallback that killed the
+  `python -c "import json.dumps"` false positive), and `hooks-manager`'s
+  broken-shell-hook detector. Suite is now 223 → 234 tests, 23 files.
+- **E2E scaffold**: `e2e/smoke.spec.ts` + `playwright.config.ts` — one
+  Playwright-for-Electron smoke test that launches the built `out/main`,
+  asserts the first window title, and screenshots. Not wired to CI yet;
+  `npm run e2e` after `npm run build`. `@playwright/test` added to
+  devDependencies.
+- **Docs**: `docs/PLUGIN_MARKETPLACE.md` — v1 spec draft (git-repo-as-registry,
+  Ed25519 signing, two-step publisher-then-capability consent, revocation
+  list, threat model). Not implemented; unblocks the next design pass.
+- **Docs**: `docs/CLOUD_SHARE_BUNDLE.md` — v1 spec draft for post-engagement
+  cloud share (R2 + Workers default with mandatory BYO-bucket, hard redaction
+  gate before upload, 40-bit unguessable share URLs, magic-link auth). Also
+  spec-only.
+
 ## v0.6.65 — 2026-07-31
 - docs: agent hook plugin guide — three tiers (native API / SHELL wrapper /
   shell fallback), full Aider plugin skeleton, testing checklist. Anchors the

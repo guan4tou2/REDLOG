@@ -40,6 +40,14 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
       if (dpi <= 1) win.webContents.setZoomFactor(1.1)
     }
     win.show()
+    // Force keyboard focus into the webview. Without this, a `open -a` launch
+    // (or clicking a project card that unmounts the project picker) can leave
+    // the window "active" at the OS level but with no keyboard focus — the
+    // first Cmd+1..9 nav shortcut then silently misses because window
+    // keydown listeners never receive the event. Focusing the webContents
+    // makes the very first shortcut work.
+    win.focus()
+    win.webContents.focus()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

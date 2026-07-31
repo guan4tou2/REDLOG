@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectHooks } from '../src/core/hooks-manager'
+import { detectHooks, isBrokenShellHook } from '../src/core/hooks-manager'
 
 describe('hooks-manager guided setup', () => {
   const hooks = detectHooks()
@@ -27,6 +27,17 @@ describe('hooks-manager guided setup', () => {
     // the absolute addon path is baked into the copy-paste command
     expect(cmd).toContain(m.hookFile)
     expect(cmd).toContain('mitmproxy-addon.py')
+  })
+
+  it('recognises the pre-v0.6.47 $$$ pid marker as broken', () => {
+    // Both quote styles appeared in the wild — python & POSIX both wrote it.
+    expect(isBrokenShellHook("payload='{\"pid\": $$$}'")).toBe(true)
+    expect(isBrokenShellHook("payload=\"{'pid': $$$}\"")).toBe(true)
+  })
+
+  it('does not flag a hook that has $$ (correct PID substitution)', () => {
+    expect(isBrokenShellHook("payload='{\"pid\": $$}'")).toBe(false)
+    expect(isBrokenShellHook('#!/bin/bash\nset -e\n')).toBe(false)
   })
 
   it('codex is guided-manual with platform-appropriate steps', () => {
