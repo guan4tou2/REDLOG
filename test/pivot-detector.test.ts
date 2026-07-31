@@ -49,7 +49,23 @@ describe('detectPivot', () => {
   it('non-pivot command returns null', () => {
     expect(detectPivot('ls -la')).toBeNull()
     expect(detectPivot('nmap -sV example.com')).toBeNull()
-    expect(detectPivot('ssh user@host')).toBeNull() // plain ssh, no tunnel flag
+    // `ssh -V`, `ssh -Q cipher` have no hostname → still null.
+    expect(detectPivot('ssh -V')).toBeNull()
+    expect(detectPivot('ssh -Q cipher')).toBeNull()
+  })
+
+  it('interactive ssh into a remote host is recorded as a pivot', () => {
+    // Reason: operator jumped to a remote box; every command that follows
+    // is running there, and the timeline needs to show that attention
+    // moved. Was returning null before v0.6.60.
+    const p = detectPivot('ssh user@vps.example.com')
+    expect(p?.tool).toBe('ssh')
+    expect(p?.subtype).toBe('interactive')
+    expect(p?.via).toBe('vps.example.com')
+
+    const p2 = detectPivot('ssh user@host')
+    expect(p2?.tool).toBe('ssh')
+    expect(p2?.via).toBe('host')
   })
 })
 
