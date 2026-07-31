@@ -443,6 +443,14 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
 // file with the fresh bundled copy so future commands log again. Idempotent
 // (no-op if content already matches).
 //
+// Extracted so unit tests can exercise the "should this file get overwritten?"
+// decision without touching the user's real ~/.redlog files. See
+// autoUpgradeInstalledHooks below for the full flow.
+export function isBrokenShellHook(installed: string): boolean {
+  return installed.includes("'pid': $$$")
+    || installed.includes('"pid": $$$')
+}
+
 // Called from main-process startup after the API server is up.
 export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: string[] } {
   const upgraded: string[] = []
@@ -461,9 +469,7 @@ export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: strin
       // the known-broken markers, or has an old shebang line we've since
       // superseded. Anything else might be a user modification and we
       // shouldn't clobber it silently.
-      const looksBroken = installed.includes("'pid': $$$")
-        || installed.includes('"pid": $$$')
-      if (!looksBroken) continue
+      if (!isBrokenShellHook(installed)) continue
       copyFileSync(src, dest)
       upgraded.push(`${plugin.id} → ${dest}`)
     } catch (e) {
