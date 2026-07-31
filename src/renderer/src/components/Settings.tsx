@@ -1592,51 +1592,68 @@ function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
   )
 }
 
-// Whitelist of cwd prefixes that the Claude Code hook records against. Both
-// gates must open before an event is logged: (1) the cwd matches one of
-// these paths, and (2) RedLog is currently recording. An empty list here
-// means the hook records NOTHING — privacy-first default so a fresh install
-// doesn't quietly log a user's daily / hobby coding.
+// Exclusion list for the Claude Code hook. Default is "record every Bash
+// tool call from Claude" — that's the point of an AI audit trail. Users
+// can opt paths OUT here for personal/hobby folders they don't want on the
+// chain. Recording state gate (Settings ▸ ...) still applies globally.
 function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element {
-  const [paths, setPaths] = useState<string[]>([])
+  const [excluded, setExcluded] = useState<string[]>([])
+  const [legacyWatch, setLegacyWatch] = useState<string[]>([])
   const [draft, setDraft] = useState('')
   const [dirty, setDirty] = useState(false)
   useEffect(() => {
-    window.redlog.hookConfig.get().then((c) => setPaths(c.watchPaths || [])).catch(() => {})
+    window.redlog.hookConfig.get().then((c) => {
+      setExcluded(c.excludedPaths || [])
+      setLegacyWatch(c.watchPaths || [])
+    }).catch(() => {})
   }, [])
-  const commit = async (next: string[]): Promise<void> => {
-    setPaths(next)
+  const commit = async (nextExcluded: string[], dropLegacy = false): Promise<void> => {
+    setExcluded(nextExcluded)
     setDirty(true)
-    await window.redlog.hookConfig.save({ watchPaths: next })
+    await window.redlog.hookConfig.save({
+      excludedPaths: nextExcluded,
+      // Once the user touches the new UI, clear the v0.6.59 whitelist so it
+      // stops silently narrowing what's logged.
+      ...(dropLegacy || legacyWatch.length > 0 ? { watchPaths: [] } : {})
+    })
+    if (dropLegacy || legacyWatch.length > 0) setLegacyWatch([])
     setDirty(false)
     toast(t('settings.hookWatchPaths.saved'), 'success')
   }
-  const addPath = async (): Promise<void> => {
-    const p = draft.trim()
-    if (!p) return
-    if (paths.includes(p)) { setDraft(''); return }
-    setDraft('')
-    await commit([...paths, p])
+  const addPath = async (p: string): Promise<void> => {
+    const clean = p.trim()
+    if (!clean) return
+    if (excluded.includes(clean)) return
+    await commit([...excluded, clean])
   }
   const removePath = async (p: string): Promise<void> => {
-    await commit(paths.filter((x) => x !== p))
+    await commit(excluded.filter((x) => x !== p))
+  }
+  const pickFolder = async (): Promise<void> => {
+    const p = await window.redlog.hookConfig.pickPath()
+    if (p) await addPath(p)
   }
   return (
-    <FieldGroup title={t('settings.hookWatchPaths.title')}>
-      <p className="text-xs text-zinc-500 mb-3">{t('settings.hookWatchPaths.hint')}</p>
+    <FieldGroup title={t('settings.hookExcludedPaths.title')}>
+      <p className="text-xs text-zinc-500 mb-3">{t('settings.hookExcludedPaths.hint')}</p>
+      {legacyWatch.length > 0 && (
+        <p className="text-xs text-amber-500 font-mono px-2 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded mb-2">
+          {t('settings.hookExcludedPaths.legacyWarning', { paths: legacyWatch.join(', ') })}
+        </p>
+      )}
       <div className="space-y-1 mb-2">
-        {paths.length === 0 ? (
-          <p className="text-xs text-amber-500 font-mono px-2 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded">
-            {t('settings.hookWatchPaths.empty')}
+        {excluded.length === 0 ? (
+          <p className="text-xs text-zinc-500 font-mono px-2 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded">
+            {t('settings.hookExcludedPaths.empty')}
           </p>
-        ) : paths.map((p) => (
+        ) : excluded.map((p) => (
           <div key={p} className="flex items-center gap-2 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded">
             <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{p}</span>
             <button
               onClick={() => removePath(p)}
               className="text-xs text-red-400 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-              title={t('settings.hookWatchPaths.remove')}
-              aria-label={t('settings.hookWatchPaths.remove')}
+              title={t('settings.hookExcludedPaths.remove')}
+              aria-label={t('settings.hookExcludedPaths.remove')}
             >✕</button>
           </div>
         ))}
@@ -1645,11 +1662,16 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPath() } }}
-          placeholder="~/Desktop/BugBounty"
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPath(draft); setDraft('') } }}
+          placeholder="~/Documents/personal"
           className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
         />
-        <button onClick={addPath} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
+        <button
+          onClick={pickFolder}
+          className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+          title={t('settings.hookExcludedPaths.pickFolder')}
+        >📁 {t('settings.hookExcludedPaths.pickFolder')}</button>
+        <button onClick={() => { addPath(draft); setDraft('') }} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
       </div>
     </FieldGroup>
   )
