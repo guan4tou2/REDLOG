@@ -182,6 +182,124 @@ out-of-process and unprivileged: it can append events like any API client, but
 can't touch existing events or the chain. See
 [`examples/plugins/recon-pack`](../examples/plugins/recon-pack) for a full one.
 
+#### Wrapping a new AI agent (the practical guide)
+
+Every dedicated agent hook trades context for coverage. Pick the highest tier
+the agent gives you:
+
+| Tier | When | Effort | Context you get |
+|---|---|---|---|
+| **A. Native hook API** | Agent exposes hook events (Claude Code's `PostToolUse`) | Low | session_id, tool name/input/output, transcript path |
+| **B. SHELL wrapper** | Agent lets you override the shell it spawns (Codex `SHELL=…`) | Medium | full command line, exit code, cwd, agent name |
+| **C. Fallback: shell hook** | Agent just execs Bash and doesn't tell you it did | None (already covered by `shell-*` built-ins) | command + exit code; no agent attribution |
+
+Only bother writing a plugin for **A** or **B**. If the agent gives you
+nothing, the built-in `shell-zsh` / `shell-bash` already catches its output —
+just with the caller unknown.
+
+##### Choosing an installMethod
+
+The `installMethod` field decides how RedLog wires the hook into the operator's
+environment:
+
+- **`claude-settings`** — writes into `~/.claude/settings.json`'s `hooks` block.
+  Only usable when the target agent reads that file. Currently Claude Code is
+  the only one; if a new agent adopts the same convention, this will Just Work
+  for it too. RedLog picks the matcher name from `claudeSettingsMatcher`.
+- **`shell-source`** — copies the hook to `~/.redlog/<name>` and appends a
+  `source …` line to `shellRcFile` (default `.zshrc`). Fires on every shell
+  command; use it for wrappers whose entry point IS the shell.
+- **`manual`** — RedLog just prints the setup steps and lets the operator
+  paste them. Use for anything that needs manual `SHELL=…` env exports,
+  custom systemd units, or agent-specific config edits.
+
+##### Hook script contract
+
+Whichever tier you're in, the hook eventually POSTs one JSON object per event
+to `http://127.0.0.1:${port}/api/events`. Minimum shape:
+
+```jsonc
+{
+  "agent_type": "agent",           // or "shell" if command-line grade
+  "data": {
+    "subtype": "aider_tool_call",  // free-form; group in the timeline
+    "command": "sed -i s/a/b/ foo",
+    "output_preview": "…truncated…",
+    "session_id": "…",             // if the agent gives you one
+    "cwd": "/path/to/engagement",
+    "tool": "shell",
+    "wrapper": "aider"             // your plugin id
+  }
+}
+```
+
+Port + token live at `~/.redlog/api-port` and `~/.redlog/api-token`. Curl
+timeouts must be short (`--connect-timeout 1 --max-time 2`) so a paused or
+gone RedLog doesn't wedge the agent's tool loop.
+
+Read the two hooks you already have — they cover both extremes:
+
+- [`hooks/claude-code-hook.sh`](../hooks/claude-code-hook.sh) — Tier A. Reads
+  Claude Code's stdin JSON payload, applies redaction, POSTs. Also implements
+  the two-gate privacy filter (recording state + cwd exclusion) that any
+  new agent hook is welcome to inherit.
+- [`hooks/codex-wrapper.sh`](../hooks/codex-wrapper.sh) — Tier B. Wraps every
+  shell command spawned by Codex; fires a command_start before and a
+  command_end after with exit code + duration.
+
+##### Full example: Aider
+
+Aider is Tier B — it doesn't expose a hook event but runs everything through
+`sh -c`, so a SHELL wrapper works. `plugin.json`:
+
+```json
+{
+  "id": "aider",
+  "name": "Aider",
+  "version": "1.0.0",
+  "redlogApi": 1,
+  "contributes": {
+    "capture": [{
+      "id": "aider",
+      "name": "Aider",
+      "description": "Wrap the shell Aider spawns so tool calls hit RedLog",
+      "agentType": "agent",
+      "requires": ["aider"],
+      "hookFile": "hooks/aider-wrapper.sh",
+      "installMethod": "manual",
+      "manualSteps": [
+        { "label": "Aider spawns /bin/sh for tool calls — point it at the wrapper" },
+        { "label": "Add to your shell profile", "command": "export AIDER_SHELL=\"{hookFile}\"" }
+      ]
+    }]
+  }
+}
+```
+
+`hooks/aider-wrapper.sh` mirrors `codex-wrapper.sh` — POST a `command_start`
+before `exec sh -c "$*"`, POST a `command_end` with `$?` after. Everything else
+(agent detection, redaction, filtering) reuses the same machinery.
+
+##### Testing your plugin
+
+1. Drop the plugin dir under `~/.redlog/plugins/` or your project's
+   `.redlog/plugins/`.
+2. Restart RedLog (or click **Reload** in Settings ▸ Plugins).
+3. The plugin should appear in Settings ▸ Plugins as 🟢 declarative and in
+   Settings ▸ Hooks as an installable capture.
+4. Fire the hook manually with a synthetic payload:
+   ```bash
+   AIDER_SHELL_CMD='echo test' bash hooks/aider-wrapper.sh -c 'echo test'
+   ```
+5. Verify the event lands via CLI or timeline:
+   ```bash
+   redlog-cli events --agent_type agent --limit 3
+   ```
+
+If nothing shows up, run the hook with `bash -x` and look for
+`REDLOG_DIR`/API responses — 99% of the time it's a missing token file
+(RedLog not running) or a payload the API rejects.
+
 ---
 
 ## 🔴 Privileged code contributions
