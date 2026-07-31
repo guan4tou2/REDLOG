@@ -23,7 +23,13 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* zoom scales the layout box in Chromium — a naive `zoom: 1.1` combined
+   * with any child using `h-screen` (100vh) makes the child overflow the
+   * window by 10%, hiding the StatusBar and Timeline event log below the
+   * visible area. Pre-shrink body's height by the inverse zoom so the
+   * on-screen render lines up with the viewport again. */
   zoom: var(--app-zoom, 1.1);
+  height: calc(100vh / var(--app-zoom, 1.1));
 }
 
 ::-webkit-scrollbar {

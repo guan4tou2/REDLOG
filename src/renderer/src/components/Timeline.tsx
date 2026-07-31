@@ -101,7 +101,12 @@ function isHookSource(cmd: unknown): boolean {
 function isHousekeeping(e: RedLogEvent): boolean {
   const s = e.data?.subtype as string | undefined
   if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start' || s === 'deconfliction_test')) return true
-  if (e.agentType === 'shell' && (s === 'session_start' || s === 'session_end')) return true
+  // shell.session_start is redundant with session_end (which has the full
+  // castPath + duration), and it fires before there's anything to replay.
+  // session_end is kept visible so operators can click it and use the
+  // "▶ Replay entire session" button — critical when the session ssh'd
+  // into a remote host and the local command_end row only shows `ssh`.
+  if (e.agentType === 'shell' && s === 'session_start') return true
   if (e.agentType === 'terminal' && s === 'session_start') return true
   if (e.agentType === 'shell' && (s === 'command_start' || s === 'command') && isHookSource(e.data?.command)) return true
   return false
@@ -833,13 +838,16 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           </div>
         </div>
 
-        {/* Event log — bottom panel */}
-        <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/50" style={{ height: selectedEvent ? 160 : 180 }}>
+        {/* Event log — bottom panel. Sized in vh (was hardcoded 160/180 px)
+            so the +1-step hint font from v0.6.56 doesn't push rows off the
+            bottom, and so the panel scales with window height. Values chosen
+            so the list shows ~5 rows at 900 px tall and ~8 at 1200 px. */}
+        <div className="shrink-0 border-t border-zinc-800/60 bg-zinc-950/50" style={{ height: selectedEvent ? '18vh' : '22vh' }}>
           <div className="px-3 py-1.5 border-b border-zinc-800/40 flex items-center justify-between">
             <span className="text-xs text-zinc-500 font-mono uppercase tracking-wider">{t('timeline.title')}</span>
             <span className="text-xs text-zinc-600 font-mono tabular-nums">{recentEvents.length}</span>
           </div>
-          <div className="overflow-y-auto" style={{ height: selectedEvent ? 128 : 148 }}>
+          <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent ? '18vh' : '22vh'} - 32px)` }}>
             {recentEvents.map((evt) => {
               const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined)
               const isSel = selectedEvent?.id === evt.id
@@ -870,7 +878,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
       {/* Enhanced detail panel */}
       {selectedEvent && (
-        <div ref={detailPanelRef} className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[240px] overflow-y-auto">
+        <div ref={detailPanelRef} className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[45vh] overflow-y-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }} />
