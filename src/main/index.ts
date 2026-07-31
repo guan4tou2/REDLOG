@@ -37,7 +37,7 @@ import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
 } from './terminal-manager'
-import { detectHooks, installHook, uninstallHook } from '../core/hooks-manager'
+import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
@@ -442,6 +442,22 @@ function startProject(project: ProjectMeta): void {
     insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
   })
 
+  // Silently repair any pre-v0.6.47 shell hook still sitting in ~/.redlog/.
+  // If nothing needs upgrading this is a no-op. Emits a system event when
+  // it does upgrade so operators see the change in the timeline instead of
+  // having a file mutate under them without record.
+  try {
+    const { upgraded, failed } = autoUpgradeInstalledHooks()
+    if (upgraded.length > 0 || failed.length > 0) {
+      insertEvent('system', {
+        subtype: 'hook_auto_upgrade',
+        upgraded,
+        failed,
+        reason: 'pre-v0.6.47 $$$ pid bug'
+      }, { engagementId, operatorId })
+    }
+  } catch { /* best effort — never block startup */ }
+
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
   startAnchorLoop()
@@ -589,16 +605,39 @@ app.whenReady().then(() => {
     try {
       const raw = fs.readFileSync(HOOK_CONFIG_PATH, 'utf-8')
       const parsed = JSON.parse(raw)
-      return { watchPaths: Array.isArray(parsed.watchPaths) ? parsed.watchPaths : [] }
-    } catch { return { watchPaths: [] } }
+      return {
+        excludedPaths: Array.isArray(parsed.excludedPaths) ? parsed.excludedPaths : [],
+        // Legacy: older configs used watchPaths (whitelist). Kept readable so
+        // an existing config isn't lost, but no new UI writes it.
+        watchPaths: Array.isArray(parsed.watchPaths) ? parsed.watchPaths : []
+      }
+    } catch { return { excludedPaths: [], watchPaths: [] } }
   })
-  ipcMain.handle('hookConfig:save', (_e, cfg: { watchPaths: string[] }) => {
+  ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => {
     try {
       fs.mkdirSync(path.dirname(HOOK_CONFIG_PATH), { recursive: true })
-      const clean = { watchPaths: (cfg.watchPaths ?? []).map((s) => String(s).trim()).filter(Boolean) }
+      const clean: Record<string, string[]> = {
+        excludedPaths: (cfg.excludedPaths ?? []).map((s) => String(s).trim()).filter(Boolean)
+      }
+      // Preserve legacy watchPaths only if the caller sends it (so upgrading a
+      // v0.6.59 config through the new UI drops the old key on next save).
+      if (cfg.watchPaths !== undefined) {
+        clean.watchPaths = cfg.watchPaths.map((s) => String(s).trim()).filter(Boolean)
+      }
       fs.writeFileSync(HOOK_CONFIG_PATH, JSON.stringify(clean, null, 2) + '\n')
       return true
     } catch { return false }
+  })
+  // Native folder picker for the Settings UI — text input is fine but a
+  // real picker matches how operators actually pick engagement folders.
+  ipcMain.handle('hookConfig:pickPath', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Pick a folder to exclude from RedLog'
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
   })
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig) => {
     if (!activeProject) return false

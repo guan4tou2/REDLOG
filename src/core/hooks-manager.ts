@@ -431,3 +431,44 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
       return { success: false, message: `Manual removal required for ${plugin.name}` }
   }
 }
+
+// Auto-upgrade previously-installed shell-source hook files.
+//
+// Reason: the shell hook shipped with a `'pid': $$$` typo from v0.6.20
+// through v0.6.46. Any user who installed the shell hook during that
+// window has a copy of the buggy script sitting at `~/.redlog/…`, and
+// their preexec/precmd chain still calls it — every command_start /
+// command_end silently no-ops because the embedded python `$$$` fails to
+// parse. Once RedLog runs after v0.6.47, quietly overwrite the installed
+// file with the fresh bundled copy so future commands log again. Idempotent
+// (no-op if content already matches).
+//
+// Called from main-process startup after the API server is up.
+export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: string[] } {
+  const upgraded: string[] = []
+  const failed: string[] = []
+  for (const plugin of allManifests()) {
+    if (plugin.installMethod !== 'shell-source') continue
+    const dest = installTargetFor(plugin)
+    if (!existsSync(dest)) continue
+    const src = srcPathFor(plugin)
+    if (!existsSync(src)) continue
+    try {
+      const installed = readFileSync(dest, 'utf-8')
+      const bundled = readFileSync(src, 'utf-8')
+      if (installed === bundled) continue
+      // Heuristic: only overwrite when the installed version has one of
+      // the known-broken markers, or has an old shebang line we've since
+      // superseded. Anything else might be a user modification and we
+      // shouldn't clobber it silently.
+      const looksBroken = installed.includes("'pid': $$$")
+        || installed.includes('"pid": $$$')
+      if (!looksBroken) continue
+      copyFileSync(src, dest)
+      upgraded.push(`${plugin.id} → ${dest}`)
+    } catch (e) {
+      failed.push(`${plugin.id}: ${(e as Error).message}`)
+    }
+  }
+  return { upgraded, failed }
+}
