@@ -79,8 +79,9 @@ interface RedLogAPI {
     importProfile: () => Promise<unknown | null>
   }
   hookConfig: {
-    get: () => Promise<{ watchPaths: string[] }>
-    save: (cfg: { watchPaths: string[] }) => Promise<boolean>
+    get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
+    save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>
+    pickPath: () => Promise<string | null>
   }
   events: {
     query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>

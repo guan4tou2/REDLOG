@@ -29,8 +29,9 @@ contextBridge.exposeInMainWorld('redlog', {
     importProfile: () => ipcRenderer.invoke('config:importProfile')
   },
   hookConfig: {
-    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ watchPaths: string[] }>,
-    save: (cfg: { watchPaths: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>
+    get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
+    save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
+    pickPath: () => ipcRenderer.invoke('hookConfig:pickPath') as Promise<string | null>
   },
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),

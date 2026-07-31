@@ -123,24 +123,34 @@ command = tool_input.get("command", "")
 if not command:
     sys.exit(0)
 
-# --- Gate 1: cwd whitelist ---
-# Cheapest check first (local file read, no network). Missing / empty list
-# = privacy-first skip.
+# --- Gate 1: cwd exclusion list ---
+# Claude Code Bash tool calls are auditable AI actions and default to being
+# logged. This list is user-configured "paths I don't want on the chain"
+# (personal notes, hobby coding, secrets folder, etc). Empty list = log
+# everything.  Config also supports the legacy `watchPaths` (whitelist)
+# field for backward-compat with v0.6.59 configs.
 cwd = payload.get("cwd", "") or ""
+excluded_paths = []
 watch_paths = []
 try:
     with open(os.environ["HOOK_CONFIG"]) as f:
         cfg = json.load(f)
+        excluded_paths = cfg.get("excludedPaths") or []
         watch_paths = cfg.get("watchPaths") or []
 except Exception:
-    watch_paths = []
+    pass
 
-if not watch_paths:
-    sys.exit(0)
+if excluded_paths:
+    ex = [os.path.expanduser(p).rstrip("/") for p in excluded_paths if p]
+    if any(cwd == p or cwd.startswith(p + "/") for p in ex):
+        sys.exit(0)
 
-expanded = [os.path.expanduser(p).rstrip("/") for p in watch_paths if p]
-if not any(cwd == p or cwd.startswith(p + "/") for p in expanded):
-    sys.exit(0)
+# Legacy: if a v0.6.59 whitelist config still exists AND is non-empty,
+# honor it (opt-in filtering). New configs should only set excludedPaths.
+if watch_paths:
+    expanded = [os.path.expanduser(p).rstrip("/") for p in watch_paths if p]
+    if not any(cwd == p or cwd.startswith(p + "/") for p in expanded):
+        sys.exit(0)
 
 # --- Gate 2: RedLog is recording right now ---
 # One short HTTP call to the local API. Short timeout so a paused/stopped

@@ -105,6 +105,14 @@ export function extractTarget(command: string): string | null {
       return pattern.extract(trimmed)
     }
   }
-  return extractUrlHost(trimmed) ?? null
+  // Fallback: only when the command carries an explicit URL scheme (http:// or
+  // https://). Was previously calling extractUrlHost() unconditionally, which
+  // ran DOMAIN_RE across any shell string — so `python -c "import json.dumps"`
+  // recorded a target of `json.dumps`, `source ~/.redlog/shell-preexec-hook.sh`
+  // recorded `shell-preexec-hook.sh`, and `ls foo.txt` recorded `foo.txt`.
+  // Requiring `://` cuts the false positives without losing real cases
+  // (docker/curl/wget with a URL in the middle still get caught here).
+  if (/https?:\/\//i.test(trimmed)) return extractUrlHost(trimmed)
+  return null
 }
 
