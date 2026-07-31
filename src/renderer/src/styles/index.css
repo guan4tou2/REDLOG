@@ -15,6 +15,13 @@
 html {
   font-size: 17px;
 }
+/* Full-height chain so descendants can use `h-full` (100%) instead of the
+ * naive `h-screen` (100vh). vh is measured against the un-zoomed viewport,
+ * so `h-screen` inside a zoomed body overflows by (zoom-1)×100vh — the
+ * StatusBar and Timeline event log used to sit outside the window because
+ * of that. Cascading `height: 100%` from html→body→#root pins every layer
+ * to whatever body computed itself as, which we shrink below. */
+html, body, #root { height: 100%; }
 body {
   margin: 0;
   background: #0a0a0a;
@@ -23,11 +30,10 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* zoom scales the layout box in Chromium — a naive `zoom: 1.1` combined
-   * with any child using `h-screen` (100vh) makes the child overflow the
-   * window by 10%, hiding the StatusBar and Timeline event log below the
-   * visible area. Pre-shrink body's height by the inverse zoom so the
-   * on-screen render lines up with the viewport again. */
+  /* zoom scales the layout box in Chromium. Pre-shrink body's height by the
+   * inverse zoom so the on-screen render lines up with the viewport. Any
+   * descendant using `h-full` (not `h-screen`) then fills exactly one visual
+   * screen after the zoom multiplies things back. */
   zoom: var(--app-zoom, 1.1);
   height: calc(100vh / var(--app-zoom, 1.1));
 }
