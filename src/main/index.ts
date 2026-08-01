@@ -74,6 +74,18 @@ let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 let overlayPassThrough = false
 let overlayPassThroughOpacity = 0.4
 
+// Case-insensitive containment check for path guards. Windows NTFS is
+// case-preserving but case-insensitive; a legitimate `c:\Users\foo\.redlog\…`
+// vs `C:\Users\…` would otherwise trip the guard. Uses `path.relative` so
+// a `..\` escape is caught too. Audit P1-2 (docs/WINDOWS_COMPAT_AUDIT.md).
+function isInsideDir(root: string, target: string): boolean {
+  const rel = path.relative(root, target)
+  if (!rel || rel === '') return true
+  if (rel.startsWith('..')) return false
+  if (path.isAbsolute(rel)) return false
+  return true
+}
+
 function applyOverlayPassThrough(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   // Window opacity stays at 1 in both modes now — the renderer dims the
@@ -827,7 +839,7 @@ app.whenReady().then(() => {
     try {
       const screenshotDir = path.join(getProjectDir(), 'screenshots')
       const resolved = path.resolve(filePath)
-      if (!resolved.startsWith(screenshotDir)) return null
+      if (!isInsideDir(screenshotDir, resolved)) return null
       const data = fs.readFileSync(resolved)
       return `data:image/jpeg;base64,${data.toString('base64')}`
     } catch { return null }
@@ -840,7 +852,7 @@ app.whenReady().then(() => {
     try {
       const screenshotDir = path.join(getProjectDir(), 'screenshots')
       const resolved = path.resolve(filePath)
-      if (!resolved.startsWith(screenshotDir)) return { ok: false, error: 'path outside project' }
+      if (!isInsideDir(screenshotDir, resolved)) return { ok: false, error: 'path outside project' }
       let sha256: string | null = null
       try { sha256 = require('crypto').createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
       fs.unlinkSync(resolved)
@@ -1335,10 +1347,15 @@ app.whenReady().then(() => {
     const stdioPath = app.isPackaged
       ? path.join(process.resourcesPath, 'mcp', 'redlog-mcp-server.js')
       : path.join(__dirname, '../../mcp/redlog-mcp-server.js')
+    // On Windows there's no shebang execution, so `claude mcp add
+    // <path>.js` would silently fail. Return a `command` + `args` pair
+    // the client can spawn directly on every OS. Audit P1-5.
     return {
       port,
       endpoint: `http://127.0.0.1:${port}/mcp`,
       stdioPath,
+      stdioCommand: process.execPath.endsWith('node') || process.execPath.endsWith('node.exe') ? process.execPath : 'node',
+      stdioArgs: [stdioPath],
       hasToken: listOperators().some((o) => o.id === MCP_OPERATOR_ID && !o.revokedAt)
     }
   })

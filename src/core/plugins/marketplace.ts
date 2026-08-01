@@ -346,13 +346,17 @@ async function defaultExtractTar(tarball: Buffer, destDir: string): Promise<void
   // POSIX but flaky on Windows tar-via-cmd wrappers.
   const tmpTar = join(destDir, '..', `.plugin-${Date.now()}.tar.gz`)
   writeFileSync(tmpTar, tarball)
+  // Explicit `.exe` on Windows — bare `tar` relies on PATHEXT which is
+  // fragile inside a packaged Electron shim. Mirrors cloud-share.ts.
+  // Audit P1-4 (docs/WINDOWS_COMPAT_AUDIT.md).
+  const tarBin = process.platform === 'win32' ? 'tar.exe' : 'tar'
   try {
-    const res = spawnSync('tar', ['-xzf', tmpTar, '-C', destDir, '--strip-components=1'], {
+    const res = spawnSync(tarBin, ['-xzf', tmpTar, '-C', destDir, '--strip-components=1'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 30_000
     })
     if (res.status !== 0) {
-      throw new Error(`tar exited ${res.status}: ${res.stderr?.toString() ?? ''}`)
+      throw new Error(`${tarBin} exited ${res.status}: ${res.stderr?.toString() ?? ''}`)
     }
   } finally {
     try { rmSync(tmpTar, { force: true }) } catch { /* ignore */ }
