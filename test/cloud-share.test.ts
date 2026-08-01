@@ -4,6 +4,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 import { spawnSync } from 'child_process'
+import { fileURLToPath } from 'url'
 
 // Cloud-share tests need a real project DB because prepareCloudShareBundle
 // walks through the existing exportBundle path (events, quickmarks, chain).
@@ -125,17 +126,18 @@ describe.skipIf(!hasZip)('cloud-share localFileUploader (stub)', () => {
     const prepared = cs.prepareCloudShareBundle({ engagementId: 'demo', reviewedByOperator: true, outRoot })
     const r = await up.localFileUploader.upload(prepared, { expiresIn: '7d' })
     expect(r.ok).toBe(true)
-    // Windows produces file://C:\Users\...\.redlog\shares\<sha8>\... (backslashes)
-    // POSIX produces file:///Users/.../.redlog/shares/<sha8>/... (slashes).
-    // Accept either separator so the assertion isn't OS-specific.
-    expect(r.shareUrl).toMatch(/^file:\/\/.*[\\/]\.redlog[\\/]shares[\\/][a-f0-9]{8}[\\/]/)
+    // pathToFileURL normalises Windows separators to forward slashes and
+    // prefixes drive letters correctly (file:///C:/Users/…), so the URL is
+    // portable across OSes now.
+    expect(r.shareUrl).toMatch(/^file:\/\/\/.*\/\.redlog\/shares\/[a-f0-9]{8}\//)
     expect(r.expiresAt).toBeTruthy()
-    // The zip actually landed at the share dir; sha8 prefix matches prepared.manifest.zipSha256.
-    const url = new URL(r.shareUrl!)
-    expect(fs.existsSync(url.pathname)).toBe(true)
-    expect(fs.readFileSync(url.pathname)).toEqual(fs.readFileSync(prepared.zipPath))
+    // fileURLToPath decodes the URL back to an OS-native path (handles the
+    // /C:/... prefix on Windows) so we can hit fs with it.
+    const localPath = fileURLToPath(r.shareUrl!)
+    expect(fs.existsSync(localPath)).toBe(true)
+    expect(fs.readFileSync(localPath)).toEqual(fs.readFileSync(prepared.zipPath))
     // Final manifest sidecar carries the upload block.
-    const sidecar = JSON.parse(fs.readFileSync(url.pathname + '.manifest.json', 'utf-8'))
+    const sidecar = JSON.parse(fs.readFileSync(localPath + '.manifest.json', 'utf-8'))
     expect(sidecar.upload.shareUrl).toBe(r.shareUrl)
     expect(sidecar.upload.expiresAt).toBe(r.expiresAt)
   })
