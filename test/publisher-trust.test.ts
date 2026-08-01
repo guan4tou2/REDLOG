@@ -4,21 +4,22 @@ import path from 'path'
 import os from 'os'
 import { generateKeyPairSync, sign as cryptoSign } from 'crypto'
 
-// The store reads $HOME. Point HOME at a tmp dir per-test so the operator's
-// real ~/.redlog stays untouched, then re-import through vitest's module
-// registry so trustPath() sees the new HOME. `vi.resetModules()` clears the
-// cache; the subsequent import returns a fresh binding.
+// The store reads os.homedir(), which on Windows resolves via USERPROFILE
+// (not HOME) — so a test that only swaps HOME leaks the operator's real
+// trust store into every case. Swap both env vars every time.
 async function withTempHome<T>(fn: (mod: typeof import('../src/core/plugins/publisher-trust')) => Promise<T>): Promise<T> {
-  const prev = process.env.HOME
+  const prevHome = process.env.HOME
+  const prevUserProfile = process.env.USERPROFILE
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pt-'))
   process.env.HOME = dir
+  process.env.USERPROFILE = dir
   vi.resetModules()
   const mod = await import('../src/core/plugins/publisher-trust')
   try {
     return await fn(mod)
   } finally {
-    if (prev === undefined) delete process.env.HOME
-    else process.env.HOME = prev
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile
     fs.rmSync(dir, { recursive: true, force: true })
   }
 }

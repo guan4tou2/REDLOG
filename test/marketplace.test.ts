@@ -15,9 +15,13 @@ async function withTempHome<T>(fn: (mods: {
   marketplace: typeof import('../src/core/plugins/marketplace')
   publisherTrust: typeof import('../src/core/plugins/publisher-trust')
 }) => Promise<T>): Promise<T> {
-  const prev = process.env.HOME
+  // Windows resolves os.homedir() via USERPROFILE, POSIX via HOME — swap both
+  // or Windows tests leak the operator's real ~/.redlog into every case.
+  const prevHome = process.env.HOME
+  const prevUserProfile = process.env.USERPROFILE
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-mp-'))
   process.env.HOME = dir
+  process.env.USERPROFILE = dir
   vi.resetModules()
   // publisher-trust must be imported BEFORE marketplace so the marketplace
   // module's own `import { verifySignature } from './publisher-trust'` binds
@@ -27,8 +31,8 @@ async function withTempHome<T>(fn: (mods: {
   try {
     return await fn({ marketplace, publisherTrust })
   } finally {
-    if (prev === undefined) delete process.env.HOME
-    else process.env.HOME = prev
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile
     fs.rmSync(dir, { recursive: true, force: true })
   }
 }
