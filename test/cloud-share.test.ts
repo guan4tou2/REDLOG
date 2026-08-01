@@ -148,8 +148,11 @@ describe.skipIf(!hasZip)('cloud-share prepareBundle', () => {
 
     const EVENTS_BYTES = 42 * 512
     const expectedRaw = SHOTS_BYTES + CASTS_BYTES + EVENTS_BYTES
+    // Ratios were recalibrated in v0.6.80 against a real 616-screenshot /
+    // 35-cast project: shots ≈ 0.93x observed, casts ≈ 0.052x, events ≈
+    // 0.246x. Constants below track cloud-share.ts.
     const expectedCompressed = Math.round(
-      SHOTS_BYTES * 1.02 + CASTS_BYTES * 0.15 + EVENTS_BYTES * 0.20
+      SHOTS_BYTES * 1.00 + CASTS_BYTES * 0.10 + EVENTS_BYTES * 0.25
     )
     expect(preview.rawBytes).toBe(expectedRaw)
     expect(preview.approxCompressedBytes).toBe(expectedCompressed)
