@@ -115,10 +115,17 @@ export function previewRedaction(): RedactionPreview {
   const eventBytes = eventCount * 512  // rough
 
   const rawBytes = shotsBytes + castsBytes + eventBytes
+  // Calibrated against a real project on 2026-08-01 (616 screenshots / 35
+  // .cast / ~500-event sample):
+  //   JPEG screenshots in gzip → 0.93x (headers dedupe slightly)
+  //   ANSI .cast in gzip       → 0.052x (deflate crushes repeated escapes)
+  //   JSONL events in gzip     → 0.246x (key names repeat, values variable)
+  // Ratios below stay slightly ABOVE observed so the "you'll blow the cap"
+  // warning never surprises with a bigger-than-expected actual zip.
   const approxCompressedBytes = Math.round(
-    shotsBytes * 1.02       // JPEGs are already compressed
-    + castsBytes * 0.15     // ASCII → deflate cuts hard
-    + eventBytes * 0.20     // JSONL row structure repeats
+    shotsBytes * 1.00       // JPEGs already compressed
+    + castsBytes * 0.10     // ANSI → deflate crushes; ~2x safety over observed 0.05x
+    + eventBytes * 0.25     // JSONL — matches observed
   )
 
   return {
