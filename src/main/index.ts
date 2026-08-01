@@ -1182,7 +1182,12 @@ app.whenReady().then(() => {
   ipcMain.handle('cloudShare:prepare', async (_e, engagementId: string, reviewedByOperator: boolean) => {
     try {
       const { prepareCloudShareBundle } = await import('../core/cloud-share')
-      const prepared = prepareCloudShareBundle({ engagementId, reviewedByOperator })
+      // Honour cloudShare.maxBundleBytes override — operators with lots of
+      // screenshots + .cast blow through the 100 MB default; raising this
+      // client-side matters only if the backend also allows it.
+      const cfg = activeProject ? loadConfig(getProjectPath(activeProject)) : null
+      const maxBytes = cfg?.cloudShare?.maxBundleBytes
+      const prepared = prepareCloudShareBundle({ engagementId, reviewedByOperator, maxBytes })
       return { ok: true, zipPath: prepared.zipPath, manifest: prepared.manifest }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
