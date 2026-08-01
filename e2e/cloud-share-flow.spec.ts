@@ -87,12 +87,15 @@ test.describe.serial('cloud share', () => {
     // Preview counts row. The panel renders after refreshPreview() resolves;
     // wait on one of the labels rather than a fixed timeout.
     await page.waitForSelector('text=Review — this content will leave your machine:', { timeout: 5_000 })
+    // Panel labels — the size row was split into raw + approx-zipped in v0.6.76
+    // so "Approx. size" is no longer a label; assert on the new pair.
     for (const label of [
       'Events',
       'Sanitized events',
       'Screenshots',
       'Terminal .cast files',
-      'Approx. size',
+      'Raw size (pre-zip)',
+      'Approx. zipped',
       'Chain head'
     ]) {
       await expect(page.locator(`text=${label}`).first()).toBeVisible()

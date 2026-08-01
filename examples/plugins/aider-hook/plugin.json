@@ -2,7 +2,7 @@
   "id": "aider-hook",
   "name": "Aider",
   "version": "0.1.0",
-  "description": "Tier B capture: overrides Aider's shell via AIDER_SHELL_CMD so every command Aider spawns is bracketed with command_start / command_end events on RedLog's timeline.",
+  "description": "Tier B capture: overrides Aider's $SHELL so every command Aider runs on the pexpect (TTY) code path is bracketed with command_start / command_end events on RedLog's timeline.",
   "author": "your-handle",
   "homepage": "https://aider.chat/docs/config/options.html",
   "redlogApi": 1,
@@ -11,30 +11,29 @@
       {
         "id": "aider-shell",
         "name": "Aider (SHELL wrapper)",
-        "description": "Wraps every shell command Aider spawns so it lands in the RedLog timeline as an agent event.",
+        "description": "Wraps every shell command Aider spawns (pexpect / TTY code path) so it lands in the RedLog timeline as an agent event.",
         "agentType": "shell",
         "requires": ["aider"],
         "hookFile": "hooks/aider-wrapper.sh",
         "installMethod": "manual",
         "manualSteps": [
           {
-            "label": "Point Aider's shell override at the wrapper. Add this to your shell rc (~/.zshrc or ~/.bashrc)",
-            "command": "echo 'export AIDER_SHELL_CMD=\"{hookFile}\"' >> ~/.zshrc"
+            "label": "Point $SHELL at the wrapper. Aider's run_cmd() reads os.environ['SHELL'] and invokes it as `$SHELL -i -c '<command>'` on the pexpect (TTY) code path."
           },
           {
-            "label": "Reload your shell so AIDER_SHELL_CMD is visible to newly launched Aider sessions",
-            "command": "exec $SHELL -l"
+            "label": "Launch Aider through the wrapper for a single session (recommended — doesn't touch your login shell)",
+            "command": "SHELL=\"{hookFile}\" aider"
+          },
+          {
+            "label": "OR persist across sessions by exporting SHELL in your shell rc. WARNING: this changes the default shell for every process you launch from that terminal, not just Aider.",
+            "command": "echo 'export SHELL=\"{hookFile}\"' >> ~/.zshrc"
           },
           {
             "label": "Smoke-test: this should print 'hello' AND create a command_start/command_end pair on the RedLog timeline",
-            "command": "AIDER_SHELL_CMD=\"{hookFile}\" \"{hookFile}\" -c 'echo hello'"
+            "command": "\"{hookFile}\" -i -c 'echo hello'"
           },
           {
-            "label": "Run Aider normally — every tool call should now be tagged 'aider-wrapper' in the timeline",
-            "command": "aider --version"
-          },
-          {
-            "label": "NOTE — the exact env var name for Aider's shell override may differ between releases. This plugin assumes AIDER_SHELL_CMD invoked as `$AIDER_SHELL_CMD -c '<command>'`. Confirm against https://aider.chat/docs/config/options.html#--shell before relying on this in a real engagement; if Aider uses a different flag or arg style, adjust the export accordingly."
+            "label": "NOTE — Aider only routes commands through $SHELL on the pexpect (interactive TTY) code path. Non-TTY runs and Windows fall back to subprocess.Popen(shell=True), which on POSIX always uses /bin/sh regardless of $SHELL — those commands will NOT be captured. See https://github.com/Aider-AI/aider/blob/main/aider/run_cmd.py."
           }
         ]
       }

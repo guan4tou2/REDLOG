@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # RedLog × Codex Native Hook (Tier A)
 #
-# Registered from Codex's hook config (~/.config/codex/config.toml). Codex is
-# expected to pipe a JSON event payload on stdin — this script mirrors the
-# claude-code-hook.sh contract (session_id / tool_name / tool_input /
-# tool_response). If a Codex payload field is missing, the entry is degraded
-# gracefully rather than dropped.
+# Registered from Codex's hook config (~/.codex/config.toml or
+# ~/.codex/hooks.json). Codex pipes a JSON event payload on stdin — this
+# script matches the documented PostToolUse schema (session_id / cwd /
+# hook_event_name / tool_name / tool_input / tool_response); the same shape
+# claude-code-hook.sh already handles. Defensive fallbacks are kept so a
+# minor schema drift still lands a usable event on the timeline.
 #
-# TODO: verify against upstream docs — the exact stdin JSON schema for Codex
-# hooks (https://developers.openai.com/codex/hooks/) may differ. Field
-# extractors below are written defensively so most plausible shapes still land
-# a usable event on the timeline; tighten once the schema is confirmed.
+# Verified 2026-08 against https://learn.chatgpt.com/docs/hooks (the
+# developers.openai.com/codex/hooks URL now 308-redirects here).
 #
 # Deliberately does NOT use `set -euo pipefail` — a hook that fires per tool
-# call is a hot path and must NEVER surface an error to the agent.
+# call is a hot path and must NEVER surface an error to the agent. Exit 0 on
+# success (Codex convention: exit 2 would BLOCK the tool call, which we never
+# want).
 
 # --- Resolve RedLog dir + creds ---
 REDLOG_DIR="$HOME/.redlog"
@@ -49,14 +50,16 @@ try:
 except Exception:
     sys.exit(0)
 
-# Codex payload fields — defensive lookups (see TODO in header). We accept
-# either `tool_input.command` or a top-level `command`, and fall back to the
-# whole tool_input dict as a JSON blob if neither is present.
+# Codex PostToolUse payload fields per https://learn.chatgpt.com/docs/hooks
+# (verified 2026-08). The `.get("tool") / .get("input") / .get("output") /
+# .get("sessionId")` fallbacks catch minor drift or a non-PostToolUse event
+# being wired to the same script by mistake.
 tool_name    = payload.get("tool_name") or payload.get("tool") or "unknown"
 tool_input   = payload.get("tool_input") or payload.get("input") or {}
 tool_resp    = payload.get("tool_response") or payload.get("output") or {}
 session_id   = payload.get("session_id") or payload.get("sessionId") or ""
 cwd          = payload.get("cwd") or os.getcwd() or ""
+event_name   = payload.get("hook_event_name") or "PostToolUse"
 
 if isinstance(tool_input, dict):
     command = tool_input.get("command") or tool_input.get("cmd") or ""
@@ -143,6 +146,7 @@ data = {
         "output_preview": output,
         "session_id": session_id,
         "cwd": cwd,
+        "hook_event": event_name,
         "wrapper": "codex-hook",
     },
 }

@@ -3,6 +3,38 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.77 — 2026-08-01
+- **Codex + Aider plugin corrections** (verified against upstream docs):
+  - Codex config path was wrong: `~/.codex/config.toml` (not
+    `~/.config/codex/config.toml`). Hook block is
+    `[[hooks.PostToolUse]]` (PascalCase), not `post_tool_use`. Verify
+    command is `codex exec 'run <cmd>'`. Docs URL pinned in the script
+    header (`learn.chatgpt.com/docs/hooks`).
+  - Aider had **no shell-override env var** at all — the v0.6.76 plugin's
+    `AIDER_SHELL_CMD` assumption is Aider issue #1215 / #1337, still
+    open. Rewrote around what Aider *actually* does on the pexpect (TTY)
+    code path: `os.environ['SHELL']`. Wrapper now parses `-i -c '<cmd>'`
+    per real invocation and points the manifest at
+    `SHELL=… aider` (per-invocation, not global rc). README documents
+    the non-TTY / Windows / piped-input path as uncapturable with a link
+    to `aider/run_cmd.py` and the two open issues.
+- **Marketplace one-click publisher trust**: registries can now advertise
+  a `publishers[]` block in `index.json` carrying SPKI keys; when the
+  operator fetches a registry that lists publishers they haven't trusted
+  yet, an amber banner surfaces "This registry suggests trusting N
+  publisher(s)" with a Trust-all button. Skips the paste-a-base64-SPKI
+  ceremony for well-known registries; individual publishers can still be
+  untrusted from the Publishers tab. Example registry updated to include
+  the `redlog-project` publisher block so the flow works out of the box
+  at the default URL.
+- **Test**: cloud-share preview raw vs approx-compressed math now covered
+  by a dedicated unit test that plants known-size fixture files under
+  the mocked project dir and asserts the 1.02x / 0.15x / 0.20x ratios.
+  Suite 256 → 257.
+- **E2E**: cloud-share flow assertion updated for the v0.6.76 label
+  split (`Raw size (pre-zip)` + `Approx. zipped` replaced `Approx.
+  size`). CI was red on this since v0.6.76; now 11/11 green in ~10 s.
+
 ## v0.6.76 — 2026-08-01
 - **UX (Timeline)**: lane filter chips now scroll horizontally when the
   header narrows instead of wrapping onto a second row that pushed the

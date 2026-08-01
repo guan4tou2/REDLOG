@@ -46,9 +46,23 @@ export interface RegistryEntry {
   tags?: string[]
 }
 
+/** A publisher block the registry advertises so the UI can offer a one-click
+ *  "trust this publisher" flow, saving operators from pasting a base64 SPKI
+ *  key by hand. The operator still has to confirm the trust prompt — this
+ *  just fills in the key. */
+export interface RegistryPublisherAd {
+  id: string
+  homepage?: string
+  keys: Array<{ label?: string; publicKey: string }>
+}
+
 export interface RegistryIndex {
   updatedAt: number
   entries: RegistryEntry[]
+  /** Optional — v0.6.77+ registries include this so operators don't have to
+   *  hand-paste publisher keys. Absent means the UI falls back to the manual
+   *  publishers form. */
+  publishers?: RegistryPublisherAd[]
 }
 
 interface RevocationList {
@@ -111,7 +125,23 @@ export async function fetchIndex(url = DEFAULT_REGISTRY_URL): Promise<RegistryIn
     // compare against a Base64 hash later and get a false match.
     if (!/^[a-f0-9]{64}$/i.test(e.sha256)) throw new Error(`invalid sha256 for ${e.id}`)
   }
-  return { updatedAt: Number(parsed.updatedAt) || Date.now(), entries: parsed.entries as RegistryEntry[] }
+  // Publishers block is optional. Validate lightly if present — we don't want
+  // a hostile registry stuffing garbage keys into the trust prompt.
+  let publishers: RegistryPublisherAd[] | undefined
+  if (Array.isArray(parsed.publishers)) {
+    publishers = []
+    for (const p of parsed.publishers) {
+      if (typeof p?.id !== 'string' || !Array.isArray(p.keys)) continue
+      const keys: Array<{ label?: string; publicKey: string }> = []
+      for (const k of p.keys) {
+        if (typeof k?.publicKey === 'string' && k.publicKey.length >= 32) {
+          keys.push({ publicKey: k.publicKey, label: typeof k.label === 'string' ? k.label : undefined })
+        }
+      }
+      if (keys.length) publishers.push({ id: p.id, homepage: typeof p.homepage === 'string' ? p.homepage : undefined, keys })
+    }
+  }
+  return { updatedAt: Number(parsed.updatedAt) || Date.now(), entries: parsed.entries as RegistryEntry[], publishers }
 }
 
 // ---- Revocations ----------------------------------------------------------
