@@ -3,6 +3,14 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.73 — 2026-08-01
+- **Windows release-CI hotfix (round 3)**: the v0.6.71-era cloud-share
+  regex assertions only accepted forward slashes, but Windows produces
+  `file://C:\Users\...\.redlog\shares\<sha8>\...` (backslashes) — so both
+  `test/cloud-share.test.ts` and `e2e/cloud-share-flow.spec.ts` failed on
+  Windows even after v0.6.72's zip archiver fix. Regex now accepts both
+  separators (`[\\/]`) — same URL, OS-appropriate slashes.
+
 ## v0.6.72 — 2026-08-01
 - **Windows release-CI hotfix**: v0.6.71's Windows zip path used
   `Compress-Archive -LiteralPath '$dir\*'`, but `-LiteralPath` is literal by

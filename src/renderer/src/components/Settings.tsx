@@ -1841,7 +1841,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
         </label>
 
         <label className="text-xs text-amber-400/90 flex items-start gap-2 cursor-pointer">
-          <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)}
+          <input data-testid="cloud-share-reviewed" type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)}
             className="mt-0.5 accent-amber-500" />
           <span>{t('cloudShare.gateCheckbox')}</span>
         </label>
@@ -1896,7 +1896,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       </div>
 
       <div className="flex items-center gap-2">
-        <button onClick={upload} disabled={!canUpload}
+        <button data-testid="cloud-share-button" onClick={upload} disabled={!canUpload}
           className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-40">
           {busy === 'prepare' ? t('cloudShare.preparing')
             : busy === 'upload' ? t('cloudShare.uploading')
@@ -1908,9 +1908,9 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       </div>
 
       {shareUrl && (
-        <div className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
+        <div data-testid="cloud-share-result" className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
           <p className="text-[11px] text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
-          <p className="text-xs text-zinc-300 font-mono break-all">{shareUrl}</p>
+          <p data-testid="cloud-share-url" className="text-xs text-zinc-300 font-mono break-all">{shareUrl}</p>
           <div className="flex gap-2 mt-2">
             <button onClick={() => navigator.clipboard.writeText(shareUrl)}
               className="px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">

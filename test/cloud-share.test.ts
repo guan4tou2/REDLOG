@@ -125,7 +125,10 @@ describe.skipIf(!hasZip)('cloud-share localFileUploader (stub)', () => {
     const prepared = cs.prepareCloudShareBundle({ engagementId: 'demo', reviewedByOperator: true, outRoot })
     const r = await up.localFileUploader.upload(prepared, { expiresIn: '7d' })
     expect(r.ok).toBe(true)
-    expect(r.shareUrl).toMatch(/^file:\/\/.*\/\.redlog\/shares\/[a-f0-9]{8}\//)
+    // Windows produces file://C:\Users\...\.redlog\shares\<sha8>\... (backslashes)
+    // POSIX produces file:///Users/.../.redlog/shares/<sha8>/... (slashes).
+    // Accept either separator so the assertion isn't OS-specific.
+    expect(r.shareUrl).toMatch(/^file:\/\/.*[\\/]\.redlog[\\/]shares[\\/][a-f0-9]{8}[\\/]/)
     expect(r.expiresAt).toBeTruthy()
     // The zip actually landed at the share dir; sha8 prefix matches prepared.manifest.zipSha256.
     const url = new URL(r.shareUrl!)
