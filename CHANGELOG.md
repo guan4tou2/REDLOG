@@ -3,6 +3,43 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.68 — 2026-08-01
+- **Plugin marketplace v1 core** (spec: [`docs/PLUGIN_MARKETPLACE.md`](docs/PLUGIN_MARKETPLACE.md)).
+  Deliberately shipped without UI wiring — the runtime + trust primitives
+  land first so the Settings panel can be layered on top without redesigning
+  the security model mid-flight.
+  - `src/core/plugins/publisher-trust.ts` — per-publisher trust store at
+    `~/.redlog/trusted-publishers.json`; Ed25519 SPKI keys with rotation
+    (multiple pinned keys per publisher), fingerprint helper, and detached-
+    signature verify against ALL pinned keys (so key rotation doesn't break
+    previously signed releases).
+  - `src/core/plugins/marketplace.ts` — HTTPS registry client with hard
+    caps (5 MB tarball, 1 MB index), fetch → sha256 verify → signature
+    verify → validateManifest → id/version/publisher match → atomic swap
+    into `~/.redlog/plugins/<id>/` with the previous copy snapshotted to
+    `.<id>-versions/<oldHash>/` for rollback. Privileged plugins REQUIRE a
+    verified signature; declarative plugins may install unsigned. Revocation
+    list at `~/.redlog/plugins/revocations.json` blocks per-plugin or per-
+    publisher.
+  - `cli/redlog-sign.js` (new bin) — `keygen` writes an Ed25519 keypair
+    (mode 0600); `sign <tarball> --key kp.json` computes sha256, signs it
+    with the private key, sniffs `id`/`version` from the tarball's
+    `plugin.json`, and prints a ready-to-paste registry index entry.
+  - Coverage: 27 new tests (`publisher-trust.test.ts`, `marketplace.test.ts`,
+    `redlog-sign.test.ts`) covering rotation, mismatched publishers, revocation
+    both scopes, sha256 mismatch, privileged-without-signature rejection,
+    unsigned-declarative accept, snapshot + rollback round-trip, and the CLI
+    end-to-end (spawnSync). Suite now 248 tests.
+- **E2E**: `e2e/project-flow.spec.ts` — three tests sharing one Electron
+  launch: create+open a project (screenshot proof to
+  `e2e/screenshots/project-opened.png`), Cmd+1..9 tab switch regression
+  guard for the v0.6.67 focus fix, and `chain.verify({ full: true })` on a
+  fresh project returns `ok: true`. Adds `data-testid` attributes to
+  `App.tsx` view root and `ProjectPicker` outer container (attributes only,
+  no logic touched). `playwright.config.ts` set to `workers: 1` because
+  Electron's single-instance lock + port 6660 bind means parallel launches
+  step on each other.
+
 ## v0.6.67 — 2026-08-01
 - **Fix**: `⌘/Ctrl+1..9` nav shortcuts silently missed the very first press
   after launch. The renderer's `window.addEventListener('keydown')` only fires
