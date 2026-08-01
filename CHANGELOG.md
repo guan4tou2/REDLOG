@@ -3,6 +3,18 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.74 — 2026-08-01
+- **Windows release-CI hotfix (round 4, root cause this time)**: the
+  `localFileUploader` built its URL with `` `file://${destZip}` `` — on
+  Windows that produces `file://C:\Users\...\.redlog\shares\...`, which is
+  malformed (should be `file:///C:/Users/...` — three slashes + forward
+  separators). Test assertions patched to accept backslashes in v0.6.73
+  matched the string but `new URL(...).pathname` on the malformed form
+  returned garbage and `fs.existsSync` failed. Fix at the source: use
+  Node's `pathToFileURL()` which produces a spec-compliant URL on every
+  OS, and consumers use `fileURLToPath()` to decode. Tests + E2E regex
+  simplified back to a single-shape assertion.
+
 ## v0.6.73 — 2026-08-01
 - **Windows release-CI hotfix (round 3)**: the v0.6.71-era cloud-share
   regex assertions only accepted forward slashes, but Windows produces

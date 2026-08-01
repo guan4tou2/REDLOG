@@ -3,7 +3,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { homedir } from 'os'
 import { request as httpsRequest } from 'https'
-import { URL } from 'url'
+import { URL, pathToFileURL } from 'url'
 import type { BundleManifest, PreparedBundle } from './cloud-share'
 
 // Uploader indirection so the same call surface talks to a real backend or a
@@ -65,7 +65,7 @@ export const localFileUploader: Uploader = {
     const finalManifest: BundleManifest = {
       ...prepared.manifest,
       upload: {
-        shareUrl: `file://${destZip}`,
+        shareUrl: pathToFileURL(destZip).href,
         uploadedAt: now,
         expiresAt: expiresAt ?? undefined
       }
@@ -75,7 +75,7 @@ export const localFileUploader: Uploader = {
     // literal null into a string-typed field — makes it easier for callers to
     // check `if (r.expiresAt)`.
     return {
-      ok: true, shareUrl: `file://${destZip}`, uploadedAt: now,
+      ok: true, shareUrl: pathToFileURL(destZip).href, uploadedAt: now,
       ...(expiresAt ? { expiresAt } : {})
     }
   }

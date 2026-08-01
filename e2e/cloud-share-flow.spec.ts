@@ -131,8 +131,9 @@ test.describe.serial('cloud share', () => {
 
     // URL points inside our temp HOME shares dir and uses the 8-char sha8
     // bucket documented in cloud-share-uploader.ts.
-    // Windows file:// URLs carry backslashes; POSIX uses slashes — accept both.
-    expect(shareUrl).toMatch(/^file:\/\/.*[\\/]\.redlog[\\/]shares[\\/][a-f0-9]{8}[\\/]/)
+    // pathToFileURL normalises to forward slashes even on Windows, so a
+    // single-shape regex works everywhere.
+    expect(shareUrl).toMatch(/^file:\/\/\/.*\/\.redlog\/shares\/[a-f0-9]{8}\//)
 
     // Resolve file:// → filesystem path and verify the artefact.
     const zipPath = fileURLToPath(shareUrl)
