@@ -2020,10 +2020,24 @@ interface RevocationsView { updatedAt: number; plugins?: string[]; publishers?: 
 function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [sub, setSub] = useState<'plugins' | 'publishers' | 'revocations'>('plugins')
   const [registryUrl, setRegistryUrl] = useState<string>('')
+  const [defaultRegistryUrl, setDefaultRegistryUrl] = useState<string>('https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json')
+  useEffect(() => {
+    // Load config once so the placeholder + one-click fetch honour any
+    // config-defined default. Air-gapped shops override this to point at
+    // their internal mirror.
+    window.redlog.config.get().then((c) => {
+      const url = (c as { marketplace?: { defaultRegistryUrl?: string } }).marketplace?.defaultRegistryUrl
+      if (url) setDefaultRegistryUrl(url)
+    }).catch(() => {})
+  }, [])
   const [index, setIndex] = useState<RegistryIndexView | null>(null)
   const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [fetchError, setFetchError] = useState<string>('')
   const [installBusy, setInstallBusy] = useState<string | null>(null)
+  // Last install failure per plugin id — sticks around like cloud-share's
+  // persistent error box so the operator can read it after the toast fades.
+  // Keyed so multiple failed installs don't overwrite each other.
+  const [installError, setInstallError] = useState<Record<string, string>>({})
   const [publishers, setPublishers] = useState<PublisherView[]>([])
   const [revocations, setRevocations] = useState<RevocationsView | null>(null)
 
@@ -2042,22 +2056,30 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
 
   const doFetch = async (): Promise<void> => {
     setFetchState('loading'); setFetchError('')
-    const r = await api.fetchIndex(registryUrl.trim() || undefined)
+    // Empty box → use the config-declared default (see marketplace.defaultRegistryUrl).
+    const url = registryUrl.trim() || defaultRegistryUrl
+    const r = await api.fetchIndex(url)
     if (r.ok && r.index) { setIndex(r.index); setFetchState('idle') }
     else { setFetchState('error'); setFetchError(r.error ?? 'unknown error') }
   }
 
   const doInstall = async (entry: RegistryEntryView): Promise<void> => {
     setInstallBusy(entry.id)
+    // Clear a previous failure for this plugin so the box collapses on retry.
+    setInstallError((prev) => { const next = { ...prev }; delete next[entry.id]; return next })
     const r = await api.install(JSON.stringify(entry))
     setInstallBusy(null)
     if (r.ok) {
       toast(t('marketplace.installed'), 'success')
-      // installed a plugin → refresh publishers view (trust decision may have shifted)
       reloadPublishers()
     } else {
-      toast(`${t('marketplace.installFailed')}: ${r.error ?? ''}`, 'error')
+      const msg = r.error ?? 'unknown'
+      setInstallError((prev) => ({ ...prev, [entry.id]: msg }))
+      toast(`${t('marketplace.installFailed')}: ${msg}`, 'error')
     }
+  }
+  const dismissInstallError = (id: string): void => {
+    setInstallError((prev) => { const next = { ...prev }; delete next[id]; return next })
   }
 
   const publisherTrusted = (id: string): boolean => publishers.some((p) => p.id === id)
@@ -2097,7 +2119,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
         <>
           <div className="flex items-center gap-2 mb-3">
             <input type="text" value={registryUrl} onChange={(e) => setRegistryUrl(e.target.value)}
-              placeholder="https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json"
+              placeholder={defaultRegistryUrl}
               className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200" />
             <button onClick={doFetch} disabled={fetchState === 'loading'}
               className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">
@@ -2162,6 +2184,15 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                       {installBusy === e.id ? t('marketplace.installing') : t('marketplace.install')}
                     </button>
                   </div>
+                  {installError[e.id] && (
+                    <div className="mt-2 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
+                      <span className="text-red-400 shrink-0">⚠</span>
+                      <p className="text-[11px] text-red-300 font-mono break-all flex-1">
+                        {t('marketplace.installFailed')}: {installError[e.id]}
+                      </p>
+                      <button onClick={() => dismissInstallError(e.id)} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+                    </div>
+                  )}
                 </div>
               )
             })}

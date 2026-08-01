@@ -11,14 +11,14 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.78**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.79**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.6.66-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.78/RedLog-0.6.66-arm64.dmg) |
-| macOS (Intel) | [`RedLog-0.6.66.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.78/RedLog-0.6.66.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.78/RedLog.Setup.0.6.66.exe) |
-| Windows (portable) | [`RedLog.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.78/RedLog.0.6.66.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.6.66-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.79/RedLog-0.6.66-arm64.dmg) |
+| macOS (Intel) | [`RedLog-0.6.66.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.79/RedLog-0.6.66.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.79/RedLog.Setup.0.6.66.exe) |
+| Windows (portable) | [`RedLog.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.79/RedLog.0.6.66.exe) |
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
@@ -193,7 +193,7 @@ Every Bash tool call (command + output preview + session ID) is sent to RedLog's
 source /path/to/redlog/hooks/shell-preexec-hook.sh
 ```
 
-Captures every command with start/end timestamps, exit code, and duration. Works with Claude Code, Codex, Cursor, Aider, or any tool that spawns a shell.
+Captures every command with start/end timestamps, exit code, and duration. Works with Claude Code, Codex, Cursor, OpenCode, or any tool that spawns a shell.
 
 **Codex/GPT wrapper (for agents you can't hook):**
 

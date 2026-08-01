@@ -135,6 +135,13 @@ export interface RedLogConfig {
      *  client-side value only helps if the backend also allows it. */
     maxBundleBytes?: number
   }
+  /** Plugin marketplace overrides. Empty defaults ship the built-in
+   *  placeholder (GitHub raw of the example registry). Air-gapped shops
+   *  point this at their internal registry mirror. */
+  marketplace: {
+    /** Registry URL the Settings placeholder + one-click fetch use. */
+    defaultRegistryUrl: string
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -209,6 +216,11 @@ const DEFAULT_CONFIG: RedLogConfig = {
   cloudShare: {
     endpoint: '',
     authToken: ''
+  },
+  marketplace: {
+    // Default: the example registry hosted from this repo on GitHub raw.
+    // Deployers running a private registry override this in config.yaml.
+    defaultRegistryUrl: 'https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json'
   }
 }
 

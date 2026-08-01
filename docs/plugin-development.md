@@ -222,13 +222,13 @@ to `http://127.0.0.1:${port}/api/events`. Minimum shape:
 {
   "agent_type": "agent",           // or "shell" if command-line grade
   "data": {
-    "subtype": "aider_tool_call",  // free-form; group in the timeline
+    "subtype": "opencode_tool",  // free-form; group in the timeline
     "command": "sed -i s/a/b/ foo",
     "output_preview": "…truncated…",
     "session_id": "…",             // if the agent gives you one
     "cwd": "/path/to/engagement",
     "tool": "shell",
-    "wrapper": "aider"             // your plugin id
+    "wrapper": "opencode"             // your plugin id
   }
 }
 ```
@@ -247,38 +247,48 @@ Read the two hooks you already have — they cover both extremes:
   shell command spawned by Codex; fires a command_start before and a
   command_end after with exit code + duration.
 
-##### Full example: Aider
+##### Full example: OpenCode
 
-Aider is Tier B — it doesn't expose a hook event but runs everything through
-`sh -c`, so a SHELL wrapper works. `plugin.json`:
+OpenCode is a Tier A agent — it exposes a native plugin API (`tool.execute.after`)
+that auto-loads any `.mjs` / `.ts` from `.opencode/plugins/` (project-scoped)
+or `~/.config/opencode/plugins/` (global). Docs: <https://opencode.ai/docs/plugins/>.
+
+Live reference: [`examples/plugins/opencode-hook/`](../examples/plugins/opencode-hook/).
+
+`plugin.json`:
 
 ```json
 {
-  "id": "aider",
-  "name": "Aider",
-  "version": "1.0.0",
+  "id": "opencode-hook",
+  "name": "OpenCode",
+  "version": "0.1.0",
   "redlogApi": 1,
   "contributes": {
     "capture": [{
-      "id": "aider",
-      "name": "Aider",
-      "description": "Wrap the shell Aider spawns so tool calls hit RedLog",
+      "id": "opencode-plugin",
+      "name": "OpenCode (plugin API)",
       "agentType": "agent",
-      "requires": ["aider"],
-      "hookFile": "hooks/aider-wrapper.sh",
+      "requires": ["opencode"],
+      "hookFile": "plugin/redlog.mjs",
       "installMethod": "manual",
       "manualSteps": [
-        { "label": "Aider spawns /bin/sh for tool calls — point it at the wrapper" },
-        { "label": "Add to your shell profile", "command": "export AIDER_SHELL=\"{hookFile}\"" }
+        { "label": "Project-scoped install:",
+          "command": "mkdir -p .opencode/plugins && ln -sf \"$PWD/examples/plugins/opencode-hook/plugin/redlog.mjs\" .opencode/plugins/redlog.mjs" },
+        { "label": "Global install (every OpenCode session):",
+          "command": "mkdir -p ~/.config/opencode/plugins && cp examples/plugins/opencode-hook/plugin/redlog.mjs ~/.config/opencode/plugins/redlog.mjs" }
       ]
     }]
   }
 }
 ```
 
-`hooks/aider-wrapper.sh` mirrors `codex-wrapper.sh` — POST a `command_start`
-before `exec sh -c "$*"`, POST a `command_end` with `$?` after. Everything else
-(agent detection, redaction, filtering) reuses the same machinery.
+The plugin module exports a `Plugin` factory that returns
+`{ 'tool.execute.after': async (input, output) => ... }`. The hook body reads
+`~/.redlog/api-token` + `~/.redlog/api-port`, applies the two-gate privacy
+filter (recording + cwd exclusion), redacts common secret shapes from the
+output preview, and POSTs an `agent` event with
+`subtype: opencode_tool`. It's ~130 LOC and never throws — a failed capture
+must never break the operator's OpenCode session.
 
 ##### Testing your plugin
 
@@ -287,18 +297,18 @@ before `exec sh -c "$*"`, POST a `command_end` with `$?` after. Everything else
 2. Restart RedLog (or click **Reload** in Settings ▸ Plugins).
 3. The plugin should appear in Settings ▸ Plugins as 🟢 declarative and in
    Settings ▸ Hooks as an installable capture.
-4. Fire the hook manually with a synthetic payload:
+4. Fire the hook for real by running the agent:
    ```bash
-   AIDER_SHELL_CMD='echo test' bash hooks/aider-wrapper.sh -c 'echo test'
+   opencode run "list files in /tmp"
    ```
-5. Verify the event lands via CLI or timeline:
+5. Verify the events land via CLI or timeline:
    ```bash
    redlog-cli events --agent_type agent --limit 3
    ```
 
-If nothing shows up, run the hook with `bash -x` and look for
-`REDLOG_DIR`/API responses — 99% of the time it's a missing token file
-(RedLog not running) or a payload the API rejects.
+If nothing shows up: check RedLog is recording, check the cwd isn't in
+your exclusion list, and confirm the plugin loaded (`opencode` prints a
+warning on startup if a plugin file fails to import).
 
 ---
 
