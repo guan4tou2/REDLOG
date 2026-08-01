@@ -1,0 +1,41 @@
+## RedLog Share Worker — deployer config template.
+##
+## Copy this file to `wrangler.toml` (if you renamed it) and fill in the
+## bucket / kv ids that `wrangler r2 bucket create` and
+## `wrangler kv namespace create` printed for your Cloudflare account.
+## Nothing here is a secret; the AUTH_TOKEN lives in `wrangler secret put`.
+
+name = "redlog-share"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+# --- R2 (the bundle bytes) --------------------------------------------------
+# Create with: wrangler r2 bucket create redlog-bundles
+[[r2_buckets]]
+binding = "BUNDLES"
+bucket_name = "redlog-bundles"
+# preview_bucket_name = "redlog-bundles-preview"   # optional, for `wrangler dev`
+
+# --- KV (the share registry) ------------------------------------------------
+# Create with: wrangler kv namespace create SHARES
+# then paste the printed id / preview_id below.
+[[kv_namespaces]]
+binding = "SHARES"
+id = "REPLACE_ME_WITH_KV_ID"
+# preview_id = "REPLACE_ME_WITH_KV_PREVIEW_ID"
+
+# --- Non-secret config ------------------------------------------------------
+# AUTH_TOKEN is a *secret*, set separately: `wrangler secret put AUTH_TOKEN`.
+# SIGNING_KEY is also a secret used to mint short-lived signed PUT/GET URLs
+# scoped to a specific object; `wrangler secret put SIGNING_KEY` (any long
+# random string; treat it like an HMAC key — rotating invalidates in-flight
+# uploads only, share URLs keep working).
+[vars]
+RETENTION_ROW_DAYS = "90"
+MAX_UPLOAD_MB = "100"
+# Base URL of the deployed Worker. Used to compose putUrl / shareUrl.
+# Leave blank to auto-derive from the request; set explicitly if you sit
+# behind a custom domain and the Worker's `request.url` origin differs from
+# the one your operators use.
+PUBLIC_BASE_URL = ""

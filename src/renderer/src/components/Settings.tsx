@@ -1717,12 +1717,21 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
   const [expiresIn, setExpiresIn] = useState<'24h' | '7d' | '30d' | '90d' | 'never'>('30d')
   const [busy, setBusy] = useState<'preview' | 'prepare' | 'upload' | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  // "stub" writes to ~/.redlog/shares/ (v1 default). "https" hits a
+  // user-deployed redlog-share-worker; both endpoint+token must be set.
+  const [mode, setMode] = useState<'stub' | 'https'>('stub')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [endpoint, setEndpoint] = useState<string>('')
+  const [authToken, setAuthToken] = useState<string>('')
+  const [tokenVisible, setTokenVisible] = useState(false)
 
   const api = (window.redlog as unknown as { cloudShare: {
     preview: () => Promise<{ ok: boolean; preview?: CloudSharePreview; error?: string }>
     prepare: (engagementId: string, reviewedByOperator: boolean) =>
       Promise<{ ok: boolean; zipPath?: string; manifest?: CloudShareBundleManifest; error?: string }>
     uploadStub: (zipPath: string, manifestJson: string, expiresIn?: string) =>
+      Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
+    upload: (zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) =>
       Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
   } }).cloudShare
 
@@ -1734,9 +1743,36 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
     setBusy(null)
   }
   useEffect(() => { refreshPreview() }, [])
+  // Load persisted endpoint + token so the operator doesn't retype every session.
+  useEffect(() => {
+    window.redlog.config.get().then((c) => {
+      const cs = (c as { cloudShare?: { endpoint?: string; authToken?: string } }).cloudShare
+      if (cs) {
+        if (cs.endpoint) { setEndpoint(cs.endpoint); setAdvancedOpen(true); setMode('https') }
+        if (cs.authToken) setAuthToken(cs.authToken)
+      }
+    }).catch(() => {})
+  }, [])
+
+  // Persist endpoint+token to config.yaml. Debounced so text-input typing
+  // doesn't blast one write per keystroke.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const persistBackend = (nextEndpoint: string, nextToken: string): void => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const c = await window.redlog.config.get() as Record<string, unknown>
+        const merged = { ...c, cloudShare: { endpoint: nextEndpoint, authToken: nextToken } }
+        await window.redlog.config.save(merged)
+      } catch { /* silent — settings panel already surfaces save failures elsewhere */ }
+    }, 350)
+  }
+
+  const httpsReady = mode === 'https' && endpoint.trim().length > 0 && authToken.trim().length > 0
+  const canUpload = reviewed && busy === null && (mode === 'stub' || httpsReady)
 
   const upload = async (): Promise<void> => {
-    if (!reviewed) return
+    if (!canUpload) return
     setBusy('prepare'); setShareUrl(null)
     const engagementId = 'default' // Bundle-export doesn't split by engagement yet — spec §14 open Q.
     const p = await api.prepare(engagementId, true)
@@ -1746,7 +1782,9 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       return
     }
     setBusy('upload')
-    const u = await api.uploadStub(p.zipPath, JSON.stringify(p.manifest), expiresIn)
+    const u = mode === 'https'
+      ? await api.upload(p.zipPath, JSON.stringify(p.manifest), expiresIn, endpoint.trim(), authToken.trim())
+      : await api.uploadStub(p.zipPath, JSON.stringify(p.manifest), expiresIn)
     setBusy(null)
     if (u.ok && u.shareUrl) {
       setShareUrl(u.shareUrl)
@@ -1809,12 +1847,64 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
         </label>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button onClick={upload} disabled={!reviewed || busy !== null}
-          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-40">
-          {busy === 'prepare' ? t('cloudShare.preparing') : busy === 'upload' ? t('cloudShare.uploading') : t('cloudShare.shareStub')}
+      <div className="mb-3 rounded border border-zinc-800 bg-zinc-950/40">
+        <button type="button" onClick={() => setAdvancedOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-zinc-400 hover:bg-zinc-900/60">
+          <span>{t('cloudShare.advancedTitle')}</span>
+          <span className="text-zinc-600">{advancedOpen ? '▾' : '▸'}</span>
         </button>
-        <span className="text-[11px] text-zinc-600">{t('cloudShare.stubNote')}</span>
+        {advancedOpen && (
+          <div className="px-3 pb-3 pt-1 space-y-2">
+            <p className="text-[11px] text-zinc-600">{t('cloudShare.advancedHint')}</p>
+            <label className="block text-[11px] text-zinc-500">
+              {t('cloudShare.endpoint')}
+              <input type="text" value={endpoint}
+                onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken) }}
+                placeholder="https://redlog-share.<acct>.workers.dev"
+                className="mt-1 w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+            </label>
+            <label className="block text-[11px] text-zinc-500">
+              {t('cloudShare.authToken')}
+              <div className="mt-1 flex gap-2">
+                <input type={tokenVisible ? 'text' : 'password'} value={authToken}
+                  onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value) }}
+                  placeholder={t('cloudShare.authTokenPlaceholder')}
+                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+                <button type="button" onClick={() => setTokenVisible((v) => !v)}
+                  className="px-2 text-[11px] rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700">
+                  {tokenVisible ? t('cloudShare.hide') : t('cloudShare.show')}
+                </button>
+              </div>
+            </label>
+            <div className="flex items-center gap-4 text-[11px] pt-1">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
+                  className="accent-zinc-500" />
+                <span className={mode === 'stub' ? 'text-zinc-300' : 'text-zinc-500'}>{t('cloudShare.modeStub')}</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="cloudshare-mode" checked={mode === 'https'} onChange={() => setMode('https')}
+                  className="accent-red-500" />
+                <span className={mode === 'https' ? 'text-zinc-300' : 'text-zinc-500'}>{t('cloudShare.modeHttps')}</span>
+              </label>
+              {mode === 'https' && !httpsReady && (
+                <span className="text-amber-400/80">{t('cloudShare.httpsNeedsFields')}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button onClick={upload} disabled={!canUpload}
+          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-40">
+          {busy === 'prepare' ? t('cloudShare.preparing')
+            : busy === 'upload' ? t('cloudShare.uploading')
+              : mode === 'https' ? t('cloudShare.shareHttps') : t('cloudShare.shareStub')}
+        </button>
+        <span className="text-[11px] text-zinc-600">
+          {mode === 'https' ? t('cloudShare.httpsNote') : t('cloudShare.stubNote')}
+        </span>
       </div>
 
       {shareUrl && (

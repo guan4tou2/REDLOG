@@ -3,6 +3,38 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.72 — 2026-08-01
+- **Windows release-CI hotfix**: v0.6.71's Windows zip path used
+  `Compress-Archive -LiteralPath '$dir\*'`, but `-LiteralPath` is literal by
+  design — it doesn't glob, so the zip was silently empty and the
+  post-build `fs.statSync` blew up. Swap to `tar.exe -a -c -f` (Windows
+  10+ ships bsdtar, which handles the `.zip` extension natively).
+- **Cloud-share HTTPS backend lands (deployable, not deployed)**:
+  new `redlog-share-worker/` — a Cloudflare Worker (~300 LOC) + `wrangler.toml`
+  + README that a deployer runs against their own Cloudflare account. R2 for
+  the bundle bytes, KV for per-share metadata, HMAC-signed short-lived
+  PUT/GET tokens scoped to the sha256, `/api/share/init` → `/api/share/put/:sha`
+  → `/share/:slug` public download page. `TODO(magic-link)` on the bearer
+  auth per spec §10.
+  - `src/core/config.ts` grows a `cloudShare: { endpoint, authToken }` block.
+  - Settings ▸ 資料 ▸ Cloud share adds an "Advanced: HTTPS backend"
+    collapsible with endpoint + token inputs and a stub-vs-https radio pair.
+    When HTTPS is selected AND both fields set, the Share button dispatches
+    to the real `httpsUploader` from `cloud-share-uploader.ts`. Still uses
+    the same mandatory redaction gate.
+  - `test/cloud-share-uploader.test.ts` — loopback-mocked unit test for the
+    two-step wire contract (POST init → PUT bytes → sha256 re-check).
+  - `README.md` gains a short "Cloud share backend (optional)" section
+    linking to `redlog-share-worker/README.md`.
+- **Marketplace E2E lands**: `e2e/marketplace-flow.spec.ts` — three tests
+  (install a declarative plugin via IPC, trust a publisher via UI + confirm
+  via listPublishers, install v1 → v2 → rollback restores v1's marker
+  file). New dev-only `marketplace:testInstall` IPC gated on `REDLOG_E2E=1`
+  in main so the E2E can drive `installFromRegistry` with an injected
+  fetcher — production paths keep HTTPS enforcement. Real gzipped POSIX
+  ustar tarballs built in-test exercise the default `tar` extractor
+  end-to-end. `npm run e2e` now runs 7 tests in ~5.9s.
+
 ## v0.6.71 — 2026-08-01
 - **Cloud-share bundle v1** (spec: [`docs/CLOUD_SHARE_BUNDLE.md`](docs/CLOUD_SHARE_BUNDLE.md)).
   End-to-end flow lands with a local file:// stub uploader — real HTTPS
