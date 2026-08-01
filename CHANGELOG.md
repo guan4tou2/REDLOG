@@ -3,6 +3,22 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.80 — 2026-08-01
+- **Cloud-share size ratios calibrated against real data**: measured a live
+  616-screenshot / 35-cast / ~500-event project — actual gzip ratios were
+  0.93x (JPEGs), 0.052x (ANSI casts), 0.246x (JSONL events). The v0.6.76
+  defaults (1.02 / 0.15 / 0.20) over-estimated the compressed size of
+  cast files by ~3× — operators would see the red "you'll blow the cap"
+  warning on bundles that were nowhere near the cap. New defaults
+  (1.00 / 0.10 / 0.25) track real behaviour, with the cast ratio kept
+  slightly above observed as a safety margin. Test's expected math
+  updated to match.
+- **Terminal ↻ restart-in-place verified end-to-end**: exit shell → tab
+  shows `↻` button → click → fresh pty (new pid) reuses the tab slot,
+  label stays "終端 1", tab position preserved. No code change — this
+  was the last v0.6.44 feature that had never been manually smoke-tested
+  on a shipped DMG.
+
 ## v0.6.79 — 2026-08-01
 - **Swap Aider → OpenCode plugin**: `examples/plugins/aider-hook/` dropped,
   `examples/plugins/opencode-hook/` added. Rationale: Aider has no
