@@ -69,6 +69,61 @@ describe('detectPivot', () => {
   })
 })
 
+describe('detectPivot edge cases', () => {
+  it('empty / whitespace-only / non-pivot command returns null', () => {
+    expect(detectPivot('')).toBeNull()
+    expect(detectPivot('   ')).toBeNull()
+    // bare `ssh` with no host is not a pivot event (no target moved to).
+    expect(detectPivot('ssh')).toBeNull()
+  })
+
+  it('ssh reverse port forward (-R) is a port_forward pivot', () => {
+    const p = detectPivot('ssh -R 8080:127.0.0.1:80 user@jump.corp')
+    expect(p?.tool).toBe('ssh')
+    expect(p?.subtype).toBe('port_forward')
+    expect(p?.forward).toBe('8080:127.0.0.1:80')
+    expect(p?.via).toBe('jump.corp')
+  })
+
+  it('autossh is treated like ssh for SOCKS setup', () => {
+    const p = detectPivot('autossh -M 0 -D 1080 -N user@jump.corp')
+    expect(p?.tool).toBe('ssh')
+    expect(p?.subtype).toBe('socks_up')
+    expect(p?.socksPort).toBe(1080)
+  })
+
+  it('ligolo-ng proxy self-cert boot is a tunnel_start', () => {
+    const p = detectPivot('./proxy -selfcert')
+    expect(p?.tool).toBe('ligolo-ng')
+    expect(p?.subtype).toBe('tunnel_start')
+  })
+
+  it('chisel port_forward (R:port:host:port, no socks) not classified as socks_up', () => {
+    const p = detectPivot('chisel client vps.example.com:8080 R:8080:10.0.0.5:80')
+    expect(p?.tool).toBe('chisel')
+    expect(p?.subtype).toBe('port_forward')
+    expect(p?.forward).toBe('8080:10.0.0.5:80')
+    expect(p?.via).toBe('vps.example.com')
+  })
+
+  it('socat TCP-LISTEN → TCP relay is a port_forward pivot', () => {
+    const p = detectPivot('socat TCP-LISTEN:9000,fork TCP:10.0.0.5:80')
+    expect(p?.tool).toBe('socat')
+    expect(p?.subtype).toBe('port_forward')
+    expect(p?.forward).toBe('10.0.0.5:80')
+    expect(p?.via).toBe('10.0.0.5')
+  })
+
+  it('handles a very long command without hanging (regex safety)', () => {
+    // 20 KB of random-looking token; regexes must not backtrack pathologically.
+    const junk = 'a'.repeat(20_000)
+    const start = Date.now()
+    detectPivot(`ssh -D 1080 user@jump.corp ${junk}`)
+    detectPivot(junk)
+    expect(Date.now() - start).toBeLessThan(200)
+  })
+})
+
 describe('target extractor knows pivot tools', () => {
   it('catalogs the downstream host behind proxychains', () => {
     expect(extractTarget('proxychains4 nmap -sT 10.10.10.5')).toBe('10.10.10.5')
