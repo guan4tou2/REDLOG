@@ -3,6 +3,17 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.78 — 2026-08-01
+- **UI hotfix**: five i18n strings added in v0.6.76–v0.6.77 used
+  single-brace `{key}` interpolation, but the app's `t()` helper matches
+  `{{key}}` only — so operators saw literal `{size} KB`, `{{n}}
+  publishers`, `{cap} MB` on cloud-share cap warnings, etc. Ship-time
+  DMG test on v0.6.74 caught the marketplace side (`{size} KB` under
+  each listed plugin). Fixed all five (`marketplace.sizeKb`,
+  `marketplace.publishersAdded`, `marketplace.suggestedPublishersTitle`,
+  `cloudShare.capExceedWarning`, one more). No behaviour change beyond
+  the display text.
+
 ## v0.6.77 — 2026-08-01
 - **Codex + Aider plugin corrections** (verified against upstream docs):
   - Codex config path was wrong: `~/.codex/config.toml` (not
