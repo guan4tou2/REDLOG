@@ -474,7 +474,10 @@ export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: strin
     try {
       const installed = readFileSync(dest, 'utf-8')
       const bundled = readFileSync(src, 'utf-8')
-      if (installed === bundled) continue
+      // Normalise CRLF → LF before compare so a Windows editor rewriting
+      // the installed copy with `\r\n` isn't treated as an upgrade candidate.
+      // Audit P2-4.
+      if (installed.replace(/\r\n/g, '\n') === bundled.replace(/\r\n/g, '\n')) continue
       // Heuristic: only overwrite when the installed version has one of
       // the known-broken markers, or has an old shebang line we've since
       // superseded. Anything else might be a user modification and we

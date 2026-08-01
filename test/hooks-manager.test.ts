@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest'
-import { detectHooks, isBrokenShellHook } from '../src/core/hooks-manager'
+import { describe, it, expect, afterEach } from 'vitest'
+import { detectHooks, isBrokenShellHook, installHook } from '../src/core/hooks-manager'
+
+// process.platform is non-writable; test the Windows refusal branch by
+// swapping it in-place then restoring.
+function pretendPlatform(p: NodeJS.Platform): () => void {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform')!
+  Object.defineProperty(process, 'platform', { value: p, configurable: true })
+  return () => Object.defineProperty(process, 'platform', original)
+}
 
 describe('hooks-manager guided setup', () => {
   const hooks = detectHooks()
@@ -52,5 +60,38 @@ describe('hooks-manager guided setup', () => {
       expect(c.manualSteps?.some((s) => s.command?.includes(c.hookFile))).toBe(true)
       expect(c.manualSteps?.some((s) => s.command?.includes('codex run'))).toBe(true)
     }
+  })
+})
+
+describe('installHook Windows refusal (Audit P0-3)', () => {
+  let restore: (() => void) | null = null
+  afterEach(() => { restore?.(); restore = null })
+
+  it('shell-source install returns success:false on win32', () => {
+    restore = pretendPlatform('win32')
+    // `shell-zsh` is a real registered plugin with installMethod:
+    // 'shell-source'. On Windows the branch must refuse rather than
+    // fabricate a %USERPROFILE%\.zshrc.
+    const r = installHook('shell-zsh')
+    expect(r.success).toBe(false)
+    expect(r.message).toMatch(/windows|powershell|\$profile/i)
+    // Message should point at the setup doc so operators know what to do.
+    expect(r.message).toMatch(/docs\/windows-setup\.md|\$PROFILE/)
+  })
+
+  it('shell-source refusal still returns a stable object shape', () => {
+    restore = pretendPlatform('win32')
+    const r = installHook('shell-bash')
+    // Both fields present, no throw, no fs write.
+    expect(typeof r.success).toBe('boolean')
+    expect(typeof r.message).toBe('string')
+    expect(r.success).toBe(false)
+  })
+
+  it('unknown plugin id fails identically on every platform', () => {
+    restore = pretendPlatform('win32')
+    const r = installHook('nonexistent-plugin')
+    expect(r.success).toBe(false)
+    expect(r.message).toMatch(/unknown/i)
   })
 })
