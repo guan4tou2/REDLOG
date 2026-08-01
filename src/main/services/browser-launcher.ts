@@ -30,12 +30,22 @@ const MAC_CANDIDATES = [
   '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
 ]
 
+// Per-user Chrome installs (`Chrome for me only`) land under
+// %LOCALAPPDATA%\Google\Chrome\Application\ and are the default when a
+// non-admin runs the installer. Missing them meant every non-admin Chrome
+// user saw "No Chromium-based browser found". Audit P2-5.
+const WIN_LOCAL_APP_DATA = process.env.LOCALAPPDATA ?? ''
 const WIN_CANDIDATES = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe'
+  'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+  ...(WIN_LOCAL_APP_DATA ? [
+    `${WIN_LOCAL_APP_DATA}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${WIN_LOCAL_APP_DATA}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${WIN_LOCAL_APP_DATA}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`
+  ] : [])
 ]
 
 const LINUX_CANDIDATES = [

@@ -234,7 +234,15 @@ function runZip(srcDir: string, destZip: string): void {
       timeout: 60_000
     })
     if (r.status !== 0) {
+      // Windows Server 2016 and un-patched Windows 10 (pre-1803) don't ship
+      // tar.exe. The generic `exit null` message is unactionable; call out
+      // the version dependency so operators know where to look. Audit P2-3.
       const err = r.stderr?.toString() ?? ''
+      if (r.error && (r.error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(
+          '`tar.exe` not found — Windows 10 1803+ ships it by default. On older builds, install the Windows Update or add tar.exe (e.g. via git-for-windows) to PATH.'
+        )
+      }
       throw new Error(`tar.exe exit ${r.status}: ${err}`)
     }
     return
