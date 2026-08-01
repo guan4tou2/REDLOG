@@ -102,7 +102,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   return (
-    <div className="h-full flex items-center justify-center bg-[#0a0a0a]">
+    <div className="h-full flex items-center justify-center bg-[#0a0a0a]" data-testid="project-picker">
       <div className="w-[480px] space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">

@@ -1,6 +1,6 @@
 {
   "name": "redlog",
-  "version": "0.6.67",
+  "version": "0.6.68",
   "description": "Red Team Operation Log",
   "author": "guan4tou2",
   "repository": {
@@ -12,7 +12,8 @@
   "license": "MIT",
   "main": "./out/main/index.js",
   "bin": {
-    "redlog-cli": "./cli/redlog-cli.js"
+    "redlog-cli": "./cli/redlog-cli.js",
+    "redlog-sign": "./cli/redlog-sign.js"
   },
   "scripts": {
     "predev": "electron-rebuild",

@@ -174,7 +174,7 @@ export default function App(): JSX.Element {
       <div className="flex flex-1 min-h-0">
         <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
             {view === 'terminal' && <TerminalView />}
