@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { extractTarget } from '../src/core/target-extractor'
+import { describe, it, expect, afterEach } from 'vitest'
+import { extractTarget, registerTargetExtractors, unregisterTargetExtractors } from '../src/core/target-extractor'
 
 describe('extractTarget', () => {
   it('extracts host from ssh command', () => {
@@ -90,6 +90,68 @@ describe('extractTarget', () => {
     it('still extracts host when an unknown command carries an http(s) URL', () => {
       expect(extractTarget('xh https://api.target.com/v1')).toBe('api.target.com')
       expect(extractTarget('unknown-tool http://192.168.1.1:8080/foo')).toBe('192.168.1.1')
+    })
+  })
+
+  describe('empty / degenerate / huge input', () => {
+    it('empty and whitespace-only commands return null', () => {
+      expect(extractTarget('')).toBeNull()
+      expect(extractTarget('   ')).toBeNull()
+      expect(extractTarget('\t\n')).toBeNull()
+    })
+
+    it('finishes quickly on a large command string', () => {
+      const noise = 'a'.repeat(50_000)
+      const start = Date.now()
+      // Unknown command with no URL — must not run DOMAIN_RE across the 50K blob.
+      expect(extractTarget(`echo ${noise}`)).toBeNull()
+      expect(Date.now() - start).toBeLessThan(200)
+    })
+
+    it('accepts commands whose target has an unusual port suffix', () => {
+      expect(extractTarget('ssh admin@target.example.com')).toBe('target.example.com')
+      // scp with :path — capture stops before the colon.
+      expect(extractTarget('scp file.txt operator@10.1.2.3:/tmp/x')).toBe('10.1.2.3')
+    })
+  })
+
+  describe('plugin-contributed extractors', () => {
+    afterEach(() => {
+      unregisterTargetExtractors('unit-x')
+      unregisterTargetExtractors('unit-bad')
+    })
+
+    it('registered plugin patterns win over the built-in list', () => {
+      // Built-in `nmap` extraction would pick the IP; the plugin extractor gets
+      // to shadow it because externalPatterns are tried first.
+      const n = registerTargetExtractors('unit-x', [
+        { cmd: '^nmap\\s', extract: 'plugin-target-([a-z0-9]+)' }
+      ])
+      expect(n).toBe(1)
+      expect(extractTarget('nmap plugin-target-alpha01 10.0.0.9')).toBe('alpha01')
+    })
+
+    it('bad regex is silently skipped, the count reflects only what compiled', () => {
+      const n = registerTargetExtractors('unit-bad', [
+        { cmd: '[unterminated', extract: '.*' },
+        { cmd: '^unit-good\\s', extract: '(\\S+)$' }
+      ])
+      expect(n).toBe(1)
+      expect(extractTarget('unit-good end-token')).toBe('end-token')
+    })
+
+    it('unregistering an unknown plugin id is a no-op (idempotent)', () => {
+      expect(() => unregisterTargetExtractors('never-registered')).not.toThrow()
+    })
+
+    it('re-registering with the same id appends without corrupting later lookups', () => {
+      registerTargetExtractors('unit-x', [{ cmd: '^rescan\\s', extract: '--to\\s+(\\S+)' }])
+      registerTargetExtractors('unit-x', [{ cmd: '^rescan\\s', extract: '--to\\s+(\\S+)' }])
+      // Two identical entries; both fire but return the same thing.
+      expect(extractTarget('rescan --to host.local')).toBe('host.local')
+      unregisterTargetExtractors('unit-x')
+      // After unregister, plugin no longer contributes — fallback fires.
+      expect(extractTarget('rescan --to host.local')).toBeNull()
     })
   })
 })

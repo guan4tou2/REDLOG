@@ -3,6 +3,35 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.81 — 2026-08-01
+- **+49 unit-test edge cases** across 7 modules: `pivot-detector` (empty
+  input, reverse `-R` ssh, autossh SOCKS, ligolo proxy self-cert, chisel
+  port-forward, socat TCP-LISTEN, 20 KB perf guard), `target-extractor`
+  (empty/whitespace, 50 KB perf guard, `scp :path` capture, plugin
+  extractors shadow built-ins, bad-regex skip counter, idempotent
+  unregister, double-register cleanup), `redaction` (empty entry not
+  match-all, unicode byte offsets, plugin rule merge/dedup/re-register-
+  replace), `command-tagger` (register replace, global-flag stateless,
+  20 KB perf guard), `chain-anchor` + `buildOtsBundle` (magic/version
+  layout, unknown-id null, empty-anchor verify), `publisher-trust`
+  (malformed base64 sig, empty message, bogus key skip so sibling
+  verifies, homepage preserved on re-trust), and `loot-detector` (no-op
+  without operatorId, per-instance dedup, plugin add/scan/unregister
+  lifecycle). Suite 257 → 306, still ~2 s. No production bugs found —
+  the code already handled every probed edge correctly.
+- **Windows compatibility audit** (`docs/WINDOWS_COMPAT_AUDIT.md`,
+  ~2200 words): 14 issues surfaced, ranked P0/P1/P2. Three P0 —
+  (1) CI matrix is Ubuntu-only, nothing exercises Windows before
+  release; (2) `terminal-manager.ts:115` reads `process.env.HOME` first,
+  so Git Bash / MSYS2 hand pty a POSIX-shaped cwd; (3)
+  `hooks-manager.ts:171` `shell-source` install branch writes to
+  `%USERPROFILE%\.bashrc`, corrupting a Windows profile if a plugin-
+  contributed capture reaches it. Six P1, five P2. Also documents 20+
+  places already correct (all `os.homedir()` sites, `pathToFileURL`
+  round-trips, tests swap both `HOME` + `USERPROFILE`). Fix order
+  proposed — CI matrix first, since it surfaces the rest
+  automatically.
+
 ## v0.6.80 — 2026-08-01
 - **Cloud-share size ratios calibrated against real data**: measured a live
   616-screenshot / 35-cast / ~500-event project — actual gzip ratios were

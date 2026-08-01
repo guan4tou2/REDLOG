@@ -52,4 +52,40 @@ describe('command-tagger', () => {
     ])
     expect(tagCommand('MimiKatz.exe').mitre_ttp).toBe('T1003.001')
   })
+
+  it('re-registering the same pluginId REPLACES its prior patterns', () => {
+    registerCommandTags('rot', [{ name: 'old', match: '^nmap\\b', stamp: { v: '1' } }])
+    registerCommandTags('rot', [{ name: 'new', match: '^nmap\\b', stamp: { v: '2' } }])
+    expect(tagCommand('nmap 1.1.1.1').v).toBe('2')
+  })
+
+  it('unregister for unknown plugin id does not throw', () => {
+    expect(() => unregisterCommandTags('never-existed')).not.toThrow()
+  })
+
+  it('empty pattern list is accepted (no-op registration)', () => {
+    registerCommandTags('none', [])
+    expect(tagCommand('nmap 1.1.1.1')).toEqual({})
+    unregisterCommandTags('none')
+  })
+
+  it('global-flag regex is stateless across repeated tagCommand calls', () => {
+    registerCommandTags('gflag', [
+      { name: 'nmap', match: 'nmap', flags: 'g', stamp: { tool: 'nmap' } }
+    ])
+    // Without the lastIndex reset in the source, the second call would miss.
+    expect(tagCommand('nmap 1.1.1.1').tool).toBe('nmap')
+    expect(tagCommand('nmap 2.2.2.2').tool).toBe('nmap')
+    expect(tagCommand('nmap 3.3.3.3').tool).toBe('nmap')
+  })
+
+  it('scales to a large command line without pathological backtracking', () => {
+    registerCommandTags('big', [
+      { name: 'nmap', match: '^nmap\\b', stamp: { tool: 'nmap' } }
+    ])
+    const cmd = 'nmap ' + '-A '.repeat(20_000) + ' 10.0.0.1'
+    const start = Date.now()
+    expect(tagCommand(cmd).tool).toBe('nmap')
+    expect(Date.now() - start).toBeLessThan(200)
+  })
 })

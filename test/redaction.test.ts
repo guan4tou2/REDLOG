@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest'
-import { redact, maskText, shannonEntropy, DEFAULT_RULES } from '../src/core/redaction'
+import { describe, it, expect, afterEach } from 'vitest'
+import {
+  redact, maskText, shannonEntropy, DEFAULT_RULES,
+  registerRedactionRules, unregisterRedactionRules, getRules
+} from '../src/core/redaction'
 
 describe('redaction — layer 1 (capture) + layer 2 (detect)', () => {
   it('leaves ordinary text alone; no spans', () => {
@@ -105,5 +108,108 @@ describe('shannonEntropy', () => {
     expect(shannonEntropy('aaaa')).toBe(0)
     expect(shannonEntropy('ab')).toBeCloseTo(1, 5)
     expect(shannonEntropy('abcdefgh')).toBeCloseTo(3, 5)
+  })
+})
+
+describe('redaction edge cases', () => {
+  it('redact("") returns empty result without walking the regex', () => {
+    const r = redact('')
+    expect(r.text).toBe('')
+    expect(r.redacted).toEqual([])
+  })
+
+  it('empty-string entries in denylist/allowlist are ignored (not "matches everything")', () => {
+    // Bug shape if we ever regress: empty '' in denylist would match every token
+    // (String#includes('') is always true).
+    const secret = 'sk-live-9f8a2d1b0e4c6a7f8b3d5e2c1a0b9d8e7f6a5b4c3d2e1f0'
+    const r = redact(`hello ${secret} world`, {
+      ...DEFAULT_RULES,
+      entropyThreshold: 10, // way above possible, so entropy alone won't match
+      denylist: ['']
+    })
+    expect(r.redacted).toEqual([])
+  })
+
+  it('unicode-heavy text with a boring high-entropy token still gets the token flagged', () => {
+    const secret = 'abcdefghij0123456789xxxxx'
+    const input = `日本語プレフィックス ${secret} 中文后缀 🚀🔥`
+    const r = redact(input, { ...DEFAULT_RULES, entropyThreshold: 3.5, minLength: 16 })
+    expect(r.redacted.length).toBe(1)
+    // Offsets are code-unit indexes into the original string — the raw text
+    // slice must reproduce the secret exactly.
+    const s = r.redacted[0]
+    expect(input.slice(s.start, s.end)).toBe(secret)
+  })
+
+  it('malformed /regex/ denylist entry is skipped, siblings still fire', () => {
+    // Token must be at least TOKEN_RE.length (16) to be considered by redact().
+    const input = 'hello ABCDEF1234567890abcd tail'
+    const r = redact(input, {
+      ...DEFAULT_RULES,
+      denylist: ['/([broken/', '/^ABCDEF/']
+    })
+    expect(r.redacted.some((x) => x.pattern === 'denylist')).toBe(true)
+  })
+})
+
+describe('maskText edge cases', () => {
+  it('spans that cover the whole string turn everything into bullets', () => {
+    const text = 'SECRET'
+    const spans = [{ pattern: 'denylist' as const, hint: '', start: 0, end: text.length }]
+    expect(maskText(text, spans)).toBe('••••••')
+  })
+
+  it('adjacent (touching) spans are both applied', () => {
+    const text = 'AAAABBBB'
+    const spans = [
+      { pattern: 'denylist' as const, hint: '', start: 0, end: 4 },
+      { pattern: 'denylist' as const, hint: '', start: 4, end: 8 }
+    ]
+    expect(maskText(text, spans)).toBe('••••••••')
+  })
+
+  it('overlapping spans skip the second (defensive)', () => {
+    const text = 'ABCDEFGHIJ'
+    const spans = [
+      { pattern: 'denylist' as const, hint: '', start: 2, end: 6 },
+      { pattern: 'denylist' as const, hint: '', start: 4, end: 8 }
+    ]
+    // First span masks 2..6; second starts at 4 which is < cursor(6) → skipped.
+    expect(maskText(text, spans)).toBe('AB••••GHIJ')
+  })
+
+  it('zero-length span still produces at least one mask char (Math.max(1, ...))', () => {
+    const text = 'abc'
+    const spans = [{ pattern: 'entropy' as const, hint: '', start: 1, end: 1 }]
+    // Documented behavior: mask.repeat(Math.max(1, end-start)) = 1 bullet.
+    expect(maskText(text, spans)).toBe('a•bc')
+  })
+})
+
+describe('plugin-contributed redaction rules', () => {
+  afterEach(() => {
+    unregisterRedactionRules('rt-1')
+    unregisterRedactionRules('rt-2')
+  })
+
+  it('registered plugin rules are visible via getRules() and merged deduped', () => {
+    registerRedactionRules('rt-1', { denylist: ['A', 'B'], allowlist: ['x'] })
+    registerRedactionRules('rt-2', { denylist: ['B', 'C'] })
+    const rules = getRules()
+    // deduped B; allowlist merged too
+    expect([...rules.denylist].sort()).toEqual(['A', 'B', 'C'])
+    expect(rules.allowlist).toContain('x')
+  })
+
+  it('re-registering same plugin id REPLACES its prior contribution', () => {
+    registerRedactionRules('rt-1', { denylist: ['OLD-MARK'] })
+    registerRedactionRules('rt-1', { denylist: ['NEW-MARK'] })
+    const rules = getRules()
+    expect(rules.denylist).not.toContain('OLD-MARK')
+    expect(rules.denylist).toContain('NEW-MARK')
+  })
+
+  it('unregister for an unknown plugin id is a no-op', () => {
+    expect(() => unregisterRedactionRules('never-existed')).not.toThrow()
   })
 })
