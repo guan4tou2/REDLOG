@@ -2002,7 +2002,12 @@ interface RegistryEntryView {
   sizeKb?: number
   tags?: string[]
 }
-interface RegistryIndexView { updatedAt: number; entries: RegistryEntryView[] }
+interface RegistryPublisherAdView {
+  id: string
+  homepage?: string
+  keys: Array<{ label?: string; publicKey: string }>
+}
+interface RegistryIndexView { updatedAt: number; entries: RegistryEntryView[]; publishers?: RegistryPublisherAdView[] }
 interface PublisherKeyView { publicKey: string; label?: string; trustedAt: number; trustedBy?: string }
 interface PublisherView { id: string; homepage?: string; keys: PublisherKeyView[] }
 interface InstallResultView {
@@ -2057,6 +2062,24 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
 
   const publisherTrusted = (id: string): boolean => publishers.some((p) => p.id === id)
 
+  // Publishers the registry advertised that the operator hasn't pinned yet —
+  // drives the "Trust these to unlock installs" banner + one-click flow so
+  // nobody has to hand-paste an SPKI key just to get started.
+  const suggestedUntrusted = (index?.publishers ?? []).filter((p) => !publisherTrusted(p.id))
+  const [trustingAll, setTrustingAll] = useState(false)
+  const trustAllSuggested = async (): Promise<void> => {
+    if (suggestedUntrusted.length === 0) return
+    setTrustingAll(true)
+    for (const p of suggestedUntrusted) {
+      for (const k of p.keys) {
+        try { await api.trustPublisher(p.id, k.publicKey, p.homepage, k.label) } catch { /* keep going */ }
+      }
+    }
+    setTrustingAll(false)
+    toast(t('marketplace.publishersAdded', { n: suggestedUntrusted.length }), 'success')
+    reloadPublishers()
+  }
+
   return (
     <FieldGroup title={t('settings.marketplace')}>
       <p className="text-xs text-zinc-600 mb-2">{t('marketplace.hint')}</p>
@@ -2090,6 +2113,26 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
           )}
           {index && index.entries.length === 0 && (
             <p className="text-xs text-zinc-600">{t('marketplace.noEntries')}</p>
+          )}
+
+          {suggestedUntrusted.length > 0 && (
+            <div className="mb-3 rounded border border-amber-800/50 bg-amber-950/20 p-3">
+              <p className="text-[11px] text-amber-300 mb-1">
+                {t('marketplace.suggestedPublishersTitle', { n: suggestedUntrusted.length })}
+              </p>
+              <p className="text-[11px] text-zinc-500 mb-2">{t('marketplace.suggestedPublishersHint')}</p>
+              <ul className="mb-2 space-y-0.5">
+                {suggestedUntrusted.map((p) => (
+                  <li key={p.id} className="text-[11px] text-zinc-400 font-mono truncate" title={p.keys.map((k) => k.publicKey).join('\n')}>
+                    {p.id} · {p.keys.length} key{p.keys.length === 1 ? '' : 's'}
+                  </li>
+                ))}
+              </ul>
+              <button onClick={trustAllSuggested} disabled={trustingAll}
+                className="px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-white rounded disabled:opacity-50">
+                {trustingAll ? '…' : t('marketplace.trustAllSuggested')}
+              </button>
+            </div>
           )}
 
           <div className="space-y-2">

@@ -1,23 +1,36 @@
 #!/usr/bin/env bash
 # RedLog × Aider Shell Wrapper (Tier B)
 #
-# Aider (https://aider.chat) runs each shell command it wants to execute by
-# invoking `$AIDER_SHELL_CMD -c '<command>'` (or similar — see TODO below).
-# Setting AIDER_SHELL_CMD to the absolute path of this script routes every
-# such call through here, so we can bracket the command with command_start
-# and command_end events on RedLog's timeline before handing the actual work
-# off to the real shell.
+# Aider (https://aider.chat) has no dedicated hook API. On the pexpect (TTY)
+# code path in aider/run_cmd.py it invokes the shell resolved from
+# `os.environ["SHELL"]` (default `/bin/sh`) as:
 #
-# TODO: verify against upstream docs
-# (https://aider.chat/docs/config/options.html#--shell) — the exact env var
-# name (AIDER_SHELL_CMD vs AIDER_SHELL) and the argv shape Aider passes
-# (`-c <string>` vs positional args) may differ between Aider releases. This
-# wrapper accepts both, treating everything after an optional `-c` as the
-# command string.
+#     $SHELL -i -c '<command>'
+#
+# Setting SHELL to the absolute path of this script routes every such call
+# through here, so we can bracket the command with command_start / command_end
+# events on RedLog's timeline before handing the actual work off to a real
+# shell.
+#
+# LIMITATIONS:
+#   * Non-TTY Aider runs and the Windows code path fall back to
+#     subprocess.Popen(cmd, shell=True), which on POSIX ALWAYS uses `/bin/sh`
+#     regardless of $SHELL. Those commands cannot be captured this way.
+#   * There is no upstream `AIDER_SHELL` / `AIDER_SHELL_CMD` env var; the
+#     underlying request (Aider issues #1215, #1337) is unimplemented. If
+#     Aider ships one later, add it to the export in the plugin's install
+#     steps — the wrapper itself doesn't care what invoked it.
+#
+# References (verified 2026-08):
+#   * https://github.com/Aider-AI/aider/blob/main/aider/run_cmd.py
+#   * https://aider.chat/docs/config/options.html
+#   * https://github.com/Aider-AI/aider/issues/1215
 #
 # Contract:
-#   $0 -c '<command string>'         ← standard shape
+#   $0 -i -c '<command string>'      ← Aider's pexpect path
+#   $0 -c '<command string>'         ← plain POSIX shell -c invocation
 #   $0 <argv...>                     ← fallback: join argv as the command
+#   $0                               ← no argv: exec real shell interactively
 # Exits with the exit code of the wrapped command.
 
 set -uo pipefail
@@ -30,12 +43,36 @@ HOOK_CONFIG="$REDLOG_DIR/hook-config.json"
 # The shell we hand the command off to. Never call ourselves recursively.
 REAL_SHELL="${REDLOG_AIDER_REAL_SHELL:-/bin/sh}"
 
-# --- Parse Aider's argv into a single command string ---
-if [[ "${1:-}" == "-c" ]] && [[ $# -ge 2 ]]; then
-  CMD="$2"
-else
-  CMD="$*"
-fi
+# --- Parse argv into a single command string ---
+# Accept any leading flags (`-i`, `-l`, `-i -c`, `-c`) before the payload.
+INTERACTIVE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -c)
+      shift
+      CMD="${1:-}"
+      shift || true
+      break
+      ;;
+    -i|--interactive)
+      INTERACTIVE=1
+      shift
+      ;;
+    -l|--login)
+      shift
+      ;;
+    --)
+      shift
+      CMD="$*"
+      break
+      ;;
+    *)
+      CMD="$*"
+      break
+      ;;
+  esac
+done
+CMD="${CMD:-}"
 
 # --- Emit event helper. Never fails, never blocks the command. ---
 _redlog_send_event() {
@@ -111,14 +148,19 @@ print(json.dumps(d))
 # --- Run the wrapped command, bracketed by events ---
 if [[ -z "$CMD" ]]; then
   # No command — behave like an interactive shell so nothing breaks if Aider
-  # accidentally exec's us with no args.
-  exec "$REAL_SHELL"
+  # (or the user) exec's us bare. This also lets `SHELL=aider-wrapper.sh` be
+  # safe to set globally.
+  exec "$REAL_SHELL" -i
 fi
 
 _redlog_send_event "command_start" "$CMD"
 START=$SECONDS
 
-"$REAL_SHELL" -c "$CMD"
+if [[ "$INTERACTIVE" == "1" ]]; then
+  "$REAL_SHELL" -i -c "$CMD"
+else
+  "$REAL_SHELL" -c "$CMD"
+fi
 EXIT_CODE=$?
 
 DURATION=$(( SECONDS - START ))

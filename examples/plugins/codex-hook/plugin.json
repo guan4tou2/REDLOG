@@ -4,14 +4,14 @@
   "version": "0.1.0",
   "description": "Tier A capture: subscribes to the OpenAI Codex CLI native hook API and records every tool invocation to RedLog's timeline.",
   "author": "your-handle",
-  "homepage": "https://developers.openai.com/codex/hooks/",
+  "homepage": "https://learn.chatgpt.com/docs/hooks",
   "redlogApi": 1,
   "contributes": {
     "capture": [
       {
         "id": "codex-native",
         "name": "Codex (native hook)",
-        "description": "Records Codex CLI tool calls (command, output preview, session id, cwd) via Codex's native hook API.",
+        "description": "Records Codex CLI tool calls (command, output preview, session id, cwd) via Codex's native PostToolUse hook.",
         "agentType": "agent",
         "requires": ["codex"],
         "hookFile": "hooks/codex-hook.sh",
@@ -19,11 +19,11 @@
         "manualSteps": [
           {
             "label": "Open (or create) Codex's config file so we can register the hook",
-            "command": "mkdir -p ~/.config/codex && ${EDITOR:-nano} ~/.config/codex/config.toml"
+            "command": "mkdir -p ~/.codex && ${EDITOR:-nano} ~/.codex/config.toml"
           },
           {
-            "label": "Add a [hooks] block pointing at the RedLog hook script. Adjust the event name to match Codex's current hook API (e.g. 'post_tool_use', 'tool_result', or the exact name from https://developers.openai.com/codex/hooks/).",
-            "command": "cat <<'TOML'\n[hooks]\npost_tool_use = [\n  { command = \"{hookFile}\" }\n]\nTOML"
+            "label": "Add a [[hooks.PostToolUse]] block pointing at the RedLog hook script (see https://learn.chatgpt.com/docs/hooks)",
+            "command": "cat <<'TOML'\n[[hooks.PostToolUse]]\nmatcher = \".*\"\n\n[[hooks.PostToolUse.hooks]]\ntype = \"command\"\ncommand = \"{hookFile}\"\ntimeout = 5\nTOML"
           },
           {
             "label": "Restart the Codex CLI so it picks up the new hook config",
@@ -31,10 +31,7 @@
           },
           {
             "label": "Verify: run a Codex tool call, then check RedLog Settings ▸ Events for a 'codex_tool' entry",
-            "command": "codex run 'print hello'"
-          },
-          {
-            "label": "NOTE — the exact [hooks] key names in the snippet above are a best-guess against the shape documented at https://developers.openai.com/codex/hooks/. Confirm against the current Codex docs before relying on this in a real engagement."
+            "command": "codex exec 'run echo hello'"
           }
         ]
       }

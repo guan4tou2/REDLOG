@@ -113,6 +113,53 @@ describe.skipIf(!hasZip)('cloud-share prepareBundle', () => {
     expect(preview.sanitizedEventCountTotal).toBe(5)
     expect(preview.chainHead?.eventCount).toBe(42)
   })
+
+  it('splits raw vs approx-compressed sizes using the documented ratios', async () => {
+    const { cs } = await getMods()
+    // The vi.mock for db/index gives us a stable projectDir. Populate
+    // screenshots/ + casts/ with known-size dummy files, then verify the
+    // preview math matches the ratios written into cloud-share.ts:
+    //   rawBytes            = shots + casts + eventCount*512
+    //   approxCompressed    = round(shots*1.02 + casts*0.15 + events*0.20)
+    // eventCount comes from the mocked getEventCount() → 42.
+    // cloud-share.ts's projectDirSafe() uses CommonJS `require('./db/index')`
+    // for late binding (sidesteps circular init) — that path does NOT go
+    // through vi.mock, so the module falls to its ~/.redlog/no-project
+    // fallback. HOME is a temp dir in this describe, so land the fixture
+    // files there.
+    const projectDir = path.join(process.env.HOME!, '.redlog', 'no-project')
+    const shotsDir = path.join(projectDir, 'screenshots')
+    const castsDir = path.join(projectDir, 'casts')
+    fs.mkdirSync(shotsDir, { recursive: true })
+    fs.mkdirSync(castsDir, { recursive: true })
+    // Reset any leftovers from a previous test.
+    for (const n of fs.readdirSync(shotsDir)) fs.unlinkSync(path.join(shotsDir, n))
+    for (const n of fs.readdirSync(castsDir)) fs.unlinkSync(path.join(castsDir, n))
+
+    const SHOTS_BYTES = 100 * 1024      // 100 KB
+    const CASTS_BYTES = 200 * 1024      // 200 KB
+    fs.writeFileSync(path.join(shotsDir, 'a.jpg'), Buffer.alloc(SHOTS_BYTES, 0xff))
+    fs.writeFileSync(path.join(castsDir, 'b.cast'), Buffer.alloc(CASTS_BYTES, 0x20))
+
+    const preview = cs.previewRedaction()
+
+    expect(preview.screenshotCount).toBe(1)
+    expect(preview.castCount).toBe(1)
+
+    const EVENTS_BYTES = 42 * 512
+    const expectedRaw = SHOTS_BYTES + CASTS_BYTES + EVENTS_BYTES
+    const expectedCompressed = Math.round(
+      SHOTS_BYTES * 1.02 + CASTS_BYTES * 0.15 + EVENTS_BYTES * 0.20
+    )
+    expect(preview.rawBytes).toBe(expectedRaw)
+    expect(preview.approxCompressedBytes).toBe(expectedCompressed)
+    // approxCompressed must be much smaller than raw for a typical bundle —
+    // the whole point of surfacing it separately is to keep operators from
+    // over-reporting their headroom vs the cap.
+    expect(preview.approxCompressedBytes).toBeLessThan(preview.rawBytes)
+    // The DEPRECATED approxSizeBytes stays aliased to rawBytes for legacy UI.
+    expect(preview.approxSizeBytes).toBe(preview.rawBytes)
+  })
 })
 
 describe.skipIf(!hasZip)('cloud-share localFileUploader (stub)', () => {
