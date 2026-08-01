@@ -59,7 +59,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
+  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins' | 'marketplace'>('general')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -100,7 +100,8 @@ export default function Settings(): JSX.Element {
     { id: 'scope' as const, label: t('settings.scope') },
     { id: 'integrations' as const, label: t('settings.integrations') },
     { id: 'data' as const, label: t('settings.data') },
-    { id: 'plugins' as const, label: t('settings.plugins') }
+    { id: 'plugins' as const, label: t('settings.plugins') },
+    { id: 'marketplace' as const, label: t('settings.marketplace') }
   ]
 
   return (
@@ -554,6 +555,7 @@ export default function Settings(): JSX.Element {
           </>
         )}
         {tab === 'plugins' && <PluginsPanel t={t} />}
+        {tab === 'marketplace' && <MarketplacePanel t={t} />}
       </div>
 
       <div className="px-4 py-3 border-t border-redlog-border shrink-0">
@@ -1674,5 +1676,271 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
         <button onClick={() => { addPath(draft); setDraft('') }} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
       </div>
     </FieldGroup>
+  )
+}
+
+// -------- Marketplace panel ---------------------------------------------------
+//
+// Thin wrapper around window.redlog.marketplace.*. The heavy lifting (fetch,
+// sha256 verify, signature verify, atomic swap, rollback) lives in
+// src/core/plugins/marketplace.ts. This panel only decides what to show and
+// which IPC to call.
+//
+// Three sub-tabs:
+//   Plugins       — fetch a registry index, install entries.
+//   Publishers    — list trusted publishers, add a new one manually (paste
+//                   an SPKI base64 pubkey), untrust.
+//   Revocations   — surface the local revocation cache so operators can see
+//                   why an install is being blocked.
+
+interface RegistryEntryView {
+  id: string
+  name?: string
+  description?: string
+  homepage?: string
+  publisher: string
+  version: string
+  tarball: string
+  sha256: string
+  signature?: string
+  sizeKb?: number
+  tags?: string[]
+}
+interface RegistryIndexView { updatedAt: number; entries: RegistryEntryView[] }
+interface PublisherKeyView { publicKey: string; label?: string; trustedAt: number; trustedBy?: string }
+interface PublisherView { id: string; homepage?: string; keys: PublisherKeyView[] }
+interface InstallResultView {
+  ok: boolean; pluginId?: string; error?: string
+  contentHash?: string; installedDir?: string; rolledBackFrom?: string
+  tier?: 'declarative' | 'privileged'; signatureVerified?: boolean
+}
+interface RevocationsView { updatedAt: number; plugins?: string[]; publishers?: string[] }
+
+function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const [sub, setSub] = useState<'plugins' | 'publishers' | 'revocations'>('plugins')
+  const [registryUrl, setRegistryUrl] = useState<string>('')
+  const [index, setIndex] = useState<RegistryIndexView | null>(null)
+  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [fetchError, setFetchError] = useState<string>('')
+  const [installBusy, setInstallBusy] = useState<string | null>(null)
+  const [publishers, setPublishers] = useState<PublisherView[]>([])
+  const [revocations, setRevocations] = useState<RevocationsView | null>(null)
+
+  const api = (window.redlog as unknown as { marketplace: {
+    fetchIndex: (url?: string) => Promise<{ ok: boolean; index?: RegistryIndexView; error?: string }>
+    listPublishers: () => Promise<PublisherView[]>
+    trustPublisher: (id: string, publicKey: string, homepage?: string, label?: string) => Promise<{ ok: boolean; fingerprint?: string; error?: string }>
+    untrustPublisher: (id: string) => Promise<{ ok: boolean }>
+    install: (entryJson: string) => Promise<InstallResultView>
+    revocations: () => Promise<RevocationsView>
+  } }).marketplace
+
+  const reloadPublishers = async (): Promise<void> => { setPublishers(await api.listPublishers()) }
+  const reloadRevocations = async (): Promise<void> => { setRevocations(await api.revocations()) }
+  useEffect(() => { reloadPublishers(); reloadRevocations() }, [])
+
+  const doFetch = async (): Promise<void> => {
+    setFetchState('loading'); setFetchError('')
+    const r = await api.fetchIndex(registryUrl.trim() || undefined)
+    if (r.ok && r.index) { setIndex(r.index); setFetchState('idle') }
+    else { setFetchState('error'); setFetchError(r.error ?? 'unknown error') }
+  }
+
+  const doInstall = async (entry: RegistryEntryView): Promise<void> => {
+    setInstallBusy(entry.id)
+    const r = await api.install(JSON.stringify(entry))
+    setInstallBusy(null)
+    if (r.ok) {
+      toast(t('marketplace.installed'), 'success')
+      // installed a plugin → refresh publishers view (trust decision may have shifted)
+      reloadPublishers()
+    } else {
+      toast(`${t('marketplace.installFailed')}: ${r.error ?? ''}`, 'error')
+    }
+  }
+
+  const publisherTrusted = (id: string): boolean => publishers.some((p) => p.id === id)
+
+  return (
+    <FieldGroup title={t('settings.marketplace')}>
+      <p className="text-xs text-zinc-600 mb-2">{t('marketplace.hint')}</p>
+
+      <div className="flex items-center gap-1 mb-3">
+        {(['plugins', 'publishers', 'revocations'] as const).map((k) => (
+          <button key={k} onClick={() => setSub(k)}
+            className={`px-2.5 py-1 text-xs rounded ${sub === k ? 'bg-red-950/60 text-red-300' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>
+            {t(`marketplace.tab${k[0].toUpperCase()}${k.slice(1)}`)}
+          </button>
+        ))}
+      </div>
+
+      {sub === 'plugins' && (
+        <>
+          <div className="flex items-center gap-2 mb-3">
+            <input type="text" value={registryUrl} onChange={(e) => setRegistryUrl(e.target.value)}
+              placeholder="https://plugins.redlog.dev/index.json"
+              className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200" />
+            <button onClick={doFetch} disabled={fetchState === 'loading'}
+              className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">
+              {fetchState === 'loading' ? t('marketplace.fetching') : t('marketplace.fetch')}
+            </button>
+          </div>
+
+          {fetchState === 'error' && (
+            <p className="text-xs text-red-400 mb-2">{t('marketplace.fetchFailed')}: {fetchError}</p>
+          )}
+          {!index && fetchState !== 'error' && (
+            <p className="text-xs text-zinc-600">{t('marketplace.indexEmpty')}</p>
+          )}
+          {index && index.entries.length === 0 && (
+            <p className="text-xs text-zinc-600">{t('marketplace.noEntries')}</p>
+          )}
+
+          <div className="space-y-2">
+            {index?.entries.map((e) => {
+              const trusted = publisherTrusted(e.publisher)
+              const signed = !!e.signature
+              return (
+                <div key={`${e.id}@${e.version}`} className="rounded border border-zinc-700 bg-zinc-900/50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium text-zinc-200">{e.name || e.id}</span>
+                        <span className="text-[11px] text-zinc-500">v{e.version}</span>
+                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">{e.publisher}</span>
+                        {signed && <span className="text-[11px] px-1.5 py-0.5 rounded bg-green-950/60 text-green-300">{t('marketplace.signatureVerified')}</span>}
+                        {e.sizeKb !== undefined && (
+                          <span className="text-[11px] text-zinc-600">{t('marketplace.sizeKb', { size: e.sizeKb })}</span>
+                        )}
+                      </div>
+                      {e.description && <p className="text-xs text-zinc-500 mt-0.5">{e.description}</p>}
+                      {!trusted && (
+                        <p className="text-[11px] text-amber-500/80 mt-1">{t('marketplace.publisherUntrusted')}</p>
+                      )}
+                    </div>
+                    <button onClick={() => doInstall(e)} disabled={installBusy === e.id}
+                      className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 shrink-0">
+                      {installBusy === e.id ? t('marketplace.installing') : t('marketplace.install')}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {sub === 'publishers' && (
+        <PublisherEditor t={t} publishers={publishers} api={api} onReload={reloadPublishers} />
+      )}
+
+      {sub === 'revocations' && (
+        <div>
+          <p className="text-xs text-zinc-600 mb-2">{t('marketplace.revocationsHint')}</p>
+          {(!revocations || ((revocations.plugins?.length ?? 0) === 0 && (revocations.publishers?.length ?? 0) === 0)) && (
+            <p className="text-xs text-zinc-600">{t('marketplace.revocationsEmpty')}</p>
+          )}
+          {revocations && (revocations.plugins?.length ?? 0) > 0 && (
+            <div className="mb-3">
+              <p className="text-[11px] text-zinc-500 mb-1">{t('marketplace.revokedPlugins')}</p>
+              <div className="flex flex-wrap gap-1">
+                {revocations.plugins!.map((p) => <span key={p} className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
+              </div>
+            </div>
+          )}
+          {revocations && (revocations.publishers?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[11px] text-zinc-500 mb-1">{t('marketplace.revokedPublishers')}</p>
+              <div className="flex flex-wrap gap-1">
+                {revocations.publishers!.map((p) => <span key={p} className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </FieldGroup>
+  )
+}
+
+function PublisherEditor({ t, publishers, api, onReload }: {
+  t: (key: string, vars?: Record<string, string | number>) => string
+  publishers: PublisherView[]
+  api: {
+    trustPublisher: (id: string, publicKey: string, homepage?: string, label?: string) => Promise<{ ok: boolean; fingerprint?: string; error?: string }>
+    untrustPublisher: (id: string) => Promise<{ ok: boolean }>
+  }
+  onReload: () => Promise<void>
+}): JSX.Element {
+  const [draftId, setDraftId] = useState('')
+  const [draftKey, setDraftKey] = useState('')
+  const [draftLabel, setDraftLabel] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const add = async (): Promise<void> => {
+    if (!draftId.trim() || !draftKey.trim()) return
+    setBusy(true)
+    const r = await api.trustPublisher(draftId.trim(), draftKey.trim(), undefined, draftLabel.trim() || undefined)
+    setBusy(false)
+    if (r.ok) {
+      toast(`${t('marketplace.publisherAdded')} · fp ${r.fingerprint ?? ''}`, 'success')
+      setDraftId(''); setDraftKey(''); setDraftLabel('')
+      onReload()
+    } else toast(r.error ?? 'error', 'error')
+  }
+
+  const untrust = async (id: string): Promise<void> => { await api.untrustPublisher(id); onReload() }
+
+  return (
+    <div>
+      <div className="rounded border border-zinc-700 bg-zinc-900/40 p-3 mb-3">
+        <p className="text-xs text-zinc-400 mb-2">{t('marketplace.addPublisher')}</p>
+        <p className="text-[11px] text-zinc-600 mb-2">{t('marketplace.addPublisherHint')}</p>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <input value={draftId} onChange={(e) => setDraftId(e.target.value)} placeholder={t('marketplace.publisherId')}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+          <input value={draftLabel} onChange={(e) => setDraftLabel(e.target.value)} placeholder={t('marketplace.publisherLabel')}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200" />
+        </div>
+        <textarea value={draftKey} onChange={(e) => setDraftKey(e.target.value)}
+          placeholder={t('marketplace.publisherPubKey')}
+          rows={3}
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono resize-y" />
+        <div className="flex justify-end mt-2">
+          <button onClick={add} disabled={busy || !draftId.trim() || !draftKey.trim()}
+            className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">
+            {t('marketplace.trustPublisher')}
+          </button>
+        </div>
+      </div>
+
+      {publishers.length === 0 && <p className="text-xs text-zinc-600">{t('marketplace.publisherEmpty')}</p>}
+      <div className="space-y-2">
+        {publishers.map((p) => (
+          <div key={p.id} className="rounded border border-zinc-700 bg-zinc-900/50 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-zinc-200 font-mono">{p.id}</span>
+                  <span className="text-[11px] text-zinc-500">{p.keys.length} {t('marketplace.publisherKeys')}</span>
+                </div>
+                {p.homepage && <a href={p.homepage} onClick={(e) => { e.preventDefault(); window.redlog.app.openExternal(p.homepage!) }}
+                  className="text-[11px] text-blue-400 hover:text-blue-300 underline">{p.homepage}</a>}
+                <ul className="mt-2 space-y-1">
+                  {p.keys.map((k) => (
+                    <li key={k.publicKey} className="text-[11px] text-zinc-500 font-mono truncate" title={k.publicKey}>
+                      {k.label ? `[${k.label}] ` : ''}{k.publicKey.slice(0, 32)}…
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button onClick={() => untrust(p.id)}
+                className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 hover:bg-red-900/60 hover:text-red-300 rounded shrink-0">
+                {t('marketplace.untrustPublisher')}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

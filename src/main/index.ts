@@ -1165,6 +1165,62 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
+  // --- Plugin marketplace ---
+  // These wrap src/core/plugins/marketplace.ts + publisher-trust.ts. The whole
+  // fetch/verify/install pipeline lives in core so it stays unit-testable;
+  // main just exposes it over IPC. The registry client uses HTTPS only, hard
+  // caps size (5 MB tarball / 1 MB index), and every install goes through
+  // sha256 + Ed25519 signature verify + manifest re-validate.
+  ipcMain.handle('marketplace:fetchIndex', async (_e, url?: string) => {
+    try {
+      const { fetchIndex } = await import('../core/plugins/marketplace')
+      return { ok: true, index: await fetchIndex(url) }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('marketplace:listPublishers', async () => {
+    const { listPublishers } = await import('../core/plugins/publisher-trust')
+    return listPublishers()
+  })
+  ipcMain.handle('marketplace:trustPublisher', async (_e, id: string, publicKey: string, homepage?: string, label?: string) => {
+    const { trustPublisher, fingerprint } = await import('../core/plugins/publisher-trust')
+    const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
+    trustPublisher(id, { publicKey, trustedAt: Date.now(), trustedBy: opId, label }, homepage)
+    return { ok: true, fingerprint: fingerprint(publicKey) }
+  })
+  ipcMain.handle('marketplace:untrustPublisher', async (_e, id: string) => {
+    const { untrustPublisher } = await import('../core/plugins/publisher-trust')
+    untrustPublisher(id); return { ok: true }
+  })
+  ipcMain.handle('marketplace:install', async (_e, entryJson: string) => {
+    try {
+      const entry = JSON.parse(entryJson)
+      const { installFromRegistry } = await import('../core/plugins/marketplace')
+      const result = await installFromRegistry(entry)
+      // Re-scan plugins on successful install so the newly landed plugin
+      // shows up in Settings ▸ Plugins immediately.
+      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
+      return result
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('marketplace:listVersions', async (_e, pluginId: string) => {
+    const { listVersions } = await import('../core/plugins/marketplace')
+    return listVersions(pluginId)
+  })
+  ipcMain.handle('marketplace:rollback', async (_e, pluginId: string, versionKey: string) => {
+    const { rollback } = await import('../core/plugins/marketplace')
+    const r = rollback(pluginId, versionKey)
+    if (r.ok) { invalidateHooksCache(); reloadPlugins() }
+    return r
+  })
+  ipcMain.handle('marketplace:revocations', async () => {
+    const { loadRevocations } = await import('../core/plugins/marketplace')
+    return loadRevocations()
+  })
+
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
   ipcMain.handle('recording:toggle', () => toggleRecording())
