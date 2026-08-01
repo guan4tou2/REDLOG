@@ -1165,6 +1165,43 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
+  // --- Cloud share (bundle → sign → upload) ---
+  // Real backend upload is not wired in Settings yet — spec is at
+  // docs/CLOUD_SHARE_BUNDLE.md and hosts pending a decision. The stub uploader
+  // exercises the whole flow (build → gate → "upload" → get URL) against a
+  // ~/.redlog/shares/ directory so operators can rehearse before the backend
+  // exists.
+  ipcMain.handle('cloudShare:preview', async () => {
+    try {
+      const { previewRedaction } = await import('../core/cloud-share')
+      return { ok: true, preview: previewRedaction() }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('cloudShare:prepare', async (_e, engagementId: string, reviewedByOperator: boolean) => {
+    try {
+      const { prepareCloudShareBundle } = await import('../core/cloud-share')
+      const prepared = prepareCloudShareBundle({ engagementId, reviewedByOperator })
+      return { ok: true, zipPath: prepared.zipPath, manifest: prepared.manifest }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  ipcMain.handle('cloudShare:uploadStub', async (_e, zipPath: string, manifestJson: string, expiresIn?: string) => {
+    try {
+      const { localFileUploader } = await import('../core/cloud-share-uploader')
+      const manifest = JSON.parse(manifestJson)
+      const result = await localFileUploader.upload(
+        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
+        { expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined }
+      )
+      return result
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
   // --- Plugin marketplace ---
   // These wrap src/core/plugins/marketplace.ts + publisher-trust.ts. The whole
   // fetch/verify/install pipeline lives in core so it stays unit-testable;

@@ -480,6 +480,7 @@ export default function Settings(): JSX.Element {
                 {t('settings.scopeExportHint')}
               </p>
             </FieldGroup>
+            <CloudSharePanel t={t} />
             <IntegrityPanel t={t} />
             <FieldGroup title={t('settings.profileSync')}>
               <div className="flex gap-2">
@@ -1675,6 +1676,163 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
         >📁 {t('settings.hookExcludedPaths.pickFolder')}</button>
         <button onClick={() => { addPath(draft); setDraft('') }} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
       </div>
+    </FieldGroup>
+  )
+}
+
+// -------- Cloud share panel --------------------------------------------------
+//
+// Wraps window.redlog.cloudShare.* — the real work lives in
+// src/core/cloud-share.ts + cloud-share-uploader.ts. Two modes: preview
+// (cheap, called every render) and the actual build+upload (guarded by a
+// mandatory review checkbox — the hard redaction gate from spec §9).
+
+interface CloudSharePreview {
+  eventCount: number
+  sanitizedEventCount: number
+  sanitizedEventCountTotal: number
+  approxSizeBytes: number
+  screenshotCount: number
+  castCount: number
+  chainHead: { hash: string; eventCount: number } | null
+}
+interface CloudShareBundleManifest {
+  bundleFormat: number
+  createdAt: string
+  engagement: { id: string; name?: string }
+  zipSha256: string
+  zipBytes: number
+  contents: {
+    eventCount: number
+    sanitizedEventCount: number
+    sanitizedEventCountTotal: number
+    chainHead: { hash: string; eventCount: number } | null
+  }
+}
+
+function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const [preview, setPreview] = useState<CloudSharePreview | null>(null)
+  const [previewError, setPreviewError] = useState<string>('')
+  const [reviewed, setReviewed] = useState(false)
+  const [expiresIn, setExpiresIn] = useState<'24h' | '7d' | '30d' | '90d' | 'never'>('30d')
+  const [busy, setBusy] = useState<'preview' | 'prepare' | 'upload' | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+
+  const api = (window.redlog as unknown as { cloudShare: {
+    preview: () => Promise<{ ok: boolean; preview?: CloudSharePreview; error?: string }>
+    prepare: (engagementId: string, reviewedByOperator: boolean) =>
+      Promise<{ ok: boolean; zipPath?: string; manifest?: CloudShareBundleManifest; error?: string }>
+    uploadStub: (zipPath: string, manifestJson: string, expiresIn?: string) =>
+      Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
+  } }).cloudShare
+
+  const refreshPreview = async (): Promise<void> => {
+    setBusy('preview')
+    const r = await api.preview()
+    if (r.ok && r.preview) { setPreview(r.preview); setPreviewError('') }
+    else setPreviewError(r.error ?? 'preview failed')
+    setBusy(null)
+  }
+  useEffect(() => { refreshPreview() }, [])
+
+  const upload = async (): Promise<void> => {
+    if (!reviewed) return
+    setBusy('prepare'); setShareUrl(null)
+    const engagementId = 'default' // Bundle-export doesn't split by engagement yet — spec §14 open Q.
+    const p = await api.prepare(engagementId, true)
+    if (!p.ok || !p.zipPath || !p.manifest) {
+      setBusy(null)
+      toast(`${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`, 'error')
+      return
+    }
+    setBusy('upload')
+    const u = await api.uploadStub(p.zipPath, JSON.stringify(p.manifest), expiresIn)
+    setBusy(null)
+    if (u.ok && u.shareUrl) {
+      setShareUrl(u.shareUrl)
+      toast(t('cloudShare.uploaded'), 'success')
+    } else {
+      toast(`${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`, 'error')
+    }
+  }
+
+  const humanBytes = (n: number): string => {
+    if (n < 1024) return `${n} B`
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+    return `${(n / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  return (
+    <FieldGroup title={t('cloudShare.title')}>
+      <p className="text-xs text-zinc-600 mb-3">{t('cloudShare.hint')}</p>
+
+      {previewError && <p className="text-xs text-red-400 mb-2">{previewError}</p>}
+
+      {preview && (
+        <div className="rounded border border-zinc-700 bg-zinc-900/50 p-3 mb-3">
+          <p className="text-[11px] text-zinc-500 mb-2">{t('cloudShare.reviewTitle')}</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-zinc-300">
+            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.events')}</span><span className="font-mono">{preview.eventCount}</span></div>
+            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
+            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.screenshots')}</span><span className="font-mono">{preview.screenshotCount}</span></div>
+            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.casts')}</span><span className="font-mono">{preview.castCount}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.approxSize')}</span><span className="font-mono">{humanBytes(preview.approxSizeBytes)}</span></div>
+            {preview.chainHead && (
+              <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.chainHead')}</span>
+                <span className="font-mono truncate max-w-[280px]" title={preview.chainHead.hash}>{preview.chainHead.hash.slice(0, 24)}… ({preview.chainHead.eventCount})</span></div>
+            )}
+          </div>
+          <button onClick={refreshPreview} disabled={busy === 'preview'}
+            className="mt-3 px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700">
+            {busy === 'preview' ? '…' : t('cloudShare.refresh')}
+          </button>
+        </div>
+      )}
+
+      <div className="mb-3">
+        <label className="text-xs text-zinc-500 flex items-center gap-2 mb-2">
+          {t('cloudShare.expiresIn')}
+          <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as typeof expiresIn)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-xs text-zinc-200">
+            <option value="24h">24h</option>
+            <option value="7d">7 days</option>
+            <option value="30d">30 days</option>
+            <option value="90d">90 days</option>
+            <option value="never">{t('cloudShare.never')}</option>
+          </select>
+        </label>
+
+        <label className="text-xs text-amber-400/90 flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)}
+            className="mt-0.5 accent-amber-500" />
+          <span>{t('cloudShare.gateCheckbox')}</span>
+        </label>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button onClick={upload} disabled={!reviewed || busy !== null}
+          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-40">
+          {busy === 'prepare' ? t('cloudShare.preparing') : busy === 'upload' ? t('cloudShare.uploading') : t('cloudShare.shareStub')}
+        </button>
+        <span className="text-[11px] text-zinc-600">{t('cloudShare.stubNote')}</span>
+      </div>
+
+      {shareUrl && (
+        <div className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
+          <p className="text-[11px] text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
+          <p className="text-xs text-zinc-300 font-mono break-all">{shareUrl}</p>
+          <div className="flex gap-2 mt-2">
+            <button onClick={() => navigator.clipboard.writeText(shareUrl)}
+              className="px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+              {t('cloudShare.copyUrl')}
+            </button>
+            <button onClick={() => window.redlog.app.openExternal(shareUrl).catch(() => {})}
+              className="px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+              {t('cloudShare.openUrl')}
+            </button>
+          </div>
+        </div>
+      )}
     </FieldGroup>
   )
 }

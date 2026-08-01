@@ -3,6 +3,35 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.71 — 2026-08-01
+- **Cloud-share bundle v1** (spec: [`docs/CLOUD_SHARE_BUNDLE.md`](docs/CLOUD_SHARE_BUNDLE.md)).
+  End-to-end flow lands with a local file:// stub uploader — real HTTPS
+  backend gets wired next; this pass proves the client contract.
+  - `src/core/cloud-share.ts` — wraps the existing local `exportBundle` with
+    a `.zip` archive + outer `bundle.json` manifest carrying zip sha256,
+    engagement metadata, event/sanitize counts, chain head. Uses `zip -r` on
+    POSIX and `powershell Compress-Archive` on Windows.
+  - `src/core/cloud-share-uploader.ts` — pluggable `Uploader` interface with
+    two implementations: `localFileUploader` (writes to
+    `~/.redlog/shares/<sha8>/` and mints a `file://` share URL, the v1
+    default) and `httpsUploader` (POST /api/share/init → PUT signedUrl, gated
+    on backend sha256 re-check per spec §5, unused from UI until the
+    backend exists).
+  - **Hard redaction gate**: `prepareCloudShareBundle` throws
+    `RedactionGateError` unless the caller passes `reviewedByOperator: true`.
+    The Settings UI wires this to a mandatory checkbox above the Share
+    button that reads out what the bundle contains (events, sanitize count,
+    screenshots, cast files, approx size, chain head) — no muscle-memory
+    click-through.
+  - `BundleTooLargeError` at the 100 MB spec cap; oversized `.zip` cleaned
+    up rather than left on disk.
+  - Settings ▸ 資料 gains a Cloud share panel above the integrity check
+    with expiry picker (24h/7d/30d/90d/never), review-gate checkbox, and a
+    copy-URL + open buttons once the stub returns a share path.
+  - Coverage: 7 new tests (`cloud-share.test.ts`) covering the gate,
+    manifest shape, oversized-cleanup, stub upload sha8 bucketing, and
+    `expiresIn: 'never'` omission. Suite now 255 tests, 27 files.
+
 ## v0.6.70 — 2026-08-01
 - **Windows release-CI hotfix**: `publisher-trust` + `marketplace` tests only
   swapped `$HOME`, but Windows resolves `os.homedir()` via `USERPROFILE` —
