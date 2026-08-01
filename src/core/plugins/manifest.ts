@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { isAbsolute, join, normalize } from 'path'
 import {
   PLUGIN_API_VERSION, ALL_CAPABILITIES,
   type PluginManifest, type PluginContributes, type PluginTier, type Capability
@@ -65,8 +65,14 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   }
 
   // Every referenced file (hooks + code) must stay inside the plugin dir and exist.
+  // Uses `path.isAbsolute` so `C:\foo`, `c:/foo`, `\\?\C:\`, `\foo\bar` are
+  // caught on Windows — the old `rel.startsWith('/')` check missed them.
+  // Audit P1-1 (docs/WINDOWS_COMPAT_AUDIT.md).
   for (const rel of collectFileRefs(contributes)) {
-    if (rel.includes('..') || rel.startsWith('/')) return { ok: false, error: `unsafe path escapes plugin dir: ${rel}` }
+    if (isAbsolute(rel)) return { ok: false, error: `unsafe absolute path escapes plugin dir: ${rel}` }
+    if (normalize(rel).split(/[\\/]/).includes('..')) {
+      return { ok: false, error: `unsafe parent-dir escape in plugin path: ${rel}` }
+    }
     if (!existsSync(join(dir, rel))) return { ok: false, error: `referenced file not found: ${rel}` }
   }
 

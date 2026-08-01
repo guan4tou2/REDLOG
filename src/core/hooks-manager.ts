@@ -365,6 +365,16 @@ export function installHook(pluginId: string): { success: boolean; message: stri
       }
     }
     case 'shell-source': {
+      // Refuse on Windows — appending `source <path>` to a fabricated
+      // %USERPROFILE%\.bashrc silently corrupts profiles when the user
+      // isn't running Git Bash. PowerShell setup is a manual `$PROFILE`
+      // paste per docs/windows-setup.md. Audit P0-3.
+      if (process.platform === 'win32') {
+        return {
+          success: false,
+          message: `${plugin.name}: shell-source install is not supported on Windows. See docs/windows-setup.md for the PowerShell $PROFILE setup.`
+        }
+      }
       try {
         const dest = installTargetFor(plugin)
         const src = srcPathFor(plugin)

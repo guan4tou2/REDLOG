@@ -88,7 +88,9 @@ export default function TerminalView(): JSX.Element {
       const d = evt.data as { subtype?: string; source?: string; terminalId?: string; cwd?: string; exit_code?: number }
       if (d.source !== 'builtin-terminal' || d.subtype !== 'command_end' || !d.terminalId) return
       setTabs((prev) => prev.map((tab) => tab.id === d.terminalId
-        ? { ...tab, cwd: d.cwd?.split('/').pop() || tab.cwd, lastExit: d.exit_code }
+        // Split on either separator so a Windows `C:\Users\foo\proj` doesn't
+        // render as one giant tab label. Audit P1-3 (WINDOWS_COMPAT_AUDIT.md).
+        ? { ...tab, cwd: d.cwd?.split(/[\\/]/).pop() || tab.cwd, lastExit: d.exit_code }
         : tab))
     })
   }, [])
