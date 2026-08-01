@@ -1,0 +1,17 @@
+{
+  "name": "redlog-share-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker + R2 backend for RedLog cloud-share bundles. Deploy to your own Cloudflare account with `wrangler deploy`.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250601.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^3.60.0"
+  }
+}

@@ -119,6 +119,17 @@ export interface RedLogConfig {
     subtypes: string[]
     includeData: boolean
   }
+  /** Cloud-share bundle backend (spec: docs/CLOUD_SHARE_BUNDLE.md).
+   *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
+   *  their own redlog-share-worker deploy. Empty endpoint = fall back to the
+   *  local file:// stub uploader. */
+  cloudShare: {
+    /** Base URL of the deployed Worker, e.g. https://redlog-share.acme.workers.dev */
+    endpoint: string
+    /** Shared bearer set via `wrangler secret put AUTH_TOKEN`. Stored in plain
+     *  YAML — same trust model as `deconfliction.secret`. */
+    authToken: string
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -189,6 +200,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
     events: ['marker', 'system', 'credential_use', 'c2_checkin'],
     subtypes: ['scope_violation'],
     includeData: false
+  },
+  cloudShare: {
+    endpoint: '',
+    authToken: ''
   }
 }
 
