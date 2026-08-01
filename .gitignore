@@ -6,3 +6,4 @@ dist/
 
 # Runtime data (screenshots, DB, cast files)
 .redlog/
+test-results/
