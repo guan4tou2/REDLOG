@@ -3,6 +3,21 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.75 — 2026-08-01
+- **API sidecar self-heal**: `redlog-cli` was bailing with "no api-token
+  found" on installs where the API server was clearly up (port 6660
+  listening, /api/health 200) — because on some machines the sidecar
+  files (`~/.redlog/api-token`, `~/.redlog/api-port`) had been dropped
+  between an old `stopApiServer` and something else (macOS session
+  restore, an operator cleanup, a Finder move). Two-part fix:
+  - `stopApiServer` no longer unlinks the files. They're mode 0600, so
+    leaving them across a stop/start cycle costs nothing; a startApiServer
+    rewrite is idempotent.
+  - Every request handler now runs `selfHealSidecarFiles()` — if either
+    file is missing at request time, it's rewritten from the in-memory
+    token+port. Effectively self-repairing whenever the CLI reads the
+    file, so the operator never sees a broken CLI on a working server.
+
 ## v0.6.74 — 2026-08-01
 - **Windows release-CI hotfix (round 4, root cause this time)**: the
   `localFileUploader` built its URL with `` `file://${destZip}` `` — on

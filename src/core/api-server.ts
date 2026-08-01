@@ -252,6 +252,12 @@ function publicOperator(op: Operator): Record<string, unknown> {
 }
 
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  // A dropped sidecar file (see selfHealSidecarFiles for why) would leave
+  // `redlog-cli` unable to authenticate even though the server is happily
+  // handling requests. Rewrite on every request — no-op when both files
+  // exist.
+  selfHealSidecarFiles()
+
   const url = new URL(req.url || '/', `http://localhost`)
   const route = url.pathname
 
@@ -832,8 +838,35 @@ export function startApiServer(port = 6660): Promise<number> {
 export function stopApiServer(): void {
   server?.close()
   server = null
-  try { fs.unlinkSync(TOKEN_PATH) } catch { /* */ }
-  try { fs.unlinkSync(PORT_PATH) } catch { /* */ }
+  // Deliberately NOT deleting TOKEN_PATH / PORT_PATH here anymore. Rationale:
+  // the previous behaviour caused a class of hard-to-diagnose CLI failures
+  // where the operator saw a live API on 6660 (via `lsof` / curl `/api/health`)
+  // but `redlog-cli` bailed with "no api-token found". Root cause: on this box
+  // the app process outlived what looked like a normal shutdown handshake, then
+  // something (macOS session restore, a Finder move, an operator cleanup)
+  // dropped the files while the port was still bound — and `stopApiServer`'s
+  // eager delete matched that same shape. The files are mode 0600 anyway, so
+  // leaving them around across restarts costs nothing; a future startApiServer
+  // rewrites them unconditionally. Self-heal below rewrites on demand too.
+}
+
+/**
+ * Idempotent — writes the token/port files if either is missing. Called from
+ * the request handler so a live server always has matching sidecar files even
+ * if the operator deleted them (or macOS did). Cheap: two `fs.existsSync`
+ * calls per request; only writes when actually missing.
+ */
+function selfHealSidecarFiles(): void {
+  if (!primaryToken) return
+  try {
+    if (!fs.existsSync(TOKEN_PATH)) {
+      fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+      fs.writeFileSync(TOKEN_PATH, primaryToken, { mode: 0o600 })
+    }
+    if (listeningPort && !fs.existsSync(PORT_PATH)) {
+      fs.writeFileSync(PORT_PATH, String(listeningPort), { mode: 0o600 })
+    }
+  } catch { /* best effort */ }
 }
 
 export function getApiToken(): string {
