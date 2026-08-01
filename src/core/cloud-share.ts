@@ -64,8 +64,12 @@ export interface RedactionPreview {
   sanitizedEventCount: number
   /** how many carry sanitize replacements anywhere in the DB (may exceed eventCount) */
   sanitizedEventCountTotal: number
-  /** loose upper bound on final .zip size in bytes (from the file list before compression) */
+  /** DEPRECATED alias for `rawBytes` — kept for existing UI compat. */
   approxSizeBytes: number
+  /** Sum of on-disk sizes; worst case before zip compression. */
+  rawBytes: number
+  /** Rough .zip prediction the operator can compare against the cap. */
+  approxCompressedBytes: number
   /** number of screenshot files that will be included */
   screenshotCount: number
   /** number of asciinema .cast files that will be included */
@@ -77,6 +81,15 @@ export interface RedactionPreview {
  * Preview counts + sizes WITHOUT building the bundle. Cheap enough to run
  * every time the operator opens the share dialog so the review copy stays
  * in sync with the DB.
+ *
+ * Two size numbers reported:
+ *   - `rawBytes` — sum of on-disk sizes for screenshots + .cast + estimated
+ *     event rows. This is the WORST case for the wire (before compression).
+ *   - `approxCompressedBytes` — rough .zip prediction. JPEG screenshots are
+ *     already compressed (assume ~1.02x expansion inside zip); ASCII cast
+ *     files compress well (assume ~0.15x); event rows compress modestly
+ *     (~0.20x). The estimate is deliberately conservative so operators who
+ *     see "you're near the cap" aren't surprised at build time.
  */
 export function previewRedaction(): RedactionPreview {
   const eventCount = getEventCount()
@@ -84,27 +97,37 @@ export function previewRedaction(): RedactionPreview {
   const chainHead = computeChainHead()
   const shotsDir = path.join(projectDirSafe(), 'screenshots')
   const castsDir = path.join(projectDirSafe(), 'casts')
-  let approx = 0
+
+  let shotsBytes = 0
+  let castsBytes = 0
   let screenshotCount = 0
   let castCount = 0
   if (fs.existsSync(shotsDir)) {
     for (const n of fs.readdirSync(shotsDir)) {
-      try { approx += fs.statSync(path.join(shotsDir, n)).size; screenshotCount++ } catch { /* skip */ }
+      try { shotsBytes += fs.statSync(path.join(shotsDir, n)).size; screenshotCount++ } catch { /* skip */ }
     }
   }
   if (fs.existsSync(castsDir)) {
     for (const n of fs.readdirSync(castsDir)) {
-      try { approx += fs.statSync(path.join(castsDir, n)).size; castCount++ } catch { /* skip */ }
+      try { castsBytes += fs.statSync(path.join(castsDir, n)).size; castCount++ } catch { /* skip */ }
     }
   }
-  // Rough event bytes: 512b avg per row is a wild guess but keeps the UI from
-  // showing "0 bytes" when a small engagement has almost no screenshots.
-  approx += eventCount * 512
+  const eventBytes = eventCount * 512  // rough
+
+  const rawBytes = shotsBytes + castsBytes + eventBytes
+  const approxCompressedBytes = Math.round(
+    shotsBytes * 1.02       // JPEGs are already compressed
+    + castsBytes * 0.15     // ASCII → deflate cuts hard
+    + eventBytes * 0.20     // JSONL row structure repeats
+  )
+
   return {
     eventCount,
     sanitizedEventCount: 0,   // filled in after actual build; preview can't tell without walking rows
     sanitizedEventCountTotal: sanitizedTotal,
-    approxSizeBytes: approx,
+    approxSizeBytes: rawBytes,  // legacy alias: pre-compression estimate
+    rawBytes,
+    approxCompressedBytes,
     screenshotCount,
     castCount,
     chainHead

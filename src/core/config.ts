@@ -129,6 +129,11 @@ export interface RedLogConfig {
     /** Shared bearer set via `wrangler secret put AUTH_TOKEN`. Stored in plain
      *  YAML — same trust model as `deconfliction.secret`. */
     authToken: string
+    /** Override the default 100 MB bundle size cap. Operators with big
+     *  screenshot / .cast collections trip the cap fast; the Worker
+     *  enforces its own MAX_UPLOAD_MB independently, so raising this
+     *  client-side value only helps if the backend also allows it. */
+    maxBundleBytes?: number
   }
 }
 

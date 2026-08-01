@@ -3,6 +3,44 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.76 — 2026-08-01
+- **UX (Timeline)**: lane filter chips now scroll horizontally when the
+  header narrows instead of wrapping onto a second row that pushed the
+  minimap down. Reported: at 1280-wide with all lanes visible, the chip
+  row was breaking the Attack Timeline header layout.
+- **UX (cloud-share)**: three fixes reported after v0.6.71 usage —
+  - Preview now shows both raw-bytes AND estimated-zipped size (v0.6.71
+    only showed raw, which under-reported how close the operator was to
+    the 100 MB cap since JSONL + text .cast compress hard). Added a red
+    warning line when the compressed estimate is over cap.
+  - New `cloudShare.maxBundleBytes` in config + Settings ▸ 資料 ▸
+    Cloud share ▸ Advanced input so operators can raise the client-side
+    cap. Note: the deployed Worker enforces its own `MAX_UPLOAD_MB`, so
+    both need to be raised in tandem.
+  - Persistent inline error box below the panel — the failure toast
+    used to fade before the operator saw it. The box stays until they
+    dismiss or retry.
+- **examples/plugins/codex-hook + aider-hook** (new): reference
+  implementations of the two integration tiers documented in
+  `docs/plugin-development.md`. Codex uses the native hook API (stdin
+  JSON, same shape as Claude Code); Aider uses the `AIDER_SHELL_CMD`
+  shell-wrapper. Both apply the two-gate privacy filter (recording state
+  + cwd exclusion list) and redact secrets before POST. Both are
+  🟢 declarative — drop under `~/.redlog/plugins/` and reload.
+- **examples/registry/** (new): a working example marketplace index
+  hosting the three declarative plugins (recon-pack, codex-hook,
+  aider-hook), signed with a bundled Ed25519 key. Point Settings ▸
+  外掛市集 URL at
+  `https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json`
+  to actually fetch + install. Marketplace UI placeholder updated to
+  suggest the same URL. Real DNS at `plugins.redlog.dev` is a v2 item.
+- **redlog-share-worker/smoke.js** (new): post-deploy smoke test.
+  Verifies every endpoint in the two-step upload contract — `/health`,
+  authed + unauthed `/api/share/init`, `PUT` to R2, `/share/:slug`
+  download page, 302 redirect to signed R2, `/api/share/revoke/:slug`,
+  post-revoke 404/410. Run with `node smoke.js <worker-url> <AUTH_TOKEN>`
+  after `wrangler deploy`; exits 0 all-green, 1 on first failure.
+
 ## v0.6.75 — 2026-08-01
 - **API sidecar self-heal**: `redlog-cli` was bailing with "no api-token
   found" on installs where the API server was clearly up (port 6660

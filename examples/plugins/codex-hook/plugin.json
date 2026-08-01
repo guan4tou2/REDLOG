@@ -1,0 +1,52 @@
+{
+  "id": "codex-hook",
+  "name": "Codex",
+  "version": "0.1.0",
+  "description": "Tier A capture: subscribes to the OpenAI Codex CLI native hook API and records every tool invocation to RedLog's timeline.",
+  "author": "your-handle",
+  "homepage": "https://developers.openai.com/codex/hooks/",
+  "redlogApi": 1,
+  "contributes": {
+    "capture": [
+      {
+        "id": "codex-native",
+        "name": "Codex (native hook)",
+        "description": "Records Codex CLI tool calls (command, output preview, session id, cwd) via Codex's native hook API.",
+        "agentType": "agent",
+        "requires": ["codex"],
+        "hookFile": "hooks/codex-hook.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          {
+            "label": "Open (or create) Codex's config file so we can register the hook",
+            "command": "mkdir -p ~/.config/codex && ${EDITOR:-nano} ~/.config/codex/config.toml"
+          },
+          {
+            "label": "Add a [hooks] block pointing at the RedLog hook script. Adjust the event name to match Codex's current hook API (e.g. 'post_tool_use', 'tool_result', or the exact name from https://developers.openai.com/codex/hooks/).",
+            "command": "cat <<'TOML'\n[hooks]\npost_tool_use = [\n  { command = \"{hookFile}\" }\n]\nTOML"
+          },
+          {
+            "label": "Restart the Codex CLI so it picks up the new hook config",
+            "command": "codex --version"
+          },
+          {
+            "label": "Verify: run a Codex tool call, then check RedLog Settings ▸ Events for a 'codex_tool' entry",
+            "command": "codex run 'print hello'"
+          },
+          {
+            "label": "NOTE — the exact [hooks] key names in the snippet above are a best-guess against the shape documented at https://developers.openai.com/codex/hooks/. Confirm against the current Codex docs before relying on this in a real engagement."
+          }
+        ]
+      }
+    ],
+    "eventTypes": [
+      {
+        "agentType": "agent",
+        "label": "Codex",
+        "lane": "agent",
+        "color": "#10a37f",
+        "icon": "🤖"
+      }
+    ]
+  }
+}
