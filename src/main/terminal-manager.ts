@@ -112,7 +112,11 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   const shell = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
   const isPowerShell = /powershell|pwsh/i.test(shell)
   const shellArgs = isPowerShell ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : []
-  const cwd = process.env.HOME || os.homedir()
+  // Use os.homedir() only — it resolves via USERPROFILE on Windows. Reading
+  // process.env.HOME first bit Git Bash / MSYS2 users where HOME is a
+  // POSIX-shaped `/c/Users/foo` that pty.spawn rejects as invalid Win32.
+  // Audit P0-2 (docs/WINDOWS_COMPAT_AUDIT.md).
+  const cwd = os.homedir()
 
   const term = pty.spawn(shell, shellArgs, {
     name: 'xterm-256color',
@@ -217,12 +221,19 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     // Source the hook quietly: a leading space keeps it out of shell history,
     // output is discarded, and the screen is cleared so the operator sees a clean
     // prompt instead of the `source …` line and the hook's banner.
-    const sourceCmd = isPowerShell
-      ? ` . "${hookPath}" *> $null; Clear-Host\r`
-      : ` source "${hookPath.replace(/\\/g, '/')}" >/dev/null 2>&1; clear\r`
-    setTimeout(() => {
-      if (!session.finalised) term.write(sourceCmd)
-    }, 600)
+    // POSIX branch converts backslashes → slashes for `source`; on Windows a
+    // native bash (git-bash / cygwin) would still need `cygpath -u` to accept
+    // the drive-lettered path, so we skip the auto-source there. If someone
+    // ever wants that, wire cygpath conversion here. Audit P1-6.
+    const canAutoSource = isPowerShell || process.platform !== 'win32'
+    if (canAutoSource) {
+      const sourceCmd = isPowerShell
+        ? ` . "${hookPath}" *> $null; Clear-Host\r`
+        : ` source "${hookPath.replace(/\\/g, '/')}" >/dev/null 2>&1; clear\r`
+      setTimeout(() => {
+        if (!session.finalised) term.write(sourceCmd)
+      }, 600)
+    }
   }
 
   return { pid: term.pid }

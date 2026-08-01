@@ -13,7 +13,15 @@ concurrency:
 
 jobs:
   unit:
-    runs-on: ubuntu-latest
+    # Matrix keeps unit tests + build on Windows so POSIX-only assumptions
+    # (path separators, HOME vs USERPROFILE, tar.exe availability, shell-source
+    # install refusal) surface before an operator ever installs the DMG/exe.
+    # See docs/WINDOWS_COMPAT_AUDIT.md P0-1 for the trigger.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 

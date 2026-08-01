@@ -3,6 +3,45 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.82 — 2026-08-01
+Windows compatibility pass: closes 2 P0 + 6 P1 audit issues (see
+`docs/WINDOWS_COMPAT_AUDIT.md`) plus the CI matrix that will catch
+future regressions automatically.
+
+- **ci**: `ci.yml` unit job now runs on `[ubuntu-latest, windows-latest]`
+  matrix (e2e still Linux-only for now). Every subsequent Windows
+  regression surfaces on PR instead of after a customer downloads the
+  installer. **(P0-1)**
+- **terminal-manager**: dropped `process.env.HOME || os.homedir()` — the
+  HOME branch handed Git Bash / MSYS2 a POSIX-shaped `/c/Users/foo` that
+  `pty.spawn` rejects as invalid Win32. Now just `os.homedir()`. **(P0-2)**
+- **hooks-manager**: `installHook` refuses the `shell-source` branch on
+  `process.platform === 'win32'` with a copy pointing at
+  `docs/windows-setup.md`. Previously a plugin-contributed
+  `shell-source` capture would fabricate `%USERPROFILE%\.bashrc` and
+  append raw Windows paths to it. **(P0-3)**
+- **plugins/manifest**: path-escape check uses `path.isAbsolute` + a
+  `..` segment walk instead of `startsWith('/')`. Now catches `C:\foo`,
+  `c:/foo`, `\\?\C:\`, and `\foo\bar` on Windows. **(P1-1)**
+- **screenshot guard**: `screenshot:read` and `screenshot:deleteFile`
+  now use `isInsideDir()` (case-insensitive `path.relative`) instead
+  of `startsWith(screenshotDir)` — NTFS case-insensitivity would trip
+  the old check when the renderer round-tripped a differently-cased
+  drive letter. **(P1-2)**
+- **TerminalView**: cwd tab label splits on `[\\/]` so a Windows
+  `C:\Users\foo\proj` doesn't render as one giant unbroken label.
+  **(P1-3)**
+- **marketplace tar**: `spawnSync('tar.exe' …)` on `win32`, matching
+  `cloud-share.ts`. Explicit `.exe` sidesteps PATHEXT fragility inside
+  the Electron shim's inherited PATH. **(P1-4)**
+- **mcp:info**: return `stdioCommand` + `stdioArgs` alongside
+  `stdioPath` so `claude mcp add` on Windows (no shebang execution)
+  can spawn `node <path>` directly. **(P1-5)**
+- **terminal-manager auto-source**: skip the POSIX branch on `win32`
+  entirely — sourcing a POSIX-slash-rewritten path into a Windows
+  bash needs `cygpath -u` and nobody's asked. PowerShell branch
+  remains active. **(P1-6)**
+
 ## v0.6.81 — 2026-08-01
 - **+49 unit-test edge cases** across 7 modules: `pivot-detector` (empty
   input, reverse `-R` ssh, autossh SOCKS, ligolo proxy self-cert, chisel
