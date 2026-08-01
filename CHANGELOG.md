@@ -3,6 +3,13 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.70 — 2026-08-01
+- **Windows release-CI hotfix**: `publisher-trust` + `marketplace` tests only
+  swapped `$HOME`, but Windows resolves `os.homedir()` via `USERPROFILE` —
+  so on Windows the tests silently leaked the runner's real `~/.redlog` in
+  and out, tripping length-of-1 vs got-2 rotation asserts. Swap both env
+  vars per test. Unblocks the v0.6.68 / v0.6.69 Windows build.
+
 ## v0.6.69 — 2026-08-01
 - **Marketplace UI wired end-to-end**: Settings ▸ 外掛市集 exposes the v1
   runtime that landed in v0.6.68. Three sub-tabs — Plugins (paste registry
