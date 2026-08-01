@@ -130,3 +130,90 @@ describe('loot pattern detection', () => {
     expect(types.has('database_url')).toBe(true)
   })
 })
+
+// The LootDetector class + plugin-pattern registry live in the real module.
+// These tests exercise the code paths the pattern-only tests above cannot cover:
+//   • per-instance dedup (same value seen twice → one match)
+//   • operatorId gate: scan() must not touch the DB when unconfigured
+//   • register/unregister lifecycle for plugin-contributed patterns
+//   • malformed plugin regex is skipped, not thrown
+import { LootDetector, registerLootPatterns, unregisterLootPatterns } from '../src/core/loot-detector'
+import { afterEach } from 'vitest'
+
+describe('LootDetector class', () => {
+  afterEach(() => {
+    unregisterLootPatterns('plug-a')
+    unregisterLootPatterns('plug-b')
+    unregisterLootPatterns('bad-plug')
+  })
+
+  it('scan() without operatorId does not attempt to insert events (safe pre-DB)', () => {
+    const d = new LootDetector()
+    // operatorId is empty → the insertEvent path is skipped, so no throw even
+    // though there's no DB configured in this test file.
+    const m = d.scan('AKIAIOSFODNN7EXAMPLE')
+    expect(m.some((x) => x.type === 'aws_key')).toBe(true)
+    expect(d.getLootCount()).toBeGreaterThan(0)
+  })
+
+  it('deduplicates: the same value scanned twice yields one match total', () => {
+    const d = new LootDetector()
+    const text = 'AKIAIOSFODNN7EXAMPLE somewhere'
+    const first = d.scan(text)
+    const second = d.scan(text)
+    expect(first.length).toBe(1)
+    expect(second.length).toBe(0)
+    expect(d.getLootCount()).toBe(1)
+  })
+
+  it('separate instances have independent dedup sets', () => {
+    const a = new LootDetector()
+    const b = new LootDetector()
+    const text = 'AKIAIOSFODNN7EXAMPLE'
+    expect(a.scan(text).length).toBe(1)
+    expect(b.scan(text).length).toBe(1)
+  })
+
+  it('empty text returns no matches and does not throw', () => {
+    const d = new LootDetector()
+    expect(d.scan('')).toEqual([])
+    expect(d.getLootCount()).toBe(0)
+  })
+
+  it('plugin patterns are added and honored, then removed by unregister', () => {
+    const d = new LootDetector()
+    const added = registerLootPatterns('plug-a', [
+      { type: 'acme_token', pattern: 'ACME-[0-9]{8}', confidence: 'high' }
+    ])
+    expect(added).toBe(1)
+    const first = d.scan('log line ACME-12345678 tail')
+    expect(first.some((m) => m.type === 'acme_token')).toBe(true)
+
+    unregisterLootPatterns('plug-a')
+    const d2 = new LootDetector()
+    const second = d2.scan('log line ACME-99999999 tail')
+    expect(second.some((m) => m.type === 'acme_token')).toBe(false)
+  })
+
+  it('bad plugin regex is silently skipped (count reflects only compiled patterns)', () => {
+    const added = registerLootPatterns('bad-plug', [
+      { type: 'broken', pattern: '[unterminated', confidence: 'low' },
+      { type: 'works', pattern: 'WORKS-\\d+', confidence: 'high' }
+    ])
+    expect(added).toBe(1)
+    const d = new LootDetector()
+    const m = d.scan('event WORKS-42 done')
+    expect(m.some((x) => x.type === 'works')).toBe(true)
+  })
+
+  it('plugin patterns default to global flag (finds every occurrence)', () => {
+    registerLootPatterns('plug-b', [
+      { type: 'twin', pattern: 'TWIN-[a-z]+', confidence: 'medium' }
+    ])
+    const d = new LootDetector()
+    // Two different values → both matched, both deduped independently.
+    const m = d.scan('TWIN-alpha and TWIN-beta and TWIN-alpha again')
+    const values = m.filter((x) => x.type === 'twin').map((x) => x.value)
+    expect(new Set(values).size).toBe(2)
+  })
+})

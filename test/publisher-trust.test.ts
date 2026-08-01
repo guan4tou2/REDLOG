@@ -123,6 +123,61 @@ describe('publisher-trust verifySignature', () => {
   })
 })
 
+describe('publisher-trust verifySignature edge cases', () => {
+  it('malformed base64 signature is rejected, not thrown', async () => {
+    await withTempHome(async (mod) => {
+      const kp = makeKeypair()
+      mod.trustPublisher('gutou', { publicKey: kp.publicKey, trustedAt: 1 })
+      const v = mod.verifySignature('gutou', 'msg', '!!!not-base64!!!')
+      expect(v.ok).toBe(false)
+    })
+  })
+
+  it('signature over empty message still verifies when keys match', async () => {
+    await withTempHome(async (mod) => {
+      const kp = makeKeypair()
+      mod.trustPublisher('gutou', { publicKey: kp.publicKey, trustedAt: 1 })
+      const empty = Buffer.alloc(0)
+      const sig = cryptoSign(null, empty, kp.privateKey).toString('base64')
+      expect(mod.verifySignature('gutou', empty, sig).ok).toBe(true)
+    })
+  })
+
+  it('a malformed pinned key is skipped so a valid sibling key can still verify', async () => {
+    await withTempHome(async (mod) => {
+      const good = makeKeypair()
+      // Insert a bogus first key by writing the store manually — createPublicKey
+      // will throw on this and the code must try the next pinned key.
+      mod.trustPublisher('gutou', { publicKey: 'not-real-spki-b64==', trustedAt: 1 })
+      mod.trustPublisher('gutou', { publicKey: good.publicKey, trustedAt: 2 })
+      const msg = Buffer.from('hello', 'utf-8')
+      const sig = cryptoSign(null, msg, good.privateKey).toString('base64')
+      expect(mod.verifySignature('gutou', msg, sig).ok).toBe(true)
+    })
+  })
+})
+
+describe('publisher-trust store edge cases', () => {
+  it('untrustPublisher on an unknown id is a silent no-op', async () => {
+    await withTempHome(async (mod) => {
+      expect(() => mod.untrustPublisher('never-trusted')).not.toThrow()
+      expect(mod.listPublishers()).toEqual([])
+    })
+  })
+
+  it('trustPublisher preserves an existing homepage on re-trust without one', async () => {
+    await withTempHome(async (mod) => {
+      const a = makeKeypair()
+      const b = makeKeypair()
+      mod.trustPublisher('gutou', { publicKey: a.publicKey, trustedAt: 1 }, 'https://example.com')
+      mod.trustPublisher('gutou', { publicKey: b.publicKey, trustedAt: 2 })
+      const p = mod.getPublisher('gutou')!
+      expect(p.homepage).toBe('https://example.com')
+      expect(p.keys.length).toBe(2)
+    })
+  })
+})
+
 describe('publisher-trust fingerprint', () => {
   it('returns a 16-byte colon-separated hex digest of the SPKI key', async () => {
     await withTempHome(async (mod) => {
