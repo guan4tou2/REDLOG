@@ -11,14 +11,14 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.71**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.6.72**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.6.66-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.71/RedLog-0.6.66-arm64.dmg) |
-| macOS (Intel) | [`RedLog-0.6.66.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.71/RedLog-0.6.66.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.71/RedLog.Setup.0.6.66.exe) |
-| Windows (portable) | [`RedLog.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.71/RedLog.0.6.66.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.6.66-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.72/RedLog-0.6.66-arm64.dmg) |
+| macOS (Intel) | [`RedLog-0.6.66.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.72/RedLog-0.6.66.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.72/RedLog.Setup.0.6.66.exe) |
+| Windows (portable) | [`RedLog.0.6.66.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.6.72/RedLog.0.6.66.exe) |
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
@@ -516,6 +516,19 @@ npx electron-builder --linux
 ```
 
 Built artifacts go to `dist/`.
+
+## Cloud share backend (optional)
+
+The **Share (bundle)** button in Settings ships with a local `file://` stub —
+it exercises the whole redaction-gate + zip flow without any backend. If you
+want a real shareable URL, deploy the companion Cloudflare Worker in
+[`redlog-share-worker/`](redlog-share-worker/) to your own Cloudflare account
+(free tier fits most single-operator use) and point RedLog at it via
+**Settings ▸ Cloud share ▸ Advanced: HTTPS backend**. The RedLog project does
+not host a default tier — every operator BYO-buckets, so sanitized evidence
+never leaves accounts you control. See
+[`redlog-share-worker/README.md`](redlog-share-worker/README.md) for the
+deploy walkthrough.
 
 ## Release notes
 

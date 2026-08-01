@@ -1201,6 +1201,29 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+  // HTTPS backend upload — points at a user-deployed redlog-share-worker
+  // (see redlog-share-worker/README.md). The wire contract is the two-step
+  // POST /api/share/init + PUT signed URL flow documented on the Worker.
+  // Endpoint + bearer are passed explicitly so the Settings UI can drive
+  // them without needing to reload config for every share attempt.
+  ipcMain.handle('cloudShare:upload', async (_e, zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) => {
+    try {
+      if (!endpoint) return { ok: false, error: 'endpoint required' }
+      const { httpsUploader } = await import('../core/cloud-share-uploader')
+      const manifest = JSON.parse(manifestJson)
+      const result = await httpsUploader.upload(
+        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
+        {
+          endpoint,
+          bearer: authToken || undefined,
+          expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined
+        }
+      )
+      return result
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
 
   // --- Plugin marketplace ---
   // These wrap src/core/plugins/marketplace.ts + publisher-trust.ts. The whole
@@ -1237,6 +1260,24 @@ app.whenReady().then(() => {
       const result = await installFromRegistry(entry)
       // Re-scan plugins on successful install so the newly landed plugin
       // shows up in Settings ▸ Plugins immediately.
+      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
+      return result
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  // Dev/E2E-only sibling of marketplace:install. Skips the network by taking
+  // the tarball bytes directly from the caller (base64 for IPC-safety) and
+  // handing them to installFromRegistry via its `fetchTarball` hook. Gated on
+  // REDLOG_E2E=1 so the endpoint is effectively absent in a normal launch —
+  // never gate on NODE_ENV, electron-vite already claims that flag.
+  ipcMain.handle('marketplace:testInstall', async (_e, entryJson: string, tarballBytesB64: string) => {
+    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testInstall disabled' }
+    try {
+      const entry = JSON.parse(entryJson)
+      const bytes = Buffer.from(tarballBytesB64, 'base64')
+      const { installFromRegistry } = await import('../core/plugins/marketplace')
+      const result = await installFromRegistry(entry, { fetchTarball: async () => bytes })
       if (result.ok) { invalidateHooksCache(); reloadPlugins() }
       return result
     } catch (e) {

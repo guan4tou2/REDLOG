@@ -183,20 +183,30 @@ export function prepareCloudShareBundle(opts: PrepareBundleOptions): PreparedBun
 }
 
 /**
- * Shell out to the system `zip` — on macOS and Linux it's part of the base
- * install; Windows 10+ ships `tar` but not `zip`, so we detect and fall
- * back to `powershell Compress-Archive`.
+ * Shell out to a bundled archiver:
+ *   - Windows 10+: `tar.exe` (bsdtar) is present and understands `-a` (auto
+ *     format from extension) to produce a .zip. We tried Compress-Archive
+ *     first — its `-LiteralPath ...\*` doesn't glob (LiteralPath is literal
+ *     by design), so it silently produced no output. bsdtar sidesteps that.
+ *   - POSIX: `zip -r` is preinstalled on macOS + most Linux distros.
+ *
+ * Both variants archive `srcDir/.` so archive paths are relative to the
+ * bundle root (no leading absolute path).
  */
 function runZip(srcDir: string, destZip: string): void {
   if (process.platform === 'win32') {
-    // Compress-Archive doesn't overwrite by default; drop any prior first.
-    try { fs.unlinkSync(destZip) } catch { /* ignore */ }
-    const r = spawnSync('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      // -LiteralPath keeps paths with brackets/quotes intact.
-      `Compress-Archive -LiteralPath '${srcDir}\\*' -DestinationPath '${destZip}' -Force`
-    ], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 })
-    if (r.status !== 0) throw new Error(`Compress-Archive exit ${r.status}: ${r.stderr?.toString() ?? ''}`)
+    // Compress-Archive is not a robust cross-Windows-version target — bsdtar
+    // ships with Windows 10 1803+ and handles zip natively.
+    try { fs.unlinkSync(destZip) } catch { /* ignore — first run */ }
+    const r = spawnSync('tar.exe', ['-a', '-c', '-f', destZip, '.'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: srcDir,
+      timeout: 60_000
+    })
+    if (r.status !== 0) {
+      const err = r.stderr?.toString() ?? ''
+      throw new Error(`tar.exe exit ${r.status}: ${err}`)
+    }
     return
   }
   // POSIX: zip -r <dest> . inside the source dir so archive paths are relative
