@@ -7,7 +7,7 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     AI Agent                            │
-│  (Claude Code / Codex / GPT / Cursor / Aider / custom) │
+│  (Claude Code / Codex / GPT / Cursor / OpenCode / custom) │
 └──────┬────────────────┬────────────────┬────────────────┘
        │                │                │
   ┌────▼────┐    ┌──────▼──────┐   ┌─────▼─────┐
