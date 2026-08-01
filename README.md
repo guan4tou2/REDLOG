@@ -22,6 +22,19 @@ Grab the latest installer from the [**releases page**](https://github.com/guan4t
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><a href="docs/screenshots/dashboard.jpg"><img src="docs/screenshots/dashboard.jpg" alt="Dashboard" /></a><br/><b>Dashboard</b> — capture health, safe-IP status, session counters, engagement metadata, keyboard shortcuts</td>
+<td width="50%"><a href="docs/screenshots/timeline.jpg"><img src="docs/screenshots/timeline.jpg" alt="Timeline" /></a><br/><b>Attack Timeline</b> — swim-lane view across Shell / Agent / HTTP / DNS / Pivot / Screenshots / Loot / Marks / System with cluster popups, per-command replay, and full-session `.cast` replay</td>
+</tr>
+<tr>
+<td width="50%"><a href="docs/screenshots/marketplace.jpg"><img src="docs/screenshots/marketplace.jpg" alt="Marketplace" /></a><br/><b>Plugin Marketplace</b> — fetch a signed registry, install with sha256 + Ed25519 verification, one-click trust publishers advertised in the index</td>
+<td width="50%"><a href="docs/screenshots/cloud-share.jpg"><img src="docs/screenshots/cloud-share.jpg" alt="Cloud share" /></a><br/><b>Cloud share bundle</b> — preview review (events / sanitize / screenshots / casts, raw + zipped estimate), hard review-gate checkbox, expiry picker, stub / HTTPS backend switch</td>
+</tr>
+</table>
+
 ## Why RedLog
 
 Penetration testers need a complete, tamper-evident record of every action taken during an engagement. RedLog runs in the background and captures terminal commands, clipboard activity, screenshots, file transfers, and network events — all timestamped and indexed in a per-project SQLite database. No manual note-taking required.
