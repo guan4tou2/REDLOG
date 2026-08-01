@@ -115,6 +115,19 @@ contextBridge.exposeInMainWorld('redlog', {
     grant: (id: string) => ipcRenderer.invoke('plugins:grant', id),
     revoke: (id: string) => ipcRenderer.invoke('plugins:revoke', id)
   },
+  marketplace: {
+    // Fetch the registry index. Optional URL override so operators can point
+    // at their own mirror / air-gapped registry via Settings.
+    fetchIndex: (url?: string) => ipcRenderer.invoke('marketplace:fetchIndex', url),
+    listPublishers: () => ipcRenderer.invoke('marketplace:listPublishers'),
+    trustPublisher: (id: string, publicKey: string, homepage?: string, label?: string) =>
+      ipcRenderer.invoke('marketplace:trustPublisher', id, publicKey, homepage, label),
+    untrustPublisher: (id: string) => ipcRenderer.invoke('marketplace:untrustPublisher', id),
+    install: (entryJson: string) => ipcRenderer.invoke('marketplace:install', entryJson),
+    listVersions: (pluginId: string) => ipcRenderer.invoke('marketplace:listVersions', pluginId),
+    rollback: (pluginId: string, versionKey: string) => ipcRenderer.invoke('marketplace:rollback', pluginId, versionKey),
+    revocations: () => ipcRenderer.invoke('marketplace:revocations')
+  },
   capture: {
     health: () => ipcRenderer.invoke('capture:health')
   },
