@@ -1,6 +1,6 @@
 {
   "name": "redlog",
-  "version": "0.6.68",
+  "version": "0.6.69",
   "description": "Red Team Operation Log",
   "author": "guan4tou2",
   "repository": {
@@ -24,7 +24,9 @@
     "pretest": "npm rebuild better-sqlite3",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pree2e": "electron-rebuild -f -o better-sqlite3",
     "e2e": "playwright test",
+    "pree2e:ui": "electron-rebuild -f -o better-sqlite3",
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {

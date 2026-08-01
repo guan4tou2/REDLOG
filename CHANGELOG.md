@@ -3,6 +3,22 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.69 — 2026-08-01
+- **Marketplace UI wired end-to-end**: Settings ▸ 外掛市集 exposes the v1
+  runtime that landed in v0.6.68. Three sub-tabs — Plugins (paste registry
+  URL → fetch → install), Publishers (paste SPKI Ed25519 public key to
+  trust a publisher; untrust; list pinned keys), Revocations (surfaces the
+  local revocation cache so operators can see why an install was blocked).
+  All calls go through preload `window.redlog.marketplace.*` — the core
+  fetch/verify/install pipeline stays where the unit tests can hit it.
+- **CI**: `.github/workflows/ci.yml` runs on every PR and main push —
+  vitest (`npm test`) + build + Playwright-for-Electron (`npm run e2e`)
+  under xvfb. Failures upload screenshots + playwright-report as artifacts.
+- **Dual-ABI test hooks**: `pree2e` runs `electron-rebuild -f -o
+  better-sqlite3` before Playwright launches so operators (and CI) don't
+  have to remember which ABI the last command left better-sqlite3 built
+  for. `pretest` already handled the Node → Electron direction.
+
 ## v0.6.68 — 2026-08-01
 - **Plugin marketplace v1 core** (spec: [`docs/PLUGIN_MARKETPLACE.md`](docs/PLUGIN_MARKETPLACE.md)).
   Deliberately shipped without UI wiring — the runtime + trust primitives

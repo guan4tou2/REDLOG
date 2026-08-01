@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same PR — a fresh push shouldn't queue
+# behind a stale one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        # See release.yml — npm install (not npm ci) to tolerate lockfile drift.
+        run: npm install --no-audit --no-fund
+
+      - name: Vitest
+        run: npm test
+
+      - name: Build (renderer + main + preload)
+        run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Install Electron runtime deps (Linux)
+        # Electron on headless Ubuntu needs a bunch of system libs — playwright
+        # ships install-deps for browsers but not for Electron. Grab the
+        # commonly-missing ones directly.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+            libgtk-3-0 libasound2t64 xvfb
+
+      - name: Build the app the e2e test launches
+        # e2e/smoke.spec.ts asserts out/main/index.js exists — build it first.
+        run: npm run build
+
+      - name: Playwright for Electron
+        # xvfb-run gives headless Ubuntu a display server so the Electron
+        # BrowserWindow can create its GPU + WebContents surface.
+        run: xvfb-run --auto-servernum npm run e2e
+
+      - name: Upload screenshots + report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-artifacts
+          path: |
+            e2e/screenshots/
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
