@@ -1,0 +1,52 @@
+{
+  "id": "aider-hook",
+  "name": "Aider",
+  "version": "0.1.0",
+  "description": "Tier B capture: overrides Aider's shell via AIDER_SHELL_CMD so every command Aider spawns is bracketed with command_start / command_end events on RedLog's timeline.",
+  "author": "your-handle",
+  "homepage": "https://aider.chat/docs/config/options.html",
+  "redlogApi": 1,
+  "contributes": {
+    "capture": [
+      {
+        "id": "aider-shell",
+        "name": "Aider (SHELL wrapper)",
+        "description": "Wraps every shell command Aider spawns so it lands in the RedLog timeline as an agent event.",
+        "agentType": "shell",
+        "requires": ["aider"],
+        "hookFile": "hooks/aider-wrapper.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          {
+            "label": "Point Aider's shell override at the wrapper. Add this to your shell rc (~/.zshrc or ~/.bashrc)",
+            "command": "echo 'export AIDER_SHELL_CMD=\"{hookFile}\"' >> ~/.zshrc"
+          },
+          {
+            "label": "Reload your shell so AIDER_SHELL_CMD is visible to newly launched Aider sessions",
+            "command": "exec $SHELL -l"
+          },
+          {
+            "label": "Smoke-test: this should print 'hello' AND create a command_start/command_end pair on the RedLog timeline",
+            "command": "AIDER_SHELL_CMD=\"{hookFile}\" \"{hookFile}\" -c 'echo hello'"
+          },
+          {
+            "label": "Run Aider normally — every tool call should now be tagged 'aider-wrapper' in the timeline",
+            "command": "aider --version"
+          },
+          {
+            "label": "NOTE — the exact env var name for Aider's shell override may differ between releases. This plugin assumes AIDER_SHELL_CMD invoked as `$AIDER_SHELL_CMD -c '<command>'`. Confirm against https://aider.chat/docs/config/options.html#--shell before relying on this in a real engagement; if Aider uses a different flag or arg style, adjust the export accordingly."
+          }
+        ]
+      }
+    ],
+    "eventTypes": [
+      {
+        "agentType": "shell",
+        "label": "Shell",
+        "lane": "shell",
+        "color": "#f59e0b",
+        "icon": "🐚"
+      }
+    ]
+  }
+}

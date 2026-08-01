@@ -1691,7 +1691,10 @@ interface CloudSharePreview {
   eventCount: number
   sanitizedEventCount: number
   sanitizedEventCountTotal: number
+  /** DEPRECATED — old pre-v0.6.76 field, still populated for compat. */
   approxSizeBytes: number
+  rawBytes?: number
+  approxCompressedBytes?: number
   screenshotCount: number
   castCount: number
   chainHead: { hash: string; eventCount: number } | null
@@ -1713,6 +1716,9 @@ interface CloudShareBundleManifest {
 function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [preview, setPreview] = useState<CloudSharePreview | null>(null)
   const [previewError, setPreviewError] = useState<string>('')
+  // Last failure message from prepare/upload — sticks around so the operator
+  // can read it after the transient toast fades. Cleared on next attempt.
+  const [lastError, setLastError] = useState<string>('')
   const [reviewed, setReviewed] = useState(false)
   const [expiresIn, setExpiresIn] = useState<'24h' | '7d' | '30d' | '90d' | 'never'>('30d')
   const [busy, setBusy] = useState<'preview' | 'prepare' | 'upload' | null>(null)
@@ -1724,6 +1730,8 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
   const [endpoint, setEndpoint] = useState<string>('')
   const [authToken, setAuthToken] = useState<string>('')
   const [tokenVisible, setTokenVisible] = useState(false)
+  // Client-side bundle-size override. Empty string → uses backend default (100 MB).
+  const [maxMbInput, setMaxMbInput] = useState<string>('')
 
   const api = (window.redlog as unknown as { cloudShare: {
     preview: () => Promise<{ ok: boolean; preview?: CloudSharePreview; error?: string }>
@@ -1746,10 +1754,13 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
   // Load persisted endpoint + token so the operator doesn't retype every session.
   useEffect(() => {
     window.redlog.config.get().then((c) => {
-      const cs = (c as { cloudShare?: { endpoint?: string; authToken?: string } }).cloudShare
+      const cs = (c as { cloudShare?: { endpoint?: string; authToken?: string; maxBundleBytes?: number } }).cloudShare
       if (cs) {
         if (cs.endpoint) { setEndpoint(cs.endpoint); setAdvancedOpen(true); setMode('https') }
         if (cs.authToken) setAuthToken(cs.authToken)
+        if (typeof cs.maxBundleBytes === 'number' && cs.maxBundleBytes > 0) {
+          setMaxMbInput(String(Math.round(cs.maxBundleBytes / (1024 * 1024))))
+        }
       }
     }).catch(() => {})
   }, [])
@@ -1757,12 +1768,21 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
   // Persist endpoint+token to config.yaml. Debounced so text-input typing
   // doesn't blast one write per keystroke.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const persistBackend = (nextEndpoint: string, nextToken: string): void => {
+  const persistBackend = (nextEndpoint: string, nextToken: string, nextMaxMb: string): void => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        const c = await window.redlog.config.get() as Record<string, unknown>
-        const merged = { ...c, cloudShare: { endpoint: nextEndpoint, authToken: nextToken } }
+        const c = await window.redlog.config.get() as Record<string, { cloudShare?: unknown } & Record<string, unknown>>
+        const parsedMb = parseInt(nextMaxMb, 10)
+        const maxBundleBytes = Number.isFinite(parsedMb) && parsedMb > 0 ? parsedMb * 1024 * 1024 : undefined
+        const merged = {
+          ...c,
+          cloudShare: {
+            endpoint: nextEndpoint,
+            authToken: nextToken,
+            ...(maxBundleBytes ? { maxBundleBytes } : {})
+          }
+        }
         await window.redlog.config.save(merged)
       } catch { /* silent — settings panel already surfaces save failures elsewhere */ }
     }, 350)
@@ -1773,12 +1793,13 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
 
   const upload = async (): Promise<void> => {
     if (!canUpload) return
-    setBusy('prepare'); setShareUrl(null)
+    setBusy('prepare'); setShareUrl(null); setLastError('')
     const engagementId = 'default' // Bundle-export doesn't split by engagement yet — spec §14 open Q.
     const p = await api.prepare(engagementId, true)
     if (!p.ok || !p.zipPath || !p.manifest) {
       setBusy(null)
-      toast(`${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`, 'error')
+      const msg = `${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`
+      setLastError(msg); toast(msg, 'error')
       return
     }
     setBusy('upload')
@@ -1790,7 +1811,8 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       setShareUrl(u.shareUrl)
       toast(t('cloudShare.uploaded'), 'success')
     } else {
-      toast(`${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`, 'error')
+      const msg = `${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`
+      setLastError(msg); toast(msg, 'error')
     }
   }
 
@@ -1814,7 +1836,17 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
             <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.screenshots')}</span><span className="font-mono">{preview.screenshotCount}</span></div>
             <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.casts')}</span><span className="font-mono">{preview.castCount}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.approxSize')}</span><span className="font-mono">{humanBytes(preview.approxSizeBytes)}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.rawBytes')}</span><span className="font-mono">{humanBytes(preview.rawBytes ?? preview.approxSizeBytes)}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.approxCompressed')}</span><span className="font-mono">{preview.approxCompressedBytes !== undefined ? humanBytes(preview.approxCompressedBytes) : '—'}</span></div>
+            {preview.approxCompressedBytes !== undefined && (() => {
+              const capMb = parseInt(maxMbInput, 10) || 100
+              const capBytes = capMb * 1024 * 1024
+              return preview.approxCompressedBytes > capBytes ? (
+                <p className="col-span-2 text-[11px] text-red-400 mt-1">
+                  {t('cloudShare.capExceedWarning', { cap: capMb })}
+                </p>
+              ) : null
+            })()}
             {preview.chainHead && (
               <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.chainHead')}</span>
                 <span className="font-mono truncate max-w-[280px]" title={preview.chainHead.hash}>{preview.chainHead.hash.slice(0, 24)}… ({preview.chainHead.eventCount})</span></div>
@@ -1859,7 +1891,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             <label className="block text-[11px] text-zinc-500">
               {t('cloudShare.endpoint')}
               <input type="text" value={endpoint}
-                onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken) }}
+                onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken, maxMbInput) }}
                 placeholder="https://redlog-share.<acct>.workers.dev"
                 className="mt-1 w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
             </label>
@@ -1867,7 +1899,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
               {t('cloudShare.authToken')}
               <div className="mt-1 flex gap-2">
                 <input type={tokenVisible ? 'text' : 'password'} value={authToken}
-                  onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value) }}
+                  onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value, maxMbInput) }}
                   placeholder={t('cloudShare.authTokenPlaceholder')}
                   className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
                 <button type="button" onClick={() => setTokenVisible((v) => !v)}
@@ -1891,9 +1923,25 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
                 <span className="text-amber-400/80">{t('cloudShare.httpsNeedsFields')}</span>
               )}
             </div>
+            <label className="block text-[11px] text-zinc-500 pt-1">
+              {t('cloudShare.maxBundleMb')}
+              <input type="number" min="1" max="10000" value={maxMbInput}
+                onChange={(e) => { setMaxMbInput(e.target.value); persistBackend(endpoint, authToken, e.target.value) }}
+                placeholder="100"
+                className="mt-1 w-32 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+              <span className="ml-2 text-zinc-600">{t('cloudShare.maxBundleMbHint')}</span>
+            </label>
           </div>
         )}
       </div>
+
+      {lastError && (
+        <div className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
+          <span className="text-red-400 shrink-0">⚠</span>
+          <p className="text-[11px] text-red-300 font-mono break-all flex-1">{lastError}</p>
+          <button onClick={() => setLastError('')} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button data-testid="cloud-share-button" onClick={upload} disabled={!canUpload}
@@ -2026,7 +2074,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
         <>
           <div className="flex items-center gap-2 mb-3">
             <input type="text" value={registryUrl} onChange={(e) => setRegistryUrl(e.target.value)}
-              placeholder="https://plugins.redlog.dev/index.json"
+              placeholder="https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json"
               className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200" />
             <button onClick={doFetch} disabled={fetchState === 'loading'}
               className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">

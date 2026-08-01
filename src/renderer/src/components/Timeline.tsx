@@ -632,12 +632,16 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
         {/* Lane filter toggles — click toggles; Alt/Option-click solos the
             lane (hides every other populated lane); solo'd-lane Alt-click
-            again shows all. Audit finding #4. */}
-        <div className="ml-auto flex gap-1 items-center">
+            again shows all. Audit finding #4.
+            `overflow-x-auto` + `min-w-0` + `flex-nowrap` means when the
+            header narrows the chips scroll horizontally instead of wrapping
+            onto a second row — reported when running at 1280 wide with the
+            full lane list open. */}
+        <div className="ml-auto flex flex-nowrap gap-1 items-center overflow-x-auto min-w-0">
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}
-              className="text-xs px-1.5 py-0.5 rounded font-mono text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+              className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
               title={t('timeline.showAllLanes')}
             >{t('timeline.showAll')}</button>
           )}
@@ -650,7 +654,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                 key={id}
                 onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
                 disabled={empty}
-                className={`text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${
+                className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${
                   hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
