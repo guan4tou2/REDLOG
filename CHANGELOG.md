@@ -3,6 +3,40 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.83 — 2026-08-01
+Closes 4 of 5 P2 Windows audit items and adds targeted regression tests
+for the v0.6.82 P0/P1 fixes so a future Windows CI run catches drift.
+
+- **shell/install.ps1** (new): PowerShell counterpart to `install.sh`.
+  Writes `%USERPROFILE%\.redlog\shell-hook.ps1` and prints the exact
+  `$PROFILE` one-liner. Matches the copy in `docs/windows-setup.md`.
+  Audit **P2-1**.
+- **cloud-share.ts tar.exe ENOENT**: Windows Server 2016 / pre-1803
+  Windows 10 don't ship `tar.exe`. The bare `tar.exe exit null:` now
+  becomes an actionable error message pointing operators at the
+  Windows-update / git-for-windows fallback. Audit **P2-3**.
+- **hooks-manager autoUpgrade CRLF-safe compare**: byte-equality
+  compare was defeated by a Windows editor rewriting the installed
+  `.sh` copy with CRLF, causing an unnecessary heuristic re-check. Now
+  normalises `\r\n → \n` on both sides before compare. Audit **P2-4**.
+- **browser-launcher LOCALAPPDATA candidates**: added the per-user
+  Chrome / Edge / Brave paths (`%LOCALAPPDATA%\Google\Chrome\Application\
+  chrome.exe` etc.) — non-admin Chrome installs default there and were
+  invisible to the browser detector. Audit **P2-5**.
+- **P2-2 already covered**: the v0.6.82 shell-source Windows-refusal
+  branch makes the `bash.exe` (WSL stub) case a no-op; the button
+  can't fire the corrupting code path. No standalone fix needed.
+- **test coverage** (306 → 320, +14):
+  - `test/paths.test.ts` (new, +11): every `isInsideDir()` edge — exact
+    match, nested file, `..` escape, prefix-sibling attack, drive-letter
+    case-fold, mixed separators, different-drive rejection, POSIX
+    case-sensitivity, empty rel. Uses `path.win32` / `path.posix`
+    explicitly so the Windows cases run correctly on macOS.
+  - `test/hooks-manager.test.ts` (+3): Windows shell-source refusal
+    returns `{success:false}` with a `docs/windows-setup.md` / `$PROFILE`
+    pointer; unknown plugin id still fails uniformly. `pretendPlatform()`
+    swaps `process.platform` in-place.
+
 ## v0.6.82 — 2026-08-01
 Windows compatibility pass: closes 2 P0 + 6 P1 audit issues (see
 `docs/WINDOWS_COMPAT_AUDIT.md`) plus the CI matrix that will catch

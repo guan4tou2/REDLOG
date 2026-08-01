@@ -46,6 +46,7 @@ import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
+import { isInsideDir } from '../core/paths'
 
 // Windows text rendering: DirectComposition improves font clarity on low-DPI
 // screens; DirectWrite uses the native font rasterizer for crisper CJK glyphs.
@@ -73,18 +74,6 @@ let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 // this in Settings ▸ HUD; the opacity drops so it's clearly ghost-mode.
 let overlayPassThrough = false
 let overlayPassThroughOpacity = 0.4
-
-// Case-insensitive containment check for path guards. Windows NTFS is
-// case-preserving but case-insensitive; a legitimate `c:\Users\foo\.redlog\…`
-// vs `C:\Users\…` would otherwise trip the guard. Uses `path.relative` so
-// a `..\` escape is caught too. Audit P1-2 (docs/WINDOWS_COMPAT_AUDIT.md).
-function isInsideDir(root: string, target: string): boolean {
-  const rel = path.relative(root, target)
-  if (!rel || rel === '') return true
-  if (rel.startsWith('..')) return false
-  if (path.isAbsolute(rel)) return false
-  return true
-}
 
 function applyOverlayPassThrough(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
