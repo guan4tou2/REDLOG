@@ -3,6 +3,35 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.79 — 2026-08-01
+- **Swap Aider → OpenCode plugin**: `examples/plugins/aider-hook/` dropped,
+  `examples/plugins/opencode-hook/` added. Rationale: Aider has no
+  first-class hook API (issues #1215 / #1337 still open — the only
+  workaround was a subprocess.Popen monkey-patch that would fight upstream
+  every release), whereas OpenCode ships a native plugin API
+  (`tool.execute.after`) and auto-loads any `.mjs` / `.ts` from
+  `.opencode/plugins/` or `~/.config/opencode/plugins/`. The new plugin is
+  a single ~130-LOC ES module that reads `~/.redlog/api-token`, applies
+  the same two-gate privacy filter (recording + cwd exclusion), redacts
+  common secret patterns, and POSTs a `subtype: opencode_tool` event
+  after every tool call. Verified against
+  `https://opencode.ai/docs/plugins/` (2026-08). Example registry updated
+  to serve the new tarball; `docs/plugin-development.md` §"Full example"
+  rewritten to walk through the OpenCode plugin structure end-to-end.
+- **Marketplace install-fail inline error**: install failures now show a
+  persistent red box under the failing entry with the exact error + a
+  dismiss button, matching the cloud-share pattern from v0.6.76. The
+  transient toast still fires but no longer swallows the message before
+  operators can read it. Reported after v0.6.74 DMG test — install
+  refused because publisher untrusted, but the operator saw nothing on
+  screen after the toast faded.
+- **Config-level default registry URL**: new `marketplace.defaultRegistryUrl`
+  in `config.yaml` — the Settings placeholder + one-click fetch (empty
+  URL box) both honour it. Ships defaulting to this repo's example
+  registry (`raw.githubusercontent.com/.../examples/registry/index.json`)
+  so it works out of the box; air-gapped shops override to point at their
+  internal mirror.
+
 ## v0.6.78 — 2026-08-01
 - **UI hotfix**: five i18n strings added in v0.6.76–v0.6.77 used
   single-brace `{key}` interpolation, but the app's `t()` helper matches

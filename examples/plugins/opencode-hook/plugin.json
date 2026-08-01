@@ -1,0 +1,44 @@
+{
+  "id": "opencode-hook",
+  "name": "OpenCode",
+  "version": "0.1.0",
+  "redlogApi": 1,
+  "description": "Capture OpenCode tool.execute.after events into the RedLog chain.",
+  "homepage": "https://opencode.ai/",
+  "contributes": {
+    "capture": [
+      {
+        "id": "opencode-plugin",
+        "name": "OpenCode (plugin API)",
+        "description": "Registers with OpenCode's native plugin system so every tool call after execution posts an event to RedLog.",
+        "agentType": "agent",
+        "requires": ["opencode"],
+        "hookFile": "plugin/redlog.mjs",
+        "installMethod": "manual",
+        "manualSteps": [
+          {
+            "label": "1) Point OpenCode at the bundled plugin (project-scoped install):",
+            "command": "mkdir -p .opencode/plugins && ln -sf \"$PWD/examples/plugins/opencode-hook/plugin/redlog.mjs\" .opencode/plugins/redlog.mjs"
+          },
+          {
+            "label": "2) Or install globally (works for every project):",
+            "command": "mkdir -p ~/.config/opencode/plugins && cp examples/plugins/opencode-hook/plugin/redlog.mjs ~/.config/opencode/plugins/redlog.mjs"
+          },
+          {
+            "label": "3) Smoke-test — RedLog must be recording; the tool call lands in the timeline under the Agent lane:",
+            "command": "opencode run \"list files in /tmp\""
+          }
+        ]
+      }
+    ],
+    "eventTypes": [
+      {
+        "agentType": "agent",
+        "label": "OpenCode",
+        "lane": "agent",
+        "color": "#8b5cf6",
+        "icon": "◈"
+      }
+    ]
+  }
+}
