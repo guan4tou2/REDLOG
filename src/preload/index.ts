@@ -147,6 +147,10 @@ contextBridge.exposeInMainWorld('redlog', {
     // renderer. Never called by production code paths.
     testInstall: (entryJson: string, tarballBytesB64: string) =>
       ipcRenderer.invoke('marketplace:testInstall', entryJson, tarballBytesB64),
+    // Dev/E2E-only override for fetchIndex — gated on REDLOG_E2E=1 in main.
+    // Pass a JSON-stringified RegistryIndex to install a mock; pass '' to clear.
+    testSetIndex: (indexJson: string) =>
+      ipcRenderer.invoke('marketplace:testSetIndex', indexJson),
     listVersions: (pluginId: string) => ipcRenderer.invoke('marketplace:listVersions', pluginId),
     rollback: (pluginId: string, versionKey: string) => ipcRenderer.invoke('marketplace:rollback', pluginId, versionKey),
     revocations: () => ipcRenderer.invoke('marketplace:revocations')
