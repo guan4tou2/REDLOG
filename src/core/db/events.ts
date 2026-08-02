@@ -35,11 +35,31 @@ export function insertEvent(
   const now = Date.now()
 
   if (agentType === 'shell' && data.command) {
+    // Dedup real duplicates (same subtype + same command within 2s) — but *never*
+    // collapse a command_start/command_end pair into one. The previous
+    // implementation `LIKE '%"command":"..."%'` matched on the raw JSON blob
+    // and did not care about subtype, so a fast command's command_end (fired
+    // ~10ms after command_start with an identical `data.command`) was silently
+    // dropped — breaking timeline pair-collapse, /api/terminal/replay, and
+    // pivot-close detection. Key structurally on (subtype, command, terminalId).
+    const cmd = String(data.command)
+    const subtype = data.subtype != null ? String(data.subtype) : ''
+    const terminalId = data.terminal_id != null ? String(data.terminal_id) : ''
     const twoSecondsAgo = now - 2000
-    const dup = db.prepare(
-      `SELECT id FROM events WHERE agent_type = 'shell' AND timestamp >= ? AND data LIKE ? ORDER BY timestamp DESC LIMIT 1`
-    ).get(twoSecondsAgo, `%"command":"${String(data.command).replace(/"/g, '\\"')}"%`) as { id: string } | undefined
-    if (dup) return null
+    const candidates = db.prepare(
+      `SELECT id, data FROM events WHERE agent_type = 'shell' AND timestamp >= ? ORDER BY timestamp DESC LIMIT 20`
+    ).all(twoSecondsAgo) as Array<{ id: string; data: string }>
+    for (const row of candidates) {
+      let d: Record<string, unknown> = {}
+      try { d = JSON.parse(row.data) } catch { continue }
+      const rowSubtype = d.subtype != null ? String(d.subtype) : ''
+      const rowCmd = d.command != null ? String(d.command) : ''
+      const rowTerminalId = d.terminal_id != null ? String(d.terminal_id) : ''
+      if (rowSubtype !== subtype) continue
+      if (rowCmd !== cmd) continue
+      if (rowTerminalId !== terminalId) continue
+      return null
+    }
   }
 
   const prevRow = db.prepare(

@@ -32,6 +32,8 @@ interface RedLogEvent {
   data: Record<string, unknown>
   hash?: string
   createdAt: number
+  monotonicNs?: string | null
+  ntpOffsetMs?: number | null
 }
 
 interface QuickMarkContext {

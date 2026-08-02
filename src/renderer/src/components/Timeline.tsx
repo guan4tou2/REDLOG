@@ -7,13 +7,14 @@ import { LoadingSpinner } from './Feedback'
 const MIN_LANE_H = 36
 const LABEL_W = 92
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'agent', 'http_navigation', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'system'] as const
+const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
   agent: '#84cc16',
   http_navigation: '#6366f1',
+  scanner: '#8b5cf6',
   dns: '#14b8a6',
   pivot: '#0ea5e9',
   screenshot: '#3b82f6',
@@ -42,6 +43,8 @@ function eventTitle(event: RedLogEvent): string {
       return `DNS ${d.subtype === 'dns_response' ? '⇐' : '⇒'} ${d.dest_host || d.command || ''}`
     case 'http_navigation':
       return `⇢ ${d.host || d.url || ''} ${d.title ? `— ${(d.title as string).slice(0, 60)}` : ''}`.trim()
+    case 'scanner':
+      return `[${d.subtype || 'req'}] ${d.method || ''} ${d.url || d.host || ''}`.trim()
     case 'screenshot':
       return `Screenshot (${d.trigger})`
     case 'clipboard':
@@ -115,6 +118,26 @@ function isHousekeeping(e: RedLogEvent): boolean {
 // A shell command_start is only interesting on its own if no command_end ever
 // arrives (still-running command). When the pair completes, the end has all the
 // signal (exit code + duration), so hide the redundant start. Match on pid+cmd.
+// Comparator: primary sort by wall-clock, tiebreak by monotonic_ns when
+// two events share the same ms. monotonic_ns comes from Node's process.hrtime
+// (or its equivalent) and is captured as a string of digits — compare as
+// BigInt so we don't collapse 40-digit values into Number precision. This is
+// the audit's P2 ordering fix: without it, two events that landed in the
+// same millisecond had no defined order, so a cluster's popover items and
+// the pagination anchor could disagree between page loads. Falls back to
+// event id (uuid) for a stable final tiebreak.
+function eventCompare(a: RedLogEvent, b: RedLogEvent): number {
+  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
+  const am = a.monotonicNs, bm = b.monotonicNs
+  if (am && bm && am !== bm) {
+    try {
+      const ai = BigInt(am), bi = BigInt(bm)
+      return ai < bi ? -1 : ai > bi ? 1 : 0
+    } catch { /* fall through to id */ }
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
 function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
   const closed = new Set<string>()
   for (const e of events) {
@@ -241,6 +264,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     shell: t('timeline.shell'),
     agent: t('timeline.agent'),
     http_navigation: t('timeline.http'),
+    scanner: t('timeline.scanner'),
     dns: t('timeline.dns'),
     pivot: t('timeline.pivot'),
     screenshot: t('timeline.screenshot'),
@@ -297,7 +321,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
       if (fetched.length < 200) setAllLoaded(true)
       if (newOnes.length > 0) {
         newOnes.forEach((e) => eventsMapRef.current.set(e.id, e))
-        setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
+        setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
       }
       setLoading(false)
     })
@@ -307,13 +331,13 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     window.redlog.events.query({ limit: 200 }).then((fetched) => {
       if (fetched.length < 200) setAllLoaded(true)
       fetched.filter((e) => !isHousekeeping(e)).forEach((e) => eventsMapRef.current.set(e.id, e))
-      setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
+      setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
       setLoading(false)
     })
     const unsub = window.redlog.events.onNew((event) => {
       if (isHousekeeping(event)) return
       eventsMapRef.current.set(event.id, event)
-      setEvents(Array.from(eventsMapRef.current.values()).sort((a, b) => a.timestamp - b.timestamp))
+      setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
     })
     return unsub
   }, [])
@@ -833,39 +857,60 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                   )
                 })}
                 {/* Cluster contents popover */}
-                {cluster && (
-                  <div className="absolute z-30" data-timeline-popup style={{
-                    left: Math.max(0, Math.min(cluster.x + 10, TRACK_W - 236)),
-                    // Clamp so the popover never drops off the bottom for clusters
-                    // in the last lane. If the natural anchor + max popover height
-                    // would exceed totalH, flip above the cluster instead. Audit P2 #37.
-                    top: cluster.y + 12 + 210 > totalH ? Math.max(0, cluster.y - 210 - 4) : cluster.y + 12,
-                    width: 228
-                  }}>
+                {cluster && (() => {
+                  // Popover width + cap: cluster popovers used to render EVERY event
+                  // in a burst (audit P2 — a 3000-event mitmproxy scan filled the
+                  // list with 3000 <button>s). Cap at 50 with a "+N more" footer;
+                  // operator can zoom in to see individually.
+                  const POPUP_W = 240
+                  const POPUP_MAX_H = 210
+                  const MAX_ITEMS = 50
+                  const capped = cluster.events.slice(0, MAX_ITEMS)
+                  const overflow = cluster.events.length - capped.length
+                  // Viewport-relative clamp: previous impl clamped only to TRACK_W,
+                  // so a popover on a wide-zoom track near the right of the visible
+                  // scroll port drew off-screen. Clamp against the visible window
+                  // (scrollLeft + clientWidth) instead.
+                  const el = scrollRef.current
+                  const visLeft = el ? el.scrollLeft : 0
+                  const visRight = el ? el.scrollLeft + el.clientWidth : TRACK_W
+                  const rawLeft = cluster.x + 10
+                  const left = Math.max(visLeft + 4, Math.min(rawLeft, visRight - POPUP_W - 4))
+                  const top = cluster.y + 12 + POPUP_MAX_H > totalH
+                    ? Math.max(0, cluster.y - POPUP_MAX_H - 4)
+                    : cluster.y + 12
+                  return (
+                  <div className="absolute z-30" data-timeline-popup style={{ left, top, width: POPUP_W }}>
                     <div className="rounded-md border border-zinc-700 bg-zinc-900/95 shadow-xl max-h-[210px] overflow-y-auto">
                       <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800 sticky top-0 bg-zinc-900/95">
                         <span className="text-xs text-zinc-400 font-mono">{cluster.events.length} {t('timeline.title')}</span>
                         <button className="text-zinc-500 hover:text-zinc-200 text-xs leading-none" onClick={() => setCluster(null)}>×</button>
                       </div>
-                      {cluster.events.map((evt) => (
+                      {capped.map((evt) => (
                         <button
                           key={evt.id}
                           className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
                           onClick={() => {
                             setSelectedEvent(evt)
                             setCluster(null)
-                            // Force a zoom level where the events in this cluster
-                            // will split into distinct dots — otherwise scrolling
-                            // to the event's X is invisible (still inside the same
-                            // cluster). 8× is enough to spread a 5-event burst
-                            // over several hundred pixels at typical resolutions.
-                            const targetZoom = Math.max(zoom, 8)
-                            if (targetZoom !== zoom) {
+                            // Zoom based on cluster time span rather than a hardcoded 8×
+                            // so a 500-event burst in 1s and a 5-event burst in 30min
+                            // both split into distinct dots. Aim for CLUSTER_PX * count
+                            // pixels across the cluster's span at the new zoom.
+                            const evs = cluster.events
+                            const first = evs[0].timestamp
+                            const last = evs[evs.length - 1].timestamp
+                            const spanMs = Math.max(1, last - first)
+                            const spanRatio = spanMs / Math.max(1, timeSpan)
+                            const neededTrackW = (evs.length + 1) * CLUSTER_PX / Math.max(spanRatio, 0.001)
+                            const spanZoom = neededTrackW / BASE_TRACK_W
+                            const targetZoom = Math.max(zoom, Math.min(6, spanZoom))
+                            if (Math.abs(targetZoom - zoom) > 0.01) {
                               pendingCenterTs.current = evt.timestamp
                               setZoom(targetZoom)
                             } else {
-                              const el = scrollRef.current
-                              if (el) el.scrollLeft = Math.max(0, Math.min(toX(evt.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+                              const sc = scrollRef.current
+                              if (sc) sc.scrollLeft = Math.max(0, Math.min(toX(evt.timestamp) - sc.clientWidth / 2, TRACK_W - sc.clientWidth))
                             }
                           }}
                         >
@@ -874,9 +919,15 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                           <span className="text-zinc-300 text-xs truncate">{eventTitle(evt)}</span>
                         </button>
                       ))}
+                      {overflow > 0 && (
+                        <div className="px-2 py-1 text-[11px] text-zinc-500 border-t border-zinc-800 sticky bottom-0 bg-zinc-900/95">
+                          {t('timeline.clusterMoreItems', { count: overflow })}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
+                  )
+                })()}
               </div>
             </div>
           </div>

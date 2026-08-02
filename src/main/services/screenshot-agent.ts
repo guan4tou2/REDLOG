@@ -58,6 +58,9 @@ export class ScreenshotAgent {
 
   async captureNow(trigger: string): Promise<string | null> {
     if (!this.operatorId) return null
+    // Manual captures always land — user intent overrides pause.
+    // Ambient triggers (periodic, idle) skip while recording is paused.
+    if (trigger !== 'manual' && eventBus.paused) return null
     try {
       const display = screen.getPrimaryDisplay()
       const { width, height } = display.size
