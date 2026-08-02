@@ -113,6 +113,8 @@
   "timeline.cleanup": "清理痕跡",
   "timeline.laneEmpty": "{{lane}} — 尚無事件",
   "timeline.shellEvent": "Shell 事件",
+  "timeline.scanner": "掃描",
+  "timeline.clusterMoreItems": "還有 {count} 個 — 放大以個別檢視",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
 
   "targets.title": "目標（{{count}}）",
@@ -229,6 +231,8 @@
   "statusBar.paused": "已暫停",
   "statusBar.clickToPause": "點擊暫停錄製",
   "statusBar.clickToResume": "點擊恢復錄製",
+  "statusBar.captureDark": "錄製中但沒有任何擷取來源在送事件 — 檢查 hooks / mitmproxy / 內建終端機",
+  "statusBar.capturePartial": "錄製中但部分擷取來源已閒置超過 10 分鐘",
   "statusBar.safeIp": "安全",
   "statusBar.exposedIp": "暴露",
   "statusBar.ipUnknown": "IP?",

@@ -82,11 +82,28 @@ describeDB('shell dedup', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('deduplicates shell events with same command within 2 seconds', () => {
-    const first = insertEvent('shell', { command: 'ls -la' })
+  it('deduplicates shell events with same command + same subtype within 2 seconds', () => {
+    const first = insertEvent('shell', { command: 'ls -la', subtype: 'command_start' })
     expect(first).not.toBeNull()
-    const second = insertEvent('shell', { command: 'ls -la' })
+    const second = insertEvent('shell', { command: 'ls -la', subtype: 'command_start' })
     expect(second).toBeNull()
+  })
+
+  it('does NOT drop command_end when command_start with same command was just inserted (v0.6.85 regression)', () => {
+    // Regression: prior dedup used data LIKE '%"command":"..."%' which matched
+    // across subtypes — a fast command's command_end was silently dropped,
+    // breaking timeline pair-collapse and replay.
+    const start = insertEvent('shell', { command: 'ls -la', subtype: 'command_start' })
+    const end = insertEvent('shell', { command: 'ls -la', subtype: 'command_end', exit_code: 0 })
+    expect(start).not.toBeNull()
+    expect(end).not.toBeNull()
+  })
+
+  it('same subtype+command on different terminal_id is not deduped', () => {
+    const a = insertEvent('shell', { command: 'ls', subtype: 'command_start', terminal_id: 't1' })
+    const b = insertEvent('shell', { command: 'ls', subtype: 'command_start', terminal_id: 't2' })
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
   })
 
   it('allows different commands', () => {

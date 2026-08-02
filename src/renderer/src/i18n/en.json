@@ -113,6 +113,8 @@
   "timeline.cleanup": "Cleanup",
   "timeline.laneEmpty": "{{lane}} — no events yet",
   "timeline.shellEvent": "Shell event",
+  "timeline.scanner": "Scanner",
+  "timeline.clusterMoreItems": "+{count} more — zoom in to see individually",
   "timeline.resizeDetailPanel": "Drag to resize the detail panel · double-click to reset",
 
   "targets.title": "Targets ({{count}})",
@@ -229,6 +231,8 @@
   "statusBar.paused": "PAUSED",
   "statusBar.clickToPause": "Click to pause recording",
   "statusBar.clickToResume": "Click to resume recording",
+  "statusBar.captureDark": "Recording ON but no capture source is feeding events — check hooks / mitmproxy / builtin terminal",
+  "statusBar.capturePartial": "Recording ON but some capture sources have been idle for 10+ min",
   "statusBar.safeIp": "SAFE",
   "statusBar.exposedIp": "EXPOSED",
   "statusBar.ipUnknown": "IP?",

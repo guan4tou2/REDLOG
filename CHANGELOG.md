@@ -3,6 +3,60 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.85 — 2026-08-02
+Timeline recording pipeline audit fallout: 1 P0 data-loss bug + 2 P1
+surface bugs + 5 P2 UX/correctness items.
+
+### P0 — data-loss (verified)
+- **Shell dedup dropped `command_end` for fast commands** (`src/core/db/events.ts`):
+  the 2000 ms `data LIKE '%"command":"..."%'` dedup matched on the raw JSON
+  blob without regard for subtype. A `command_end` fired ~10 ms after
+  `command_start` looked like a duplicate, so `insertEvent` returned `null`.
+  Downstream damage: `collapseCommandPairs` never fired (Timeline showed an
+  in-flight `$ ls` with no exit code), `/api/terminal/replay` broke, pivot-
+  close detection broke. Fix: key structurally on
+  `(subtype, command, terminal_id)`; parse each candidate row's JSON and
+  compare fields exactly. +2 regression tests (`test/events.test.ts`).
+
+### P1 — silent-fail surfaces
+- **`eventBus.pause()` now actually gates ambient capture writes.** Previously
+  it only muted the IPC broadcast — clipboard, screenshot (periodic), and CDP
+  navigation kept writing to the DB during "recording paused". Gated at the
+  three ambient sources (`clipboard-monitor.ts`, `screenshot-agent.ts` —
+  manual captures still land — and `cdp-connector.ts`). Audit chain writes
+  (markers, session boundaries, hook-driven shell events) still land, which
+  is the intended semantic.
+- **StatusBar recording dot reflects capture-health.** Was always a pulsing
+  red regardless of whether any source was actually feeding events. Now
+  polls `capture:health` every 30 s and colors the dot: red pulsing =
+  healthy, amber pulsing = partial (some sources idle 10+ min), solid amber
+  = dark (nothing has fed events). Tooltip explains the cause. Adds
+  `statusBar.captureDark` / `statusBar.capturePartial` i18n strings.
+
+### P2 — UX / correctness
+- **New `scanner` lane** (`Timeline.tsx`): mitmproxy `http_request` /
+  `http_error` events were falling into the `system` housekeeping lane
+  (violet, positioned after `http_navigation`). Adds `timeline.scanner` label.
+- **Cluster popover cap** — a mitmproxy burst filled the popover with
+  thousands of buttons. Capped at 50 items with a "+N more — zoom in to see
+  individually" footer.
+- **Cluster-jump zoom is span-relative** — was hardcoded 8×, which
+  over-zoomed 5-event bursts and under-zoomed 500-event ones. Now computes
+  from the cluster's own time span so every burst splits cleanly.
+- **Popover viewport clamp** — was clamped only to `TRACK_W`, so on a
+  wide-zoom track the popover could render off-screen. Now clamps against
+  the visible scroll window (`scrollLeft + clientWidth`).
+- **Ordering: monotonic-ns tiebreak** — sort was wall-clock only, so two
+  events sharing a millisecond had implementation-defined order and could
+  swap between page loads. Comparator now falls back to `monotonic_ns`
+  (compared as BigInt), then event id. Renderer `RedLogEvent` type gains
+  `monotonicNs` + `ntpOffsetMs`.
+- **`<TimelinePanel key={project.id}>`** — a mid-session project switch (once
+  the in-app switcher lands) would have leaked `eventsMapRef` across projects;
+  keyed remount prevents it.
+
+322 unit / 17 e2e / build clean.
+
 ## v0.6.84 — 2026-08-02
 Timeline UX fixes surfaced from user testing + a matching E2E expansion so
 the two clicked-through bugs stay fixed.

@@ -178,7 +178,11 @@ export default function App(): JSX.Element {
           <ErrorBoundary label={view}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
             {view === 'terminal' && <TerminalView />}
-            {view === 'timeline' && <TimelinePanel focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} />}
+            {/* key on project.id: a project switch (e.g. project:open) must
+                remount TimelinePanel — otherwise eventsMapRef keeps the prior
+                project's rows and the initial useEffect doesn't re-fire.
+                Latent today (no in-app switcher yet); guards the flow when one lands. */}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} />}
             {view === 'screenshots' && <ScreenshotsView />}
             {view === 'targets' && <TargetView />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
