@@ -64,6 +64,8 @@ export default function StatusBar(): JSX.Element {
   return (
     <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
       <button
+        data-testid="status-bar-recording"
+        data-recording={recording ? 'on' : 'off'}
         onClick={handleToggleRecording}
         className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
         title={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}

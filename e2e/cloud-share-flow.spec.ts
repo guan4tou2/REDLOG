@@ -190,4 +190,139 @@ test.describe.serial('cloud share', () => {
     // doesn't break the test.
     expect(result.error ?? '').toMatch(/review|gate/i)
   })
+
+  test('HTTPS backend radio + credentials persist across reload', async () => {
+    // Advanced accordion holds endpoint + token inputs + a stub/https radio.
+    // All three values persist to ~/.redlog/config.yaml via config.save; a
+    // reload should re-hydrate them into the panel state.
+    const endpointValue = 'https://redlog-share.test.workers.dev'
+    const tokenValue = 'test-token'
+
+    // Test 2 already opened the Data tab; expand Advanced if it isn't open
+    // yet. Attribute-only test — resilient if we ever change the default.
+    const advToggle = page.locator('[data-testid="cloud-share-advanced-toggle"]')
+    await advToggle.click()
+
+    const endpointInput = page.locator('[data-testid="cloud-share-endpoint"]')
+    const tokenInput = page.locator('[data-testid="cloud-share-authtoken"]')
+    const httpsRadio = page.locator('[data-testid="cloud-share-mode-https"]')
+
+    await expect(endpointInput).toBeVisible({ timeout: 3_000 })
+    await endpointInput.fill(endpointValue)
+    await tokenInput.fill(tokenValue)
+    await httpsRadio.check()
+    await expect(httpsRadio).toBeChecked()
+
+    // persistBackend debounces at 350 ms; wait a bit past that for the save
+    // then read config.yaml through the IPC to prove it landed on disk.
+    await expect
+      .poll(
+        async () => {
+          const cfg = await page.evaluate(async () => {
+            const w = window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }
+            return w.redlog.config.get()
+          })
+          const cs = (cfg as { cloudShare?: { endpoint?: string } })?.cloudShare
+          return cs?.endpoint
+        },
+        { timeout: 3_000 }
+      )
+      .toBe(endpointValue)
+
+    // Now reload — App re-mounts, project.active re-fetches, Settings panel
+    // re-runs its config.get() effect, which should set endpoint/token/mode.
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('[data-testid="view-root"][data-view="dashboard"]', {
+      timeout: 10_000
+    })
+
+    // Navigate back to Settings ▸ Data. The panel opens Advanced automatically
+    // on load when endpoint is non-empty (see useEffect in CloudSharePanel).
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+    await page.keyboard.press(`${mod}+9`)
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
+    await page.getByRole('button', { name: /^data$/i }).first().click()
+
+    // Re-hydrated values. The inputs live inside the Advanced fold, which
+    // opens itself when an endpoint is stored — no manual click needed.
+    const endpointAfter = page.locator('[data-testid="cloud-share-endpoint"]')
+    const tokenAfter = page.locator('[data-testid="cloud-share-authtoken"]')
+    const httpsAfter = page.locator('[data-testid="cloud-share-mode-https"]')
+    await expect(endpointAfter).toBeVisible({ timeout: 5_000 })
+    await expect(endpointAfter).toHaveValue(endpointValue)
+    // Token input is password-type but the .value round-trips regardless.
+    await expect(tokenAfter).toHaveValue(tokenValue)
+    await expect(httpsAfter).toBeChecked()
+
+    // The Share button label must reflect the mode swap. English strings:
+    //   stub  → "Share (stub upload)"
+    //   https → "Share via HTTPS backend"
+    // We intentionally do NOT click it — a real POST to a .workers.dev URL
+    // would either fail or, worse, actually upload. Just verify the label.
+    const shareBtn = page.locator('[data-testid="cloud-share-button"]')
+    await expect(shareBtn).toContainText(/HTTPS/i)
+    await expect(shareBtn).not.toContainText(/stub/i)
+    // Intentionally NOT clearing the fields — the persistBackend debounce
+    // (350 ms) would race against the next test's config.save and wipe its
+    // maxBundleBytes override. The next test tolerates either mode.
+  })
+
+  test('inline error box surfaces prepare failures + dismiss ✕ clears it', async () => {
+    // Force any prepare() call to fail by shrinking cloudShare.maxBundleBytes
+    // to 1 — every real bundle exceeds that cap and prepareCloudShareBundle
+    // throws BundleTooLargeError. The persistent inline error box (v0.6.79
+    // pattern) must render the message so the operator can read it after the
+    // toast fades.
+    // 1) shrink the cap via config.save
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        redlog: {
+          config: { get: () => Promise<unknown>; save: (c: unknown) => Promise<unknown> }
+        }
+      }
+      const cfg = (await w.redlog.config.get()) as Record<string, unknown> & {
+        cloudShare?: Record<string, unknown>
+      }
+      const cs = { ...(cfg.cloudShare ?? {}), maxBundleBytes: 1 }
+      await w.redlog.config.save({ ...cfg, cloudShare: cs })
+    })
+
+    // Tick the review gate — the previous test unchecked HTTPS, so we're back
+    // in stub mode. Share button becomes enabled once reviewed.
+    const reviewed = page.locator('[data-testid="cloud-share-reviewed"]')
+    if (!(await reviewed.isChecked())) await reviewed.check()
+    const shareBtn = page.locator('[data-testid="cloud-share-button"]')
+    await expect(shareBtn).toBeEnabled()
+
+    // Click Share → prepare() throws BundleTooLargeError → inline error box.
+    await shareBtn.click()
+
+    const inlineErr = page.locator('[data-testid="cloud-share-inline-error"]')
+    await expect(inlineErr).toBeVisible({ timeout: 10_000 })
+    // Error message from BundleTooLargeError:
+    //   "bundle is <N> bytes, exceeds cap of 1. Split the engagement or raise cloudShare.maxBundleBytes."
+    // The panel prefixes it with t('cloudShare.prepareFailed') = "Prepare failed".
+    await expect(inlineErr).toContainText(/exceeds cap|BundleTooLarge/i)
+
+    // ✕ button hides the box again — v0.6.79 dismiss behaviour.
+    await page.locator('[data-testid="cloud-share-inline-error-dismiss"]').click()
+    await expect(inlineErr).toHaveCount(0, { timeout: 3_000 })
+
+    // Reset maxBundleBytes back to undefined so we don't poison any follow-up
+    // spec or a re-run under the same tmpHome.
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        redlog: {
+          config: { get: () => Promise<unknown>; save: (c: unknown) => Promise<unknown> }
+        }
+      }
+      const cfg = (await w.redlog.config.get()) as Record<string, unknown> & {
+        cloudShare?: Record<string, unknown>
+      }
+      const cs = { ...(cfg.cloudShare ?? {}) }
+      delete cs.maxBundleBytes
+      await w.redlog.config.save({ ...cfg, cloudShare: cs })
+    })
+  })
 })

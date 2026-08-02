@@ -98,6 +98,7 @@ interface MarketplaceBridge {
     installedDir?: string
     error?: string
   }>
+  testSetIndex: (indexJson: string) => Promise<{ ok: boolean; error?: string }>
   listPublishers: () => Promise<Array<{ id: string; keys: Array<{ publicKey: string; label?: string }> }>>
   listVersions: (pluginId: string) => Promise<string[]>
   rollback: (pluginId: string, versionKey: string) => Promise<{ ok: boolean; error?: string }>
@@ -303,5 +304,80 @@ test.describe.serial('marketplace', () => {
     expect(readFileSync(markerPath, 'utf-8')).toBe('v1.0.0-marker')
     const restoredManifest = JSON.parse(readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'))
     expect(restoredManifest.version).toBe('1.0.0')
+  })
+
+  test('publisher auto-fill banner appears + Trust-all lands the key on disk', async () => {
+    // v0.6.79 flow: fetchIndex() may return a `publishers[]` block; if any of
+    // those publishers aren't yet in ~/.redlog/trusted-publishers.json the
+    // panel shows an amber banner with a "Trust all" button. Inject a fake
+    // index via the dev-only marketplace:testSetIndex IPC (gated on
+    // REDLOG_E2E=1) so we don't need a live HTTPS registry.
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const spkiB64 = publicKey.export({ format: 'der', type: 'spki' }).toString('base64')
+    const publisherId = 'e2e-banner-pub'
+    // Not the same id as the "trust via UI" test above so that publisher stays
+    // in the store from test 2 and this one starts with a fresh untrusted id.
+    const fakeIndex = {
+      updatedAt: Date.now(),
+      entries: [] as Array<Record<string, unknown>>,
+      publishers: [
+        { id: publisherId, homepage: 'https://example.invalid', keys: [{ publicKey: spkiB64, label: 'e2e' }] }
+      ]
+    }
+
+    const setResult = await page.evaluate(async (indexJson) => {
+      const api = (window as unknown as { redlog: { marketplace: MarketplaceBridge } }).redlog.marketplace
+      return api.testSetIndex(indexJson)
+    }, JSON.stringify(fakeIndex))
+    expect(setResult.ok).toBe(true)
+
+    // Ensure we're on Settings ▸ Marketplace ▸ Plugins.
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+    await page.keyboard.press(`${mod}+9`)
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
+    await page.getByRole('button', { name: /marketplace/i }).first().click()
+    // Sub-tab "Plugins" — test 2 above left us on Publishers; jump back.
+    // Two buttons match /Plugins/ (Settings-level tab + Marketplace sub-tab);
+    // `.last()` picks the sub-tab which is rendered after the top-level tabs.
+    await page.getByRole('button', { name: /^plugins$/i }).last().click()
+
+    // Trigger fetchIndex — the URL box is empty so it uses the default; main
+    // short-circuits to the injected index because REDLOG_E2E is set.
+    // English button label is "Fetch index" per i18n/en.json.
+    await page.getByRole('button', { name: /fetch index/i }).click()
+
+    // Banner appears with the injected publisher count. English string is
+    // "This registry suggests trusting {n} publisher(s)".
+    const banner = page.locator('[data-testid="marketplace-suggested-banner"]')
+    await expect(banner).toBeVisible({ timeout: 5_000 })
+    await expect(banner).toContainText(/trusting 1 publisher/i)
+    await expect(banner).toContainText(publisherId)
+
+    // Click Trust all → writes to trusted-publishers.json and banner unmounts.
+    await page.locator('[data-testid="marketplace-trust-all-suggested"]').click()
+
+    // Store on disk carries the injected id + key. reloadPublishers refreshes
+    // React state from the IPC, which reads the store — so once the banner
+    // is gone we know the file must have been written.
+    await expect(banner).toHaveCount(0, { timeout: 5_000 })
+
+    const storePath = join(tmpHome, '.redlog', 'trusted-publishers.json')
+    expect(existsSync(storePath)).toBe(true)
+    const store = JSON.parse(readFileSync(storePath, 'utf-8')) as Record<
+      string,
+      { id: string; keys: Array<{ publicKey: string }> }
+    >
+    expect(store[publisherId]).toBeTruthy()
+    expect(store[publisherId].keys.some((k) => k.publicKey === spkiB64)).toBe(true)
+
+    mkdirSync(SCREENSHOT_DIR, { recursive: true })
+    await page.screenshot({ path: join(SCREENSHOT_DIR, 'marketplace-publishers-trusted.png') })
+
+    // Clear the injected index so nothing leaks into later specs if the
+    // Electron instance somehow gets reused.
+    await page.evaluate(async () => {
+      const api = (window as unknown as { redlog: { marketplace: MarketplaceBridge } }).redlog.marketplace
+      await api.testSetIndex('')
+    })
   })
 })
