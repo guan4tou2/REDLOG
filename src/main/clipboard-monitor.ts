@@ -34,6 +34,10 @@ function sha256(s: string): string {
 }
 
 function sample(): void {
+  // Recording paused → skip ambient clipboard capture entirely. Only
+  // gate ambient/background capture here; user-driven writes (markers,
+  // session boundaries) go through their own IPC and always land.
+  if (eventBus.paused) return
   let text: string
   try { text = clipboard.readText() } catch { return }
   if (!text) return

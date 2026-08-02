@@ -11,6 +11,7 @@ export default function StatusBar(): JSX.Element {
   const [recording, setRecording] = useState(true)
   const [stamped, setStamped] = useState(false)
   const [overlayVisible, setOverlayVisible] = useState(true)
+  const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -40,7 +41,24 @@ export default function StatusBar(): JSX.Element {
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
 
-    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer) }
+    // Capture health polls — surfaces the "recording indicator says ON but no
+    // source is producing events" case (P1b from the v0.6.85 audit). Dashboard
+    // has its own richer CaptureHealthCard; the StatusBar dot is the always-
+    // visible indicator so operators on the Timeline view still see a change
+    // from healthy → partial → dark.
+    const loadCapture = (): void => {
+      try {
+        window.redlog.capture?.health?.()?.then((h) => {
+          if (h && typeof h === 'object' && 'verdict' in h) {
+            setCaptureVerdict((h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict)
+          }
+        }).catch(() => {})
+      } catch { /* older preload */ }
+    }
+    loadCapture()
+    const healthTimer = setInterval(loadCapture, 30_000)
+
+    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
 
   const handleToggleRecording = async (): Promise<void> => {
@@ -63,18 +81,45 @@ export default function StatusBar(): JSX.Element {
 
   return (
     <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
-      <button
-        data-testid="status-bar-recording"
-        data-recording={recording ? 'on' : 'off'}
-        onClick={handleToggleRecording}
-        className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
-        title={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
-        aria-label={recording ? t('statusBar.clickToPause') : t('statusBar.clickToResume')}
-      >
-        <span className={`w-1.5 h-1.5 rounded-full ${recording ? 'bg-red-500 animate-pulse-slow' : 'bg-zinc-500'}`} />
-        <span className={recording ? 'text-red-400/80' : 'text-zinc-500'}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
-        <span className="text-zinc-600 tabular-nums">{uptimeStr}</span>
-      </button>
+      {(() => {
+        // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
+        // Recording ON + capture partial → amber (some sources active, some idle).
+        // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
+        const dotColor = !recording
+          ? 'bg-zinc-500'
+          : captureVerdict === 'dark'
+            ? 'bg-amber-500'
+            : captureVerdict === 'partial'
+              ? 'bg-amber-500 animate-pulse-slow'
+              : 'bg-red-500 animate-pulse-slow'
+        const labelColor = !recording
+          ? 'text-zinc-500'
+          : captureVerdict === 'dark' || captureVerdict === 'partial'
+            ? 'text-amber-400/80'
+            : 'text-red-400/80'
+        const tooltip = !recording
+          ? t('statusBar.clickToResume')
+          : captureVerdict === 'dark'
+            ? t('statusBar.captureDark')
+            : captureVerdict === 'partial'
+              ? t('statusBar.capturePartial')
+              : t('statusBar.clickToPause')
+        return (
+          <button
+            data-testid="status-bar-recording"
+            data-recording={recording ? 'on' : 'off'}
+            data-capture={captureVerdict ?? 'unknown'}
+            onClick={handleToggleRecording}
+            className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
+            title={tooltip}
+            aria-label={tooltip}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+            <span className={labelColor}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
+            <span className="text-zinc-600 tabular-nums">{uptimeStr}</span>
+          </button>
+        )
+      })()}
 
       <Sep />
 

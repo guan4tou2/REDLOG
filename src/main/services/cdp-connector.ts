@@ -61,6 +61,10 @@ export function stopCdpMonitor(): void {
 }
 
 async function pollNavigations(): Promise<void> {
+  // Ambient CDP navigation capture — skip while paused (aligns with
+  // clipboard + screenshot ambient gating). Matches the pause semantics
+  // an operator expects when clicking "pause recording".
+  if (eventBus.paused) return
   let tabs: BrowserTab[]
   try { tabs = await fetchJson<BrowserTab[]>(`http://127.0.0.1:${cdpPort}/json`) } catch { return }
   if (!operatorId || !engagementId) return
