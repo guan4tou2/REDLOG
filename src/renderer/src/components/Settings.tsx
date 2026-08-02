@@ -1880,7 +1880,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       </div>
 
       <div className="mb-3 rounded border border-zinc-800 bg-zinc-950/40">
-        <button type="button" onClick={() => setAdvancedOpen((v) => !v)}
+        <button data-testid="cloud-share-advanced-toggle" type="button" onClick={() => setAdvancedOpen((v) => !v)}
           className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-zinc-400 hover:bg-zinc-900/60">
           <span>{t('cloudShare.advancedTitle')}</span>
           <span className="text-zinc-600">{advancedOpen ? '▾' : '▸'}</span>
@@ -1890,7 +1890,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             <p className="text-[11px] text-zinc-600">{t('cloudShare.advancedHint')}</p>
             <label className="block text-[11px] text-zinc-500">
               {t('cloudShare.endpoint')}
-              <input type="text" value={endpoint}
+              <input data-testid="cloud-share-endpoint" type="text" value={endpoint}
                 onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken, maxMbInput) }}
                 placeholder="https://redlog-share.<acct>.workers.dev"
                 className="mt-1 w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
@@ -1898,7 +1898,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             <label className="block text-[11px] text-zinc-500">
               {t('cloudShare.authToken')}
               <div className="mt-1 flex gap-2">
-                <input type={tokenVisible ? 'text' : 'password'} value={authToken}
+                <input data-testid="cloud-share-authtoken" type={tokenVisible ? 'text' : 'password'} value={authToken}
                   onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value, maxMbInput) }}
                   placeholder={t('cloudShare.authTokenPlaceholder')}
                   className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
@@ -1910,12 +1910,12 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             </label>
             <div className="flex items-center gap-4 text-[11px] pt-1">
               <label className="flex items-center gap-1 cursor-pointer">
-                <input type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
+                <input data-testid="cloud-share-mode-stub" type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
                   className="accent-zinc-500" />
                 <span className={mode === 'stub' ? 'text-zinc-300' : 'text-zinc-500'}>{t('cloudShare.modeStub')}</span>
               </label>
               <label className="flex items-center gap-1 cursor-pointer">
-                <input type="radio" name="cloudshare-mode" checked={mode === 'https'} onChange={() => setMode('https')}
+                <input data-testid="cloud-share-mode-https" type="radio" name="cloudshare-mode" checked={mode === 'https'} onChange={() => setMode('https')}
                   className="accent-red-500" />
                 <span className={mode === 'https' ? 'text-zinc-300' : 'text-zinc-500'}>{t('cloudShare.modeHttps')}</span>
               </label>
@@ -1936,10 +1936,10 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       </div>
 
       {lastError && (
-        <div className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
+        <div data-testid="cloud-share-inline-error" className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
           <span className="text-red-400 shrink-0">⚠</span>
           <p className="text-[11px] text-red-300 font-mono break-all flex-1">{lastError}</p>
-          <button onClick={() => setLastError('')} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
         </div>
       )}
 
@@ -2138,7 +2138,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
           )}
 
           {suggestedUntrusted.length > 0 && (
-            <div className="mb-3 rounded border border-amber-800/50 bg-amber-950/20 p-3">
+            <div data-testid="marketplace-suggested-banner" className="mb-3 rounded border border-amber-800/50 bg-amber-950/20 p-3">
               <p className="text-[11px] text-amber-300 mb-1">
                 {t('marketplace.suggestedPublishersTitle', { n: suggestedUntrusted.length })}
               </p>
@@ -2150,7 +2150,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                   </li>
                 ))}
               </ul>
-              <button onClick={trustAllSuggested} disabled={trustingAll}
+              <button data-testid="marketplace-trust-all-suggested" onClick={trustAllSuggested} disabled={trustingAll}
                 className="px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-white rounded disabled:opacity-50">
                 {trustingAll ? '…' : t('marketplace.trustAllSuggested')}
               </button>

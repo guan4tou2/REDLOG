@@ -113,6 +113,7 @@
   "timeline.cleanup": "清理痕跡",
   "timeline.laneEmpty": "{{lane}} — 尚無事件",
   "timeline.shellEvent": "Shell 事件",
+  "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
 
   "targets.title": "目標（{{count}}）",
   "targets.subtitle": "目標由記錄到的指令自動收集(例如 nmap 10.0.0.1),與「範圍」設定無關。範圍是你設定的允許清單,用來判定是否在範圍內。",

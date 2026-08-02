@@ -158,6 +158,16 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   // reveal; each reveal appends a chained system.secret_revealed event so the
   // audit trail shows raw bytes were viewed.
   const [revealedEvents, setRevealedEvents] = useState<Set<string>>(new Set())
+  // Detail-panel height, in px. Persisted to localStorage so operator's chosen
+  // size survives reloads. Default `null` = use CSS max-h-[45vh] fallback.
+  const [detailPanelPx, setDetailPanelPx] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem('redlog-timeline-detail-h')
+      const n = raw ? parseInt(raw, 10) : NaN
+      return Number.isFinite(n) && n > 80 && n < 2000 ? n : null
+    } catch { return null }
+  })
+  const detailResizing = useRef<{ startY: number; startH: number } | null>(null)
   // Detail panel container. Reset scroll to top on every selectedEvent change
   // so a cluster-popover click always lands you on the new item's title —
   // otherwise the panel keeps whatever scroll offset the prior event left
@@ -175,6 +185,28 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     setRevealedEvents(new Set())
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
   }, [selectedEvent?.id])
+
+  // Detail-panel drag-to-resize. Handle at the top edge of the panel — drag
+  // up to grow, drag down to shrink. Persisted to localStorage so the choice
+  // survives across reloads.
+  useEffect(() => {
+    const onMove = (e: MouseEvent): void => {
+      const s = detailResizing.current
+      if (!s) return
+      const dy = s.startY - e.clientY
+      const next = Math.max(80, Math.min(window.innerHeight * 0.85, s.startH + dy))
+      setDetailPanelPx(next)
+    }
+    const onUp = (): void => {
+      if (!detailResizing.current) return
+      detailResizing.current = null
+      document.body.classList.remove('timeline-resizing')
+      try { if (detailPanelPx != null) localStorage.setItem('redlog-timeline-detail-h', String(Math.round(detailPanelPx))) } catch { /* ignore */ }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [detailPanelPx])
 
   useEffect(() => {
     const load = (): void => {
@@ -430,6 +462,14 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
+    // Bug: this ran on every mousedown INSIDE the scroll track, including a
+    // mousedown that started a click on the cluster popup. It would close
+    // the popup + start drag before the popup <button>'s onClick had a
+    // chance to fire — the operator saw "click a row in the popup, popup
+    // closes, nothing happens" instead of the intended jump.
+    // Fix: bail if the mousedown target is inside the cluster popup.
+    const target = e.target as HTMLElement | null
+    if (target?.closest('[data-timeline-popup]')) return
     setCluster(null)
     isDragging.current = true
     dragStart.current = { x: e.clientX, scroll: scrollRef.current?.scrollLeft ?? 0 }
@@ -794,7 +834,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                 })}
                 {/* Cluster contents popover */}
                 {cluster && (
-                  <div className="absolute z-30" style={{
+                  <div className="absolute z-30" data-timeline-popup style={{
                     left: Math.max(0, Math.min(cluster.x + 10, TRACK_W - 236)),
                     // Clamp so the popover never drops off the bottom for clusters
                     // in the last lane. If the natural anchor + max popover height
@@ -880,9 +920,34 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
         </div>
       </div>
 
-      {/* Enhanced detail panel */}
+      {/* Enhanced detail panel — height is drag-resizable; the handle at the
+          top edge sets height in px (persisted to localStorage). Falling back
+          to the CSS `max-h-[45vh]` when the operator hasn't dragged. */}
       {selectedEvent && (
-        <div ref={detailPanelRef} className="shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 max-h-[45vh] overflow-y-auto">
+        <>
+          {/* Drag handle — 4px hit strip along the top edge; visual accent on hover. */}
+          <div
+            className="shrink-0 h-1 cursor-row-resize bg-zinc-800/50 hover:bg-red-500/40 transition-colors relative"
+            title={t('timeline.resizeDetailPanel')}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              const currentH = detailPanelRef.current?.getBoundingClientRect().height ?? 320
+              detailResizing.current = { startY: e.clientY, startH: currentH }
+              document.body.classList.add('timeline-resizing')
+            }}
+            onDoubleClick={() => {
+              // Double-click resets to default (CSS 45vh).
+              setDetailPanelPx(null)
+              try { localStorage.removeItem('redlog-timeline-detail-h') } catch { /* ignore */ }
+            }}
+          >
+            <div className="absolute left-1/2 top-0 -translate-x-1/2 h-1 w-8 rounded bg-zinc-600/50 pointer-events-none" />
+          </div>
+        <div
+          ref={detailPanelRef}
+          className={`shrink-0 border-t border-zinc-700/50 px-4 py-3 bg-zinc-900/80 overflow-y-auto${detailPanelPx == null ? ' max-h-[45vh]' : ''}`}
+          style={detailPanelPx == null ? undefined : { height: detailPanelPx }}
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }} />
@@ -978,6 +1043,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
             )
           })()}
         </div>
+        </>
       )}
     </div>
   )

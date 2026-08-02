@@ -3,6 +3,32 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.84 — 2026-08-02
+Timeline UX fixes surfaced from user testing + a matching E2E expansion so
+the two clicked-through bugs stay fixed.
+
+- **Cluster popup click regression fixed** (`Timeline.tsx`): the
+  scroll-track `mousedown` handler was closing the popup and starting a
+  drag on the same mousedown that would have led to the popup
+  button's `click`, so the click never fired. The handler now bails
+  when the target is inside `[data-timeline-popup]` (added to the
+  popup container), and lets React's synthetic click deliver
+  normally. This is the "點擊後不會轉跳到該項目" bug the user
+  reported twice.
+- **Resizable detail panel** (`Timeline.tsx` + i18n): the bottom
+  detail panel now has a 4-px drag handle above it (cursor: row-resize)
+  that persists the chosen height to `localStorage`
+  (`redlog-timeline-detail-h`). Double-click resets to default.
+  Bounds: 80 – 2000 px.
+- **E2E flow coverage (11 → 17)**: new `e2e/recording-flow.spec.ts`
+  (+3 tests: recording start/stop lifecycle + StatusBar reflection),
+  extended `marketplace-flow.spec.ts` (+1: publisher auto-fill banner),
+  extended `cloud-share-flow.spec.ts` (+2: HTTPS backend persistence +
+  inline error surface). Adds `marketplace:testSetIndex` IPC gated on
+  `REDLOG_E2E === '1'` plus targeted `data-testid` attributes on
+  StatusBar/Settings so specs anchor on stable selectors.
+- unit tests: 320 pass / e2e: 17 pass / build clean.
+
 ## v0.6.83 — 2026-08-01
 Closes 4 of 5 P2 Windows audit items and adds targeted regression tests
 for the v0.6.82 P0/P1 fixes so a future Windows CI run catches drift.

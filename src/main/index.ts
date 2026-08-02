@@ -65,6 +65,11 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
+// Dev/E2E-only stash for marketplace:fetchIndex. When REDLOG_E2E=1 and a
+// test has called marketplace:testSetIndex, fetchIndex returns this object
+// instead of hitting the network. Loose-typed so we don't pull the
+// RegistryIndex import into main just for a mock hook.
+let testFetchIndexOverride: unknown = null
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 
@@ -1238,9 +1243,30 @@ app.whenReady().then(() => {
   // caps size (5 MB tarball / 1 MB index), and every install goes through
   // sha256 + Ed25519 signature verify + manifest re-validate.
   ipcMain.handle('marketplace:fetchIndex', async (_e, url?: string) => {
+    // Dev/E2E-only override: if a test has stashed a fake index via
+    // marketplace:testSetIndex, return it verbatim instead of hitting the
+    // network. Kept alongside the real path so the UI code driving fetchIndex
+    // stays identical between real and mocked runs.
+    if (process.env.REDLOG_E2E === '1' && testFetchIndexOverride) {
+      return { ok: true, index: testFetchIndexOverride }
+    }
     try {
       const { fetchIndex } = await import('../core/plugins/marketplace')
       return { ok: true, index: await fetchIndex(url) }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+  // Dev/E2E-only sibling of marketplace:fetchIndex. Lets a test inject a
+  // canned RegistryIndex (including publishers[]) so the "trust suggested
+  // publishers" banner can be exercised without a real HTTPS registry.
+  // Gated on REDLOG_E2E=1 — the endpoint is effectively absent in a normal
+  // launch. Pass an empty string to clear the override.
+  ipcMain.handle('marketplace:testSetIndex', async (_e, indexJson: string) => {
+    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testSetIndex disabled' }
+    try {
+      testFetchIndexOverride = indexJson ? JSON.parse(indexJson) : null
+      return { ok: true }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }
