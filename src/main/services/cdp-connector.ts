@@ -1,6 +1,7 @@
 import http from 'http'
 import { insertEvent } from '../../core/db/events'
 import { eventBus } from '../../core/event-bus'
+import { noteDbError } from '../../core/capture-health'
 import { extractTarget } from '../../core/target-extractor'
 
 interface BrowserTab {
@@ -97,7 +98,11 @@ async function pollNavigations(): Promise<void> {
         targetId: detectedTarget ?? undefined
       })
       if (ev) eventBus.publish(ev)
-    } catch { /* additive; never break polling */ }
+    } catch (e) {
+      // additive; never break polling — but surface the error to capture-health
+      // so a persistently-failing CDP capture path stops being invisible.
+      noteDbError('cdp-navigation', e)
+    }
   }
   // Forget closed tabs so their id can be reused without spuriously suppressing.
   for (const id of lastTabUrls.keys()) if (!currentIds.has(id)) lastTabUrls.delete(id)

@@ -10,6 +10,11 @@ const BASE_TRACK_W = 2000
 const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
+// Lanes with no built-in producer — populated only by external agents
+// (custom MCP tools, third-party plugins) posting to /api/events. Showing
+// them as plain "empty" is misleading; the chip tooltip says so explicitly.
+const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['dns', 'credential_use', 'c2_checkin'])
+
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
   agent: '#84cc16',
@@ -80,12 +85,27 @@ function eventTitle(event: RedLogEvent): string {
   }
 }
 
-function toLane(agentType: string, subtype?: string): LaneId {
+function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventType[]): LaneId {
   // Scope violations are stored under agent_type='system' for historical reasons
   // (the deconfliction webhook filter watches 'system'). Route them into their own
   // lane at render time so they don't drown in the system-lane housekeeping.
   if (agentType === 'system' && subtype === 'scope_violation') return 'scope'
-  return LANES.includes(agentType as LaneId) ? (agentType as LaneId) : 'system'
+  if (LANES.includes(agentType as LaneId)) return agentType as LaneId
+  // Plugin-registered event type maps into whichever built-in lane the plugin
+  // declared (its `lane` field). Falls back to `system` when the plugin didn't
+  // supply one or the declared lane isn't valid.
+  const pluginDef = pluginTypes?.find((p) => p.agentType === agentType)
+  if (pluginDef?.lane && LANES.includes(pluginDef.lane as LaneId)) return pluginDef.lane as LaneId
+  return 'system'
+}
+
+interface PluginEventType {
+  agentType: string
+  label: string
+  lane?: string
+  color?: string
+  icon?: string
+  pluginId: string
 }
 
 // Lifecycle noise kept in the DB for the record but hidden from the timeline so
@@ -197,6 +217,20 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   // (with JSON expanded the title easily scrolls off screen).
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
+  // Plugin-registered event types (agent_type → lane/color/label mapping).
+  // Previously event-registry.ts was a dead facade — plugin events were all
+  // bucketed into `system`. Timeline now queries `plugins.eventTypes()` on
+  // mount so a plugin advertising `{ agentType: 'burp', lane: 'scanner' }`
+  // will render its rows in the scanner lane with the plugin's colour.
+  const [pluginTypes, setPluginTypes] = useState<PluginEventType[]>([])
+  useEffect(() => {
+    try {
+      const p = window.redlog.plugins?.eventTypes?.()
+      if (p && typeof (p as Promise<unknown>).then === 'function') {
+        (p as Promise<PluginEventType[]>).then((types) => setPluginTypes(types ?? [])).catch(() => {})
+      }
+    } catch { /* older preload */ }
+  }, [])
 
   // On new selection: snap the detail panel back to the top, collapse the JSON
   // dump, and RE-MASK any previously-revealed events (audit finding #1).
@@ -291,7 +325,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   // the lane exists, but don't give it a row until something lands in it.
   const populatedLanes = useMemo(() => {
     const seen = new Set<LaneId>()
-    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined))
+    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
     return seen
   }, [events])
 
@@ -316,7 +350,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
     const oldest = Array.from(eventsMapRef.current.values())
       .reduce((min, e) => (e.timestamp < min ? e.timestamp : min), Number.MAX_SAFE_INTEGER)
     const before = oldest !== Number.MAX_SAFE_INTEGER ? oldest : undefined
-    window.redlog.events.query({ limit: 200, before }).then((fetched) => {
+    window.redlog.events.query({ limit: 200, before, excludeHousekeeping: true }).then((fetched) => {
       const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id) && !isHousekeeping(e))
       if (fetched.length < 200) setAllLoaded(true)
       if (newOnes.length > 0) {
@@ -328,16 +362,28 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   }, [loading, allLoaded])
 
   useEffect(() => {
-    window.redlog.events.query({ limit: 200 }).then((fetched) => {
+    window.redlog.events.query({ limit: 200, excludeHousekeeping: true }).then((fetched) => {
       if (fetched.length < 200) setAllLoaded(true)
       fetched.filter((e) => !isHousekeeping(e)).forEach((e) => eventsMapRef.current.set(e.id, e))
       setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
       setLoading(false)
     })
+    // rAF-coalesced onNew: previously every incoming event triggered a full
+    // Array.from(map.values()).sort() on the render thread. A ~100 events/s
+    // mitmproxy scan with 5k rows already loaded was doing ~40k comparisons
+    // per event and 100 React renders per second. Now the handler just drops
+    // events into the map and schedules a single rebuild-and-render per frame.
+    let scheduled = false
+    const flush = (): void => {
+      scheduled = false
+      setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
+    }
     const unsub = window.redlog.events.onNew((event) => {
       if (isHousekeeping(event)) return
       eventsMapRef.current.set(event.id, event)
-      setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
+      if (scheduled) return
+      scheduled = true
+      requestAnimationFrame(flush)
     })
     return unsub
   }, [])
@@ -367,7 +413,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
 
   const laneEvents = useMemo(() => {
     const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
-    for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined)].push(e)
+    for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
     return map
   }, [events])
 
@@ -457,7 +503,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
   }, [timeStart, timeEnd, TRACK_W, updateView])
 
   const recentEvents = useMemo(() => {
-    const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined)))
+    const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)))
     return [...visible].reverse().slice(0, 50)
   }, [events, hiddenLanes])
 
@@ -607,7 +653,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
       if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
       if (e.key === 'Escape') { setSelectedEvent(null); setShowJson(false); return }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined)))
+        const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)))
         const i = visible.findIndex((ev) => ev.id === selectedEvent.id)
         if (i < 0) return
         const dir = e.key === 'ArrowUp' ? -1 : 1
@@ -713,6 +759,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
             const empty = !populatedLanes.has(id)
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
+            const externalOnly = EXTERNAL_ONLY_LANES.has(id)
             return (
               <button
                 key={id}
@@ -725,7 +772,9 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                   color: off ? '#525252' : LANE_COLORS[id],
                   backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
                 }}
-                title={empty ? t('timeline.laneEmpty', { lane: laneLabels[id] }) : t('timeline.laneChipHint', { lane: laneLabels[id] })}
+                title={empty
+                  ? externalOnly ? t('timeline.laneExternalOnly', { lane: laneLabels[id] }) : t('timeline.laneEmpty', { lane: laneLabels[id] })
+                  : t('timeline.laneChipHint', { lane: laneLabels[id] })}
               >
                 {laneLabels[id]}
               </button>
@@ -914,7 +963,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
                             }
                           }}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined)] }} />
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
                           <span className="text-zinc-600 font-mono text-[11px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
                           <span className="text-zinc-300 text-xs truncate">{eventTitle(evt)}</span>
                         </button>
@@ -944,7 +993,7 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
           </div>
           <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent ? '18vh' : '22vh'} - 32px)` }}>
             {recentEvents.map((evt) => {
-              const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined)
+              const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
               const isSel = selectedEvent?.id === evt.id
               return (
                 <div
@@ -1001,8 +1050,8 @@ export default function TimelinePanel({ focusEventId, focusTs }: { focusEventId?
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }} />
-              <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined)] }}>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }} />
+              <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }}>
                 {selectedEvent.agentType}
               </span>
               <span className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>

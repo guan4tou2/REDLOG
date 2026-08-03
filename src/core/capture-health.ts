@@ -23,6 +23,30 @@ export interface CaptureHealth {
   sources: CaptureSource[]
   lastEventAt: number | null
   checkedAt: number
+  /** Most-recent capture-side DB write failure (SQLITE_BUSY, disk-full, project
+   *  already closed, …). Prior to v0.6.86 these were swallowed by bare
+   *  catch{} in every capture callsite, so the recording indicator kept
+   *  pulsing red even when nothing was landing. Now the callsites forward
+   *  the error via `noteDbError()` and it surfaces here + in StatusBar. */
+  lastDbError?: { source: string; at: number; message: string }
+}
+
+// Ring buffer of one — we only need "was there recently an error, and from
+// where". Reset by `clearDbError()` (e.g. after a successful write from the
+// same source, though callsites don't have to — the CaptureHealth consumer
+// treats anything older than DB_ERROR_TTL_MS as gone).
+let _lastDbError: { source: string; at: number; message: string } | null = null
+const DB_ERROR_TTL_MS = 60_000
+
+export function noteDbError(source: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  _lastDbError = { source, at: Date.now(), message: msg.slice(0, 200) }
+}
+export function clearDbError(): void { _lastDbError = null }
+function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
+  if (!_lastDbError) return undefined
+  if (now - _lastDbError.at > DB_ERROR_TTL_MS) { _lastDbError = null; return undefined }
+  return _lastDbError
 }
 
 // A source is "active" if it produced an event within this window.
@@ -91,8 +115,11 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   // A source is "wired" if installed, or (for non-hook sources) has ever fed.
   const anyWired = sources.some((s) => s.installed === true) || sources.some((s) => s.installed === undefined && s.lastEventAt !== null)
 
+  const lastDbError = getLiveDbError(now)
+
   let verdict: CaptureHealth['verdict']
-  if (!anyWired && !everFed) verdict = 'dark'
+  if (lastDbError) verdict = 'dark'  // DB write failing beats any source verdict
+  else if (!anyWired && !everFed) verdict = 'dark'
   else if (activeCount === 0) verdict = 'partial'
   else verdict = 'healthy'
 
@@ -101,5 +128,5 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
     null
   )
 
-  return { verdict, recording: everFed, sources, lastEventAt, checkedAt: now }
+  return { verdict, recording: everFed, sources, lastEventAt, checkedAt: now, lastDbError }
 }
