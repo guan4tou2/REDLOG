@@ -114,6 +114,7 @@
   "timeline.laneEmpty": "{{lane}} — 尚無事件",
   "timeline.shellEvent": "Shell 事件",
   "timeline.scanner": "掃描",
+  "timeline.laneExternalOnly": "{lane} — 沒有內建擷取來源；只有外部 agent 透過 /api/events 送才會出現",
   "timeline.clusterMoreItems": "還有 {count} 個 — 放大以個別檢視",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
 

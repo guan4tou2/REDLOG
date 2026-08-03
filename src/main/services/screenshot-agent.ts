@@ -4,6 +4,7 @@ import path from 'path'
 import fs from 'fs'
 import { insertEvent } from '../../core/db/events'
 import { eventBus } from '../../core/event-bus'
+import { noteDbError } from '../../core/capture-health'
 import { getProjectDir } from '../../core/db/index'
 
 export class ScreenshotAgent {
@@ -110,7 +111,11 @@ export class ScreenshotAgent {
       if (evt) eventBus.publish(evt)
 
       return filepath
-    } catch {
+    } catch (e) {
+      // Screenshot capture failure — forward to capture-health so a persistent
+      // failure (permission denied / disk full / display asleep) surfaces on
+      // StatusBar rather than silently swallowing (v0.6.86).
+      noteDbError('screenshot', e)
       return null
     }
   }

@@ -114,6 +114,7 @@
   "timeline.laneEmpty": "{{lane}} — no events yet",
   "timeline.shellEvent": "Shell event",
   "timeline.scanner": "Scanner",
+  "timeline.laneExternalOnly": "{lane} — no built-in producer; populated only by external agents posting via /api/events",
   "timeline.clusterMoreItems": "+{count} more — zoom in to see individually",
   "timeline.resizeDetailPanel": "Drag to resize the detail panel · double-click to reset",
 

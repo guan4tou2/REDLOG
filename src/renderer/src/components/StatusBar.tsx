@@ -46,12 +46,27 @@ export default function StatusBar(): JSX.Element {
     // has its own richer CaptureHealthCard; the StatusBar dot is the always-
     // visible indicator so operators on the Timeline view still see a change
     // from healthy → partial → dark.
+    //
+    // v0.6.86: also fire a one-shot toast on healthy → partial/dark transitions
+    // so operators get an active notification, not just a passive dot colour
+    // change. Held in a ref (not state) so the previous verdict survives across
+    // re-renders and we only toast on the transition itself.
+    let prevVerdict: 'healthy' | 'partial' | 'dark' | null = null
     const loadCapture = (): void => {
       try {
         window.redlog.capture?.health?.()?.then((h) => {
-          if (h && typeof h === 'object' && 'verdict' in h) {
-            setCaptureVerdict((h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict)
+          if (!h || typeof h !== 'object' || !('verdict' in h)) return
+          const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
+          const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
+          setCaptureVerdict(verdict)
+          if (prevVerdict === 'healthy' && verdict !== 'healthy') {
+            const detail = dbErr ? `${dbErr.source}: ${dbErr.message.slice(0, 80)}` : ''
+            toast(
+              verdict === 'dark' ? `${t('statusBar.captureDark')}${detail ? ` — ${detail}` : ''}` : t('statusBar.capturePartial'),
+              'warning'
+            )
           }
+          prevVerdict = verdict
         }).catch(() => {})
       } catch { /* older preload */ }
     }
