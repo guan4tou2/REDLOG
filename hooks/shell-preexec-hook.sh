@@ -92,11 +92,28 @@ if sys.argv[3]:
 print(json.dumps(d))
 " "$subtype" "$command" "$extra" 2>/dev/null) || return 0
 
-  curl -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
-    -H "Authorization: Bearer $token" \
-    -H "Content-Type: application/json" \
-    -d "$payload" \
-    --connect-timeout 1 --max-time 2 >/dev/null 2>&1 &
+  # v0.6.87 A2: local spool for back-pressure. Previously curl was fire-and-
+  # forget (`&`) with a 2s deadline — if RedLog was closed or the port was
+  # unreachable the event silently vanished. Now: try curl inline; if it
+  # fails, write the payload to a spool file that RedLog replays on next
+  # project open. Spool cap: 5000 files (protects against a runaway loop
+  # while RedLog is offline for weeks).
+  local spool_dir="$_REDLOG_DIR/pending"
+  mkdir -p "$spool_dir" 2>/dev/null
+  local spool_file="$spool_dir/$(date +%s%N).$$.json"
+  # Foreground POST with short deadline; if it fails, spool.
+  if ! curl -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
+        -H "Authorization: Bearer $token" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        --connect-timeout 1 --max-time 2 >/dev/null 2>&1; then
+    # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
+    local count
+    count=$(ls -1 "$spool_dir" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$count" -lt 5000 ]]; then
+      printf '%s' "$payload" > "$spool_file" 2>/dev/null
+    fi
+  fi
 }
 
 # --- Zsh hooks ---

@@ -99,7 +99,8 @@ contextBridge.exposeInMainWorld('redlog', {
     exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
     exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
-    exportViolations: () => ipcRenderer.invoke('data:exportViolations')
+    exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
+    exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to })
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
@@ -172,7 +173,7 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   mcp: {
     info: () => ipcRenderer.invoke('mcp:info'),
-    setupToken: () => ipcRenderer.invoke('mcp:setupToken')
+    setupToken: (opts?: { name?: string }) => ipcRenderer.invoke('mcp:setupToken', opts)
   },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),

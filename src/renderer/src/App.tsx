@@ -42,6 +42,7 @@ export default function App(): JSX.Element {
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
   const [showMarker, setShowMarker] = useState(false)
+  const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -182,7 +183,7 @@ export default function App(): JSX.Element {
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {view === 'screenshots' && <ScreenshotsView />}
             {view === 'targets' && <TargetView />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
@@ -195,7 +196,7 @@ export default function App(): JSX.Element {
       </div>
 
       <StatusBar />
-      {showMarker && <EventMarker onClose={() => setShowMarker(false)} />}
+      {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined) }} atTimestamp={markerAtTs} />}
       <ToastContainer />
       <ConfirmDialogContainer />
     </div>
