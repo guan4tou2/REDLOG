@@ -1,12 +1,17 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import { resetSession } from './events'
 
 let db: Database.Database | null = null
 let currentProjectDir: string | null = null
 
 export function initDB(projectDir: string): Database.Database {
   if (db) closeDB()
+  // Every project open is a fresh session — regenerate sessionId so events
+  // written after a project switch don't share the previous session's id
+  // (v0.6.87 audit A4).
+  resetSession()
 
   fs.mkdirSync(projectDir, { recursive: true })
   fs.mkdirSync(path.join(projectDir, 'screenshots'), { recursive: true })

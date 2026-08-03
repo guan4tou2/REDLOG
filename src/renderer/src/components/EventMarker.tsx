@@ -9,9 +9,15 @@ const CATEGORIES = [
 
 interface EventMarkerProps {
   onClose: () => void
+  // v0.6.87 C1: when set, marker is stamped "for" this wall-clock timestamp
+  // (usually from a right-click on Timeline at a specific position). The
+  // chain event is still created at Date.now() — timestamp forging would
+  // break the audit chain — but data.atTimestamp preserves the intended
+  // moment for Timeline rendering.
+  atTimestamp?: number
 }
 
-export default function EventMarker({ onClose }: EventMarkerProps): JSX.Element {
+export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
   const [severity, setSeverity] = useState<string>('info')
@@ -29,7 +35,11 @@ export default function EventMarker({ onClose }: EventMarkerProps): JSX.Element 
   const handleSave = async () => {
     setSaving(true)
     const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    await window.redlog.marker.create({ title: title.trim() || t('marker.defaultTitle', { time: ts }), notes, severity, category })
+    await window.redlog.marker.create({
+      title: title.trim() || t('marker.defaultTitle', { time: ts }),
+      notes, severity, category,
+      ...(atTimestamp ? { atTimestamp } : {})
+    })
     // Screenshot is opt-out — if the operator is looking at sensitive UI they
     // shouldn't capture, they can uncheck. Default stays on (matches prior
     // behaviour + is the safer default for evidence). Audit P1 #29.
@@ -60,7 +70,14 @@ export default function EventMarker({ onClose }: EventMarkerProps): JSX.Element 
         className="bg-redlog-surface border border-redlog-border rounded-lg w-[420px] p-4 space-y-3 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-neutral-300">{t('marker.title')}</h3>
+        <h3 className="text-sm font-semibold text-neutral-300">
+          {t('marker.title')}
+          {atTimestamp && (
+            <span className="ml-2 text-[11px] text-amber-400/80 font-mono font-normal">
+              {t('marker.atTimestamp', { time: new Date(atTimestamp).toLocaleTimeString() })}
+            </span>
+          )}
+        </h3>
 
         <input
           autoFocus

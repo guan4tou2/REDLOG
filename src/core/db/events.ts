@@ -23,6 +23,17 @@ export interface RedLogEvent {
 
 let sessionId = crypto.randomUUID()
 
+// Regenerate the session id — called by initDB on every project open so
+// events written after a project switch belong to a fresh session rather
+// than sharing the module-load session id across projects (v0.6.87 audit
+// finding: prior code kept sessionId across project:open, which is
+// currently harmless — no consumer filters on session_id — but silently
+// wrong and would leak evidence between projects the moment anything
+// starts partitioning by session.
+export function resetSession(): void {
+  sessionId = crypto.randomUUID()
+}
+
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
 const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
 
@@ -155,10 +166,16 @@ export function queryEvents(opts: {
   agentType?: string
   limit?: number
   since?: number
-  // Pagination anchor: return events strictly older than this timestamp.
-  // Timeline's loadMore uses it to walk backwards through history — without
-  // this the callers just kept re-fetching the same latest N events.
+  // Pagination anchor: return events strictly older than this WALL-CLOCK
+  // timestamp. Kept for compatibility but the Timeline pager now prefers
+  // `beforeCreatedAt` because wall-clock can regress on NTP correction and
+  // silently skip a newly-arrived event that landed with an older ts.
   before?: number
+  // Preferred pager anchor — created_at is monotonic within a run (Date.now
+  // at write instant, but callers can't rewind DB insertion order) so walking
+  // strictly older rows works even under wall-clock backwards jump. v0.6.87
+  // audit A1.
+  beforeCreatedAt?: number
   targetId?: string
   // When true, drop RedLog's own housekeeping rows (api_started, shell
   // session_start, hook-source command_start, deconfliction_test) at the SQL
@@ -182,6 +199,10 @@ export function queryEvents(opts: {
   if (opts.before) {
     conditions.push('timestamp < ?')
     params.push(opts.before)
+  }
+  if (opts.beforeCreatedAt) {
+    conditions.push('created_at < ?')
+    params.push(opts.beforeCreatedAt)
   }
   if (opts.targetId) {
     conditions.push('target_id = ?')

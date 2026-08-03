@@ -113,17 +113,33 @@ export function recoverOrphanSessions(): number {
   let recovered = 0
   try {
     // Lazy import to avoid pulling db into modules that get pulled by tests.
-    const { queryEvents, insertEvent } = require('../core/db/events') as typeof import('../core/db/events')
-    const starts = queryEvents({ agentType: 'shell', limit: 5000 })
-      .filter((e) => e.data?.subtype === 'session_start' && e.data?.source === 'builtin-terminal')
-    const ends = new Set(
-      queryEvents({ agentType: 'shell', limit: 5000 })
-        .filter((e) => e.data?.subtype === 'session_end' && e.data?.source === 'builtin-terminal')
-        .map((e) => String(e.data?.terminalId ?? ''))
-    )
-    for (const s of starts) {
-      const tid = String(s.data?.terminalId ?? '')
-      if (!tid || ends.has(tid)) continue
+    const { getDB } = require('../core/db/index') as typeof import('../core/db/index')
+    const { insertEvent } = require('../core/db/events') as typeof import('../core/db/events')
+    // v0.6.87 A5: paginated scan via SQL (previous impl loaded up to 5000 rows
+    // twice into memory then diffed in JS — big engagements with many terminal
+    // sessions would silently miss orphans past the 5000 cap). SQL LEFT JOIN
+    // finds every session_start without a matching session_end for the same
+    // terminalId, regardless of row count.
+    const db = getDB()
+    const rows = db.prepare(`
+      SELECT s.data AS start_data
+      FROM events s
+      WHERE s.agent_type = 'shell'
+        AND json_extract(s.data,'$.subtype') = 'session_start'
+        AND json_extract(s.data,'$.source') = 'builtin-terminal'
+        AND json_extract(s.data,'$.terminalId') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM events e
+          WHERE e.agent_type = 'shell'
+            AND json_extract(e.data,'$.subtype') = 'session_end'
+            AND json_extract(e.data,'$.source') = 'builtin-terminal'
+            AND json_extract(e.data,'$.terminalId') = json_extract(s.data,'$.terminalId')
+        )
+    `).all() as Array<{ start_data: string }>
+    for (const row of rows) {
+      let tid = ''
+      try { tid = String(JSON.parse(row.start_data)?.terminalId ?? '') } catch { continue }
+      if (!tid) continue
       try {
         const ev = insertEvent('shell', {
           subtype: 'session_end',

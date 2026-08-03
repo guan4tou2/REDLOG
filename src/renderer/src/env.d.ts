@@ -108,7 +108,7 @@ interface RedLogAPI {
     length: () => Promise<number>
     anchors: () => Promise<ChainAnchorInfo[]>
     anchorNow: () => Promise<ChainAnchorInfo | null>
-    verify: (opts?: { full?: boolean }) => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null }>
+    verify: (opts?: { full?: boolean }) => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null; walked?: number; brokenAtEventId?: string | null; brokenReason?: string | null; clockAnomalies?: Array<{ eventId: string; reason: string }>; anchorMatchesWalkedHead?: boolean }>
     upgrade: (id?: string) => Promise<ChainAnchorInfo | { upgraded: number; scanned: number } | null>
   }
   loot: {
@@ -133,6 +133,11 @@ interface RedLogAPI {
   }
   data: {
     exportJson: () => Promise<string | null>
+    exportScopeFiltered?: () => Promise<string | null>
+    exportMarks?: () => Promise<string | null>
+    exportLoot?: () => Promise<string | null>
+    exportViolations?: () => Promise<string | null>
+    exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
   }
   recording: {
     get: () => Promise<boolean>
@@ -148,7 +153,7 @@ interface RedLogAPI {
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
     replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
-    replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; error?: string }>
+    replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
   }
   overlay: {
     toggle: () => void
@@ -173,7 +178,7 @@ interface RedLogAPI {
   }
   mcp: {
     info: () => Promise<McpInfo | null>
-    setupToken: () => Promise<{ token: string; port: number; endpoint: string } | null>
+    setupToken: (opts?: { name?: string }) => Promise<{ token: string; port: number; endpoint: string; operatorId: string; name: string } | null>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
@@ -200,6 +205,7 @@ interface McpInfo {
   endpoint: string
   stdioPath: string
   hasToken: boolean
+  operators?: Array<{ id: string; name: string }>
 }
 
 interface BrowserLaunchResult {
