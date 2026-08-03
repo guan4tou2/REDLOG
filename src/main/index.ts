@@ -35,7 +35,7 @@ import {
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
-  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal
+  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -407,6 +407,15 @@ function startProject(project: ProjectMeta): void {
   setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+
+  // Recover any terminal sessions from a prior app run whose session_end never
+  // landed (crash / kill / disk full mid-write). Writes a synthetic session_end
+  // tagged recovered=true so the audit chain gets its close signal and the
+  // Timeline no longer shows a terminal that "never closed" (v0.6.86 P3).
+  try {
+    const n = recoverOrphanSessions()
+    if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
+  } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
 
   ipMonitor.start()
   startLinkMonitor()

@@ -6,6 +6,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { insertEvent } from '../core/db/events'
 import { eventBus } from '../core/event-bus'
+import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
 
 interface TerminalSession {
@@ -55,7 +56,13 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
       durationMs: Date.now() - session.castStart
     }, { engagementId, operatorId })
     if (event) eventBus.publish(event)
-  } catch { /* project already closed — nothing left to record into */ }
+  } catch (e) {
+    // Session_end write is the recording integrity chain's signal that a
+    // recording was closed cleanly — losing it means the cast SHA is missing
+    // and the pane's timeline entry looks abandoned. Forward to capture-health
+    // so a shutdown-time swallow is at least diagnosable (v0.6.86).
+    noteDbError('terminal-session-end', e)
+  }
 }
 
 function resolveShellHook(shell: string): string | null {
@@ -91,6 +98,47 @@ export function configureTerminal(opts: { engagementId: string; operatorId: stri
   engagementId = opts.engagementId
   operatorId = opts.operatorId
   if (typeof opts.maxCastBytes === 'number' && opts.maxCastBytes > 0) maxCastBytes = opts.maxCastBytes
+}
+
+// v0.6.86: on project open, scan for any `shell.session_start` (source=
+// builtin-terminal) rows without a matching `session_end` for the same
+// terminalId. That's an orphaned session — the previous app run either
+// crashed or was force-killed before finaliseSession could land, so the
+// timeline shows a terminal that "never closed" and there's no cast SHA
+// tying the recording to the audit chain. Write a synthetic session_end
+// tagged `recovered=true` so operators can distinguish it from a normal
+// close and the chain gets its close signal.
+export function recoverOrphanSessions(): number {
+  if (!operatorId) return 0
+  let recovered = 0
+  try {
+    // Lazy import to avoid pulling db into modules that get pulled by tests.
+    const { queryEvents, insertEvent } = require('../core/db/events') as typeof import('../core/db/events')
+    const starts = queryEvents({ agentType: 'shell', limit: 5000 })
+      .filter((e) => e.data?.subtype === 'session_start' && e.data?.source === 'builtin-terminal')
+    const ends = new Set(
+      queryEvents({ agentType: 'shell', limit: 5000 })
+        .filter((e) => e.data?.subtype === 'session_end' && e.data?.source === 'builtin-terminal')
+        .map((e) => String(e.data?.terminalId ?? ''))
+    )
+    for (const s of starts) {
+      const tid = String(s.data?.terminalId ?? '')
+      if (!tid || ends.has(tid)) continue
+      try {
+        const ev = insertEvent('shell', {
+          subtype: 'session_end',
+          source: 'builtin-terminal',
+          terminalId: tid,
+          exitCode: null,
+          castSha256: null,
+          recovered: true,
+          description: 'orphan session recovered on app start'
+        }, { engagementId, operatorId })
+        if (ev) { eventBus.publish(ev); recovered++ }
+      } catch (e) { noteDbError('orphan-session-recovery', e) }
+    }
+  } catch (e) { noteDbError('orphan-session-recovery', e) }
+  return recovered
 }
 
 export function spawnTerminal(id: string, cols: number, rows: number): { pid: number } {

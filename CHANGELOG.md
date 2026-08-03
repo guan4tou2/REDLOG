@@ -3,6 +3,70 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.86 — 2026-08-03
+Timeline recording pipeline round 2 — data-quality (P1) + perf (P2) +
+observability (P3). All ten audit follow-ups from v0.6.85's review landed.
+
+### P1 — data quality
+- **`isHousekeeping` pushed to SQL** (`src/core/db/events.ts`): renderer used
+  to fetch 200 rows and filter to ~30 visible client-side, which meant the
+  pager marked itself "all loaded" every time fewer than 200 came back.
+  New `queryEvents({ excludeHousekeeping: true })` applies a `HOUSEKEEPING_SQL`
+  predicate at the DB layer; Timeline uses it for both initial + paginated
+  fetches. +1 regression test.
+- **Cross-source shell↔agent dedup**: a Claude Code hook (`agent`) shelling
+  out to `ls` also got caught by `shell-preexec-hook.sh` (`shell`),
+  producing two rows for the same intent. Dedup now matches across
+  `('shell','agent')` when `(command, subtype, terminal_id)` or
+  `(command, subtype, pid)` line up within 2 s. Unrelated agents running
+  the same command at the same time are NOT collapsed (different pid/tid).
+  +3 regression tests.
+- **`monotonic_ns` padded to 20 chars**: SQLite TEXT ORDER BY is
+  lexicographic, so `'999' > '1000'`. Now padded with leading zeros so
+  SQL sort is numeric. Renderer already compared as BigInt — this only
+  affects SQL. Covers ~317 years. +1 test.
+
+### P2 — perf
+- **rAF-coalesced onNew in Timeline**: was doing
+  `Array.from(map.values()).sort()` per incoming event; a ~100 events/s
+  mitmproxy burst with 5k loaded ≈ 40k comparisons per event and 100
+  React renders per second. Now the handler just drops into the map and
+  schedules a single rebuild-and-render per animation frame.
+- **`queryScopeFilteredEvents` SQL predicate**: pushed the "no target and
+  not on the allow-list" filter down to SQL rather than loading 100k rows
+  into memory to drop most of them. Pattern matching for user-supplied
+  scope patterns stays in JS.
+
+### P3 — observability
+- **StatusBar toasts on capture-health degradation**: on the first
+  `healthy → partial/dark` transition after mount, fires a warning toast
+  with the failing source and (if a DB error is live) the truncated
+  message. Previously the operator had to be looking at the tiny colour
+  dot to notice.
+- **DB write failures surface in `capture:health`**: the bare `catch {}`
+  in clipboard-monitor, screenshot-agent, cdp-connector, and
+  `finaliseSession` (terminal-manager) previously ate SQLITE_BUSY /
+  disk-full / project-closed silently. Each now forwards to
+  `noteDbError(source, err)`; a live error (within 60 s TTL) pins the
+  verdict to `dark` and shows up on the StatusBar tooltip.
+- **Orphan-session recovery on project open**: scans for
+  `shell.session_start (source=builtin-terminal)` rows without a matching
+  `session_end` and writes a synthetic `session_end` tagged
+  `recovered=true`. Recovers the audit chain's close signal when the
+  prior app run crashed or was force-killed mid-write.
+- **External-only lane chip tooltip**: `dns` / `credential_use` /
+  `c2_checkin` had no built-in producer, so their disabled chips read as
+  "empty" — misleading. New tooltip explains they're only populated by
+  external agents via `/api/events`. Adds `timeline.laneExternalOnly`
+  i18n string.
+- **`event-registry` wired to Timeline lanes**: was a dead facade — a
+  plugin registering `{ agentType: 'burp', lane: 'scanner' }` still had
+  its rows bucketed into `system`. Timeline now queries
+  `plugins.eventTypes()` on mount and threads the mapping through
+  `toLane()`.
+
+Tests: 327 unit (was 322, +5) / 17 e2e / build clean.
+
 ## v0.6.85 — 2026-08-02
 Timeline recording pipeline audit fallout: 1 P0 data-loss bug + 2 P1
 surface bugs + 5 P2 UX/correctness items.

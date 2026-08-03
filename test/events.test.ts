@@ -119,6 +119,74 @@ describeDB('shell dedup', () => {
     expect(first).not.toBeNull()
     expect(second).not.toBeNull()
   })
+
+  it('cross-source dedup: shell command_start followed by agent command_start with same terminal_id is dropped (v0.6.86)', () => {
+    const shell = insertEvent('shell', { command: 'ls', subtype: 'command_start', terminal_id: 't1', pid: 1234 })
+    const agent = insertEvent('agent', { command: 'ls', subtype: 'command_start', terminal_id: 't1', pid: 1234 })
+    expect(shell).not.toBeNull()
+    expect(agent).toBeNull()
+  })
+
+  it('cross-source dedup: matches on pid when terminal_id absent', () => {
+    const shell = insertEvent('shell', { command: 'whoami', subtype: 'command_start', pid: 7777 })
+    const agent = insertEvent('agent', { command: 'whoami', subtype: 'command_start', pid: 7777 })
+    expect(shell).not.toBeNull()
+    expect(agent).toBeNull()
+  })
+
+  it('cross-source dedup: DOES NOT drop unrelated agents with same command but different pid/terminal', () => {
+    const a = insertEvent('shell', { command: 'ls', subtype: 'command_start', pid: 1 })
+    const b = insertEvent('agent', { command: 'ls', subtype: 'command_start', pid: 2 })
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+  })
+})
+
+describeDB('monotonic_ns padding', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
+    initDB(tmpDir)
+  })
+  afterEach(() => {
+    closeDB()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('stores monotonic_ns padded to 20 chars so SQL text-sort is numeric', () => {
+    const e = insertEvent('marker', { title: 'a' })!
+    expect(e.monotonicNs).toBeTruthy()
+    expect(e.monotonicNs!.length).toBe(20)
+    // BigInt(padded string) is still the same numeric value.
+    expect(() => BigInt(e.monotonicNs!)).not.toThrow()
+  })
+})
+
+describeDB('queryEvents excludeHousekeeping', () => {
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
+    initDB(tmpDir)
+  })
+  afterEach(() => {
+    closeDB()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('filters system.api_started + shell.session_start + hook-source command_start', () => {
+    insertEvent('system', { subtype: 'api_started', port: 8420 })
+    insertEvent('system', { subtype: 'deconfliction_test' })
+    insertEvent('shell', { subtype: 'session_start', terminalId: 't1' })
+    insertEvent('shell', { subtype: 'command_start', command: 'source ~/.redlog/shell-preexec-hook.sh' })
+    insertEvent('marker', { title: 'real user event' })
+    insertEvent('shell', { command: 'ls', subtype: 'command_start' })
+
+    const all = queryEvents({ limit: 100 })
+    expect(all.length).toBe(6)
+    const clean = queryEvents({ limit: 100, excludeHousekeeping: true })
+    // Only the marker + the real `ls` should survive.
+    expect(clean.length).toBe(2)
+    const kinds = clean.map((e) => `${e.agentType}.${e.data?.subtype ?? ''}`).sort()
+    expect(kinds).toEqual(['marker.', 'shell.command_start'])
+  })
 })
 
 describeDB('evidence chain', () => {

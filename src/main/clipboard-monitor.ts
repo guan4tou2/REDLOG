@@ -2,6 +2,7 @@ import { clipboard } from 'electron'
 import { createHash } from 'crypto'
 import { insertEvent } from '../core/db/events'
 import { eventBus } from '../core/event-bus'
+import { noteDbError } from '../core/capture-health'
 import { redact, maskText, getRules } from '../core/redaction'
 import type { LootDetector } from '../core/loot-detector'
 
@@ -74,7 +75,12 @@ function sample(): void {
       redactionsInPreview: redacted.redacted.length > 0 ? redacted.redacted.length : undefined
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
     if (ev) eventBus.publish(ev)
-  } catch { /* DB may not be ready during startup */ }
+  } catch (e) {
+    // DB may not be ready during startup or project close; forward to
+    // capture-health so a persistent failure surfaces on StatusBar instead of
+    // silently swallowing (v0.6.86).
+    noteDbError('clipboard', e)
+  }
 }
 
 export function configureClipboardMonitor(next: Partial<Config>): void {
