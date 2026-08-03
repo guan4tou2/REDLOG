@@ -408,6 +408,21 @@ function startProject(project: ProjectMeta): void {
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
 
+  // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
+  // Both default to 0 (keep forever) so existing installs see no behaviour
+  // change. Setting `terminal.castKeepDays` or `screenshots.keepDays` to a
+  // positive integer causes the sweep to run on every project open and to
+  // append audit events per deletion.
+  try {
+    // Lazy require — same pattern as recoverOrphanSessions above — so retention
+    // stays isolated from module load order + tests that don't touch fs.
+    const { sweepRetention } = require('../core/retention') as typeof import('../core/retention')
+    const swept = sweepRetention(config, { engagementId, operatorId })
+    if (swept.cast > 0 || swept.screenshots > 0) {
+      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
+    }
+  } catch (e) { console.error('[retention] sweep failed:', e) }
+
   // Recover any terminal sessions from a prior app run whose session_end never
   // landed (crash / kill / disk full mid-write). Writes a synthetic session_end
   // tagged recovered=true so the audit chain gets its close signal and the
@@ -416,6 +431,36 @@ function startProject(project: ProjectMeta): void {
     const n = recoverOrphanSessions()
     if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
   } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
+
+  // v0.6.87 A2: replay shell-hook spool. Any commands run in an external shell
+  // while RedLog was closed were spooled to ~/.redlog/pending/*.json — replay
+  // them into the current chain now. Newest project owns the recovered rows.
+  try {
+    const spoolDir = path.join(homedir(), '.redlog', 'pending')
+    if (fs.existsSync(spoolDir)) {
+      const files = fs.readdirSync(spoolDir).filter((f) => f.endsWith('.json')).sort()
+      let replayed = 0
+      for (const f of files) {
+        const full = path.join(spoolDir, f)
+        try {
+          const raw = fs.readFileSync(full, 'utf8')
+          const payload = JSON.parse(raw)
+          const agentType = String(payload?.agent_type || '')
+          const data = payload?.data && typeof payload.data === 'object' ? payload.data : null
+          if (agentType && data) {
+            const ev = insertEvent(agentType, { ...data, recovered_from_spool: true }, { engagementId, operatorId })
+            if (ev) { eventBus.publish(ev); replayed++ }
+          }
+          fs.unlinkSync(full)
+        } catch (e) {
+          // Malformed spool file — move it aside instead of deleting so we
+          // can inspect later.
+          try { fs.renameSync(full, full + '.bad') } catch { /* */ }
+        }
+      }
+      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+    }
+  } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
   ipMonitor.start()
   startLinkMonitor()
@@ -1002,6 +1047,23 @@ app.whenReady().then(() => {
   ipcMain.handle('data:exportMarks', () => sliceExport('marks', listQuickMarks()))
   ipcMain.handle('data:exportLoot', () => sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })))
   ipcMain.handle('data:exportViolations', () => sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 }).filter((e) => e.data?.subtype === 'scope_violation')))
+  // v0.6.87 C2: Timeline slice export. Renderer picks a time window (usually
+  // the current visible viewport in Timeline) and gets a filtered JSON slice
+  // that a bug-bounty writeup can attach as evidence for a specific attack
+  // moment. The export includes the surrounding markers/screenshots for
+  // context; the operator can trim in a text editor if too much lands.
+  ipcMain.handle('data:exportTimelineSlice', (_e, opts: { from: number; to: number }) => {
+    if (!activeProject) return null
+    const from = Number(opts?.from) || 0
+    const to = Number(opts?.to) || Date.now()
+    if (to <= from) return null
+    const all = queryEvents({ limit: 100000, since: from })
+    const slice = all.filter((e) => e.timestamp >= from && e.timestamp <= to)
+    return sliceExport(
+      `timeline-${new Date(from).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
+      { window: { fromMs: from, toMs: to }, events: slice }
+    )
+  })
 
   // --- Config Profile Export/Import ---
   ipcMain.handle('config:exportProfile', async () => {
@@ -1109,7 +1171,10 @@ app.whenReady().then(() => {
       // itself. text captures the whole session, ANSI-stripped.
       const slice = readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
-      return { ok: true, castPath, text: slice.text, bytes: slice.bytes, truncated: slice.truncated }
+      // events carries the raw asciinema frames ([relSec, 'o', bytes]) so the
+      // renderer can drive a proper scrubber/player. text is kept for the
+      // fallback pre-tag view and copy-to-clipboard flows.
+      return { ok: true, castPath, text: slice.text, bytes: slice.bytes, truncated: slice.truncated, events: slice.events }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }
@@ -1362,7 +1427,20 @@ app.whenReady().then(() => {
   })
 
   // --- MCP (app-hosted HTTP server) ---
-  const MCP_OPERATOR_ID = 'mcp-agent'
+  // v0.6.87 A3: MCP operator id is no longer hardcoded. `mcp:setupToken` now
+  // accepts an optional { name } that becomes the operator label + id, so
+  // Claude Desktop, OpenCode, Codex, etc. can each have their own attribution
+  // (previously every MCP-driven event was attributed to the single global
+  // `mcp-agent` operator and the "> 1 operator" heuristic in Timeline broke).
+  const MCP_DEFAULT_OPERATOR_ID = 'mcp-agent'
+  const mcpOperatorIdFromName = (name?: string | null): string => {
+    const raw = (name || '').trim()
+    if (!raw) return MCP_DEFAULT_OPERATOR_ID
+    // slugify: lowercase alnum + dashes, prefix "mcp-" so operator lists stay
+    // sortable and MCP-owned tokens are visually distinct.
+    const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+    return slug ? `mcp-${slug}` : MCP_DEFAULT_OPERATOR_ID
+  }
   ipcMain.handle('mcp:info', () => {
     if (!activeProject) return null
     const port = getApiPort()
@@ -1380,19 +1458,23 @@ app.whenReady().then(() => {
       stdioPath,
       stdioCommand: process.execPath.endsWith('node') || process.execPath.endsWith('node.exe') ? process.execPath : 'node',
       stdioArgs: [stdioPath],
-      hasToken: listOperators().some((o) => o.id === MCP_OPERATOR_ID && !o.revokedAt)
+      hasToken: listOperators().some((o) => o.id.startsWith('mcp-') && !o.revokedAt),
+      // List MCP-owned operators so Settings can show which agents are
+      // already registered.
+      operators: listOperators()
+        .filter((o) => o.id.startsWith('mcp-') && !o.revokedAt)
+        .map((o) => ({ id: o.id, name: o.name }))
     }
   })
-  // Mints (or rotates) a dedicated, non-rotating operator token for MCP. Unlike
-  // the primary token this survives app restarts, so a registered `claude mcp
-  // add` keeps working, and MCP activity is attributed to its own identity.
-  ipcMain.handle('mcp:setupToken', () => {
+  ipcMain.handle('mcp:setupToken', (_e, opts?: { name?: string }) => {
     if (!activeProject) return null
+    const operatorId = mcpOperatorIdFromName(opts?.name)
+    const displayName = (opts?.name || '').trim() || 'MCP agent'
     const token = generateToken()
-    const existing = listOperators().find((o) => o.id === MCP_OPERATOR_ID)
-    if (existing) updateOperatorToken(MCP_OPERATOR_ID, token)
-    else createOperator({ id: MCP_OPERATOR_ID, name: 'MCP agent', token, isPrimary: false })
-    return { token, port: getApiPort(), endpoint: `http://127.0.0.1:${getApiPort()}/mcp` }
+    const existing = listOperators().find((o) => o.id === operatorId)
+    if (existing) updateOperatorToken(operatorId, token)
+    else createOperator({ id: operatorId, name: displayName, token, isPrimary: false })
+    return { token, port: getApiPort(), endpoint: `http://127.0.0.1:${getApiPort()}/mcp`, operatorId, name: displayName }
   })
 
   // --- Operators ---

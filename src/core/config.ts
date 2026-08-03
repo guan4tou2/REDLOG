@@ -86,6 +86,19 @@ export interface RedLogConfig {
   }
   terminal: {
     maxCastBytes: number
+    /** v0.6.87 B1: `.cast` files auto-delete after this many days on project
+     *  open. `0` = keep forever (default; long engagements typically want
+     *  everything). Set to e.g. 30 to prevent disk balloon on projects that
+     *  spin many terminal sessions. The event row + castSha256 stays in the
+     *  chain regardless — only the file is deleted, and a
+     *  `system.cast_pruned` event is appended per deletion. */
+    castKeepDays?: number
+  }
+  screenshots?: {
+    /** v0.6.87 B2: screenshot .jpg auto-delete after N days on project open.
+     *  `0` (default) = keep forever. Event row + sha256 stays; a
+     *  `system.screenshot_pruned` audit event is appended per deletion. */
+    keepDays?: number
   }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
@@ -183,7 +196,11 @@ const DEFAULT_CONFIG: RedLogConfig = {
     passThroughOpacity: 0.4
   },
   terminal: {
-    maxCastBytes: 50 * 1024 * 1024
+    maxCastBytes: 50 * 1024 * 1024,
+    castKeepDays: 0
+  },
+  screenshots: {
+    keepDays: 0
   },
   clipboard: {
     enabled: false,

@@ -3,6 +3,74 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.87 — 2026-08-04
+Twelve UX + hygiene items in one release: 5 remaining audit fixes, 2
+retention sweeps, right-click Timeline marker, Timeline slice export,
+session replay scrubber, in-app full-chain verify, and the
+mitmproxy addon split into request-start + response events.
+
+### A — audit remainders
+- **NTP clock-jump-backward pager fix** (`src/core/db/events.ts`,
+  `Timeline.tsx`): pager now anchors on `created_at` (monotonic within a
+  run) instead of `min(timestamp)` (wall-clock — can regress on NTP
+  correction). New `queryEvents({ beforeCreatedAt })` param.
+- **Shell hook local spool** (`hooks/shell-preexec-hook.sh`,
+  `src/main/index.ts`): commands run in an external shell while RedLog is
+  closed spool to `~/.redlog/pending/*.json` (capped at 5000 files) and
+  replay on next project open with `data.recovered_from_spool=true`.
+- **MCP operator id configurable** (`src/main/index.ts`, Settings):
+  `mcp:setupToken({ name? })` now accepts a per-agent name that becomes
+  `mcp-<slug>`, so Claude Desktop, OpenCode, Codex, etc. each get their
+  own operator + attribution. `mcp:info` returns the registered agent list.
+- **`sessionId` regenerates per project open** (`src/core/db/index.ts`,
+  `events.ts`): `resetSession()` fires from `initDB` so events written after
+  a project switch belong to a fresh session.
+- **Orphan-session recovery paginate** (`terminal-manager.ts`): replaced
+  the 5000-row-double-query with a `LEFT JOIN` NOT EXISTS SQL, so big
+  engagements with many terminal sessions get every orphan.
+
+### B — retention
+- **`.cast` + screenshot retention sweep** (`src/core/retention.ts` new,
+  `config.ts`): opt-in `terminal.castKeepDays` + `screenshots.keepDays`.
+  Sweep runs on project open. Event row stays in the chain; per-deletion
+  audit event `system.cast_pruned` / `system.screenshot_pruned` records
+  the removal.
+
+### C — Timeline UX
+- **Right-click Timeline background → drop marker at timestamp** (`Timeline.tsx`,
+  `EventMarker.tsx`, `App.tsx`): the marker is created at `Date.now()`
+  (chain honesty) with `data.atTimestamp` carrying the target moment.
+  Marker rows render at `atTimestamp` on the Timeline via new `displayTs()`.
+- **Timeline slice export** (`data:exportTimelineSlice` IPC): "⬇ Export slice"
+  header button captures the current minimap viewport as
+  `exports/redlog-timeline-<ts>.json` (events + window bounds). Bug-bounty
+  writeups get attack-moment evidence with one click.
+
+### D — replay
+- **Session replay scrubber** (`Timeline.tsx` `SessionReplayPlayer`): xterm-
+  backed replay with Play/Pause, seek bar, ±5s, 0.5×/1×/2×/4× speed, elapsed
+  vs total timestamp. Idle gaps capped at 3s/speed so long AFK stretches
+  don't freeze the player. ANSI escapes render properly (was ANSI-stripped
+  `<pre>` before).
+
+### E — audit UX
+- **In-app full-chain verify** (Settings ▸ Audit): new "Verify full chain"
+  button walks every event, recomputes each hash, checks `prev_hash`, and
+  displays a detail card: walked count, broken-at (if any), current head,
+  anchor-match, clock-anomaly count. Delivery-ready.
+
+### F — mitmproxy split
+- **`http_request_start` + `http_response` events** (`hooks/mitmproxy-addon.py`):
+  request no longer waits for response — Timeline shows in-flight requests
+  the moment they leave. Request-body preview captured on the start event.
+  `error()` handler now includes `duration_ms`.
+- **TTL sweep for orphaned flows** (5min): when a request never gets a
+  response or error (TCP RST, client cancel, mitmproxy killed), the sweep
+  emits `http_request_dropped` with `age_sec` so the audit log records the
+  gap. Timeline `case 'scanner'` renders all four subtypes distinctly.
+
+Tests: 327 unit / 17 e2e / build clean.
+
 ## v0.6.86 — 2026-08-03
 Timeline recording pipeline round 2 — data-quality (P1) + perf (P2) +
 observability (P3). All ten audit follow-ups from v0.6.85's review landed.

@@ -971,10 +971,24 @@ function BrowserPanel({
   )
 }
 
+interface FullVerifyResult {
+  ok: boolean
+  walked?: number
+  brokenAtEventId?: string | null
+  brokenReason?: string | null
+  currentHead?: string | null
+  anchor?: ChainAnchorInfo | null
+  anchorMatchesWalkedHead?: boolean
+  clockAnomalies?: Array<{ eventId: string; reason: string }>
+}
+
 function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
   const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
   const [busy, setBusy] = useState(false)
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null)
+  // v0.6.87 E1: rich full-chain verify result, shown as a detail card.
+  const [fullVerify, setFullVerify] = useState<FullVerifyResult | null>(null)
+  const [verifying, setVerifying] = useState(false)
 
   const reload = async (): Promise<void> => {
     const list = await window.redlog.chain.anchors()
@@ -1038,6 +1052,24 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         >
           {t('settings.integrityVerify')}
         </button>
+        {/* v0.6.87 E1: full-chain verify. Walks every event, recomputes each
+            hash, and checks it against `prev_hash`. Slower than anchor-only
+            verify but proves the chain is intact end-to-end — critical for
+            delivery / client demo. Shows a detail card with walked count,
+            broken-at (if any), current head, and anchor match. */}
+        <button
+          onClick={async () => {
+            setVerifying(true)
+            setFullVerify(null)
+            const r = await window.redlog.chain.verify({ full: true })
+            setVerifying(false)
+            setFullVerify(r)
+          }}
+          disabled={verifying}
+          className="px-3 py-1.5 bg-zinc-800 text-emerald-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {verifying ? t('settings.integrityVerifying') : t('settings.integrityVerifyFull')}
+        </button>
         <button
           onClick={async () => {
             const r = await window.redlog.chain.upgrade() as { upgraded: number; scanned: number } | null
@@ -1050,6 +1082,49 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         </button>
       </div>
       {verifyMsg && <p className="text-xs text-zinc-300 font-mono">{verifyMsg}</p>}
+      {fullVerify && (
+        <div className={`p-3 rounded border text-xs space-y-1 font-mono ${
+          fullVerify.ok ? 'border-emerald-800 bg-emerald-950/30' : 'border-red-800 bg-red-950/30'
+        }`}>
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <span className={fullVerify.ok ? 'text-emerald-400' : 'text-red-400'}>
+              {fullVerify.ok ? '✓' : '✗'} {t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}
+            </span>
+          </div>
+          <div className="text-zinc-400">
+            {t('settings.integrityFullWalked', { n: String(fullVerify.walked ?? 0) })}
+          </div>
+          {!fullVerify.ok && fullVerify.brokenAtEventId && (
+            <>
+              <div className="text-red-400 break-all">
+                {t('settings.integrityFullBrokenAt')}: {fullVerify.brokenAtEventId}
+              </div>
+              {fullVerify.brokenReason && (
+                <div className="text-zinc-500 break-all">
+                  {t('settings.integrityFullReason')}: {fullVerify.brokenReason}
+                </div>
+              )}
+            </>
+          )}
+          {fullVerify.currentHead && (
+            <div className="text-zinc-500 break-all">
+              {t('settings.integrityHeadHash')}: {fullVerify.currentHead.slice(0, 32)}...
+            </div>
+          )}
+          {fullVerify.anchor && (
+            <div className={fullVerify.anchorMatchesWalkedHead ? 'text-emerald-400' : 'text-amber-400'}>
+              {fullVerify.anchorMatchesWalkedHead
+                ? t('settings.integrityFullAnchorMatch')
+                : t('settings.integrityFullAnchorMismatch')}
+            </div>
+          )}
+          {fullVerify.clockAnomalies && fullVerify.clockAnomalies.length > 0 && (
+            <div className="text-amber-400">
+              ⚠ {t('settings.integrityFullClockAnomalies', { n: String(fullVerify.clockAnomalies.length) })}
+            </div>
+          )}
+        </div>
+      )}
       {anchors.length === 0 ? (
         <p className="text-xs text-zinc-500">{t('settings.integrityNoAnchors')}</p>
       ) : (
@@ -1097,8 +1172,9 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
 
 function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [info, setInfo] = useState<McpInfo | null>(null)
-  const [creds, setCreds] = useState<{ token: string; endpoint: string } | null>(null)
+  const [creds, setCreds] = useState<{ token: string; endpoint: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [agentName, setAgentName] = useState('')
 
   useEffect(() => {
     window.redlog.mcp.info().then(setInfo).catch(() => setInfo(null))
@@ -1106,10 +1182,10 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
 
   const setup = async (): Promise<void> => {
     setBusy(true)
-    const r = await window.redlog.mcp.setupToken()
+    const r = await window.redlog.mcp.setupToken(agentName.trim() ? { name: agentName.trim() } : undefined)
     setBusy(false)
     if (r) {
-      setCreds({ token: r.token, endpoint: r.endpoint })
+      setCreds({ token: r.token, endpoint: r.endpoint, name: r.name })
       window.redlog.mcp.info().then(setInfo)
     }
   }
@@ -1136,13 +1212,33 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
         <p className="text-xs text-zinc-500">{t('settings.mcpOffline')}</p>
       )}
 
-      <button
-        onClick={setup}
-        disabled={busy || !info}
-        className="px-3 py-1.5 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
-      >
-        {busy ? '…' : info?.hasToken ? t('settings.mcpRotate') : t('settings.mcpSetup')}
-      </button>
+      {/* v0.6.87 A3: named MCP operators. Leave blank → single `MCP agent`
+          operator (previous default). Type a name → per-agent operator
+          (e.g. "Claude Desktop", "OpenCode", "Codex") gets its own token so
+          Timeline attribution shows who did what. */}
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={agentName}
+          onChange={(e) => setAgentName(e.target.value)}
+          placeholder={t('settings.mcpAgentNamePlaceholder')}
+          maxLength={40}
+          className="flex-1 px-2 py-1 text-xs font-mono bg-zinc-900 border border-zinc-800 rounded focus:outline-none focus:ring-1 focus:ring-red-500/40"
+        />
+        <button
+          onClick={setup}
+          disabled={busy || !info}
+          className="shrink-0 px-3 py-1.5 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
+        >
+          {busy ? '…' : t('settings.mcpSetup')}
+        </button>
+      </div>
+
+      {info?.operators && info.operators.length > 0 && (
+        <div className="text-[11px] text-zinc-500">
+          {t('settings.mcpRegisteredAgents')}: {info.operators.map((o) => o.name).join(' · ')}
+        </div>
+      )}
 
       {creds && httpCmd && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
