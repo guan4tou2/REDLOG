@@ -29,6 +29,15 @@ export interface CaptureHealth {
    *  pulsing red even when nothing was landing. Now the callsites forward
    *  the error via `noteDbError()` and it surfaces here + in StatusBar. */
   lastDbError?: { source: string; at: number; message: string }
+  /** v0.6.89 P1-A: most recent chain-sample failure. Pins verdict to `dark`
+   *  for the TTL window even if all sources are otherwise healthy — a
+   *  broken chain is worse than a dark capture, since it means historical
+   *  audit rows have been tampered with. */
+  lastSampleBroken?: { at: number; eventId: string; reason: string }
+  /** Timestamp of the most-recent verifyRandomSample that returned ok:true.
+   *  Dashboard renders this as "sampled Xm ago" so operators can see the
+   *  background verify is actually running. */
+  lastSampleOkAt?: number | null
 }
 
 // Ring buffer of one — we only need "was there recently an error, and from
@@ -47,6 +56,31 @@ function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
   if (!_lastDbError) return undefined
   if (now - _lastDbError.at > DB_ERROR_TTL_MS) { _lastDbError = null; return undefined }
   return _lastDbError
+}
+
+// v0.6.89 P1-A: chain-sample-broken state. Longer TTL than DB errors —
+// tampering is a serious event the operator must see, and a 60-min window
+// keeps the dark verdict visible across sample runs (5-min timer + 60-min
+// TTL means the dark state persists at least until the next 12 samples
+// have had a chance to re-check).
+let _lastSampleBroken: { at: number; eventId: string; reason: string } | null = null
+let _lastSampleOkAt: number | null = null
+const SAMPLE_BROKEN_TTL_MS = 60 * 60 * 1000
+
+export function noteSampleBroken(details: { eventId: string; reason: string }): void {
+  _lastSampleBroken = { at: Date.now(), eventId: details.eventId, reason: details.reason.slice(0, 300) }
+}
+export function noteSampleOk(): void { _lastSampleOkAt = Date.now() }
+export function clearSampleBroken(): void { _lastSampleBroken = null }
+export function getLastSampleBroken(): { at: number; eventId: string; reason: string } | null {
+  if (!_lastSampleBroken) return null
+  if (Date.now() - _lastSampleBroken.at > SAMPLE_BROKEN_TTL_MS) { _lastSampleBroken = null; return null }
+  return _lastSampleBroken
+}
+function getLiveSampleBroken(now: number): CaptureHealth['lastSampleBroken'] {
+  if (!_lastSampleBroken) return undefined
+  if (now - _lastSampleBroken.at > SAMPLE_BROKEN_TTL_MS) { _lastSampleBroken = null; return undefined }
+  return _lastSampleBroken
 }
 
 // A source is "active" if it produced an event within this window.
@@ -116,9 +150,13 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   const anyWired = sources.some((s) => s.installed === true) || sources.some((s) => s.installed === undefined && s.lastEventAt !== null)
 
   const lastDbError = getLiveDbError(now)
+  const lastSampleBroken = getLiveSampleBroken(now)
 
   let verdict: CaptureHealth['verdict']
-  if (lastDbError) verdict = 'dark'  // DB write failing beats any source verdict
+  // Chain-tamper trumps every other verdict — every source could be humming
+  // and the log would still be lies.
+  if (lastSampleBroken) verdict = 'dark'
+  else if (lastDbError) verdict = 'dark'  // DB write failing beats any source verdict
   else if (!anyWired && !everFed) verdict = 'dark'
   else if (activeCount === 0) verdict = 'partial'
   else verdict = 'healthy'
@@ -128,5 +166,10 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
     null
   )
 
-  return { verdict, recording: everFed, sources, lastEventAt, checkedAt: now, lastDbError }
+  return {
+    verdict, recording: everFed, sources, lastEventAt, checkedAt: now,
+    lastDbError,
+    lastSampleBroken,
+    lastSampleOkAt: _lastSampleOkAt
+  }
 }

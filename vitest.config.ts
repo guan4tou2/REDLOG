@@ -10,5 +10,6 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
   test: {
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    setupFiles: ['./test/setup.ts'],
   },
 })

@@ -3,6 +3,7 @@ import https from 'https'
 import { URL } from 'url'
 import { getDB } from './db/index'
 import { canonicalStringify } from './db/events'
+import { verifyEventSignature } from './signing'
 
 export interface ChainAnchor {
   id: string
@@ -379,6 +380,17 @@ export interface FullVerifyResult {
   anchor: ChainAnchor | null
   anchorMatchesWalkedHead: boolean
   clockAnomalies: ClockAnomaly[]
+  // v0.6.89: per-event Ed25519 signature roll-up.
+  //   signedCount   — rows with a signature that verifies against the
+  //                   operator's DB-stored public key.
+  //   unsignedCount — rows without a signature (legacy pre-v0.6.89, or an
+  //                   operator without a signing key). Not a failure signal
+  //                   on its own — chain hash still protects them.
+  //   badSignatureAtEventId — first row whose signature is present but does
+  //                   NOT verify. That IS a tamper signal; also causes ok=false.
+  signedCount: number
+  unsignedCount: number
+  badSignatureAtEventId: string | null
 }
 
 const CLOCK_TOLERANCE_MS = 5000
@@ -399,6 +411,7 @@ interface WalkRow {
   created_at: number
   monotonic_ns: string | null
   ntp_offset_ms: number | null
+  signature: string | null
 }
 
 export function verifyChainFull(): FullVerifyResult {
@@ -409,15 +422,32 @@ export function verifyChainFull(): FullVerifyResult {
   const rowIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-            monotonic_ns, ntp_offset_ms
+            monotonic_ns, ntp_offset_ms, signature
      FROM events ORDER BY created_at ASC, rowid ASC`
   ).iterate() as IterableIterator<WalkRow>
+
+  // v0.6.89: cache operator → public key lookups. verifyChainFull walks the
+  // full events table; a typical operator set is <20, so a Map keyed by
+  // operator_id is cheaper than a JOIN and lets us surface "no pubkey" as
+  // "unsigned" cleanly.
+  const pubKeyCache = new Map<string, string | null>()
+  const pubKeyStmt = db.prepare(`SELECT signer_pub_key FROM operators WHERE id = ?`)
+  const lookupPubKey = (opId: string): string | null => {
+    if (pubKeyCache.has(opId)) return pubKeyCache.get(opId) ?? null
+    const row = pubKeyStmt.get(opId) as { signer_pub_key: string | null } | undefined
+    const key = row?.signer_pub_key ?? null
+    pubKeyCache.set(opId, key)
+    return key
+  }
 
   let walked = 0
   let expectedPrev: string | null = null
   let lastHash: string | null = null
   const clockAnomalies: ClockAnomaly[] = []
   const prevByHostSession = new Map<string, WalkRow>()
+  let signedCount = 0
+  let unsignedCount = 0
+  let badSignatureAtEventId: string | null = null
 
   for (const row of rowIter) {
     walked++
@@ -435,7 +465,10 @@ export function verifyChainFull(): FullVerifyResult {
         currentHead: currentHead?.hash ?? null,
         anchor,
         anchorMatchesWalkedHead: false,
-        clockAnomalies
+        clockAnomalies,
+        signedCount,
+        unsignedCount,
+        badSignatureAtEventId
       }
     }
 
@@ -504,10 +537,63 @@ export function verifyChainFull(): FullVerifyResult {
         currentHead: currentHead?.hash ?? null,
         anchor,
         anchorMatchesWalkedHead: false,
-        clockAnomalies
+        clockAnomalies,
+        signedCount,
+        unsignedCount,
+        badSignatureAtEventId
       }
     }
     void reconstructed  // shape-dependent, kept in scope for potential downstream use
+
+    // v0.6.89: per-event Ed25519 signature check. Only rows whose stored hash
+    // matched the v0.6.88 canonical shape (label starts with "v0.6.88") have
+    // a canonical string we can verify against — older shapes never carried
+    // signatures anyway, so we skip them cleanly. Signatures are additive:
+    //   present + verifies  → signedCount++
+    //   present + FAILS     → hard error (tamper); mark ok=false
+    //   absent              → unsignedCount++ (pre-v0.6.89 or unsigned operator)
+    if (row.signature) {
+      if (matched.label.startsWith('v0.6.88')) {
+        const pubKey = lookupPubKey(row.operator_id)
+        if (!pubKey) {
+          // Signature is on the row but we can't find the pubkey to check —
+          // treat as unsigned rather than tamper (operator row could have
+          // been wiped; that's a data-integrity problem worth surfacing but
+          // not proof of chain tampering).
+          unsignedCount++
+        } else {
+          const canonicalJson = matched.label === 'v0.6.88+strip'
+            ? canonicalStringify(shapeV06)
+            : canonicalStringify(shapeV06Null)
+          const sigOk = verifyEventSignature(canonicalJson, row.signature, pubKey)
+          if (sigOk) {
+            signedCount++
+          } else {
+            if (badSignatureAtEventId == null) badSignatureAtEventId = row.id
+            return {
+              ok: false,
+              walked,
+              brokenAtEventId: row.id,
+              brokenReason: 'signature invalid',
+              currentHead: currentHead?.hash ?? null,
+              anchor,
+              anchorMatchesWalkedHead: false,
+              clockAnomalies,
+              signedCount,
+              unsignedCount,
+              badSignatureAtEventId
+            }
+          }
+        }
+      } else {
+        // Row carries a signature but the hash matched a legacy shape — no
+        // canonical string exists that would round-trip both. Count as
+        // unsigned rather than fail; the chain hash still protected the row.
+        unsignedCount++
+      }
+    } else {
+      unsignedCount++
+    }
 
     const key = `${row.hostname}|${row.session_id}`
     const prev = prevByHostSession.get(key)
@@ -564,6 +650,154 @@ export function verifyChainFull(): FullVerifyResult {
     currentHead: currentHead?.hash ?? null,
     anchor,
     anchorMatchesWalkedHead,
-    clockAnomalies
+    clockAnomalies,
+    signedCount,
+    unsignedCount,
+    badSignatureAtEventId
   }
+}
+
+// v0.6.89 P1-A: read-path sampling verify. verifyChainFull walks the whole
+// chain and is Settings-button-only; a chain-aware attacker that edits N rows,
+// recomputes hashes forward, and rebuilds the OTS-anchored region has time
+// before the operator manually verifies. Sampling turns detection into a
+// probability: run K random rows on every project open + every 5 minutes,
+// and the odds of tampering escaping N runs shrinks exponentially.
+//
+// Each sampled row re-hashes across the same shape variants verifyChainFull
+// tries (canonical/v0.6.88/v0.6/v0.6+null/v0.2/v0.1) and — for rows that
+// carry a prev_hash (v0.2+) — verifies the link against the ACTUAL previous
+// row's stored hash. Pre-v0.2 rows have a null prev_hash from the migration;
+// treat null as a legacy migration state, not tampering, exactly like
+// verifyChainFull does.
+//
+// TODO: share the per-row hash-shape validation with verifyChainFull. The two
+// duplicate ~30 lines of shape-attempt logic. Refactoring would introduce a
+// helper with 15+ parameters (or a Row type) and hurt readability more than
+// it helps; keep duplicated for now, but any change to the shape list MUST
+// be made in both places.
+export interface RandomSampleResult {
+  ok: boolean
+  sampled: number
+  brokenAtEventId: string | null
+  brokenReason: string | null
+}
+
+interface SampleRow {
+  id: string
+  timestamp: number
+  engagement_id: string
+  session_id: string
+  operator_id: string
+  agent_type: string
+  hostname: string
+  source_ip: string | null
+  target_id: string | null
+  data: string
+  hash: string | null
+  prev_hash: string | null
+  created_at: number
+  monotonic_ns: string | null
+  ntp_offset_ms: number | null
+}
+
+export function verifyRandomSample(count = 50): RandomSampleResult {
+  const db = getDB()
+  // ORDER BY RANDOM() is O(n) — fine at 10k events (< 20ms), acceptable at
+  // 100k, painful at 1M. A future scaling switch would sample by rowid range
+  // (SELECT id FROM events WHERE rowid = ?) with a rowid histogram; not
+  // needed at current scale but noted here so a slowdown at 1M+ rows has a
+  // clear next step.
+  const rows = db.prepare(
+    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+            monotonic_ns, ntp_offset_ms
+     FROM events WHERE hash IS NOT NULL ORDER BY RANDOM() LIMIT ?`
+  ).all(count) as SampleRow[]
+
+  if (rows.length === 0) {
+    return { ok: true, sampled: 0, brokenAtEventId: null, brokenReason: null }
+  }
+
+  const prevLookup = db.prepare(
+    `SELECT hash FROM events WHERE created_at < ? OR (created_at = ? AND rowid < ?) ORDER BY created_at DESC, rowid DESC LIMIT 1`
+  )
+  const rowIdOf = db.prepare(`SELECT rowid AS rid FROM events WHERE id = ?`)
+
+  const jsonSha = (obj: Record<string, unknown>): string =>
+    crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
+  const canonicalSha = (obj: Record<string, unknown>): string =>
+    crypto.createHash('sha256').update(canonicalStringify(obj)).digest('hex')
+
+  for (const row of rows) {
+    // Re-hash the row under every legal shape (same list as verifyChainFull).
+    let parsedData: unknown
+    try { parsedData = JSON.parse(row.data) } catch {
+      return { ok: false, sampled: rows.length, brokenAtEventId: row.id, brokenReason: 'data column is not valid JSON' }
+    }
+    const shapeV01: Record<string, unknown> = {
+      id: row.id, timestamp: row.timestamp,
+      engagementId: row.engagement_id, sessionId: row.session_id,
+      operatorId: row.operator_id, agentType: row.agent_type,
+      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+      data: parsedData, hash: undefined, createdAt: row.created_at
+    }
+    const shapeV02: Record<string, unknown> = {
+      id: row.id, timestamp: row.timestamp,
+      engagementId: row.engagement_id, sessionId: row.session_id,
+      operatorId: row.operator_id, agentType: row.agent_type,
+      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+      data: parsedData, hash: undefined, prevHash: row.prev_hash, createdAt: row.created_at
+    }
+    const shapeV06: Record<string, unknown> = { ...shapeV02 }
+    if (row.monotonic_ns != null) shapeV06.monotonicNs = row.monotonic_ns
+    if (row.ntp_offset_ms != null) shapeV06.ntpOffsetMs = row.ntp_offset_ms
+    const shapeV06Null: Record<string, unknown> = { ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
+
+    const target = row.hash
+    const attempts: Array<{ label: string; hash: string }> = [
+      { label: 'v0.6.88', hash: canonicalSha(shapeV06Null) },
+      { label: 'v0.6.88+strip', hash: canonicalSha(shapeV06) },
+      { label: 'v0.6', hash: jsonSha(shapeV06) },
+      { label: 'v0.6+null', hash: jsonSha(shapeV06Null) },
+      { label: 'v0.2', hash: jsonSha(shapeV02) },
+      { label: 'v0.1', hash: jsonSha(shapeV01) }
+    ]
+    if (!attempts.some((a) => a.hash === target)) {
+      return {
+        ok: false,
+        sampled: rows.length,
+        brokenAtEventId: row.id,
+        brokenReason: `hash mismatch (tried ${attempts.map((a) => a.label).join(', ')}, stored ${(target ?? '').slice(0, 16)}...)`
+      }
+    }
+
+    // Link verify: skip when the row itself has NULL prev_hash (legacy
+    // migration state — verifyChainFull ignores it on purpose). For rows
+    // that DO carry a prev_hash, the immediately preceding row (by
+    // created_at + rowid) must exist and match.
+    if (row.prev_hash != null) {
+      const rid = rowIdOf.get(row.id) as { rid: number } | undefined
+      if (!rid) continue
+      const prev = prevLookup.get(row.created_at, row.created_at, rid.rid) as { hash: string } | undefined
+      if (!prev) {
+        return {
+          ok: false,
+          sampled: rows.length,
+          brokenAtEventId: row.id,
+          brokenReason: `prev_hash points at ${row.prev_hash.slice(0, 16)}... but no preceding row exists`
+        }
+      }
+      if (prev.hash !== row.prev_hash) {
+        return {
+          ok: false,
+          sampled: rows.length,
+          brokenAtEventId: row.id,
+          brokenReason: `prev_hash mismatch (expected ${prev.hash.slice(0, 16)}..., got ${row.prev_hash.slice(0, 16)}...)`
+        }
+      }
+    }
+  }
+
+  return { ok: true, sampled: rows.length, brokenAtEventId: null, brokenReason: null }
 }

@@ -1183,6 +1183,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           {selectedEvent.targetId && (
             <p className="text-xs text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}
+          {/* v0.6.89: structured stdout/stderr + metadata split for shell
+              command_end. Falls back to the legacy single-`output` block if
+              stdout/stderr are unset (older captures, or the standard
+              preexec hook which doesn't split streams). */}
+          {selectedEvent.agentType === 'shell'
+            && selectedEvent.data?.subtype === 'command_end'
+            && (
+              <CommandEndDetail data={selectedEvent.data as Record<string, unknown>} />
+            )}
           {/* Replay this command: only for shell.command_end from a builtin
               terminal — pulls the stdout window out of the session's .cast
               file instead of storing it in the chain. */}
@@ -1219,6 +1228,176 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         </div>
         </>
       )}
+    </div>
+  )
+}
+
+// v0.6.89: human-readable byte size. Deliberately tiny — no third-party
+// formatter for this. 1 KB = 1024 B (chosen so we don't disagree with `wc -c`
+// output when the operator eyeballs numbers).
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 B'
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Structured detail body for a shell command_end event. Renders separate
+// stdout / stderr collapsible sections when the wrapper populated them,
+// falls back to a "mixed" section for the legacy `output` field, and
+// finishes with a compact key=value metadata grid.
+function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const hasStdout = typeof data.stdout === 'string'
+  const hasStderr = typeof data.stderr === 'string'
+  const hasLegacyOutput = !hasStdout && !hasStderr && typeof data.output === 'string'
+  return (
+    <div className="mt-2 space-y-1.5">
+      {hasStdout && (
+        <CollapsibleStream
+          label={t('timeline.detail.stdout')}
+          content={data.stdout as string}
+          bytes={typeof data.stdout_bytes === 'number' ? data.stdout_bytes : undefined}
+          truncated={data.stdout_truncated === true}
+          accent="emerald"
+          startOpen
+        />
+      )}
+      {hasStderr && (
+        <CollapsibleStream
+          label={t('timeline.detail.stderr')}
+          content={data.stderr as string}
+          bytes={typeof data.stderr_bytes === 'number' ? data.stderr_bytes : undefined}
+          truncated={data.stderr_truncated === true}
+          accent="amber"
+          startOpen={((data.stderr as string).length ?? 0) > 0}
+        />
+      )}
+      {hasLegacyOutput && (
+        <CollapsibleStream
+          label={t('timeline.detail.stdoutMixed')}
+          content={data.output as string}
+          accent="zinc"
+          startOpen
+        />
+      )}
+      <MetadataGrid
+        entries={[
+          ['exit_code', data.exit_code],
+          ['duration_sec', data.duration_sec],
+          ['cwd', data.cwd],
+          ['pid', data.pid],
+          ['terminal_id', data.terminalId ?? data.terminal_id],
+          ['source', data.source],
+          ['captured_by', data.captured_by]
+        ]}
+      />
+    </div>
+  )
+}
+
+const STREAM_ACCENTS: Record<'emerald' | 'amber' | 'zinc', { label: string; bar: string; bg: string; badge: string }> = {
+  emerald: { label: 'text-emerald-400', bar: 'border-emerald-600/40', bg: 'bg-emerald-900/10', badge: 'text-emerald-300 bg-emerald-900/30' },
+  amber:   { label: 'text-amber-400',   bar: 'border-amber-600/40',   bg: 'bg-amber-900/10',   badge: 'text-amber-300 bg-amber-900/30' },
+  zinc:    { label: 'text-zinc-300',    bar: 'border-zinc-700/60',    bg: 'bg-zinc-900/40',    badge: 'text-zinc-300 bg-zinc-800/60' }
+}
+
+// Inline preview cap. Anything larger than this is rendered as head-4KB
+// + a "Copy full" button that puts the entire raw string on the clipboard.
+const INLINE_PREVIEW_BYTES = 4096
+
+function CollapsibleStream({
+  label,
+  content,
+  bytes,
+  truncated,
+  accent,
+  startOpen
+}: {
+  label: string
+  content: string
+  bytes?: number
+  truncated?: boolean
+  accent: 'emerald' | 'amber' | 'zinc'
+  startOpen?: boolean
+}): JSX.Element {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(!!startOpen)
+  const [copied, setCopied] = useState(false)
+  const acc = STREAM_ACCENTS[accent]
+  // Prefer the explicit bytes field (the true, pre-truncation size); fall
+  // back to string length when the wrapper didn't stamp it (e.g. legacy
+  // `output` field).
+  const shownBytes = typeof bytes === 'number' ? bytes : content.length
+  const isLarge = content.length > INLINE_PREVIEW_BYTES
+  const preview = isLarge ? content.slice(0, INLINE_PREVIEW_BYTES) : content
+  const copyFull = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+      toast(t('toast.copied'), 'success')
+    } catch { /* ignore */ }
+  }
+  return (
+    <div className={`border ${acc.bar} rounded ${acc.bg}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-2 py-1 text-left"
+      >
+        <span className="text-[10px] text-zinc-500 font-mono w-3">{open ? '▼' : '▶'}</span>
+        <span className={`text-[11px] font-mono font-semibold uppercase tracking-wider ${acc.label}`}>{label}</span>
+        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
+          {formatBytes(shownBytes)}
+        </span>
+        {truncated && (
+          <span className="text-[10px] font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
+            {t('timeline.detail.truncated')}
+          </span>
+        )}
+        {isLarge && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); void copyFull() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void copyFull() } }}
+            className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 cursor-pointer"
+          >
+            {copied ? t('timeline.detail.copied') : t('timeline.detail.copyFull')}
+          </span>
+        )}
+      </button>
+      {open && content.length > 0 && (
+        <pre className="mx-2 mb-2 p-2 bg-zinc-950 rounded border border-zinc-800/60 text-xs text-zinc-300 font-mono max-h-80 overflow-y-auto whitespace-pre-wrap break-all">
+          {preview}
+          {isLarge && (
+            <span className="block mt-2 text-[10px] text-zinc-500">
+              {t('timeline.detail.previewCut', { shown: formatBytes(preview.length), total: formatBytes(shownBytes) })}
+            </span>
+          )}
+        </pre>
+      )}
+      {open && content.length === 0 && (
+        <p className="mx-2 mb-2 px-2 py-1 text-[11px] text-zinc-600 font-mono italic">{t('timeline.detail.empty')}</p>
+      )}
+    </div>
+  )
+}
+
+function MetadataGrid({ entries }: { entries: Array<[string, unknown]> }): JSX.Element {
+  const rows = entries.filter(([, v]) => v !== undefined && v !== null && v !== '')
+  if (rows.length === 0) return <></>
+  return (
+    <div className="rounded border border-zinc-800/60 bg-zinc-950/40 px-2 py-1.5">
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] font-mono">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <span className="text-zinc-500">{k}</span>
+            <span className="text-zinc-300 break-all">{String(v)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

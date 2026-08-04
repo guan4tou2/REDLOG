@@ -419,6 +419,18 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             } else {
               anchorSub = baseSub
             }
+            // v0.6.89 P1-A: append last-sample-verify age. A broken sample
+            // shows "sample BROKEN" in the same sub-line and forces the tile
+            // red — the CaptureHealthCard also flips to dark, so the operator
+            // gets two independent signals.
+            if (capture?.lastSampleBroken) {
+              anchorSub = `${anchorSub} · sample BROKEN`
+              anchorTone = 'red'
+            } else if (capture?.lastSampleOkAt) {
+              const sMin = Math.floor((Date.now() - capture.lastSampleOkAt) / 60000)
+              const sLabel = sMin < 1 ? '<1m' : sMin < 60 ? `${sMin}m` : `${Math.floor(sMin / 60)}h`
+              anchorSub = `${anchorSub} · sampled ${sLabel}`
+            }
             return (
               <StatCard
                 label={t('dashboard.events')}

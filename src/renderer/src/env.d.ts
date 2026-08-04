@@ -96,7 +96,7 @@ interface RedLogAPI {
     onShortcut: (cb: () => void) => () => void
   }
   screenshot: {
-    capture: () => Promise<string | null>
+    capture: (causeEventId?: string) => Promise<string | null>
     read: (filePath: string) => Promise<string | null>
   }
   scope: {
@@ -198,6 +198,9 @@ interface CaptureHealthInfo {
   sources: CaptureSourceInfo[]
   lastEventAt: number | null
   checkedAt: number
+  lastDbError?: { source: string; at: number; message: string }
+  lastSampleBroken?: { at: number; eventId: string; reason: string }
+  lastSampleOkAt?: number | null
 }
 
 interface McpInfo {
