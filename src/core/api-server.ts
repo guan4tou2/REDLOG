@@ -309,6 +309,15 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const agentType = body.agent_type || body.agentType || 'external'
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
+      // v0.6.88 P0-B: strip any caller-supplied operator id from body/data.
+      // The operator was already resolved from the Bearer token above
+      // (`operator.id`) — accepting a body field would let any token holder
+      // forge attribution. Warn once per stripped payload for audit trail.
+      const forgedFields = ['operator_id', 'operatorId'].filter((k) => body[k] != null || data[k] != null)
+      if (forgedFields.length > 0) {
+        console.warn(`[api] stripped forged operator field from ${req.socket.remoteAddress || 'unknown'}: ${forgedFields.join(',')}`)
+        for (const k of forgedFields) { delete body[k]; delete data[k] }
+      }
 
       let lootValues: string[] = []
       let pivot: ReturnType<typeof detectPivot> = null

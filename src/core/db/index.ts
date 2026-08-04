@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
-import { resetSession } from './events'
+import { resetSession, assertEventsAppendOnly } from './events'
 
 let db: Database.Database | null = null
 let currentProjectDir: string | null = null
@@ -109,6 +109,11 @@ export function initDB(projectDir: string): Database.Database {
   if (!colNames.has('prev_hash')) db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT')
   if (!colNames.has('monotonic_ns')) db.exec('ALTER TABLE events ADD COLUMN monotonic_ns TEXT')
   if (!colNames.has('ntp_offset_ms')) db.exec('ALTER TABLE events ADD COLUMN ntp_offset_ms INTEGER')
+
+  // v0.6.88 P1-B: install append-only triggers on events table so
+  // DELETE / UPDATE-of-immutable-fields raise instead of silently corrupting
+  // the chain. Idempotent — safe to call every project open.
+  assertEventsAppendOnly()
 
   currentProjectDir = projectDir
   return db

@@ -23,6 +23,14 @@ export interface RedLogEvent {
 
 let sessionId = crypto.randomUUID()
 
+// v0.6.88 P3-A: prefix monotonic_ns with a session-boot epoch so events
+// sort correctly across app restarts. process.hrtime.bigint() resets to
+// ~0 each time the process starts — a fresh session's `0000…12345` used
+// to sort BEFORE an old session's `0000…99999` under lexicographic
+// TEXT sort. Now every monotonic_ns lands as `${bootMs.padStart(14)}-${paddedNs}`
+// so string sort is boot-epoch-first, then in-process ns.
+const BOOT_EPOCH_MS = Date.now()
+
 // Regenerate the session id — called by initDB on every project open so
 // events written after a project switch belong to a fresh session rather
 // than sharing the module-load session id across projects (v0.6.87 audit
@@ -32,6 +40,62 @@ let sessionId = crypto.randomUUID()
 // starts partitioning by session.
 export function resetSession(): void {
   sessionId = crypto.randomUUID()
+}
+
+// v0.6.88 P1-B: append-only enforcement contract.
+// The events table is APPEND-ONLY by design. Deleting a row would:
+//   1. Break the hash chain (prev_hash points at the deleted row).
+//   2. Silently succeed against the SQLite file since there's no trigger.
+// Screenshot / cast retention deletes the FILE only and appends a
+// `system.screenshot_deleted` / `system.cast_pruned` audit event; the row
+// stays. This helper is a runtime assertion for callers that inherit a
+// db handle and could inadvertently issue a DELETE — throws instead of
+// silently corrupting the chain. Tests call it before writing to verify
+// no code path issues DELETE FROM events between init and the check.
+export function assertEventsAppendOnly(): void {
+  const db = getDB()
+  const rows = db.prepare(
+    `SELECT COUNT(*) as n FROM sqlite_master WHERE type='trigger' AND tbl_name='events' AND name='no_delete_events'`
+  ).get() as { n: number }
+  if (rows.n === 0) {
+    // Install a defensive trigger — DELETE / UPDATE (of hash/data columns)
+    // now raise an SQL error rather than corrupting the chain. This is
+    // additive; INSERTs are unchanged.
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS no_delete_events
+        BEFORE DELETE ON events
+      BEGIN
+        SELECT RAISE(ABORT, 'events table is append-only (chain integrity)');
+      END;
+      CREATE TRIGGER IF NOT EXISTS no_update_events_hash
+        BEFORE UPDATE OF hash, prev_hash, data, id, timestamp, operator_id ON events
+      BEGIN
+        SELECT RAISE(ABORT, 'events row fields are immutable (chain integrity)');
+      END;
+    `)
+  }
+}
+
+// v0.6.88 P0-A: canonical JSON serialiser for hash input. `JSON.stringify`
+// on an object doesn't sort keys — the order comes from insertion order
+// and can shift across Node versions, spread patterns, or export/import
+// round-trips. That means an event exported as JSON and reserialised
+// might hash differently even though not a byte of user data changed.
+// This walker sorts every object's keys recursively; array order is
+// preserved (that IS semantic content). Strings are JSON-escaped normally.
+// New events land with canonical-hashed rows; verifyChainFull tries the
+// canonical shape first and falls back to legacy shapes for old rows.
+export function canonicalStringify(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v)
+  if (Array.isArray(v)) return '[' + v.map(canonicalStringify).join(',') + ']'
+  const keys = Object.keys(v as Record<string, unknown>).sort()
+  const parts: string[] = []
+  for (const k of keys) {
+    const val = (v as Record<string, unknown>)[k]
+    if (val === undefined) continue
+    parts.push(JSON.stringify(k) + ':' + canonicalStringify(val))
+  }
+  return '{' + parts.join(',') + '}'
 }
 
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
@@ -57,9 +121,51 @@ const HOUSEKEEPING_SQL = `
 // (SQLite TEXT sort is lexicographic — unpadded '999' comes before '1000').
 // Renderer sort compares as BigInt so padded + unpadded rows still order right
 // on the client; this only matters for SQL sort. 20 chars covers ~317 years.
+//
+// v0.6.88 P3-A: prefix boot-epoch-ms (14 chars — good through 5138 AD)
+// so events across process restarts sort in boot order first, then
+// in-process ns. Renderer sort tolerates both padded-only and prefixed
+// shapes because it falls back to event id for the final tiebreak.
 function padMonoNs(ns: string | null): string | null {
   if (!ns) return ns
-  return ns.length >= 20 ? ns : ns.padStart(20, '0')
+  const padded = ns.length >= 20 ? ns : ns.padStart(20, '0')
+  const bootPad = String(BOOT_EPOCH_MS).padStart(14, '0')
+  return `${bootPad}-${padded}`
+}
+
+// v0.6.88 P2-A: insert-time clock-anomaly detector. Fires when the wall
+// clock has drifted too far from NTP or when the monotonic counter
+// disagrees with wall clock delta since the previous event on the same
+// (host, session) pair. The anomaly is stashed on the event's data
+// under `_clock_anomaly` so verifyChainFull can surface it and Timeline
+// can visually tag the row.
+const CLOCK_NTP_THRESHOLD_MS = 30_000
+let lastEventForClockCheck: { timestamp: number; monotonic: string; hostname: string; sessionId: string } | null = null
+function detectClockAnomaly(
+  now: number,
+  currentMono: string | null,
+  hostname: string
+): { reason: string } | null {
+  const ntpOffset = getNtpOffsetMs()
+  if (ntpOffset != null && Math.abs(ntpOffset) > CLOCK_NTP_THRESHOLD_MS) {
+    return { reason: `ntp_offset ${ntpOffset}ms exceeds ${CLOCK_NTP_THRESHOLD_MS}ms threshold` }
+  }
+  const prev = lastEventForClockCheck
+  if (prev && prev.hostname === hostname && prev.sessionId === sessionId && currentMono && prev.monotonic) {
+    try {
+      // Compare against unprefixed pad — strip the `${bootPad}-` if present.
+      const stripPrefix = (s: string): string => (s.includes('-') ? s.slice(s.indexOf('-') + 1) : s)
+      const curNs = BigInt(stripPrefix(currentMono))
+      const prevNs = BigInt(stripPrefix(prev.monotonic))
+      if (curNs < prevNs) {
+        return { reason: `monotonic_ns regressed within same session (prev ${prev.monotonic} > cur ${currentMono})` }
+      }
+    } catch { /* malformed prefix — skip */ }
+  }
+  if (prev && prev.timestamp > now + 60_000) {
+    return { reason: `wall_clock regressed by ${prev.timestamp - now}ms since previous event` }
+  }
+  return null
 }
 
 export function insertEvent(
@@ -126,6 +232,14 @@ export function insertEvent(
     throw new Error(`insertEvent: operatorId is required (agent_type=${agentType}). ` +
       `Every event must resolve to a known operator — see docs/operators.md.`)
   }
+  const hostname = os.hostname()
+  const paddedMono = padMonoNs(monotonicNs())
+
+  // v0.6.88 P2-A: tag the event before hashing so the anomaly is part of
+  // the chain (a later attacker can't strip it without a hash mismatch).
+  const anomaly = detectClockAnomaly(now, paddedMono, hostname)
+  const dataForChain: Record<string, unknown> = anomaly ? { ...data, _clock_anomaly: anomaly } : data
+
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: now,
@@ -133,19 +247,22 @@ export function insertEvent(
     sessionId,
     operatorId: opts.operatorId,
     agentType,
-    hostname: os.hostname(),
+    hostname,
     sourceIP: null,
     targetId: opts?.targetId ?? null,
-    data,
+    data: dataForChain,
     prevHash,
     createdAt: now,
-    monotonicNs: padMonoNs(monotonicNs()),
+    monotonicNs: paddedMono,
     ntpOffsetMs: getNtpOffsetMs()
   }
 
+  // v0.6.88 P0-A: canonical serialisation for hash. New rows land as
+  // hash-shape "v0.6.88". verifyChainFull tries this shape first, then
+  // falls back to legacy JSON.stringify shapes for pre-existing rows.
   const hash = crypto
     .createHash('sha256')
-    .update(JSON.stringify({ ...event, hash: undefined, prevHash }))
+    .update(canonicalStringify({ ...event, hash: undefined, prevHash }))
     .digest('hex')
   event.hash = hash
 
@@ -158,6 +275,13 @@ export function insertEvent(
     event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
     event.monotonicNs, event.ntpOffsetMs
   )
+
+  lastEventForClockCheck = {
+    timestamp: event.timestamp,
+    monotonic: event.monotonicNs || '',
+    hostname: event.hostname,
+    sessionId: event.sessionId
+  }
 
   return event
 }

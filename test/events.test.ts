@@ -152,12 +152,16 @@ describeDB('monotonic_ns padding', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  it('stores monotonic_ns padded to 20 chars so SQL text-sort is numeric', () => {
+  it('stores monotonic_ns with boot-epoch prefix + padded ns (v0.6.88 P3-A)', () => {
     const e = insertEvent('marker', { title: 'a' })!
     expect(e.monotonicNs).toBeTruthy()
-    expect(e.monotonicNs!.length).toBe(20)
-    // BigInt(padded string) is still the same numeric value.
-    expect(() => BigInt(e.monotonicNs!)).not.toThrow()
+    // `${bootMsPad14}-${nsPad20}` = 14 + 1 + 20 = 35 chars.
+    expect(e.monotonicNs!.length).toBe(35)
+    expect(e.monotonicNs).toMatch(/^\d{14}-\d{20}$/)
+    // The strip-prefix half is still BigInt-parseable — required for the
+    // Timeline sort comparator + clock-anomaly detector.
+    const nsPart = e.monotonicNs!.split('-')[1]
+    expect(() => BigInt(nsPart)).not.toThrow()
   })
 })
 

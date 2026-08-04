@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import https from 'https'
 import { URL } from 'url'
 import { getDB } from './db/index'
+import { canonicalStringify } from './db/events'
 
 export interface ChainAnchor {
   id: string
@@ -182,7 +183,7 @@ export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promis
   else if (okCount > 0) status = 'partial'
 
   const now = Date.now()
-  return insertAnchor({
+  const anchor = insertAnchor({
     headEventId: head.headEventId,
     headHash: head.hash,
     eventCount: head.eventCount,
@@ -191,6 +192,30 @@ export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promis
     createdAt: now,
     completedAt: okCount > 0 ? now : null
   })
+
+  // v0.6.88 P2-B: an anchor failure is currently silent — dashboard shows
+  // "last anchor: N hours ago" and the operator has no idea why it stopped
+  // renewing. Emit a `system.anchor_failed` audit event so the chain records
+  // that OTS submission failed and delivery bundles carry the reason.
+  if (status === 'failed') {
+    try {
+      const { insertEvent } = require('./db/events') as typeof import('./db/events')
+      const ops = require('./db/operators') as { getPrimaryOperator?: () => { id: string } | null }
+      const opId = ops.getPrimaryOperator?.()?.id
+      if (opId) {
+        insertEvent('system', {
+          subtype: 'anchor_failed',
+          headHash: head.hash,
+          eventCount: head.eventCount,
+          calendarsAttempted: calendars.length,
+          receipts: receipts.map((r) => ({ calendar: r.calendar, ok: r.ok, error: r.error })),
+          description: `OTS anchor failed across ${calendars.length} calendars`
+        }, { operatorId: opId })
+      }
+    } catch { /* audit event best-effort; anchor row itself is the real record */ }
+  }
+
+  return anchor
 }
 
 let loopTimer: ReturnType<typeof setInterval> | null = null
@@ -449,16 +474,25 @@ export function verifyChainFull(): FullVerifyResult {
     // Additional variant: v0.6 with explicit null values (some code paths
     // spread the event object even when monotonicNs was null).
     const shapeV06Null: Record<string, unknown> = { ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
+    // v0.6.88 P0-A: canonical shape uses `canonicalStringify` (sorted keys).
+    // New rows land here; verify tries this first because it's the most-recent
+    // computation. Falls back to the older per-shape JSON.stringify variants
+    // for rows written before v0.6.88.
     const reconstructed = shapeV06
-    const sha = (obj: Record<string, unknown>): string =>
+    const jsonSha = (obj: Record<string, unknown>): string =>
       crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
+    const canonicalSha = (obj: Record<string, unknown>): string =>
+      crypto.createHash('sha256').update(canonicalStringify(obj)).digest('hex')
     const target = row.hash
-    // Try shapes in newest-first order — most events on a modern chain are v0.6.
+    // Try shapes in newest-first order — most events on a modern chain are
+    // v0.6.88 canonical. Older rows fall through to legacy JSON.stringify.
     const attempts: Array<{ label: string; hash: string }> = [
-      { label: 'v0.6', hash: sha(shapeV06) },
-      { label: 'v0.6+null', hash: sha(shapeV06Null) },
-      { label: 'v0.2', hash: sha(shapeV02) },
-      { label: 'v0.1', hash: sha(shapeV01) }
+      { label: 'v0.6.88', hash: canonicalSha(shapeV06Null) },
+      { label: 'v0.6.88+strip', hash: canonicalSha(shapeV06) },
+      { label: 'v0.6', hash: jsonSha(shapeV06) },
+      { label: 'v0.6+null', hash: jsonSha(shapeV06Null) },
+      { label: 'v0.2', hash: jsonSha(shapeV02) },
+      { label: 'v0.1', hash: jsonSha(shapeV01) }
     ]
     const matched = attempts.find((a) => a.hash === target)
     if (!matched) {
@@ -478,19 +512,36 @@ export function verifyChainFull(): FullVerifyResult {
     const key = `${row.hostname}|${row.session_id}`
     const prev = prevByHostSession.get(key)
     if (prev && prev.monotonic_ns && row.monotonic_ns) {
-      const wallDelta = row.timestamp - prev.timestamp
-      const monoDelta = Number((BigInt(row.monotonic_ns) - BigInt(prev.monotonic_ns)) / 1000000n)
-      const diff = Math.abs(wallDelta - monoDelta)
-      if (diff > CLOCK_TOLERANCE_MS) {
-        clockAnomalies.push({
-          eventId: row.id,
-          prevEventId: prev.id,
-          hostname: row.hostname,
-          sessionId: row.session_id,
-          wallDeltaMs: wallDelta,
-          monoDeltaMs: monoDelta,
-          diffMs: diff
-        })
+      // v0.6.88 P3-A: monotonic_ns may carry a `${bootPad}-${nsPad}` prefix.
+      // Strip it for the numeric compare. If the two rows have different
+      // boot epochs, the compare is meaningless (they're from different
+      // process runs) — skip anomaly detection in that case.
+      const parse = (s: string): { boot: string; ns: bigint } | null => {
+        try {
+          if (s.includes('-')) {
+            const [boot, ns] = s.split('-', 2)
+            return { boot, ns: BigInt(ns) }
+          }
+          return { boot: '', ns: BigInt(s) }
+        } catch { return null }
+      }
+      const pr = parse(prev.monotonic_ns)
+      const cur = parse(row.monotonic_ns)
+      if (pr && cur && pr.boot === cur.boot) {
+        const wallDelta = row.timestamp - prev.timestamp
+        const monoDelta = Number((cur.ns - pr.ns) / 1000000n)
+        const diff = Math.abs(wallDelta - monoDelta)
+        if (diff > CLOCK_TOLERANCE_MS) {
+          clockAnomalies.push({
+            eventId: row.id,
+            prevEventId: prev.id,
+            hostname: row.hostname,
+            sessionId: row.session_id,
+            wallDeltaMs: wallDelta,
+            monoDeltaMs: monoDelta,
+            diffMs: diff
+          })
+        }
       }
     }
     prevByHostSession.set(key, row)
