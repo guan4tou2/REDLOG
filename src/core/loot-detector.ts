@@ -59,9 +59,21 @@ export class LootDetector {
     if (opts.operatorId) this.operatorId = opts.operatorId
   }
 
-  scan(text: string, targetId?: string, source?: string): LootMatch[] {
-    const matches: LootMatch[] = []
+  scan(text: string, targetId?: string, source?: string, causeEventId?: string): LootMatch[] {
+    const matches = this.findMatches(text)
+    if (matches.length > 0 && this.operatorId) this.emit(matches, { targetId, source, causeEventId })
+    return matches
+  }
 
+  /**
+   * v0.6.89: run the regex sweep + dedup bookkeeping WITHOUT emitting a loot
+   * event. The caller is responsible for calling `emit()` afterwards. This
+   * lets the api-server run the scan pre-insert (to feed matches into the
+   * redaction denylist) but only fire the loot event AFTER the shell event
+   * has an id — so `_causes: [shellEventId]` can be stamped correctly.
+   */
+  findMatches(text: string): LootMatch[] {
+    const matches: LootMatch[] = []
     for (const { type, pattern, confidence } of [...LOOT_PATTERNS, ...externalPatterns]) {
       const re = new RegExp(pattern.source, pattern.flags)
       let m: RegExpExecArray | null
@@ -78,26 +90,36 @@ export class LootDetector {
         matches.push({ type, value: value.slice(0, 500), line, confidence })
       }
     }
-
-    if (matches.length > 0 && this.operatorId) {
-      try {
-        const evt = insertEvent('loot', {
-          subtype: 'credential_detected',
-          matches: matches.map((m) => ({ type: m.type, confidence: m.confidence, preview: m.line })),
-          count: matches.length,
-          // Optional provenance the caller can attach: the tool/command/host the
-          // text came from. Trimmed + capped so a rogue caller can't bloat it.
-          ...(source && source.trim() ? { source: source.trim().slice(0, 200) } : {})
-        }, {
-          engagementId: this.engagementId,
-          operatorId: this.operatorId,
-          targetId
-        })
-        if (evt) eventBus.publish(evt)
-      } catch { /* DB may not be ready */ }
-    }
-
     return matches
+  }
+
+  /**
+   * v0.6.89: emit a loot event for previously-found matches. Called by
+   * `scan()` for backward compat, and by the api-server explicitly after
+   * the shell command_end has been inserted so `_causes` can point at it.
+   */
+  emit(matches: LootMatch[], opts: { targetId?: string; source?: string; causeEventId?: string }): void {
+    if (matches.length === 0 || !this.operatorId) return
+    try {
+      const evt = insertEvent('loot', {
+        subtype: 'credential_detected',
+        matches: matches.map((m) => ({ type: m.type, confidence: m.confidence, preview: m.line })),
+        count: matches.length,
+        // Optional provenance the caller can attach: the tool/command/host the
+        // text came from. Trimmed + capped so a rogue caller can't bloat it.
+        ...(opts.source && opts.source.trim() ? { source: opts.source.trim().slice(0, 200) } : {}),
+        // v0.6.89 `_causes` wiring: point at the shell command_end whose
+        // stdout produced this loot match. Focus chain mode uses this to
+        // walk "shell → loot → screenshot" attack narratives.
+        ...(opts.causeEventId ? { _causes: [opts.causeEventId] } : {})
+      }, {
+        engagementId: this.engagementId,
+        operatorId: this.operatorId,
+        targetId: opts.targetId
+      })
+      if (evt) eventBus.publish(evt)
+    } catch { /* DB may not be ready */ }
+    return
   }
 
   getLootCount(): number {

@@ -35,7 +35,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
   const handleSave = async () => {
     setSaving(true)
     const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    await window.redlog.marker.create({
+    const markerEvent = await window.redlog.marker.create({
       title: title.trim() || t('marker.defaultTitle', { time: ts }),
       notes, severity, category,
       ...(atTimestamp ? { atTimestamp } : {})
@@ -43,7 +43,9 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
     // Screenshot is opt-out — if the operator is looking at sensitive UI they
     // shouldn't capture, they can uncheck. Default stays on (matches prior
     // behaviour + is the safer default for evidence). Audit P1 #29.
-    if (withScreenshot) await window.redlog.screenshot.capture()
+    // v0.6.89 `_causes`: pass the marker event id so focus chain links
+    // marker → screenshot → (later screenshot_deleted).
+    if (withScreenshot) await window.redlog.screenshot.capture(markerEvent?.id)
     setSaving(false)
     onClose()
   }

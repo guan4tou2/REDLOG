@@ -20,6 +20,10 @@ interface TerminalSession {
   castBytes: number
   castTruncated: boolean
   finalised: boolean
+  // v0.6.89 `_causes`: id of the shell.session_start event so finaliseSession
+  // can stamp session_end with `_causes: [startEventId]`. Populated after the
+  // session_start insertEvent returns. Null when the start insert failed.
+  startEventId?: string | null
 }
 
 // Writes the session_end event (with the cast's SHA-256) exactly once.
@@ -53,7 +57,9 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
       castSha256,
       castBytes: session.castBytes,
       castTruncated: session.castTruncated,
-      durationMs: Date.now() - session.castStart
+      durationMs: Date.now() - session.castStart,
+      // v0.6.89: point at the session_start we captured above.
+      ...(session.startEventId ? { _causes: [session.startEventId] } : {})
     }, { engagementId, operatorId })
     if (event) eventBus.publish(event)
   } catch (e) {
@@ -277,7 +283,10 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     pid: term.pid,
     castPath
   }, { engagementId, operatorId })
-  if (event) eventBus.publish(event)
+  if (event) {
+    eventBus.publish(event)
+    session.startEventId = event.id
+  }
 
   // Auto-source the shell hook so individual commands appear in the timeline
   const hookPath = resolveShellHook(shell)

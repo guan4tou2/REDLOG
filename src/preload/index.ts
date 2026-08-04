@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   screenshot: {
-    capture: () => ipcRenderer.invoke('screenshot:capture'),
+    capture: (causeEventId?: string) => ipcRenderer.invoke('screenshot:capture', causeEventId),
     deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath),
     read: (filePath: string): Promise<string | null> =>
       ipcRenderer.invoke('screenshot:read', filePath)

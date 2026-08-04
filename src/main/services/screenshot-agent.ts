@@ -57,7 +57,7 @@ export class ScreenshotAgent {
   start(): void { this.applyInterval() }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null } }
 
-  async captureNow(trigger: string): Promise<string | null> {
+  async captureNow(trigger: string, causeEventId?: string): Promise<string | null> {
     if (!this.operatorId) return null
     // Manual captures always land — user intent overrides pause.
     // Ambient triggers (periodic, idle) skip while recording is paused.
@@ -106,7 +106,10 @@ export class ScreenshotAgent {
         width,
         height,
         sha256,
-        hash: dedupKey
+        hash: dedupKey,
+        // v0.6.89 `_causes`: EventMarker (⌘⇧M) passes the marker event id so
+        // focus chain walks link marker→screenshot→(later screenshot_deleted).
+        ...(causeEventId ? { _causes: [causeEventId] } : {})
       }, { engagementId: this.engagementId, operatorId: this.operatorId })
       if (evt) eventBus.publish(evt)
 

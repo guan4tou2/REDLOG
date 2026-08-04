@@ -528,6 +528,15 @@
   "timeline.reveal.showHint": "Show the raw bytes in {{fields}} — logs a chained system.secret_revealed event to the audit trail",
   "timeline.reveal.hide": "Re-mask",
   "timeline.reveal.hideHint": "Hide the raw bytes again",
+  "timeline.detail.stdout": "stdout",
+  "timeline.detail.stderr": "stderr",
+  "timeline.detail.stdoutMixed": "output (mixed)",
+  "timeline.detail.truncated": "(truncated at 100 KB)",
+  "timeline.detail.truncatedHint": "Stream exceeded the 100 KB cap — remainder discarded by the hook.",
+  "timeline.detail.copyFull": "Copy full",
+  "timeline.detail.copied": "Copied",
+  "timeline.detail.previewCut": "… showing first {{shown}} of {{total}} · use Copy full for the rest",
+  "timeline.detail.empty": "(empty)",
 
   "dashboard.exportData": "Export Data",
 

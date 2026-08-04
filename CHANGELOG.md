@@ -3,6 +3,90 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.89 — 2026-08-05
+Chain-integrity backend release. Design decisions from the exhaustive
+`/grill-me` session locked here + shipped. Timeline UI for `_causes`
+visualisation (detail chips + focus chain mode + anomaly badges +
+broken-chain highlight) explicitly deferred to v0.6.89.5 to keep this
+release testable in one bite.
+
+### `_causes` causal-link model (Q3–Q6)
+- **Every event carries an optional `data._causes: [event_id]` array.**
+  Hashed by the canonical serialisation (v0.6.88 P0-A) so causality is
+  tamper-evident. Old events not backfilled.
+- **12 producers wired** (Tier 1 + Tier 2):
+  - `shell.command_end._causes = [command_start.id]` via api-server
+    in-memory map keyed on `(terminal_id, pid, command)`
+  - `scanner.http_response / http_error / http_request_dropped._causes = [http_request_start.id]` via `flow_id` map
+  - `shell.session_end._causes = [session_start.id]` (terminal-manager tracks startEventId per session)
+  - `system.screenshot_deleted._causes = [source_screenshot.id]` (rename of existing `source_event`)
+  - `system.cast_pruned._causes = [session_end.id]` (retention.ts looks up by castPath)
+  - `system.screenshot_pruned._causes = [screenshot.id]` (same lookup by filename)
+  - `loot._causes = [command_end.id]` — loot detector split into
+    `findMatches()` + `emit()`; api-server calls `findMatches` for the
+    redaction denylist, then `emit()` after the shell event is inserted
+    so `_causes` points at the right row
+  - `pivot / cleanup / file_transfer / pivot(close)._causes = [shell_event.id]`
+  - `screenshot._causes = [marker.id]` when the screenshot was triggered
+    by ⌘⇧M — marker id flows through `screenshot.capture(causeEventId)`
+- New `src/core/causes-resolver.ts` for the api-server maps (bounded 10k
+  entries with LRU eviction — matches mitmproxy's 5-min TTL).
+
+### Per-event Ed25519 signature (v0.6.88 deferred P0-C)
+- **Keys at `~/.redlog/keys/<operator_id>.key` + `.pub`** (mode 0600 on
+  POSIX), overridable via `REDLOG_KEYS_DIR` for tests.
+- **Signature covers the canonical JSON** (same input the hash covers) —
+  raw 64-byte Ed25519 signature stored as base64 in new `events.signature`
+  column (nullable, no backfill).
+- **Public key stored in `operators.signer_pub_key`** — verify never
+  needs disk access to walk history.
+- **Auto-keygen** on `createOperator` + backfill on `updateOperatorToken`
+  when the operator's `signer_pub_key` is null (rotation moment reads
+  as "operator touched their account").
+- **`verifyChainFull` walks each row's signature** — rows with sig +
+  operator pubkey verify; missing sig/pubkey → `unsignedCount++` (not a
+  failure); failed sig → hard fail with `brokenAtEventId` set.
+- New file `src/core/signing.ts`. Uses Node's built-in `crypto` via JWK
+  (no new deps).
+
+### Read-path sampling verify (v0.6.88 deferred P1-A)
+- **`verifyRandomSample(count = 50)`** in `chain-anchor.ts`: picks K
+  random rows, verifies hash + prev_hash link (skips null prev_hash
+  legacy migration state).
+- **On project open**: runs a 100-sample. On failure, pins
+  `capture:health` verdict to `dark`, emits `system.chain_sample_broken`
+  audit event.
+- **Every 5 minutes**: runs a 50-sample.
+- **`capture:health` extended**: `lastSampleBroken` (60-min TTL) +
+  `lastSampleOkAt`. Broken sample beats DB write failure in verdict
+  precedence (chain tamper is worse than a live write error).
+- **Dashboard** events StatCard sub-line appends `· sampled Xm` (or
+  `· sample BROKEN` in red) after the existing `· ⚓ Xh` anchor age.
+
+### stdout / stderr split (X)
+- **New `redlog-run` bash function** in `hooks/shell-preexec-hook.sh`:
+  wraps a command, splits stdout/stderr into temp files, emits
+  `command_end` with structured `stdout / stderr / stdout_bytes / stderr_bytes / stdout_truncated / stderr_truncated` fields (100 KB cap each). Passthrough
+  to the operator's terminal preserved.
+- **Standard preexec/precmd flow unchanged** — POSIX shells can't cleanly
+  split streams from preexec so the wrapper is opt-in.
+- **api-server loot detector now scans stdout + stderr + legacy output**;
+  redaction loop also covers the new fields.
+- **Timeline detail panel**: `CollapsibleStream` component with colored
+  disclosure header (emerald / amber / zinc), byte badges via `formatBytes`,
+  truncation warning, "Copy full" for >4 KB content. `MetadataGrid`
+  shows exit_code / duration_sec / cwd / pid / terminal_id / source.
+  Legacy captures render in a "output (mixed)" section — no regression.
+
+### Deferred to v0.6.89.5
+- Detail-panel `▶ Caused by / ▼ Effects` chips + click-to-jump (Q4 A)
+- Focus chain mode (`f` shortcut — Q4 D)
+- Anomaly badges on event dots (T1)
+- Anomaly filter chip (T2)
+- Broken-chain highlighting after full verify (T3)
+
+Tests: 343 unit (+16 vs v0.6.88 — sampling + signing) / 17 e2e / build clean.
+
 ## v0.6.88 — 2026-08-04
 Audit-log integrity batch — 6 of 8 planned items landed. Per-event Ed25519
 signature (P0-C) and read-path sampling verify (P1-A) deferred to v0.6.89 —
