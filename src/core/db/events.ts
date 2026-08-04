@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB } from './index'
 import { monotonicNs, getNtpOffsetMs } from '../clock'
+import { signEvent } from '../signing'
 
 export interface RedLogEvent {
   id: string
@@ -19,6 +20,10 @@ export interface RedLogEvent {
   createdAt: number
   monotonicNs?: string | null
   ntpOffsetMs?: number | null
+  // v0.6.89: base64 raw 64-byte Ed25519 signature over the canonical JSON
+  // used for `hash`. Nullable — operators created pre-v0.6.89 (or when
+  // keygen fails) write unsigned rows, which the chain hash still protects.
+  signature?: string | null
 }
 
 let sessionId = crypto.randomUUID()
@@ -260,20 +265,28 @@ export function insertEvent(
   // v0.6.88 P0-A: canonical serialisation for hash. New rows land as
   // hash-shape "v0.6.88". verifyChainFull tries this shape first, then
   // falls back to legacy JSON.stringify shapes for pre-existing rows.
+  const canonicalForHash = canonicalStringify({ ...event, hash: undefined, prevHash })
   const hash = crypto
     .createHash('sha256')
-    .update(canonicalStringify({ ...event, hash: undefined, prevHash }))
+    .update(canonicalForHash)
     .digest('hex')
   event.hash = hash
 
+  // v0.6.89: sign the same canonical JSON with the operator's Ed25519 key.
+  // Returns null when the key file is missing (pre-v0.6.89 operator, wiped
+  // key, or filesystem error); the row still lands — chain hash keeps it
+  // integrity-protected, verifyChainFull flags it "unsigned" not "broken".
+  const signature = signEvent(canonicalForHash, event.operatorId)
+  event.signature = signature
+
   db.prepare(`
-    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     event.id, event.timestamp, event.engagementId, event.sessionId,
     event.operatorId, event.agentType, event.hostname, event.sourceIP,
     event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
-    event.monotonicNs, event.ntpOffsetMs
+    event.monotonicNs, event.ntpOffsetMs, event.signature
   )
 
   lastEventForClockCheck = {
@@ -421,6 +434,7 @@ function rowToEvent(row: Record<string, unknown>): RedLogEvent {
     prevHash: (row.prev_hash as string | null) ?? null,
     createdAt: row.created_at as number,
     monotonicNs: (row.monotonic_ns as string | null) ?? null,
-    ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null
+    ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null,
+    signature: (row.signature as string | null) ?? null
   }
 }

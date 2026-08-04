@@ -19,7 +19,7 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from '../core/scope-monitor'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
-import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFull, upgradeAnchor, upgradeAllPending } from '../core/chain-anchor'
+import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFull, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
@@ -42,7 +42,7 @@ import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor 
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
-import { getCaptureHealth, invalidateHooksCache } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
@@ -72,6 +72,10 @@ let forceQuit = false
 let testFetchIndexOverride: unknown = null
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
+// v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
+// is open to catch chain tampering silently — the on-demand verify button is
+// too easy to skip. Cleared in stopProject so a project switch stops the loop.
+let chainSampleTimer: ReturnType<typeof setInterval> | null = null
 
 // While `overlayPassThrough` is on, mouse tracking is disabled entirely —
 // the HUD stays ignore-mouse regardless of cursor position. Users who want
@@ -523,6 +527,56 @@ function startProject(project: ProjectMeta): void {
   startAnchorLoop()
   startNtpLoop()
 
+  // v0.6.89 P1-A: read-path sampling verify. On open, take a big (100)
+  // sample immediately so the operator sees an early signal if the chain
+  // was tampered with while the app was closed. After that, take a small
+  // (50) sample every 5 minutes for continuous silent detection.
+  //
+  // On a sample failure we (1) surface via capture-health (verdict → dark
+  // for the TTL window) and (2) chain a `system.chain_sample_broken` event
+  // so the audit trail records the detection itself. Cleared previous
+  // broken state on a clean open so a fresh project doesn't inherit the
+  // last one's dark verdict.
+  clearSampleBroken()
+  try {
+    const first = verifyRandomSample(100)
+    if (!first.ok) {
+      noteSampleBroken({ eventId: first.brokenAtEventId || '', reason: first.brokenReason || 'unknown' })
+      try {
+        const ev = insertEvent('system', {
+          subtype: 'chain_sample_broken',
+          eventId: first.brokenAtEventId,
+          reason: first.brokenReason,
+          sampled: first.sampled
+        }, { engagementId, operatorId })
+        if (ev) eventBus.publish(ev)
+      } catch { /* noteSampleBroken already surfaces via capture-health */ }
+    } else {
+      noteSampleOk()
+    }
+  } catch (e) { console.error('[chain-sample] initial verify failed:', e) }
+
+  if (chainSampleTimer) clearInterval(chainSampleTimer)
+  chainSampleTimer = setInterval(() => {
+    try {
+      const result = verifyRandomSample(50)
+      if (!result.ok) {
+        noteSampleBroken({ eventId: result.brokenAtEventId || '', reason: result.brokenReason || 'unknown' })
+        try {
+          const ev = insertEvent('system', {
+            subtype: 'chain_sample_broken',
+            eventId: result.brokenAtEventId,
+            reason: result.brokenReason,
+            sampled: result.sampled
+          }, { engagementId, operatorId })
+          if (ev) eventBus.publish(ev)
+        } catch { /* */ }
+      } else {
+        noteSampleOk()
+      }
+    } catch { /* transient sqlite errors already surface through DB error path */ }
+  }, 5 * 60 * 1000)
+
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow()
     // The overlay joins all Spaces / floats over fullscreen, which flips the app
@@ -548,6 +602,7 @@ function startProject(project: ProjectMeta): void {
 function stopProject(): void {
   stopAnchorLoop()
   stopNtpLoop()
+  if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
   stopApiServer()
   ipMonitor.stop()
   stopClipboardMonitor()
@@ -882,7 +937,7 @@ app.whenReady().then(() => {
   })
 
   // --- Screenshots ---
-  ipcMain.handle('screenshot:capture', () => screenshotAgent.captureNow('manual'))
+  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) => screenshotAgent.captureNow('manual', causeEventId))
   ipcMain.handle('screenshot:read', (_e, filePath: string) => {
     try {
       const screenshotDir = path.join(getProjectDir(), 'screenshots')
@@ -907,7 +962,8 @@ app.whenReady().then(() => {
       if (currentEngagementId && currentOperatorId) {
         const ev = insertEvent('system', {
           subtype: 'screenshot_deleted',
-          source_event: eventId,
+          source_event: eventId,  // v0.6.88: legacy field name (kept for backward compat)
+          _causes: [eventId],     // v0.6.89: canonical `_causes` for focus chain walks
           path: path.basename(resolved),
           sha256_pre_delete: sha256
         }, { engagementId: currentEngagementId, operatorId: currentOperatorId })

@@ -528,6 +528,15 @@
   "timeline.reveal.showHint": "顯示 {{fields}} 欄位的原始字元(會記錄一筆 system.secret_revealed 事件到 audit 鏈)",
   "timeline.reveal.hide": "重新遮蔽",
   "timeline.reveal.hideHint": "把原始字元隱藏起來",
+  "timeline.detail.stdout": "stdout",
+  "timeline.detail.stderr": "stderr",
+  "timeline.detail.stdoutMixed": "輸出(合併)",
+  "timeline.detail.truncated": "(已截斷於 100 KB)",
+  "timeline.detail.truncatedHint": "串流超過 100 KB 上限—其餘部分已被 hook 丟棄。",
+  "timeline.detail.copyFull": "複製全部",
+  "timeline.detail.copied": "已複製",
+  "timeline.detail.previewCut": "…只顯示前 {{shown}}(共 {{total}})·可用「複製全部」取得完整內容",
+  "timeline.detail.empty": "(空)",
 
   "dashboard.exportData": "匯出資料",
 

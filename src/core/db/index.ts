@@ -109,6 +109,19 @@ export function initDB(projectDir: string): Database.Database {
   if (!colNames.has('prev_hash')) db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT')
   if (!colNames.has('monotonic_ns')) db.exec('ALTER TABLE events ADD COLUMN monotonic_ns TEXT')
   if (!colNames.has('ntp_offset_ms')) db.exec('ALTER TABLE events ADD COLUMN ntp_offset_ms INTEGER')
+  // v0.6.89: per-event Ed25519 signature. Nullable so pre-existing rows keep
+  // working (verifyChainFull marks them "unsigned" rather than "broken");
+  // signed rows carry base64 raw 64-byte Ed25519 sig over the same canonical
+  // JSON string used for the hash.
+  if (!colNames.has('signature')) db.exec('ALTER TABLE events ADD COLUMN signature TEXT')
+  const opCols = db.prepare("PRAGMA table_info(operators)").all() as Array<{ name: string }>
+  const opColNames = new Set(opCols.map(c => c.name))
+  // Public key mirrored into the DB so verify never touches disk to walk the
+  // chain. Nullable: existing operators keep NULL and their events verify as
+  // "unsigned"; keygen only fires on new / re-set operators. Rewriting old
+  // keys would invalidate the chain of signed rows behind them, so migration
+  // stays hands-off.
+  if (!opColNames.has('signer_pub_key')) db.exec('ALTER TABLE operators ADD COLUMN signer_pub_key TEXT')
 
   // v0.6.88 P1-B: install append-only triggers on events table so
   // DELETE / UPDATE-of-immutable-fields raise instead of silently corrupting

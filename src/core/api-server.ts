@@ -34,6 +34,7 @@ import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
 import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
 import { getCaptureHealth } from './capture-health'
+import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -51,7 +52,11 @@ let primaryOperatorName = ''
 
 let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
 
-let lootDetectorRef: { scan: (text: string, targetId?: string, source?: string) => Array<{ type: string; value: string; confidence: string }> } | null = null
+let lootDetectorRef: {
+  scan: (text: string, targetId?: string, source?: string) => Array<{ type: string; value: string; confidence: string }>
+  findMatches?: (text: string) => Array<{ type: string; value: string; line: string; confidence: string }>
+  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: string }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => void
+} | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 let ipMonitorRef: { status: unknown } | null = null
 let scopeMonitorRef: {
@@ -309,6 +314,16 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const agentType = body.agent_type || body.agentType || 'external'
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
+      // v0.6.89 _causes wiring: resolve upstream event id from linker fields
+      // that already exist on the payload (flow_id for http_*, terminal_id+pid
+      // for shell command_end). The api-server keeps two small in-memory maps
+      // (populated on the "start" side, consumed on the "end" side) so we don't
+      // have to hit the DB per row. See causesResolver.ts for the shared cache.
+      const causeIds = resolveIncomingCauses(agentType, data)
+      if (causeIds.length > 0) {
+        const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
+        data._causes = [...new Set([...existing, ...causeIds])]
+      }
       // v0.6.88 P0-B: strip any caller-supplied operator id from body/data.
       // The operator was already resolved from the Bearer token above
       // (`operator.id`) — accepting a body field would let any token holder
@@ -320,6 +335,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }
 
       let lootValues: string[] = []
+      let pendingLootMatches: Array<{ type: string; value: string; line: string; confidence: string }> = []
       let pivot: ReturnType<typeof detectPivot> = null
       let pivotClose: ReturnType<typeof detectPivot> = null
       let cleanup: ReturnType<typeof detectCleanup> = null
@@ -363,10 +379,27 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         if (isStart) pivot = detectPivot(cmd)
 
         if (!isStart && lootDetectorRef) {
-          const textToScan = [cmd, data.output].filter(Boolean).join('\n')
+          // v0.6.89: `redlog-run` wrapper now sends stdout/stderr as separate
+          // fields. Scan both (plus the legacy `output` field for backward
+          // compat with older CLI helpers). Any of them may be undefined.
+          const textToScan = [cmd, data.stdout, data.stderr, data.output]
+            .filter((s): s is string => typeof s === 'string' && s.length > 0)
+            .join('\n')
           if (textToScan) {
-            const matches = lootDetectorRef.scan(textToScan, targetId, cmd)
-            lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
+            // v0.6.89 `_causes`: find matches now (so redaction denylist gets
+            // fed) but defer the emit() until after the shell event is
+            // inserted — the loot event's `_causes` must point at the
+            // command_end that produced the stdout. Falls back to `scan()`
+            // (which emits without cause) if the detector is an older shape
+            // that pre-dates the split.
+            if (lootDetectorRef.findMatches) {
+              const matches = lootDetectorRef.findMatches(textToScan)
+              pendingLootMatches = matches
+              lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
+            } else {
+              const matches = lootDetectorRef.scan(textToScan, targetId, cmd)
+              lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
+            }
           }
         }
       }
@@ -380,7 +413,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // but leave the raw bytes in data[field] so the hash chain closes over the
       // true text. The UI masks by default (layer 3) and `redlog-cli sanitize`
       // does the actual byte replacement at export time (layer 4).
-      for (const field of ['output', 'output_preview', 'command']) {
+      // v0.6.89: also redact new `stdout`/`stderr` fields so masked spans
+      // land on them consistently with the existing `output` handling.
+      for (const field of ['output', 'output_preview', 'command', 'stdout', 'stderr']) {
         if (typeof data[field] === 'string' && data[field]) {
           const result = redact(data[field] as string, perEventRules)
           if (result.redacted.length > 0) {
@@ -397,6 +432,17 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       })
       if (!event) { json(res, 409, { error: 'Duplicate event (dedup window)' }); return }
       eventBus.publish(event)
+      // v0.6.89 `_causes`: if this was a "start" event that later "end" events
+      // will want to cite (shell.command_start, scanner.http_request_start),
+      // cache its id in the in-memory resolver so the matching end event can
+      // stamp `_causes: [thisId]` when it arrives.
+      noteStartEvent(agentType, data, event.id)
+      // v0.6.89 `_causes` for loot: emit the loot event NOW that we have the
+      // shell command_end's id — so `_causes: [event.id]` points at the exact
+      // command whose stdout produced the match. See loot-detector.emit().
+      if (pendingLootMatches.length > 0 && lootDetectorRef?.emit) {
+        lootDetectorRef.emit(pendingLootMatches, { targetId, source: data.command as string, causeEventId: event.id })
+      }
 
       // Emit the companion pivot event (best-effort; never blocks the shell event).
       if (pivot) {
@@ -404,7 +450,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           const pv = insertEvent('pivot', {
             subtype: pivot.subtype, tool: pivot.tool, via: pivot.via, route: pivot.route,
             socks_port: pivot.socksPort, forward: pivot.forward, mitre_ttp: pivot.mitreTtp,
-            command: data.command, description: `Pivot via ${pivot.tool}${pivot.via ? ` → ${pivot.via}` : ''}${pivot.route ? ` (${pivot.route})` : ''}`
+            command: data.command, description: `Pivot via ${pivot.tool}${pivot.via ? ` → ${pivot.via}` : ''}${pivot.route ? ` (${pivot.route})` : ''}`,
+            // v0.6.89: pivot is a companion to the shell command_start that
+            // triggered detectPivot — that's the event we just inserted above.
+            _causes: [event.id]
           }, { engagementId, operatorId: operator.id, targetId: pivot.via ?? targetId })
           if (pv) eventBus.publish(pv)
         } catch { /* pivot event is additive; ignore failures */ }
@@ -417,7 +466,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
             subtype: cleanup.subtype, tool: cleanup.tool,
             target: cleanup.target, mitre_ttp: cleanup.mitreTtp,
             command: data.command,
-            description: `Cleanup [${cleanup.tool}] ${cleanup.subtype}${cleanup.target ? ` → ${cleanup.target}` : ''}`
+            description: `Cleanup [${cleanup.tool}] ${cleanup.subtype}${cleanup.target ? ` → ${cleanup.target}` : ''}`,
+            _causes: [event.id]
           }, { engagementId, operatorId: operator.id, targetId })
           if (cv) eventBus.publish(cv)
         } catch { /* additive */ }
@@ -431,7 +481,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
             url: fileXfer.url, localPath: fileXfer.localPath, remotePath: fileXfer.remotePath,
             mitre_ttp: fileXfer.mitreTtp,
             command: data.command,
-            description: `${fileXfer.direction === 'download' ? '↓' : '↑'} ${fileXfer.tool}: ${fileXfer.url || fileXfer.remotePath || fileXfer.localPath || ''}`.trim()
+            description: `${fileXfer.direction === 'download' ? '↓' : '↑'} ${fileXfer.tool}: ${fileXfer.url || fileXfer.remotePath || fileXfer.localPath || ''}`.trim(),
+            _causes: [event.id]
           }, { engagementId, operatorId: operator.id, targetId })
           if (fv) eventBus.publish(fv)
         } catch { /* additive */ }
@@ -445,7 +496,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
             route: pivotClose.route, forward: pivotClose.forward,
             command: data.command, exit_code: data.exit_code,
             duration_sec: data.duration_sec,
-            description: `Pivot closed [${pivotClose.tool}]${pivotClose.via ? ` → ${pivotClose.via}` : ''}`
+            description: `Pivot closed [${pivotClose.tool}]${pivotClose.via ? ` → ${pivotClose.via}` : ''}`,
+            _causes: [event.id]
           }, { engagementId, operatorId: operator.id, targetId: pivotClose.via ?? targetId })
           if (pv) eventBus.publish(pv)
         } catch { /* additive */ }
