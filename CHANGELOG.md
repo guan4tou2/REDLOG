@@ -3,6 +3,65 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.88 — 2026-08-04
+Audit-log integrity batch — 6 of 8 planned items landed. Per-event Ed25519
+signature (P0-C) and read-path sampling verify (P1-A) deferred to v0.6.89 —
+both need proper key-management + test infra design.
+
+### P0 — chain integrity
+- **Canonical JSON hash** (`src/core/db/events.ts` `canonicalStringify`):
+  new events hash over sorted-key serialisation instead of insertion-order
+  `JSON.stringify`. Export/import round-trips no longer risk hash mismatch
+  from key reordering. Additive — verifyChainFull tries the canonical shape
+  first, falls back to the legacy JSON shapes for pre-v0.6.88 rows. No
+  migration needed.
+- **`/api/events` strips forged operator id** (`src/core/api-server.ts`):
+  any `operator_id` / `operatorId` in the request body or `data` payload
+  is deleted before hashing; the operator is resolved solely from the
+  Bearer token. A warning line lands in stderr with the offender's remote
+  address for later attribution.
+
+### P1 — anti-tamper
+- **Append-only enforcement** (`src/core/db/events.ts` `assertEventsAppendOnly`,
+  `db/index.ts`): SQLite triggers `no_delete_events` + `no_update_events_hash`
+  installed on every `initDB`. `DELETE FROM events` or `UPDATE` of any
+  immutable field (`hash`, `prev_hash`, `data`, `id`, `timestamp`,
+  `operator_id`) now raises `RAISE(ABORT, …)` instead of silently
+  corrupting the chain. Idempotent — replays are safe.
+
+### P2 — observability
+- **Insert-time clock-anomaly producer** (`src/core/db/events.ts`
+  `detectClockAnomaly`): NTP offset > 30s or monotonic-ns regression
+  within the same session or wall-clock backwards jump > 60s → the anomaly
+  is stashed in `data._clock_anomaly` before hashing so a later attacker
+  can't strip it without a hash mismatch. verifyChainFull picks it up and
+  Timeline can visually flag the row.
+- **OTS anchor failure logging** (`src/core/chain-anchor.ts`): when
+  `anchorNow` returns status='failed' (all calendars rejected), a
+  `system.anchor_failed` audit event lands so the chain records why the
+  anchor didn't renew (deliver bundles carry the reason).
+- **Dashboard last-anchor-age badge** (`src/renderer/src/App.tsx`):
+  events StatCard sub-line now shows `⚓ 3h` (green <2h, amber <24h, red
+  24h+ or last status=failed). Polls every 60s + on new event. Operators
+  spot a stalled OTS submission at a glance.
+
+### P3 — ordering
+- **Session-cross monotonic prefix** (`src/core/db/events.ts` `padMonoNs`):
+  monotonic_ns now lands as `${bootMsPad14}-${nsPad20}` (35 chars). SQL
+  `ORDER BY monotonic_ns` sorts by boot-epoch first, then in-process ns,
+  so events across app restarts no longer mis-order. verifyChainFull's
+  clock-anomaly detector strips the prefix before comparing; cross-process
+  comparisons skip anomaly detection entirely (they're not comparable).
+
+### Deferred to v0.6.89
+- **P0-C: per-event Ed25519 signature** — needs per-operator key-store
+  design (OS keychain? file-based? key rotation?) and rework of chain-verify
+  to check signatures. Would be ~500 LoC + tests.
+- **P1-A: read-path sampling verify** — needs threshold picking, periodic
+  loop design, verdict wiring into `capture:health`. Would be ~300 LoC.
+
+Tests: 327 unit / 17 e2e / build clean.
+
 ## v0.6.87 — 2026-08-04
 Twelve UX + hygiene items in one release: 5 remaining audit fixes, 2
 retention sweeps, right-click Timeline marker, Timeline slice export,
