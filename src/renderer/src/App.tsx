@@ -309,6 +309,9 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [scopeViolations, setScopeViolations] = useState(0)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
+  // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
+  // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
+  const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
   const [loading, setLoading] = useState(true)
   // Shortcut order — kept in state + subscribed so a drag-reorder in the sidebar
   // updates the cheatsheet immediately, no view switch required.
@@ -333,8 +336,19 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       try { window.redlog.capture?.health?.()?.then(setCapture).catch(() => {}) } catch { /* older preload */ }
     }
     loadCapture()
-    const unsub = window.redlog.events.onNew(() => loadCapture())
-    return unsub
+    // Anchor age poll — same guarded pattern as capture health.
+    const loadAnchor = (): void => {
+      try {
+        window.redlog.chain?.anchors?.()?.then((list) => {
+          const first = list?.[0]
+          if (first) setLastAnchor({ createdAt: first.createdAt, status: first.status })
+        }).catch(() => {})
+      } catch { /* older preload */ }
+    }
+    loadAnchor()
+    const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor() })
+    const anchorTimer = setInterval(loadAnchor, 60_000)
+    return () => { unsub(); clearInterval(anchorTimer) }
   }, [])
 
   if (loading) {
@@ -385,14 +399,35 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               here: the big number is events, the sub-line calls out that the
               chain covers the same count (or flags a drift if it ever
               differs, which would itself be a tamper signal). */}
-          <StatCard
-            label={t('dashboard.events')}
-            value={String(eventCount)}
-            sub={chainLen === eventCount
+          {(() => {
+            // v0.6.88 P2-B: last-anchor age surface. <2h green, <24h amber,
+            // 24h+ red (matches the OTS calendar hourly cadence — anything
+            // beyond a day means the anchor loop has been broken for a while).
+            let anchorSub = ''
+            let anchorTone: HudTone = chainLen === eventCount ? 'cyan' : 'red'
+            const baseSub = chainLen === eventCount
               ? t('dashboard.chainMatches', { n: chainLen })
-              : t('dashboard.chainDrift', { chain: chainLen, events: eventCount })}
-            tone={chainLen === eventCount ? 'cyan' : 'red'}
-          />
+              : t('dashboard.chainDrift', { chain: chainLen, events: eventCount })
+            if (lastAnchor) {
+              const ageMin = Math.floor((Date.now() - lastAnchor.createdAt) / 60000)
+              const ageHr = Math.floor(ageMin / 60)
+              const ageLabel = ageHr < 1 ? `${ageMin}m` : ageHr < 24 ? `${ageHr}h` : `${Math.floor(ageHr / 24)}d`
+              anchorSub = `${baseSub} · ⚓ ${ageLabel}`
+              if (lastAnchor.status === 'failed') anchorTone = 'red'
+              else if (ageHr >= 24) anchorTone = 'red'
+              else if (ageHr >= 2) anchorTone = 'amber'
+            } else {
+              anchorSub = baseSub
+            }
+            return (
+              <StatCard
+                label={t('dashboard.events')}
+                value={String(eventCount)}
+                sub={anchorSub}
+                tone={anchorTone}
+              />
+            )
+          })()}
           <StatCard label={t('dashboard.loot')} value={String(lootCount)} tone={lootCount > 0 ? 'red' : 'neutral'} />
           <StatCard
             label={t('dashboard.scope')}
