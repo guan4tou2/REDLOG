@@ -29,7 +29,7 @@ const LANE_COLORS: Record<LaneId, string> = {
   agent: '#84cc16',
   http_navigation: '#6366f1',
   scanner: '#8b5cf6',
-  browser: '#f97316',
+  browser: '#06b6d4',
   dns: '#14b8a6',
   pivot: '#0ea5e9',
   screenshot: '#3b82f6',
