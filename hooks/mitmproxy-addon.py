@@ -1,21 +1,36 @@
 """
 RedLog × mitmproxy Addon
-Captures all HTTP requests flowing through mitmproxy and sends them to RedLog's timeline.
+Captures HTTP requests + DNS queries flowing through mitmproxy and sends
+them to RedLog's timeline.
 
-Usage:
+Usage — HTTP capture (default proxy mode):
     mitmproxy -s /path/to/redlog/hooks/mitmproxy-addon.py
     mitmweb  -s /path/to/redlog/hooks/mitmproxy-addon.py
     mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py
 
+Usage — DNS capture (mitmproxy's DNS mode, v0.6.92):
+    mitmproxy --mode dns@53 -s /path/to/redlog/hooks/mitmproxy-addon.py
+    mitmdump  --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py
+
+    Port 53 requires root/sudo on Unix. Non-privileged ports (e.g. 5353) work
+    for lab traffic — point the target at 127.0.0.1:5353 with `dig @127.0.0.1
+    -p 5353 example.com` or configure a system resolver override.
+
+    The HTTP `request/response/error` handlers and the DNS `dns_message`
+    handler coexist in the same addon; mitmproxy dispatches whichever fires
+    for the active mode. Running two mitmproxy instances (one HTTP, one DNS)
+    with the same addon is the recommended setup for full coverage.
+
 What gets logged:
-    - Every request: method, URL, headers, query params, body (truncated)
-    - Every response: status code, content type, size
-    - Timing: request start → response end duration
+    - HTTP request: method, URL, headers, query params, body (truncated)
+    - HTTP response: status code, content type, size, duration_ms
+    - DNS query:     question name/type/id, transport, source_addr
+    - DNS response:  response_code, answers, duration_ms, _causes ← query event
 
 Environment variables:
     REDLOG_MAX_BODY    Max request/response body bytes to capture (default 2048)
     REDLOG_SKIP_STATIC Skip static assets like .css/.js/.png/.woff (default true)
-    REDLOG_VERBOSE     Log every request to stderr (default false)
+    REDLOG_VERBOSE     Log every request/DNS message to stderr (default false)
 """
 
 import json
@@ -81,6 +96,89 @@ def _send_to_redlog(payload: dict):
             pass
 
     threading.Thread(target=_do_send, daemon=True).start()
+
+
+def _send_to_redlog_and_get_id(payload: dict):
+    """Synchronous variant returning the inserted event id.
+
+    Used by the DNS-query path so the response event can point its `_causes`
+    at the exact query event. Blocks briefly (≤2s) on the RedLog API — the
+    DNS response typically arrives 10-100ms later so we still want the id.
+    Returns None on any error; the response then emits an empty _causes list
+    rather than dropping the row.
+    """
+    port, token = _get_redlog_connection()
+    if not port:
+        return None
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/events",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+        obj = json.loads(body)
+        return obj.get("id") or (obj.get("event") or {}).get("id")
+    except Exception:
+        return None
+
+
+# Numeric ↔ mnemonic maps for the DNS handler. Covers the codes any modern
+# resolver actually returns; anything exotic falls through to str(n) so the
+# event is still filterable in the Timeline instead of silently going blank.
+_DNS_TYPES = {
+    1: "A", 2: "NS", 5: "CNAME", 6: "SOA", 12: "PTR", 13: "HINFO",
+    15: "MX", 16: "TXT", 17: "RP", 18: "AFSDB", 24: "SIG", 25: "KEY",
+    28: "AAAA", 29: "LOC", 33: "SRV", 35: "NAPTR", 36: "KX", 37: "CERT",
+    39: "DNAME", 41: "OPT", 43: "DS", 44: "SSHFP", 45: "IPSECKEY",
+    46: "RRSIG", 47: "NSEC", 48: "DNSKEY", 49: "DHCID", 50: "NSEC3",
+    51: "NSEC3PARAM", 52: "TLSA", 53: "SMIMEA", 55: "HIP", 59: "CDS",
+    60: "CDNSKEY", 61: "OPENPGPKEY", 62: "CSYNC", 63: "ZONEMD",
+    64: "SVCB", 65: "HTTPS", 99: "SPF", 108: "EUI48", 109: "EUI64",
+    249: "TKEY", 250: "TSIG", 251: "IXFR", 252: "AXFR",
+    255: "ANY", 256: "URI", 257: "CAA",
+}
+
+_DNS_RCODES = {
+    0: "NOERROR", 1: "FORMERR", 2: "SERVFAIL", 3: "NXDOMAIN",
+    4: "NOTIMP", 5: "REFUSED", 6: "YXDOMAIN", 7: "YXRRSET",
+    8: "NXRRSET", 9: "NOTAUTH", 10: "NOTZONE", 11: "DSOTYPENI",
+    16: "BADVERS", 17: "BADKEY", 18: "BADTIME", 19: "BADMODE",
+    20: "BADNAME", 21: "BADALG", 22: "BADTRUNC", 23: "BADCOOKIE",
+}
+
+
+def _dns_type_name(n) -> str:
+    """Map a numeric DNS RR type to its mnemonic (A / AAAA / …). Also accepts
+    already-mnemonic strings + enum-like objects with a `.name`."""
+    if isinstance(n, str) and n:
+        return n
+    name = getattr(n, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    try:
+        return _DNS_TYPES.get(int(n), str(n))
+    except Exception:
+        return str(n) if n is not None else ""
+
+
+def _dns_rcode_name(n) -> str:
+    """Map a numeric DNS response code (rcode) to its mnemonic."""
+    if isinstance(n, str) and n:
+        return n
+    name = getattr(n, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    try:
+        return _DNS_RCODES.get(int(n), str(n))
+    except Exception:
+        return str(n) if n is not None else ""
 
 
 def _truncate(s: str, max_len: int = MAX_BODY) -> str:
@@ -180,6 +278,10 @@ class RedLogAddon:
         # stashed so a TTL sweep can emit a meaningful dropped-marker without
         # having the original flow object anymore.
         self._request_times: dict[str, dict] = {}
+        # DNS query flow.id -> {'at': float, 'event_id': str|None}
+        # Analogous to _request_times but for DNS mode. `event_id` is stashed
+        # after the query POST so the response can name it in `_causes`.
+        self._dns_query_events: dict[str, dict] = {}
 
     def _sweep_stale(self):
         """Emit dropped-markers for pending requests older than PENDING_TTL_SEC.
@@ -340,6 +442,130 @@ class RedLogAddon:
             ctx.log.info(
                 f"[redlog] ← {method} {status} {url} "
                 f"({content_length}B, {duration_ms}ms)"
+            )
+
+    # ─── DNS mode (mitmproxy --mode dns) ────────────────────────────────────
+    #
+    # `dns_message` fires for BOTH the incoming query and the outgoing
+    # response — mitmproxy just gives us a DNSFlow whose `.request` is the
+    # query and `.response` may be None (query phase) or the resolved answer.
+    # We split into two RedLog events (query, response) so the audit trail
+    # shows the roundtrip explicitly + a `_causes` link ties the response
+    # back to its query event for causal-chain rendering (v0.6.89).
+    #
+    # `_query_events[flow.id]` = { 'at': float, 'event_id': str|None } mirrors
+    # the HTTP `_request_times` map. The RedLog HTTP endpoint returns the
+    # inserted event id in its JSON body so responses can point their
+    # `_causes` at the exact query event; if the POST failed for any reason,
+    # we still emit the response with an empty `_causes` list rather than
+    # dropping the row.
+
+    def dns_message(self, flow):  # type: (Any) -> None  (mitmproxy.dns.DNSFlow)
+        try:
+            request = flow.request
+        except AttributeError:
+            return
+        # Distinguishing query from response: on first fire flow.response is
+        # None; on the second, it's populated. mitmproxy calls this hook
+        # once per direction so we mirror the two-event model.
+        if getattr(flow, 'response', None) is None:
+            self._dns_query(flow)
+        else:
+            self._dns_response(flow)
+
+    def _dns_query(self, flow):
+        try:
+            question = flow.request.questions[0] if flow.request.questions else None
+        except Exception:
+            question = None
+        query_name = getattr(question, 'name', '') if question else ''
+        query_type = _dns_type_name(getattr(question, 'type', 0) if question else 0)
+        source_addr = ''
+        try:
+            src = flow.client_conn.peername if flow.client_conn else None
+            if src: source_addr = f"{src[0]}:{src[1]}"
+        except Exception:
+            pass
+        transport = 'udp'
+        try:
+            # DoT / DoH surface as tcp/tls; mitmproxy's DNS mode only exposes
+            # UDP + TCP today, but the field is here for forward-compat.
+            if getattr(flow, 'client_conn', None) and getattr(flow.client_conn, 'transport_protocol', None):
+                transport = str(flow.client_conn.transport_protocol)
+        except Exception:
+            pass
+        event_data = {
+            'subtype': 'dns_query',
+            'query_name': query_name,
+            'query_type': query_type,
+            'query_id': getattr(flow.request, 'id', None),
+            'transport': transport,
+            'source_addr': source_addr,
+            'flow_id': flow.id,
+        }
+        payload = {
+            'agent_type': 'dns',
+            'data': event_data,
+            'target_id': query_name,
+        }
+        self._dns_query_events[flow.id] = {'at': time.time(), 'event_id': None}
+        event_id = _send_to_redlog_and_get_id(payload)
+        # store the id so the response can name it in _causes
+        entry = self._dns_query_events.get(flow.id)
+        if entry is not None:
+            entry['event_id'] = event_id
+        if VERBOSE:
+            ctx.log.info(f"[redlog] DNS ⇒ {query_name} {query_type}")
+
+    def _dns_response(self, flow):
+        try:
+            question = flow.request.questions[0] if flow.request.questions else None
+        except Exception:
+            question = None
+        query_name = getattr(question, 'name', '') if question else ''
+        query_type = _dns_type_name(getattr(question, 'type', 0) if question else 0)
+        # response_code: mitmproxy exposes .response_code as int; helper maps
+        # to human names (NOERROR, NXDOMAIN, SERVFAIL, …). Numeric fallback
+        # if the map misses a rarer code (e.g. YXRRSET).
+        rcode = getattr(flow.response, 'response_code', None)
+        response_code = _dns_rcode_name(rcode) if rcode is not None else 'UNKNOWN'
+        answers = []
+        try:
+            for ans in (flow.response.answers or []):
+                answers.append({
+                    'name': getattr(ans, 'name', ''),
+                    'type': _dns_type_name(getattr(ans, 'type', 0)),
+                    'ttl': getattr(ans, 'ttl', 0),
+                    'data': str(getattr(ans, 'data', '') or ''),
+                })
+        except Exception:
+            pass
+        entry = self._dns_query_events.pop(flow.id, None)
+        duration_ms = int((time.time() - entry['at']) * 1000) if entry else None
+        causes = [entry['event_id']] if entry and entry.get('event_id') else []
+        event_data = {
+            'subtype': 'dns_response',
+            'query_name': query_name,
+            'query_type': query_type,
+            'response_code': response_code,
+            'answers': answers,
+            'flow_id': flow.id,
+        }
+        if duration_ms is not None:
+            event_data['duration_ms'] = duration_ms
+        if causes:
+            event_data['_causes'] = causes
+        payload = {
+            'agent_type': 'dns',
+            'data': event_data,
+            'target_id': query_name,
+        }
+        _send_to_redlog(payload)
+        if VERBOSE:
+            ans_preview = ', '.join(f"{a['type']} {a['data']}" for a in answers[:3]) or '(no answers)'
+            ctx.log.info(
+                f"[redlog] DNS ⇐ {query_name} {query_type} → {response_code} "
+                f"[{ans_preview}] ({duration_ms}ms)"
             )
 
     def error(self, flow: http.HTTPFlow):

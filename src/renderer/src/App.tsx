@@ -225,7 +225,12 @@ function CaptureHealthCard({ capture, onNavigate }: {
     'shell-hook': t('capture.shellHook'),
     'claude-code': t('capture.claudeCode'),
     'mitmproxy': t('capture.mitmproxy'),
-    'builtin-terminal': t('capture.builtinTerminal')
+    'builtin-terminal': t('capture.builtinTerminal'),
+    // v0.6.92 W-project producers.
+    'dns': t('capture.dns'),
+    'browser-console': t('capture.browserConsole'),
+    'process-monitor': t('capture.processMonitor'),
+    'file-watcher': t('capture.fileWatcher')
   }
   const dot = (s: string): string =>
     s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-zinc-700'

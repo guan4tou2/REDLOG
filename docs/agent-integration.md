@@ -61,8 +61,12 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 |---|---|---|---|
 | **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…) | Settings ▸ Hooks ▸ Zsh/Bash → Enable, then `source ~/.zshrc` | Yes — it no-ops when RedLog is closed |
 | **Claude Code hook** | Only Claude Code's **Bash tool** calls — NOT your terminal | Settings ▸ Hooks ▸ Claude Code → Enable | Yes |
-| **mitmproxy** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
+| **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
+| **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
 | **RedLog terminal** | Commands run inside RedLog's own terminal pane | Built in, always on | — |
+| **Browser console (CDP)** | `console.error`/`warn`/`log` + uncaught exceptions from every open tab | Enabled automatically once you launch Chrome through the Proxied Browser (uses port 9222 by default) | Yes |
+| **File watcher** | File create/modify/delete in operator-defined paths | Settings ▸ Capture ▸ File watcher → Enable + add absolute paths. Off by default (noisy). | Yes |
+| **Process spawn tree** | Every process spawned/exited on the box (macOS + Linux) | Settings ▸ Capture ▸ Process monitor → Enable. RedLog and its subprocesses are auto-filtered. Windows: not yet supported. | Yes |
 
 **Two things that trip people up:**
 

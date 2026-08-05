@@ -135,12 +135,26 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   const mitmLast = lastEventFor(`agent_type = 'scanner'`)
   // RedLog's own terminal panes.
   const builtinLast = lastEventFor(`agent_type = 'shell' AND json_extract(data,'$.source') = 'builtin-terminal'`)
+  // v0.6.92: DNS/browser/process/file-watcher producers. `installed` is
+  // undefined for these because "installed" doesn't really apply — the DNS
+  // handler ships in the mitmproxy addon (so installation is coincident with
+  // the mitmproxy source above but only counts as active if DNS mode is
+  // actually running), and the others are always resident and turn on via
+  // Settings.
+  const dnsLast = lastEventFor(`agent_type = 'dns'`)
+  const browserLast = lastEventFor(`agent_type = 'browser'`)
+  const processLast = lastEventFor(`agent_type = 'process'`)
+  const fileWatcherLast = lastEventFor(`agent_type = 'file_transfer' AND json_extract(data,'$.source') = 'file-watcher'`)
 
   const sources: CaptureSource[] = [
     { id: 'shell-hook', installed: hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell'), lastEventAt: shellHookLast, state: stateFrom(hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell'), shellHookLast, now) },
     { id: 'claude-code', installed: hookInstalled('claude-code'), lastEventAt: claudeLast, state: stateFrom(hookInstalled('claude-code'), claudeLast, now) },
     { id: 'mitmproxy', installed: undefined, lastEventAt: mitmLast, state: stateFrom(undefined, mitmLast, now) },
-    { id: 'builtin-terminal', installed: undefined, lastEventAt: builtinLast, state: stateFrom(undefined, builtinLast, now) }
+    { id: 'builtin-terminal', installed: undefined, lastEventAt: builtinLast, state: stateFrom(undefined, builtinLast, now) },
+    { id: 'dns', installed: undefined, lastEventAt: dnsLast, state: stateFrom(undefined, dnsLast, now) },
+    { id: 'browser-console', installed: undefined, lastEventAt: browserLast, state: stateFrom(undefined, browserLast, now) },
+    { id: 'process-monitor', installed: undefined, lastEventAt: processLast, state: stateFrom(undefined, processLast, now) },
+    { id: 'file-watcher', installed: undefined, lastEventAt: fileWatcherLast, state: stateFrom(undefined, fileWatcherLast, now) }
   ]
 
   const activeCount = sources.filter((s) => s.state === 'active').length
