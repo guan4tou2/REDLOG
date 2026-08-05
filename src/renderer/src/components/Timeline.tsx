@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/mask'
 import { LoadingSpinner } from './Feedback'
+import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -207,6 +208,89 @@ function formatTimeLabel(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// v0.6.89.5: chain-integrity + evidence-integrity badges.
+//
+// A single event can carry several flags in `data` — clock-anomaly, orphan
+// recovery, spool replay, evidence removal, anchor failure, background
+// tampering. Rather than inventing per-badge CSS in every callsite the
+// Timeline computes a `{icon, reason}` list once and renders a single icon
+// on the dot (with all badges in a hover tooltip) + a full stacked row in
+// the detail panel.
+//
+// The `⛓️‍💥` badge (feature 5) is only attached when a full-verify has been
+// run AND this event id matches `brokenAtEventId` from that run.
+interface EventBadge { icon: string; reason: string; key: string }
+
+function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge[] {
+  const b: EventBadge[] = []
+  const d = (evt.data as Record<string, unknown> | undefined) ?? {}
+  const sub = d.subtype as string | undefined
+  const clockAnomaly = d._clock_anomaly as { reason?: string } | undefined
+  if (clockAnomaly) {
+    b.push({ icon: '⚠', reason: clockAnomaly.reason || 'clock anomaly detected at insert time', key: 'clock' })
+  }
+  if (d.recovered === true) {
+    b.push({ icon: '🔄', reason: 'recovered from orphaned session', key: 'recovered' })
+  }
+  if (d.recovered_from_spool === true) {
+    b.push({ icon: '📮', reason: 'recovered from shell hook spool', key: 'spool' })
+  }
+  if (evt.agentType === 'system' && (sub === 'screenshot_deleted' || sub === 'cast_pruned' || sub === 'screenshot_pruned')) {
+    b.push({ icon: '🗑️', reason: `evidence removed (${sub})`, key: 'evidence' })
+  }
+  if (evt.agentType === 'system' && sub === 'anchor_failed') {
+    b.push({ icon: '⚓✗', reason: 'OTS anchor failed', key: 'anchor' })
+  }
+  if (evt.agentType === 'system' && sub === 'chain_sample_broken') {
+    b.push({ icon: '⛓️‍💥', reason: 'background chain sampler detected tampering', key: 'sample-broken' })
+  }
+  if (brokenAtId && evt.id === brokenAtId) {
+    b.push({ icon: '⛓️‍💥', reason: 'full-chain verify broke here', key: 'verify-broken' })
+  }
+  return b
+}
+
+// BFS walk of the causal graph anchored at `anchor`. Walks `_causes` upstream
+// AND the reverse-effects map downstream, both bounded to depth 20 to avoid
+// runaway when a plugin publishes a cycle. Returns every id in the connected
+// component including the anchor itself.
+function walkFocusChain(
+  anchor: RedLogEvent,
+  eventsMap: Map<string, RedLogEvent>,
+  effects: Map<string, string[]>
+): Set<string> {
+  const visited = new Set<string>([anchor.id])
+  const q: { id: string; depth: number; dir: 'up' | 'down' }[] = [
+    { id: anchor.id, depth: 0, dir: 'up' },
+    { id: anchor.id, depth: 0, dir: 'down' }
+  ]
+  while (q.length) {
+    const { id, depth, dir } = q.shift()!
+    if (depth >= 20) continue
+    if (dir === 'up') {
+      const e = eventsMap.get(id)
+      const causes = (e?.data as { _causes?: unknown } | undefined)?._causes
+      if (Array.isArray(causes)) {
+        for (const c of causes) {
+          if (typeof c === 'string' && !visited.has(c)) {
+            visited.add(c)
+            q.push({ id: c, depth: depth + 1, dir: 'up' })
+          }
+        }
+      }
+    } else {
+      const eff = effects.get(id)
+      if (eff) for (const c of eff) {
+        if (!visited.has(c)) {
+          visited.add(c)
+          q.push({ id: c, depth: depth + 1, dir: 'down' })
+        }
+      }
+    }
+  }
+  return visited
+}
+
 export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // Hide command_start once its matching command_end lands — the end has the
@@ -248,6 +332,42 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // (with JSON expanded the title easily scrolls off screen).
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
+  // v0.6.89.5: focus chain / anomaly filter / broken-chain state.
+  //
+  // `focusChain` (feature 2) is a set of every event id in the causal
+  // component of the anchor — null means the filter is off. Persisted as
+  // just the anchor id so a stale set can't leak across mounts.
+  // `anomalyFilter` (feature 4) toggles "dim everything without a badge".
+  // These two are mutually exclusive — enabling one clears the other.
+  // `verifyResult` (feature 5) is the last full-chain-verify outcome; read
+  // from the module cache on mount and refreshed via a window event.
+  const [focusChain, setFocusChain] = useState<Set<string> | null>(null)
+  const [focusAnchorId, setFocusAnchorId] = useState<string | null>(() => {
+    try { return localStorage.getItem('redlog-timeline-focus-anchor') } catch { return null }
+  })
+  const [anomalyFilter, setAnomalyFilter] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-anomaly-filter') === '1' } catch { return false }
+  })
+  const [verifyResult, setVerifyResult] = useState<FullVerifyResult | null>(() => getLastVerifyResult())
+  const [verifyDismissed, setVerifyDismissed] = useState(false)
+  useEffect(() => {
+    const onUpdate = (): void => {
+      setVerifyResult(getLastVerifyResult())
+      setVerifyDismissed(false)
+    }
+    window.addEventListener(VERIFY_UPDATED_EVENT, onUpdate)
+    return () => window.removeEventListener(VERIFY_UPDATED_EVENT, onUpdate)
+  }, [])
+  useEffect(() => {
+    try {
+      if (focusAnchorId) localStorage.setItem('redlog-timeline-focus-anchor', focusAnchorId)
+      else localStorage.removeItem('redlog-timeline-focus-anchor')
+    } catch { /* ignore */ }
+  }, [focusAnchorId])
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-anomaly-filter', anomalyFilter ? '1' : '0') } catch { /* ignore */ }
+  }, [anomalyFilter])
+
   // Plugin-registered event types (agent_type → lane/color/label mapping).
   // Previously event-registry.ts was a dead facade — plugin events were all
   // bucketed into `system`. Timeline now queries `plugins.eventTypes()` on
@@ -456,6 +576,54 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
     return map
   }, [events])
+
+  // v0.6.89.5: reverse-effects index (feature 1) — `effectsById[causeId] =
+  // [effectEventId, ...]`. Built once per events change; O(N × avg-causes).
+  // Also the badges index (feature 3) so every dot render is O(1). The
+  // broken-at id from the last full verify (feature 5) participates in the
+  // badge set so the `⛓️‍💥` badge lights up on the offending row.
+  const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
+  const effectsById = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const e of events) {
+      const causes = (e.data as { _causes?: unknown } | undefined)?._causes
+      if (Array.isArray(causes)) {
+        for (const c of causes) {
+          if (typeof c !== 'string') continue
+          const arr = m.get(c)
+          if (arr) arr.push(e.id)
+          else m.set(c, [e.id])
+        }
+      }
+    }
+    return m
+  }, [events])
+  const badgesById = useMemo(() => {
+    const m = new Map<string, EventBadge[]>()
+    for (const e of events) {
+      const b = computeBadges(e, brokenAtId)
+      if (b.length) m.set(e.id, b)
+    }
+    return m
+  }, [events, brokenAtId])
+  const anomalyCount = badgesById.size
+
+  // Restore-from-storage: if a focus anchor id was saved in a previous session
+  // and it still exists in the current map, compute its chain. Runs whenever
+  // the anchor id changes OR the reverse-effects index changes (i.e. new
+  // events arrived that could extend the chain).
+  useEffect(() => {
+    if (!focusAnchorId) { setFocusChain(null); return }
+    const anchor = eventsMapRef.current.get(focusAnchorId)
+    if (!anchor) { setFocusChain(null); return }
+    setFocusChain(walkFocusChain(anchor, eventsMapRef.current, effectsById))
+  }, [focusAnchorId, effectsById])
+
+  // Mutual exclusion: enabling focus chain implicitly turns anomaly filter off,
+  // and vice versa. Done here (rather than at each toggle site) so keyboard
+  // shortcuts and clicks stay in sync.
+  useEffect(() => { if (focusChain && anomalyFilter) setAnomalyFilter(false) }, [focusChain])
+  useEffect(() => { if (anomalyFilter && focusAnchorId) setFocusAnchorId(null) }, [anomalyFilter])
 
   // Collapse events that fall within ~14px of each other on the same lane into a
   // single clickable marker (with a count) so dense bursts stay legible. Zooming
@@ -705,6 +873,46 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedEvent, events, hiddenLanes])
 
+  // v0.6.89.5 feature 2: `f` shortcut to enter/exit focus chain mode.
+  // Anchor priority: currently-selected event, then the event under the
+  // mouse (last hovered dot). Escape also exits. Skipped when the user is
+  // typing in an input or contenteditable to avoid hijacking search boxes.
+  const hoveredEventRef = useRef<RedLogEvent | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+      if (e.key === 'Escape' && focusChain) {
+        setFocusAnchorId(null)
+        return
+      }
+      if (e.key !== 'f' && e.key !== 'F') return
+      // ignore modifier combos so this doesn't collide with ⌘F etc.
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const anchor = selectedEvent ?? hoveredEventRef.current
+      if (!anchor) return
+      e.preventDefault()
+      if (focusAnchorId === anchor.id) {
+        // toggle off — press f again on the same anchor exits focus.
+        setFocusAnchorId(null)
+      } else {
+        setFocusAnchorId(anchor.id)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedEvent, focusChain, focusAnchorId])
+
+  // Helper: scroll the track so the given event is centred in the viewport.
+  // Used by the cause/effect chips (feature 1) and any other jump-to-event
+  // interaction; it uses `displayTs` so a marker with an override timestamp
+  // still lands under its rendered position instead of its wall-clock one.
+  const scrollToEvent = useCallback((evt: RedLogEvent) => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollLeft = Math.max(0, Math.min(toX(displayTs(evt)) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+  }, [toX, TRACK_W])
+
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
     // Respect the current mask/reveal state (audit finding #2). If the panel
@@ -744,7 +952,50 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {/* v0.6.89.5 feature 5: broken-chain top banner. Sticks above the header
+          so it can't be missed. Dismiss hides for the current mount only —
+          the module cache still holds the result, so re-opening Timeline (or
+          another verify producing the same brokenAt) brings it back. */}
+      {verifyResult && verifyResult.brokenAtEventId && !verifyDismissed && (
+        <div
+          data-testid="timeline-broken-chain-banner"
+          className="flex items-center gap-2 px-4 py-1.5 border-b border-red-800 bg-red-950/50 text-xs shrink-0"
+        >
+          <span className="text-red-300 font-mono">
+            {t('timeline.brokenChain.banner', {
+              brokenAtId: verifyResult.brokenAtEventId.slice(0, 8),
+              walked: String(verifyResult.walked ?? 0)
+            })}
+          </span>
+          <button
+            onClick={() => setVerifyDismissed(true)}
+            className="ml-auto text-[11px] text-red-300 hover:text-red-100 px-1.5 py-0.5 rounded bg-red-900/40 hover:bg-red-900/60 transition-colors"
+          >
+            {t('timeline.brokenChain.dismiss')}
+          </button>
+        </div>
+      )}
+      {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
+          while focus mode is active. Anchored on the wrapper so it floats
+          above the minimap without shifting layout. */}
+      {focusChain && (
+        <div
+          data-testid="timeline-focus-badge"
+          className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-cyan-500/50 bg-zinc-950/95 text-xs font-mono shadow-lg"
+          style={{ top: 6, right: 8 }}
+        >
+          <span className="text-cyan-300">
+            {t('timeline.focusChain.badge', { count: focusChain.size })}
+          </span>
+          <button
+            onClick={() => setFocusAnchorId(null)}
+            className="text-zinc-400 hover:text-zinc-100 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+            title={t('timeline.focusChain.exit')}
+            aria-label={t('timeline.focusChain.exit')}
+          >×</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-800/80 shrink-0">
         <span className="text-[13px] font-semibold text-zinc-200 tracking-wide">{t('timeline.title')}</span>
@@ -788,6 +1039,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             onto a second row — reported when running at 1280 wide with the
             full lane list open. */}
         <div className="ml-auto flex flex-nowrap gap-1 items-center overflow-x-auto min-w-0">
+          {/* v0.6.89.5 feature 4: anomaly filter — dims every event without an
+              integrity badge (clock anomaly / recovery / evidence removal /
+              anchor failure / chain break). First chip so it's the fastest
+              thing to reach when a verify caught something. Disabled at
+              opacity 0.25 when there's nothing to filter. Mutually exclusive
+              with focus-chain mode (both use dim opacity 0.15). */}
+          <button
+            data-testid="timeline-anomaly-chip"
+            onClick={() => {
+              if (anomalyCount === 0) return
+              setAnomalyFilter((v) => !v)
+            }}
+            disabled={anomalyCount === 0}
+            className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500 ${
+              anomalyCount === 0
+                ? 'opacity-25 cursor-default text-zinc-600'
+                : anomalyFilter
+                  ? 'text-amber-200 bg-amber-500/25 ring-1 ring-amber-500/40'
+                  : 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
+            }`}
+            title={anomalyCount === 0 ? t('timeline.anomalies.tooltip') : t('timeline.anomalies.tooltip')}
+          >
+            {t('timeline.anomalies.chip', { count: anomalyCount })}
+          </button>
           {/* v0.6.87 C2: export the currently-visible time window as JSON.
               The window is derived from the minimap view (left..left+width in
               percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
@@ -945,6 +1220,21 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 {Date.now() >= timeStart && Date.now() <= timeEnd && (
                   <div className="absolute top-0 w-px bg-red-500/70" style={{ left: toX(Date.now()), height: totalH }} />
                 )}
+                {/* v0.6.89.5 feature 5: red-tinted band behind every event
+                    that landed AFTER the broken-chain event. Rendered before
+                    the dots so it sits underneath but above the lane
+                    background. */}
+                {brokenAtId && (() => {
+                  const brokenEvt = eventsMapRef.current.get(brokenAtId)
+                  if (!brokenEvt) return null
+                  const x0 = toX(displayTs(brokenEvt))
+                  return (
+                    <div
+                      className="absolute top-0 bg-red-500/5 border-l border-red-500/30 pointer-events-none"
+                      style={{ left: x0, width: Math.max(0, TRACK_W - x0), height: totalH }}
+                    />
+                  )
+                })()}
                 {/* Event markers — single dot, or a counted cluster when dense */}
                 {clusters.map((c) => {
                   const single = c.events.length === 1
@@ -952,18 +1242,55 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   const sel = single && selectedEvent?.id === evt.id
                   const dot = single ? 9 : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
                   const hit = Math.max(20, dot + 8)
+                  // v0.6.89.5: filter dimming. Focus-chain and anomaly-filter
+                  // are mutually exclusive (enforced by the effects above), so
+                  // at most one of these is truthy at any time. A cluster is
+                  // "active" (not dimmed) if ANY event in it is in the
+                  // active set — so a 20-event burst that contains a chain
+                  // link doesn't disappear.
+                  let dimmed = false
+                  if (focusChain) {
+                    dimmed = !c.events.some((e) => focusChain.has(e.id))
+                  } else if (anomalyFilter) {
+                    dimmed = !c.events.some((e) => badgesById.has(e.id))
+                  }
+                  // In-chain event also gets a slim ring in the anchor's lane
+                  // colour so operators can see the chain trail at a glance.
+                  const anchorEvt = focusAnchorId ? eventsMapRef.current.get(focusAnchorId) : null
+                  const inChain = focusChain && c.events.some((e) => focusChain.has(e.id))
+                  const chainRingColor = anchorEvt
+                    ? LANE_COLORS[toLane(anchorEvt.agentType, anchorEvt.data?.subtype as string | undefined, pluginTypes)]
+                    : LANE_COLORS[c.lane]
+                  // Badge overlay — only for single-event clusters (multi-dot
+                  // clusters are already crowded; the operator can click into
+                  // them and see badges in the popover row).
+                  const badges = single ? badgesById.get(evt.id) : undefined
+                  const badgeTitle = badges && badges.length
+                    ? '\n' + badges.map((b) => `${b.icon} ${b.reason}`).join('\n')
+                    : ''
                   return (
                     <div
                       key={c.key}
+                      data-timeline-event
                       className="absolute cursor-pointer flex items-center justify-center"
-                      style={{ left: c.x - hit / 2, top: c.y - hit / 2, width: hit, height: hit, zIndex: sel ? 10 : 2 }}
+                      style={{
+                        left: c.x - hit / 2,
+                        top: c.y - hit / 2,
+                        width: hit,
+                        height: hit,
+                        zIndex: sel ? 10 : 2,
+                        opacity: dimmed ? 0.15 : 1,
+                        transition: 'opacity 120ms ease'
+                      }}
                       title={single
-                        ? `${new Date(evt.timestamp).toLocaleTimeString()} — ${eventTitle(evt)}`
+                        ? `${new Date(evt.timestamp).toLocaleTimeString()} — ${eventTitle(evt)}${badgeTitle}`
                         : `${c.events.length} ${t('timeline.title')} · ${new Date(c.events[0].timestamp).toLocaleTimeString()}`}
+                      onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
+                      onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
                       onClick={() => single ? setSelectedEvent(sel ? null : evt) : setCluster({ x: c.x, y: c.y, events: c.events })}
                     >
                       <div
-                        className="flex items-center justify-center transition-transform hover:scale-125"
+                        className={dimmed ? 'flex items-center justify-center' : 'flex items-center justify-center transition-transform hover:scale-125'}
                         style={{
                           width: dot, height: dot,
                           borderRadius: single ? '50%' : 5,
@@ -971,11 +1298,24 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           border: single ? undefined : '1px solid rgba(0,0,0,0.45)',
                           boxShadow: sel
                             ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
-                            : `0 0 6px ${LANE_COLORS[c.lane]}40`
+                            : inChain
+                              ? `0 0 0 1.5px ${chainRingColor}, 0 0 8px ${chainRingColor}80`
+                              : `0 0 6px ${LANE_COLORS[c.lane]}40`
                         }}
                       >
                         {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
                       </div>
+                      {/* Feature 3: single-badge bubble at top-right. Only the
+                          first badge shows here to keep the dot readable; the
+                          rest surface in the tooltip and in the detail panel. */}
+                      {single && badges && badges.length > 0 && (
+                        <span
+                          className="absolute -top-0.5 -right-0.5 rounded-full bg-zinc-950/95 border border-amber-500/60 text-[8px] leading-none flex items-center justify-center pointer-events-none"
+                          style={{ width: 12, height: 12 }}
+                        >
+                          {badges[0].icon}
+                        </span>
+                      )}
                     </div>
                   )
                 })}
@@ -1180,6 +1520,117 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             </div>
           </div>
           <p className="text-[12px] text-zinc-300 mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
+          {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
+              to the title so the operator sees every flag at once (the dot
+              overlay only shows the first). Empty when the event has none. */}
+          {(() => {
+            const badges = badgesById.get(selectedEvent.id)
+            if (!badges || badges.length === 0) return null
+            return (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {badges.map((b) => (
+                  <span
+                    key={b.key}
+                    className="text-[11px] px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 font-mono"
+                    title={b.reason}
+                  >
+                    {b.icon} {b.reason}
+                  </span>
+                ))}
+              </div>
+            )
+          })()}
+          {/* v0.6.89.5 feature 1: `_causes` visualisation. Chips look up the
+              cause in the in-memory events map; a click sets that event as
+              the new selection and scrolls the track to centre it. A cause
+              id not found in the map is a "chain broken" symptom — the T6
+              case from the design grill — and gets a red chip so the
+              operator can't miss it. */}
+          {(() => {
+            const causes = (selectedEvent.data as { _causes?: unknown } | undefined)?._causes
+            if (!Array.isArray(causes) || causes.length === 0) return null
+            return (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                <span className="text-[11px] text-zinc-500 font-mono">
+                  {t('timeline.detail.causedBy')}
+                </span>
+                {(causes as unknown[]).filter((c): c is string => typeof c === 'string').map((cid) => {
+                  const cev = eventsMapRef.current.get(cid)
+                  if (!cev) {
+                    return (
+                      <span
+                        key={cid}
+                        className="text-[11px] px-1.5 py-0.5 rounded border border-red-500/50 bg-red-500/15 text-red-300 font-mono"
+                        title={cid}
+                      >
+                        {t('timeline.detail.causeNotFound', { id: cid.slice(0, 8) })}
+                      </span>
+                    )
+                  }
+                  const clane = toLane(cev.agentType, cev.data?.subtype as string | undefined, pluginTypes)
+                  const cc = LANE_COLORS[clane]
+                  return (
+                    <button
+                      key={cid}
+                      onClick={() => { setSelectedEvent(cev); scrollToEvent(cev) }}
+                      className="text-[11px] px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+                      style={{ color: cc, backgroundColor: `${cc}18`, border: `1px solid ${cc}40` }}
+                      title={eventTitle(cev)}
+                    >
+                      ◂ {eventTitle(cev)}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
+          {/* Effects (reverse map). Capped at 20 chips; overflow footer says
+              how many more without rendering thousands of buttons. */}
+          {(() => {
+            const eff = effectsById.get(selectedEvent.id)
+            if (!eff || eff.length === 0) return null
+            const CAP = 20
+            const shown = eff.slice(0, CAP)
+            const more = eff.length - shown.length
+            return (
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                <span className="text-[11px] text-zinc-500 font-mono">
+                  {t('timeline.detail.effects', { count: eff.length })}
+                </span>
+                {shown.map((eid) => {
+                  const ev = eventsMapRef.current.get(eid)
+                  if (!ev) return null
+                  const elane = toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)
+                  const ec = LANE_COLORS[elane]
+                  return (
+                    <button
+                      key={eid}
+                      onClick={() => { setSelectedEvent(ev); scrollToEvent(ev) }}
+                      className="text-[11px] px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+                      style={{ color: ec, backgroundColor: `${ec}18`, border: `1px solid ${ec}40` }}
+                      title={eventTitle(ev)}
+                    >
+                      ▸ {eventTitle(ev)}
+                    </button>
+                  )
+                })}
+                {more > 0 && (
+                  <span className="text-[11px] text-zinc-500 font-mono">
+                    {t('timeline.detail.effectsMore', { count: more })}
+                  </span>
+                )}
+              </div>
+            )
+          })()}
+          {/* Focus-chain hint bubble (feature 2) — small nudge shown on the
+              currently-selected event's detail panel when focus mode is OFF.
+              Suppressed entirely once the operator is already in focus mode
+              so it doesn't add noise. */}
+          {!focusChain && (
+            <p className="mt-1 text-[10px] text-zinc-600 font-mono">
+              {t('timeline.focusChain.enterHint')}
+            </p>
+          )}
           {selectedEvent.targetId && (
             <p className="text-xs text-zinc-500 mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}

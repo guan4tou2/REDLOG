@@ -3,6 +3,55 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.90 — 2026-08-05
+Timeline `_causes` visualisation UI — the frontend companion to v0.6.89's
+backend producer wiring. UX bundle (`/`-search / follow / ⌘K / bookmarks /
+tz toggle / session dividers) shifts to v0.6.91.
+
+### Detail-panel chips
+- **`▶ Caused by`**: renders `data._causes` as clickable chips using the
+  in-memory event map. Chip click → jump + focus the referenced event.
+- **`▼ Effects (N)`**: reverse-computed on mount by iterating all events;
+  shows up to 20 chips + `+M more effects` footer beyond that.
+- **Broken-link tag**: when a `_causes` id doesn't resolve (event
+  sanitized / not loaded / forged), chip renders red with
+  `event <id.slice(0,8)>… not found — chain broken`.
+
+### Focus chain mode
+- Press **`f`** to enter focus mode: anchors on the selected event,
+  BFS-walks `_causes` upstream + `effectsById` downstream (depth 20).
+- Non-chain events dim to opacity 0.15; chain events keep normal opacity
+  + get a slim ring in the anchor's lane color.
+- Top-right badge `🔗 Focus chain (N events)` + `×` to exit; `f` or
+  Escape also exits.
+- Anchor id persisted in `localStorage[redlog-timeline-focus-anchor]`;
+  restored on mount if the event still exists in the map.
+
+### Anomaly badges on event dots
+- `⚠` `_clock_anomaly` · `🔄` `recovered` (orphan session) · `📮` `recovered_from_spool` · `🗑️` `screenshot_deleted / cast_pruned / screenshot_pruned` · `⚓✗` `anchor_failed` · `⛓️‍💥` chain broken (from full verify)
+- Tiny bubble on top-right corner of the dot; full list + reasons on
+  hover tooltip; also rendered as a chip row in the detail panel.
+
+### Anomaly filter chip
+- Header chip `⚠ Anomalies (N)` — click to filter Timeline to only
+  events with any badge; non-matches dim to opacity 0.15.
+- Mutually exclusive with focus chain mode (enabling one clears the
+  other).
+- Persisted in `localStorage[redlog-timeline-anomaly-filter]`.
+
+### Broken-chain highlighting after full verify
+- New `src/renderer/src/lib/verifyResultCache.ts` — module-level cache
+  for the last `FullVerifyResult`. Settings' Verify button writes to
+  it + dispatches a `redlog-timeline-verify-updated` window event.
+- Timeline reads on mount + on event; when `brokenAtEventId` is set:
+  - `⛓️‍💥` badge on the broken row
+  - Faint red-tinted band behind all events with `createdAt >= brokenEvent.createdAt`
+  - Top banner `⛓️‍💥 Chain broken at event <id.slice(0,8)>…` with a
+    Dismiss button (state-only dismiss; cache stays; next mount shows
+    the banner again unless a fresh verify passes)
+
+Tests: 343 unit / 17 e2e / build clean.
+
 ## v0.6.89 — 2026-08-05
 Chain-integrity backend release. Design decisions from the exhaustive
 `/grill-me` session locked here + shipped. Timeline UI for `_causes`

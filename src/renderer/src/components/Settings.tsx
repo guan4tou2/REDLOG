@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
 import { toast } from './Toast'
 import { confirm as confirmDialog } from './ConfirmDialog'
+import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -980,6 +981,9 @@ interface FullVerifyResult {
   anchor?: ChainAnchorInfo | null
   anchorMatchesWalkedHead?: boolean
   clockAnomalies?: Array<{ eventId: string; reason: string }>
+  signedCount?: number
+  unsignedCount?: number
+  badSignatureAtEventId?: string | null
 }
 
 function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
@@ -1064,6 +1068,11 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
             const r = await window.redlog.chain.verify({ full: true })
             setVerifying(false)
             setFullVerify(r)
+            // v0.6.89.5: publish to the module-level cache so a fresh
+            // Timeline mount picks up the broken-chain state without
+            // requiring another verify click. Custom event lets an
+            // already-mounted Timeline update in place.
+            setLastVerifyResult(r as CachedFullVerifyResult | null)
           }}
           disabled={verifying}
           className="px-3 py-1.5 bg-zinc-800 text-emerald-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-50"
