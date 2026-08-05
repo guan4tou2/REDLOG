@@ -39,6 +39,8 @@ import {
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
+import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
+import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
@@ -489,6 +491,21 @@ function startProject(project: ProjectMeta): void {
   })
   startClipboardMonitor()
 
+  // v0.6.92 W-project — file watcher + process monitor. Both opt-in; the
+  // producers just no-op when disabled so the wiring is unconditional.
+  configureFileWatcher({
+    enabled: config.fileWatcher?.enabled ?? false,
+    watchPaths: config.fileWatcher?.watchPaths ?? [],
+    ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
+    engagementId, operatorId
+  })
+  configureProcessMonitor({
+    enabled: config.processMonitor?.enabled ?? false,
+    pollMs: config.processMonitor?.pollMs,
+    ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
+    engagementId, operatorId
+  })
+
   configureApi({
     engagementId,
     operatorId,
@@ -606,6 +623,8 @@ function stopProject(): void {
   stopApiServer()
   ipMonitor.stop()
   stopClipboardMonitor()
+  stopFileWatcher()
+  stopProcessMonitor()
   stopCdpMonitor()
   stopOpsecMonitor()
   screenshotAgent.stop()
@@ -795,6 +814,18 @@ app.whenReady().then(() => {
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
       storePreview: newConfig.clipboard?.storePreview ?? false,
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, lootDetector
+    })
+    configureFileWatcher({
+      enabled: newConfig.fileWatcher?.enabled ?? false,
+      watchPaths: newConfig.fileWatcher?.watchPaths ?? [],
+      ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
+      engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
+    })
+    configureProcessMonitor({
+      enabled: newConfig.processMonitor?.enabled ?? false,
+      pollMs: newConfig.processMonitor?.pollMs,
+      ignoreCommands: newConfig.processMonitor?.ignoreCommands ?? [],
+      engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)

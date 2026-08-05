@@ -17,6 +17,8 @@ interface ConfigState {
   screenshot: { quality: number }
   overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
+  fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
+  processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
   browser?: {
     binary: string
     proxy: string
@@ -409,6 +411,58 @@ export default function Settings(): JSX.Element {
               )}
               {config.clipboard?.enabled && (
                 <p className="text-xs text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
+              )}
+            </FieldGroup>
+            <FieldGroup title={t('settings.fileWatcherGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.fileWatcher?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.fileWatcherEnable')}</span>
+              </label>
+              <p className="text-xs text-zinc-600">{t('settings.fileWatcherEnableHint')}</p>
+              {config.fileWatcher?.enabled && (
+                <>
+                  <ListField
+                    label={t('settings.fileWatcherPaths')}
+                    items={config.fileWatcher?.watchPaths ?? []}
+                    onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, watchPaths: items } })}
+                    placeholder={t('settings.fileWatcherPathsPlaceholder')}
+                  />
+                  <ListField
+                    label={t('settings.fileWatcherIgnore')}
+                    items={config.fileWatcher?.ignorePatterns ?? []}
+                    onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, ignorePatterns: items } })}
+                    placeholder={t('settings.fileWatcherIgnorePlaceholder')}
+                  />
+                  <p className="text-xs text-zinc-600">{t('settings.fileWatcherIgnoreHint')}</p>
+                </>
+              )}
+            </FieldGroup>
+            <FieldGroup title={t('settings.processMonitorGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.processMonitor?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.processMonitorEnable')}</span>
+              </label>
+              <p className="text-xs text-zinc-600">{t('settings.processMonitorEnableHint')}</p>
+              {config.processMonitor?.enabled && (
+                <>
+                  <ListField
+                    label={t('settings.processMonitorIgnore')}
+                    items={config.processMonitor?.ignoreCommands ?? []}
+                    onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: true, ignoreCommands: items } })}
+                    placeholder={t('settings.processMonitorIgnorePlaceholder')}
+                  />
+                  <p className="text-xs text-zinc-600">{t('settings.processMonitorIgnoreHint')}</p>
+                </>
               )}
             </FieldGroup>
           </>

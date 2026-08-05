@@ -155,6 +155,26 @@ export interface RedLogConfig {
     /** Registry URL the Settings placeholder + one-click fetch use. */
     defaultRegistryUrl: string
   }
+  /** v0.6.92 W-project: file-watcher (chokidar). Opt-in — file activity is
+   *  noisy without a well-scoped watchPaths list. Emits `file_transfer`
+   *  events with subtype `file_created/modified/deleted`. */
+  fileWatcher?: {
+    enabled: boolean
+    /** Absolute paths + globs; empty = disabled */
+    watchPaths?: string[]
+    /** Additional gitignore-style patterns on top of the built-in defaults
+     *  (node_modules/, .git/, dist/, out/, build/, .DS_Store, *.swp, etc) */
+    ignorePatterns?: string[]
+  }
+  /** v0.6.92 W-project: process-spawn monitor (macOS/Linux ps polling).
+   *  Emits `process` events with subtype `process_spawn/process_exit`.
+   *  Off by default; polling cadence is a CPU/coverage tradeoff. Windows
+   *  is unsupported for now and emits a one-shot system advisory. */
+  processMonitor?: {
+    enabled: boolean
+    pollMs?: number
+    ignoreCommands?: string[]
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -238,6 +258,16 @@ const DEFAULT_CONFIG: RedLogConfig = {
     // Default: the example registry hosted from this repo on GitHub raw.
     // Deployers running a private registry override this in config.yaml.
     defaultRegistryUrl: 'https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json'
+  },
+  fileWatcher: {
+    enabled: false,
+    watchPaths: [],
+    ignorePatterns: []
+  },
+  processMonitor: {
+    enabled: false,
+    pollMs: 500,
+    ignoreCommands: []
   }
 }
 
