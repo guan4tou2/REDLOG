@@ -3,6 +3,96 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.92 — 2026-08-05
+W 專題 — 4 new capture sources, backend only. Grill Q7 option D.
+
+### A. DNS query/response via mitmproxy addon
+- `hooks/mitmproxy-addon.py` extended with `dns_message()` handler
+- Requires `mitmproxy --mode dns@53` (or `dns@5353` non-priv) in addition
+  to the existing HTTP mode; both handlers coexist
+- Events: `agent_type: 'dns'` — `dns_query` + `dns_response` with `_causes`
+  linking back to the query event (per-flow-id map like the HTTP addon)
+- `data`: `query_name, query_type, query_id, transport, source_addr,
+  response_code, answers[], duration_ms`
+- Timeline `dns` lane already existed; extended `eventTitle` to render
+  `DNS ⇒ example.com A` / `DNS ⇐ example.com A → 93.184.216.34 (5ms)`
+- Removed `dns` from `EXTERNAL_ONLY_LANES` — it has a producer now
+
+### B. Browser console via CDP
+- `src/main/services/cdp-connector.ts` extended: HTTP-poll for tab list
+  unchanged; NEW per-tab WebSocket subscription to `Runtime.consoleAPICalled`
+  + `Runtime.exceptionThrown` + `Log.entryAdded`
+- New `ws` npm dep (Node 20 in Electron 33 doesn't have reliable global
+  `WebSocket`)
+- Events: `agent_type: 'browser'`, subtypes `console_log / console_warn /
+  console_error / console_info / console_debug / exception / log_entry`
+- `data`: `url, host, tab_id, message, level, source, line_number, stack_trace`
+- **500 ms dedup** on `(url, message, level, line_number)` — kills React
+  dev-mode warning spam
+- **Caps**: 2 KB message, 100-line stack
+- **New Timeline lane `browser`** (color #f97316, between scanner + dns)
+- Skips `about:blank / chrome:// / chrome-extension://`
+
+### C. File I/O via chokidar
+- New `chokidar` npm dep (cross-platform, well-maintained)
+- New service `src/main/services/file-watcher.ts` + config
+  `fileWatcher: { enabled, watchPaths[], ignorePatterns[] }`
+- Opt-in (default off). Emits `agent_type: 'file_transfer'` with
+  `data.source: 'file-watcher'` + subtypes `file_created / file_modified /
+  file_deleted`
+- Uses chokidar's `awaitWriteFinish: 500ms` to coalesce editor partial
+  writes into single events; caps `depth: 8` on watchers
+- Built-in ignore defaults: `node_modules/, .git/, dist/, out/, build/,
+  .DS_Store, *.swp, *.swo, *.tmp, .#*, .redlog/`
+- Settings UI: new File Watcher section (enable toggle + watch paths list
+  + ignore patterns list)
+
+### D. Process spawn tree — macOS/Linux via ps polling
+- New service `src/main/services/process-monitor.ts`
+- Polls `ps -eo pid,ppid,etime,command` every 500 ms; pid-diff algorithm
+  emits `process_spawn` / `process_exit`
+- Windows: emits one-shot `system.process_monitor_unsupported` advisory
+  (visible reason why the lane stays empty)
+- **New Timeline lane `process`** (color #f472b6, between scope + system)
+- Budget: 1000 events/min. Overflow emits single
+  `system.process_monitor_saturated` with the count instead of drowning
+- Ignore self + Electron/redlog/node processes to avoid loops
+- `ppid → REDLOG_TERMINAL_ID → session_start` correlation is a stub
+  (`findCauseSession`) — reliable mapping needs SIP-elevated ptrace on
+  macOS; kept as a hook so future release can fill it in without changing
+  the emit surface
+
+### Capture health integration
+- `capture-health.ts` now tracks all 4 sources: `dns`, `browser-console`,
+  `process-monitor`, `file-watcher`
+- Contribute to `partial` / `dark` verdicts + Dashboard CaptureHealthCard
+  rows
+
+### Tests
+- `test/process-monitor.test.ts` — 10 tests: `parsePsLine()` /
+  `diffProcs()` (spawn/exit, ignore list, pid reuse race, mixed diffs)
+- `test/file-watcher.test.ts` — 5 tests: lifecycle state machine
+
+### Design notes
+- **DNS `_causes`**: mitmproxy addon reads the RedLog API's 201 response
+  body (the full event) to grab the query's event id, then stamps
+  `_causes: [query_id]` on the response event
+- **Browser color collision**: `#f97316` matches `loot` — legend clash
+  noted, follow-up welcome
+- **Process→shell correlation stub**: `findCauseSession()` returns null
+  today; Timeline-side wall-clock proximity is the fallback until
+  ptrace-based mapping lands
+- **File watcher IPC**: reuses existing `config:save` flow instead of a
+  dedicated `fileWatcher:configure` handler — matches how clipboard +
+  screenshot restart on config change
+
+### Verified
+- macOS (Darwin 25.6.0) — full path
+- Linux — same POSIX `ps` flags, should work; not tested
+- Windows — only the unsupported-advisory branch exercised
+
+Tests: **358 unit** (+15 from new tests) / 17 e2e / build clean.
+
 ## v0.6.91 — 2026-08-05
 Timeline UX bundle — the 7 items from the `/grill-me` session's Q9/Q10
 axes. All renderer / IPC; no chain touch.

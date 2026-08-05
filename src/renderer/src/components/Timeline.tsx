@@ -11,19 +11,25 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 const MIN_LANE_H = 36
 const LABEL_W = 92
 const BASE_TRACK_W = 2000
-const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'system'] as const
+// v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
+// and `process` (spawn/exit) between scope and system so it doesn't dilute
+// the top attack-narrative lanes.
+const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
 // Lanes with no built-in producer — populated only by external agents
 // (custom MCP tools, third-party plugins) posting to /api/events. Showing
 // them as plain "empty" is misleading; the chip tooltip says so explicitly.
-const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['dns', 'credential_use', 'c2_checkin'])
+// v0.6.92: `dns` now has a built-in producer (mitmproxy DNS mode), so it's
+// removed from this set. `credential_use` and `c2_checkin` remain external-only.
+const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'])
 
 const LANE_COLORS: Record<LaneId, string> = {
   shell: '#22c55e',
   agent: '#84cc16',
   http_navigation: '#6366f1',
   scanner: '#8b5cf6',
+  browser: '#f97316',
   dns: '#14b8a6',
   pivot: '#0ea5e9',
   screenshot: '#3b82f6',
@@ -35,6 +41,7 @@ const LANE_COLORS: Record<LaneId, string> = {
   loot: '#f97316',
   cleanup: '#dc2626',
   scope: '#ef4444',
+  process: '#f472b6',
   system: '#52525b'
 }
 
@@ -60,8 +67,44 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'session_start') return `▸ terminal opened`
       if (d.subtype === 'session_end') return `▪ terminal closed${d.exitCode != null ? ` (exit ${d.exitCode})` : ''}`
       return 'Shell event'
-    case 'dns':
-      return `DNS ${d.subtype === 'dns_response' ? '⇐' : '⇒'} ${d.dest_host || d.command || ''}`
+    case 'dns': {
+      // v0.6.92 W-project: mitmproxy DNS mode fills query_name/query_type +
+      // (on response) response_code + answers[]. Fall back to older
+      // dest_host/command shape for events posted by legacy external agents.
+      const qName = (d.query_name as string) || (d.dest_host as string) || (d.command as string) || ''
+      const qType = (d.query_type as string) || ''
+      if (d.subtype === 'dns_response') {
+        const answers = (d.answers as Array<{ type?: string; data?: string }> | undefined) ?? []
+        const preview = answers.length > 0
+          ? ` → ${answers.slice(0, 2).map((a) => a.data ?? '').filter(Boolean).join(', ')}`
+          : ''
+        const dur = d.duration_ms != null ? ` (${d.duration_ms}ms)` : ''
+        const rcode = d.response_code ? ` [${d.response_code}]` : ''
+        return `DNS ⇐ ${qName} ${qType}${rcode}${preview}${dur}`.trim()
+      }
+      return `DNS ⇒ ${qName} ${qType}`.trim()
+    }
+    case 'browser': {
+      // v0.6.92: CDP console + exception + log-entry events. Errors/exceptions
+      // get a warning glyph; ordinary logs get an info glyph. Message is
+      // capped at 80 chars for the lane label; full content lives in `data`.
+      const level = String(d.level ?? 'log')
+      const host = (d.host as string) || (d.url as string) || ''
+      const msg = String(d.message ?? '').slice(0, 80).replace(/\s+/g, ' ')
+      const glyph = level === 'error' || level === 'warning' || level === 'warn' || d.subtype === 'exception' ? '⚠' : '▸'
+      if (d.subtype === 'exception') return `⚠ [exception] ${host}: ${(d.exception_class as string) || 'Error'} — ${msg}`.trim()
+      return `${glyph} [${level}] ${host}: ${msg}`.trim()
+    }
+    case 'process': {
+      // v0.6.92: ps-polling produced spawn/exit events. Command is capped at
+      // 60 chars for the lane label; full argv lives on the event.
+      const cmd = String(d.command ?? '').slice(0, 60)
+      if (d.subtype === 'process_exit') {
+        const dur = d.duration_sec != null ? ` (${d.duration_sec}s)` : ''
+        return `▪ ${cmd}${dur}`.trim()
+      }
+      return `▶ ${cmd}`.trim()
+    }
     case 'http_navigation':
       return `⇢ ${d.host || d.url || ''} ${d.title ? `— ${(d.title as string).slice(0, 60)}` : ''}`.trim()
     case 'scanner': {
@@ -86,8 +129,15 @@ function eventTitle(event: RedLogEvent): string {
       return `Screenshot (${d.trigger})`
     case 'clipboard':
       return `Clipboard: ${(d.content as string)?.slice(0, 60) || ''}...`
-    case 'file_transfer':
-      return `${d.subtype || d.direction || 'transfer'}: ${d.filename || d.localPath || d.remotePath || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
+    case 'file_transfer': {
+      // v0.6.92 W-project: file-watcher emits subtype file_created/modified/
+      // deleted + `path` + `size`. Shell hooks + external agents keep the
+      // older filename/localPath/remotePath + bytes shape.
+      const label = d.subtype || d.direction || 'transfer'
+      const target = d.path || d.filename || d.localPath || d.remotePath || ''
+      const size = d.size != null ? ` (${d.size}B)` : d.bytes ? ` (${d.bytes}B)` : ''
+      return `${label}: ${target}${size}`.trim()
+    }
     case 'credential_use':
       return `${d.subtype || 'cred'}: ${d.user_context || '?'} @ ${d.dest_host || d.dest_ip || ''}`
     case 'c2_checkin':
@@ -637,6 +687,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     agent: t('timeline.agent'),
     http_navigation: t('timeline.http'),
     scanner: t('timeline.scanner'),
+    browser: t('timeline.browser'),
     dns: t('timeline.dns'),
     pivot: t('timeline.pivot'),
     screenshot: t('timeline.screenshot'),
@@ -648,6 +699,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     loot: t('timeline.loot'),
     cleanup: t('timeline.cleanup'),
     scope: t('timeline.scope'),
+    process: t('timeline.process'),
     system: t('timeline.system')
   }), [t])
 
