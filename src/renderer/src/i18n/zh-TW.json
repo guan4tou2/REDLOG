@@ -537,6 +537,17 @@
   "timeline.detail.copied": "已複製",
   "timeline.detail.previewCut": "…只顯示前 {{shown}}(共 {{total}})·可用「複製全部」取得完整內容",
   "timeline.detail.empty": "(空)",
+  "timeline.detail.causedBy": "▶ 觸發自：",
+  "timeline.detail.effects": "▼ 觸發了 ({{count}})：",
+  "timeline.detail.effectsMore": "還有 {{count}} 個後果",
+  "timeline.detail.causeNotFound": "找不到事件 {{id}}… — 證據鏈已斷",
+  "timeline.focusChain.badge": "🔗 聚焦鏈（{{count}} 個事件）",
+  "timeline.focusChain.exit": "退出聚焦模式（Esc）",
+  "timeline.focusChain.enterHint": "按 f 聚焦這條鏈",
+  "timeline.anomalies.chip": "⚠ 異常（{{count}}）",
+  "timeline.anomalies.tooltip": "把沒有整合旗標的事件變暗（時鐘異常、孤兒回收、證據刪除、錨定失敗、鏈斷）",
+  "timeline.brokenChain.banner": "⛓️‍💥 證據鏈在事件 {{brokenAtId}}… 之後斷開（走完 {{walked}} 個）。之後的所有事件皆未驗證。",
+  "timeline.brokenChain.dismiss": "關閉",
 
   "dashboard.exportData": "匯出資料",
 

@@ -537,6 +537,17 @@
   "timeline.detail.copied": "Copied",
   "timeline.detail.previewCut": "… showing first {{shown}} of {{total}} · use Copy full for the rest",
   "timeline.detail.empty": "(empty)",
+  "timeline.detail.causedBy": "▶ Caused by:",
+  "timeline.detail.effects": "▼ Effects ({{count}}):",
+  "timeline.detail.effectsMore": "+{{count}} more effects",
+  "timeline.detail.causeNotFound": "event {{id}}… not found — chain broken",
+  "timeline.focusChain.badge": "🔗 Focus chain ({{count}} events)",
+  "timeline.focusChain.exit": "Exit focus mode (Esc)",
+  "timeline.focusChain.enterHint": "Press f to focus this chain",
+  "timeline.anomalies.chip": "⚠ Anomalies ({{count}})",
+  "timeline.anomalies.tooltip": "Dim every event without a chain-integrity flag (clock anomaly, orphan recovery, evidence removal, anchor failure, chain break)",
+  "timeline.brokenChain.banner": "⛓️‍💥 Chain broken at event {{brokenAtId}}… (walked {{walked}}). All events after are unverified.",
+  "timeline.brokenChain.dismiss": "Dismiss",
 
   "dashboard.exportData": "Export Data",
 
