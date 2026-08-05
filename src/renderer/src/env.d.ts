@@ -43,6 +43,21 @@ interface QuickMarkContext {
   lastCommand?: string
 }
 
+interface SavedTimelineViewState {
+  timeStart?: number
+  timeEnd?: number
+  zoom?: number
+  hiddenLanes?: string[]
+  filterQuery?: string
+}
+
+interface SavedTimelineView {
+  id: string
+  name: string
+  createdAt: number
+  state: SavedTimelineViewState
+}
+
 interface QuickMark {
   id: string
   title: string
@@ -119,6 +134,11 @@ interface RedLogAPI {
     get: (id: string) => Promise<QuickMark | null>
     create: (data: { title: string; url?: string; note?: string }) => Promise<QuickMark>
     update: (id: string, data: Partial<QuickMark>) => Promise<QuickMark | null>
+    delete: (id: string) => Promise<boolean>
+  }
+  views?: {
+    list: () => Promise<SavedTimelineView[]>
+    save: (data: { name: string; state: SavedTimelineViewState }) => Promise<SavedTimelineView>
     delete: (id: string) => Promise<boolean>
   }
   cdp: {

@@ -3,6 +3,85 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.91 — 2026-08-05
+Timeline UX bundle — the 7 items from the `/grill-me` session's Q9/Q10
+axes. All renderer / IPC; no chain touch.
+
+### `/` inline search
+- Press `/` (not in an input) → header search input opens.
+- Filters events by `command / url / host / title / subtype / marker
+  title / operator id` (case-insensitive substring).
+- Non-matches dim to opacity 0.15.
+- Escape clears + closes.
+- Persist last query in `localStorage[redlog-timeline-filter-query]`.
+- Mutually exclusive with focus chain mode + anomaly filter.
+
+### Follow mode
+- Auto-scroll when at right edge and new events arrive.
+- Header badge `🔴 LIVE` when at right edge / `⏸ Xm behind` otherwise.
+- Click badge → jump to now + re-enable follow.
+- `⏸/▶` toggle in the badge area.
+- Persist in `localStorage[redlog-timeline-follow-mode]`.
+
+### ⌘K fuzzy palette
+- Global ⌘K (or Ctrl+K) opens a centered modal fuzzy searcher — but
+  only in Timeline view; other views still route ⌘K to the sidebar
+  Search (via new `redlog-timeline-palette` custom event).
+- Search across events + markers + operator names + hosts.
+- Substring scorer (earlier position wins, newer timestamp tiebreak).
+- `↑/↓/Enter/Esc` + hover highlight.
+
+### Bookmarks / saved views
+- Per-project `views.json` at `<projectPath>/views.json`.
+- New IPC: `views:list / views:save / views:delete` in
+  `src/main/index.ts` (+ preload wrapper + env.d.ts types).
+- Timeline header "Views" dropdown: save current state (name, zoom,
+  timeStart/timeEnd, hiddenLanes, filterQuery), restore on click,
+  delete via ⋯ menu.
+
+### Session boundary dividers
+- Vertical dashed lines at every terminal session start/end with
+  `term-<id.slice(0,4)>` label + faint lane-tinted band between them.
+- Diagonal-striped background for every recording paused↔resumed pair
+  with `⏸ paused` label.
+- Toggle in header, default on. Persist in
+  `localStorage[redlog-timeline-session-dividers]`.
+
+### Timezone toggle
+- Header dropdown: Local / UTC / Project-configured
+  (`config.engagement.timezone`).
+- New `formatTs(ms, tz, projectTz, style)` helper routes every
+  timestamp render (axis ticks, cluster popover, event list, detail
+  panel timestamp).
+- Invalid IANA name → silent fallback to Local.
+- Project option disabled when unset.
+- Persist in `localStorage[redlog-timeline-tz]`.
+
+### Persistent state extension
+Added to the existing localStorage bag:
+- `redlog-timeline-filter-query`
+- `redlog-timeline-follow-mode`
+- `redlog-timeline-session-dividers`
+- `redlog-timeline-tz`
+- `redlog-timeline-focus-event` (selected event id restored on first mount)
+- `redlog-timeline-zoom`
+- `redlog-timeline-hidden-lanes`
+
+### Notable design decisions
+- **Shared dim mode via effects, not enum** — focus / anomaly / `/`
+  filter each have heterogeneous payloads; three effects clear the
+  other two on activation instead of a single `dimMode` union.
+- **Session boundary reconstructs start time from `session_end.data.durationMs`**
+  because `shell.session_start` is filtered by `isHousekeeping`.
+- **Follow mode has 10px slop** for `atRightEdge` detection + a
+  1-second `now` tick to keep "⏸ Xm behind" live between event
+  arrivals.
+- **Views IPC preload wrapper is optional** in the type contract so
+  the smoke-test bridge (which doesn't mock `views`) still renders;
+  Timeline detects missing API and disables the dropdown gracefully.
+
+Tests: 343 unit / 17 e2e / build clean.
+
 ## v0.6.90 — 2026-08-05
 Timeline `_causes` visualisation UI — the frontend companion to v0.6.89's
 backend producer wiring. UX bundle (`/`-search / follow / ⌘K / bookmarks /

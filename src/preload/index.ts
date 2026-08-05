@@ -84,6 +84,11 @@ contextBridge.exposeInMainWorld('redlog', {
     update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('quickmarks:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('quickmarks:delete', id)
   },
+  views: {
+    list: () => ipcRenderer.invoke('views:list'),
+    save: (data: { name: string; state: Record<string, unknown> }) => ipcRenderer.invoke('views:save', data),
+    delete: (id: string) => ipcRenderer.invoke('views:delete', id)
+  },
   cdp: {
     getTab: () => ipcRenderer.invoke('cdp:getTab'),
     setPort: (port: number) => ipcRenderer.invoke('cdp:setPort', port)
