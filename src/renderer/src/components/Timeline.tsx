@@ -208,6 +208,65 @@ function formatTimeLabel(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// v0.6.91 S7: timezone-aware formatter. Every timestamp shown in the Timeline
+// (axis ticks, cluster popovers, event list, detail panel) routes through
+// this so the operator's chosen zone (Local / UTC / Project-configured) sticks.
+// Invalid `projectTz` (typo, unrecognised IANA name) silently falls back to
+// Local so the UI never breaks — the picker itself guards against bad names.
+type TzMode = 'local' | 'utc' | 'project'
+type TsStyle = 'time' | 'timeSec' | 'full'
+function formatTs(ms: number, tz: TzMode, projectTz: string | null, style: TsStyle = 'time'): string {
+  if (!Number.isFinite(ms)) return ''
+  const d = new Date(ms)
+  if (tz === 'utc') {
+    // toISOString → 2026-01-01T15:04:05.123Z
+    if (style === 'time') return d.toISOString().slice(11, 16) + 'Z'
+    if (style === 'timeSec') return d.toISOString().slice(11, 19) + 'Z'
+    return d.toISOString().replace('T', ' ')
+  }
+  const timeZone = tz === 'project' && projectTz ? projectTz : undefined
+  const opts: Intl.DateTimeFormatOptions = {}
+  if (timeZone) opts.timeZone = timeZone
+  try {
+    if (style === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...opts })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', ...opts })
+    return d.toLocaleString([], opts)
+  } catch {
+    // Bad IANA name → fall back to Local so a mistyped project.timezone can't
+    // wipe every time label on the panel.
+    if (style === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return d.toLocaleString()
+  }
+}
+
+// v0.6.91 W1/W3: simple case-insensitive substring "score". Higher = better.
+// Earlier match position wins, then shorter-target-vs-query wins as tiebreak.
+// Deliberately not a real fuzzy matcher (no gap tolerance) — the palette and
+// filter both aim at literal identifiers (command names, hosts, subtypes) so
+// the extra false-positive noise of a subsequence matcher isn't worth it.
+function fuzzyScore(target: string, q: string): number {
+  if (!q) return 0
+  if (!target) return -1
+  const idx = target.toLowerCase().indexOf(q.toLowerCase())
+  if (idx < 0) return -1
+  return 1000 - idx - Math.max(0, target.length - q.length) * 0.05
+}
+
+// Human-readable duration used by the follow-mode badge — "5s / 3m / 1h".
+// Bounded at "24h+" so an operator staring at a stale panel doesn't see
+// "8734h behind" which reads as broken UI.
+function formatBehind(ms: number): string {
+  if (ms < 0) return '0s'
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.round(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h`
+  return `24h+`
+}
+
 // v0.6.89.5: chain-integrity + evidence-integrity badges.
 //
 // A single event can carry several flags in `data` — clock-anomaly, orphan
@@ -300,7 +359,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   const [containerH, setContainerH] = useState(0)
-  const [zoom, setZoom] = useState(1)
+  // v0.6.91 S4: persisted zoom. Clamped to the same [0.25, 6] range the ± buttons
+  // enforce so a garbage value in storage can't produce a broken layout.
+  const [zoom, setZoom] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('redlog-timeline-zoom')
+      const n = raw ? parseFloat(raw) : NaN
+      return Number.isFinite(n) && n >= 0.25 && n <= 6 ? n : 1
+    } catch { return 1 }
+  })
   const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
   const [view, setView] = useState({ left: 0, width: 100 })
   const [drag, setDrag] = useState<{ x0: number; x1: number; w: number } | null>(null)
@@ -309,7 +376,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // split into distinct dots, then center on the picked one after re-render.
   // We can't scroll synchronously because TRACK_W hasn't grown yet.
   const pendingCenterTs = useRef<number | null>(null)
-  const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(new Set())
+  // v0.6.91 S4: hidden-lane visibility now persists across mounts so an
+  // operator who solo'd "shell" doesn't lose that filter after a reload.
+  // Stored as a JSON array of lane ids; unknown ids (renamed lanes from an
+  // old release) are dropped silently.
+  const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(() => {
+    try {
+      const raw = localStorage.getItem('redlog-timeline-hidden-lanes')
+      if (!raw) return new Set()
+      const arr = JSON.parse(raw)
+      return new Set((Array.isArray(arr) ? arr : []).filter((l): l is LaneId => LANES.includes(l as LaneId)))
+    } catch { return new Set() }
+  })
   const [showJson, setShowJson] = useState(false)
   // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
   // hidden by default in the detail view. The reviewer opts into a per-event
@@ -367,6 +445,115 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   useEffect(() => {
     try { localStorage.setItem('redlog-timeline-anomaly-filter', anomalyFilter ? '1' : '0') } catch { /* ignore */ }
   }, [anomalyFilter])
+
+  // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
+  // host / operator doesn't substring-match the query. Persisted so the
+  // filter survives a reload; empty string means "no filter".
+  const [filterQuery, setFilterQuery] = useState<string>(() => {
+    try { return localStorage.getItem('redlog-timeline-filter-query') || '' } catch { return '' }
+  })
+  useEffect(() => {
+    try {
+      if (filterQuery) localStorage.setItem('redlog-timeline-filter-query', filterQuery)
+      else localStorage.removeItem('redlog-timeline-filter-query')
+    } catch { /* ignore */ }
+  }, [filterQuery])
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+
+  // v0.6.91 W2: follow mode — auto-scrolls the track's right edge to keep the
+  // newest event visible while enabled. On by default; the header badge
+  // reflects "🔴 LIVE" vs "⏸ Xm behind" state. `now` state ticks every second
+  // just so the "behind" label refreshes without waiting for a new event.
+  const [followMode, setFollowMode] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-follow-mode') !== '0' } catch { return true }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-follow-mode', followMode ? '1' : '0') } catch { /* ignore */ }
+  }, [followMode])
+  const [atRightEdge, setAtRightEdge] = useState(true)
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // v0.6.91 S3: dashed vertical dividers + faint bands for shell.session_end
+  // and system.recording_paused/resumed pairs. Toggle persisted; default on
+  // because it's the primary visual anchor when reviewing a multi-terminal
+  // engagement.
+  const [sessionDividers, setSessionDividers] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-session-dividers') !== '0' } catch { return true }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-session-dividers', sessionDividers ? '1' : '0') } catch { /* ignore */ }
+  }, [sessionDividers])
+
+  // v0.6.91 S7: timezone picker. `projectTz` is filled from
+  // config.engagement.timezone when the panel mounts; if unset or invalid,
+  // the "Project" option falls back to Local (via formatTs).
+  const [tz, setTz] = useState<TzMode>(() => {
+    try {
+      const raw = localStorage.getItem('redlog-timeline-tz')
+      return raw === 'utc' || raw === 'project' ? raw : 'local'
+    } catch { return 'local' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-tz', tz) } catch { /* ignore */ }
+  }, [tz])
+  const [projectTz, setProjectTz] = useState<string | null>(null)
+  useEffect(() => {
+    window.redlog.config?.get?.().then((c) => {
+      const cfg = c as { engagement?: { timezone?: string } } | null | undefined
+      const tzName = cfg?.engagement?.timezone
+      setProjectTz(typeof tzName === 'string' && tzName ? tzName : null)
+    }).catch(() => {})
+  }, [])
+
+  // v0.6.91 W3: ⌘K fuzzy palette. Opened by the App-level ⌘K when Timeline is
+  // the active view, or by dispatching the `redlog-timeline-palette` event.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteQuery, setPaletteQuery] = useState('')
+  const [paletteIndex, setPaletteIndex] = useState(0)
+  const paletteInputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    const onOpen = (): void => { setPaletteOpen(true); setPaletteQuery(''); setPaletteIndex(0) }
+    window.addEventListener('redlog-timeline-palette', onOpen)
+    return () => window.removeEventListener('redlog-timeline-palette', onOpen)
+  }, [])
+  useEffect(() => {
+    if (paletteOpen) {
+      // Autofocus after paint — the modal renders inside a portal-like fixed
+      // overlay, and querying the ref sync in the same tick sometimes misses.
+      requestAnimationFrame(() => paletteInputRef.current?.focus())
+    }
+  }, [paletteOpen])
+
+  // v0.6.91 S1: saved views — list + save + delete. Loaded lazily when the
+  // dropdown opens the first time; kept fresh across saves/deletes. `views`
+  // API is optional in the preload contract so a stale renderer bundle
+  // doesn't crash the panel — the dropdown just stays disabled.
+  const [savedViews, setSavedViews] = useState<SavedTimelineView[] | null>(null)
+  const [viewsOpen, setViewsOpen] = useState(false)
+  const [viewsName, setViewsName] = useState('')
+  const viewsApi = (window.redlog as unknown as { views?: RedLogAPI['views'] }).views
+  const refreshViews = useCallback(async (): Promise<void> => {
+    if (!viewsApi?.list) return
+    try { setSavedViews((await viewsApi.list()) ?? []) } catch { setSavedViews([]) }
+  }, [viewsApi])
+  useEffect(() => {
+    if (viewsOpen && savedViews === null) void refreshViews()
+  }, [viewsOpen, savedViews, refreshViews])
+
+  // v0.6.91 W1 mutual exclusion: enabling any of the three dim modes clears
+  // the others. Kept as a set of effects so keyboard, click, and event-listener
+  // paths all converge. `focusChain` mutual exclusion with `anomalyFilter`
+  // was already handled below — extending with filterQuery here.
+  useEffect(() => {
+    if (!filterQuery) return
+    if (focusAnchorId) setFocusAnchorId(null)
+    if (anomalyFilter) setAnomalyFilter(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterQuery])
 
   // Plugin-registered event types (agent_type → lane/color/label mapping).
   // Previously event-registry.ts was a dead facade — plugin events were all
@@ -582,6 +769,33 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // Also the badges index (feature 3) so every dot render is O(1). The
   // broken-at id from the last full verify (feature 5) participates in the
   // badge set so the `⛓️‍💥` badge lights up on the offending row.
+  // v0.6.91 W1: filter-match set for the `/` search. Case-insensitive substring
+  // over any of: data.command / data.url / data.host / data.title / data.subtype,
+  // eventTitle (which is what the operator actually sees), and operatorId.
+  // Rebuilt on every events / query change — cheap for <= 5k events; for larger
+  // sets the outer dim path already dominates so this doesn't move the needle.
+  const filterMatches = useMemo(() => {
+    if (!filterQuery.trim()) return null
+    const q = filterQuery.trim().toLowerCase()
+    const set = new Set<string>()
+    for (const e of events) {
+      const d = e.data as Record<string, unknown> | undefined
+      const bag = [
+        String(d?.command ?? ''),
+        String(d?.url ?? ''),
+        String(d?.host ?? ''),
+        String(d?.title ?? ''),
+        String(d?.subtype ?? ''),
+        e.agentType === 'marker' ? String(d?.title ?? '') : '',
+        e.operatorId,
+        operatorNames[e.operatorId] ?? '',
+        eventTitle(e)
+      ].join('').toLowerCase()
+      if (bag.includes(q)) set.add(e.id)
+    }
+    return set
+  }, [events, filterQuery, operatorNames])
+
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => {
     const m = new Map<string, string[]>()
@@ -621,9 +835,54 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
 
   // Mutual exclusion: enabling focus chain implicitly turns anomaly filter off,
   // and vice versa. Done here (rather than at each toggle site) so keyboard
-  // shortcuts and clicks stay in sync.
-  useEffect(() => { if (focusChain && anomalyFilter) setAnomalyFilter(false) }, [focusChain])
-  useEffect(() => { if (anomalyFilter && focusAnchorId) setFocusAnchorId(null) }, [anomalyFilter])
+  // shortcuts and clicks stay in sync. Extended in v0.6.91 W1: enabling either
+  // also clears the `/` filter query, since three overlapping dim modes are
+  // impossible to reason about.
+  useEffect(() => {
+    if (!focusChain) return
+    if (anomalyFilter) setAnomalyFilter(false)
+    if (filterQuery) setFilterQuery('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusChain])
+  useEffect(() => {
+    if (!anomalyFilter) return
+    if (focusAnchorId) setFocusAnchorId(null)
+    if (filterQuery) setFilterQuery('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anomalyFilter])
+
+  // v0.6.91 S4: persist zoom, hidden lanes, and selected-event id so a
+  // Timeline reload lands the operator back where they were.
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-zoom', String(zoom)) } catch { /* ignore */ }
+  }, [zoom])
+  useEffect(() => {
+    try {
+      localStorage.setItem('redlog-timeline-hidden-lanes', JSON.stringify([...hiddenLanes]))
+    } catch { /* ignore */ }
+  }, [hiddenLanes])
+  useEffect(() => {
+    try {
+      if (selectedEvent?.id) localStorage.setItem('redlog-timeline-focus-event', selectedEvent.id)
+      else localStorage.removeItem('redlog-timeline-focus-event')
+    } catch { /* ignore */ }
+  }, [selectedEvent])
+  // On first successful load, if no explicit prop-driven focus is in play,
+  // restore the previously-selected event by id. Bail after one attempt so we
+  // don't fight the operator's later clicks.
+  const initialFocusRestoreRef = useRef(false)
+  useEffect(() => {
+    if (initialFocusRestoreRef.current) return
+    if (loading || events.length === 0) return
+    initialFocusRestoreRef.current = true
+    if (focusEventId || focusTs || selectedEvent) return
+    try {
+      const id = localStorage.getItem('redlog-timeline-focus-event')
+      if (!id) return
+      const evt = eventsMapRef.current.get(id)
+      if (evt) setSelectedEvent(evt)
+    } catch { /* ignore */ }
+  }, [loading, events, focusEventId, focusTs, selectedEvent])
 
   // Collapse events that fall within ~14px of each other on the same lane into a
   // single clickable marker (with a count) so dense bursts stay legible. Zooming
@@ -653,6 +912,59 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return out
   }, [visibleLanes, laneEvents, toX, laneH])
 
+  // v0.6.91 S3: derive session-band segments from `shell.session_end` +
+  // `system.recording_paused`/`recording_resumed` pairs. session_start is
+  // filtered by isHousekeeping so we use session_end.data.durationMs to
+  // reconstruct the pair's window. Trailing paused-without-resume gets drawn
+  // to the current time; trailing session-end without a duration is skipped
+  // (nothing sensible to draw).
+  type SessionBand = { id: string; x0: number; x1: number; label: string; kind: 'term' | 'paused' }
+  const sessionBands = useMemo<SessionBand[]>(() => {
+    if (!sessionDividers) return []
+    const bands: SessionBand[] = []
+    for (const e of events) {
+      if (e.agentType === 'shell' && e.data?.subtype === 'session_end') {
+        const tid = (e.data?.terminalId as string | undefined) ?? ''
+        const durMs = Number(e.data?.durationMs)
+        const endTs = e.timestamp
+        const startTs = Number.isFinite(durMs) && durMs > 0 ? endTs - durMs : endTs
+        bands.push({
+          id: `term-${e.id}`,
+          x0: toX(startTs),
+          x1: toX(endTs),
+          label: t('timeline.boundaries.termLabelFmt', { id: tid.slice(0, 4) }),
+          kind: 'term'
+        })
+      }
+    }
+    let openPause: RedLogEvent | null = null
+    for (const e of events) {
+      if (e.agentType !== 'system') continue
+      const sub = e.data?.subtype as string | undefined
+      if (sub === 'recording_paused') openPause = e
+      else if (sub === 'recording_resumed' && openPause) {
+        bands.push({
+          id: `paused-${openPause.id}`,
+          x0: toX(openPause.timestamp),
+          x1: toX(e.timestamp),
+          label: t('timeline.boundaries.pausedLabel'),
+          kind: 'paused'
+        })
+        openPause = null
+      }
+    }
+    if (openPause) {
+      bands.push({
+        id: `paused-${openPause.id}-open`,
+        x0: toX(openPause.timestamp),
+        x1: toX(Math.min(Date.now(), timeEnd)),
+        label: t('timeline.boundaries.pausedLabel'),
+        kind: 'paused'
+      })
+    }
+    return bands
+  }, [events, sessionDividers, toX, t, timeEnd])
+
   // Density minimap: event counts over the full range, binned into fixed cells.
   const bins = useMemo(() => {
     const N = 120
@@ -671,12 +983,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const el = scrollRef.current
     if (!el || TRACK_W <= 0) return
     setView({ left: (el.scrollLeft / TRACK_W) * 100, width: Math.min(100, (el.clientWidth / TRACK_W) * 100) })
+    // v0.6.91 W2: track "am I at the right edge" so the follow badge can flip
+    // between LIVE and behind. 10px slop covers scrollbar rounding and pixel
+    // snapping across DPRs.
+    setAtRightEdge(el.scrollLeft + el.clientWidth >= TRACK_W - 10)
     // Auto-load-more when scrolled to the earliest edge (audit #3). Was
     // click-driven with a "load more" chip; users hitting the left edge with
     // more history to pull would just see empty space and not realise there
     // was a button.
     if (!allLoaded && !loading && el.scrollLeft < 80) loadMore()
   }, [TRACK_W, allLoaded, loading, loadMore])
+
+  // v0.6.91 W2: follow mode auto-scroll. When enabled AND the operator was
+  // at the right edge, snap to the new right edge whenever fresh events land
+  // (or the track's virtual width grows). We piggyback on `events` changing
+  // rather than the onNew callback so a batch of events arriving in the same
+  // frame only produces one scroll write.
+  useEffect(() => {
+    if (!followMode || !atRightEdge) return
+    const el = scrollRef.current
+    if (!el || TRACK_W <= 0) return
+    el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
+  }, [events, followMode, atRightEdge, TRACK_W])
 
   // Drag across the minimap to zoom the main view to that window; click to jump.
   const onMinimapDown = useCallback((e: React.MouseEvent) => {
@@ -873,6 +1201,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedEvent, events, hiddenLanes])
 
+  // v0.6.91 W1: `/` focuses the header filter input. Escape (while the input
+  // is focused) clears the query AND blurs. Skipped when the user is already
+  // typing in another input, so `/` inside a shell command doesn't hijack it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+      const inField = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
+      if (e.key === '/' && !inField && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   // v0.6.89.5 feature 2: `f` shortcut to enter/exit focus chain mode.
   // Anchor priority: currently-selected event, then the event under the
   // mouse (last hovered dot). Escape also exits. Skipped when the user is
@@ -903,6 +1248,62 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedEvent, focusChain, focusAnchorId])
 
+  // v0.6.91 W3: palette result set — fuzzy match query against events, marker
+  // titles, distinct operator names, and distinct hosts. Capped at 20 items.
+  type PaletteItem =
+    | { kind: 'event' | 'marker'; event: RedLogEvent; label: string; sub: string; score: number; ts: number }
+    | { kind: 'operator' | 'host'; value: string; label: string; sub: string; score: number; ts: number }
+  const paletteResults = useMemo<PaletteItem[]>(() => {
+    const q = paletteQuery.trim()
+    if (!q) return []
+    const items: PaletteItem[] = []
+    for (const e of events) {
+      const d = e.data as Record<string, unknown> | undefined
+      const fields = [
+        eventTitle(e),
+        String(d?.command ?? ''),
+        String(d?.url ?? ''),
+        String(d?.host ?? ''),
+        String(d?.title ?? ''),
+        String(d?.subtype ?? '')
+      ]
+      let best = -1
+      for (const f of fields) { const s = fuzzyScore(f, q); if (s > best) best = s }
+      if (best > 0) {
+        items.push({
+          kind: e.agentType === 'marker' ? 'marker' : 'event',
+          event: e,
+          label: eventTitle(e),
+          sub: e.agentType,
+          score: best,
+          ts: e.timestamp
+        })
+      }
+    }
+    const seenOp = new Set<string>()
+    for (const [id, name] of Object.entries(operatorNames)) {
+      const s = Math.max(fuzzyScore(name, q), fuzzyScore(id, q))
+      if (s > 0 && !seenOp.has(name)) {
+        seenOp.add(name)
+        items.push({ kind: 'operator', value: name, label: name, sub: id, score: s, ts: 0 })
+      }
+    }
+    const hosts = new Set<string>()
+    for (const e of events) {
+      const h = e.data?.host as unknown
+      if (typeof h === 'string' && h) hosts.add(h)
+    }
+    for (const h of hosts) {
+      const s = fuzzyScore(h, q)
+      if (s > 0) items.push({ kind: 'host', value: h, label: h, sub: 'host', score: s, ts: 0 })
+    }
+    items.sort((a, b) => (b.score - a.score) || (b.ts - a.ts))
+    return items.slice(0, 20)
+  }, [events, operatorNames, paletteQuery])
+  useEffect(() => {
+    if (paletteIndex >= paletteResults.length) setPaletteIndex(Math.max(0, paletteResults.length - 1))
+  }, [paletteResults, paletteIndex])
+
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
   // interaction; it uses `displayTs` so a marker with an override timestamp
@@ -912,6 +1313,67 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     if (!el) return
     el.scrollLeft = Math.max(0, Math.min(toX(displayTs(evt)) - el.clientWidth / 2, TRACK_W - el.clientWidth))
   }, [toX, TRACK_W])
+
+  // v0.6.91 W3: activate a palette result. Events / markers → select + centre.
+  // Operator / host → drop the value into the filter query (feature 1 dim path
+  // picks it up automatically).
+  const activatePaletteItem = useCallback((item: PaletteItem) => {
+    if (item.kind === 'event' || item.kind === 'marker') {
+      setSelectedEvent(item.event)
+      scrollToEvent(item.event)
+    } else {
+      setFilterQuery(item.value)
+    }
+    setPaletteOpen(false)
+    setPaletteQuery('')
+  }, [scrollToEvent])
+
+  // v0.6.91 S1: save current Timeline state as a named view. Snapshots the
+  // minimap window (in wall-clock ms), zoom, hidden lanes, and filter query.
+  const saveCurrentView = useCallback(async (name: string): Promise<void> => {
+    if (!viewsApi?.save) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const span = (timeEnd - timeStart) || 1
+    const winStart = Math.round(timeStart + (view.left / 100) * span)
+    const winEnd = Math.round(timeStart + ((view.left + view.width) / 100) * span)
+    try {
+      await viewsApi.save({
+        name: trimmed,
+        state: {
+          timeStart: winStart,
+          timeEnd: winEnd,
+          zoom,
+          hiddenLanes: [...hiddenLanes],
+          filterQuery
+        }
+      })
+      setViewsName('')
+      await refreshViews()
+      toast('Saved', 'success')
+    } catch { toast('Save failed', 'error') }
+  }, [viewsApi, timeStart, timeEnd, view, zoom, hiddenLanes, filterQuery, refreshViews, t])
+
+  const applyView = useCallback((v: SavedTimelineView) => {
+    const s = v.state ?? {}
+    if (typeof s.zoom === 'number' && s.zoom >= 0.25 && s.zoom <= 6) setZoom(s.zoom)
+    if (Array.isArray(s.hiddenLanes)) {
+      setHiddenLanes(new Set(s.hiddenLanes.filter((l): l is LaneId => LANES.includes(l as LaneId))))
+    }
+    if (typeof s.filterQuery === 'string') setFilterQuery(s.filterQuery)
+    // Time-window restore — schedule the same pendingView handshake the
+    // minimap-drag path uses so the scroll lands after the next TRACK_W paint.
+    if (typeof s.timeStart === 'number' && typeof s.timeEnd === 'number' && s.timeEnd > s.timeStart) {
+      pendingView.current = { t0: s.timeStart }
+    }
+    setViewsOpen(false)
+  }, [])
+
+  const deleteView = useCallback(async (id: string) => {
+    if (!viewsApi?.delete) return
+    try { await viewsApi.delete(id) } catch { /* ignore */ }
+    await refreshViews()
+  }, [viewsApi, refreshViews])
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
@@ -976,6 +1438,64 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           </button>
         </div>
       )}
+      {/* v0.6.91 W3: ⌘K fuzzy palette. Fixed overlay so it sits above every
+          other Timeline chrome. Escape closes. Enter activates the selected
+          result. ↑/↓ move the highlight. Backdrop click also closes. */}
+      {paletteOpen && (
+        <div
+          data-testid="timeline-palette"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+          onClick={(e) => { if (e.target === e.currentTarget) setPaletteOpen(false) }}
+        >
+          <div className="w-[560px] max-w-[92vw] rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl overflow-hidden">
+            <input
+              ref={paletteInputRef}
+              value={paletteQuery}
+              onChange={(e) => { setPaletteQuery(e.target.value); setPaletteIndex(0) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setPaletteOpen(false); return }
+                if (e.key === 'ArrowDown') { e.preventDefault(); setPaletteIndex((i) => Math.min(paletteResults.length - 1, i + 1)); return }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setPaletteIndex((i) => Math.max(0, i - 1)); return }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  const item = paletteResults[paletteIndex]
+                  if (item) activatePaletteItem(item)
+                }
+              }}
+              placeholder={t('timeline.palette.placeholder')}
+              className="w-full px-3 py-2 bg-zinc-950 text-sm font-mono text-zinc-100 placeholder:text-zinc-500 border-b border-zinc-800 focus:outline-none"
+            />
+            <div className="max-h-[360px] overflow-y-auto">
+              {paletteResults.length === 0 ? (
+                <div className="px-3 py-4 text-xs text-zinc-500 font-mono text-center">{t('timeline.palette.noResults')}</div>
+              ) : paletteResults.map((item, i) => {
+                const groupKey = item.kind === 'event' ? 'timeline.palette.groupEvent'
+                  : item.kind === 'marker' ? 'timeline.palette.groupMarker'
+                  : item.kind === 'operator' ? 'timeline.palette.groupOperator'
+                  : 'timeline.palette.groupHost'
+                const isSel = i === paletteIndex
+                return (
+                  <button
+                    key={item.kind === 'event' || item.kind === 'marker' ? item.event.id : `${item.kind}-${item.value}`}
+                    onMouseEnter={() => setPaletteIndex(i)}
+                    onClick={() => activatePaletteItem(item)}
+                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}
+                  >
+                    <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-500 w-14 shrink-0">
+                      {t(groupKey)}
+                    </span>
+                    <span className="text-xs font-mono text-zinc-200 truncate flex-1">{item.label}</span>
+                    <span className="text-[10px] font-mono text-zinc-600 shrink-0">{item.sub}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
+              {t('timeline.palette.footer')}
+            </div>
+          </div>
+        </div>
+      )}
       {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
@@ -1031,6 +1551,73 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           >+</button>
         </div>
 
+        {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
+            operators can see there's a text filter (previously discoverable
+            only by shortcut). Icon prefix + clear button on the right. */}
+        <div className="relative flex items-center ml-2">
+          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[11px] text-zinc-600 pointer-events-none font-mono">/</span>
+          <input
+            ref={searchInputRef}
+            data-testid="timeline-search-input"
+            type="text"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                if (filterQuery) { setFilterQuery(''); e.preventDefault() }
+                else searchInputRef.current?.blur()
+              }
+            }}
+            placeholder={t('timeline.search.placeholder')}
+            title={t('timeline.search.hint')}
+            className="pl-5 pr-6 py-0.5 h-6 w-[220px] text-xs font-mono bg-zinc-900/70 border border-zinc-800 rounded text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+          />
+          {filterQuery && (
+            <button
+              onClick={() => setFilterQuery('')}
+              title={t('timeline.search.clear')}
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-200 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+            >×</button>
+          )}
+        </div>
+
+        {/* v0.6.91 W2: LIVE / behind badge. Green = at the right edge with
+            follow on; grey/amber = scrolled back into history. Click →
+            snap to now + re-enable follow. Little icon button toggles the
+            follow mode without jumping. */}
+        {(() => {
+          const latestTs = events.length > 0 ? events[events.length - 1].timestamp : 0
+          const behindMs = Math.max(0, now - latestTs)
+          const isLive = atRightEdge && followMode
+          const label = isLive
+            ? t('timeline.follow.live')
+            : t('timeline.follow.behindFmt', { time: formatBehind(behindMs) })
+          return (
+            <div className="flex items-center gap-1">
+              <button
+                data-testid="timeline-follow-badge"
+                onClick={() => {
+                  const el = scrollRef.current
+                  if (el && TRACK_W > 0) el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
+                  setFollowMode(true)
+                }}
+                title={isLive ? t('timeline.follow.jumpToNow') : t('timeline.follow.jumpToNow')}
+                className={`whitespace-nowrap text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                  isLive
+                    ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
+                    : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
+                }`}
+              >{label}</button>
+              <button
+                onClick={() => setFollowMode((v) => !v)}
+                title={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
+                aria-label={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
+                className="w-5 h-5 flex items-center justify-center text-[10px] text-zinc-500 hover:text-zinc-200 bg-zinc-800/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+              >{followMode ? '⏸' : '▶'}</button>
+            </div>
+          )
+        })()}
+
         {/* Lane filter toggles — click toggles; Alt/Option-click solos the
             lane (hides every other populated lane); solo'd-lane Alt-click
             again shows all. Audit finding #4.
@@ -1039,6 +1626,87 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             onto a second row — reported when running at 1280 wide with the
             full lane list open. */}
         <div className="ml-auto flex flex-nowrap gap-1 items-center overflow-x-auto min-w-0">
+          {/* v0.6.91 S1: Views dropdown. Save current view + list. Kept as a
+              plain <details>-style toggle so keyboard tab-order and focus
+              rings stay predictable across platforms. */}
+          <div className="relative shrink-0">
+            <button
+              data-testid="timeline-views-dropdown"
+              onClick={() => setViewsOpen((v) => !v)}
+              className="whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+              aria-expanded={viewsOpen}
+            >★ {t('timeline.views.button')}</button>
+            {viewsOpen && (
+              <div className="absolute top-full right-0 mt-1 z-40 w-72 rounded border border-zinc-700 bg-zinc-900/95 shadow-xl">
+                <div className="px-2 py-1.5 border-b border-zinc-800">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">{t('timeline.views.saveNew')}</div>
+                  <input
+                    value={viewsName}
+                    onChange={(e) => setViewsName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { void saveCurrentView(viewsName) }
+                      if (e.key === 'Escape') setViewsOpen(false)
+                    }}
+                    placeholder={t('timeline.views.saveNamePlaceholder')}
+                    title={t('timeline.views.saveHint')}
+                    className="w-full px-2 py-1 text-xs font-mono bg-zinc-950 border border-zinc-800 rounded text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {savedViews === null && (
+                    <div className="px-2 py-2 text-[11px] text-zinc-500 font-mono">…</div>
+                  )}
+                  {savedViews && savedViews.length === 0 && (
+                    <div className="px-2 py-2 text-[11px] text-zinc-500 font-mono">{t('timeline.views.empty')}</div>
+                  )}
+                  {savedViews && savedViews.map((v) => (
+                    <div key={v.id} className="flex items-center gap-1 px-2 py-1 hover:bg-white/5">
+                      <button
+                        onClick={() => applyView(v)}
+                        className="flex-1 text-left text-xs font-mono text-zinc-200 truncate"
+                        title={v.name}
+                      >{v.name}</button>
+                      <span className="text-[10px] font-mono text-zinc-600 tabular-nums">
+                        {formatTs(v.createdAt, tz, projectTz, 'time')}
+                      </span>
+                      <button
+                        onClick={() => void deleteView(v.id)}
+                        title={t('timeline.views.delete')}
+                        aria-label={t('timeline.views.delete')}
+                        className="text-zinc-500 hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* v0.6.91 S3: session boundaries visibility toggle. */}
+          <button
+            onClick={() => setSessionDividers((v) => !v)}
+            className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${
+              sessionDividers ? 'text-indigo-300 bg-indigo-500/10' : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]'
+            }`}
+            title={t('timeline.boundaries.toggle')}
+            aria-pressed={sessionDividers}
+          >⋮ {t('timeline.boundaries.toggle')}</button>
+
+          {/* v0.6.91 S7: timezone selector. Wraps a <select> because the
+              alternative (three chips) uses more header real-estate than we
+              can afford at 1280 width. */}
+          <select
+            data-testid="timeline-tz-select"
+            value={tz}
+            onChange={(e) => setTz(e.target.value as TzMode)}
+            title={t('timeline.tz.tooltip')}
+            className="shrink-0 whitespace-nowrap text-xs px-1 py-0.5 rounded font-mono bg-zinc-800/60 text-zinc-300 border border-zinc-700 hover:bg-zinc-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+          >
+            <option value="local">🕓 {t('timeline.tz.local')}</option>
+            <option value="utc">🕓 {t('timeline.tz.utc')}</option>
+            <option value="project" disabled={!projectTz}>🕓 {t('timeline.tz.project')}{projectTz ? ` (${projectTz})` : ''}</option>
+          </select>
+
           {/* v0.6.89.5 feature 4: anomaly filter — dims every event without an
               integrity badge (clock anomaly / recovery / evidence removal /
               anchor failure / chain break). First chip so it's the fastest
@@ -1191,7 +1859,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     className="absolute text-xs text-zinc-600 font-mono tabular-nums -translate-x-1/2"
                     style={{ left: toX(ts), top: 6 }}
                   >
-                    {formatTimeLabel(new Date(ts))}
+                    {formatTs(ts, tz, projectTz, 'time')}
                   </span>
                 ))}
               </div>
@@ -1216,6 +1884,29 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     style={{ left: toX(ts), height: totalH }}
                   />
                 ))}
+                {/* v0.6.91 S3: session boundary bands. Rendered before the
+                    current-time line and the broken-chain band so those
+                    stronger overlays win. Paused-recording bands use a
+                    diagonal stripe fill; terminal bands are a flat tint. */}
+                {sessionBands.map((b) => {
+                  const w = Math.max(0, b.x1 - b.x0)
+                  if (w <= 0) return null
+                  const bg = b.kind === 'paused'
+                    ? 'repeating-linear-gradient(45deg, rgba(148,163,184,0.10) 0 6px, transparent 6px 12px)'
+                    : 'rgba(99, 102, 241, 0.02)'
+                  const border = b.kind === 'paused' ? 'rgba(148,163,184,0.35)' : 'rgba(99,102,241,0.30)'
+                  return (
+                    <div key={b.id} className="absolute top-0 pointer-events-none" style={{ left: b.x0, width: w, height: totalH }}>
+                      <div className="absolute inset-0" style={{ background: bg }} />
+                      <div className="absolute inset-y-0 left-0 border-l border-dashed" style={{ borderColor: border }} />
+                      <div className="absolute inset-y-0 right-0 border-l border-dashed" style={{ borderColor: border }} />
+                      <span
+                        className="absolute top-0 text-[9px] font-mono px-1 rounded-b bg-zinc-900/80"
+                        style={{ left: 2, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
+                      >{b.label}</span>
+                    </div>
+                  )
+                })}
                 {/* Current time line */}
                 {Date.now() >= timeStart && Date.now() <= timeEnd && (
                   <div className="absolute top-0 w-px bg-red-500/70" style={{ left: toX(Date.now()), height: totalH }} />
@@ -1248,11 +1939,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   // "active" (not dimmed) if ANY event in it is in the
                   // active set — so a 20-event burst that contains a chain
                   // link doesn't disappear.
+                  // v0.6.91 W1: filter query joins focus-chain and anomaly-filter
+                  // as the third dim mode. The three are mutually exclusive
+                  // (enforced by the effects above), so at most one branch fires.
                   let dimmed = false
                   if (focusChain) {
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
                   } else if (anomalyFilter) {
                     dimmed = !c.events.some((e) => badgesById.has(e.id))
+                  } else if (filterMatches) {
+                    dimmed = !c.events.some((e) => filterMatches.has(e.id))
                   }
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
@@ -1283,8 +1979,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${new Date(evt.timestamp).toLocaleTimeString()} — ${eventTitle(evt)}${badgeTitle}`
-                        : `${c.events.length} ${t('timeline.title')} · ${new Date(c.events[0].timestamp).toLocaleTimeString()}`}
+                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${eventTitle(evt)}${badgeTitle}`
+                        : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
                       onClick={() => single ? setSelectedEvent(sel ? null : evt) : setCluster({ x: c.x, y: c.y, events: c.events })}
@@ -1378,7 +2074,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
-                          <span className="text-zinc-600 font-mono text-[11px] tabular-nums shrink-0">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                          <span className="text-zinc-600 font-mono text-[11px] tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
                           <span className="text-zinc-300 text-xs truncate">{eventTitle(evt)}</span>
                         </button>
                       ))}
@@ -1419,7 +2115,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
                   <span className="text-zinc-600 font-mono tabular-nums shrink-0 w-16">
-                    {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {formatTs(evt.timestamp, tz, projectTz, 'timeSec')}
                   </span>
                   {showOperator && (
                     <span className="text-zinc-500 font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
@@ -1516,7 +2212,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               >
                 ✕
               </button>
-              <span className="text-xs text-zinc-600 font-mono tabular-nums">{new Date(selectedEvent.timestamp).toLocaleString()}</span>
+              <span className="text-xs text-zinc-600 font-mono tabular-nums">{formatTs(selectedEvent.timestamp, tz, projectTz, 'full')}</span>
             </div>
           </div>
           <p className="text-[12px] text-zinc-300 mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
