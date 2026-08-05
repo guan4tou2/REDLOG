@@ -82,6 +82,16 @@ export default function App(): JSX.Element {
         const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
         if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
         e.preventDefault()
+        // v0.6.91 W3: ⌘K inside the Timeline view opens the local fuzzy
+        // palette instead of jumping to the Search sidebar — palette scopes
+        // to the currently-loaded events, which is where operators want to
+        // muscle-memory ⌘K. ⌘/ still routes to Search everywhere. Anywhere
+        // outside Timeline both shortcuts keep the old Search behaviour.
+        const isPalette = view === 'timeline' && (e.key === 'k' || e.key === 'K')
+        if (isPalette) {
+          window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
+          return
+        }
         setView('search')
         return
       }
@@ -128,7 +138,9 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [project, t])
+    // `view` is read inside the handler to route ⌘K in Timeline to the local
+    // palette rather than the Search sidebar (v0.6.91 W3).
+  }, [project, t, view])
 
   if (!project) {
     return (
