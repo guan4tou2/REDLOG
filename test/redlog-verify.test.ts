@@ -68,7 +68,10 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     else process.env.REDLOG_KEYS_DIR = prevKeysEnv
   })
 
-  it('validates an intact chain and exits 0', () => {
+  // 30s timeout: Windows CI takes ~5-8s just to cold-spawn python3 the first
+  // time (interpreter warmup + PATH resolution + antivirus scan), so the
+  // default 5s ceiling races. macOS/Linux finish in <1s.
+  it('validates an intact chain and exits 0', { timeout: 30_000 }, () => {
     // Real operator with a keypair — events land signed under the v0.6.88
     // canonical shape.
     const token = ops.generateToken()
@@ -111,7 +114,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     fs.rmSync(outRoot, { recursive: true, force: true })
   })
 
-  it('detects a tampered event and exits non-zero', () => {
+  it('detects a tampered event and exits non-zero', { timeout: 30_000 }, () => {
     const token = ops.generateToken()
     ops.createOperator({ id: 'verify-op-t', name: 'Verify Op T', token, isPrimary: true })
 
