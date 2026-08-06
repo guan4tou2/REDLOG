@@ -35,6 +35,8 @@ import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
 import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
 import { getCaptureHealth } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
+import { isInsideDir } from './paths'
+import { getProjectDir } from './db/index'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -266,7 +268,27 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const url = new URL(req.url || '/', `http://localhost`)
   const route = url.pathname
 
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  // v0.6.93 P0-E: strict Host allowlist. The server binds to 127.0.0.1 but
+  // a browser can be tricked into DNS-rebinding a hostile hostname to
+  // 127.0.0.1, then talking to us with the attacker's Origin. Reject any
+  // Host header that isn't a known local name.
+  const hostHeader = (req.headers.host || '').toLowerCase().split(':')[0]
+  const HOST_ALLOWLIST = new Set(['localhost', '127.0.0.1', '[::1]', '::1', ''])
+  if (!HOST_ALLOWLIST.has(hostHeader)) {
+    res.writeHead(400)
+    res.end('bad host')
+    return
+  }
+  // v0.6.93 P0-E: was `Access-Control-Allow-Origin: *` — RedLog is a local-
+  // only server, no browser should be reading responses from it. Reflect
+  // the Origin (still allows the packaged Electron renderer, which uses
+  // its own file:// or app:// scheme) but never wildcard. Downstream
+  // clients (hooks, CLI) don't preflight and are unaffected.
+  const origin = req.headers.origin
+  if (origin && /^(app|file|http):\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$|\/)/.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Vary', 'Origin')
+  }
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
   if (req.method === 'OPTIONS') {
     res.writeHead(204)
@@ -659,11 +681,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const sess = sessions[0]
       const castPath = sess?.data?.castPath as string | undefined
       if (!castPath) { json(res, 404, { error: 'no cast file for this session' }); return }
+      // v0.6.93 P0-D: castPath comes from an event whose `data` was written
+      // by an attacker with a valid token — verify the resolved path is
+      // inside the project's casts/ directory before reading. Was:
+      // arbitrary-file-read via forged session_start `{castPath:"/…/.ssh/id_ed25519"}`.
+      let castsDir: string
+      try { castsDir = path.join(getProjectDir(), 'casts') } catch { json(res, 500, { error: 'no active project' }); return }
+      const resolvedCast = path.resolve(castPath)
+      if (!isInsideDir(castsDir, resolvedCast)) {
+        json(res, 403, { error: 'castPath outside project casts directory' })
+        return
+      }
       const duration = Number(td.duration_sec ?? 0) * 1000
       // Guard against zero-duration events (instantaneous commands still get
       // a small window so echoed prompt/output isn't lost to rounding).
       const startMs = target.timestamp - Math.max(duration, 100)
-      const slice = readCastSlice(castPath, startMs, target.timestamp)
+      const slice = readCastSlice(resolvedCast, startMs, target.timestamp)
       if (!slice) { json(res, 500, { error: 'failed to read cast file' }); return }
       json(res, 200, {
         command: td.command,
