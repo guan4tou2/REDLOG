@@ -315,20 +315,31 @@ function runWindowsPs(): Promise<PsRow[]> {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
       { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
         if (err) { reject(err); return }
-        const rows: PsRow[] = []
-        for (const line of stdout.split(/\r?\n/)) {
-          const parts = line.split('|')
-          if (parts.length < 3) continue
-          const pid = parseInt(parts[0], 10)
-          const ppid = parseInt(parts[1], 10)
-          if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue
-          const command = parts.slice(2).join('|').trim()
-          if (!command) continue
-          rows.push({ pid, ppid, etime: '0', command })
-        }
-        resolve(rows)
+        resolve(parseWindowsPsOutput(stdout))
       })
   })
+}
+
+// v0.6.99 C: extracted from runWindowsPs so unit tests can exercise the
+// parser without spawning PowerShell (which isn't on the darwin/linux
+// CI runners). Line grammar: `<pid>|<ppid>|<command…>` with LF or CRLF
+// line endings. CommandLine may itself contain `|` (rare — literal in
+// argv), so we split on the first two delimiters only and treat the
+// rest as command. Empty lines, malformed rows, and rows with a blank
+// command are dropped.
+export function parseWindowsPsOutput(stdout: string): PsRow[] {
+  const rows: PsRow[] = []
+  for (const line of stdout.split(/\r?\n/)) {
+    const parts = line.split('|')
+    if (parts.length < 3) continue
+    const pid = parseInt(parts[0], 10)
+    const ppid = parseInt(parts[1], 10)
+    if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue
+    const command = parts.slice(2).join('|').trim()
+    if (!command) continue
+    rows.push({ pid, ppid, etime: '0', command })
+  }
+  return rows
 }
 
 // Exported for unit tests — line parsing is a tiny grammar and easier to

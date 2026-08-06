@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { diffProcs, parsePsLine } from '../src/main/services/process-monitor'
+import { diffProcs, parsePsLine, parseWindowsPsOutput } from '../src/main/services/process-monitor'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Unit tests for the process-monitor pid-diff algorithm + ps line parser.
@@ -110,5 +110,63 @@ describe('process-monitor / diffProcs', () => {
     const { spawns, exits } = diffProcs(prev, next, [])
     expect(spawns.map((s) => s.pid)).toEqual([12])
     expect(exits.map((e) => e.pid)).toEqual([11])
+  })
+})
+
+// v0.6.99 C: parseWindowsPsOutput — pure line-grammar parser for the
+// PowerShell `Get-CimInstance Win32_Process` output. PowerShell itself
+// isn't available on the darwin/linux vitest runners, so we exercise
+// the parser against realistic hand-crafted stdouts.
+describe('process-monitor / parseWindowsPsOutput', () => {
+  it('parses a normal pipe-delimited row', () => {
+    const out = '12345|100|C:\\Windows\\System32\\notepad.exe'
+    const rows = parseWindowsPsOutput(out)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({ pid: 12345, ppid: 100, etime: '0', command: 'C:\\Windows\\System32\\notepad.exe' })
+  })
+
+  it('handles CRLF line endings from powershell.exe', () => {
+    const out = '10|1|explorer.exe\r\n20|10|cmd.exe /c dir\r\n'
+    const rows = parseWindowsPsOutput(out)
+    expect(rows.map((r) => r.pid)).toEqual([10, 20])
+    expect(rows[1].command).toBe('cmd.exe /c dir')
+  })
+
+  it('keeps `|` inside the CommandLine tail (splits on first two only)', () => {
+    // Rare but legal: argv can contain a literal `|`. Anything past the
+    // second delimiter is command, not a new field.
+    const out = '99|1|powershell.exe -Command "Get-Process | Where-Object Name -eq foo"'
+    const rows = parseWindowsPsOutput(out)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].command).toBe('powershell.exe -Command "Get-Process | Where-Object Name -eq foo"')
+  })
+
+  it('drops empty lines and malformed rows', () => {
+    const out = [
+      '',
+      '   ',
+      'not-a-row',
+      '10|20',           // missing command
+      'abc|def|xyz',     // non-numeric pid/ppid
+      '10|20|',          // blank command
+      '30|40|good.exe',
+    ].join('\n')
+    const rows = parseWindowsPsOutput(out)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].pid).toBe(30)
+  })
+
+  it('parses a realistic multi-process capture', () => {
+    const out = [
+      '4|0|System',
+      '400|4|C:\\Windows\\System32\\smss.exe',
+      '512|400|winlogon.exe',
+      '2000|512|explorer.exe',
+      '2100|2000|C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe --type=renderer',
+    ].join('\r\n')
+    const rows = parseWindowsPsOutput(out)
+    expect(rows).toHaveLength(5)
+    expect(rows[0].pid).toBe(4)
+    expect(rows[4].command).toContain('chrome.exe --type=renderer')
   })
 })

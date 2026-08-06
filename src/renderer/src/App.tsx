@@ -241,8 +241,19 @@ function CaptureHealthCard({ capture, onNavigate }: {
   // looked identical to one that fired 200ms ago. Now every source shows
   // "Ns ago" and the chip colour scales with age (green <60s, amber <5min,
   // zinc otherwise). Absent sources still show "—" — no lastEventAt to
-  // format. Ticks off the same `checkedAt` used to render the card so all
-  // freshness readings are relative to the same moment.
+  // format.
+  // v0.6.99 B: tick every 1s so the ages advance smoothly. Pre-v0.6.99
+  // the ages were computed against `capture.checkedAt` which only
+  // refreshes on the 5s health poll — visually the label sat at "5s ago"
+  // for 5 real seconds then jumped to "10s ago", which read as broken.
+  // Now we compute against Date.now() at render time and force a rerender
+  // once a second. Under-1-second precision doesn't matter for a
+  // capture-freshness readout so cadence stays cheap.
+  const [nowTick, setNowTick] = useState(Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
   const fmtAge = (ts: number | null, now: number): string => {
     if (!ts) return '—'
     const sec = Math.max(0, Math.round((now - ts) / 1000))
@@ -293,8 +304,8 @@ function CaptureHealthCard({ capture, onNavigate }: {
                 {s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {s.installed !== false && (
-                <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, capture.checkedAt)}`}>
-                  {fmtAge(s.lastEventAt, capture.checkedAt)}
+                <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
+                  {fmtAge(s.lastEventAt, nowTick)}
                 </span>
               )}
             </div>

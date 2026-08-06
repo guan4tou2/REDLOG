@@ -3,6 +3,36 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.99 — 2026-08-06
+Follow-through on v0.6.98. Three tight items: extend per-project
+scoping to the rest of Timeline's localStorage, add a per-second
+tick to the freshness stripe, back-fill unit tests for the Windows
+process-monitor parser.
+
+### UX
+- **A** — Timeline's `focus-anchor`, `filter-query`, and `hidden-lanes`
+  now scope by projectId, same pattern as v0.6.98 E scoped
+  `anomaly-filter`. Zoom, detail panel height, follow mode, session
+  dividers, and timezone stay global — those are UI/display
+  preferences that shouldn't reset per project. One-shot migration
+  from legacy unscoped keys runs on first mount per project so
+  operators upgrading from < v0.6.98 keep whatever they had set on
+  the first project they open.
+- **B** — CaptureHealthCard freshness ages tick every 1s
+  (`App.tsx:238`). Pre-v0.6.99 the age was computed against
+  `capture.checkedAt`, which only refreshes on the 5s health poll,
+  so "5s ago" sat frozen for 5 real seconds then jumped to "10s
+  ago" — read as broken. Now a 1s `setInterval` forces the rerender.
+
+### Quality
+- **C** — Unit tests for `parseWindowsPsOutput` (5 cases: normal
+  row, CRLF, `|` in CommandLine tail, malformed / empty lines,
+  realistic multi-process capture) (`test/process-monitor.test.ts`).
+  v0.6.98 D shipped the Windows path untested; this back-fills the
+  parser (the PowerShell spawn itself isn't unit-testable on the
+  darwin/linux CI runners, but the parse layer is pure and now
+  covered). Suite: 360 → 365.
+
 ## v0.6.98 — 2026-08-06
 Follow-through on v0.6.97 + Windows process-monitor parity. Five items,
 no schema change, one small IPC removal.
