@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, readdirSync, statSync } from 'fs'
-import { join, resolve } from 'path'
+import { join, resolve, sep } from 'path'
 import { homedir } from 'os'
 import { get as httpsGet } from 'https'
 import { spawnSync } from 'child_process'
@@ -238,6 +238,12 @@ export async function installFromRegistry(
 
   try {
     const extract = opts.extractTar ?? defaultExtractTar
+    // v0.6.93 P0-C: pre-flight the tar entry list BEFORE extraction — the
+    // post-extract walk in assertInsideDir only sees files that landed
+    // inside scratchDir; a `../../.ssh/authorized_keys` entry writes ELSEWHERE
+    // and would slip past. Only run for the default extractor (tests use
+    // in-memory fixtures that aren't real tarballs).
+    if (!opts.extractTar) assertNoTarEscape(tarball, scratchDir)
     await extract(tarball, scratchDir)
 
     // Zip Slip / symlink defense — refuse anything that escaped the plugin dir
@@ -325,14 +331,54 @@ export function rollback(pluginId: string, versionKey: string): { ok: boolean; e
 // ---- Utilities ------------------------------------------------------------
 
 function assertInsideDir(root: string, current: string): void {
+  // v0.6.93 P0-C: use `resolve(root) + sep` for the prefix compare — bare
+  // `startsWith` treats `/foo` as a prefix of `/foobar`. Also this walks
+  // INSIDE root, so a tar entry that escaped to a sibling directory
+  // (`../hostile`) is never enumerated. `assertNoTarEscape` below runs
+  // BEFORE extraction to catch that class.
   const rootReal = resolve(root)
   const currentReal = resolve(current)
-  if (!currentReal.startsWith(rootReal)) {
+  const prefix = rootReal.endsWith(sep) ? rootReal : rootReal + sep
+  if (currentReal !== rootReal && !currentReal.startsWith(prefix)) {
     throw new Error(`path escape: ${currentReal} not inside ${rootReal}`)
   }
   for (const entry of readdirSync(currentReal, { withFileTypes: true })) {
     if (entry.isSymbolicLink()) throw new Error(`symlink not allowed: ${entry.name}`)
     if (entry.isDirectory()) assertInsideDir(rootReal, join(currentReal, entry.name))
+  }
+}
+
+// v0.6.93 P0-C: enumerate tar entries BEFORE extraction and reject any
+// absolute path or `..` segment. The post-extract `assertInsideDir` only
+// walks INSIDE the scratch dir, so a hostile tarball that clobbers
+// `../../.ssh/authorized_keys` never gets checked otherwise.
+function assertNoTarEscape(tarball: Buffer, destDir: string): void {
+  const tmpTar = join(destDir, '..', `.plugin-list-${Date.now()}.tar.gz`)
+  writeFileSync(tmpTar, tarball)
+  const tarBin = process.platform === 'win32' ? 'tar.exe' : 'tar'
+  try {
+    const res = spawnSync(tarBin, ['-tzf', tmpTar], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 30_000
+    })
+    if (res.status !== 0) {
+      throw new Error(`${tarBin} -tzf exited ${res.status}: ${res.stderr?.toString() ?? ''}`)
+    }
+    const listing = (res.stdout?.toString() ?? '').split(/\r?\n/).filter(Boolean)
+    for (const entry of listing) {
+      // Trim leading `./` so a well-formed relative tar entry passes.
+      const normalized = entry.replace(/^\.\/+/, '')
+      // Absolute paths (Unix `/etc/…`, Windows `C:\…`) never allowed.
+      if (normalized.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(normalized)) {
+        throw new Error(`tar entry has absolute path: ${entry}`)
+      }
+      // Any `..` component escapes even under `--strip-components`.
+      if (normalized.split(/[\\/]/).some((seg) => seg === '..')) {
+        throw new Error(`tar entry escapes via ..: ${entry}`)
+      }
+    }
+  } finally {
+    try { rmSync(tmpTar, { force: true }) } catch { /* ignore */ }
   }
 }
 

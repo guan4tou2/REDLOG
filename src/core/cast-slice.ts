@@ -42,8 +42,13 @@ export interface CastSlice {
 export function readCastSlice(castPath: string, startMs: number, endMs: number): CastSlice | null {
   let stat: fs.Stats
   try { stat = fs.statSync(castPath) } catch { return null }
-  const oversized = stat.size > MAX_CAST_BYTES
-  const raw = fs.readFileSync(castPath, oversized ? { encoding: 'utf8', flag: 'r' } : 'utf8')
+  // v0.6.93 P0-G: `oversized` used to just pick an encoding flag but still
+  // slurped the full file into memory — a 500MB cast OOM'd the main process.
+  // Now: bail. `MAX_CAST_BYTES` (50MB) is the same cap terminal-manager
+  // enforces at write time; anything beyond that is either an attacker-
+  // planted file or a corrupted install.
+  if (stat.size > MAX_CAST_BYTES) return null
+  const raw = fs.readFileSync(castPath, 'utf8')
 
   const lines = raw.split('\n')
   if (lines.length === 0) return null
@@ -71,6 +76,7 @@ export function readCastSlice(castPath: string, startMs: number, endMs: number):
     bytes += data.length
   }
 
+  const oversized = false  // v0.6.93: files exceeding MAX_CAST_BYTES bail early above
   const joined = events.map((e) => e[2]).join('')
   return { events, text: stripAnsi(joined), bytes, truncated: oversized, castStartMs }
 }

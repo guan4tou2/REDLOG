@@ -449,19 +449,44 @@ export function verifyChainFull(): FullVerifyResult {
   let unsignedCount = 0
   let badSignatureAtEventId: string | null = null
 
+  // v0.6.93 P0-A: track when we first see a non-NULL prev_hash. After that
+  // moment ANY row with NULL prev_hash is tampering — the attacker was
+  // exploiting the shape-tolerant hash (which includes a v0.1 shape that
+  // hashes WITHOUT a prevHash field) plus the legacy NULL-permissive walk
+  // to insert forged rows and have verify return ok:true.
+  let seenNonNullPrevHash = false
   for (const row of rowIter) {
     walked++
     // A pre-v0.2 event has no prev_hash column at all — the migration added
     // the column but populated existing rows with NULL rather than backfilling
-    // the actual prior-event hash. Treat NULL prev_hash on any row (not just
-    // row 0) as a legacy-migration state, not tampering. New (v0.2+) events
-    // still get strict chain-linkage checking.
-    if (row.prev_hash != null && row.prev_hash !== expectedPrev) {
+    // the actual prior-event hash. NULL prev_hash is legitimate ONLY for the
+    // leading (pre-migration) rows, before any row with prev_hash appears.
+    if (row.prev_hash != null) {
+      seenNonNullPrevHash = true
+      if (row.prev_hash !== expectedPrev) {
+        return {
+          ok: false,
+          walked,
+          brokenAtEventId: row.id,
+          brokenReason: `prev_hash mismatch (expected ${expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
+          currentHead: currentHead?.hash ?? null,
+          anchor,
+          anchorMatchesWalkedHead: false,
+          clockAnomalies,
+          signedCount,
+          unsignedCount,
+          badSignatureAtEventId
+        }
+      }
+    } else if (seenNonNullPrevHash) {
+      // v0.6.93 P0-A: NULL prev_hash after we've already crossed the
+      // migration boundary = forgery. Silent-forgery vector documented in
+      // the v0.6.92.1 security audit.
       return {
         ok: false,
         walked,
         brokenAtEventId: row.id,
-        brokenReason: `prev_hash mismatch (expected ${expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
+        brokenReason: 'NULL prev_hash after migration boundary (v0.6.93 forgery-check)',
         currentHead: currentHead?.hash ?? null,
         anchor,
         anchorMatchesWalkedHead: false,
@@ -724,6 +749,15 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
   )
   const rowIdOf = db.prepare(`SELECT rowid AS rid FROM events WHERE id = ?`)
 
+  // v0.6.93 P0-A: query the migration boundary — the earliest rowid whose
+  // prev_hash is NOT NULL. Rows sampled AFTER this rowid must carry a
+  // non-NULL prev_hash; a NULL there is post-migration forgery (see
+  // verifyChainFull for the full-walk version of this check).
+  const firstNonNullRow = db.prepare(
+    `SELECT MIN(rowid) AS rid FROM events WHERE prev_hash IS NOT NULL`
+  ).get() as { rid: number | null } | undefined
+  const migrationBoundaryRid = firstNonNullRow?.rid ?? Number.MAX_SAFE_INTEGER
+
   const jsonSha = (obj: Record<string, unknown>): string =>
     crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
   const canonicalSha = (obj: Record<string, unknown>): string =>
@@ -772,10 +806,25 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
       }
     }
 
-    // Link verify: skip when the row itself has NULL prev_hash (legacy
-    // migration state — verifyChainFull ignores it on purpose). For rows
-    // that DO carry a prev_hash, the immediately preceding row (by
-    // created_at + rowid) must exist and match.
+    // v0.6.93 P0-A: NULL prev_hash after the migration boundary = forgery.
+    // Pre-boundary NULLs are legitimate legacy rows (v0.1/v0.2); post-
+    // boundary NULLs are the exact attack vector the v0.6.92.1 audit called
+    // out (attacker hashes under shapeV01 to fool the shape-tolerant walk).
+    if (row.prev_hash == null) {
+      const rid = rowIdOf.get(row.id) as { rid: number } | undefined
+      if (rid && rid.rid >= migrationBoundaryRid) {
+        return {
+          ok: false,
+          sampled: rows.length,
+          brokenAtEventId: row.id,
+          brokenReason: 'NULL prev_hash after migration boundary (v0.6.93 forgery-check)'
+        }
+      }
+    }
+    // Link verify: skip when the row itself has NULL prev_hash (legitimate
+    // pre-migration state — the boundary check above already gated it).
+    // For rows that DO carry a prev_hash, the immediately preceding row
+    // (by created_at + rowid) must exist and match.
     if (row.prev_hash != null) {
       const rid = rowIdOf.get(row.id) as { rid: number } | undefined
       if (!rid) continue

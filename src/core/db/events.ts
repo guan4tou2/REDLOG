@@ -59,26 +59,31 @@ export function resetSession(): void {
 // no code path issues DELETE FROM events between init and the check.
 export function assertEventsAppendOnly(): void {
   const db = getDB()
-  const rows = db.prepare(
-    `SELECT COUNT(*) as n FROM sqlite_master WHERE type='trigger' AND tbl_name='events' AND name='no_delete_events'`
-  ).get() as { n: number }
-  if (rows.n === 0) {
-    // Install a defensive trigger — DELETE / UPDATE (of hash/data columns)
-    // now raise an SQL error rather than corrupting the chain. This is
-    // additive; INSERTs are unchanged.
-    db.exec(`
-      CREATE TRIGGER IF NOT EXISTS no_delete_events
-        BEFORE DELETE ON events
-      BEGIN
-        SELECT RAISE(ABORT, 'events table is append-only (chain integrity)');
-      END;
-      CREATE TRIGGER IF NOT EXISTS no_update_events_hash
-        BEFORE UPDATE OF hash, prev_hash, data, id, timestamp, operator_id ON events
-      BEGIN
-        SELECT RAISE(ABORT, 'events row fields are immutable (chain integrity)');
-      END;
-    `)
-  }
+  // v0.6.93 P0-F: DROP + CREATE every time so DBs installed before v0.6.93
+  // (which had a shorter column list — hash/prev_hash/data/id/timestamp/
+  // operator_id only) get upgraded to cover every hash-contributing field.
+  // Missing columns from the old trigger allowed silent tampering with
+  // agent_type / hostname / session_id / engagement_id / source_ip / target_id
+  // / monotonic_ns / ntp_offset_ms / signature; chain hash still catches
+  // them, but the append-only contract now matches the doc. Idempotent.
+  db.exec(`
+    DROP TRIGGER IF EXISTS no_delete_events;
+    DROP TRIGGER IF EXISTS no_update_events_hash;
+    CREATE TRIGGER no_delete_events
+      BEFORE DELETE ON events
+    BEGIN
+      SELECT RAISE(ABORT, 'events table is append-only (chain integrity)');
+    END;
+    CREATE TRIGGER no_update_events_hash
+      BEFORE UPDATE OF hash, prev_hash, data, id, timestamp, operator_id,
+                       agent_type, hostname, session_id, engagement_id,
+                       source_ip, target_id, monotonic_ns, ntp_offset_ms,
+                       created_at, signature
+                       ON events
+    BEGIN
+      SELECT RAISE(ABORT, 'events row fields are immutable (chain integrity)');
+    END;
+  `)
 }
 
 // v0.6.88 P0-A: canonical JSON serialiser for hash input. `JSON.stringify`

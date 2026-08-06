@@ -138,11 +138,15 @@ describeDB('signing (v0.6.89)', () => {
       events.insertEvent('marker', { i: 3 }, { operatorId: 'tamper-op' })
 
       // Overwrite the middle row's signature with a valid-length but wrong
-      // signature. Append-only triggers only guard hash/prev_hash/data/id/
-      // timestamp/operator_id — signature isn't in that list (rewriting a
-      // sig is exactly the tamper case we want verifyChainFull to catch).
+      // signature. v0.6.93 P0-F extended the append-only trigger to cover
+      // `signature` too — so we simulate the "attacker bypassed the trigger"
+      // scenario by temporarily dropping it, forging the sig, then restoring.
+      // This is exactly the tamper case verifyChainFull must catch even when
+      // the trigger has been circumvented (e.g. direct sqlite3 CLI).
       const forgedSig = Buffer.alloc(64, 0xaa).toString('base64')
-      getDB().prepare(`UPDATE events SET signature = ? WHERE id = ?`).run(forgedSig, bad.id)
+      const db = getDB()
+      db.exec(`DROP TRIGGER IF EXISTS no_update_events_hash`)
+      db.prepare(`UPDATE events SET signature = ? WHERE id = ?`).run(forgedSig, bad.id)
 
       const r = anchor.verifyChainFull()
       expect(r.ok).toBe(false)
