@@ -96,8 +96,9 @@ function restart(): void {
   // 500ms default poll cadence would stack calls. Floor the interval at
   // 2000ms on win32; operator can drop it below via pollMs if they know
   // what they're doing.
-  const winMin = process.platform === 'win32' ? 2000 : 200
-  const interval = Math.max(winMin, cfg.pollMs ?? (process.platform === 'win32' ? 2000 : DEFAULT_POLL_MS))
+  const defaultPoll = process.platform === 'win32' ? 2000 : DEFAULT_POLL_MS
+  const floorMin = process.platform === 'win32' ? 2000 : 200
+  const interval = Math.max(floorMin, cfg.pollMs ?? defaultPoll)
   // Seed known pids so the first poll doesn't emit "spawn" for every existing
   // process on the box — a fresh RedLog startup would insert thousands of
   // events. From here on, only real deltas fire.
@@ -149,7 +150,16 @@ async function poll(): Promise<void> {
       if (ev) eventBus.publish(ev)
     } catch { /* additive */ }
     // Still update knownProcs so we don't re-detect these next tick.
-    knownProcs = new Map(rows.map((r) => [r.pid, {
+    // v0.6.100 F3: exclude our own descendants from knownProcs. Pre-v0.6.100
+    // a dead descendant (e.g. the powershell.exe we spawn every 2s on
+    // Windows to poll Win32_Process) landed in `prev` and then, on the next
+    // tick when it was naturally gone, appeared in `filteredExits` because
+    // `collectDescendants(ownPid, nowMap)` only sees currently-live pids —
+    // a dead pid can't be traced through nowMap. Filtering the snapshot
+    // itself means no dead descendant ever reaches `prev`, so no spurious
+    // process_exit event fires. Same fix at both knownProcs write sites
+    // (poll body + saturated-branch).
+    knownProcs = new Map(rows.filter((r) => !ownDescendants.has(r.pid) && r.pid !== ownPid).map((r) => [r.pid, {
       pid: r.pid, ppid: r.ppid, command: r.command,
       startedAt: knownProcs.get(r.pid)?.startedAt ?? Date.now()
     }]))

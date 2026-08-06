@@ -503,12 +503,29 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // project. Initial state uses the unscoped key for pre-v0.6.98 continuity
   // — it settles into the project-scoped value on the second render tick,
   // after project.active() resolves.
+  //
+  // v0.6.100 F5: `projectIdForKeys` also holds the sentinel `__global__` when
+  // `project.active()` resolves null (no active project — first-launch, DMG
+  // demo, tests). Pre-v0.6.100 that state silently dropped every scoped
+  // write. Sentinel means the user's toggles still persist; they just live
+  // under a common key until a project is opened.
+  // v0.6.100 F6: `migrationAppliedFor` records the projectId (or sentinel)
+  // we've already migrated for so a mid-triage user edit — filter-query
+  // typing, focus toggle — doesn't get clobbered when project.active()
+  // arrives seconds later. Migration only runs once per (project, mount).
   const [projectIdForKeys, setProjectIdForKeys] = useState<string | null>(null)
+  const migrationAppliedFor = useRef<string | null>(null)
   const [anomalyFilter, setAnomalyFilter] = useState<boolean>(() => {
     try { return localStorage.getItem('redlog-timeline-anomaly-filter') === '1' } catch { return false }
   })
   useEffect(() => {
-    window.redlog.project.active().then((p) => setProjectIdForKeys(p?.id ?? null)).catch(() => { /* ignore */ })
+    // v0.6.100 F5: fall back to `__global__` sentinel when there's no active
+    // project (or the call rejects). Anything downstream that reads
+    // `projectIdForKeys` gets a stable key rather than a persistent-write
+    // dead zone.
+    window.redlog.project.active()
+      .then((p) => setProjectIdForKeys(p?.id ?? '__global__'))
+      .catch(() => setProjectIdForKeys('__global__'))
   }, [])
   useEffect(() => {
     // v0.6.98 E + v0.6.99 A: reload / migrate every per-project key once the
@@ -519,7 +536,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // different project. Each key migrates from its legacy unscoped form
     // ONCE per project so operators upgrading from < v0.6.98 don't lose
     // whatever they had set on the project they open first.
+    // v0.6.100 F6: skip if we've already migrated for this project — the
+    // ref guards against clobbering in-flight user edits. Without this,
+    // typing into the filter-query box between mount and project.active()
+    // resolution would be overwritten with the legacy value when this
+    // effect fires.
     if (!projectIdForKeys) return
+    if (migrationAppliedFor.current === projectIdForKeys) return
+    migrationAppliedFor.current = projectIdForKeys
     const migrate = <T,>(base: string, decode: (s: string) => T, apply: (v: T) => void): void => {
       try {
         const scoped = `${base}:${projectIdForKeys}`

@@ -23,7 +23,7 @@ import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAn
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
-import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook } from '../core/deconfliction'
+import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
@@ -690,7 +690,12 @@ app.whenReady().then(() => {
       const screenshotDir = path.join(getProjectDir(), 'screenshots')
       const resolved = path.resolve(screenshotDir, basename)
       if (!isInsideDir(screenshotDir, resolved)) return new Response('', { status: 403 })
-      const buf = fs.readFileSync(resolved)
+      // v0.6.100 F4: async read. With v0.6.98 A lazy-loading, 500 thumbs
+      // burst-fire requests as ScreenshotsView scrolls — each 800KB-1.5MB
+      // JPEG readFileSync blocked the main thread 5-15ms (same reason
+      // v0.6.97 D moved screenshot-agent writes off main). libuv thread
+      // pool handles the syscall.
+      const buf = await fs.promises.readFile(resolved)
       return new Response(buf, { status: 200, headers: { 'Content-Type': 'image/jpeg' } })
     } catch { return new Response('', { status: 404 }) }
   })
@@ -1817,6 +1822,10 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  // v0.6.100 F1: flush any pending deconfliction batch before we tear down.
+  // Up to 100 events (or ≤500ms worth) can sit in the buffer; without this
+  // they vanish when the operator quits mid-engagement.
+  try { flushDeconflictionOnShutdown() } catch { /* best-effort */ }
   stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()

@@ -133,13 +133,31 @@ export function notifyDeconfliction(event: RedLogEvent): void {
   const cfg = active
   if (!shouldForward(event, cfg)) return
   pendingBatch.push(canonicalise(event, cfg))
-  flushCfgSnapshot = cfg  // use the config captured at first-event-in-batch
+  // v0.6.100 F2: capture the cfg at first-event-in-batch, not per-event.
+  // Pre-v0.6.100 the assignment ran on every notify, so if the operator
+  // rotated the webhook URL / secret mid-batch the buffered events (still
+  // canonicalised under the OLD cfg's `includeData`/`events` filters)
+  // would be POSTed to the NEW cfg's endpoint. Now the batch belongs to
+  // whichever cfg was active when it opened.
+  if (!flushCfgSnapshot) flushCfgSnapshot = cfg
   if (pendingBatch.length >= MAX_BATCH) {
     if (batchFlushTimer) { clearTimeout(batchFlushTimer); batchFlushTimer = null }
     flushBatch()
     return
   }
   if (!batchFlushTimer) batchFlushTimer = setTimeout(flushBatch, BATCH_FLUSH_MS)
+}
+
+// v0.6.100 F1: shutdown-flush entry point. `app.on('before-quit')` calls this
+// so up-to-500ms of buffered events don't vanish when the operator quits mid-
+// engagement. Runs synchronously — we clear the timer, wrap the POST in
+// withRetry, and return immediately. Electron's `before-quit` doesn't await
+// the promise, so a slow receiver can still lose the last batch, but at
+// least the POST fires. Best-effort; the operator's chain integrity doesn't
+// depend on deconfliction delivery — the SIEM is a downstream mirror.
+export function flushDeconflictionOnShutdown(): void {
+  if (batchFlushTimer) { clearTimeout(batchFlushTimer); batchFlushTimer = null }
+  if (pendingBatch.length > 0) flushBatch()
 }
 
 /** Test-only: drain pending batch synchronously (fires the POST). */
