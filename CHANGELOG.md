@@ -3,6 +3,83 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.94 — 2026-08-05
+Delivery + Windows parity. Four items from the 5-agent audit.
+
+### A. PowerShell hook spool (parity with v0.6.87 A2 bash hook)
+- **File**: `hooks/shell-hook.ps1`
+- **Before**: fire-and-forget `Invoke-RestMethod` in runspace; if RedLog
+  is closed, the throw is swallowed and the event is lost.
+- **After**: foreground POST with `-TimeoutSec 2`; on failure writes
+  payload to `$env:USERPROFILE\.redlog\pending\<epochNs>.<pid>.json`
+  (5000-file cap). Filename ordering matches bash `%s%N` (19-digit
+  epoch-ns), so the existing drain in `main/index.ts:441-469` picks
+  up both languages' spool files in the same order.
+- Windows operators no longer silently lose events when RedLog is
+  closed.
+
+### B. `Redlog-Run` PowerShell function (parity with v0.6.89 X)
+- **File**: `hooks/shell-hook.ps1`
+- Signature: `Redlog-Run <cmd> [args...]` — uses `$args` so `-flags`
+  reach through without triggering PS parameter binding.
+- External binaries → `Start-Process -RedirectStandardOutput/-Error`;
+  cmdlets/functions → in-process `& $exe @args 1>… 2>…`.
+- 100 KB cap per stream, UTF-8 decode with U+FFFD fallback for binary
+  bytes. Emits `command_end` with structured `stdout/stderr/*_bytes/
+  *_truncated/captured_by:'redlog-run'` — same schema as bash hook.
+- Passthrough writes visible output back to the console before sending
+  the event.
+
+### C. Standalone client-side chain verifier (Python)
+- **New**: `tools/redlog-verify.py` (~350 LOC, stdlib-only)
+- Ports `canonicalStringify` (v0.6.88 canonical shape) to Python plus
+  the 5 legacy JSON shapes so pre-v0.6.88 rows verify.
+- Walks `events.jsonl` in order: `prev_hash` chain + v0.6.93 P0-A
+  "NULL prev_hash after migration boundary" forgery guard + Ed25519
+  signature (when available).
+- **Ed25519 handling**: `try import cryptography.hazmat...Ed25519PublicKey`;
+  if missing, prints an honest warning and skips sig verification —
+  hash chain still catches content mutation. Bundling a hand-rolled
+  Ed25519 verifier was a bigger correctness risk than an honest skip.
+- **Bundle inclusion** (`src/core/bundle-export.ts`):
+  - `operators.json` now includes `signerPubKey` (pubkey is not a
+    secret; without it Python verifier can't check sigs at all)
+  - Copies `redlog-verify.py`, `verify.sh` (POSIX), `verify.cmd`
+    (Windows), and a small `README.md` into bundle root
+  - Each hashed into `manifest.json.files`
+  - Verifier source resolved across dev / packaged paths (mirrors
+    `hooks-manager.ts` pattern)
+- **New test**: `test/redlog-verify.test.ts` (2 tests). Populates a
+  DB with signed operator + 5 events, exports a real bundle, invokes
+  the Python verifier via `spawnSync`, asserts exit 0 + "Chain intact".
+  Second test tampers `data.command`, asserts non-zero exit + "CHAIN
+  BROKEN". Skips cleanly when `python3` isn't on PATH.
+
+### D. Settings ▸ Data ▸ "Export Bundle" button
+- **New IPC**: `data:exportBundle` (calls `exportBundle()`) +
+  `data:revealPath` (uses `shell.openPath`)
+- **UI**: new `ExportBundlePanel` component under "Export All Data"
+  in Settings. Button label English/中文, `data-testid=
+  "settings-export-bundle"`. Shows "Building bundle..." while
+  disabled, then success toast + "Show in Finder / Explorer" button.
+  Inline red error box on failure.
+
+### Assumptions worth flagging
+- `operators.json` bundle format now includes `signerPubKey` — additive,
+  no existing consumer besides the bundle itself.
+- Python verifier reimplements the 6 hash shapes from `chain-anchor.ts:
+  verifyChainFull`. Future shape additions need matching entries in
+  `_rebuild_shapes` — inline note left in the .py.
+- `json.dumps(v, ensure_ascii=False, separators=(',',':'))` matches
+  `JSON.stringify(v)` byte-for-byte for parsed-JSON payloads (no
+  undefined, no functions, no BigInt). End-to-end chain re-verify
+  confirmed on the intact-chain test.
+- PowerShell spool filename uses `epoch_ms * 1e6` padded to 19 digits,
+  matching bash `%s%N`, so drain sort in `main/index.ts` interleaves
+  correctly.
+
+Tests: 360 unit (+2 from redlog-verify.test.ts) / 17 e2e / build clean.
+
 ## v0.6.93 — 2026-08-05
 Security hardening — 7 P0 items from the 5-agent audit that followed
 v0.6.92. All chain integrity + attack surface reduction; no user-facing

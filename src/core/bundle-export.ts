@@ -99,12 +99,17 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
     JSON.stringify(listAnchors(10000), null, 2)
   ))
 
-  // 4. operators.json — public fields only (no token hashes)
+  // 4. operators.json — public fields only (no token hashes).
+  // v0.6.94: include signerPubKey so a standalone verifier (tools/redlog-verify.py)
+  // can validate Ed25519 signatures without touching the RedLog DB. The pubkey
+  // is not secret — it's the counterpart to the private signing key that stays
+  // in ~/.redlog/keys/<operator>.key.
   files.push(writeAndHash(
     path.join(bundleDir, 'operators.json'),
     JSON.stringify(listOperators().map((op) => ({
       id: op.id, name: op.name, isPrimary: op.isPrimary,
-      createdAt: op.createdAt, revokedAt: op.revokedAt
+      createdAt: op.createdAt, revokedAt: op.revokedAt,
+      signerPubKey: op.signerPubKey
     })), null, 2)
   ))
 
@@ -138,6 +143,90 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
         files.push({ path: `casts/${name}`, ...info })
       }
     }
+  }
+
+  // v0.6.94 C: ship a standalone chain verifier inside the bundle so the
+  // recipient can prove tamper-freedom without installing Node/Electron/
+  // better-sqlite3. Python 3 stdlib is enough for the hash chain; Ed25519
+  // signature verification is optional (requires `pip install cryptography`).
+  // See tools/redlog-verify.py and docs/CLOUD_SHARE_BUNDLE.md.
+  // __dirname resolves differently between dev (src/core/) and packaged
+  // builds (out/main/). Try the same two-then-three-parents pattern
+  // hooks-manager.ts uses for shipped assets, then fall back to cwd.
+  const verifierCandidates = [
+    path.join(__dirname, '..', '..', '..', 'tools', 'redlog-verify.py'),
+    path.join(__dirname, '..', '..', 'tools', 'redlog-verify.py'),
+    path.join(process.cwd(), 'tools', 'redlog-verify.py')
+  ]
+  const verifierResolved = verifierCandidates.find((p) => fs.existsSync(p)) ?? null
+  if (verifierResolved) {
+    const verifierBytes = fs.readFileSync(verifierResolved)
+    const verifierDest = path.join(bundleDir, 'redlog-verify.py')
+    fs.writeFileSync(verifierDest, verifierBytes)
+    const info = sha256File(verifierDest)
+    files.push({ path: 'redlog-verify.py', ...info })
+
+    const shWrapper = [
+      '#!/usr/bin/env bash',
+      '# RedLog bundle verifier — thin wrapper around redlog-verify.py.',
+      '# Requires: python3 (stdlib only for hash chain; `pip install cryptography`',
+      '# to also verify Ed25519 signatures).',
+      'set -euo pipefail',
+      'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+      'exec python3 "$DIR/redlog-verify.py" "$DIR" "$@"',
+      ''
+    ].join('\n')
+    const shDest = path.join(bundleDir, 'verify.sh')
+    fs.writeFileSync(shDest, shWrapper, { mode: 0o755 })
+    files.push({ path: 'verify.sh', ...sha256File(shDest) })
+
+    // A tiny cmd.exe wrapper so Windows recipients can double-click / run
+    // `verify.cmd` — same UX as `bash verify.sh`.
+    const cmdWrapper = [
+      '@echo off',
+      'REM RedLog bundle verifier — thin wrapper around redlog-verify.py.',
+      'REM Requires: python3 on PATH.',
+      'python "%~dp0redlog-verify.py" "%~dp0." %*',
+      ''
+    ].join('\r\n')
+    const cmdDest = path.join(bundleDir, 'verify.cmd')
+    fs.writeFileSync(cmdDest, cmdWrapper)
+    files.push({ path: 'verify.cmd', ...sha256File(cmdDest) })
+
+    // Tiny README so the recipient knows what button to press.
+    const readme = [
+      '# RedLog evidence bundle',
+      '',
+      'Verify the audit chain is intact before trusting anything in this bundle.',
+      '',
+      '## Verify (macOS / Linux)',
+      '',
+      '```',
+      'bash verify.sh',
+      '```',
+      '',
+      '## Verify (Windows)',
+      '',
+      '```',
+      'verify.cmd',
+      '```',
+      '',
+      'Both wrappers invoke `python3 redlog-verify.py .` — Python 3.8+ stdlib is',
+      'enough to verify the SHA-256 hash chain. To also verify each event\'s',
+      'Ed25519 signature, install the optional dependency:',
+      '',
+      '```',
+      'pip install cryptography',
+      '```',
+      '',
+      'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',
+      'from this directory and prints a summary: events walked, chain intact or',
+      'broken at event X, signature verified counts.',
+      ''
+    ].join('\n')
+    const readmeDest = path.join(bundleDir, 'README.md')
+    fs.writeFileSync(readmeDest, readme)
+    files.push({ path: 'README.md', ...sha256File(readmeDest) })
   }
 
   const head = computeChainHead()
