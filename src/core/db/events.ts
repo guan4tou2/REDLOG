@@ -45,6 +45,39 @@ const BOOT_EPOCH_MS = Date.now()
 // starts partitioning by session.
 export function resetSession(): void {
   sessionId = crypto.randomUUID()
+  // v0.6.95 P0-4b: reset the in-memory prev-hash cache. The next insertEvent
+  // will hit the DB once (via `ensureLastHash`) then take over as source of
+  // truth. Cache lives per-process; a project switch closes the DB and reopens
+  // it, so the cached hash from the OLD project must not seed the NEW one.
+  cachedLastHash = SENTINEL_UNSEEDED
+}
+
+// v0.6.95 P0-4b: prev-hash cache. Every event's hash chains onto the last
+// event's hash — previously that meant an `ORDER BY created_at DESC LIMIT 1`
+// query per insert. At 100k rows without an index the read cost dominated
+// the write. Now: we seed once from the DB on first use (or after a rebuild
+// event), and thereafter each successful insertEvent updates the cache in
+// place. Any DB write error resets the cache back to unseeded so the next
+// insert re-reads from disk rather than chaining onto a hash the DB may
+// not actually have committed.
+const SENTINEL_UNSEEDED = Symbol('unseeded')
+let cachedLastHash: string | null | typeof SENTINEL_UNSEEDED = SENTINEL_UNSEEDED
+
+function ensureLastHash(): string | null {
+  if (cachedLastHash !== SENTINEL_UNSEEDED) return cachedLastHash
+  const db = getDB()
+  const row = db.prepare(
+    'SELECT hash FROM events ORDER BY created_at DESC, rowid DESC LIMIT 1'
+  ).get() as { hash: string } | undefined
+  cachedLastHash = row?.hash ?? null
+  return cachedLastHash
+}
+
+/** Test-only: reset the prev-hash cache. Callers that manipulate the events
+ *  table outside insertEvent (rebuild flows, tests that mutate via raw SQL)
+ *  must call this so the next insertEvent re-reads the true head hash. */
+export function _resetLastHashCache(): void {
+  cachedLastHash = SENTINEL_UNSEEDED
 }
 
 // v0.6.88 P1-B: append-only enforcement contract.
@@ -233,10 +266,14 @@ export function insertEvent(
     }
   }
 
-  const prevRow = db.prepare(
-    'SELECT hash FROM events ORDER BY created_at DESC, rowid DESC LIMIT 1'
-  ).get() as { hash: string } | undefined
-  const prevHash = prevRow?.hash ?? null
+  // v0.6.95 P0-4b: prev-hash from the in-memory cache instead of a fresh
+  // SQL lookup per insert. `ensureLastHash` hits the DB only when the cache
+  // is unseeded (post-initDB or after a manual reset); every subsequent
+  // insert reads from memory. Cache is refreshed AFTER a successful INSERT
+  // below so a mid-write crash doesn't leak the uncommitted hash to the
+  // next insert. Composite index `idx_events_created_at (created_at, rowid)`
+  // protects the cold-path query in `ensureLastHash`.
+  const prevHash = ensureLastHash()
 
   if (!opts?.operatorId) {
     throw new Error(`insertEvent: operatorId is required (agent_type=${agentType}). ` +
@@ -284,15 +321,29 @@ export function insertEvent(
   const signature = signEvent(canonicalForHash, event.operatorId)
   event.signature = signature
 
-  db.prepare(`
-    INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    event.id, event.timestamp, event.engagementId, event.sessionId,
-    event.operatorId, event.agentType, event.hostname, event.sourceIP,
-    event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
-    event.monotonicNs, event.ntpOffsetMs, event.signature
-  )
+  try {
+    db.prepare(`
+      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event.id, event.timestamp, event.engagementId, event.sessionId,
+      event.operatorId, event.agentType, event.hostname, event.sourceIP,
+      event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
+      event.monotonicNs, event.ntpOffsetMs, event.signature
+    )
+  } catch (e) {
+    // v0.6.95 P0-4b: any INSERT failure invalidates the cached prev-hash —
+    // we don't know whether the row actually landed, so the next insert must
+    // re-derive from the DB. Without this reset a UNIQUE-constraint retry
+    // (or any transient write error) could chain the next event onto a hash
+    // that isn't in the table, silently breaking the chain.
+    cachedLastHash = SENTINEL_UNSEEDED
+    throw e
+  }
+
+  // Commit the just-inserted hash as the new chain head. Only reached on a
+  // successful INSERT (the try/catch above resets on error).
+  cachedLastHash = event.hash ?? null
 
   lastEventForClockCheck = {
     timestamp: event.timestamp,

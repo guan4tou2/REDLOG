@@ -23,7 +23,7 @@ import { extractTarget } from './target-extractor'
 import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
-import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFull, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
+import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFullAsync, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
 import { readCastSlice } from './cast-slice'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
@@ -696,7 +696,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // Guard against zero-duration events (instantaneous commands still get
       // a small window so echoed prompt/output isn't lost to rounding).
       const startMs = target.timestamp - Math.max(duration, 100)
-      const slice = readCastSlice(resolvedCast, startMs, target.timestamp)
+      const slice = await readCastSlice(resolvedCast, startMs, target.timestamp)
       if (!slice) { json(res, 500, { error: 'failed to read cast file' }); return }
       json(res, 200, {
         command: td.command,
@@ -788,7 +788,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/anchors/verify' && req.method === 'GET') {
       const full = url.searchParams.get('full') === '1'
-      json(res, 200, full ? verifyChainFull() : verifyLatestAnchor())
+      // v0.6.95 P0-4a: full walk goes through the async, chunked variant so
+      // the main loop keeps servicing other HTTP requests while it runs.
+      json(res, 200, full ? await verifyChainFullAsync() : verifyLatestAnchor())
       return
     }
 

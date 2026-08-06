@@ -38,17 +38,17 @@ describe('readCastSlice', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('returns null when the cast file is missing', () => {
-    expect(readCastSlice(path.join(dir, 'missing.cast'), 0, 1)).toBeNull()
+  it('returns null when the cast file is missing', async () => {
+    expect(await readCastSlice(path.join(dir, 'missing.cast'), 0, 1)).toBeNull()
   })
 
-  it('returns null when the header cannot be parsed', () => {
+  it('returns null when the header cannot be parsed', async () => {
     const p = path.join(dir, 'bad.cast')
     fs.writeFileSync(p, 'not json\n[0.1,"o","hi"]\n', 'utf8')
-    expect(readCastSlice(p, 0, 1e13)).toBeNull()
+    expect(await readCastSlice(p, 0, 1e13)).toBeNull()
   })
 
-  it('slices only events within the wall-clock window', () => {
+  it('slices only events within the wall-clock window', async () => {
     const t0 = 1_700_000_000
     const p = writeCast(dir, t0, [
       [0.0, 'o', 'A'],
@@ -59,26 +59,26 @@ describe('readCastSlice', () => {
     // Window 1.0-2.5s from t0 → B and C (endMs is inclusive; startMs strict)
     const startMs = t0 * 1000 + 1000
     const endMs = t0 * 1000 + 2500
-    const slice = readCastSlice(p, startMs, endMs)!
+    const slice = (await readCastSlice(p, startMs, endMs))!
     expect(slice.text).toBe('BC')
     expect(slice.events.map((e) => e[2])).toEqual(['B', 'C'])
     expect(slice.castStartMs).toBe(t0 * 1000)
   })
 
-  it('strips ANSI when producing text', () => {
+  it('strips ANSI when producing text', async () => {
     const t0 = 1_700_000_000
     const p = writeCast(dir, t0, [
       [0.0, 'o', '\x1b[32mgreen\x1b[0m plain'],
       [0.5, 'o', '\x1b]0;title\x07more']
     ])
-    const slice = readCastSlice(p, 0, 1e13)!
+    const slice = (await readCastSlice(p, 0, 1e13))!
     expect(slice.text).toBe('green plainmore')
     // raw event bytes preserved for asciinema replay
     expect(slice.events[0][2]).toContain('\x1b[32m')
     expect(slice.bytes).toBeGreaterThan(0)
   })
 
-  it('skips malformed body lines but keeps going', () => {
+  it('skips malformed body lines but keeps going', async () => {
     const t0 = 1_700_000_000
     const p = path.join(dir, 'mixed.cast')
     fs.writeFileSync(p, [
@@ -89,17 +89,17 @@ describe('readCastSlice', () => {
       JSON.stringify([0.3, 'o', 'ok2']),
       ''
     ].join('\n'), 'utf8')
-    const slice = readCastSlice(p, 0, 1e13)!
+    const slice = (await readCastSlice(p, 0, 1e13))!
     expect(slice.text).toBe('ok1ok2')
   })
 
-  it('stops walking once we pass endMs (order-preserving)', () => {
+  it('stops walking once we pass endMs (order-preserving)', async () => {
     const t0 = 1_700_000_000
     const p = writeCast(dir, t0, [
       [0.0, 'o', 'in'],
       [10.0, 'o', 'out-of-window']
     ])
-    const slice = readCastSlice(p, 0, t0 * 1000 + 500)!
+    const slice = (await readCastSlice(p, 0, t0 * 1000 + 500))!
     expect(slice.text).toBe('in')
     expect(slice.events).toHaveLength(1)
   })

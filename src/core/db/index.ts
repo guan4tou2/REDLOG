@@ -45,6 +45,16 @@ export function initDB(projectDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_events_type ON events(agent_type);
     CREATE INDEX IF NOT EXISTS idx_events_engagement ON events(engagement_id);
     CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_id);
+    -- v0.6.95 P0-4b: every insertEvent looks up the previous row hash via
+    -- ORDER BY created_at DESC, rowid DESC LIMIT 1. Without this index the
+    -- query degrades to a table scan at 100k+ events, adding O(N) latency
+    -- per write. The lastHash in-memory cache in db/events.ts avoids the
+    -- query on the hot path; this index protects the cold path (first
+    -- insert after boot, cache invalidation, and the SAMPLE walker
+    -- prev-hash lookup). SQLite rejects rowid in indexes because rowid is
+    -- an implicit alias, so we index on created_at only and let SQLite use
+    -- the implicit rowid as the tiebreak for ORDER BY.
+    CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
 
     CREATE TABLE IF NOT EXISTS quickmarks (
       id TEXT PRIMARY KEY,
