@@ -519,6 +519,7 @@ export default function Settings(): JSX.Element {
                 {t('settings.exportHint')}
               </p>
             </FieldGroup>
+            <ExportBundlePanel t={t} />
             <FieldGroup title={t('settings.scopeExport')}>
               <button
                 onClick={async () => {
@@ -1038,6 +1039,87 @@ interface FullVerifyResult {
   signedCount?: number
   unsignedCount?: number
   badSignatureAtEventId?: string | null
+}
+
+// v0.6.94 D: renderer-side wrapper around data:exportBundle. Builds a sanitized
+// evidence pack via src/core/bundle-export.ts (same code path as the CLI +
+// MCP tool) and surfaces the resulting directory with a Reveal button so the
+// operator can zip it up and hand-deliver. Building is synchronous inside the
+// main process (walks events.jsonl + hashes screenshots), so the button
+// disables itself with a "Building..." label until IPC returns.
+function ExportBundlePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<{ path: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleExport = async (): Promise<void> => {
+    setBusy(true)
+    setError(null)
+    setResult(null)
+    try {
+      const dataApi = window.redlog.data as { exportBundle?: () => Promise<{ ok?: boolean; outDir?: string; error?: string } | null> }
+      if (!dataApi.exportBundle) {
+        setError(t('settings.exportFailed'))
+        setBusy(false)
+        return
+      }
+      const r = await dataApi.exportBundle()
+      if (!r) {
+        setError(t('settings.exportFailed'))
+      } else if (r.ok === false || !r.outDir) {
+        setError(r.error || t('settings.exportFailed'))
+      } else {
+        setResult({ path: r.outDir })
+        toast(t('toast.bundleExported'), 'success')
+      }
+    } catch (e) {
+      setError((e as Error)?.message ?? String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleReveal = async (): Promise<void> => {
+    if (!result?.path) return
+    const dataApi = window.redlog.data as { revealPath?: (p: string) => Promise<boolean> }
+    if (dataApi.revealPath) await dataApi.revealPath(result.path)
+  }
+
+  return (
+    <FieldGroup title={t('settings.exportBundleTitle')}>
+      <div className="flex items-center gap-2">
+        <button
+          data-testid="settings-export-bundle"
+          onClick={handleExport}
+          disabled={busy}
+          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {busy ? t('settings.exportBundleBuilding') : t('settings.exportBundle')}
+        </button>
+        {result && (
+          <button
+            onClick={handleReveal}
+            className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+          >
+            {t('settings.exportBundleReveal')}
+          </button>
+        )}
+      </div>
+      {result && (
+        <p className="text-xs text-zinc-400 font-mono mt-1 break-all">
+          {t('settings.savedTo', { path: result.path })}
+        </p>
+      )}
+      {error && (
+        <div className="mt-1 text-xs text-red-400 border border-red-900/60 bg-red-950/40 rounded px-2 py-1 break-all">
+          {error}
+        </div>
+      )}
+      <p className="text-xs text-zinc-600 mt-1">
+        {t('settings.exportBundleHint')}
+      </p>
+    </FieldGroup>
+  )
 }
 
 function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {

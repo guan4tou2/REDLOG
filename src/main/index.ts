@@ -1146,10 +1146,31 @@ app.whenReady().then(() => {
 
   // --- Evidence bundle ---
   ipcMain.handle('data:exportBundle', () => {
-    if (!activeProject) return null
-    const cfg = loadConfig(getProjectPath(activeProject))
-    const bundle = exportBundle(cfg.engagement.id)
-    return { outDir: bundle.outDir, manifest: bundle.manifest }
+    if (!activeProject) return { ok: false, error: 'no-active-project' }
+    try {
+      const cfg = loadConfig(getProjectPath(activeProject))
+      const bundle = exportBundle(cfg.engagement.id)
+      return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
+    } catch (e) {
+      return { ok: false, error: (e as Error)?.message ?? String(e) }
+    }
+  })
+  // Renderer button "Reveal in Finder / Show in Explorer" wants shell access
+  // without exposing the whole Electron shell module to preload. This handler
+  // opens the containing directory of an exported bundle/file. Rejects any
+  // path that isn't a string — belt+braces against renderer bugs.
+  ipcMain.handle('data:revealPath', async (_e, target: string) => {
+    if (typeof target !== 'string' || !target) return false
+    try {
+      // If `target` is a file, open its parent directory; if it's a directory,
+      // open it directly. shell.openPath returns an empty string on success.
+      const stat = fs.existsSync(target) ? fs.statSync(target) : null
+      const toOpen = stat && stat.isFile() ? path.dirname(target) : target
+      const err = await shell.openPath(toOpen)
+      return err === ''
+    } catch {
+      return false
+    }
   })
 
   // --- Data Export (minimal JSON dump) ---
