@@ -1033,15 +1033,11 @@ app.whenReady().then(() => {
 
   // --- Screenshots ---
   ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) => screenshotAgent.captureNow('manual', causeEventId))
-  ipcMain.handle('screenshot:read', (_e, filePath: string) => {
-    try {
-      const screenshotDir = path.join(getProjectDir(), 'screenshots')
-      const resolved = path.resolve(filePath)
-      if (!isInsideDir(screenshotDir, resolved)) return null
-      const data = fs.readFileSync(resolved)
-      return `data:image/jpeg;base64,${data.toString('base64')}`
-    } catch { return null }
-  })
+  // v0.6.98 B: `screenshot:read` handler removed. v0.6.97 B moved every
+  // renderer read onto the `redlog-screenshot://` custom protocol, and this
+  // IPC had no in-tree callers left. Dropping it shrinks the attack surface
+  // — a compromised renderer with `filePath` control can no longer coax a
+  // base64-encoded read of any file under `<projectDir>/screenshots/`.
   // Delete only the underlying JPEG. The screenshot EVENT stays in the DB —
   // rewriting it would break the hash chain (which is the whole point of the
   // chain). Emits a system.screenshot_deleted event so the audit trail names

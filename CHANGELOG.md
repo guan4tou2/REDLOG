@@ -3,6 +3,48 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.98 — 2026-08-06
+Follow-through on v0.6.97 + Windows process-monitor parity. Five items,
+no schema change, one small IPC removal.
+
+### Perf
+- **A** — ScreenshotsPanel thumbs render with `loading="lazy"` +
+  `decoding="async"` (`App.tsx:666`). v0.6.97 B stopped inflating the
+  bytes but 500 `<img>` tags still mounted eagerly; Chromium now
+  defers fetch/decode to when a tile nears the viewport. Cold panel
+  open on 500 shots drops steady-state RAM ~150MB and the paint stall
+  goes away. Works on the `redlog-screenshot://` custom scheme.
+
+### Security
+- **B** — `screenshot:read` IPC + preload shim removed
+  (`preload/index.ts:69`, `main/index.ts:1034`). Dead code after
+  v0.6.97 B — no in-tree caller. Deleting it means a compromised
+  renderer with `filePath` control can no longer coax a base64-encoded
+  read of any file under `<projectDir>/screenshots/`. `redlog-screenshot://`
+  is the only surviving read path and it enforces basename-only
+  resolution + `isInsideDir`.
+
+### UX
+- **C** — CaptureHealthCard now shows a per-source freshness stripe:
+  "Ns / Nm / Nh ago" next to each source's state, colour-scaled
+  (emerald <60s, amber <5m, zinc otherwise) (`App.tsx:238`). An
+  active source that hasn't fired in 45s used to look identical to
+  one that fired 200ms ago — now the age is at-a-glance.
+- **E** — Timeline anomaly filter localStorage key now includes
+  the project id (`Timeline.tsx:498`). Pre-v0.6.98 the key was
+  global — enabling the filter in Project A followed you into
+  Project B. Migrates the legacy unscoped value once per project
+  on first mount, so existing operators don't lose their setting.
+
+### Cross-platform
+- **D** — Windows `process-monitor` polls `Get-CimInstance Win32_Process`
+  via PowerShell (`process-monitor.ts:286`). Replaces the v0.6.92
+  `process_monitor_unsupported` advisory. Poll interval floored at
+  2000ms on win32 (cold PowerShell spawn is 800ms-1.5s). Pipe-delimited
+  output, falls back to `Name` when `CommandLine` is null (elevated
+  processes / SYSTEM PIDs without an admin token). Same diff/emit
+  pipeline and ignore-list as the darwin/linux path.
+
 ## v0.6.97 — 2026-08-06
 Perf/polish micro-batch. Six items: main-thread wins (screenshot IPC,
 event count cache, async JPEG write, deconfliction coalescing) plus two

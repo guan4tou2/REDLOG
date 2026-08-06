@@ -495,9 +495,40 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const [focusAnchorId, setFocusAnchorId] = useState<string | null>(() => {
     try { return localStorage.getItem('redlog-timeline-focus-anchor') } catch { return null }
   })
+  // v0.6.98 E: per-project anomaly filter. Pre-v0.6.98 the localStorage key
+  // was global — flipping the filter on in Project A followed you into
+  // Project B, which made triage confusing (why is my clean project showing
+  // half its events dimmed?). Fix: append `:${projectId}` once known, with
+  // one-shot migration from the legacy unscoped key on first mount per
+  // project. Initial state uses the unscoped key for pre-v0.6.98 continuity
+  // — it settles into the project-scoped value on the second render tick,
+  // after project.active() resolves.
+  const [projectIdForKeys, setProjectIdForKeys] = useState<string | null>(null)
   const [anomalyFilter, setAnomalyFilter] = useState<boolean>(() => {
     try { return localStorage.getItem('redlog-timeline-anomaly-filter') === '1' } catch { return false }
   })
+  useEffect(() => {
+    window.redlog.project.active().then((p) => setProjectIdForKeys(p?.id ?? null)).catch(() => { /* ignore */ })
+  }, [])
+  useEffect(() => {
+    if (!projectIdForKeys) return
+    try {
+      const scoped = `redlog-timeline-anomaly-filter:${projectIdForKeys}`
+      const stored = localStorage.getItem(scoped)
+      if (stored !== null) {
+        setAnomalyFilter(stored === '1')
+      } else {
+        // No scoped value yet — migrate from the legacy global key ONCE per
+        // project so the first project the operator opens after upgrading
+        // keeps their setting. Subsequent projects start clean.
+        const legacy = localStorage.getItem('redlog-timeline-anomaly-filter')
+        if (legacy !== null) {
+          localStorage.setItem(scoped, legacy)
+          setAnomalyFilter(legacy === '1')
+        }
+      }
+    } catch { /* ignore */ }
+  }, [projectIdForKeys])
   const [verifyResult, setVerifyResult] = useState<FullVerifyResult | null>(() => getLastVerifyResult())
   const [verifyDismissed, setVerifyDismissed] = useState(false)
   useEffect(() => {
@@ -515,8 +546,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     } catch { /* ignore */ }
   }, [focusAnchorId])
   useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-anomaly-filter', anomalyFilter ? '1' : '0') } catch { /* ignore */ }
-  }, [anomalyFilter])
+    // v0.6.98 E: hold writes until projectId lands, then write only to the
+    // scoped key. The legacy global key is left alone so the migration
+    // path above still finds it on other project opens.
+    if (!projectIdForKeys) return
+    try {
+      localStorage.setItem(`redlog-timeline-anomaly-filter:${projectIdForKeys}`, anomalyFilter ? '1' : '0')
+    } catch { /* ignore */ }
+  }, [anomalyFilter, projectIdForKeys])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
