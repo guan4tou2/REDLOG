@@ -585,13 +585,18 @@ function ScreenshotsView(): JSX.Element {
   }, [])
 
   useEffect(() => {
+    // v0.6.97 B: pull thumbs directly via `redlog-screenshot://` scheme
+    // (main-process protocol.handle registered at whenReady). No IPC round-
+    // trip and no 33% base64 inflation — Chromium streams the JPEG from disk.
+    // The filename basename is all we send; the main handler resolves it
+    // against the project's screenshots dir with an isInsideDir guard.
     screenshots.forEach((s) => {
       if (thumbs[s.id]) return
       const filePath = s.data.filePath as string | undefined
       if (!filePath) return
-      window.redlog.screenshot.read(filePath).then((dataUri) => {
-        if (dataUri) setThumbs((prev) => ({ ...prev, [s.id]: dataUri }))
-      })
+      const basename = filePath.split(/[\\/]/).pop() || ''
+      if (!basename) return
+      setThumbs((prev) => ({ ...prev, [s.id]: `redlog-screenshot://local/${encodeURIComponent(basename)}` }))
     })
   }, [screenshots, thumbs])
 

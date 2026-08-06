@@ -105,11 +105,47 @@ async function withRetry(cfg: DeconflictionConfig, body: string): Promise<void> 
   }
 }
 
+// v0.6.97 A: coalesce events before POSTing. Pre-v0.6.97: 1 event = 1 POST
+// with retry storm; a 200 evt/s burst (mitmproxy scan) fires 200 POSTs/s at
+// the SIEM. Now: buffer + flush every 500ms as a JSON array. Semantics
+// change: the SIEM must accept `Array<Event>` bodies. Since deconfliction
+// is opt-in and the receiver is operator-configured, this is documented in
+// the webhook spec + the pre-flight `testWebhook` still fires a single-event
+// body so operators can see whether their receiver handles the empty case.
+const BATCH_FLUSH_MS = 500
+const MAX_BATCH = 100
+let pendingBatch: Array<Record<string, unknown>> = []
+let batchFlushTimer: ReturnType<typeof setTimeout> | null = null
+let flushCfgSnapshot: DeconflictionConfig | null = null
+
+function flushBatch(): void {
+  batchFlushTimer = null
+  const batch = pendingBatch
+  const cfg = flushCfgSnapshot
+  pendingBatch = []
+  flushCfgSnapshot = null
+  if (!cfg || batch.length === 0) return
+  const body = JSON.stringify(batch)
+  withRetry(cfg, body).catch(() => { /* silent — best effort */ })
+}
+
 export function notifyDeconfliction(event: RedLogEvent): void {
   const cfg = active
   if (!shouldForward(event, cfg)) return
-  const body = JSON.stringify(canonicalise(event, cfg))
-  withRetry(cfg, body).catch(() => { /* silent — best effort */ })
+  pendingBatch.push(canonicalise(event, cfg))
+  flushCfgSnapshot = cfg  // use the config captured at first-event-in-batch
+  if (pendingBatch.length >= MAX_BATCH) {
+    if (batchFlushTimer) { clearTimeout(batchFlushTimer); batchFlushTimer = null }
+    flushBatch()
+    return
+  }
+  if (!batchFlushTimer) batchFlushTimer = setTimeout(flushBatch, BATCH_FLUSH_MS)
+}
+
+/** Test-only: drain pending batch synchronously (fires the POST). */
+export function _flushDeconflictionForTest(): void {
+  if (batchFlushTimer) { clearTimeout(batchFlushTimer); batchFlushTimer = null }
+  flushBatch()
 }
 
 export async function testWebhook(cfg: DeconflictionConfig): Promise<{ ok: boolean; status: number; error?: string }> {

@@ -285,7 +285,17 @@ function emitExit(p: TrackedProc): void {
 // whitespace-separated columns and keep the rest as `command`.
 export function runPs(): Promise<PsRow[]> {
   return new Promise((resolve, reject) => {
-    execFile('ps', ['-eo', 'pid=,ppid=,etime=,command='], { maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+    // v0.6.97 E: on Linux procps truncates the command column at the terminal
+    // width (default 80 cols in an inherited-env spawn — argv gets sliced),
+    // which loses the args we need for scope matching. Double `-w` disables
+    // truncation entirely (`-w` once bumps to unlimited, twice is a belt-
+    // and-suspenders for procps < 3.3). macOS BSD ps ignores unknown flags,
+    // so `-w -w` still parses correctly there. Alpine BusyBox errors on
+    // both — that path is already covered by the CP-2 advisory event.
+    const args = process.platform === 'linux'
+      ? ['-w', '-w', '-eo', 'pid=,ppid=,etime=,command=']
+      : ['-eo', 'pid=,ppid=,etime=,command=']
+    execFile('ps', args, { maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
       if (err) { reject(err); return }
       const rows: PsRow[] = []
       for (const line of stdout.split('\n')) {

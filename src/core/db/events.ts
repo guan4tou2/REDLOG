@@ -50,6 +50,8 @@ export function resetSession(): void {
   // truth. Cache lives per-process; a project switch closes the DB and reopens
   // it, so the cached hash from the OLD project must not seed the NEW one.
   cachedLastHash = SENTINEL_UNSEEDED
+  // v0.6.97 C: same invariant for the row-count cache.
+  cachedEventCount = null
 }
 
 // v0.6.95 P0-4b: prev-hash cache. Every event's hash chains onto the last
@@ -78,6 +80,20 @@ function ensureLastHash(): string | null {
  *  must call this so the next insertEvent re-reads the true head hash. */
 export function _resetLastHashCache(): void {
   cachedLastHash = SENTINEL_UNSEEDED
+}
+
+// v0.6.97 C: row-count cache. getEventCount is called on every StatusBar tick
+// (5s poll) and every dashboard render — pre-v0.6.97 that was a full
+// `SELECT COUNT(*)` per call. With 200k+ rows the scan takes 40-80ms and
+// blocks the main thread. Now: seed once via COUNT, then increment on every
+// successful insert. Any write path that mutates the events table outside
+// insertEvent (rebuild, DELETE via a bypassed trigger, migration) must call
+// `_resetEventCountCache` — mirror of the prev-hash cache invariant. Reset
+// on project switch via resetSession too.
+let cachedEventCount: number | null = null
+
+export function _resetEventCountCache(): void {
+  cachedEventCount = null
 }
 
 // v0.6.88 P1-B: append-only enforcement contract.
@@ -344,6 +360,9 @@ export function insertEvent(
   // Commit the just-inserted hash as the new chain head. Only reached on a
   // successful INSERT (the try/catch above resets on error).
   cachedLastHash = event.hash ?? null
+  // v0.6.97 C: increment count cache when seeded; leave unseeded state alone
+  // so the next getEventCount does the seeding scan against the true row set.
+  if (cachedEventCount !== null) cachedEventCount++
 
   lastEventForClockCheck = {
     timestamp: event.timestamp,
@@ -428,8 +447,10 @@ export function queryEventById(id: string): RedLogEvent | null {
 }
 
 export function getEventCount(): number {
+  if (cachedEventCount !== null) return cachedEventCount
   const db = getDB()
   const row = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }
+  cachedEventCount = row.count
   return row.count
 }
 

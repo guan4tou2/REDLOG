@@ -1891,6 +1891,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
             const externalOnly = EXTERNAL_ONLY_LANES.has(id)
+            // v0.6.97 F: external-only lanes (credential_use, c2_checkin)
+            // stay hidden on an internal engagement — pre-v0.6.97 they
+            // rendered dimmed with a tooltip, but on a laptop-only pentest
+            // they'll never populate and just clutter the chip row. Once a
+            // real event lands they auto-reappear (populatedLanes shifts).
+            if (externalOnly && empty) return null
             return (
               <button
                 key={id}
