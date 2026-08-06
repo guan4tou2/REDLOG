@@ -105,6 +105,7 @@ interface RedLogAPI {
     getCount: () => Promise<number>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
+    onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>

@@ -3,6 +3,79 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.95 — 2026-08-06
+Perf + `_causes` bundle — 6 items from the post-v0.6.92 audit. Backend
++ Timeline rederivation; no new UI.
+
+### A. `_causes` wire audit — no code change
+Traced every `insertEvent('pivot'|'cleanup'|'file_transfer'|'loot'`
+site. All four companions already stamp `_causes` correctly (landed
+v0.6.89). Ops reviewer's finding was stale. `file-watcher.ts:133`
+intentionally leaves `_causes` unset — no triggering shell in scope.
+
+### B. `verifyChainFull` — chunked + lazy shape build
+- **File**: `src/core/chain-anchor.ts`
+- **Symptom**: sync SHA-256×6 shapes + Ed25519 verify per row → 10-30s
+  block at 100k rows; renderer freezes.
+- **Fix 1 (lazy)**: hashes now compute newest-first and short-circuit
+  on match. Modern rows match the first shape (v0.6.88 canonical), so
+  5 of 6 SHA-256s never fire. ~4-6× speedup on typical chains.
+- **Fix 2 (yielding)**: new `verifyChainFullAsync` yields via
+  `setImmediate` every 1000 rows. Sync `verifyChainFull` kept for
+  tests + backward compat.
+- **IPC wire**: `chain:verify` + `/api/anchors/verify` route to the
+  async version.
+- Deviation: picked `setImmediate` over `worker_threads` — better-sqlite3
+  handles aren't easily shareable to workers, and the sample walker
+  already runs on the main thread.
+
+### C. `created_at` index + `lastHash` cache
+- `src/core/db/index.ts`: `CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at)`.
+- `src/core/db/events.ts`: sentinel-guarded module-level `cachedLastHash`
+  + `ensureLastHash()`. Seeded once from DB on first use, refreshed
+  after every successful insert. Any INSERT error resets to
+  `SENTINEL_UNSEEDED`. `resetSession()` (called by `initDB`) clears so
+  project switches don't leak cache across projects. `_resetLastHashCache()`
+  exported for tests.
+
+### D. IPC coalescing — `events:new-batch`
+- **File**: `src/main/index.ts:942` — `batchBuffer` accumulates events,
+  `setImmediate(flushBatch)` sends `Array<RedLogEvent>` on
+  `events:new-batch`. Per-event `events:new` still fires so
+  deconfliction webhook + overlay pivot HUD subscribers keep working.
+- **Preload**: `events.onNewBatch(cb)` added; `events.onNew` unchanged.
+- Deconfliction webhook coalescing left as follow-up per plan.
+
+### E. `readCastSlice` streaming
+- **File**: `src/core/cast-slice.ts`
+- **Before**: `fs.readFileSync` + `split('\n')` + `JSON.parse` per
+  line → peak ~200MB for a 50MB cast. Two concurrent replays cracked
+  8GB Electron.
+- **After**: `fs.createReadStream` + `readline.createInterface` —
+  line-by-line. `stream.destroy()` on first out-of-window event
+  (file is time-ordered, so nothing later falls back inside).
+  `crlfDelay: Infinity` handles Windows-authored casts.
+- **Signature**: now `Promise<CastSlice | null>`. Callers awaited
+  (`api-server.ts:699`, `main/index.ts:1294,1330`).
+- 50MB cap (v0.6.93 P0-G) still bails early.
+
+### F. Timeline rederivation + plugin lane deps
+- **File**: `src/renderer/src/components/Timeline.tsx`
+- **Fix 1 (bug)**: added `pluginTypes` to deps for `populatedLanes`,
+  `laneEvents`, `recentEvents` useMemos — plugin-registered event
+  lanes now show up on first render instead of after any unrelated
+  state change.
+- **Fix 2 (perf)**: `Array.from(map.values()).sort(eventCompare)` on
+  every event rebuild → replaced with `sortedRef` maintained via
+  `binarySearchInsert`. Fast path: `sortedRef.current.push(evt)` when
+  new event's timestamp ≥ last (the normal live-stream case). Cold
+  path: binary search + splice. `loadMore` binary-inserts older rows.
+- **Batch listener**: `useEffect` subscribes to `onNewBatch` if
+  available (via v0.6.95 D), falls back to `onNew` per-event. Ingest
+  dedupes against `eventsMapRef` so double broadcast is safe.
+
+Tests: 360 unit / 17 e2e / build clean.
+
 ## v0.6.94 — 2026-08-05
 Delivery + Windows parity. Four items from the 5-agent audit.
 
