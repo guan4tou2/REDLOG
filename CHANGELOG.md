@@ -3,6 +3,54 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.100 — 2026-08-06
+Post-review defect batch. Six fixes surfaced by two-axis review of the
+v0.6.97-99 diff (spec + standards, parallel sub-agents). No new
+features — every item is a bug in the prior three releases.
+
+### Durability
+- **F1** — Deconfliction now flushes its pending batch on `will-quit`
+  (`main/index.ts:1826`, `deconfliction.ts:141`). v0.6.97 A opened
+  the buffered path but never wired shutdown drain; up to 100 events
+  (or ≤500ms worth) vanished when the operator quit mid-engagement.
+
+### Correctness
+- **F2** — Batch config captured at first-event-in-batch, not
+  per-event (`deconfliction.ts:135`). Pre-v0.6.100 the assignment
+  ran on every notify, so a mid-batch webhook URL rotation would
+  POST events canonicalised under the OLD cfg (filtered by old
+  `events`/`includeData`) to the NEW cfg's endpoint. Now the
+  snapshot belongs to whichever cfg opened the batch.
+- **F3** — Windows process-monitor no longer fires a spurious
+  `process_exit` for its own PowerShell every 2s
+  (`process-monitor.ts:166`). Root cause: `collectDescendants` only
+  walks live pids via `nowMap`, so a dead descendant that landed in
+  `knownProcs` last tick couldn't be filtered next tick — it
+  appeared as an exit. Fix: exclude own descendants from the
+  `knownProcs` snapshot itself. Applies to both write sites (poll
+  body + saturated-branch). Also collapses the duplicated
+  win32-vs-default poll interval math into two named locals.
+
+### Perf
+- **F4** — `redlog-screenshot://` protocol handler swapped
+  `fs.readFileSync` → `fs.promises.readFile` (`main/index.ts:684`).
+  With v0.6.98 A lazy-loading, 500 thumbs burst-fire requests as
+  ScreenshotsView scrolls; each blocked main 5-15ms. Same fix
+  v0.6.97 D applied to screenshot-agent writes.
+
+### UX
+- **F5** — Timeline per-project localStorage now falls back to a
+  `__global__` sentinel when `project.active()` resolves null
+  (`Timeline.tsx:511`). Pre-v0.6.100 all scoped writes silently
+  dropped when there was no active project (first-launch, DMG
+  demo, e2e). Sentinel means toggles still persist.
+- **F6** — Migration effect ref-guards against re-runs
+  (`Timeline.tsx:513`). Pre-v0.6.100 a user typing in the
+  `/`-filter box between mount and `project.active()` resolution
+  would have their input clobbered when the effect fired and
+  called `setFilterQuery(legacy)`. Now `migrationAppliedFor`
+  records the projectId we've handled; effect no-ops on re-run.
+
 ## v0.6.99 — 2026-08-06
 Follow-through on v0.6.98. Three tight items: extend per-project
 scoping to the rest of Timeline's localStorage, add a per-second
