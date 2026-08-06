@@ -42,6 +42,16 @@ contextBridge.exposeInMainWorld('redlog', {
       ipcRenderer.on('events:new', handler)
       return () => ipcRenderer.removeListener('events:new', handler)
     },
+    // v0.6.95 P0-4c: batch listener for coalesced deliveries. The main-side
+    // event bus buffers incoming events and flushes an Array<RedLogEvent> via
+    // this channel each frame (~16 ms), collapsing burst traffic (mitmproxy
+    // scans, cast replay) from N IPC hops to one. `events:new` still fires
+    // per-event for backward compat with subscribers that don't care to batch.
+    onNewBatch: (cb: (events: unknown[]) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, events: unknown[]) => cb(events)
+      ipcRenderer.on('events:new-batch', handler)
+      return () => ipcRenderer.removeListener('events:new-batch', handler)
+    },
     // Layer 3 (four-layer redaction): every time the reviewer reveals raw
     // bytes of a redacted span, we log a chained system.secret_revealed event
     // so the audit trail shows who saw what and when.

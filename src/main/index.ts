@@ -8,7 +8,7 @@ import { IPMonitor, IPStatus } from '../core/ip-monitor'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, getEventCount, searchEvents, queryScopeFilteredEvents } from '../core/db/events'
+import { insertEvent, queryEvents, getEventCount, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
@@ -19,7 +19,7 @@ import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from '../core/scope-monitor'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
-import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFull, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
+import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
@@ -939,9 +939,32 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+  // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
+  // still fires `events:new` per-event (deconfliction webhook + overlay
+  // pivot HUD subscribe to it), but the renderer's Timeline drains
+  // `events:new-batch` on a single frame per burst. A 200 evt/s mitmproxy
+  // scan collapses from 200 IPC hops to ~12 (60 fps) with one setEvents
+  // call per hop instead of one per event.
+  let batchBuffer: RedLogEvent[] = []
+  let batchScheduled = false
+  const flushBatch = (): void => {
+    batchScheduled = false
+    if (batchBuffer.length === 0) return
+    const drained = batchBuffer
+    batchBuffer = []
+    send(mainWindow, 'events:new-batch', drained)
+  }
   eventBus.on('event', (event) => {
+    // Per-event channel stays — deconfliction/overlay HUD and any external
+    // subscriber that doesn't want to buffer keeps its existing shape.
     send(mainWindow, 'events:new', event)
     notifyDeconfliction(event)
+    // Batch channel — Timeline listens here and rebuilds once per frame.
+    batchBuffer.push(event)
+    if (!batchScheduled) {
+      batchScheduled = true
+      setImmediate(flushBatch)
+    }
     // keep the overlay + dashboard pivot views live — on new pivots, and on the
     // command_end that closes a foreground tunnel so it drops from the HUD at once.
     const d = (event.data ?? {}) as Record<string, unknown>
@@ -1015,9 +1038,12 @@ app.whenReady().then(() => {
   ipcMain.handle('chain:length', () => getChainLength())
   ipcMain.handle('chain:anchors', () => activeProject ? listAnchors() : [])
   ipcMain.handle('chain:anchorNow', async () => activeProject ? await anchorNow() : null)
-  ipcMain.handle('chain:verify', (_e, opts?: { full?: boolean }) => {
+  ipcMain.handle('chain:verify', async (_e, opts?: { full?: boolean }) => {
     if (!activeProject) return { ok: false, anchor: null, currentHead: null }
-    return opts?.full ? verifyChainFull() : verifyLatestAnchor()
+    // v0.6.95 P0-4a: full verify now uses the async variant that yields to
+    // the event loop every ASYNC_CHUNK_ROWS rows, so the renderer stays
+    // responsive and IPC deliveries keep flowing during a 100k-row walk.
+    return opts?.full ? await verifyChainFullAsync() : verifyLatestAnchor()
   })
   ipcMain.handle('chain:upgrade', async (_e, id?: string) => {
     if (!activeProject) return null
@@ -1291,7 +1317,7 @@ app.whenReady().then(() => {
       if (!castPath) return { ok: false, error: 'no cast file for this session' }
       const duration = Number(td.duration_sec ?? 0) * 1000
       const startMs = target.timestamp - Math.max(duration, 100)
-      const slice = readCastSlice(castPath, startMs, target.timestamp)
+      const slice = await readCastSlice(castPath, startMs, target.timestamp)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
       return { ok: true, command: td.command, exitCode: td.exit_code, durationSec: td.duration_sec, text: slice.text, bytes: slice.bytes }
     } catch (e) {
@@ -1327,7 +1353,7 @@ app.whenReady().then(() => {
       if (!castPath) return { ok: false, error: 'no cast file for this session' }
       // Slice from 0 to a far future — readCastSlice bounds against the file
       // itself. text captures the whole session, ANSI-stripped.
-      const slice = readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
+      const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
       // events carries the raw asciinema frames ([relSec, 'o', bytes]) so the
       // renderer can drive a proper scrubber/player. text is kept for the

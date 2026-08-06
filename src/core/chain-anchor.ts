@@ -414,272 +414,330 @@ interface WalkRow {
   signature: string | null
 }
 
-export function verifyChainFull(): FullVerifyResult {
-  const db = getDB()
-  const anchor = getLastAnchor()
-  const currentHead = computeChainHead()
+// v0.6.95 P0-4a: shared walker state so both the sync `verifyChainFull` and
+// the async `verifyChainFullAsync` (chunked, yields to the main loop) can
+// call the same per-row logic. Extracting this lets us short-circuit shape
+// attempts lazily — most rows on a modern chain match the v0.6.88 canonical
+// shape, and older shapes only need to be computed as fallbacks. Previously
+// the walker eagerly computed all 6 SHA-256 hashes per row — 30-second block
+// at 100k events.
+interface WalkerState {
+  walked: number
+  expectedPrev: string | null
+  lastHash: string | null
+  clockAnomalies: ClockAnomaly[]
+  prevByHostSession: Map<string, WalkRow>
+  signedCount: number
+  unsignedCount: number
+  badSignatureAtEventId: string | null
+  seenNonNullPrevHash: boolean
+  lookupPubKey: (opId: string) => string | null
+}
 
-  const rowIter = db.prepare(
-    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
-            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-            monotonic_ns, ntp_offset_ms, signature
-     FROM events ORDER BY created_at ASC, rowid ASC`
-  ).iterate() as IterableIterator<WalkRow>
+// Rebuild each hash shape lazily. `label` names the shape so we can log which
+// one matched; `build` computes SHA-256 on demand. We try canonical first
+// (~99% of rows on a modern chain), then progressively older shapes. The
+// first match wins and no later shapes get hashed.
+function verifyRowHash(row: WalkRow, parsedData: unknown):
+  { matched: { label: string; canonicalJsonForSig: string | null } | null; attemptLabels: string[] } {
+  const shapeV02: Record<string, unknown> = {
+    id: row.id, timestamp: row.timestamp,
+    engagementId: row.engagement_id, sessionId: row.session_id,
+    operatorId: row.operator_id, agentType: row.agent_type,
+    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+    data: parsedData,
+    hash: undefined,
+    prevHash: row.prev_hash,
+    createdAt: row.created_at
+  }
+  const shapeV06 = (): Record<string, unknown> => {
+    const o: Record<string, unknown> = { ...shapeV02 }
+    if (row.monotonic_ns != null) o.monotonicNs = row.monotonic_ns
+    if (row.ntp_offset_ms != null) o.ntpOffsetMs = row.ntp_offset_ms
+    return o
+  }
+  const shapeV06Null = (): Record<string, unknown> => ({
+    ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null
+  })
+  const shapeV01 = (): Record<string, unknown> => ({
+    id: row.id, timestamp: row.timestamp,
+    engagementId: row.engagement_id, sessionId: row.session_id,
+    operatorId: row.operator_id, agentType: row.agent_type,
+    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+    data: parsedData,
+    hash: undefined,
+    createdAt: row.created_at
+  })
 
-  // v0.6.89: cache operator → public key lookups. verifyChainFull walks the
-  // full events table; a typical operator set is <20, so a Map keyed by
-  // operator_id is cheaper than a JOIN and lets us surface "no pubkey" as
-  // "unsigned" cleanly.
-  const pubKeyCache = new Map<string, string | null>()
-  const pubKeyStmt = db.prepare(`SELECT signer_pub_key FROM operators WHERE id = ?`)
-  const lookupPubKey = (opId: string): string | null => {
-    if (pubKeyCache.has(opId)) return pubKeyCache.get(opId) ?? null
-    const row = pubKeyStmt.get(opId) as { signer_pub_key: string | null } | undefined
-    const key = row?.signer_pub_key ?? null
-    pubKeyCache.set(opId, key)
-    return key
+  const target = row.hash
+  const attempts: Array<{
+    label: string
+    build: () => Record<string, unknown>
+    hash: (o: Record<string, unknown>) => string
+    canonical: (o: Record<string, unknown>) => string | null
+  }> = [
+    // Newest-first — v0.6.88 canonical dominates on any modern chain.
+    { label: 'v0.6.88',       build: shapeV06Null, hash: (o) => canonicalSha(o), canonical: (o) => canonicalStringify(o) },
+    { label: 'v0.6.88+strip', build: shapeV06,     hash: (o) => canonicalSha(o), canonical: (o) => canonicalStringify(o) },
+    { label: 'v0.6',          build: shapeV06,     hash: (o) => jsonSha(o),      canonical: () => null },
+    { label: 'v0.6+null',     build: shapeV06Null, hash: (o) => jsonSha(o),      canonical: () => null },
+    { label: 'v0.2',          build: () => shapeV02, hash: (o) => jsonSha(o),    canonical: () => null },
+    { label: 'v0.1',          build: shapeV01,     hash: (o) => jsonSha(o),      canonical: () => null }
+  ]
+  const attemptLabels: string[] = []
+  for (const a of attempts) {
+    const obj = a.build()
+    const h = a.hash(obj)
+    attemptLabels.push(`${a.label}=${h.slice(0, 8)}`)
+    if (h === target) {
+      return { matched: { label: a.label, canonicalJsonForSig: a.canonical(obj) }, attemptLabels }
+    }
+  }
+  return { matched: null, attemptLabels }
+}
+
+const jsonSha = (obj: Record<string, unknown>): string =>
+  crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
+const canonicalSha = (obj: Record<string, unknown>): string =>
+  crypto.createHash('sha256').update(canonicalStringify(obj)).digest('hex')
+
+// Returns a FullVerifyResult if this row breaks the chain (caller should
+// return it immediately); null otherwise. State is mutated in place so the
+// walker can resume with the same counters.
+function processRow(row: WalkRow, state: WalkerState, currentHeadHash: string | null, anchor: ChainAnchor | null): FullVerifyResult | null {
+  state.walked++
+  // A pre-v0.2 event has no prev_hash column at all — the migration added
+  // the column but populated existing rows with NULL rather than backfilling
+  // the actual prior-event hash. NULL prev_hash is legitimate ONLY for the
+  // leading (pre-migration) rows, before any row with prev_hash appears.
+  if (row.prev_hash != null) {
+    state.seenNonNullPrevHash = true
+    if (row.prev_hash !== state.expectedPrev) {
+      return {
+        ok: false,
+        walked: state.walked,
+        brokenAtEventId: row.id,
+        brokenReason: `prev_hash mismatch (expected ${state.expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
+        currentHead: currentHeadHash,
+        anchor,
+        anchorMatchesWalkedHead: false,
+        clockAnomalies: state.clockAnomalies,
+        signedCount: state.signedCount,
+        unsignedCount: state.unsignedCount,
+        badSignatureAtEventId: state.badSignatureAtEventId
+      }
+    }
+  } else if (state.seenNonNullPrevHash) {
+    // v0.6.93 P0-A: NULL prev_hash after we've already crossed the
+    // migration boundary = forgery. Silent-forgery vector documented in
+    // the v0.6.92.1 security audit.
+    return {
+      ok: false,
+      walked: state.walked,
+      brokenAtEventId: row.id,
+      brokenReason: 'NULL prev_hash after migration boundary (v0.6.93 forgery-check)',
+      currentHead: currentHeadHash,
+      anchor,
+      anchorMatchesWalkedHead: false,
+      clockAnomalies: state.clockAnomalies,
+      signedCount: state.signedCount,
+      unsignedCount: state.unsignedCount,
+      badSignatureAtEventId: state.badSignatureAtEventId
+    }
   }
 
-  let walked = 0
-  let expectedPrev: string | null = null
-  let lastHash: string | null = null
-  const clockAnomalies: ClockAnomaly[] = []
-  const prevByHostSession = new Map<string, WalkRow>()
-  let signedCount = 0
-  let unsignedCount = 0
-  let badSignatureAtEventId: string | null = null
+  // Rebuild hash shapes lazily and short-circuit on the first match. Most
+  // events on a modern chain match the first (v0.6.88 canonical) shape, so
+  // legacy shapes never need to be computed.
+  const parsedData = JSON.parse(row.data)
+  const { matched, attemptLabels } = verifyRowHash(row, parsedData)
+  if (!matched) {
+    return {
+      ok: false,
+      walked: state.walked,
+      brokenAtEventId: row.id,
+      brokenReason: `hash mismatch (tried ${attemptLabels.join(', ')}, stored ${(row.hash ?? '').slice(0, 16)}...)`,
+      currentHead: currentHeadHash,
+      anchor,
+      anchorMatchesWalkedHead: false,
+      clockAnomalies: state.clockAnomalies,
+      signedCount: state.signedCount,
+      unsignedCount: state.unsignedCount,
+      badSignatureAtEventId: state.badSignatureAtEventId
+    }
+  }
 
-  // v0.6.93 P0-A: track when we first see a non-NULL prev_hash. After that
-  // moment ANY row with NULL prev_hash is tampering — the attacker was
-  // exploiting the shape-tolerant hash (which includes a v0.1 shape that
-  // hashes WITHOUT a prevHash field) plus the legacy NULL-permissive walk
-  // to insert forged rows and have verify return ok:true.
-  let seenNonNullPrevHash = false
-  for (const row of rowIter) {
-    walked++
-    // A pre-v0.2 event has no prev_hash column at all — the migration added
-    // the column but populated existing rows with NULL rather than backfilling
-    // the actual prior-event hash. NULL prev_hash is legitimate ONLY for the
-    // leading (pre-migration) rows, before any row with prev_hash appears.
-    if (row.prev_hash != null) {
-      seenNonNullPrevHash = true
-      if (row.prev_hash !== expectedPrev) {
-        return {
-          ok: false,
-          walked,
-          brokenAtEventId: row.id,
-          brokenReason: `prev_hash mismatch (expected ${expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
-          currentHead: currentHead?.hash ?? null,
-          anchor,
-          anchorMatchesWalkedHead: false,
-          clockAnomalies,
-          signedCount,
-          unsignedCount,
-          badSignatureAtEventId
-        }
-      }
-    } else if (seenNonNullPrevHash) {
-      // v0.6.93 P0-A: NULL prev_hash after we've already crossed the
-      // migration boundary = forgery. Silent-forgery vector documented in
-      // the v0.6.92.1 security audit.
-      return {
-        ok: false,
-        walked,
-        brokenAtEventId: row.id,
-        brokenReason: 'NULL prev_hash after migration boundary (v0.6.93 forgery-check)',
-        currentHead: currentHead?.hash ?? null,
-        anchor,
-        anchorMatchesWalkedHead: false,
-        clockAnomalies,
-        signedCount,
-        unsignedCount,
-        badSignatureAtEventId
-      }
-    }
-
-    // Schema evolved over the v0.x line — an event's stored hash may have
-    // been computed over one of THREE object shapes:
-    //   (v0.1) no prevHash, no monotonicNs/ntpOffsetMs
-    //   (v0.2) prevHash present, no monotonicNs/ntpOffsetMs
-    //   (v0.6) prevHash + monotonicNs + ntpOffsetMs (null-inclusive)
-    // Rebuild each explicitly (don't rely on Object.spread ordering) and
-    // try in order; only reject when all three differ. Rewriting old hashes
-    // would defeat the point of the chain (an operator couldn't distinguish
-    // schema evolution from tampering), so this stays a read-side shim.
-    const parsedData = JSON.parse(row.data)
-    const shapeV01: Record<string, unknown> = {
-      id: row.id, timestamp: row.timestamp,
-      engagementId: row.engagement_id, sessionId: row.session_id,
-      operatorId: row.operator_id, agentType: row.agent_type,
-      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-      data: parsedData,
-      hash: undefined,
-      createdAt: row.created_at
-    }
-    const shapeV02: Record<string, unknown> = {
-      id: row.id, timestamp: row.timestamp,
-      engagementId: row.engagement_id, sessionId: row.session_id,
-      operatorId: row.operator_id, agentType: row.agent_type,
-      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-      data: parsedData,
-      hash: undefined,
-      prevHash: row.prev_hash,
-      createdAt: row.created_at
-    }
-    const shapeV06: Record<string, unknown> = { ...shapeV02 }
-    if (row.monotonic_ns != null) shapeV06.monotonicNs = row.monotonic_ns
-    if (row.ntp_offset_ms != null) shapeV06.ntpOffsetMs = row.ntp_offset_ms
-    // Additional variant: v0.6 with explicit null values (some code paths
-    // spread the event object even when monotonicNs was null).
-    const shapeV06Null: Record<string, unknown> = { ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
-    // v0.6.88 P0-A: canonical shape uses `canonicalStringify` (sorted keys).
-    // New rows land here; verify tries this first because it's the most-recent
-    // computation. Falls back to the older per-shape JSON.stringify variants
-    // for rows written before v0.6.88.
-    const reconstructed = shapeV06
-    const jsonSha = (obj: Record<string, unknown>): string =>
-      crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
-    const canonicalSha = (obj: Record<string, unknown>): string =>
-      crypto.createHash('sha256').update(canonicalStringify(obj)).digest('hex')
-    const target = row.hash
-    // Try shapes in newest-first order — most events on a modern chain are
-    // v0.6.88 canonical. Older rows fall through to legacy JSON.stringify.
-    const attempts: Array<{ label: string; hash: string }> = [
-      { label: 'v0.6.88', hash: canonicalSha(shapeV06Null) },
-      { label: 'v0.6.88+strip', hash: canonicalSha(shapeV06) },
-      { label: 'v0.6', hash: jsonSha(shapeV06) },
-      { label: 'v0.6+null', hash: jsonSha(shapeV06Null) },
-      { label: 'v0.2', hash: jsonSha(shapeV02) },
-      { label: 'v0.1', hash: jsonSha(shapeV01) }
-    ]
-    const matched = attempts.find((a) => a.hash === target)
-    if (!matched) {
-      return {
-        ok: false,
-        walked,
-        brokenAtEventId: row.id,
-        brokenReason: `hash mismatch (tried ${attempts.map((a) => `${a.label}=${a.hash.slice(0, 8)}`).join(', ')}, stored ${(target ?? '').slice(0, 16)}...)`,
-        currentHead: currentHead?.hash ?? null,
-        anchor,
-        anchorMatchesWalkedHead: false,
-        clockAnomalies,
-        signedCount,
-        unsignedCount,
-        badSignatureAtEventId
-      }
-    }
-    void reconstructed  // shape-dependent, kept in scope for potential downstream use
-
-    // v0.6.89: per-event Ed25519 signature check. Only rows whose stored hash
-    // matched the v0.6.88 canonical shape (label starts with "v0.6.88") have
-    // a canonical string we can verify against — older shapes never carried
-    // signatures anyway, so we skip them cleanly. Signatures are additive:
-    //   present + verifies  → signedCount++
-    //   present + FAILS     → hard error (tamper); mark ok=false
-    //   absent              → unsignedCount++ (pre-v0.6.89 or unsigned operator)
-    if (row.signature) {
-      if (matched.label.startsWith('v0.6.88')) {
-        const pubKey = lookupPubKey(row.operator_id)
-        if (!pubKey) {
-          // Signature is on the row but we can't find the pubkey to check —
-          // treat as unsigned rather than tamper (operator row could have
-          // been wiped; that's a data-integrity problem worth surfacing but
-          // not proof of chain tampering).
-          unsignedCount++
+  // v0.6.89: per-event Ed25519 signature check. Only rows whose stored hash
+  // matched the v0.6.88 canonical shape have a canonical string we can verify
+  // against — older shapes never carried signatures anyway.
+  if (row.signature) {
+    if (matched.label.startsWith('v0.6.88') && matched.canonicalJsonForSig) {
+      const pubKey = state.lookupPubKey(row.operator_id)
+      if (!pubKey) {
+        state.unsignedCount++
+      } else {
+        const sigOk = verifyEventSignature(matched.canonicalJsonForSig, row.signature, pubKey)
+        if (sigOk) {
+          state.signedCount++
         } else {
-          const canonicalJson = matched.label === 'v0.6.88+strip'
-            ? canonicalStringify(shapeV06)
-            : canonicalStringify(shapeV06Null)
-          const sigOk = verifyEventSignature(canonicalJson, row.signature, pubKey)
-          if (sigOk) {
-            signedCount++
-          } else {
-            if (badSignatureAtEventId == null) badSignatureAtEventId = row.id
-            return {
-              ok: false,
-              walked,
-              brokenAtEventId: row.id,
-              brokenReason: 'signature invalid',
-              currentHead: currentHead?.hash ?? null,
-              anchor,
-              anchorMatchesWalkedHead: false,
-              clockAnomalies,
-              signedCount,
-              unsignedCount,
-              badSignatureAtEventId
-            }
+          if (state.badSignatureAtEventId == null) state.badSignatureAtEventId = row.id
+          return {
+            ok: false,
+            walked: state.walked,
+            brokenAtEventId: row.id,
+            brokenReason: 'signature invalid',
+            currentHead: currentHeadHash,
+            anchor,
+            anchorMatchesWalkedHead: false,
+            clockAnomalies: state.clockAnomalies,
+            signedCount: state.signedCount,
+            unsignedCount: state.unsignedCount,
+            badSignatureAtEventId: state.badSignatureAtEventId
           }
         }
-      } else {
-        // Row carries a signature but the hash matched a legacy shape — no
-        // canonical string exists that would round-trip both. Count as
-        // unsigned rather than fail; the chain hash still protected the row.
-        unsignedCount++
       }
     } else {
-      unsignedCount++
+      state.unsignedCount++
     }
+  } else {
+    state.unsignedCount++
+  }
 
-    const key = `${row.hostname}|${row.session_id}`
-    const prev = prevByHostSession.get(key)
-    if (prev && prev.monotonic_ns && row.monotonic_ns) {
-      // v0.6.88 P3-A: monotonic_ns may carry a `${bootPad}-${nsPad}` prefix.
-      // Strip it for the numeric compare. If the two rows have different
-      // boot epochs, the compare is meaningless (they're from different
-      // process runs) — skip anomaly detection in that case.
-      const parse = (s: string): { boot: string; ns: bigint } | null => {
-        try {
-          if (s.includes('-')) {
-            const [boot, ns] = s.split('-', 2)
-            return { boot, ns: BigInt(ns) }
-          }
-          return { boot: '', ns: BigInt(s) }
-        } catch { return null }
-      }
-      const pr = parse(prev.monotonic_ns)
-      const cur = parse(row.monotonic_ns)
-      if (pr && cur && pr.boot === cur.boot) {
-        const wallDelta = row.timestamp - prev.timestamp
-        const monoDelta = Number((cur.ns - pr.ns) / 1000000n)
-        const diff = Math.abs(wallDelta - monoDelta)
-        if (diff > CLOCK_TOLERANCE_MS) {
-          clockAnomalies.push({
-            eventId: row.id,
-            prevEventId: prev.id,
-            hostname: row.hostname,
-            sessionId: row.session_id,
-            wallDeltaMs: wallDelta,
-            monoDeltaMs: monoDelta,
-            diffMs: diff
-          })
+  const key = `${row.hostname}|${row.session_id}`
+  const prev = state.prevByHostSession.get(key)
+  if (prev && prev.monotonic_ns && row.monotonic_ns) {
+    const parse = (s: string): { boot: string; ns: bigint } | null => {
+      try {
+        if (s.includes('-')) {
+          const [boot, ns] = s.split('-', 2)
+          return { boot, ns: BigInt(ns) }
         }
+        return { boot: '', ns: BigInt(s) }
+      } catch { return null }
+    }
+    const pr = parse(prev.monotonic_ns)
+    const cur = parse(row.monotonic_ns)
+    if (pr && cur && pr.boot === cur.boot) {
+      const wallDelta = row.timestamp - prev.timestamp
+      const monoDelta = Number((cur.ns - pr.ns) / 1000000n)
+      const diff = Math.abs(wallDelta - monoDelta)
+      if (diff > CLOCK_TOLERANCE_MS) {
+        state.clockAnomalies.push({
+          eventId: row.id,
+          prevEventId: prev.id,
+          hostname: row.hostname,
+          sessionId: row.session_id,
+          wallDeltaMs: wallDelta,
+          monoDeltaMs: monoDelta,
+          diffMs: diff
+        })
       }
     }
-    prevByHostSession.set(key, row)
-
-    expectedPrev = row.hash
-    lastHash = row.hash
   }
+  state.prevByHostSession.set(key, row)
 
+  state.expectedPrev = row.hash
+  state.lastHash = row.hash
+  return null
+}
+
+function initWalkerState(): WalkerState {
+  const db = getDB()
+  const pubKeyCache = new Map<string, string | null>()
+  const pubKeyStmt = db.prepare(`SELECT signer_pub_key FROM operators WHERE id = ?`)
+  return {
+    walked: 0,
+    expectedPrev: null,
+    lastHash: null,
+    clockAnomalies: [],
+    prevByHostSession: new Map<string, WalkRow>(),
+    signedCount: 0,
+    unsignedCount: 0,
+    badSignatureAtEventId: null,
+    seenNonNullPrevHash: false,
+    // v0.6.89: cache operator → public key lookups. verifyChainFull walks the
+    // full events table; a typical operator set is <20, so a Map keyed by
+    // operator_id is cheaper than a JOIN and lets us surface "no pubkey" as
+    // "unsigned" cleanly.
+    lookupPubKey: (opId: string): string | null => {
+      if (pubKeyCache.has(opId)) return pubKeyCache.get(opId) ?? null
+      const row = pubKeyStmt.get(opId) as { signer_pub_key: string | null } | undefined
+      const key = row?.signer_pub_key ?? null
+      pubKeyCache.set(opId, key)
+      return key
+    }
+  }
+}
+
+function finaliseWalk(state: WalkerState, anchor: ChainAnchor | null, currentHead: ReturnType<typeof computeChainHead>): FullVerifyResult {
   let anchorMatchesWalkedHead = false
-  if (anchor && lastHash) {
-    const walkedHead = crypto.createHash('sha256').update(lastHash).update(String(walked)).digest('hex')
-    anchorMatchesWalkedHead = walkedHead === anchor.headHash || anchor.eventCount <= walked
+  if (anchor && state.lastHash) {
+    const walkedHead = crypto.createHash('sha256').update(state.lastHash).update(String(state.walked)).digest('hex')
+    anchorMatchesWalkedHead = walkedHead === anchor.headHash || anchor.eventCount <= state.walked
   }
-
   return {
     ok: true,
-    walked,
+    walked: state.walked,
     brokenAtEventId: null,
     brokenReason: null,
     currentHead: currentHead?.hash ?? null,
     anchor,
     anchorMatchesWalkedHead,
-    clockAnomalies,
-    signedCount,
-    unsignedCount,
-    badSignatureAtEventId
+    clockAnomalies: state.clockAnomalies,
+    signedCount: state.signedCount,
+    unsignedCount: state.unsignedCount,
+    badSignatureAtEventId: state.badSignatureAtEventId
   }
+}
+
+const WALK_STMT_SQL =
+  `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+          hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+          monotonic_ns, ntp_offset_ms, signature
+   FROM events ORDER BY created_at ASC, rowid ASC`
+
+export function verifyChainFull(): FullVerifyResult {
+  const db = getDB()
+  const anchor = getLastAnchor()
+  const currentHead = computeChainHead()
+  const state = initWalkerState()
+  const rowIter = db.prepare(WALK_STMT_SQL).iterate() as IterableIterator<WalkRow>
+  for (const row of rowIter) {
+    const broken = processRow(row, state, currentHead?.hash ?? null, anchor)
+    if (broken) return broken
+  }
+  return finaliseWalk(state, anchor, currentHead)
+}
+
+// v0.6.95 P0-4a: async variant that yields to the event loop every CHUNK rows.
+// verifyChainFull walks the entire events table (with SHA-256 per row for up
+// to 6 shape variants + Ed25519 verify), which at 100k events blocks the main
+// thread for 10-30s and freezes the renderer. The async path drains a chunk,
+// hands the main loop back with `setImmediate`, then resumes. Same result
+// shape as the sync version — Electron IPC handlers should prefer this.
+const ASYNC_CHUNK_ROWS = 1000
+export async function verifyChainFullAsync(): Promise<FullVerifyResult> {
+  const db = getDB()
+  const anchor = getLastAnchor()
+  const currentHead = computeChainHead()
+  const state = initWalkerState()
+  const rowIter = db.prepare(WALK_STMT_SQL).iterate() as IterableIterator<WalkRow>
+  let inChunk = 0
+  for (const row of rowIter) {
+    const broken = processRow(row, state, currentHead?.hash ?? null, anchor)
+    if (broken) return broken
+    if (++inChunk >= ASYNC_CHUNK_ROWS) {
+      inChunk = 0
+      // setImmediate lets any queued IPC / renderer message process before we
+      // grab the next chunk. Node's better-sqlite3 iterator is synchronous
+      // but holding it across a setImmediate boundary is safe as long as no
+      // interleaving statement is issued against the same DB — the pubkey
+      // lookup goes through a separate prepared statement handle, which is
+      // fine.
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+  }
+  return finaliseWalk(state, anchor, currentHead)
 }
 
 // v0.6.89 P1-A: read-path sampling verify. verifyChainFull walks the whole

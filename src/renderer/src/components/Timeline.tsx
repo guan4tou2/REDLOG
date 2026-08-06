@@ -240,6 +240,28 @@ function eventCompare(a: RedLogEvent, b: RedLogEvent): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
+// v0.6.95 P1-12: keep the events array sorted incrementally rather than
+// re-sorting on every batch. Full sort of 100k events is O(n log n) ~ 1.7M
+// compares per flush — at 200 evt/s that's a heap-thrash. Since events almost
+// always arrive in `created_at` order, the common case is "append to end",
+// which we detect with a cheap last-element check and skip the search entirely.
+// Only genuinely out-of-order rows (wall-clock regression, backfilled agents)
+// need the O(log n) binary search + O(n) shift.
+function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): void {
+  const n = sorted.length
+  if (n === 0) { sorted.push(evt); return }
+  if (eventCompare(evt, sorted[n - 1]) >= 0) { sorted.push(evt); return }
+  // Bisect: find the leftmost index i where sorted[i] >= evt.
+  let lo = 0
+  let hi = n
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (eventCompare(sorted[mid], evt) < 0) lo = mid + 1
+    else hi = mid
+  }
+  sorted.splice(lo, 0, evt)
+}
+
 function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
   const closed = new Set<string>()
   for (const e of events) {
@@ -676,6 +698,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
+  // v0.6.95 P1-12: sorted-by-eventCompare array kept in lockstep with the map.
+  // Full re-sort of 100k events per flush was 1.7M comparisons; sorted-insert
+  // makes an in-order arrival O(1) (push-to-end) and a genuine out-of-order
+  // insert O(log n) find + O(n) shift. Kept as a ref (not state) because the
+  // memoized `events` still comes from setEvents — sortedRef is just the
+  // storage backing that setEvents call.
+  const sortedRef = useRef<RedLogEvent[]>([])
   const isDragging = useRef(false)
   const dragStart = useRef({ x: 0, scroll: 0 })
   const didScrollToNow = useRef(false)
@@ -717,7 +746,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const seen = new Set<LaneId>()
     for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
     return seen
-  }, [events])
+    // v0.6.95 P1-12: pluginTypes was missing from deps — a plugin-registered
+    // event lane wouldn't appear on the filter chip until an unrelated state
+    // change re-ran the memo. Same fix applied to `laneEvents` and
+    // `recentEvents` below.
+  }, [events, pluginTypes])
 
   const visibleLanes = useMemo(
     () => LANES.filter((l) => populatedLanes.has(l) && !hiddenLanes.has(l)),
@@ -746,15 +779,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // Anchoring on `createdAt` (which never regresses in practice — Date.now
     // for the write instant, but callers can't rewind DB row insertion) means
     // the pager walks strictly older rows even under wall-clock backwards.
-    const rows = Array.from(eventsMapRef.current.values())
-    const oldestCreated = rows.reduce((min, e) => (e.createdAt < min ? e.createdAt : min), Number.MAX_SAFE_INTEGER)
-    const before = oldestCreated !== Number.MAX_SAFE_INTEGER ? oldestCreated : undefined
+    // v0.6.95 P1-12: sortedRef is the ground truth for ordering; scan it (or
+    // the map — either works, but the sorted view lets us short-circuit at
+    // the first element instead of walking every row).
+    const sorted = sortedRef.current
+    const before = sorted.length > 0 ? sorted[0].createdAt : undefined
     window.redlog.events.query({ limit: 200, beforeCreatedAt: before, excludeHousekeeping: true }).then((fetched) => {
       const newOnes = fetched.filter((e) => !eventsMapRef.current.has(e.id) && !isHousekeeping(e))
       if (fetched.length < 200) setAllLoaded(true)
       if (newOnes.length > 0) {
-        newOnes.forEach((e) => eventsMapRef.current.set(e.id, e))
-        setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
+        for (const e of newOnes) {
+          eventsMapRef.current.set(e.id, e)
+          binarySearchInsert(sortedRef.current, e)
+        }
+        setEvents([...sortedRef.current])
       }
       setLoading(false)
     })
@@ -763,28 +801,67 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   useEffect(() => {
     window.redlog.events.query({ limit: 200, excludeHousekeeping: true }).then((fetched) => {
       if (fetched.length < 200) setAllLoaded(true)
-      fetched.filter((e) => !isHousekeeping(e)).forEach((e) => eventsMapRef.current.set(e.id, e))
-      setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
+      // v0.6.95 P1-12: seed the sortedRef from the initial fetch. If any live
+      // events landed via the batch listener BEFORE the fetch resolved, they
+      // are already in `eventsMapRef` — dedupe against that map so we don't
+      // reset the sorted array to a stale snapshot missing the live rows.
+      // Still worth one full sort because the DB returns rows in DESC order
+      // and we want ASC internally; after this, every incoming update goes
+      // through the sorted-insert path.
+      const clean = fetched.filter((e) => !isHousekeeping(e))
+      for (const e of clean) {
+        if (!eventsMapRef.current.has(e.id)) eventsMapRef.current.set(e.id, e)
+      }
+      sortedRef.current = Array.from(eventsMapRef.current.values()).sort(eventCompare)
+      setEvents([...sortedRef.current])
       setLoading(false)
     })
-    // rAF-coalesced onNew: previously every incoming event triggered a full
-    // Array.from(map.values()).sort() on the render thread. A ~100 events/s
-    // mitmproxy scan with 5k rows already loaded was doing ~40k comparisons
-    // per event and 100 React renders per second. Now the handler just drops
-    // events into the map and schedules a single rebuild-and-render per frame.
+    // v0.6.95 P0-4c + P1-12: batch listener + sorted-insert. Main sends
+    // `events:new-batch` with an Array<RedLogEvent> once per frame per burst;
+    // this handler folds them into the sorted array in one shot, then does a
+    // single setEvents / re-render. Falls back to `onNew` per-event only if
+    // the batch channel isn't wired (older preload — shouldn't happen).
     let scheduled = false
     const flush = (): void => {
       scheduled = false
-      setEvents(Array.from(eventsMapRef.current.values()).sort(eventCompare))
+      // Shallow copy so React sees a new reference and re-renders.
+      setEvents([...sortedRef.current])
     }
-    const unsub = window.redlog.events.onNew((event) => {
+    const ingest = (event: RedLogEvent): void => {
       if (isHousekeeping(event)) return
+      if (eventsMapRef.current.has(event.id)) {
+        // Same id arriving again is either a duplicate broadcast (both channels
+        // fire) or an updated payload. Overwrite the map entry but leave the
+        // sorted array position alone — id-based sort tiebreak keeps it stable.
+        eventsMapRef.current.set(event.id, event)
+        return
+      }
       eventsMapRef.current.set(event.id, event)
+      binarySearchInsert(sortedRef.current, event)
+    }
+    const scheduleFlush = (): void => {
       if (scheduled) return
       scheduled = true
       requestAnimationFrame(flush)
-    })
-    return unsub
+    }
+    const unsubBatch = window.redlog.events.onNewBatch
+      ? window.redlog.events.onNewBatch((events) => {
+          if (!events?.length) return
+          for (const e of events) ingest(e)
+          scheduleFlush()
+        })
+      : null
+    // Keep the per-event subscriber ONLY when the batch channel is missing —
+    // otherwise both channels fire for every event and each row is ingested
+    // twice (second call is a no-op on the sorted array thanks to the map
+    // check, but still wasted work).
+    const unsubSingle = unsubBatch
+      ? null
+      : window.redlog.events.onNew((event) => { ingest(event); scheduleFlush() })
+    return () => {
+      unsubBatch?.()
+      unsubSingle?.()
+    }
   }, [])
 
   const { timeStart, timeEnd, ticks } = useMemo(() => {
@@ -814,7 +891,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
     for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
     return map
-  }, [events])
+  }, [events, pluginTypes])
 
   // v0.6.89.5: reverse-effects index (feature 1) — `effectsById[causeId] =
   // [effectEventId, ...]`. Built once per events change; O(N × avg-causes).
@@ -1093,7 +1170,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const recentEvents = useMemo(() => {
     const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)))
     return [...visible].reverse().slice(0, 50)
-  }, [events, hiddenLanes])
+  }, [events, hiddenLanes, pluginTypes])
 
   useEffect(() => {
     const el = scrollRef.current
