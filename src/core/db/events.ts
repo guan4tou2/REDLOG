@@ -415,6 +415,18 @@ export function queryEvents(opts: {
   return rows.map(rowToEvent)
 }
 
+// v0.6.96 Bug-2: O(1)-ish lookup by event id. Prior code did
+// `queryEvents({ limit: 5000 }).find(e => e.id === X)` for every replay /
+// slice request — for events older than the newest 5000, the find returned
+// undefined and the caller reported "event not found". The primary-key
+// lookup on `id` is a hash index scan, ~µs regardless of table size.
+export function queryEventById(id: string): RedLogEvent | null {
+  const db = getDB()
+  const row = db.prepare('SELECT * FROM events WHERE id = ? LIMIT 1').get(id) as
+    Record<string, unknown> | undefined
+  return row ? rowToEvent(row) : null
+}
+
 export function getEventCount(): number {
   const db = getDB()
   const row = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }

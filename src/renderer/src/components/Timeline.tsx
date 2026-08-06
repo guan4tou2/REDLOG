@@ -607,7 +607,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const [savedViews, setSavedViews] = useState<SavedTimelineView[] | null>(null)
   const [viewsOpen, setViewsOpen] = useState(false)
   const [viewsName, setViewsName] = useState('')
-  const viewsApi = (window.redlog as unknown as { views?: RedLogAPI['views'] }).views
+  // v0.6.96 Clean-3: `views` is now non-optional in env.d.ts (preload always
+  // exports it). The old cast is gone; direct access is type-safe.
+  const viewsApi = window.redlog.views
   const refreshViews = useCallback(async (): Promise<void> => {
     if (!viewsApi?.list) return
     try { setSavedViews((await viewsApi.list()) ?? []) } catch { setSavedViews([]) }

@@ -574,7 +574,11 @@ function ScreenshotsView(): JSX.Element {
       }
       // Someone else (e.g. the CLI) deleted a shot's file → mark it locally too.
       if (event.agentType === 'system' && event.data?.subtype === 'screenshot_deleted') {
-        const src = event.data?.source_event as string | undefined
+        // v0.6.96 Clean-4: read _causes[0] instead of legacy source_event.
+        // Both are still written today but this is the last renderer read of
+        // source_event — after v0.7.x we can drop the dual-write in main.
+        const causes = event.data?._causes as string[] | undefined
+        const src = causes?.[0] || (event.data?.source_event as string | undefined)
         if (src) setDeletedIds((prev) => { const n = new Set(prev); n.add(src); return n })
       }
     })

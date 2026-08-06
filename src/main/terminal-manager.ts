@@ -179,7 +179,16 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
   }
 
-  const shell = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
+  // v0.6.96 CP-1: on Windows, ignore inherited POSIX-shaped SHELL (Git Bash
+  // sets `SHELL=/usr/bin/bash` — pty.spawn rejects it with an inscrutable
+  // error). Only accept SHELL when it looks like a Win32 path or ends in .exe.
+  // Same class as the v0.6.82 cwd-from-HOME fix, but for SHELL — that audit
+  // didn't touch this line.
+  const isWin32Path = (p: string): boolean => /^[A-Z]:[\\/]/i.test(p) || /\.exe$/i.test(p)
+  const envShell = process.env.SHELL
+  const shell = (envShell && (os.platform() !== 'win32' || isWin32Path(envShell)))
+    ? envShell
+    : (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
   const isPowerShell = /powershell|pwsh/i.test(shell)
   const shellArgs = isPowerShell ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : []
   // Use os.homedir() only — it resolves via USERPROFILE on Windows. Reading

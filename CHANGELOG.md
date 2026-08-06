@@ -3,6 +3,76 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.96 — 2026-08-06
+Cleanup batch — 13 P1/P2 items from the 5-agent audit that weren't
+picked for v0.6.93/94/95. Zero user-facing change; every item is a
+bug fix, security hardening, label clarity, or dead-code removal.
+
+### Security
+- **Sec-1** — `/api/export/bundle` error response no longer returns
+  `err.stack` (`api-server.ts:743`). Stack stays in console.error.
+  Info leak: absolute paths + module layout to any token holder.
+- **Sec-2** — `~/.redlog/keys/` created with mode `0o700` (was
+  inheriting umask 0o755). Files inside are already 0o600 so contents
+  were never readable, but directory listing leaked operator ids. Also
+  `chmod` on already-existing dirs. Windows: no-op (POSIX perms).
+
+### Cross-platform
+- **CP-1** — Windows `SHELL=/usr/bin/bash` (Git Bash) is now rejected;
+  falls back to `powershell.exe`. Prior: pty.spawn crashed with an
+  inscrutable error when RedLog was launched from a Git Bash shortcut.
+  Same class as the v0.6.82 cwd-from-HOME fix.
+- **CP-2** — `process-monitor` now emits a one-shot
+  `system.process_monitor_ps_unavailable` advisory when `ps` fails
+  (Alpine BusyBox `ps` doesn't accept procps-style `-eo pid=,ppid=,…`).
+  Mirrors the existing Windows-unsupported advisory so the empty lane
+  has a visible reason.
+
+### Ops
+- **Ops-1** — `Whitelist` / `Blacklist` labels renamed to `Safe IPs` /
+  `Exposed IPs` everywhere. Placeholders in Settings and ProjectPicker
+  updated; overlay + ip.* hints too. Vocabulary now matches the
+  `ipSafety` verdict the app already emits (`safe / exposed / unknown`).
+- **Ops-2** — Saved Timeline views ride along with `config:exportProfile`
+  and merge into the local `views.json` on import. Team hand-off no
+  longer loses the sender's zoom / filter bookmarks. Merge is
+  id-keyed (imported wins on collision).
+- **Ops-3** — CaptureHealthCard verdict now tips to `partial` when
+  any source that's *expected to feed* is currently idle, even if
+  another source is active. Prior: shell-hook installed but silent for
+  hours still read as "healthy" green if builtin-terminal was active.
+
+### Latent bugs
+- **Bug-1** — Plugin host `events.query` shim was passing `type` and
+  `target` but core `queryEvents` reads `agentType` / `targetId` —
+  filters were silently dropped and plugins got a random 50-row window.
+  Shim now renames the fields (`main/index.ts:391`).
+- **Bug-2** — New `queryEventById(id)` in `db/events.ts` — O(1) hash
+  index scan. Replaces `queryEvents({limit: 5000}).find(id === X)` at
+  3 sites (`api-server.ts:671`, `main/index.ts:1347`, `:1376`). Events
+  older than the newest 5000 rows were reporting "not found" on replay.
+
+### Cleanup
+- **Clean-1** — Removed `vis-timeline` / `vis-data` dependencies. No
+  imports anywhere.
+- **Clean-2** — Removed `getPrimaryOperatorSnapshot` (`api-server.ts:979`)
+  and `findCauseSession` + `sessionCache` + `refreshSessionCache`
+  (`process-monitor.ts`). All dead: the snapshot fn was never called;
+  the ppid→session mapping always returned undefined (needs env-var
+  access ps doesn't give). Wall-clock proximity fallback stays in
+  Timeline.
+- **Clean-3** — `RedLogAPI.views` no longer `?` optional. Preload has
+  always exported it since v0.6.90 D; the `?` was leftover from day 1
+  when the shim was optional. Timeline drops its `as unknown as`
+  cast and reads `window.redlog.views` directly.
+- **Clean-4** — `App.tsx` screenshot-deleted handler prefers
+  `data._causes[0]` over legacy `data.source_event`. Main-process
+  write still dual-writes both for now — external consumers (deconfliction
+  subscribers, redlog-verify.py) may still read the legacy field.
+  Drop main-side after one more release.
+
+Tests: 360 unit / 17 e2e / build clean.
+
 ## v0.6.95 — 2026-08-06
 Perf + `_causes` bundle — 6 items from the post-v0.6.92 audit. Backend
 + Timeline rederivation; no new UI.

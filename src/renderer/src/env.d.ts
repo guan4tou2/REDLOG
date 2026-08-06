@@ -137,7 +137,10 @@ interface RedLogAPI {
     update: (id: string, data: Partial<QuickMark>) => Promise<QuickMark | null>
     delete: (id: string) => Promise<boolean>
   }
-  views?: {
+  // v0.6.96 Clean-3: preload always exports views (v0.6.90 D); the `?` was
+  // a leftover from the first day when the shim was optional. Types now
+  // reflect reality.
+  views: {
     list: () => Promise<SavedTimelineView[]>
     save: (data: { name: string; state: SavedTimelineViewState }) => Promise<SavedTimelineView>
     delete: (id: string) => Promise<boolean>
