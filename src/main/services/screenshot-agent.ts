@@ -96,7 +96,12 @@ export class ScreenshotAgent {
       const ts = new Date().toISOString().replace(/[:.]/g, '-')
       const filename = `${ts}_${trigger}.jpg`
       const filepath = path.join(dir, filename)
-      fs.writeFileSync(filepath, jpeg)
+      // v0.6.97 D: 4K JPEGs at quality=80 land 800KB-1.5MB — writeFileSync
+      // blocks the main thread for 5-15ms per shot (measured on APFS SSD).
+      // With the 10s periodic timer that's not visible, but a burst (idle
+      // trigger + marker + manual back-to-back) stacks into a jank spike.
+      // fs.promises.writeFile off-loads the syscall to libuv's thread pool.
+      await fs.promises.writeFile(filepath, jpeg)
 
       const evt = insertEvent('screenshot', {
         trigger,
