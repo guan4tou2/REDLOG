@@ -101,11 +101,13 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson'),
+    exportBundle: () => ipcRenderer.invoke('data:exportBundle'),
     exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
     exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
     exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
-    exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to })
+    exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
+    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),

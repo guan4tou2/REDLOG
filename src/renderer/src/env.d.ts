@@ -153,11 +153,13 @@ interface RedLogAPI {
   }
   data: {
     exportJson: () => Promise<string | null>
+    exportBundle?: () => Promise<{ outDir: string; manifest: unknown } | null>
     exportScopeFiltered?: () => Promise<string | null>
     exportMarks?: () => Promise<string | null>
     exportLoot?: () => Promise<string | null>
     exportViolations?: () => Promise<string | null>
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
+    revealPath?: (target: string) => Promise<boolean>
   }
   recording: {
     get: () => Promise<boolean>
