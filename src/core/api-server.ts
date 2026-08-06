@@ -2,7 +2,7 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { insertEvent, queryEvents, getEventCount, searchEvents } from './db/events'
+import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents } from './db/events'
 import { createQuickMark, listQuickMarks } from './db/findings'
 import {
   ensurePrimaryOperator,
@@ -668,7 +668,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const body = JSON.parse(await readBody(req)) as { eventId?: string }
       const eventId = body.eventId
       if (!eventId) { json(res, 400, { error: 'eventId required' }); return }
-      const target = queryEvents({ limit: 5000 }).find((e) => e.id === eventId)
+      const target = queryEventById(eventId)
       if (!target) { json(res, 404, { error: 'event not found' }); return }
       const td = target.data as Record<string, unknown>
       const tid = td.terminalId as string | undefined
@@ -740,8 +740,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         // from an installed .app (`Console.app` or CLI). The JSON body still
         // gets only the message so tokens/paths don't leak to logs the caller
         // may forward.
+        // v0.6.96 Sec-1: don't return err.stack in the HTTP response — leaks
+        // absolute paths + module layout to any token holder. Stack stays in
+        // console.error for local debugging.
         console.error('[export/bundle] failed:', err.stack || err.message)
-        json(res, 500, { error: err.message, stack: err.stack })
+        json(res, 500, { error: err.message })
       }
       return
     }
@@ -973,6 +976,6 @@ export function getApiPort(): number {
   return listeningPort
 }
 
-export function getPrimaryOperatorSnapshot(): Operator | null {
-  return getPrimaryOperator()
-}
+// v0.6.96 Clean-2: removed getPrimaryOperatorSnapshot() — was never called.
+// Callers that want the primary operator import getPrimaryOperator from
+// './db/operators' directly.

@@ -162,6 +162,15 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   const everFed = sources.some((s) => s.lastEventAt !== null)
   // A source is "wired" if installed, or (for non-hook sources) has ever fed.
   const anyWired = sources.some((s) => s.installed === true) || sources.some((s) => s.installed === undefined && s.lastEventAt !== null)
+  // v0.6.96 Ops-3: a source is EXPECTED to feed if it's installed OR it has
+  // ever fed. When such a source is currently idle (not active), the overall
+  // verdict should tip to `partial` even if some OTHER source is still
+  // healthy. Prior behaviour: shell-hook installed but silent for hours →
+  // still "healthy" green if builtin-terminal was active. Now: partial.
+  const expectedSilent = sources.some((s) => {
+    const expected = s.installed === true || (s.installed === undefined && s.lastEventAt !== null)
+    return expected && s.state !== 'active'
+  })
 
   const lastDbError = getLiveDbError(now)
   const lastSampleBroken = getLiveSampleBroken(now)
@@ -173,6 +182,7 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   else if (lastDbError) verdict = 'dark'  // DB write failing beats any source verdict
   else if (!anyWired && !everFed) verdict = 'dark'
   else if (activeCount === 0) verdict = 'partial'
+  else if (expectedSilent) verdict = 'partial'  // v0.6.96 Ops-3
   else verdict = 'healthy'
 
   const lastEventAt = sources.reduce<number | null>(

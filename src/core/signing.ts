@@ -31,7 +31,15 @@ function keysDir(): string {
 
 function ensureKeysDir(): string {
   const dir = keysDir()
-  fs.mkdirSync(dir, { recursive: true })
+  // v0.6.96 Sec-2: create with mode 0700 so other local UIDs can't LIST the
+  // keys directory. Private key files inside are already 0600 so their
+  // contents were never readable, but dir enumeration leaked which operators
+  // existed. `recursive: true` respects `mode` only for created leaves — if
+  // dir already exists we chmod to be sure. Windows: no-op (POSIX perms).
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(dir, 0o700) } catch { /* pre-existing, permission denied */ }
+  }
   return dir
 }
 

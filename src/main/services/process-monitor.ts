@@ -2,7 +2,6 @@ import { execFile } from 'child_process'
 import { insertEvent } from '../../core/db/events'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
-import { queryEvents } from '../../core/db/events'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Process monitor (v0.6.92)
@@ -68,9 +67,8 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let knownProcs = new Map<number, TrackedProc>()
 let ownPid = process.pid
 let emitBucket = { count: 0, windowStart: 0 }
-// Cache of shell session_start events by best-guess terminal pid so process
-// events can attach `_causes: [session_start.id]`. Refreshed on demand.
-let sessionCache: { at: number; sessions: Array<{ id: string; terminalId: string }> } = { at: 0, sessions: [] }
+// v0.6.96 Clean-2: removed sessionCache — was only fed to findCauseSession
+// which always returned undefined (see comment above emitSpawn).
 
 export function configureProcessMonitor(next: Partial<ProcessMonitorConfig>): void {
   cfg = { ...cfg, ...next }
@@ -114,7 +112,23 @@ function restart(): void {
   // events. From here on, only real deltas fire.
   runPs().then((rows) => {
     knownProcs = new Map(rows.map((r) => [r.pid, { pid: r.pid, ppid: r.ppid, command: r.command, startedAt: Date.now() }]))
-  }).catch(() => { /* ps failed — first real poll will retry */ })
+  }).catch((err) => {
+    // v0.6.96 CP-2: Alpine / BusyBox `ps` doesn't accept the procps
+    // `-eo pid=,ppid=,etime=,command=` syntax and errors immediately —
+    // pre-v0.6.96 that swallowed silently and the lane looked broken with
+    // no reason. Emit a one-shot advisory mirroring the Windows path so
+    // the operator sees why nothing shows up.
+    try {
+      const ev = insertEvent('system', {
+        subtype: 'process_monitor_ps_unavailable',
+        platform: process.platform,
+        error: (err as Error)?.message?.slice(0, 200) || 'unknown',
+        description: 'Process monitor: system `ps` not usable (BusyBox / minimal container?). Install procps-ng.'
+      }, { engagementId: cfg.engagementId!, operatorId: cfg.operatorId! })
+      if (ev) eventBus.publish(ev)
+    } catch { /* additive */ }
+    console.warn('[process-monitor] ps unavailable:', (err as Error)?.message)
+  })
   pollTimer = setInterval(poll, interval)
 }
 
@@ -225,32 +239,14 @@ function withinBudget(add: number): boolean {
   return true
 }
 
-function refreshSessionCache(): void {
-  const now = Date.now()
-  if (now - sessionCache.at < 30_000) return  // 30s cache
-  try {
-    const sessions = queryEvents({ agentType: 'shell', limit: 200 })
-      .filter((e) => e.data?.subtype === 'session_start')
-      .map((e) => ({ id: e.id, terminalId: String(e.data?.terminalId ?? '') }))
-      .filter((s) => s.terminalId)
-    sessionCache = { at: now, sessions }
-  } catch { /* additive */ }
-}
-
-function findCauseSession(_ppid: number): string | undefined {
-  // Best-effort correlation: we don't have a reliable ppid → terminalId map
-  // (ps doesn't emit env vars without extra plumbing), so we return
-  // undefined here and rely on downstream Timeline chain-following to pair
-  // process spawns with their shell command by wall-clock proximity. Kept
-  // as a stub function so a future release can plug in a proper mapping
-  // (macOS: launchctl print, Linux: /proc/<pid>/environ) without changing
-  // callers.
-  refreshSessionCache()  // still refresh so the cache stays warm for that release
-  return undefined
-}
+// v0.6.96 Clean-2: removed findCauseSession() — always returned undefined
+// (ppid → terminalId correlation needs env-var access ps doesn't give).
+// Kept the wall-clock proximity fallback in Timeline; when a proper mapping
+// path (macOS EndpointSecurity / Linux eBPF / Windows Sysmon) lands, wire
+// _causes directly here. sessionCache warm-up dropped along with it — it
+// was only feeding the stub.
 
 function emitSpawn(r: PsRow): void {
-  const causes = findCauseSession(r.ppid)
   try {
     const argv = r.command.split(/\s+/)
     const ev = insertEvent('process', {
@@ -259,8 +255,7 @@ function emitSpawn(r: PsRow): void {
       ppid: r.ppid,
       command: r.command.slice(0, 500),
       argv: argv.slice(0, 20),
-      started_at: Date.now(),
-      _causes: causes ? [causes] : undefined
+      started_at: Date.now()
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
     if (ev) eventBus.publish(ev)
   } catch (e) {
