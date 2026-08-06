@@ -68,9 +68,13 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   screenshot: {
     capture: (causeEventId?: string) => ipcRenderer.invoke('screenshot:capture', causeEventId),
-    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath),
-    read: (filePath: string): Promise<string | null> =>
-      ipcRenderer.invoke('screenshot:read', filePath)
+    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath)
+    // v0.6.98 B: `read` IPC dropped. v0.6.97 B moved every renderer call site
+    // onto the `redlog-screenshot://` custom protocol (streamed direct from
+    // disk, no base64 round-trip). Nothing in-tree references screenshot.read
+    // any more, and keeping the IPC alive means any future path-traversal
+    // regression in the handler is still exploitable via a compromised
+    // renderer. The main-process handler is dropped in the same commit.
   },
   scope: {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),

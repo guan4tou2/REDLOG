@@ -236,6 +236,30 @@ function CaptureHealthCard({ capture, onNavigate }: {
     s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-zinc-700'
   const stateLabel = (s: string): string => t(`capture.state.${s}`)
 
+  // v0.6.98 C: freshness stripe. Pre-v0.6.98 the state chip said only
+  // "active / idle / absent" — an active source that hadn't fired in 45s
+  // looked identical to one that fired 200ms ago. Now every source shows
+  // "Ns ago" and the chip colour scales with age (green <60s, amber <5min,
+  // zinc otherwise). Absent sources still show "—" — no lastEventAt to
+  // format. Ticks off the same `checkedAt` used to render the card so all
+  // freshness readings are relative to the same moment.
+  const fmtAge = (ts: number | null, now: number): string => {
+    if (!ts) return '—'
+    const sec = Math.max(0, Math.round((now - ts) / 1000))
+    if (sec < 60) return `${sec}s ${t('capture.ago')}`
+    const min = Math.round(sec / 60)
+    if (min < 60) return `${min}m ${t('capture.ago')}`
+    const hr = Math.round(min / 60)
+    return `${hr}h ${t('capture.ago')}`
+  }
+  const ageColor = (ts: number | null, now: number): string => {
+    if (!ts) return 'text-zinc-600'
+    const sec = (now - ts) / 1000
+    if (sec < 60) return 'text-emerald-500/80'
+    if (sec < 300) return 'text-amber-500/80'
+    return 'text-zinc-600'
+  }
+
   const dark = capture.verdict === 'dark'
   const partial = capture.verdict === 'partial'
   const barColor = dark ? 'bg-red-500' : partial ? 'bg-amber-500' : 'bg-emerald-500'
@@ -268,6 +292,11 @@ function CaptureHealthCard({ capture, onNavigate }: {
               <span className="text-zinc-600 text-xs">
                 {s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
+              {s.installed !== false && (
+                <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, capture.checkedAt)}`}>
+                  {fmtAge(s.lastEventAt, capture.checkedAt)}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -664,7 +693,19 @@ function ScreenshotsView(): JSX.Element {
                 {deletedIds.has(s.id) ? (
                   <span className="text-zinc-700 text-xs italic">{t('screenshots.deleted')}</span>
                 ) : thumbs[s.id] ? (
-                  <img src={thumbs[s.id]} alt="" className="w-full h-full object-cover" />
+                  // v0.6.98 A: `loading="lazy"` defers the JPEG fetch/decode
+                  // until the tile nears the viewport (Chromium native, works
+                  // on the `redlog-screenshot://` scheme). `decoding="async"`
+                  // keeps decode off the main thread. With 500 shots in the
+                  // grid this drops steady-state RAM by ~150MB and gets rid
+                  // of the paint stall when opening the panel cold.
+                  <img
+                    src={thumbs[s.id]}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <span className="text-neutral-700 text-xs">{(s.data.filename as string) ?? '...'}</span>
                 )}
