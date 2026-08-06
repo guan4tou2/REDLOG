@@ -3,6 +3,59 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.6.97 — 2026-08-06
+Perf/polish micro-batch. Six items: main-thread wins (screenshot IPC,
+event count cache, async JPEG write, deconfliction coalescing) plus two
+polish fixes (Linux `ps` truncation, empty external-only lane chips).
+No API/schema change.
+
+### Perf
+- **A** — Deconfliction webhook coalesces events into an array flushed
+  every 500ms (or at 100 events, whichever comes first) instead of one
+  POST per event (`deconfliction.ts:100`). A 200 evt/s scan burst was
+  firing 200 POSTs/s at the operator's SIEM with independent retry
+  storms; now it's ≤2 POSTs/s carrying up to 100 events each. Body
+  shape changes from `{event}` to `Array<Event>` — receivers must
+  accept the array form. The v0.6.95 CHANGELOG called this out as a
+  follow-up; here it is.
+- **B** — Screenshots now stream from disk via a `redlog-screenshot://`
+  custom protocol registered at main-process ready
+  (`src/main/index.ts:660`) instead of piping a 33%-inflated base64
+  data URI through IPC per thumb (`App.tsx:587`). Rendering a
+  Screenshots panel with 500 thumbs previously blocked on 500 IPC
+  round-trips + 500 base64 encodes; now Chromium streams JPEG bytes
+  directly. Path guarded by `isInsideDir(<project>/screenshots)`;
+  requests for anything outside 404. `screenshot:read` IPC kept for
+  callers still passing full paths (nothing in-tree uses it after
+  this change).
+- **C** — `getEventCount` seeds once from `SELECT COUNT(*)` then
+  increments in-memory on every successful insert (`db/events.ts:430`).
+  StatusBar polls every 5s and the dashboard renders drive multiple
+  calls per second — with 200k rows the full scan cost 40-80ms per
+  call and pinned the main thread. Cache invalidates on project
+  switch (`resetSession`) and on insert failure (mirrors the
+  v0.6.95 prev-hash cache invariant).
+- **D** — `screenshot-agent` swapped `fs.writeFileSync` →
+  `fs.promises.writeFile` (`screenshot-agent.ts:99`). A 4K JPEG at
+  quality=80 lands 800KB-1.5MB and blocked main for 5-15ms per shot;
+  now the syscall runs on libuv's thread pool. Not visible on the
+  10s periodic timer alone, but marker + idle + manual bursts
+  stacked into jank spikes.
+
+### Polish
+- **E** — Linux `process-monitor` now runs `ps -w -w -eo …` so the
+  command column doesn't truncate at 80 cols
+  (`process-monitor.ts:286`). procps trimmed argv at the inherited
+  terminal width, losing the args scope-match relies on. macOS BSD
+  ps ignores unknown flags so the darwin path is unchanged; Alpine
+  BusyBox path is still covered by the CP-2 advisory.
+- **F** — `EXTERNAL_ONLY_LANES` (`credential_use`, `c2_checkin`)
+  chips are hidden entirely when the lane is empty
+  (`Timeline.tsx:1889`). Pre-v0.6.97 they showed dimmed with a
+  tooltip; on a laptop-only pentest they'll never populate and
+  just cluttered the chip row. They auto-reappear once a real
+  event lands.
+
 ## v0.6.96 — 2026-08-06
 Cleanup batch — 13 P1/P2 items from the 5-agent audit that weren't
 picked for v0.6.93/94/95. Zero user-facing change; every item is a

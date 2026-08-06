@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen, session, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen, session, shell, protocol } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
@@ -657,10 +657,43 @@ app.on('second-instance', () => {
   }
 })
 
+// v0.6.97 B: `redlog-screenshot://` privileged scheme — MUST be registered
+// BEFORE app.whenReady() or Chromium won't grant it URL-loading permissions
+// (image src, fetch, etc). The `protocol.handle` implementation lives inside
+// the ready block below where getProjectDir() is safe to call.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'redlog-screenshot', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+])
+
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return
   electronApp.setAppUserModelId('com.redlog')
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
+
+  // v0.6.97 B: serve screenshots via a custom protocol instead of piping
+  // 33%-inflated base64 data URIs through IPC. Renderer uses
+  // `<img src="redlog-screenshot://<filename>">` and Chromium streams the
+  // bytes directly from disk. Path guarded by `isInsideDir(<project>/screenshots)`
+  // so a request for `redlog-screenshot://../../.ssh/id_ed25519` 404s.
+  protocol.handle('redlog-screenshot', async (req) => {
+    try {
+      const url = new URL(req.url)
+      // Only take the trailing path segment so `redlog-screenshot://local/foo.jpg`
+      // and `redlog-screenshot://foo.jpg` both resolve to <projectDir>/screenshots/foo.jpg.
+      // Callers pass basename only; the hostname/segment ordering depends on how
+      // Chromium normalises the URL (differs between platforms).
+      const segments = decodeURIComponent(url.pathname).split('/').filter(Boolean)
+      const basename = segments[segments.length - 1] || decodeURIComponent(url.hostname || '')
+      if (!basename || basename.includes('..') || basename.includes('/') || basename.includes('\\')) {
+        return new Response('', { status: 400 })
+      }
+      const screenshotDir = path.join(getProjectDir(), 'screenshots')
+      const resolved = path.resolve(screenshotDir, basename)
+      if (!isInsideDir(screenshotDir, resolved)) return new Response('', { status: 403 })
+      const buf = fs.readFileSync(resolved)
+      return new Response(buf, { status: 200, headers: { 'Content-Type': 'image/jpeg' } })
+    } catch { return new Response('', { status: 404 }) }
+  })
 
   // Guarantee a Dock presence on macOS. A CLI-launched dev build (electron-vite)
   // registers as an accessory (UIElement) and gets no Dock icon; force 'regular'
