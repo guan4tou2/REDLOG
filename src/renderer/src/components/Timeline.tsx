@@ -511,23 +511,39 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     window.redlog.project.active().then((p) => setProjectIdForKeys(p?.id ?? null)).catch(() => { /* ignore */ })
   }, [])
   useEffect(() => {
+    // v0.6.98 E + v0.6.99 A: reload / migrate every per-project key once the
+    // project id lands. Keys covered here are project-scoped (event ids,
+    // in-progress filter text, lane visibility for this engagement). Keys
+    // that stay global — zoom, detail-h, follow-mode, session-dividers, tz
+    // — are UI/display preferences that shouldn't reset when opening a
+    // different project. Each key migrates from its legacy unscoped form
+    // ONCE per project so operators upgrading from < v0.6.98 don't lose
+    // whatever they had set on the project they open first.
     if (!projectIdForKeys) return
-    try {
-      const scoped = `redlog-timeline-anomaly-filter:${projectIdForKeys}`
-      const stored = localStorage.getItem(scoped)
-      if (stored !== null) {
-        setAnomalyFilter(stored === '1')
-      } else {
-        // No scoped value yet — migrate from the legacy global key ONCE per
-        // project so the first project the operator opens after upgrading
-        // keeps their setting. Subsequent projects start clean.
-        const legacy = localStorage.getItem('redlog-timeline-anomaly-filter')
-        if (legacy !== null) {
-          localStorage.setItem(scoped, legacy)
-          setAnomalyFilter(legacy === '1')
+    const migrate = <T,>(base: string, decode: (s: string) => T, apply: (v: T) => void): void => {
+      try {
+        const scoped = `${base}:${projectIdForKeys}`
+        const stored = localStorage.getItem(scoped)
+        if (stored !== null) {
+          apply(decode(stored))
+        } else {
+          const legacy = localStorage.getItem(base)
+          if (legacy !== null) {
+            localStorage.setItem(scoped, legacy)
+            apply(decode(legacy))
+          }
         }
-      }
-    } catch { /* ignore */ }
+      } catch { /* ignore */ }
+    }
+    migrate('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
+    migrate('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
+    migrate('redlog-timeline-filter-query', (s) => s, setFilterQuery)
+    migrate('redlog-timeline-hidden-lanes', (s) => {
+      try {
+        const arr = JSON.parse(s)
+        return new Set((Array.isArray(arr) ? arr : []).filter((l): l is LaneId => LANES.includes(l as LaneId)))
+      } catch { return new Set<LaneId>() }
+    }, setHiddenLanes)
   }, [projectIdForKeys])
   const [verifyResult, setVerifyResult] = useState<FullVerifyResult | null>(() => getLastVerifyResult())
   const [verifyDismissed, setVerifyDismissed] = useState(false)
@@ -540,11 +556,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return () => window.removeEventListener(VERIFY_UPDATED_EVENT, onUpdate)
   }, [])
   useEffect(() => {
+    // v0.6.99 A: scoped write once projectId is known. Legacy key untouched
+    // so the migration path continues to find it on other project opens.
+    if (!projectIdForKeys) return
     try {
-      if (focusAnchorId) localStorage.setItem('redlog-timeline-focus-anchor', focusAnchorId)
-      else localStorage.removeItem('redlog-timeline-focus-anchor')
+      const scoped = `redlog-timeline-focus-anchor:${projectIdForKeys}`
+      if (focusAnchorId) localStorage.setItem(scoped, focusAnchorId)
+      else localStorage.removeItem(scoped)
     } catch { /* ignore */ }
-  }, [focusAnchorId])
+  }, [focusAnchorId, projectIdForKeys])
   useEffect(() => {
     // v0.6.98 E: hold writes until projectId lands, then write only to the
     // scoped key. The legacy global key is left alone so the migration
@@ -562,11 +582,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     try { return localStorage.getItem('redlog-timeline-filter-query') || '' } catch { return '' }
   })
   useEffect(() => {
+    // v0.6.99 A: scoped write. Legacy key untouched (migration on next open).
+    if (!projectIdForKeys) return
     try {
-      if (filterQuery) localStorage.setItem('redlog-timeline-filter-query', filterQuery)
-      else localStorage.removeItem('redlog-timeline-filter-query')
+      const scoped = `redlog-timeline-filter-query:${projectIdForKeys}`
+      if (filterQuery) localStorage.setItem(scoped, filterQuery)
+      else localStorage.removeItem(scoped)
     } catch { /* ignore */ }
-  }, [filterQuery])
+  }, [filterQuery, projectIdForKeys])
   const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   // v0.6.91 W2: follow mode — auto-scrolls the track's right edge to keep the
@@ -1025,10 +1048,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     try { localStorage.setItem('redlog-timeline-zoom', String(zoom)) } catch { /* ignore */ }
   }, [zoom])
   useEffect(() => {
+    // v0.6.99 A: hidden-lanes is per-project. An operator who solo'd "shell"
+    // for triage on Project A shouldn't carry that into Project B's fresh
+    // open. Zoom right below stays global — it's a UI density preference,
+    // not project state.
+    if (!projectIdForKeys) return
     try {
-      localStorage.setItem('redlog-timeline-hidden-lanes', JSON.stringify([...hiddenLanes]))
+      localStorage.setItem(`redlog-timeline-hidden-lanes:${projectIdForKeys}`, JSON.stringify([...hiddenLanes]))
     } catch { /* ignore */ }
-  }, [hiddenLanes])
+  }, [hiddenLanes, projectIdForKeys])
   useEffect(() => {
     try {
       if (selectedEvent?.id) localStorage.setItem('redlog-timeline-focus-event', selectedEvent.id)
