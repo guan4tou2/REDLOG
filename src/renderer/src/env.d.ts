@@ -113,7 +113,6 @@ interface RedLogAPI {
   }
   screenshot: {
     capture: (causeEventId?: string) => Promise<string | null>
-    read: (filePath: string) => Promise<string | null>
   }
   scope: {
     getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>

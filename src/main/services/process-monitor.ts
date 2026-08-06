@@ -90,23 +90,14 @@ function restart(): void {
   stopProcessMonitor()
   if (!cfg.enabled) return
   if (!cfg.engagementId || !cfg.operatorId) return
-  if (process.platform === 'win32') {
-    // Windows: PowerShell Get-Process + Get-CimInstance Win32_Process would
-    // fit here; not implemented in v0.6.92 to keep the surface small. Emit
-    // a one-shot advisory so the operator sees why the lane stays empty.
-    try {
-      const ev = insertEvent('system', {
-        subtype: 'process_monitor_unsupported',
-        platform: process.platform,
-        description: 'Process monitor is not implemented on Windows yet'
-      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-      if (ev) eventBus.publish(ev)
-    } catch { /* additive */ }
-    console.warn('[process-monitor] Windows support not yet implemented')
-    return
-  }
-  if (process.platform !== 'darwin' && process.platform !== 'linux') return
-  const interval = Math.max(200, cfg.pollMs ?? DEFAULT_POLL_MS)
+  if (process.platform !== 'darwin' && process.platform !== 'linux' && process.platform !== 'win32') return
+  // v0.6.98 D: Windows polls the Win32_Process CIM class via PowerShell.
+  // Cold PowerShell spawn is 800ms-1.5s, hot spawn ~200-400ms, so the
+  // 500ms default poll cadence would stack calls. Floor the interval at
+  // 2000ms on win32; operator can drop it below via pollMs if they know
+  // what they're doing.
+  const winMin = process.platform === 'win32' ? 2000 : 200
+  const interval = Math.max(winMin, cfg.pollMs ?? (process.platform === 'win32' ? 2000 : DEFAULT_POLL_MS))
   // Seed known pids so the first poll doesn't emit "spawn" for every existing
   // process on the box — a fresh RedLog startup would insert thousands of
   // events. From here on, only real deltas fire.
@@ -283,7 +274,9 @@ function emitExit(p: TrackedProc): void {
 // Runs `ps -eo pid,ppid,etime,command` and parses the fixed-width-ish output.
 // The command column is the tail of the line, so we split off the first three
 // whitespace-separated columns and keep the rest as `command`.
+// v0.6.98 D: Windows dispatches to Win32_Process via PowerShell instead.
 export function runPs(): Promise<PsRow[]> {
+  if (process.platform === 'win32') return runWindowsPs()
   return new Promise((resolve, reject) => {
     // v0.6.97 E: on Linux procps truncates the command column at the terminal
     // width (default 80 cols in an inherited-env spawn — argv gets sliced),
@@ -304,6 +297,37 @@ export function runPs(): Promise<PsRow[]> {
       }
       resolve(rows)
     })
+  })
+}
+
+// v0.6.98 D: Windows polls Get-CimInstance Win32_Process. CommandLine is
+// pipe-delimited from PID and PPID so the command tail can freely contain
+// spaces, tabs, and quotes without ambiguity. CommandLine can itself contain
+// `|` (rare — literal in an argv), so we split on the FIRST TWO delimiters
+// only and treat the rest as command. Falls back to Name when CommandLine
+// is null (elevated processes not readable without admin token; SYSTEM PIDs).
+function runWindowsPs(): Promise<PsRow[]> {
+  return new Promise((resolve, reject) => {
+    const script =
+      "Get-CimInstance -ClassName Win32_Process | ForEach-Object { " +
+      "$c = if ($_.CommandLine) { $_.CommandLine } else { $_.Name }; " +
+      "\"$($_.ProcessId)|$($_.ParentProcessId)|$c\" }"
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+        if (err) { reject(err); return }
+        const rows: PsRow[] = []
+        for (const line of stdout.split(/\r?\n/)) {
+          const parts = line.split('|')
+          if (parts.length < 3) continue
+          const pid = parseInt(parts[0], 10)
+          const ppid = parseInt(parts[1], 10)
+          if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue
+          const command = parts.slice(2).join('|').trim()
+          if (!command) continue
+          rows.push({ pid, ppid, etime: '0', command })
+        }
+        resolve(rows)
+      })
   })
 }
 

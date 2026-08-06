@@ -55,6 +55,7 @@
   "capture.state.active": "active",
   "capture.state.idle": "idle",
   "capture.state.absent": "off",
+  "capture.ago": "ago",
   "dashboard.networkStatus": "Network Status",
   "dashboard.sessionStats": "Session Stats",
   "dashboard.events": "Events",

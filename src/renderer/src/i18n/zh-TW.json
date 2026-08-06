@@ -55,6 +55,7 @@
   "capture.state.active": "運作中",
   "capture.state.idle": "閒置",
   "capture.state.absent": "關閉",
+  "capture.ago": "前",
   "dashboard.networkStatus": "網路狀態",
   "dashboard.sessionStats": "工作階段統計",
   "dashboard.events": "事件",
