@@ -3,6 +3,50 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.8.0 — 2026-08-07
+**Tailer host extraction.** Minor bump — architectural refactor of the
+agent-transcript-tailer to separate generic infrastructure from
+per-agent parsing via a `TailerAdapter` interface. Zero user-visible
+change; sets up v0.8.1 (Codex + OpenCode adapters) and v0.8.2+
+(third-party tailer plugin API) as small delta additions.
+
+### A — `tailer-host.ts` extraction (new, ~640 LOC)
+- Owns: chokidar dir-watch, sidecar `<projectDir>/agent-transcripts/`
+  append, redaction (via `secret-redaction.ts`), insertEvent wrapping,
+  `_causes` resolution (`Map<transcriptUuid, redlogEventId>` per
+  session), pending-parent buffer (cap 100 / TTL 60s from v0.7.5 G2),
+  sensitive-path masking via sibling tool_call cache (v0.7.4 F1),
+  snapshot event emission, session lifecycle (register / unregister
+  / chokidar unlink), pause gate (v0.7.3 A2 + v0.7.4 F4),
+  self-exclusion via `.redlog-app-root`.
+- Supports two adapter layouts via `perMessageDir: boolean`:
+  - `false` (default): each matching file is a JSONL stream, one
+    unit per line (Claude Code, Codex CLI).
+  - `true`: each matching file is one unit (OpenCode's
+    `~/.local/share/opencode/storage/message/*.json`).
+- Sidecar for per-message layout is an append-only index of processed
+  filenames — restart-safe by construction.
+
+### Claude Code adapter refactor (`agent-transcript-tailer.ts`, ~250 LOC)
+- Now a thin file: Claude-Code-specific `KNOWN_INGEST_TYPES` /
+  `KNOWN_IGNORED_TYPES`, `parseTranscriptLine`, `readTranscriptCwd`,
+  `subtypeForClaude` → assembled as `claudeCodeAdapter: TailerAdapter`.
+- `configureAgentTailer` / `startAgentTailer` / `stopAgentTailer` are
+  preserved as compat wrappers around the host's `configureHost` /
+  `startHost` / `stopHost`, so `main/index.ts` is unchanged.
+- File shrinks from 973 LOC → ~250 LOC. All 20 tailer tests unchanged
+  and green.
+
+### What v0.8.0 does NOT change
+- No new adapters yet (Codex + OpenCode land in v0.8.1)
+- No third-party plugin contribution type (deferred to v0.8.2+ if
+  demand surfaces — for now Codex/OpenCode will be in-tree adapters
+  against the same `TailerAdapter` interface, which already
+  demonstrates the abstraction)
+- Zero operator-visible behaviour change
+
+Tests: 395/395 unit. Typecheck clean.
+
 ## v0.7.7 — 2026-08-07
 Operator UX polish + Settings surface for the plugin-native tailer
 roadmap. Three quick wins; no architectural change (v0.8.0 will do
