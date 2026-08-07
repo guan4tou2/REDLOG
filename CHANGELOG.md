@@ -3,6 +3,56 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.0 — 2026-08-07
+**Loot pattern audit-trail attribution.** Third-party loot patterns
+now carry per-match `plugin_id` + `pattern_name` on emitted events so
+an audit reviewer can trace exactly which plugin's rule flagged a
+given credential — the "who fired?" question was previously
+unanswerable when two plugins both contributed patterns of the same
+`type`. Minor bump because the `LootPatternContribution` schema
+gained optional `name` / `description` fields; existing plugins
+continue to work unchanged (older shape → `pattern_name` defaults to
+`${type}#${index}`, still traceable).
+
+### A — Attribution on matched loot events
+- New optional fields on `LootPatternContribution`:
+  `name?: string` (per-pattern identifier within the plugin) and
+  `description?: string` (what the pattern is meant to detect).
+  ([`types.ts:25`](src/core/plugins/types.ts:25))
+- `LootDetector.findMatches` now stamps `pluginId` + `patternName` on
+  matches from plugin-contributed patterns. Built-in matches carry
+  neither field — event shape is **byte-identical** to pre-v0.9.0 for
+  built-in loot, so no chain-hash regression.
+  ([`loot-detector.ts:75`](src/core/loot-detector.ts:75))
+- `LootDetector.emit` propagates the pair into the emitted event's
+  `matches[]` entries: `{ type, confidence, preview, plugin_id?,
+  pattern_name? }`.
+- New `listExternalLootPatterns()` snapshot API returns
+  `{ pluginId, patternName, type, pattern, flags, confidence,
+  description }[]` for a future Settings ▸ Plugins pattern-list UI
+  (v0.9.x) and for audit-bundle export.
+- `recon-pack` example now demos the `name` + `description` fields.
+
+### Test coverage (+4)
+- Plugin-contributed matches carry `pluginId` + default
+  `${type}#${index}` `patternName` when `name` omitted.
+- Built-in matches leave both fields undefined (chain-shape stable).
+- Two plugins registering the same `type` are distinguishable at
+  match time.
+- `listExternalLootPatterns` exposes name/description/flags for
+  Settings + export.
+- 430 → 434 tests, all green; tsc clean.
+
+### What v0.9.0 does NOT do (defer to v0.9.x tail)
+- No Settings ▸ Plugins UI to browse the pattern list (the snapshot
+  API is ready; the UI ships when we land the Loot panel refresh).
+- No invalid-regex advisory event — bad regexes are still silently
+  skipped. Adding a `system` advisory event needs threading
+  engagement/operator into `registerLootPatterns`; not worth it
+  before there's a Settings surface to display it.
+- v0.9.0 B (target-extractor attribution) + v0.9.0 C (bugbounty-
+  lexicon example) queued for follow-up ships.
+
 ## v0.8.3 — 2026-08-07
 **OpenCode live-tail closes the v0.8.1 known limitation.** A new
 `adapter.init(host)` lifecycle hook + `host.emitTurns(...)` control
