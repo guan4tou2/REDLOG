@@ -3,6 +3,64 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.0 — 2026-08-06
+Minor bump — no new code beyond v0.6.100, ships as the landing point
+for a four-release perf/hardening run (v0.6.97 → v0.6.100). Read the
+per-release sections below for line-item detail; this entry is the
+"upgrade from v0.6.96" summary.
+
+### Highlights since v0.6.96
+- **Perf** — screenshots stream from disk via a `redlog-screenshot://`
+  custom protocol (no more base64 IPC round-trip per thumb); grid
+  thumbs `loading="lazy"` + `decoding="async"`; screenshot writes
+  moved off the main thread; `SELECT COUNT(*)` on the events table
+  replaced by an in-memory counter kept in lockstep with inserts;
+  deconfliction webhook now coalesces up to 100 events into one
+  POST with a 500ms flush window (was per-event); Linux
+  `process-monitor` runs `ps -w -w` so the command column no longer
+  truncates at 80 cols; Timeline broken-chain lane chip auto-hides
+  when empty on internal engagements.
+- **Cross-platform** — Windows `process-monitor` implementation via
+  `Get-CimInstance Win32_Process` (was a `process_monitor_unsupported`
+  advisory stub through v0.6.97).
+- **UX** — CaptureHealthCard shows per-source "Ns / Nm ago"
+  freshness with colour-scaled age and a 1s tick between health
+  polls; every per-project Timeline setting (anomaly filter,
+  focus-anchor, `/`-filter query, hidden lanes) is now keyed by
+  project id — flipping the filter on in Project A no longer bleeds
+  into Project B. Legacy unscoped values migrate once per project
+  on first mount.
+- **Security** — `screenshot:read` IPC + preload shim + main handler
+  removed (no in-tree caller after the URL-scheme move; shrinks the
+  renderer→main attack surface). Deconfliction batch config now
+  snapshotted at first-event-in-batch, so a mid-batch URL rotation
+  can't route buffered events canonicalised under the OLD cfg to
+  the NEW endpoint.
+- **Durability** — deconfliction now flushes the pending batch on
+  `will-quit` (before v0.6.100, up to 100 events could vanish on
+  quit).
+
+### Breaking changes
+- **Deconfliction wire format** — receivers must accept
+  `Array<Event>` bodies. Pre-v0.6.97 the body was one canonicalised
+  event; v0.6.97 A coalesced to an array. If you have a webhook
+  receiver deployed, update it to iterate over the array before
+  upgrading. The `testWebhook` pre-flight still fires a single-event
+  body for connectivity checks.
+
+### Post-release verification
+The full v0.6.96→v0.6.100 diff was reviewed via the `code-review`
+skill (standards + spec axes in parallel sub-agents). Six defects
+surfaced; all fixed in v0.6.100 before this roll-up:
+- deconfliction shutdown flush
+- deconfliction batch config snapshot timing
+- Windows process-monitor spurious `process_exit` for its own
+  poll-spawned PowerShell
+- `redlog-screenshot://` sync read on main thread
+- Timeline per-project localStorage silently dropped writes when
+  `project.active()` resolved null
+- Timeline migration effect clobbered in-flight user edits
+
 ## v0.6.100 — 2026-08-06
 Post-review defect batch. Six fixes surfaced by two-axis review of the
 v0.6.97-99 diff (spec + standards, parallel sub-agents). No new
