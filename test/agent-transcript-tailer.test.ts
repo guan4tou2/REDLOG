@@ -379,6 +379,79 @@ describe('catchUpSession — end-to-end', () => {
     fs.rmSync(projCwd, { recursive: true, force: true })
   })
 
+  it('v0.8.3 host.emitTurns lands as delta events on a live session with dedup + chain', async () => {
+    // Prove the HostControlSurface path: register an OpenCode-style session
+    // (initial msg + tool_call, no tool_result yet), then inject a
+    // supplemental tool_result via host.emitTurns (as the OpenCode secondary
+    // watcher would when a completed part file lands). Result: tool_result
+    // event lands, chain-linked to the tool_call; re-emitting the same
+    // turns is a safe no-op via uuid dedup.
+    const { _hostControlSurfaceForTest } = await import('../src/main/services/tailer-host')
+    const host = _hostControlSurfaceForTest()
+
+    // Seed a fake OpenCode storage with msg stub + a PENDING tool part.
+    const storage = path.join(scratch, 'oc-delta-storage')
+    fs.mkdirSync(path.join(storage, 'session', 'projhash'), { recursive: true })
+    fs.mkdirSync(path.join(storage, 'message', 'ses_delta'), { recursive: true })
+    const projCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-delta-'))
+    fs.writeFileSync(path.join(storage, 'session', 'projhash', 'ses_delta.json'),
+      JSON.stringify({ id: 'ses_delta', directory: projCwd }))
+    fs.writeFileSync(path.join(storage, 'message', 'ses_delta', 'msg_delta.json'), JSON.stringify({
+      id: 'msg_delta', sessionID: 'ses_delta', role: 'assistant'
+    }))
+    fs.mkdirSync(path.join(storage, 'part', 'msg_delta'), { recursive: true })
+    fs.writeFileSync(path.join(storage, 'part', 'msg_delta', 'prt_pending.json'), JSON.stringify({
+      id: 'prt_pending', messageID: 'msg_delta', sessionID: 'ses_delta',
+      type: 'tool', callID: 'call_delta', tool: 'bash',
+      state: { status: 'pending', input: { command: 'sleep 5' } }
+    }))
+    // Configure + register (uses the wrapped adapter's init to capture host).
+    configureAgentTailer({
+      enabled: true, engagementId: 'e1', operatorId: OP,
+      opencodeStorageDir: storage
+    })
+    hostRegisterSession('opencode', path.join(storage, 'message', 'ses_delta'))
+
+    let rows = queryEvents({ agentType: 'agent', limit: 100 })
+    const ocRows = () => queryEvents({ agentType: 'agent', limit: 100 })
+      .filter((r) => r.data.agent === 'opencode' && r.data.session_id === 'ses_delta')
+    // Initial: msg + tool_call, no tool_result.
+    expect(ocRows().some((r) => r.data.subtype === 'assistant_message')).toBe(true)
+    expect(ocRows().some((r) => r.data.subtype === 'tool_call')).toBe(true)
+    expect(ocRows().some((r) => r.data.subtype === 'tool_result')).toBe(false)
+
+    // Now inject the delta as the secondary watcher would.
+    host.emitTurns('opencode', 'ses_delta', [{
+      uuid: 'opencode:tr:call_delta',
+      parentUuid: 'opencode:tc:call_delta',
+      type: 'tool_result',
+      toolUseId: 'call_delta',
+      toolOutput: 'done'
+    }])
+    const after = ocRows()
+    const tr = after.find((r) => r.data.subtype === 'tool_result')
+    const tc = after.find((r) => r.data.subtype === 'tool_call')
+    expect(tr).toBeDefined()
+    expect(tc).toBeDefined()
+    expect((tr!.data._causes as string[])?.[0]).toBe(tc!.id)
+
+    // Re-emit the same delta → dedup via uuid, no new row.
+    const beforeCount = ocRows().length
+    host.emitTurns('opencode', 'ses_delta', [{
+      uuid: 'opencode:tr:call_delta',
+      parentUuid: 'opencode:tc:call_delta',
+      type: 'tool_result',
+      toolUseId: 'call_delta',
+      toolOutput: 'done'
+    }])
+    expect(ocRows().length).toBe(beforeCount)
+
+    rows = rows  // silence unused-var lint
+    fs.rmSync(projCwd, { recursive: true, force: true })
+    const { _stopOpencodeSecondaryWatcherForTest } = await import('../src/main/services/adapters/opencode')
+    _stopOpencodeSecondaryWatcherForTest()
+  })
+
   it('respects self-exclusion marker', () => {
     const claudeDir = path.join(scratch, 'claude-projects', '-self-')
     fs.mkdirSync(claudeDir, { recursive: true })
