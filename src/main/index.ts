@@ -41,6 +41,7 @@ import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } fr
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
+import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
@@ -513,6 +514,29 @@ function startProject(project: ProjectMeta): void {
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
   })
+  // v0.7.2 A: Claude Code transcript tailer. Reads `~/.claude/projects/`
+  // JSONL sessions, derives per-turn events (user_message / assistant_message
+  // / tool_call / tool_result) plus a whole-file sha256 snapshot event
+  // stream. Gate uses the same `excludedPaths` / `watchPaths` as the shell
+  // hook so policy is consistent across the two ingest paths.
+  {
+    let excludedPaths: string[] = []
+    let watchPaths: string[] = []
+    try {
+      const cfgPath = path.join(os.homedir(), '.redlog', 'hook-config.json')
+      if (fs.existsSync(cfgPath)) {
+        const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as { excludedPaths?: string[]; watchPaths?: string[] }
+        excludedPaths = raw.excludedPaths ?? []
+        watchPaths = raw.watchPaths ?? []
+      }
+    } catch { /* missing / bad file → default no-filter */ }
+    configureAgentTailer({
+      enabled: config.agentTailer?.enabled ?? true,
+      engagementId, operatorId,
+      excludedPaths, watchPaths,
+      emitThinking: config.agentTailer?.emitThinking ?? false
+    })
+  }
 
   configureApi({
     engagementId,
@@ -633,6 +657,7 @@ function stopProject(): void {
   stopClipboardMonitor()
   stopFileWatcher()
   stopProcessMonitor()
+  stopAgentTailer()
   stopCdpMonitor()
   stopOpsecMonitor()
   screenshotAgent.stop()
