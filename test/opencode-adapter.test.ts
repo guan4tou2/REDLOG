@@ -3,7 +3,8 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import {
-  parseOpencodeMessage, readOpenCodeCwd, opencodeAdapter
+  parseOpencodeMessage, readOpenCodeCwd, opencodeAdapter,
+  partToTurns
 } from '../src/main/services/adapters/opencode'
 
 let scratch: string
@@ -117,6 +118,65 @@ describe('parseOpencodeMessage', () => {
     for (const t of ['user_message', 'assistant_message', 'thinking', 'tool_call', 'tool_result']) {
       expect(opencodeAdapter.subtypeFor({ uuid: 'x', parentUuid: null, type: t })).toBe(t)
     }
+  })
+})
+
+describe('partToTurns (v0.8.3 secondary watcher)', () => {
+  it('reasoning part → single thinking turn with msg parentUuid', () => {
+    const turns = partToTurns('msg_x', {
+      id: 'prt_r', type: 'reasoning', text: 'thinking-out-loud'
+    })
+    expect(turns.length).toBe(1)
+    expect(turns[0].type).toBe('thinking')
+    expect(turns[0].uuid).toBe('opencode:reason:prt_r')
+    expect(turns[0].parentUuid).toBe('opencode:msg:msg_x')
+    expect(turns[0].textContent).toBe('thinking-out-loud')
+  })
+
+  it('pending tool part → tool_call only, no tool_result', () => {
+    const turns = partToTurns('msg_y', {
+      id: 'prt_t', type: 'tool', callID: 'call_a', tool: 'bash',
+      state: { status: 'pending', input: { command: 'ls' } }
+    })
+    expect(turns.length).toBe(1)
+    expect(turns[0].type).toBe('tool_call')
+    expect(turns[0].uuid).toBe('opencode:tc:call_a')
+  })
+
+  it('completed tool part → tool_call + tool_result chain-linked', () => {
+    const turns = partToTurns('msg_z', {
+      id: 'prt_t2', type: 'tool', callID: 'call_b', tool: 'bash',
+      state: { status: 'completed', input: { command: 'ls' }, output: 'a\nb' }
+    })
+    expect(turns.length).toBe(2)
+    expect(turns[0].type).toBe('tool_call')
+    expect(turns[0].uuid).toBe('opencode:tc:call_b')
+    expect(turns[1].type).toBe('tool_result')
+    expect(turns[1].uuid).toBe('opencode:tr:call_b')
+    expect(turns[1].parentUuid).toBe('opencode:tc:call_b')
+    expect(turns[1].toolOutput).toBe('a\nb')
+  })
+
+  it('text part → NO turns (msg-level fold-in only)', () => {
+    // Text parts arriving after the msg stub was first observed don't
+    // re-emit; the message event is immutable once appended.
+    expect(partToTurns('msg_t', { id: 'prt_x', type: 'text', text: 'hi' })).toEqual([])
+  })
+
+  it('unknown part type → []', () => {
+    expect(partToTurns('m', { id: 'p', type: 'step-start' })).toEqual([])
+    expect(partToTurns('m', { id: 'p', type: 'step-finish' })).toEqual([])
+    expect(partToTurns('m', { id: 'p', type: 'nonsense' })).toEqual([])
+  })
+
+  it('tool part with error status still emits both halves', () => {
+    const turns = partToTurns('m', {
+      id: 'p', type: 'tool', callID: 'c', tool: 'grep',
+      state: { status: 'error', input: { pattern: 'x' }, output: 'not found' }
+    })
+    expect(turns.length).toBe(2)
+    expect(turns[0].type).toBe('tool_call')
+    expect(turns[1].type).toBe('tool_result')
   })
 })
 

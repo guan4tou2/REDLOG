@@ -32,8 +32,10 @@
 // close this gap.
 
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
-import type { TailerAdapter, ParsedTurn } from '../tailer-host'
+import chokidar, { FSWatcher } from 'chokidar'
+import type { TailerAdapter, ParsedTurn, HostControlSurface } from '../tailer-host'
 
 // Part types we care about. `step-start` / `step-finish` are boundary
 // markers OpenCode uses internally — they carry snapshot ids and token
@@ -101,12 +103,69 @@ interface OpencodePart {
   text?: string
   tool?: string
   callID?: string
+  messageID?: string
+  sessionID?: string
   state?: {
     status?: string
     input?: unknown
     output?: unknown
     error?: unknown
   }
+}
+
+/** Convert one OpenCode part JSON into 0-2 ParsedTurns (a `tool` part
+ *  fans into tool_call + tool_result; a `reasoning` part → thinking;
+ *  a `text` part → returns nothing on its own since the msg stub
+ *  already fold-in text on initial catch-up). Extracted from
+ *  `parseOpencodeMessage` so the secondary part/ watcher can reuse it
+ *  when new parts land after the message was first observed. */
+export function partToTurns(msgId: string, part: OpencodePart): ParsedTurn[] {
+  if (!part || typeof part.type !== 'string' || !PART_INGEST_TYPES.has(part.type)) return []
+  const turns: ParsedTurn[] = []
+  if (part.type === 'reasoning' && typeof part.text === 'string') {
+    turns.push({
+      uuid: `opencode:reason:${part.id}`,
+      parentUuid: `opencode:msg:${msgId}`,
+      type: 'thinking',
+      textContent: part.text
+    })
+    return turns
+  }
+  if (part.type === 'tool') {
+    const callId = typeof part.callID === 'string' ? part.callID : part.id
+    const toolName = typeof part.tool === 'string' ? part.tool : undefined
+    const input = (part.state?.input && typeof part.state.input === 'object')
+      ? (part.state.input as Record<string, unknown>)
+      : undefined
+    turns.push({
+      uuid: `opencode:tc:${callId}`,
+      parentUuid: `opencode:msg:${msgId}`,
+      type: 'tool_call',
+      toolName,
+      toolUseId: callId,
+      toolInput: input
+    })
+    const status = part.state?.status
+    if (status === 'completed' || status === 'error' || part.state?.output !== undefined) {
+      const outputRaw = part.state?.output
+      const output = typeof outputRaw === 'string'
+        ? outputRaw
+        : (outputRaw !== undefined ? safeStringify(outputRaw) : undefined)
+      turns.push({
+        uuid: `opencode:tr:${callId}`,
+        parentUuid: `opencode:tc:${callId}`,
+        type: 'tool_result',
+        toolUseId: callId,
+        toolOutput: output
+      })
+    }
+  }
+  // `text` parts contribute to the msg-level text on initial catch-up.
+  // A late-arriving text part does NOT re-emit — the message event was
+  // already appended and RedLog treats it as immutable. If OpenCode
+  // begins streaming text-part deltas at scale we'd need a per-part
+  // "text_chunk" event kind; not worth it before that's a real problem.
+  return turns
 }
 
 /** Parse an OpenCode message stub JSON + its sibling parts dir into a
@@ -220,6 +279,74 @@ function subtypeForOpencode(t: ParsedTurn): string {
   return t.type
 }
 
+// v0.8.3: secondary chokidar watcher on `storage/part/`. Closes v0.8.1's
+// live-tail limitation — parts landing AFTER the msg stub was first
+// observed now emit as delta events instead of being dropped until the
+// operator re-opens the project.
+let secondaryWatcher: FSWatcher | null = null
+let secondaryHost: HostControlSurface | null = null
+
+/** Derive `<storage>` from the current transcriptGlob (which points at
+ *  `<storage>/message/*`). Returns null when the glob isn't recognisably
+ *  OpenCode-shaped. */
+function currentStorageRoot(): string | null {
+  const glob = opencodeAdapter.transcriptGlob
+  const expanded = glob.startsWith('~/')
+    ? path.join(os.homedir(), glob.slice(2))
+    : glob
+  // Strip trailing `/message/*` (or `\message\*` on Windows).
+  const m = expanded.match(/^(.+?)[\\/]message[\\/]\*$/)
+  return m ? m[1] : null
+}
+
+function stopSecondaryWatcher(): void {
+  if (secondaryWatcher) { void secondaryWatcher.close(); secondaryWatcher = null }
+}
+
+/** Attach (or re-attach) the secondary watcher rooted at
+ *  `<storage>/part/`. Safe to call repeatedly; closes the previous
+ *  watcher first so tests that override the storage root can reinit. */
+function startSecondaryWatcher(host: HostControlSurface): void {
+  stopSecondaryWatcher()
+  const storage = currentStorageRoot()
+  if (!storage) return
+  const partsRoot = path.join(storage, 'part')
+  if (!fs.existsSync(partsRoot)) {
+    // Real-world: OpenCode dir may not exist on this operator's box.
+    // We still want secondaryHost set so a future call after the dir is
+    // created can attach; but v0.8.3 doesn't poll for that yet. If the
+    // operator installs OpenCode later, a restart of the app picks up.
+    return
+  }
+  const watcher = chokidar.watch(partsRoot, {
+    persistent: true,
+    ignoreInitial: false,
+    depth: 3,
+    awaitWriteFinish: false
+  })
+  const emitFromPartFile = (p: string): void => {
+    if (!p.endsWith('.json')) return
+    let raw: string
+    try { raw = fs.readFileSync(p, 'utf-8') } catch { return }
+    let part: OpencodePart
+    try { part = JSON.parse(raw) as OpencodePart } catch { return }
+    const msgId = typeof part.messageID === 'string'
+      ? part.messageID
+      : path.basename(path.dirname(p))
+    const sid = typeof part.sessionID === 'string' ? part.sessionID : null
+    if (!msgId || !sid) return
+    const turns = partToTurns(msgId, part)
+    if (turns.length) host.emitTurns('opencode', sid, turns)
+  }
+  watcher.on('add', emitFromPartFile)
+  // Tool parts land as 'add' with status='pending', then are REWRITTEN in
+  // place when the tool completes. Watch 'change' too so the tool_result
+  // half of the pair fires on completion.
+  watcher.on('change', emitFromPartFile)
+  secondaryWatcher = watcher
+  secondaryHost = host
+}
+
 export const opencodeAdapter: TailerAdapter = {
   agentKind: 'opencode',
   transcriptGlob: '~/.local/share/opencode/storage/message/*',
@@ -234,11 +361,23 @@ export const opencodeAdapter: TailerAdapter = {
     const arr = parseOpencodeMessage(rawContent, sourcePath)
     return arr.length ? arr : null
   },
-  subtypeFor: subtypeForOpencode
+  subtypeFor: subtypeForOpencode,
+  init(host: HostControlSurface): void {
+    startSecondaryWatcher(host)
+  }
 }
 
-/** Test-only override for the transcript root. */
+/** Test-only override for the transcript root. Re-attaches the secondary
+ *  watcher against the new root so v0.8.3's live-tail path is testable
+ *  even after the adapter's already been registered. */
 export function overrideOpencodeStorageRoot(storageRoot: string): void {
   ;(opencodeAdapter as { transcriptGlob: string }).transcriptGlob =
     path.join(storageRoot, 'message', '*')
+  if (secondaryHost) startSecondaryWatcher(secondaryHost)
+}
+
+/** Test-only. Close the secondary watcher between tests. */
+export function _stopOpencodeSecondaryWatcherForTest(): void {
+  stopSecondaryWatcher()
+  secondaryHost = null
 }

@@ -3,6 +3,49 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.8.3 — 2026-08-07
+**OpenCode live-tail closes the v0.8.1 known limitation.** A new
+`adapter.init(host)` lifecycle hook + `host.emitTurns(...)` control
+surface let adapters inject supplemental turns from sources the host
+doesn't natively watch. OpenCode uses this to attach a secondary
+chokidar watcher on `storage/part/` so tool_call/tool_result deltas
+that land AFTER the msg stub was first observed now surface as
+first-class audit events instead of waiting for a project re-open.
+
+### A — `TailerAdapter.init(host)` + `HostControlSurface`
+- New optional lifecycle hook `init?(host: HostControlSurface): void`
+  fires once when the adapter is registered. Host guards against
+  duplicate init on re-register; adapters clean up their own watchers.
+- `HostControlSurface.emitTurns(agentKind, sessionId, turns[])` runs
+  the injected turns through the same dedup (`redlogIdByUuid`),
+  redaction, and chain-linking as `parseUnit`-produced turns.
+- Re-emitting a turn with an already-seen uuid is a **safe no-op**
+  (canonical idempotent-emit pattern). Emit into a session that
+  hasn't been registered yet is silently dropped; adapter is expected
+  to retry via its watcher.
+- Emit respects `eventBus.paused` — no bypass of the recording gate.
+
+### B — OpenCode `storage/part/` secondary watcher
+- Adapter's `init` opens a chokidar watch on `<storage>/part/`.
+- New / changed `prt_*.json` → parses via extracted `partToTurns`
+  helper → calls `host.emitTurns('opencode', sessionID, turns)`.
+- Handles both `add` (new part landing) and `change` (tool part
+  rewritten from `pending` → `completed` with output). The tool_call
+  is dedup-skipped on the second fire; only the newly-available
+  tool_result actually emits.
+
+### Test coverage (+7)
+- `partToTurns` (6 unit tests): reasoning, pending tool, completed
+  tool, text (no re-emit), unknown types, error status.
+- `host.emitTurns` end-to-end: initial catch-up produces msg +
+  tool_call only; injected delta lands as chain-linked tool_result;
+  re-emitting the same uuid is dedup'd (no duplicate row).
+- 423 → 430 tests, all green; tsc clean.
+
+### Known limitation removed
+v0.8.1 CHANGELOG's "OpenCode parts landing after msg stub not
+re-scanned" — closed.
+
 ## v0.8.2 — 2026-08-07
 **`tailers` plugin contribution type.** The `TailerAdapter` interface is
 now a plugin contribution — bundled plugins can register transcript
