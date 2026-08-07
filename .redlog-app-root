@@ -1,0 +1,15 @@
+# v0.7.2 A: self-exclusion marker for agent-transcript-tailer.
+#
+# When RedLog is being developed IN itself (a developer runs `claude code`
+# inside /path/to/redlog/), the tailer would otherwise ingest its own
+# author's conversation into the engagement log — a feedback loop the
+# adversarial-review agent flagged as Critical.
+#
+# The tailer walks up from each session's transcript-recorded cwd looking
+# for this filename; if found anywhere in the ancestor chain, it skips
+# tailing that session entirely. Config knob `enableSelfTail: true` on
+# AgentTailerConfig overrides.
+#
+# Committing this file (rather than writing it at Electron ready) keeps
+# the marker in place for anyone cloning the repo, and avoids racing with
+# runtime file creation.
