@@ -137,7 +137,10 @@ describe('loot pattern detection', () => {
 //   • operatorId gate: scan() must not touch the DB when unconfigured
 //   • register/unregister lifecycle for plugin-contributed patterns
 //   • malformed plugin regex is skipped, not thrown
-import { LootDetector, registerLootPatterns, unregisterLootPatterns } from '../src/core/loot-detector'
+import {
+  LootDetector, registerLootPatterns, unregisterLootPatterns,
+  listExternalLootPatterns
+} from '../src/core/loot-detector'
 import { afterEach } from 'vitest'
 
 describe('LootDetector class', () => {
@@ -145,6 +148,9 @@ describe('LootDetector class', () => {
     unregisterLootPatterns('plug-a')
     unregisterLootPatterns('plug-b')
     unregisterLootPatterns('bad-plug')
+    unregisterLootPatterns('audit-plug')
+    unregisterLootPatterns('twin-a')
+    unregisterLootPatterns('twin-b')
   })
 
   it('scan() without operatorId does not attempt to insert events (safe pre-DB)', () => {
@@ -204,6 +210,64 @@ describe('LootDetector class', () => {
     const d = new LootDetector()
     const m = d.scan('event WORKS-42 done')
     expect(m.some((x) => x.type === 'works')).toBe(true)
+  })
+
+  it('v0.9.0: plugin matches carry pluginId + patternName (default `type#N`)', () => {
+    const d = new LootDetector()
+    registerLootPatterns('audit-plug', [
+      { type: 'acme_token', pattern: 'ACME-A[0-9]{6}', confidence: 'high' },
+      { type: 'acme_token', pattern: 'ACME-B[0-9]{6}', confidence: 'medium', name: 'acme-token-v2', description: 'refresh-2026' }
+    ])
+    const m = d.scan('ACME-A123456 xxx ACME-B999999')
+    const first = m.find((x) => x.value === 'ACME-A123456')
+    const second = m.find((x) => x.value === 'ACME-B999999')
+    // First uses default `type#0` since no `name` was supplied.
+    expect(first?.pluginId).toBe('audit-plug')
+    expect(first?.patternName).toBe('acme_token#0')
+    // Second gets the plugin-supplied name.
+    expect(second?.pluginId).toBe('audit-plug')
+    expect(second?.patternName).toBe('acme-token-v2')
+  })
+
+  it('v0.9.0: built-in matches do NOT carry pluginId (chain-hash stable)', () => {
+    const d = new LootDetector()
+    const m = d.scan('AKIAIOSFODNN7EXAMPLE')
+    const hit = m.find((x) => x.type === 'aws_key')
+    expect(hit).toBeDefined()
+    // Built-in patterns leave both fields unset — no shape change vs pre-v0.9.0.
+    expect(hit?.pluginId).toBeUndefined()
+    expect(hit?.patternName).toBeUndefined()
+  })
+
+  it('v0.9.0: two plugins registering same `type` are distinguishable at match time', () => {
+    const d = new LootDetector()
+    registerLootPatterns('twin-a', [
+      { type: 'shared_type', pattern: 'AAA-[0-9]+', name: 'twin-a-rule' }
+    ])
+    registerLootPatterns('twin-b', [
+      { type: 'shared_type', pattern: 'BBB-[0-9]+', name: 'twin-b-rule' }
+    ])
+    const m = d.scan('AAA-1 xx BBB-2')
+    const fromA = m.find((x) => x.value === 'AAA-1')
+    const fromB = m.find((x) => x.value === 'BBB-2')
+    expect(fromA?.pluginId).toBe('twin-a')
+    expect(fromA?.patternName).toBe('twin-a-rule')
+    expect(fromB?.pluginId).toBe('twin-b')
+    expect(fromB?.patternName).toBe('twin-b-rule')
+  })
+
+  it('v0.9.0: listExternalLootPatterns snapshot exposes name + description for Settings UI', () => {
+    registerLootPatterns('audit-plug', [
+      { type: 'foo', pattern: 'FOO-\\d+', name: 'foo-rule', description: 'internal token', confidence: 'high' }
+    ])
+    const list = listExternalLootPatterns().filter((p) => p.pluginId === 'audit-plug')
+    expect(list.length).toBe(1)
+    expect(list[0].patternName).toBe('foo-rule')
+    expect(list[0].description).toBe('internal token')
+    expect(list[0].confidence).toBe('high')
+    // pattern source + flags are stringified for copy-paste.
+    expect(list[0].pattern).toBe('FOO-\\d+')
+    expect(list[0].flags).toContain('g')
   })
 
   it('plugin patterns default to global flag (finds every occurrence)', () => {

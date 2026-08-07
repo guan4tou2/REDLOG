@@ -29,6 +29,17 @@ export interface LootPatternContribution {
   confidence?: Confidence
   /** optional inline flags, e.g. "i" or "gm" (g is always added) */
   flags?: string
+  /** v0.9.0: human-readable identifier for this pattern within the
+   *  plugin. Shows up on matched loot events as `pattern_name` for
+   *  audit traceability — "this AWS key was flagged by recon-pack's
+   *  `acme-token-v2` rule, not the built-in `aws_key`". If omitted,
+   *  the loot event carries `pattern_name = "${type}#${index}"` — good
+   *  enough for provenance, but a real name is friendlier in reports. */
+  name?: string
+  /** v0.9.0: one-line description of what the pattern is meant to
+   *  detect. Not used at match time — surfaced in Settings ▸ Plugins
+   *  and exportable to audit bundles. */
+  description?: string
 }
 
 /** 🟢 Redaction rule additions (merged into the active allow/denylist). */
