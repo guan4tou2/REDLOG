@@ -410,9 +410,17 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
     // per event just reads the cached value + rerenders one number.
     // Loot count updated too — same class of stale-after-batch bug for
     // the tile even though loot events are lower-rate.
+    //
+    // v0.7.6 H2: chainLen was ALSO stuck at mount snapshot — the
+    // v0.7.5 dogfood surfaced the "⚠ 證據鏈 10396 ≠ 事件 28338" scary
+    // Dashboard warning as a direct consequence. Both queries look at
+    // the same table (`WHERE hash IS NOT NULL` for chainLen, `COUNT(*)`
+    // for events); with the tailer hashing every insert, they always
+    // match on-disk. Refreshing chainLen here closes the drift.
     const refreshCounts = (): void => {
       window.redlog.events.getCount().then(setEventCount).catch(() => {})
       window.redlog.loot.getCount().then(setLootCount).catch(() => {})
+      window.redlog.chain.length().then(setChainLen).catch(() => {})
     }
     const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor(); refreshCounts() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
@@ -492,7 +500,21 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             // red — the CaptureHealthCard also flips to dark, so the operator
             // gets two independent signals.
             if (capture?.lastSampleBroken) {
-              anchorSub = `${anchorSub} · sample BROKEN`
+              // v0.7.6 H3: append the broken row's own age so the operator
+              // can tell a stale historical row (pre-v0.7.x) from a fresh
+              // regression. If eventTimestamp is missing (older callsite)
+              // the message degrades to the pre-v0.7.6 "sample BROKEN".
+              const ets = capture.lastSampleBroken.eventTimestamp
+              let ageLabel = ''
+              if (typeof ets === 'number' && ets > 0) {
+                const days = Math.floor((Date.now() - ets) / 86400000)
+                if (days >= 1) ageLabel = ` (${days}d old)`
+                else {
+                  const hrs = Math.floor((Date.now() - ets) / 3600000)
+                  ageLabel = hrs > 0 ? ` (${hrs}h old)` : ' (fresh)'
+                }
+              }
+              anchorSub = `${anchorSub} · sample BROKEN${ageLabel}`
               anchorTone = 'red'
             } else if (capture?.lastSampleOkAt) {
               const sMin = Math.floor((Date.now() - capture.lastSampleOkAt) / 60000)
