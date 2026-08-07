@@ -403,7 +403,18 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       } catch { /* older preload */ }
     }
     loadAnchor()
-    const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor() })
+    // v0.7.5 G3: refresh the event-count tile on every incoming event.
+    // Dogfood found the tile stuck at its mount-time snapshot after the
+    // transcript tailer ingested ~10K events post-open. `getCount()` is
+    // cheap thanks to v0.6.97 C's in-memory count cache, so re-calling
+    // per event just reads the cached value + rerenders one number.
+    // Loot count updated too — same class of stale-after-batch bug for
+    // the tile even though loot events are lower-rate.
+    const refreshCounts = (): void => {
+      window.redlog.events.getCount().then(setEventCount).catch(() => {})
+      window.redlog.loot.getCount().then(setLootCount).catch(() => {})
+    }
+    const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor(); refreshCounts() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); clearInterval(anchorTimer) }
   }, [])
