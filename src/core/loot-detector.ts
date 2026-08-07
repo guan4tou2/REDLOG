@@ -6,6 +6,12 @@ interface LootMatch {
   value: string
   line: string
   confidence: 'high' | 'medium' | 'low'
+  /** v0.9.0: identity of the plugin whose pattern matched. Undefined for
+   *  built-in pattern hits. Surfaces on the emitted loot event. */
+  pluginId?: string
+  /** v0.9.0: name of the specific pattern within the plugin. Defaults to
+   *  `${type}#${index}` when the plugin omits the `name` field. */
+  patternName?: string
 }
 
 const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low' }> = [
@@ -23,22 +29,48 @@ const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' |
 
 // Plugin-contributed loot patterns (🟢 declarative). Kept separate from the
 // built-ins so we can list/replace them without touching the base set.
-const externalPatterns: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low'; pluginId: string }> = []
+interface ExternalPattern {
+  type: string
+  pattern: RegExp
+  confidence: 'high' | 'medium' | 'low'
+  pluginId: string
+  /** v0.9.0: per-pattern identifier — plugin-supplied `name` or the
+   *  default `${type}#${index}` when omitted. */
+  patternName: string
+  /** v0.9.0: optional human description (not used at match time). */
+  description?: string
+}
+const externalPatterns: ExternalPattern[] = []
 
 /** Register loot patterns from a plugin. Invalid regexes are skipped, not thrown. */
 export function registerLootPatterns(
   pluginId: string,
-  patterns: Array<{ type: string; pattern: string; confidence?: 'high' | 'medium' | 'low'; flags?: string }>
+  patterns: Array<{
+    type: string
+    pattern: string
+    confidence?: 'high' | 'medium' | 'low'
+    flags?: string
+    name?: string
+    description?: string
+  }>
 ): number {
   let added = 0
-  for (const p of patterns) {
+  patterns.forEach((p, i) => {
     try {
       const flags = new Set(['g', ...(p.flags ?? '').split('')].filter(Boolean))
       const re = new RegExp(p.pattern, [...flags].join(''))
-      externalPatterns.push({ type: p.type, pattern: re, confidence: p.confidence ?? 'medium', pluginId })
+      const patternName = p.name && p.name.trim() ? p.name.trim() : `${p.type}#${i}`
+      externalPatterns.push({
+        type: p.type,
+        pattern: re,
+        confidence: p.confidence ?? 'medium',
+        pluginId,
+        patternName,
+        description: p.description
+      })
       added++
     } catch { /* bad regex from plugin — skip */ }
-  }
+  })
   return added
 }
 
@@ -47,6 +79,29 @@ export function unregisterLootPatterns(pluginId: string): void {
   for (let i = externalPatterns.length - 1; i >= 0; i--) {
     if (externalPatterns[i].pluginId === pluginId) externalPatterns.splice(i, 1)
   }
+}
+
+/** v0.9.0: introspect the currently-registered plugin patterns for
+ *  Settings ▸ Plugins UI + audit bundle export. Returns a shallow snapshot
+ *  — the RegExp is stringified so callers can render + copy the source. */
+export function listExternalLootPatterns(): Array<{
+  pluginId: string
+  patternName: string
+  type: string
+  pattern: string
+  flags: string
+  confidence: 'high' | 'medium' | 'low'
+  description?: string
+}> {
+  return externalPatterns.map((p) => ({
+    pluginId: p.pluginId,
+    patternName: p.patternName,
+    type: p.type,
+    pattern: p.pattern.source,
+    flags: p.pattern.flags,
+    confidence: p.confidence,
+    description: p.description
+  }))
 }
 
 export class LootDetector {
@@ -74,7 +129,12 @@ export class LootDetector {
    */
   findMatches(text: string): LootMatch[] {
     const matches: LootMatch[] = []
-    for (const { type, pattern, confidence } of [...LOOT_PATTERNS, ...externalPatterns]) {
+    // Built-in patterns carry no plugin attribution; only external ones do.
+    // We iterate them separately (rather than a flat concat) so we can
+    // stamp `pluginId` / `patternName` only where they apply — falsy fields
+    // are stripped by the emit path, so built-in loot events keep the
+    // exact same shape they had pre-v0.9.0 (no chain-hash surprise).
+    for (const { type, pattern, confidence } of LOOT_PATTERNS) {
       const re = new RegExp(pattern.source, pattern.flags)
       let m: RegExpExecArray | null
       while ((m = re.exec(text)) !== null) {
@@ -82,12 +142,27 @@ export class LootDetector {
         const key = `${type}:${value.slice(0, 32)}`
         if (this.detectedHashes.has(key)) continue
         this.detectedHashes.add(key)
-
-        const lineStart = text.lastIndexOf('\n', m.index) + 1
-        const lineEnd = text.indexOf('\n', m.index)
-        const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim().slice(0, 200)
-
+        const line = extractLine(text, m.index)
         matches.push({ type, value: value.slice(0, 500), line, confidence })
+      }
+    }
+    for (const { type, pattern, confidence, pluginId, patternName } of externalPatterns) {
+      const re = new RegExp(pattern.source, pattern.flags)
+      let m: RegExpExecArray | null
+      while ((m = re.exec(text)) !== null) {
+        const value = m[1] || m[0]
+        const key = `${type}:${value.slice(0, 32)}`
+        if (this.detectedHashes.has(key)) continue
+        this.detectedHashes.add(key)
+        const line = extractLine(text, m.index)
+        matches.push({
+          type,
+          value: value.slice(0, 500),
+          line,
+          confidence,
+          pluginId,
+          patternName
+        })
       }
     }
     return matches
@@ -103,7 +178,15 @@ export class LootDetector {
     try {
       const evt = insertEvent('loot', {
         subtype: 'credential_detected',
-        matches: matches.map((m) => ({ type: m.type, confidence: m.confidence, preview: m.line })),
+        matches: matches.map((m) => ({
+          type: m.type,
+          confidence: m.confidence,
+          preview: m.line,
+          // v0.9.0: pattern provenance for audit-trail attribution.
+          // Only stamped for plugin-contributed patterns — built-in
+          // matches emit the same shape as before (chain-hash stable).
+          ...(m.pluginId ? { plugin_id: m.pluginId, pattern_name: m.patternName } : {})
+        })),
         count: matches.length,
         // Optional provenance the caller can attach: the tool/command/host the
         // text came from. Trimmed + capped so a rogue caller can't bloat it.
@@ -125,4 +208,10 @@ export class LootDetector {
   getLootCount(): number {
     return this.detectedHashes.size
   }
+}
+
+function extractLine(text: string, matchIndex: number): string {
+  const lineStart = text.lastIndexOf('\n', matchIndex) + 1
+  const lineEnd = text.indexOf('\n', matchIndex)
+  return text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim().slice(0, 200)
 }

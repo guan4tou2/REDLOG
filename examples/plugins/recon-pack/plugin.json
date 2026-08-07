@@ -8,8 +8,20 @@
   "redlogApi": 1,
   "contributes": {
     "lootPatterns": [
-      { "type": "acme_session", "pattern": "ACME-[A-Z0-9]{16}", "confidence": "high" },
-      { "type": "internal_jwt", "pattern": "corp_eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+", "confidence": "medium" }
+      {
+        "type": "acme_session",
+        "name": "acme-session-token",
+        "description": "ACME internal service session cookie (16-char alnum)",
+        "pattern": "ACME-[A-Z0-9]{16}",
+        "confidence": "high"
+      },
+      {
+        "type": "internal_jwt",
+        "name": "corp-jwt-v1",
+        "description": "Corporate SSO JWT with the corp_ prefix",
+        "pattern": "corp_eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+",
+        "confidence": "medium"
+      }
     ],
     "redaction": {
       "denylist": ["/CORP_[A-Z0-9]{20,}/"]
