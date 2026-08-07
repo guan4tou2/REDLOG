@@ -94,12 +94,20 @@ function sweepDir(
 export function sweepRetention(config: {
   terminal?: { castKeepDays?: number }
   screenshots?: { keepDays?: number }
-}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number } {
-  if (!opts.operatorId) return { cast: 0, screenshots: 0 }
+  agentTranscripts?: { keepDays?: number }
+}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number } {
+  if (!opts.operatorId) return { cast: 0, screenshots: 0, agentTranscripts: 0 }
   let projectDir: string
-  try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0 } }
+  try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0, agentTranscripts: 0 } }
   const castDays = config.terminal?.castKeepDays ?? 0
   const shotDays = config.screenshots?.keepDays ?? 0
+  // v0.7.2 F: agent-transcripts sweep. Default 30d if unset — long enough
+  // for an operator to reference back to a prior week's session but bounded
+  // so a light-usage engagement doesn't slowly accumulate GB of Claude Code
+  // conversation history. Same audit-append pattern as cast/screenshot:
+  // the file is unlinked and a `system.agent_transcript_pruned` event
+  // records the deletion (bytes + age).
+  const agentDays = config.agentTranscripts?.keepDays ?? 30
   const cast = sweepDir(
     path.join(projectDir, 'casts'),
     castDays,
@@ -114,5 +122,12 @@ export function sweepRetention(config: {
     'screenshot_pruned',
     opts
   )
-  return { cast, screenshots }
+  const agentTranscripts = sweepDir(
+    path.join(projectDir, 'agent-transcripts'),
+    agentDays,
+    (n) => n.endsWith('.jsonl'),
+    'agent_transcript_pruned',
+    opts
+  )
+  return { cast, screenshots, agentTranscripts }
 }

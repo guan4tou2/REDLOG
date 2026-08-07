@@ -3,6 +3,91 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.2 — 2026-08-07
+Agent-transcript tailer + verbatim sidecar. Extends AI-agent audit
+coverage from "we logged that a bash tool fired" to "we logged the
+prompt, the response, every tool call and its full result." Passed
+two-agent design review + prior-art web survey (inspired by Tailward
+on PyPI — our differentiator is the hash-chained tamper-evident copy).
+
+### A — Agent transcript tailer (`src/main/services/agent-transcript-tailer.ts`)
+- Watches `~/.claude/projects/**/<session>.jsonl` via chokidar. For
+  each session:
+  - **Append-only sidecar** at `<projectDir>/agent-transcripts/claude-code-<session>.jsonl`
+    — the sidecar's `stat().size` is the source of truth for read
+    offset, so a crash between read and DB insert is idempotent by
+    construction (no double-append).
+  - **Per-turn events** derived from each new transcript line:
+    `agent.user_message`, `agent.assistant_message`, `agent.tool_call`
+    (full tool_input, MCP server prefix auto-extracted), `agent.tool_result`
+    (up to 100KB, `truncated:true` flag beyond). Off-by-default
+    `agent.thinking` for thinking blocks. Free-win fields captured
+    when present: `model`, `agent_version`, `git_branch`, `prompt_id`,
+    `is_sidechain`, `permission_mode`, `usage_tokens_in/out`.
+  - **`_causes` linking via RedLog event ids** — per-session
+    `Map<transcriptUuid, redlogEventId>` so child events point at
+    parent RedLog rows, not foreign Claude Code UUIDs. Focus-chain
+    mode (`f`) walks the whole conversation as a single graph.
+  - **Snapshot events** on 15s idle + session close — payload carries
+    the sidecar's cumulative sha256 so post-hoc tamper is detectable
+    against the hash chain.
+  - **`/compact` + `/clear` handled** — source shrunk = emit
+    `transcript_compacted`, reset sidecar; subsequent turns tagged
+    `post_compact:true`. Adopted from Tailward's edge-case catalog.
+  - **Partial-line buffer** — trailing bytes without `\n` held for
+    next chokidar tick so a mid-write JSON parse never trips.
+  - **Schema drift advisory** — unknown line types fire
+    `agent.transcript_schema_drift` once per session (Anthropic marks
+    the JSONL schema as "internal, can break between releases"; we
+    stay defensive without hard-failing).
+- **Redaction pre-insert** — `src/core/secret-redaction.ts` ports the
+  Python secret regex from `claude-code-hook.sh` line-for-line. New
+  `test/secret-redaction.test.ts` runs 12 golden fixtures through
+  BOTH the shell hook's Python and the TS port and asserts
+  byte-identical output — any drift trips CI. The sidecar file stays
+  verbatim (raw evidence copy); redaction only touches the string
+  going into the events table.
+- **Privacy gates**:
+  - Uses the same `~/.redlog/hook-config.json` `excludedPaths` /
+    `watchPaths` as the shell hook.
+  - **Self-exclusion** via `.redlog-app-root` marker file (committed
+    at repo root) — the tailer walks up from each session's
+    transcript-recorded cwd and skips any that live inside RedLog's
+    own dev tree. Fixes the "watching your own conversation writing
+    RedLog code" feedback loop.
+
+### F — Retention + bundle exclusion
+- `src/core/retention.ts` extended: `agent-transcripts/*.jsonl`
+  sweeps with 30-day default keep (`config.agentTranscripts.keepDays`).
+  Deletion emits `system.agent_transcript_pruned` audit event
+  matching the cast/screenshot retention pattern.
+- `src/core/bundle-export.ts` — new `ExportBundleOpts.includeAgentTranscripts`
+  flag, **default false**. Sidecar `.jsonl` files ship in the bundle
+  only when explicitly opted in — the DB events (redacted) already
+  ride along and the `agent.transcript_snapshot` events' sha256
+  lets auditors verify integrity without seeing the raw prompts.
+
+### Cancelled from Tier 1
+- **B** (drop Claude Code hook's Bash-only matcher) — subsumed by A.
+  The hook still emits per-Bash `claude_code_bash` events in this
+  release; tailer emits the same actions as `agent.tool_call` +
+  `agent.tool_result`. Operators see BOTH (real-time vs. complete).
+  v0.7.3 will add a hook mode toggle so the hook can defer per-tool
+  ingest to the tailer.
+- **C** (OpenCode `chat.after` handler) — deferred to v0.7.3.
+  OpenCode's transcript conventions differ enough to warrant its own
+  scoping pass.
+- **D** (500 → 100KB output_preview cap in hook) — tailer already
+  caps at 100KB natively. If v0.7.3 retires the hook per B, D
+  becomes moot.
+
+### Prior art credit
+Design informed by [Tailward](https://pypi.org/project/tailward/)
+(local Claude Code JSONL → SQLite ledger, regex secret redaction,
+`isCompactSummary` handling). Our differentiator: SHA-256 hash chain
+covering every derived event AND the sidecar file; local-only, no
+outbound telemetry.
+
 ## v0.7.1 — 2026-08-07
 Polish batch from the v0.7.0 install-and-click-through session. Three
 fixes; no schema change, no wire change.

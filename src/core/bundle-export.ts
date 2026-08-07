@@ -46,7 +46,26 @@ function writeAndHash(dest: string, contents: string | Buffer): ManifestFile {
   return { path: path.basename(dest), bytes: info.bytes, sha256: info.sha256 }
 }
 
-export function exportBundle(engagementId: string, outRoot?: string): EvidenceBundle {
+export interface ExportBundleOpts {
+  outRoot?: string
+  /** v0.7.2 F: include the raw Claude Code (and future OpenCode / Codex)
+   *  transcripts from `<projectDir>/agent-transcripts/` in the bundle.
+   *  DEFAULT FALSE. The sidecar `.jsonl` files are verbatim copies of the
+   *  agent's own transcript, which may include operator-pasted secrets
+   *  (API keys the operator typed into a Claude Code chat to test auth,
+   *  passwords used in an example, etc.). The `agent.transcript_snapshot`
+   *  event's sha256 lets an auditor verify the sidecar hasn't been
+   *  tampered with WITHOUT them needing the raw file — so redacted export
+   *  is the safe default, and this flag is the opt-in for engagements that
+   *  legitimately need the pre-redaction content. */
+  includeAgentTranscripts?: boolean
+}
+
+export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
+  const opts: ExportBundleOpts = typeof outRootOrOpts === 'string'
+    ? { outRoot: outRootOrOpts }
+    : (outRootOrOpts ?? {})
+  const outRoot = opts.outRoot
   const projectDir = getProjectDir()
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const bundleDir = path.join(outRoot ?? path.join(projectDir, 'exports'), `bundle-${ts}`)
@@ -141,6 +160,33 @@ export function exportBundle(engagementId: string, outRoot?: string): EvidenceBu
         fs.copyFileSync(s, d)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
+      }
+    }
+  }
+
+  // 6b. agent-transcripts/ — copied ONLY when opts.includeAgentTranscripts.
+  // Default-exclude rationale: the raw sidecar `.jsonl` files hold verbatim
+  // conversation content (user prompts + assistant responses + tool_use +
+  // tool_result), which may include operator-pasted secrets. The DB-side
+  // events these transcripts derive are already redacted (v0.7.2 A ports
+  // the shell-hook regex into src/core/redaction.ts) and DO ship in
+  // events.jsonl. Whole-file sha256 lives in `agent.transcript_snapshot`
+  // events, so an auditor can prove tamper-freedom without seeing the
+  // raw bytes — they only need the raw file for content review, which is
+  // an opt-in choice.
+  if (opts.includeAgentTranscripts) {
+    const srcAgent = path.join(projectDir, 'agent-transcripts')
+    const dstAgent = path.join(bundleDir, 'agent-transcripts')
+    if (fs.existsSync(srcAgent)) {
+      fs.mkdirSync(dstAgent, { recursive: true })
+      for (const name of fs.readdirSync(srcAgent)) {
+        const s = path.join(srcAgent, name)
+        const d = path.join(dstAgent, name)
+        if (fs.statSync(s).isFile()) {
+          fs.copyFileSync(s, d)
+          const info = sha256File(d)
+          files.push({ path: `agent-transcripts/${name}`, ...info })
+        }
       }
     }
   }
