@@ -3,6 +3,54 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.3 — 2026-08-07
+Post-v0.7.2 follow-through. Retires the Claude Code hook's per-tool
+ingest now that the transcript tailer covers everything, plus two
+correctness fixes the v0.7.2 code-review flagged.
+
+### A — Retire `hooks/claude-code-hook.sh` per-tool emit
+- Script is now a no-op stub (`hooks/claude-code-hook.sh:1`). Its
+  entire python + curl body — the one that POSTed a
+  `claude_code_bash` event per Bash tool call — is replaced with a
+  short comment explaining the handoff and `exit 0`.
+- `PLUGIN_REGISTRY` in `src/core/hooks-manager.ts` no longer offers
+  the `claude-code` plugin. New installs skip wiring
+  `~/.claude/settings.json`; existing wired installs still work (the
+  stub just exits 0), they just waste one process spawn per Bash call
+  until the operator re-runs the install flow.
+- **Fixes:** the "three rows per bash call" Timeline pollution the
+  code-review adversarial pass flagged as High. From v0.7.3 the
+  tailer is the sole source of Claude Code tool ingest — one
+  `agent.tool_call` + one `agent.tool_result` per Bash, same 100ms
+  latency (chokidar fires on transcript file write immediately).
+- **Side effect:** the shell hook's inline Python redactor is gone,
+  so `test/secret-redaction.test.ts` drops the byte-parity mechanism
+  and tests the TS redactor directly with the same golden fixtures.
+  Also documents two order-precedence caveats (Bearer + JWT prefixed
+  with `token:` get caught by the earlier `authorization|token[=:]+\S+`
+  rule and land as `[REDACTED]` instead of the more-specific marker).
+
+### A2 — Tailer correctness patches
+- `catchUpSession` gates on `eventBus.paused` (`agent-transcript-tailer.ts:catchUpSession`)
+  — matches how screenshot-agent, process-monitor, and clipboard-monitor
+  already respect the operator's recording toggle. When paused, the
+  source `.jsonl` grows normally; the next chokidar tick after resume
+  catches up from the sidecar offset with no loss.
+- `unregisterSession` emits an explicit `agent.session_end` event on
+  transcript unlink / tailer shutdown (`agent-transcript-tailer.ts:unregisterSession`).
+  Closes the L1 "no session terminus" note from the adversarial review
+  — chain-anchor walks now have a clean boundary per agent session,
+  matching the v0.6.90 E Timeline session-divider treatment for shell
+  sessions.
+
+### Deferred to v0.7.4
+- OpenCode transcript tailer variant — OpenCode's transcript layout
+  differs enough to warrant its own scoping pass.
+- Codex plugin update — same story.
+- Install v0.7.3 DMG end-to-end verification (manual UI test) — the
+  tailer works in unit tests; verifying on a real Claude Code session
+  is a post-release smoke test.
+
 ## v0.7.2 — 2026-08-07
 Agent-transcript tailer + verbatim sidecar. Extends AI-agent audit
 coverage from "we logged that a bash tool fired" to "we logged the
