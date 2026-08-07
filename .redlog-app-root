@@ -7,8 +7,14 @@
 #
 # The tailer walks up from each session's transcript-recorded cwd looking
 # for this filename; if found anywhere in the ancestor chain, it skips
-# tailing that session entirely. Config knob `enableSelfTail: true` on
-# AgentTailerConfig overrides.
+# tailing that session entirely.
+#
+# v0.7.4 F7: earlier revisions of this file mentioned an
+# `enableSelfTail: true` config knob on AgentTailerConfig that would
+# override the exclusion. No such knob exists in v0.7.x — the tailer
+# skips self-marked sessions unconditionally. If you're a RedLog
+# developer who genuinely wants their own dev session tailed, comment
+# out the isSelfExcludedCwd() call in registerSession() locally.
 #
 # Committing this file (rather than writing it at Electron ready) keeps
 # the marker in place for anyone cloning the repo, and avoids racing with

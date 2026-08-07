@@ -3,6 +3,66 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.4 — 2026-08-07
+Post-review defect batch. Seven fixes surfaced by two-axis code review
+(standards + spec) of the v0.7.2 tailer + v0.7.3 hook-retirement work.
+All defects, no new features.
+
+### Correctness / security
+- **F1** — `outputIfPathHiddenByCommand` now receives the sibling
+  tool_call's actual command, not the tool_result's own output
+  (`agent-transcript-tailer.ts:emitTurn`). Pre-v0.7.4 we passed
+  `output` as both args and the helper checked the OUTPUT for
+  `.ssh/` / `.env` — so `cat ~/.ssh/id_rsa` leaked key contents
+  whenever they didn't happen to contain the literal path string.
+  New per-session LRU cache `toolCommandByUseId` (cap 1000) memoises
+  each tool_use's command so its later tool_result gets the right
+  input to the hint check. Cache miss falls back to the old
+  output-scans-itself behaviour, which is at least no worse than
+  before.
+- **F2** — Retention default `agentTranscripts.keepDays` flipped
+  from 30 → 0 (keep forever unless opted in), matching
+  cast/screenshot conventions (`retention.ts:110`). Belt-and-
+  suspenders: `registerSession` now **seeds `redlogIdByUuid` from
+  the events table at open time** (`agent-transcript-tailer.ts:registerSession`).
+  If a sidecar is ever pruned (by policy, by disk pressure, by
+  operator hand), the DB-side seed prevents every historical turn
+  from being re-inserted as fresh chained events on next open.
+- **F3** — `tool_input` redaction now deep-walks every string value
+  (`agent-transcript-tailer.ts:deepRedactStrings`). Pre-v0.7.4 only
+  the top-level keys `['command','content','code','query']` were
+  scanned; `Edit.old_string`, `Edit.new_string`, MCP nested args,
+  arrays-of-objects all bypassed. Operator pasting an API key into
+  `Edit.new_string` no longer lands unredacted.
+
+### Consistency
+- **F4** — `unregisterSession` honours `eventBus.paused`
+  (`agent-transcript-tailer.ts:unregisterSession`). Pre-v0.7.4 the
+  v0.7.3 A2 pause gate was on `catchUpSession` only — tearing down
+  a session while paused still wrote two `agent.*` events per
+  session. Now the session is removed from the map but no event
+  fires until recording resumes and a fresh session catches back up.
+- **F5** — Misleading "no double-emit; no missed events" comment
+  replaced with an honest tradeoffs paragraph (`agent-transcript-tailer.ts:catchUpSession`).
+  Actual guarantee: append-then-emit means a mid-emit crash silently
+  drops those turns; F2's DB seed catches most reset paths but not a
+  crash inside the parse loop. The opposite append order trades in
+  the other direction; F2 makes either acceptable.
+- **F7** — Two docstring lies corrected. `AgentTailerConfig.selfExclusionMarker`
+  no longer claims "written by the Electron main on first launch"
+  (nothing writes it); `.redlog-app-root` no longer claims an
+  `enableSelfTail: true` config knob exists (it never did).
+
+### Coverage
+- **F6** — `test/redaction.test.ts` restored with unit tests for
+  `src/core/redaction.ts`. v0.7.2's file-rename accidentally left
+  the still-live four-layer redaction module (used by
+  clipboard-monitor + main/index's `configureRedaction`) with zero
+  test coverage. New file covers `redact` (entropy + denylist +
+  allowlist + malformed-regex path), `maskText` (single/multiple/
+  unsorted/custom-char), `shannonEntropy`, and the plugin rules
+  registry.
+
 ## v0.7.3 — 2026-08-07
 Post-v0.7.2 follow-through. Retires the Claude Code hook's per-tool
 ingest now that the transcript tailer covers everything, plus two

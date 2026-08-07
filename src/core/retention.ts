@@ -101,13 +101,18 @@ export function sweepRetention(config: {
   try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0, agentTranscripts: 0 } }
   const castDays = config.terminal?.castKeepDays ?? 0
   const shotDays = config.screenshots?.keepDays ?? 0
-  // v0.7.2 F: agent-transcripts sweep. Default 30d if unset — long enough
-  // for an operator to reference back to a prior week's session but bounded
-  // so a light-usage engagement doesn't slowly accumulate GB of Claude Code
-  // conversation history. Same audit-append pattern as cast/screenshot:
-  // the file is unlinked and a `system.agent_transcript_pruned` event
-  // records the deletion (bytes + age).
-  const agentDays = config.agentTranscripts?.keepDays ?? 30
+  // v0.7.2 F: agent-transcripts sweep.
+  // v0.7.4 F2: default changed from 30 to 0 (keep forever unless opted in),
+  // matching cast + screenshot conventions. Code-review adversarial pass
+  // caught that pruning a sidecar whose Claude Code source .jsonl still
+  // exists caused every historical turn to be re-inserted as fresh chained
+  // events on next project open — because the tailer used sidecar size as
+  // its sole "how far have we processed" marker. That specific corruption
+  // path is now closed by the F2 DB-side seed of `redlogIdByUuid` at
+  // registerSession (which dedups even if the sidecar was reset), but
+  // matching sibling conventions removes the surprise for operators who
+  // expected evidence to be kept by default.
+  const agentDays = config.agentTranscripts?.keepDays ?? 0
   const cast = sweepDir(
     path.join(projectDir, 'casts'),
     castDays,

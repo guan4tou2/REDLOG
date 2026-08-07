@@ -50,7 +50,7 @@ import * as crypto from 'crypto'
 import chokidar, { FSWatcher } from 'chokidar'
 import { insertEvent } from '../../core/db/events'
 import { eventBus } from '../../core/event-bus'
-import { getProjectDir } from '../../core/db/index'
+import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError } from '../../core/capture-health'
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { isInsideDir } from '../../core/paths'
@@ -66,8 +66,11 @@ export interface AgentTailerConfig {
    *  right home on macOS/Linux/Windows. */
   claudeProjectsDir?: string
   /** Marker filename that signals "this cwd is RedLog's own dev tree —
-   *  do not tail its Claude Code sessions." Written by the Electron main
-   *  on first launch to the app's own repo root. */
+   *  do not tail its Claude Code sessions." Present as a checked-in file
+   *  at the repo root (see `.redlog-app-root`); nothing writes it at
+   *  runtime, so cloning the repo is enough to activate the exclusion.
+   *  v0.7.4 F7: corrected — earlier revisions said this file was written
+   *  by Electron main at first launch, which was never true. */
   selfExclusionMarker?: string
   /** Idle-flush window for `agent.transcript_snapshot` emit. */
   idleFlushMs?: number
@@ -133,6 +136,11 @@ interface SessionState {
   transcriptCwd: string
   pendingLineBuffer: string
   redlogIdByUuid: Map<string, string>
+  /** v0.7.4 F1: last-seen sibling tool_call command per tool_use_id, so
+   *  tool_result emit can gate its output against sensitive-path hints
+   *  (`.ssh/`, `.env`, …) via the ACTUAL command, not against the result
+   *  string itself. Bounded — LRU-evicted at MAX_TOOL_CMD_CACHE. */
+  toolCommandByUseId: Map<string, string>
   linesSeen: number
   turnsEmitted: number
   postCompact: boolean
@@ -142,6 +150,13 @@ interface SessionState {
   driftAdvisoryFired: boolean
   parentMissingAdvisoryFired: boolean
 }
+
+/** v0.7.4 F1: cap per-session tool-command memoisation. In practice a
+ *  session's outstanding tool_use → tool_result window is tiny (a few
+ *  turns), but pathological Task-subagent runs could accumulate; LRU-evict
+ *  keeps memory bounded regardless. Insertion order is LRU because we use
+ *  Map's ordered semantics + delete-and-reinsert on hit. */
+const MAX_TOOL_CMD_CACHE = 1000
 
 let cfg: AgentTailerConfig = { enabled: false, engagementId: '', operatorId: '' }
 let dirWatcher: FSWatcher | null = null
@@ -337,6 +352,41 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
   return t
 }
 
+// ─── Redaction + cache helpers (v0.7.4 F1 + F3) ─────────────────────────────
+
+/** Recursively walk any JSON-shaped value; redact every string leaf via
+ *  `redactSecrets`. Non-strings (numbers/booleans/null) pass through
+ *  unchanged. Arrays/objects are cloned (mutating the caller's tool_input
+ *  would corrupt subsequent Timeline reads). Cycle-safe via a WeakSet —
+ *  Claude Code's tool_input is always JSON.parse output so cycles are
+ *  physically impossible, but the guard costs nothing. */
+export function deepRedactStrings(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (typeof value === 'string') return redactSecrets(value)
+  if (value === null || typeof value !== 'object') return value
+  if (seen.has(value as object)) return '[cyclic]'
+  seen.add(value as object)
+  if (Array.isArray(value)) return value.map((v) => deepRedactStrings(v, seen))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = deepRedactStrings(v, seen)
+  }
+  return out
+}
+
+/** Extract the "command-shaped" string from a tool_use's input, if any.
+ *  Cached per-session (`toolCommandByUseId`) so a later tool_result can
+ *  route the correct string through `outputIfPathHiddenByCommand`. Bash
+ *  puts it at `command`; file tools name the target `file_path`; MCP
+ *  varies; return the first plausible string. */
+function pickCommandForCache(toolName: string | undefined, input: Record<string, unknown>): string | null {
+  const priority = ['command', 'file_path', 'path', 'url', 'query']
+  for (const k of priority) {
+    const v = input[k]
+    if (typeof v === 'string' && v) return v
+  }
+  return null
+}
+
 // ─── Per-turn emit ──────────────────────────────────────────────────────────
 
 interface EmitContext {
@@ -415,12 +465,13 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     if (t.toolName) data.tool_name = t.toolName
     if (t.toolUseId) data.tool_use_id = t.toolUseId
     if (t.toolInput) {
-      // Redact common secret-bearing fields (command, content, code).
-      const redInput: Record<string, unknown> = { ...t.toolInput }
-      for (const k of ['command', 'content', 'code', 'query']) {
-        const v = redInput[k]
-        if (typeof v === 'string') redInput[k] = redactSecrets(v)
-      }
+      // v0.7.4 F3: deep-walk every string value under tool_input so
+      // Edit.old_string / Edit.new_string / MCP nested args get redacted
+      // alongside the top-level [command, content, code, query] that
+      // v0.7.2 covered. An operator pasting an API key into `Edit.new_string`
+      // used to land unredacted in the events table; now it's redacted
+      // like every other string in the payload.
+      const redInput = deepRedactStrings(t.toolInput) as Record<string, unknown>
       const inputJson = JSON.stringify(redInput)
       if (Buffer.byteLength(inputJson, 'utf-8') > MAX_FULL_BYTES) {
         data.tool_input_truncated = true
@@ -428,6 +479,22 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
         data.tool_input = { _truncated: true, keys: Object.keys(redInput) }
       } else {
         data.tool_input = redInput
+      }
+      // v0.7.4 F1: remember this tool_use's sibling command so a later
+      // tool_result can gate its output against sensitive-path hints.
+      // Bounded LRU — delete-and-reinsert on hit keeps recent entries at
+      // the tail so eviction removes the coldest key.
+      if (t.toolUseId) {
+        const cmd = pickCommandForCache(t.toolName, t.toolInput)
+        if (cmd) {
+          if (ctx.session.toolCommandByUseId.has(t.toolUseId)) ctx.session.toolCommandByUseId.delete(t.toolUseId)
+          ctx.session.toolCommandByUseId.set(t.toolUseId, cmd)
+          while (ctx.session.toolCommandByUseId.size > MAX_TOOL_CMD_CACHE) {
+            const oldest = ctx.session.toolCommandByUseId.keys().next().value
+            if (oldest === undefined) break
+            ctx.session.toolCommandByUseId.delete(oldest)
+          }
+        }
       }
       // MCP tool name prefix `mcp__<server>__<tool>` → surface server for free
       if (t.toolName && t.toolName.startsWith('mcp__')) {
@@ -438,16 +505,26 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   } else if (subtype === 'tool_result') {
     if (t.toolUseId) data.tool_use_id = t.toolUseId
     if (t.toolOutput !== undefined) {
-      // If we have the sibling tool_call's command in memory (via parent
-      // uuid), we could hide sensitive-path outputs — but that requires
-      // walking back through the map. Simpler: apply hint check against
-      // whatever command string is embedded in the surrounding turn (rare).
       let output = redactSecrets(t.toolOutput)
-      // Sensitive-path masking runs against the string itself — a Read of
-      // ~/.ssh/id_rsa produces an output where the file content should be
-      // hidden. We approximate by scanning the output for known-file
-      // markers.
-      output = outputIfPathHiddenByCommand(output, output)
+      // v0.7.4 F1: look up the sibling tool_call's command via
+      // toolCommandByUseId so `outputIfPathHiddenByCommand` gets the
+      // ACTUAL command (e.g. `cat ~/.ssh/id_rsa`), not the output
+      // itself. Pre-v0.7.4 we passed `output` as both args and the
+      // helper checked the OUTPUT for `.ssh/` — meaning key contents
+      // leaked whenever they didn't happen to contain the literal
+      // path string. Now the check runs against the command; on
+      // cache miss (older tool_use evicted or never captured) we
+      // apply the helper against the output as a last-ditch pattern
+      // scan — same weak fallback as pre-v0.7.4, but now it's
+      // explicitly the fallback rather than the only path.
+      if (t.toolUseId) {
+        const cmd = ctx.session.toolCommandByUseId.get(t.toolUseId)
+        if (cmd) {
+          output = outputIfPathHiddenByCommand(cmd, output)
+        } else {
+          output = outputIfPathHiddenByCommand(output, output)
+        }
+      }
       data.output_length = t.toolOutput.length
       if (Buffer.byteLength(output, 'utf-8') > MAX_FULL_BYTES) {
         data.output = output.slice(0, MAX_FULL_BYTES)
@@ -539,9 +616,33 @@ export function catchUpSession(sessionId: string, cfgSnap: AgentTailerConfig): v
 
   if (sourceSize <= sidecarSize) return
 
-  // Read new bytes from source, append to sidecar first (so if we crash
-  // after append but before emit, the next tick's sidecar size covers the
-  // resume point — no double-emit; no missed events).
+  // Read new bytes from source, append to sidecar first, THEN parse and
+  // emit per-turn events.
+  //
+  // v0.7.4 F5: durability discipline the previous comment overstated. The
+  // guarantee is **at-most-once with recovery via uuid dedup**, not "no
+  // missed events":
+  //
+  // 1. On sidecar-append then crash BEFORE emit: next tick sees
+  //    `sidecarSize == sourceSize` and re-reads nothing — the not-yet-
+  //    emitted turns would be lost. That's what F2's registerSession-time
+  //    seed of `redlogIdByUuid` from the DB defends against: if we later
+  //    re-open the project and the sidecar was truncated/reset,
+  //    `catchUpSession` re-parses from head and inserts every uuid it
+  //    hasn't already inserted. Turns lost to a crash-during-emit are
+  //    only recoverable on a subsequent compaction / manual reset.
+  //
+  // 2. On sidecar-append then successful emit then process crash: no
+  //    corruption. Sidecar reflects committed reads; DB has the events;
+  //    next tick's `sidecarSize` correctly advances past them.
+  //
+  // 3. The opposite order (insert first, append after) would trade in
+  //    the other direction: a crash between insert and append leaves
+  //    events with no sidecar bytes, and next tick re-reads those same
+  //    source bytes and re-inserts. F2's uuid dedup would catch it, but
+  //    the extra churn seems worse than the failure mode above.
+  //
+  // Correct comment. Failure mode documented rather than hidden.
   const toRead = sourceSize - sidecarSize
   let bytes: Buffer
   try {
@@ -673,6 +774,7 @@ export function registerSession(sourcePath: string, cfgSnap: AgentTailerConfig):
     transcriptCwd: cwd,
     pendingLineBuffer: '',
     redlogIdByUuid: new Map(),
+    toolCommandByUseId: new Map(),
     linesSeen: 0,
     turnsEmitted: 0,
     postCompact: false,
@@ -683,6 +785,23 @@ export function registerSession(sourcePath: string, cfgSnap: AgentTailerConfig):
     parentMissingAdvisoryFired: false
   }
   sessions.set(sessionId, s)
+  // v0.7.4 F2: seed `redlogIdByUuid` from prior events already in the DB
+  // for this session — dedupes across process restarts and across sidecar
+  // retention prune. Without this, pruning the sidecar (retention default
+  // 30d) then reopening the project would re-insert every historical turn
+  // as fresh chained events, polluting the chain with duplicates.
+  try {
+    const db = getDB()
+    const rows = db.prepare(
+      `SELECT id, json_extract(data, '$.transcript_uuid') AS uuid
+         FROM events
+        WHERE agent_type = 'agent'
+          AND json_extract(data, '$.session_id') = ?
+          AND json_extract(data, '$.agent') = 'claude-code'
+          AND json_extract(data, '$.transcript_uuid') IS NOT NULL`
+    ).all(sessionId) as Array<{ id: string; uuid: string }>
+    for (const row of rows) s.redlogIdByUuid.set(row.uuid, row.id)
+  } catch (e) { noteDbError('agent-transcript-tailer', e) }
   catchUpSession(sessionId, cfgSnap)
 }
 
@@ -690,23 +809,32 @@ function unregisterSession(sessionId: string, cfgSnap: AgentTailerConfig): void 
   const s = sessions.get(sessionId)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
-  emitSnapshot(s, cfgSnap, 'session_close')
-  // v0.7.3 A2: emit an explicit `agent.session_end` terminus so chain-anchor
-  // walks (verifyChainFull) have a clean boundary per session. Without this,
-  // the last per-turn event's `_causes` graph has a hanging leaf and the
-  // Timeline's session-boundary dividers (v0.6.90 E) can't render for
-  // agent sessions the same way they do for shell sessions.
-  try {
-    const ev = insertEvent('agent', {
-      subtype: 'session_end',
-      agent: s.agent,
-      session_id: s.sessionId,
-      turns_emitted: s.turnsEmitted,
-      lines_seen: s.linesSeen,
-      description: 'Transcript source file unlinked or tailer shutting down; no more events will land for this session.'
-    }, { engagementId: cfgSnap.engagementId, operatorId: cfgSnap.operatorId })
-    if (ev) eventBus.publish(ev)
-  } catch (e) { noteDbError('agent-transcript-tailer', e) }
+  // v0.7.4 F4: honour the operator's global recording pause here too. Pre-
+  // v0.7.4, catchUpSession gated on `eventBus.paused` but this teardown
+  // path wrote both a snapshot AND a session_end even while paused —
+  // violating the "matches other capture services' pause behaviour"
+  // contract the v0.7.3 A2 comment set out. Sessions still get removed
+  // from the in-memory map so a subsequent resume + re-register picks up
+  // cleanly; we just don't insert events during the pause window.
+  if (!eventBus.paused) {
+    emitSnapshot(s, cfgSnap, 'session_close')
+    // v0.7.3 A2: emit an explicit `agent.session_end` terminus so chain-anchor
+    // walks (verifyChainFull) have a clean boundary per session. Without this,
+    // the last per-turn event's `_causes` graph has a hanging leaf and the
+    // Timeline's session-boundary dividers (v0.6.90 E) can't render for
+    // agent sessions the same way they do for shell sessions.
+    try {
+      const ev = insertEvent('agent', {
+        subtype: 'session_end',
+        agent: s.agent,
+        session_id: s.sessionId,
+        turns_emitted: s.turnsEmitted,
+        lines_seen: s.linesSeen,
+        description: 'Transcript source file unlinked or tailer shutting down; no more events will land for this session.'
+      }, { engagementId: cfgSnap.engagementId, operatorId: cfgSnap.operatorId })
+      if (ev) eventBus.publish(ev)
+    } catch (e) { noteDbError('agent-transcript-tailer', e) }
+  }
   sessions.delete(sessionId)
 }
 
