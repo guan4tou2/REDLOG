@@ -130,7 +130,13 @@ const KNOWN_IGNORED_TYPES = new Set([
   // (v0.7.4 dogfood test surfaced 6 spurious schema-drift advisories on
   // this type). Metadata-only line pointing at the most recent user
   // prompt; skipping it is correct.
-  'last-prompt'
+  'last-prompt',
+  // v0.7.6 H1: two more line types surfaced by the v0.7.5 dogfood run
+  // (8 spurious advisories total: `frame-link` × 1, `pr-link` × 7).
+  // Both are Claude Code UI-hint metadata (Windows frame → tab title,
+  // PR → GitHub PR reference in a sidechain); no per-turn content.
+  'frame-link',
+  'pr-link'
 ])
 
 interface SessionState {
