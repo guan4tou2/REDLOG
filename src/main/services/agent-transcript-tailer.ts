@@ -125,7 +125,12 @@ const KNOWN_IGNORED_TYPES = new Set([
   'queue-operation',
   'attachment',
   'system',
-  'meta'
+  'meta',
+  // v0.7.5 G1: `last-prompt` observed in real Claude Code transcripts
+  // (v0.7.4 dogfood test surfaced 6 spurious schema-drift advisories on
+  // this type). Metadata-only line pointing at the most recent user
+  // prompt; skipping it is correct.
+  'last-prompt'
 ])
 
 interface SessionState {
@@ -141,6 +146,12 @@ interface SessionState {
    *  (`.ssh/`, `.env`, …) via the ACTUAL command, not against the result
    *  string itself. Bounded — LRU-evicted at MAX_TOOL_CMD_CACHE. */
   toolCommandByUseId: Map<string, string>
+  /** v0.7.5 G2: children whose parent uuid we haven't ingested yet, keyed
+   *  by that parent uuid. Dogfood showed 79 real hits — parent-first isn't
+   *  guaranteed. Bounded (MAX_PENDING_CHILDREN) + TTL-swept so late-
+   *  arriving parents flush their queue, drops expire cleanly, and a
+   *  runaway malformed stream can't exhaust memory. */
+  pendingByParentUuid: Map<string, Array<{ turn: ParsedTurn; queuedAt: number }>>
   linesSeen: number
   turnsEmitted: number
   postCompact: boolean
@@ -157,6 +168,17 @@ interface SessionState {
  *  keeps memory bounded regardless. Insertion order is LRU because we use
  *  Map's ordered semantics + delete-and-reinsert on hit. */
 const MAX_TOOL_CMD_CACHE = 1000
+
+/** v0.7.5 G2: cap on the pending-parent buffer. 100 chosen to cover
+ *  realistic bursts (dogfood test surfaced 79 misses across a
+ *  multi-session ingest). Beyond the cap, oldest entries are dropped
+ *  with the advisory + emit-without-parent fallback. */
+const MAX_PENDING_CHILDREN = 100
+
+/** v0.7.5 G2: how long a child can wait for its parent before we give
+ *  up. Real out-of-order arrivals should resolve within a few ms
+ *  (chokidar ticks are subsecond); 60s is enormous slack. */
+const PENDING_TTL_MS = 60_000
 
 let cfg: AgentTailerConfig = { enabled: false, engagementId: '', operatorId: '' }
 let dirWatcher: FSWatcher | null = null
@@ -399,28 +421,49 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   const s = ctx.session
   if (s.redlogIdByUuid.has(t.uuid)) return  // Idempotent — re-read of same line.
 
-  // Resolve parent → RedLog event id for _causes. We assert-and-skip
-  // instead of buffering (Claude Code writes parent-first in practice;
-  // if the assertion ever trips we surface it once so the schema drift is
-  // visible in the chain rather than silently dropped).
+  // Resolve parent → RedLog event id for _causes.
+  //
+  // v0.7.5 G2: Claude Code does NOT strictly write parent-first — a
+  // v0.7.4 dogfood test surfaced 79 real misses across a multi-session
+  // ingest. The v0.7.2 design's "assert-and-skip" behaviour dropped
+  // those chain edges permanently. Now: if the parent hasn't landed
+  // yet, buffer this child in `pendingByParentUuid` until the parent
+  // arrives (checked at the tail of this function after a successful
+  // insert) OR the buffer hits its cap / TTL, at which point we fall
+  // back to the old "emit without parent" behaviour + the advisory.
   let causesArr: string[] | undefined
   if (t.parentUuid) {
     const parentRid = s.redlogIdByUuid.get(t.parentUuid)
-    if (parentRid) causesArr = [parentRid]
-    else if (!s.parentMissingAdvisoryFired) {
-      s.parentMissingAdvisoryFired = true
-      try {
-        const ev = insertEvent('agent', {
-          subtype: 'transcript_parent_missing',
-          session_id: s.sessionId,
-          agent: s.agent,
-          parent_uuid: t.parentUuid,
-          child_uuid: t.uuid,
-          child_type: t.type,
-          description: 'Transcript line refers to a parent uuid the tailer had not seen yet. Advisory-only; per-turn link dropped for this and subsequent occurrences until session reset.'
-        }, { engagementId: ctx.cfgSnap.engagementId, operatorId: ctx.cfgSnap.operatorId })
-        if (ev) eventBus.publish(ev)
-      } catch (e) { noteDbError('agent-transcript-tailer', e) }
+    if (parentRid) {
+      causesArr = [parentRid]
+    } else {
+      // Prune stale entries from the pending map so a slow parent
+      // eventually stops holding late children hostage.
+      sweepStalePending(s, ctx.cfgSnap)
+      const queue = s.pendingByParentUuid.get(t.parentUuid) ?? []
+      if (queue.length + pendingSize(s) < MAX_PENDING_CHILDREN) {
+        queue.push({ turn: t, queuedAt: Date.now() })
+        s.pendingByParentUuid.set(t.parentUuid, queue)
+        return // Wait for the parent — will be emitted when it lands.
+      }
+      // Buffer full — fall back to the pre-v0.7.5 behaviour: emit without
+      // parent, fire the advisory once, keep going.
+      if (!s.parentMissingAdvisoryFired) {
+        s.parentMissingAdvisoryFired = true
+        try {
+          const ev = insertEvent('agent', {
+            subtype: 'transcript_parent_missing',
+            session_id: s.sessionId,
+            agent: s.agent,
+            parent_uuid: t.parentUuid,
+            child_uuid: t.uuid,
+            child_type: t.type,
+            pending_full: true,
+            description: 'Pending-parent buffer full (>' + MAX_PENDING_CHILDREN + '). Later children with missing parents emit without _causes rather than deferring indefinitely.'
+          }, { engagementId: ctx.cfgSnap.engagementId, operatorId: ctx.cfgSnap.operatorId })
+          if (ev) eventBus.publish(ev)
+        } catch (e) { noteDbError('agent-transcript-tailer', e) }
+      }
     }
   }
 
@@ -549,8 +592,39 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       s.redlogIdByUuid.set(t.uuid, ev.id)
       s.turnsEmitted++
       eventBus.publish(ev)
+      // v0.7.5 G2: any children waiting on this newly-emitted parent
+      // can now resolve. Flush the queue for our uuid (if any) and
+      // recursively emit them — they may have children of their own.
+      const waiting = s.pendingByParentUuid.get(t.uuid)
+      if (waiting) {
+        s.pendingByParentUuid.delete(t.uuid)
+        for (const q of waiting) emitTurn(q.turn, ctx)
+      }
     }
   } catch (e) { noteDbError('agent-transcript-tailer', e) }
+}
+
+/** v0.7.5 G2: expire queued children whose parent never arrived.
+ *  Called at the top of each `emitTurn` that would push into the
+ *  buffer, so a slow drift doesn't hold late children hostage.
+ *  Dropped entries emit no advisory — this is a best-effort recovery
+ *  path, not a hot error signal. */
+function sweepStalePending(s: SessionState, _cfgSnap: AgentTailerConfig): void {
+  const cutoff = Date.now() - PENDING_TTL_MS
+  for (const [parentUuid, queue] of s.pendingByParentUuid) {
+    const alive = queue.filter((q) => q.queuedAt >= cutoff)
+    if (alive.length === 0) s.pendingByParentUuid.delete(parentUuid)
+    else if (alive.length !== queue.length) s.pendingByParentUuid.set(parentUuid, alive)
+  }
+}
+
+/** Total pending-child count across all parents. Used by the emitTurn
+ *  buffer to enforce MAX_PENDING_CHILDREN as a session-wide cap rather
+ *  than per-parent. */
+function pendingSize(s: SessionState): number {
+  let n = 0
+  for (const queue of s.pendingByParentUuid.values()) n += queue.length
+  return n
 }
 
 function subtypeFor(t: ParsedTurn): string {
@@ -775,6 +849,7 @@ export function registerSession(sourcePath: string, cfgSnap: AgentTailerConfig):
     pendingLineBuffer: '',
     redlogIdByUuid: new Map(),
     toolCommandByUseId: new Map(),
+    pendingByParentUuid: new Map(),
     linesSeen: 0,
     turnsEmitted: 0,
     postCompact: false,
