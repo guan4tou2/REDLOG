@@ -5,6 +5,7 @@ import { registerCommandTags, unregisterCommandTags } from '../command-tagger'
 import { registerTargetExtractors, unregisterTargetExtractors } from '../target-extractor'
 import { registerEventTypes, unregisterEventTypes } from '../event-registry'
 import { registerCapturePlugins, unregisterCapturePlugins } from '../hooks-manager'
+import { contributeTailer, withdrawTailer, type TailerLike } from './tailer-registry'
 import type { LoadedPlugin } from './types'
 
 // Applies a loaded plugin's 🟢 DECLARATIVE contributions into the running app.
@@ -49,6 +50,39 @@ export function applyContributions(p: LoadedPlugin): void {
       }))
     )
   }
+
+  // v0.8.2: `tailers` contribution. Bundled plugins only — user-plugin
+  // tailer isolation is deferred to v0.8.3+. Silently skip user plugins
+  // with an advisory to console; a real emission via insertEvent would
+  // require pulling core → main-services dependency, which we avoid here.
+  if (c.tailers) {
+    if (p.source !== 'bundled') {
+      console.warn(
+        `[plugins] tailer contribution from user plugin "${id}" rejected — ` +
+        `v0.8.2 supports bundled tailer contributions only. Third-party ` +
+        `tailer support lands with v0.8.3+ once isolation is ready.`
+      )
+    } else {
+      try {
+        // Runtime require against the plugin dir. Manifest validation
+        // already guarantees the module path stays inside the plugin
+        // directory + exists on disk.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const mod = require(join(p.dir, c.tailers)) as { adapter?: TailerLike }
+        const adapter = mod?.adapter
+        if (!adapter || typeof adapter.agentKind !== 'string' || !adapter.agentKind) {
+          console.error(
+            `[plugins] tailer module for "${id}" is missing a valid ` +
+            `"adapter.agentKind" export; skipping.`
+          )
+        } else {
+          contributeTailer(id, adapter)
+        }
+      } catch (e) {
+        console.error(`[plugins] tailer load failed for "${id}":`, e)
+      }
+    }
+  }
 }
 
 export function removeContributions(pluginId: string): void {
@@ -58,4 +92,5 @@ export function removeContributions(pluginId: string): void {
   unregisterTargetExtractors(pluginId)
   unregisterEventTypes(pluginId)
   unregisterCapturePlugins(pluginId)
+  withdrawTailer(pluginId)
 }
