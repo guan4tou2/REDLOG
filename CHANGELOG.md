@@ -3,6 +3,52 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.8.0.1 — 2026-08-07
+**Post-extraction patch batch (F1-F5).** Fixes two chain-integrity bugs
+and three OpenCode-adapter blockers found by subagent review of the
+v0.8.0 extraction. No new features; no user action required. `v0.8.0.1`
+because these fixes should not be delayed to a feature release, and
+`v0.8.0` had already tagged.
+
+### Chain-integrity fixes
+- **F1** — `compact_summary` events no longer carry `preview` / `full`
+  / `full_length` / `has_thinking`. v0.8.0 accidentally added this
+  Claude message payload branch to `compact_summary`, which changed
+  the hash-input shape (and thus the chain) for every operator who
+  ran `/compact`. Restored to the pre-v0.8.0 shape.
+  ([`tailer-host.ts:368`](src/main/services/tailer-host.ts:368))
+- **F2** — the test-mode `registerSession(source, cfg)` shim no longer
+  emits spurious `agent.session_end` events for live sessions. Old
+  shim called `configureHost(...)` which triggered a full watcher
+  restart; new shim uses a `setHostConfig` helper that mutates cfg
+  without touching sessions.
+  ([`agent-transcript-tailer.ts:274`](src/main/services/agent-transcript-tailer.ts:274))
+
+### OpenCode-adapter blockers (unblocks v0.8.1)
+- **B1** — per-message-layout `add` handler now drives `catchUpSession`
+  when a new msg file lands in a known session dir. Old code only
+  routed `.jsonl` file adds; a new `msg_*.json` inside an OpenCode
+  session dir would fire no handler.
+- **B2** — `addDir` now only registers directories that are DIRECT
+  children of the watched root. Old code called `registerSession` on
+  every dir chokidar surfaced (up to depth 6), including the root
+  itself, so OpenCode's `storage/message/` would have become a
+  session named `"message"` and every nested subdir a spurious
+  session.
+- **B3** — session-map keys are namespaced by `${agentKind}:${sessionId}`.
+  Old code keyed by bare sessionId, so a Codex `rollout-abc` and a
+  Claude `rollout-abc` would silently collide.
+  ([`tailer-host.ts:204`](src/main/services/tailer-host.ts:204))
+
+### Small correctness / cleanup
+- Sidecar-as-index seed for per-message adapters no longer clobbers
+  the DB-seeded real event ids with a `'__seen__'` sentinel — the
+  guard checks `!redlogIdByUuid.has(name)` before writing.
+- `unlinkDir` handler for per-message layouts (session-dir removed →
+  `unregisterSession`).
+- +2 regression tests (compact_summary payload absence + shim
+  no-restart behaviour).
+
 ## v0.8.0 — 2026-08-07
 **Tailer host extraction.** Minor bump — architectural refactor of the
 agent-transcript-tailer to separate generic infrastructure from

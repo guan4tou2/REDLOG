@@ -201,7 +201,13 @@ interface SessionState {
 const registeredAdapters = new Map<string, TailerAdapter>()
 let cfg: TailerHostConfig = { enabled: false, engagementId: '', operatorId: '' }
 const watchersByAgent = new Map<string, FSWatcher>()
+/** Keyed by `${agentKind}:${sessionId}` — two adapters can produce the same
+ *  bare sessionId (e.g. Codex + Claude both name a session 'rollout-abc'). */
 const sessions = new Map<string, SessionState>()
+
+function sessionKey(agentKind: string, sessionId: string): string {
+  return `${agentKind}:${sessionId}`
+}
 
 // ─── Adapter registry ───────────────────────────────────────────────────────
 
@@ -217,7 +223,7 @@ export function unregisterAdapter(agentKind: string): void {
   const w = watchersByAgent.get(agentKind)
   if (w) { void w.close(); watchersByAgent.delete(agentKind) }
   // Also close any sessions that belong to this adapter.
-  for (const [sid, s] of sessions) if (s.agentKind === agentKind) unregisterSession(sid)
+  for (const [key, s] of sessions) if (s.agentKind === agentKind) unregisterSession(key)
   registeredAdapters.delete(agentKind)
 }
 
@@ -365,7 +371,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     ...(causesArr ? { _causes: causesArr } : {})
   }
 
-  if (subtype === 'user_message' || subtype === 'assistant_message' || subtype === 'compact_summary') {
+  if (subtype === 'user_message' || subtype === 'assistant_message') {
     if (preview !== undefined) data.preview = preview
     if (t.textContent !== undefined) {
       data.full_length = t.textContent.length
@@ -471,9 +477,9 @@ function pendingSize(s: SessionState): number {
 /** Catch a session up from `sidecarSize` to the current source size.
  *  Handles both per-line (JSONL) and per-message (file-per-unit) adapters
  *  based on `adapter.perMessageDir`. Public for testability. */
-export function catchUpSession(sessionId: string): void {
+export function catchUpSession(agentKind: string, sessionId: string): void {
   if (eventBus.paused) return
-  const s = sessions.get(sessionId)
+  const s = sessions.get(sessionKey(agentKind, sessionId))
   if (!s) return
   if (s.adapter.perMessageDir) {
     catchUpPerMessageDir(s)
@@ -687,7 +693,8 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   const sessionId = adapter.perMessageDir
     ? path.basename(sourcePath)                                // dir name = session id
     : path.basename(sourcePath, path.extname(sourcePath))      // strip .jsonl
-  if (sessions.has(sessionId)) return
+  const key = sessionKey(agentKind, sessionId)
+  if (sessions.has(key)) return
   const cwd = adapter.resolveCwd(sourcePath)
   if (!cwd) return
   if (isSelfExcludedCwd(cwd, cfg.selfExclusionMarker ?? '.redlog-app-root')) return
@@ -720,7 +727,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     driftAdvisoryFired: false,
     parentMissingAdvisoryFired: false
   }
-  sessions.set(sessionId, s)
+  sessions.set(key, s)
 
   // v0.7.4 F2: seed the parent-map from DB so re-ingest post-sidecar-prune
   // doesn't duplicate historical events. Also seeds the per-message-file
@@ -740,21 +747,26 @@ export function registerSession(agentKind: string, sourcePath: string): void {
 
   // For per-message adapters we ALSO read the sidecar-as-index to seed
   // the filename dedup set (in case DB seed missed anything, e.g. a
-  // crash between sidecar append and DB insert).
+  // crash between sidecar append and DB insert). Only fill entries the DB
+  // seed didn't already populate — otherwise the sentinel would clobber
+  // the real event id and later `_causes` lookups would produce the
+  // string `'__seen__'` instead of a proper parent RedLog id.
   if (adapter.perMessageDir) {
     try {
       const idx = fs.readFileSync(sidecarPath, 'utf-8')
       for (const name of idx.split('\n')) {
-        if (name) s.redlogIdByUuid.set(name, '__seen__')  // sentinel, not a real id
+        if (name && !s.redlogIdByUuid.has(name)) {
+          s.redlogIdByUuid.set(name, '__seen__')  // sentinel, not a real id
+        }
       }
     } catch { /* new sidecar, no index yet */ }
   }
 
-  catchUpSession(sessionId)
+  catchUpSession(agentKind, sessionId)
 }
 
-function unregisterSession(sessionId: string): void {
-  const s = sessions.get(sessionId)
+function unregisterSession(key: string): void {
+  const s = sessions.get(key)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
   // v0.7.4 F4: skip snapshot + session_end emits when paused. Still remove
@@ -773,10 +785,20 @@ function unregisterSession(sessionId: string): void {
       if (ev) eventBus.publish(ev)
     } catch (e) { noteDbError('tailer-host', e) }
   }
-  sessions.delete(sessionId)
+  sessions.delete(key)
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
+
+/** Mutate the host config WITHOUT tearing down active watchers/sessions.
+ *  Used by test-mode `registerSession(source, cfg)` shims that want to
+ *  inject configuration for a single upcoming register call — a full
+ *  `configureHost` there would fire a spurious `session_end` for every
+ *  live session (v0.8.0.1 F2). Production callers hitting real config
+ *  changes should use `configureHost` so watchers rebind. */
+export function setHostConfig(next: Partial<TailerHostConfig>): void {
+  cfg = { ...cfg, ...next }
+}
 
 export function configureHost(next: Partial<TailerHostConfig>): void {
   cfg = { ...cfg, ...next }
@@ -791,7 +813,7 @@ export function startHost(next?: Partial<TailerHostConfig>): void {
 export function stopHost(): void {
   for (const [, w] of watchersByAgent) void w.close()
   watchersByAgent.clear()
-  for (const [sid] of sessions) unregisterSession(sid)
+  for (const [key] of sessions) unregisterSession(key)
   sessions.clear()
 }
 
@@ -810,6 +832,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     : root  // per-line: same — chokidar filters within
   if (!fs.existsSync(watchDir)) return
   const isJsonl = !adapter.perMessageDir
+  const watchDirCanon = path.resolve(watchDir)
   const watcher = chokidar.watch(watchDir, {
     ignored: (p) => {
       const stat = fs.statSync(p, { throwIfNoEntry: false })
@@ -826,28 +849,73 @@ function restartAdapter(adapter: TailerAdapter): void {
     awaitWriteFinish: false
   })
   watcher.on('add', (p) => {
-    if (isJsonl && p.endsWith('.jsonl')) registerSession(adapter.agentKind, p)
+    if (isJsonl) {
+      if (p.endsWith('.jsonl')) registerSession(adapter.agentKind, p)
+      return
+    }
+    // v0.8.0.1: per-message layout. A msg file landed inside a session dir.
+    // Find the session dir (direct child of watchDir), then register-or-catchup.
+    const sessionDir = perMessageSessionDirFor(p, watchDirCanon)
+    if (!sessionDir) return
+    const sid = path.basename(sessionDir)
+    const key = sessionKey(adapter.agentKind, sid)
+    if (sessions.has(key)) catchUpSession(adapter.agentKind, sid)
+    else registerSession(adapter.agentKind, sessionDir)
   })
   watcher.on('addDir', (p) => {
-    // Per-message adapter: treat each directory that MATCHES the glob's
-    // penultimate segment as a session. Simplest heuristic: if the parent
-    // of `p` is inside our watched root and the dir name looks like a
-    // session id, register it.
-    if (!isJsonl) registerSession(adapter.agentKind, p)
+    // v0.8.0.1: per-message layout. Only register directories that are
+    // DIRECT children of the watched root — those correspond to session
+    // ids (e.g. `~/.../storage/message/ses_abc`). Anything nested or the
+    // root itself is not a session and would corrupt state.
+    if (isJsonl) return
+    if (path.dirname(path.resolve(p)) !== watchDirCanon) return
+    registerSession(adapter.agentKind, p)
   })
   watcher.on('change', (p) => {
-    if (!isJsonl) return
-    if (!p.endsWith('.jsonl')) return
-    const sid = path.basename(p, '.jsonl')
-    if (sessions.has(sid)) catchUpSession(sid)
-    else registerSession(adapter.agentKind, p)
+    if (isJsonl) {
+      if (!p.endsWith('.jsonl')) return
+      const sid = path.basename(p, '.jsonl')
+      const key = sessionKey(adapter.agentKind, sid)
+      if (sessions.has(key)) catchUpSession(adapter.agentKind, sid)
+      else registerSession(adapter.agentKind, p)
+      return
+    }
+    // Per-message: rewriting an existing msg file — re-run catch-up
+    // (the dedup set skips already-processed filenames).
+    const sessionDir = perMessageSessionDirFor(p, watchDirCanon)
+    if (!sessionDir) return
+    const sid = path.basename(sessionDir)
+    const key = sessionKey(adapter.agentKind, sid)
+    if (sessions.has(key)) catchUpSession(adapter.agentKind, sid)
   })
   watcher.on('unlink', (p) => {
-    if (!p.endsWith('.jsonl')) return
-    const sid = path.basename(p, '.jsonl')
-    unregisterSession(sid)
+    if (isJsonl) {
+      if (!p.endsWith('.jsonl')) return
+      const sid = path.basename(p, '.jsonl')
+      unregisterSession(sessionKey(adapter.agentKind, sid))
+    }
+    // Per-message: individual msg-file deletion doesn't close a session.
+  })
+  watcher.on('unlinkDir', (p) => {
+    if (isJsonl) return
+    if (path.dirname(path.resolve(p)) !== watchDirCanon) return
+    const sid = path.basename(p)
+    unregisterSession(sessionKey(adapter.agentKind, sid))
   })
   watchersByAgent.set(adapter.agentKind, watcher)
+}
+
+/** Given a file `p` that lives somewhere under `watchDirCanon`, return the
+ *  direct-child directory of `watchDirCanon` that contains it — i.e. the
+ *  session dir for a per-message adapter. Returns null if `p` is not
+ *  inside a session dir. */
+function perMessageSessionDirFor(p: string, watchDirCanon: string): string | null {
+  const resolved = path.resolve(p)
+  if (!resolved.startsWith(watchDirCanon + path.sep)) return null
+  const rel = resolved.slice(watchDirCanon.length + 1)
+  const firstSep = rel.indexOf(path.sep)
+  if (firstSep === -1) return null  // file directly under watchDir (not a session)
+  return path.join(watchDirCanon, rel.slice(0, firstSep))
 }
 
 // ─── Test-only introspection ────────────────────────────────────────────────
