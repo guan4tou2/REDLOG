@@ -271,6 +271,65 @@ describe('catchUpSession — end-to-end', () => {
     expect(rows.filter((r) => r.data.subtype === 'assistant_message').length).toBe(1)
   })
 
+  it('compact_summary events carry NO preview/full payload (v0.8.0.1 F1)', () => {
+    const claudeDir = path.join(scratch, 'claude-projects', '-tmp-c')
+    fs.mkdirSync(claudeDir, { recursive: true })
+    const sid = 'eeeeeeee-bbbb-cccc-dddd-000000000005'
+    const source = path.join(claudeDir, `${sid}.jsonl`)
+    fs.writeFileSync(source, JSON.stringify({
+      type: 'user', uuid: 'u1', cwd: '/tmp/c', isCompactSummary: true,
+      message: { role: 'user', content: [{ type: 'text', text: 'summary text goes here' }] }
+    }) + '\n')
+    registerSession(source, {
+      enabled: true, engagementId: 'e1', operatorId: OP,
+      claudeProjectsDir: path.join(scratch, 'claude-projects'),
+      idleFlushMs: 50, previewChars: 100
+    })
+    const rows = queryEvents({ agentType: 'agent', limit: 100 })
+    const compact = rows.find((r) => r.data.subtype === 'compact_summary')
+    expect(compact).toBeDefined()
+    // Chain integrity: compact_summary's data shape must NOT include the
+    // per-message payload fields (preview/full/full_length/has_thinking).
+    // v0.8.0 mistakenly added them, changing hashes for anyone who runs
+    // /compact. Restored to old shape in v0.8.0.1.
+    expect(compact!.data.preview).toBeUndefined()
+    expect(compact!.data.full).toBeUndefined()
+    expect(compact!.data.full_length).toBeUndefined()
+    expect(compact!.data.has_thinking).toBeUndefined()
+  })
+
+  it('registerSession shim does NOT emit session_end for prior sessions (v0.8.0.1 F2)', () => {
+    // Register session A, then session B with a fresh cfg. The old shim
+    // called configureHost → restartAll → unregisterSession(A) which fired
+    // a spurious session_end for A even though A was still live.
+    const claudeDir = path.join(scratch, 'claude-projects', '-tmp-ab')
+    fs.mkdirSync(claudeDir, { recursive: true })
+    const sidA = 'ffffffff-aaaa-cccc-dddd-000000000006'
+    const sidB = 'ffffffff-bbbb-cccc-dddd-000000000007'
+    const sourceA = path.join(claudeDir, `${sidA}.jsonl`)
+    const sourceB = path.join(claudeDir, `${sidB}.jsonl`)
+    for (const [p, id] of [[sourceA, 'a1'], [sourceB, 'b1']] as const) {
+      fs.writeFileSync(p, JSON.stringify({
+        type: 'user', uuid: id, cwd: '/tmp/ab',
+        message: { role: 'user', content: [{ type: 'text', text: 'hi' }] }
+      }) + '\n')
+    }
+    const cfgBase = {
+      enabled: true, engagementId: 'e1', operatorId: OP,
+      claudeProjectsDir: path.join(scratch, 'claude-projects'),
+      idleFlushMs: 50, previewChars: 100
+    }
+    registerSession(sourceA, cfgBase)
+    registerSession(sourceB, cfgBase)
+    const rows = queryEvents({ agentType: 'agent', limit: 100 })
+    // No session_end should fire for A while it's still registered.
+    const endsForA = rows.filter((r) =>
+      r.data.subtype === 'session_end' && r.data.session_id === sidA)
+    expect(endsForA.length).toBe(0)
+    // Both sessions live in the host map.
+    expect(_sessionsForTest().size).toBe(2)
+  })
+
   it('respects self-exclusion marker', () => {
     const claudeDir = path.join(scratch, 'claude-projects', '-self-')
     fs.mkdirSync(claudeDir, { recursive: true })
