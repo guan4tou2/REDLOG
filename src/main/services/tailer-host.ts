@@ -133,8 +133,19 @@ export interface TailerAdapter {
   resolveCwd(sourcePath: string): string | null
   /** Parse one unit into a `ParsedTurn`, or null to skip. Adapter
    *  decides how to interpret its own `type` values — the host only
-   *  routes on the eventual `subtypeFor(...)` string. */
-  parseUnit(rawContent: string): ParsedTurn | null
+   *  routes on the eventual `subtypeFor(...)` string. `sourcePath` is
+   *  the JSONL line's file (for JSONL adapters) or the per-message
+   *  file itself (for per-message adapters); adapters that need to
+   *  read sibling files (OpenCode's split `part/msg_<id>/` layout)
+   *  use it to resolve the companion path. Line-based adapters that
+   *  only look at `rawContent` can ignore it.
+   *
+   *  May return an ARRAY of turns for units that fan out into multiple
+   *  audit events (OpenCode: one msg stub with N parts → text turn +
+   *  tool_call turn + tool_result turn). The returned turns emit in
+   *  order and each can carry its own `parentUuid` (adapter is
+   *  responsible for wiring the intra-unit chain). */
+  parseUnit(rawContent: string, sourcePath?: string): ParsedTurn | ParsedTurn[] | null
   /** Optional: adapter's own reset-detection. Default (used when omitted)
    *  is "source shrunk = reset" which handles Claude's `/compact` and
    *  Codex-style truncation. Return true to trigger sidecar reset. */
@@ -553,7 +564,7 @@ function catchUpJsonl(s: SessionState): void {
   for (const line of complete.split('\n')) {
     if (!line.trim()) continue
     s.linesSeen++
-    processUnit(s, line)
+    processUnit(s, line, s.sourcePath)
   }
 
   scheduleIdleSnapshot(s)
@@ -592,16 +603,18 @@ function catchUpPerMessageDir(s: SessionState): void {
     s.bytesAppendedSinceSnapshot += p.name.length + 1
     // For per-message adapters we treat the FILENAME as the uuid so dedup
     // works — parseUnit's returned `.uuid` is expected to be the filename
-    // OR a real uuid; either way emitTurn's dedup covers it.
-    processUnit(s, raw)
+    // OR a real uuid; either way emitTurn's dedup covers it. sourcePath
+    // passed here is the individual unit file (so adapters like OpenCode
+    // can resolve sibling `part/msg_<id>/` dirs).
+    processUnit(s, raw, p.full)
   }
   scheduleIdleSnapshot(s)
 }
 
-function processUnit(s: SessionState, rawContent: string): void {
-  let turn: ParsedTurn | null
+function processUnit(s: SessionState, rawContent: string, sourcePath: string): void {
+  let raw: ParsedTurn | ParsedTurn[] | null
   try {
-    turn = s.adapter.parseUnit(rawContent)
+    raw = s.adapter.parseUnit(rawContent, sourcePath)
   } catch (e) {
     // Adapter blew up on a single unit — count it as schema drift, don't
     // crash the whole session's ingest.
@@ -621,27 +634,30 @@ function processUnit(s: SessionState, rawContent: string): void {
     noteDbError('tailer-host', e)
     return
   }
-  if (!turn) return
+  if (!raw) return
+  const turns = Array.isArray(raw) ? raw : [raw]
 
-  // Schema-drift check: parseUnit returned a turn whose type isn't in the
-  // adapter's whitelist. Fire the advisory once per session and skip.
-  if (!s.adapter.knownIngestTypes.has(turn.type)) {
-    if (!s.driftAdvisoryFired) {
-      s.driftAdvisoryFired = true
-      try {
-        const ev = insertEvent('agent', {
-          subtype: 'transcript_schema_drift',
-          session_id: s.sessionId,
-          agent: s.agentKind,
-          unknown_type: turn.type,
-          description: `Encountered a transcript line type not in the adapter whitelist. Skipping only this type.`
-        }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-        if (ev) eventBus.publish(ev)
-      } catch (e) { noteDbError('tailer-host', e) }
+  for (const turn of turns) {
+    // Schema-drift check: parseUnit returned a turn whose type isn't in the
+    // adapter's whitelist. Fire the advisory once per session and skip.
+    if (!s.adapter.knownIngestTypes.has(turn.type)) {
+      if (!s.driftAdvisoryFired) {
+        s.driftAdvisoryFired = true
+        try {
+          const ev = insertEvent('agent', {
+            subtype: 'transcript_schema_drift',
+            session_id: s.sessionId,
+            agent: s.agentKind,
+            unknown_type: turn.type,
+            description: `Encountered a transcript line type not in the adapter whitelist. Skipping only this type.`
+          }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+          if (ev) eventBus.publish(ev)
+        } catch (e) { noteDbError('tailer-host', e) }
+      }
+      continue
     }
-    return
+    emitTurn(turn, { session: s })
   }
-  emitTurn(turn, { session: s })
 }
 
 function scheduleIdleSnapshot(s: SessionState): void {

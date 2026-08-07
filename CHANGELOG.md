@@ -3,6 +3,78 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.8.1 — 2026-08-07
+**Codex + OpenCode adapters on top of the v0.8.0 tailer host.** The
+`TailerAdapter` interface established in v0.8.0 (and hardened in
+v0.8.0.1) now proves out with two real-world adapters — a JSONL-line
+adapter (Codex CLI) and a per-message-directory adapter with a split
+metadata/content layout (OpenCode). Both are registered by default;
+when the corresponding agent's on-disk transcript root is missing, the
+adapter's watcher no-ops and the app degrades gracefully.
+
+### A — Codex CLI adapter ([`adapters/codex.ts`](src/main/services/adapters/codex.ts))
+- Watches `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`.
+- Parses Codex's `{type: 'session_meta'|'response_item', payload}` wire
+  format into RedLog's per-turn event shape.
+- Ingests: `message` (role user/assistant/developer), `agent_message`,
+  `user_message`, `function_call`, `function_call_output`, `reasoning`,
+  `context_compacted`, `custom_tool_call`, `custom_tool_call_output`,
+  `web_search_call`, `web_search_end`, `patch_apply_end`,
+  `exec_command_end`.
+- Ignores: `task_started`, `task_complete`, `thread_name_updated`,
+  `token_count`.
+- Codex has no wire-level `uuid`/`parentUuid`. We synthesise:
+  - `function_call` → uuid `codex:fc:<call_id>`
+  - `function_call_output` → uuid `codex:fco:<call_id>`, parentUuid
+    `codex:fc:<call_id>` (chain-links the two)
+  - everything else → uuid `codex:<sha256_short(raw_line)>`
+
+### B — OpenCode adapter ([`adapters/opencode.ts`](src/main/services/adapters/opencode.ts))
+- Watches `~/.local/share/opencode/storage/message/` (per-message-dir).
+- Session dirs (`ses_<sid>`) are direct children (uses v0.8.0.1 B2's
+  depth guard). Each msg stub `msg_<mid>.json` inside is one "unit".
+- The msg stub carries only metadata; content lives in
+  `storage/part/msg_<mid>/prt_*.json`. The adapter reads those sibling
+  files via the v0.8.1 `parseUnit(raw, sourcePath)` API extension.
+- cwd is looked up from `storage/session/<projectHash>/ses_<sid>.json`.
+- One msg fans out into an ARRAY of turns via the new
+  `parseUnit → ParsedTurn[]` return shape: the message body + one
+  `thinking` per reasoning part + one `tool_call` + `tool_result` pair
+  per tool part. All share `opencode:msg:<mid>` as parent so the
+  intra-message chain stays intact.
+
+### Interface additions
+- `TailerAdapter.parseUnit` gains an optional second arg `sourcePath`
+  so adapters with sibling-file layouts (OpenCode) can locate the
+  companion path. JSONL adapters (Claude, Codex) ignore it.
+- `parseUnit` may now return `ParsedTurn | ParsedTurn[] | null`;
+  arrays flush in order and each element carries its own parentUuid.
+  Existing single-turn adapters (Claude, Codex) unchanged.
+
+### Test coverage
+- +11 Codex parser tests (`test/codex-adapter.test.ts`)
+- +10 OpenCode parser tests (`test/opencode-adapter.test.ts`)
+- +1 OpenCode end-to-end integration test in the tailer test file
+  (proves the whole chain: dir watch → msg stub read → part assembly →
+  emit → chain link tool_call ← tool_result). 397 → 419 tests.
+
+### Known limitation (deferred to v0.8.2+)
+OpenCode part files that land AFTER the msg stub was first observed
+are not re-scanned. Dedup keys off filename, and the msg dir doesn't
+change when new part files land in the sibling `part/` tree — so
+live-tail sees the msg only once with whatever parts existed at that
+moment. For post-hoc audit review this is fine (parts remain complete
+on disk); live streaming will get a secondary chokidar watch on
+`storage/part/` in v0.8.2+.
+
+### What v0.8.1 does NOT change
+- No user-facing config for enabling/disabling individual adapters —
+  the `agentTailer.enabled` toggle in Settings still gates all three
+  as a group. Per-adapter toggles land with the `tailer` plugin
+  contribution type (v0.8.2+).
+- Third-party plugin loading of tailers is still deferred to v0.8.2+
+  (task 276/277). Codex + OpenCode are in-tree.
+
 ## v0.8.0.1 — 2026-08-07
 **Post-extraction patch batch (F1-F5).** Fixes two chain-integrity bugs
 and three OpenCode-adapter blockers found by subagent review of the
