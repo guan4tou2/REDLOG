@@ -434,40 +434,76 @@ interface WalkerState {
   lookupPubKey: (opId: string) => string | null
 }
 
+// v0.7.1 P3: subset of the row shape needed to rebuild a hash. Both
+// WalkRow (verifyChainFull) and SampleRow (verifyRandomSample) satisfy
+// this structurally — the previous TODO warned that sharing the shape
+// list would need a helper with 15+ parameters, but bundling them into
+// this interface keeps the call sites one-argument.
+export interface HashableRow {
+  id: string
+  timestamp: number
+  engagement_id: string
+  session_id: string
+  operator_id: string
+  agent_type: string
+  hostname: string
+  source_ip: string | null
+  target_id: string | null
+  created_at: number
+  prev_hash: string | null
+  monotonic_ns: string | null
+  ntp_offset_ms: number | null
+}
+
+export interface HashShapes {
+  v01: Record<string, unknown>
+  v02: Record<string, unknown>
+  v06: () => Record<string, unknown>
+  v06Null: Record<string, unknown>
+}
+
+// v0.7.1 P3: single source of truth for the hash shape list. Called by
+// both verifyRowHash (full walk) and the random-sample loop; if a new
+// shape is ever added, this is the only place to touch. The `v06` variant
+// stays a thunk — its content depends on whether monotonic_ns / ntp_offset_ms
+// are present, and lazy evaluation avoids the mutation-during-spread hazard.
+export function buildHashShapes(row: HashableRow, parsedData: unknown): HashShapes {
+  const v01: Record<string, unknown> = {
+    id: row.id, timestamp: row.timestamp,
+    engagementId: row.engagement_id, sessionId: row.session_id,
+    operatorId: row.operator_id, agentType: row.agent_type,
+    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+    data: parsedData, hash: undefined, createdAt: row.created_at
+  }
+  const v02: Record<string, unknown> = { ...v01, prevHash: row.prev_hash }
+  const v06 = (): Record<string, unknown> => {
+    const o: Record<string, unknown> = { ...v02 }
+    if (row.monotonic_ns != null) o.monotonicNs = row.monotonic_ns
+    if (row.ntp_offset_ms != null) o.ntpOffsetMs = row.ntp_offset_ms
+    return o
+  }
+  const v06Null: Record<string, unknown> = {
+    ...v02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null
+  }
+  return { v01, v02, v06, v06Null }
+}
+
 // Rebuild each hash shape lazily. `label` names the shape so we can log which
 // one matched; `build` computes SHA-256 on demand. We try canonical first
 // (~99% of rows on a modern chain), then progressively older shapes. The
 // first match wins and no later shapes get hashed.
 function verifyRowHash(row: WalkRow, parsedData: unknown):
   { matched: { label: string; canonicalJsonForSig: string | null } | null; attemptLabels: string[] } {
-  const shapeV02: Record<string, unknown> = {
-    id: row.id, timestamp: row.timestamp,
-    engagementId: row.engagement_id, sessionId: row.session_id,
-    operatorId: row.operator_id, agentType: row.agent_type,
-    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-    data: parsedData,
-    hash: undefined,
-    prevHash: row.prev_hash,
-    createdAt: row.created_at
-  }
-  const shapeV06 = (): Record<string, unknown> => {
-    const o: Record<string, unknown> = { ...shapeV02 }
-    if (row.monotonic_ns != null) o.monotonicNs = row.monotonic_ns
-    if (row.ntp_offset_ms != null) o.ntpOffsetMs = row.ntp_offset_ms
-    return o
-  }
-  const shapeV06Null = (): Record<string, unknown> => ({
-    ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null
-  })
-  const shapeV01 = (): Record<string, unknown> => ({
-    id: row.id, timestamp: row.timestamp,
-    engagementId: row.engagement_id, sessionId: row.session_id,
-    operatorId: row.operator_id, agentType: row.agent_type,
-    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-    data: parsedData,
-    hash: undefined,
-    createdAt: row.created_at
-  })
+  // v0.7.1 P3: shape objects now come from the shared buildHashShapes
+  // helper; the sample-verify path uses the same source. The `build:`
+  // callbacks below expect thunks, so v01/v06Null land in a lambda for
+  // parity with v06 (which is already a thunk because its content depends
+  // on optional column presence).
+  const shapes = buildHashShapes(row, parsedData)
+  const shapeV02 = shapes.v02
+  const shapeV06 = shapes.v06
+  const shapeV06Null = (): Record<string, unknown> => shapes.v06Null
+  const shapeV01 = (): Record<string, unknown> => shapes.v01
 
   const target = row.hash
   const attempts: Array<{
@@ -754,11 +790,11 @@ export async function verifyChainFullAsync(): Promise<FullVerifyResult> {
 // treat null as a legacy migration state, not tampering, exactly like
 // verifyChainFull does.
 //
-// TODO: share the per-row hash-shape validation with verifyChainFull. The two
-// duplicate ~30 lines of shape-attempt logic. Refactoring would introduce a
-// helper with 15+ parameters (or a Row type) and hurt readability more than
-// it helps; keep duplicated for now, but any change to the shape list MUST
-// be made in both places.
+// v0.7.1 P3: the per-row shape building lives in the shared `buildHashShapes`
+// helper (defined next to verifyRowHash). Both callers rebuild the same 4
+// shape variants via one call; only the attempts loop differs between them
+// (full walk also derives canonicalJsonForSig for signature verify, sample
+// doesn't need it). Any future shape change is a single-file edit.
 export interface RandomSampleResult {
   ok: boolean
   sampled: number
@@ -827,33 +863,19 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     try { parsedData = JSON.parse(row.data) } catch {
       return { ok: false, sampled: rows.length, brokenAtEventId: row.id, brokenReason: 'data column is not valid JSON' }
     }
-    const shapeV01: Record<string, unknown> = {
-      id: row.id, timestamp: row.timestamp,
-      engagementId: row.engagement_id, sessionId: row.session_id,
-      operatorId: row.operator_id, agentType: row.agent_type,
-      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-      data: parsedData, hash: undefined, createdAt: row.created_at
-    }
-    const shapeV02: Record<string, unknown> = {
-      id: row.id, timestamp: row.timestamp,
-      engagementId: row.engagement_id, sessionId: row.session_id,
-      operatorId: row.operator_id, agentType: row.agent_type,
-      hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-      data: parsedData, hash: undefined, prevHash: row.prev_hash, createdAt: row.created_at
-    }
-    const shapeV06: Record<string, unknown> = { ...shapeV02 }
-    if (row.monotonic_ns != null) shapeV06.monotonicNs = row.monotonic_ns
-    if (row.ntp_offset_ms != null) shapeV06.ntpOffsetMs = row.ntp_offset_ms
-    const shapeV06Null: Record<string, unknown> = { ...shapeV02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null }
+    // v0.7.1 P3: shared shape builder — one edit surface across the full
+    // walk (verifyRowHash) and this sample-verify path.
+    const shapes = buildHashShapes(row, parsedData)
+    const shapeV06 = shapes.v06()
 
     const target = row.hash
     const attempts: Array<{ label: string; hash: string }> = [
-      { label: 'v0.6.88', hash: canonicalSha(shapeV06Null) },
+      { label: 'v0.6.88', hash: canonicalSha(shapes.v06Null) },
       { label: 'v0.6.88+strip', hash: canonicalSha(shapeV06) },
       { label: 'v0.6', hash: jsonSha(shapeV06) },
-      { label: 'v0.6+null', hash: jsonSha(shapeV06Null) },
-      { label: 'v0.2', hash: jsonSha(shapeV02) },
-      { label: 'v0.1', hash: jsonSha(shapeV01) }
+      { label: 'v0.6+null', hash: jsonSha(shapes.v06Null) },
+      { label: 'v0.2', hash: jsonSha(shapes.v02) },
+      { label: 'v0.1', hash: jsonSha(shapes.v01) }
     ]
     if (!attempts.some((a) => a.hash === target)) {
       return {

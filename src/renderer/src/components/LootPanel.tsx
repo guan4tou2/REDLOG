@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
@@ -11,7 +11,6 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     source: string | null
     matches: Array<{ type: string; confidence: string; preview: string }>
   }>>([])
-  const [lootCount, setLootCount] = useState(0)
   const [loading, setLoading] = useState(true)
   // Filter by loot type; null = show all. Chips appear at the top with counts.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
@@ -23,11 +22,9 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
 
   useEffect(() => {
     loadLoot().then(() => setLoading(false))
-    window.redlog.loot.getCount().then(setLootCount)
     const unsub = window.redlog.events.onNew((evt) => {
       if (evt.agentType === 'loot') {
         loadLoot()
-        window.redlog.loot.getCount().then(setLootCount)
       }
     })
     return unsub
@@ -59,6 +56,36 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     base64_creds: 'text-orange-400'
   }
 
+  // v0.7.1 P1: derive the visible list here so both the header count and the
+  // rendered rows see the same number. Pre-v0.7.1 the header read
+  // `loot.getCount()` which is the live-detection in-memory dedup set — empty
+  // on a fresh launch even when historical loot events exist. That gave a
+  // "戰利品 (0)" header with 2 rows visible. Now the count is exactly the
+  // matches the operator sees, post-filter, post-dedup.
+  const visibleList = useMemo(() => {
+    let list = lootEvents.map((le) => ({
+      ...le,
+      matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
+    })).filter((le) => le.matches.length > 0)
+    if (dedupOn) {
+      const seen = new Set<string>()
+      list = list.map((le) => ({
+        ...le,
+        matches: le.matches.filter((m) => {
+          const k = `${m.type}|${m.preview}`
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+      })).filter((le) => le.matches.length > 0)
+    }
+    return list
+  }, [lootEvents, typeFilter, dedupOn])
+  const visibleMatchCount = useMemo(
+    () => visibleList.reduce((n, le) => n + le.matches.length, 0),
+    [visibleList]
+  )
+
   if (loading) {
     return (
       <LoadingSpinner />
@@ -68,7 +95,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">{t('loot.title', { count: lootCount })}</h2>
+        <h2 className="text-lg font-semibold text-white">{t('loot.title', { count: visibleMatchCount })}</h2>
         {lootEvents.length > 0 && (
           <button
             onClick={async () => {
@@ -119,35 +146,16 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
           <p className="text-sm text-zinc-500">{t('loot.empty')}</p>
           <p className="text-xs text-zinc-700 text-center max-w-xs">{t('loot.emptyDesc')}</p>
         </div>
-      ) : (() => {
-        // Apply chip filter + optional dedup. Each source event keeps its own
-        // grouping so the "click card → jump to timeline" flow still lands on
-        // a real event id. Dedup collapses matches WITHIN + ACROSS events by
-        // (type, preview): a repeated aws_key from two commands shows once,
-        // attributed to its earliest sighting.
-        let list = lootEvents.map((le) => ({
-          ...le,
-          matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
-        })).filter((le) => le.matches.length > 0)
-        if (dedupOn) {
-          const seen = new Set<string>()
-          list = list.map((le) => ({
-            ...le,
-            matches: le.matches.filter((m) => {
-              const k = `${m.type}|${m.preview}`
-              if (seen.has(k)) return false
-              seen.add(k)
-              return true
-            })
-          })).filter((le) => le.matches.length > 0)
-        }
-        const filtered = list
-        return (
+      ) : (
+        // v0.7.1 P1: rendering uses the same `visibleList` that feeds the
+        // header count, so what you see and what the header says can never
+        // disagree. Each source event keeps its own grouping so the "click
+        // card → jump to timeline" flow still lands on a real event id.
         <div className="space-y-2">
-          {filtered.length === 0 && (
+          {visibleList.length === 0 && (
             <p className="text-zinc-600 text-xs">{t('loot.noMatches')}</p>
           )}
-          {filtered.map((le, i) => (
+          {visibleList.map((le, i) => (
             <div
               key={le.id || i}
               role={onOpenInTimeline ? 'button' : undefined}
@@ -192,8 +200,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             </div>
           ))}
         </div>
-        )
-      })()}
+      )}
     </div>
   )
 }

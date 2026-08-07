@@ -44,7 +44,7 @@
   "capture.partialHint": "擷取已設定，但最近沒有來源餵入事件。",
   "capture.openHooks": "設定擷取 →",
   "capture.shellHook": "Shell hook（你的終端機）",
-  "capture.claudeCode": "Claude Code hook",
+  "capture.claudeCode": "Claude Code hook（AI 代理）",
   "capture.mitmproxy": "mitmproxy（HTTP 流量）",
   "capture.builtinTerminal": "RedLog 終端機",
   "capture.dns": "mitmproxy DNS 模式",
