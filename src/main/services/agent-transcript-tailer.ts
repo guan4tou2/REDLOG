@@ -495,6 +495,12 @@ function subtypeFor(t: ParsedTurn): string {
  *  (source shrank) by truncating the sidecar and re-emitting a
  *  `transcript_compacted` marker. Public for testability. */
 export function catchUpSession(sessionId: string, cfgSnap: AgentTailerConfig): void {
+  // v0.7.3 A2: honour the operator's global recording pause. Matches how
+  // screenshot-agent, process-monitor, and clipboard-monitor already gate
+  // (paused = don't insert anything). File is still on disk — when
+  // recording resumes, the next chokidar tick catches up from the sidecar
+  // offset, so nothing is lost.
+  if (eventBus.paused) return
   const s = sessions.get(sessionId)
   if (!s) return
   let sourceSize: number
@@ -685,6 +691,22 @@ function unregisterSession(sessionId: string, cfgSnap: AgentTailerConfig): void 
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
   emitSnapshot(s, cfgSnap, 'session_close')
+  // v0.7.3 A2: emit an explicit `agent.session_end` terminus so chain-anchor
+  // walks (verifyChainFull) have a clean boundary per session. Without this,
+  // the last per-turn event's `_causes` graph has a hanging leaf and the
+  // Timeline's session-boundary dividers (v0.6.90 E) can't render for
+  // agent sessions the same way they do for shell sessions.
+  try {
+    const ev = insertEvent('agent', {
+      subtype: 'session_end',
+      agent: s.agent,
+      session_id: s.sessionId,
+      turns_emitted: s.turnsEmitted,
+      lines_seen: s.linesSeen,
+      description: 'Transcript source file unlinked or tailer shutting down; no more events will land for this session.'
+    }, { engagementId: cfgSnap.engagementId, operatorId: cfgSnap.operatorId })
+    if (ev) eventBus.publish(ev)
+  } catch (e) { noteDbError('agent-transcript-tailer', e) }
   sessions.delete(sessionId)
 }
 

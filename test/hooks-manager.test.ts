@@ -20,7 +20,10 @@ describe('hooks-manager guided setup', () => {
   })
 
   it('one-click hooks carry no manual steps', () => {
-    for (const id of ['claude-code', 'shell-zsh', 'shell-bash']) {
+    // v0.7.3 A: `claude-code` retired from the registry — its per-tool
+    // ingest is now handled by `agent-transcript-tailer.ts` which reads
+    // Claude Code's own transcript file. No hook install needed anymore.
+    for (const id of ['shell-zsh', 'shell-bash']) {
       expect(byId(id).installMethod).not.toBe('manual')
       expect(byId(id).manualSteps).toBeUndefined()
     }

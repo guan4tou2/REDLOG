@@ -48,16 +48,31 @@ function resolveDir(primary: string, fallback: string): string {
 }
 
 const PLUGIN_REGISTRY: PluginManifest[] = [
-  {
-    id: 'claude-code',
-    name: 'Claude Code',
-    description: 'Captures Bash tool calls from Claude Code sessions',
-    agentType: 'shell',
-    requires: ['claude'],
-    hookFile: 'hooks/claude-code-hook.sh',
-    installMethod: 'claude-settings',
-    claudeSettingsMatcher: 'claude-code-hook'
-  },
+  // v0.7.3 A: retired. The `hooks/claude-code-hook.sh` script is now a
+  // no-op stub (see the file header for the transition rationale); its
+  // former per-Bash `claude_code_bash` event ingest is subsumed by
+  // `src/main/services/agent-transcript-tailer.ts` which watches the
+  // Claude Code transcript JSONL directly and emits `agent.tool_call`
+  // + `agent.tool_result` for EVERY tool (not just Bash), the full
+  // tool_input, up to 100KB of tool_result, plus the user prompt and
+  // assistant response text.
+  //
+  // Entry left commented rather than deleted so anyone grepping for
+  // "claude-code" lands here and sees the pointer. New installs do NOT
+  // wire ~/.claude/settings.json; existing wired installs still work
+  // (the stub script exits 0) — they just waste one process spawn per
+  // Bash call until the operator re-runs the install flow.
+  //
+  // {
+  //   id: 'claude-code',
+  //   name: 'Claude Code',
+  //   description: 'Captures Bash tool calls from Claude Code sessions',
+  //   agentType: 'shell',
+  //   requires: ['claude'],
+  //   hookFile: 'hooks/claude-code-hook.sh',
+  //   installMethod: 'claude-settings',
+  //   claudeSettingsMatcher: 'claude-code-hook'
+  // },
   {
     id: 'shell-zsh',
     name: 'Zsh Shell',
