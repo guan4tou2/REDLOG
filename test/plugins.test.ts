@@ -177,6 +177,98 @@ describe('shipped example plugins', () => {
   }
 })
 
+describe('tailer plugin contribution (v0.8.2)', () => {
+  it('bundled plugin with tailers contribution routes to the registered sink', async () => {
+    const { setTailerContributionSink, _resetTailerSinkForTest } =
+      await import('../src/core/plugins/tailer-registry')
+
+    // Build a plugin dir + code file exporting an `adapter`. Load via
+    // validateManifest → LoadedPlugin so we control `source: 'bundled'`.
+    const dir = writePlugin('e2e-tailer', {
+      id: 'e2e-tailer', name: 'E2E Tailer', version: '1.0.0', redlogApi: 1,
+      contributes: { tailers: 'code/tailer.js' }
+    }, { 'code/tailer.js': `exports.adapter = { agentKind: 'e2e-agent', transcriptGlob: '/tmp/*' }\n` })
+
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8'))
+    const parsed = validateManifest(raw, dir)
+    expect(parsed.ok).toBe(true)
+
+    // Attach a sink that records the registration.
+    const seen: Array<{ pluginId: string; agentKind: string }> = []
+    setTailerContributionSink(
+      (pluginId, adapter) => seen.push({ pluginId, agentKind: adapter.agentKind }),
+      (pluginId) => seen.push({ pluginId, agentKind: '__unregistered__' })
+    )
+    try {
+      applyContributions({
+        manifest: parsed.manifest!,
+        dir, source: 'bundled', tier: 'privileged', status: 'active', contentHash: 'x'
+      })
+      expect(seen).toEqual([{ pluginId: 'e2e-tailer', agentKind: 'e2e-agent' }])
+      removeContributions('e2e-tailer')
+      expect(seen).toEqual([
+        { pluginId: 'e2e-tailer', agentKind: 'e2e-agent' },
+        { pluginId: 'e2e-tailer', agentKind: '__unregistered__' }
+      ])
+    } finally {
+      _resetTailerSinkForTest()
+    }
+  })
+
+  it('user-source plugin with tailers contribution is REJECTED (v0.8.2 restriction)', async () => {
+    const { setTailerContributionSink, _resetTailerSinkForTest } =
+      await import('../src/core/plugins/tailer-registry')
+    const dir = writePlugin('user-tailer', {
+      id: 'user-tailer', name: 'User', version: '1.0.0', redlogApi: 1,
+      contributes: { tailers: 'code/t.js' }
+    }, { 'code/t.js': `exports.adapter = { agentKind: 'nope', transcriptGlob: '/x' }\n` })
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8'))
+    const parsed = validateManifest(raw, dir)!
+
+    const seen: string[] = []
+    setTailerContributionSink((pluginId) => seen.push(pluginId), () => {})
+    try {
+      // Silence the expected console.warn so test output stays clean.
+      const origWarn = console.warn
+      console.warn = () => {}
+      try {
+        applyContributions({
+          manifest: parsed.manifest!, dir, source: 'user',
+          tier: 'privileged', status: 'active', contentHash: 'x'
+        })
+      } finally { console.warn = origWarn }
+      expect(seen).toEqual([])
+    } finally {
+      _resetTailerSinkForTest()
+    }
+  })
+
+  it('marks plugin as privileged when only tailers contribution present', () => {
+    const parsed = validateManifest({
+      id: 'ptl', name: 'P', version: '1.0.0', redlogApi: 1,
+      contributes: { tailers: 'code/t.js' }
+    }, writePlugin('ptl', {
+      id: 'ptl', name: 'P', version: '1.0.0', redlogApi: 1,
+      contributes: { tailers: 'code/t.js' }
+    }, { 'code/t.js': 'exports.adapter = { agentKind: "x" }\n' }))
+    expect(parsed.ok).toBe(true)
+    expect(tierOf(parsed.manifest!)).toBe('privileged')
+  })
+
+  it('changing tailer code invalidates the pinned trust hash', () => {
+    const dir = writePlugin('drift', {
+      id: 'drift', name: 'D', version: '1.0.0', redlogApi: 1,
+      contributes: { tailers: 'code/t.js' }
+    }, { 'code/t.js': 'exports.adapter = { agentKind: "x" }\n' })
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8'))
+    const m = validateManifest(raw, dir).manifest!
+    const h1 = computeContentHash(m, dir)
+    fs.writeFileSync(path.join(dir, 'code', 't.js'), 'exports.adapter = { agentKind: "y" }\n')
+    const h2 = computeContentHash(m, dir)
+    expect(h1).not.toBe(h2)
+  })
+})
+
 describe('plugin MCP tool registry', () => {
   afterEach(() => { unregisterPluginTools('geo'); unregisterPluginTools('other') })
 

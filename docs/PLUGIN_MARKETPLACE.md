@@ -51,7 +51,9 @@ Two tiers, two flows.
 
 **🟢 Declarative plugins** (loot patterns, redaction, tags, extractors, event types, capture) — signature optional. Install prompt shows a "Publisher: unverified" badge if unsigned, or "Publisher: `redlog-official` (trusted)" if signed by a key in the trust store. No capability prompt because these can't call anything.
 
-**🔴 Privileged plugins** (`mcpTools`, `exporters`, `monitors`) — signature required. The publisher signs the tarball's sha256 with an Ed25519 key; the public key + a human name lives in `~/.redlog/trusted-publishers.json`:
+**🔴 Privileged plugins** (`mcpTools`, `exporters`, `monitors`, `tailers`) — signature required. The publisher signs the tarball's sha256 with an Ed25519 key; the public key + a human name lives in `~/.redlog/trusted-publishers.json`:
+
+> **`tailers` (v0.8.2)** — transcript adapters for AI coding agents. A tailer module exports `{ adapter }` where `adapter` implements the `TailerAdapter` interface from `src/main/services/tailer-host.ts`. **v0.8.2 restriction:** only bundled tailer plugins (shipped inside the RedLog resources dir) run; user-installed plugins that declare `tailers` produce an advisory in `~/.redlog/log` and are otherwise skipped. Third-party `tailers` require isolation work landing in v0.8.3+ — the current tailer-host would run plugin code in-process at line-rate against the transcript stream, which needs either a faster IPC path than `utilityProcess` or a per-plugin JS sandbox before we can safely open it up.
 
 ```json
 {

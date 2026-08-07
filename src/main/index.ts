@@ -45,6 +45,8 @@ import { configureAgentTailer, stopAgentTailer } from './services/agent-transcri
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
+import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
+import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
@@ -411,6 +413,27 @@ function startProject(project: ProjectMeta): void {
       return { status: r.status, body: (await r.text()).slice(0, 10_000) }
     }
   }))
+  // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
+  // bundled plugins can register `TailerAdapter`s via plugin.json instead
+  // of hard-coded main-init calls. Duck-typed on the core side to avoid
+  // pulling main → services into core; the cast here is safe because the
+  // contributor loader already validates `adapter.agentKind: string`.
+  {
+    const kindByPlugin = new Map<string, string>()
+    setTailerContributionSink(
+      (pluginId: string, adapter: TailerLike) => {
+        kindByPlugin.set(pluginId, adapter.agentKind)
+        registerTailerAdapter(adapter as unknown as TailerAdapter)
+      },
+      (pluginId: string) => {
+        const kind = kindByPlugin.get(pluginId)
+        if (kind) {
+          unregisterTailerAdapter(kind)
+          kindByPlugin.delete(pluginId)
+        }
+      }
+    )
+  }
   // Load plugins after core config so their 🟢 contributions (loot/redaction/
   // target/event-type/capture) layer on top. 🔴 code plugins only start if the
   // trust gate already passed.
