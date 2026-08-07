@@ -103,6 +103,24 @@ export interface ParsedTurn {
   hasThinking?: boolean
 }
 
+/** v0.8.3: control surface handed to `adapter.init(...)` so an adapter can
+ *  inject turns from sources the host does not natively watch — a secondary
+ *  chokidar tree (OpenCode's `storage/part/`), a WebSocket, a timer.
+ *
+ *  Turns injected via `emitTurns` run through the same dedup (`redlogIdByUuid`
+ *  keyed on `turn.uuid`), redaction, and chain-linking as `parseUnit`-produced
+ *  turns. Re-emitting a turn with an already-seen uuid is a safe no-op — this
+ *  is the pattern for "poll the part/ dir every N seconds; adapter dedup
+ *  covers repeated hits."
+ *
+ *  If no matching session is registered (msg stub not yet observed), the
+ *  emit is dropped with an advisory. Adapter should therefore prefer to
+ *  react to `add` events on files the host already watches, and use this
+ *  surface only for supplemental streams. */
+export interface HostControlSurface {
+  emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void
+}
+
 /** The plugin-facing contract. An adapter is a pure-parsing data structure
  *  with a handful of small callbacks — no I/O, no DB, no chain access.
  *  The host provides all side effects around it. */
@@ -159,6 +177,14 @@ export interface TailerAdapter {
    *  subtype string. Common outputs: 'user_message', 'assistant_message',
    *  'tool_call', 'tool_result', 'compact_summary', 'thinking'. */
   subtypeFor(t: ParsedTurn): string
+  /** v0.8.3: optional lifecycle hook, called once when the adapter is
+   *  registered (i.e. when `registerAdapter(adapter)` is called or a
+   *  restart replays through it). Receives a control surface the adapter
+   *  can use to emit supplemental turns from sources the host does not
+   *  natively watch. Idempotent — the host guards against duplicate init
+   *  calls on repeated registerAdapter. Adapter is responsible for tearing
+   *  down its own watchers on process exit. */
+  init?(host: HostControlSurface): void
 }
 
 /** Host-level configuration shared across all registered adapters. */
@@ -222,8 +248,34 @@ function sessionKey(agentKind: string, sessionId: string): string {
 
 // ─── Adapter registry ───────────────────────────────────────────────────────
 
+const initializedAdapters = new Set<string>()
+
+const hostControlSurface: HostControlSurface = {
+  emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void {
+    if (eventBus.paused) return
+    const s = sessions.get(sessionKey(agentKind, sessionId))
+    if (!s) {
+      // No live session — the msg stub for this sessionId hasn't been
+      // observed yet. Drop silently; the adapter is expected to retry (or
+      // the primary watcher will pick up the session soon).
+      return
+    }
+    for (const turn of turns) {
+      if (!s.adapter.knownIngestTypes.has(turn.type)) continue
+      emitTurn(turn, { session: s })
+    }
+  }
+}
+
 export function registerAdapter(adapter: TailerAdapter): void {
   registeredAdapters.set(adapter.agentKind, adapter)
+  // v0.8.3: one-shot init hook. Guarded so a repeated registerAdapter
+  // (e.g. same adapter re-registered after unregisterAdapter for whatever
+  // reason) doesn't wire duplicate watchers.
+  if (adapter.init && !initializedAdapters.has(adapter.agentKind)) {
+    initializedAdapters.add(adapter.agentKind)
+    try { adapter.init(hostControlSurface) } catch (e) { noteDbError('tailer-host', e) }
+  }
   // If already running, start a watcher for this adapter immediately so
   // late registrations (e.g. plugin loaded after project open) don't miss
   // active sessions. Idempotent — `restart` also handles this.
@@ -236,6 +288,7 @@ export function unregisterAdapter(agentKind: string): void {
   // Also close any sessions that belong to this adapter.
   for (const [key, s] of sessions) if (s.agentKind === agentKind) unregisterSession(key)
   registeredAdapters.delete(agentKind)
+  initializedAdapters.delete(agentKind)
 }
 
 // ─── Path + gate helpers (adapter-agnostic) ─────────────────────────────────
@@ -940,8 +993,16 @@ export function _sessionsForTest(): Map<string, SessionState> {
   return sessions
 }
 
+/** Test-only. Exposes the same HostControlSurface that adapter.init(...)
+ *  receives, so tests can exercise the emit-turns path directly without
+ *  registering a wrapper adapter. */
+export function _hostControlSurfaceForTest(): HostControlSurface {
+  return hostControlSurface
+}
+
 export function _resetForTest(): void {
   stopHost()
   registeredAdapters.clear()
+  initializedAdapters.clear()
   cfg = { enabled: false, engagementId: '', operatorId: '' }
 }
