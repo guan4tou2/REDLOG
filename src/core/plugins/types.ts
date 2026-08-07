@@ -119,6 +119,11 @@ export interface PluginContributes {
   mcpTools?: string
   exporters?: string
   monitors?: string
+  /** v0.8.2: TailerAdapter contribution. Module must `export const adapter =
+   *  { agentKind, transcriptGlob, ... }` matching TailerAdapter. v0.8.2
+   *  restricts this to bundled plugins only — user-plugin tailers require
+   *  isolation work landing in v0.8.3+. */
+  tailers?: string
 }
 
 export interface PluginManifest {

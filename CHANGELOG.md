@@ -3,6 +3,50 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.8.2 — 2026-08-07
+**`tailers` plugin contribution type.** The `TailerAdapter` interface is
+now a plugin contribution — bundled plugins can register transcript
+adapters via `plugin.json` instead of a hard-coded main-init call.
+Third-party (user-source) `tailers` are rejected with an advisory
+until per-plugin isolation lands (v0.8.3+). No user-facing behaviour
+change — the three in-tree adapters continue to register the same way.
+
+### A — Interface additions
+- `PluginContributes.tailers?: string` — manifest-relative path to a
+  module that `export`s `const adapter: TailerAdapter`. Adding this
+  key makes the plugin **🔴 privileged tier** (content-hash pinning +
+  trust gate). ([`types.ts:118`](src/core/plugins/types.ts:118))
+- New extension point `src/core/plugins/tailer-registry.ts` — main
+  wires its `registerAdapter` / `unregisterAdapter` in at boot via
+  `setTailerContributionSink(...)`. Duck-typed on the core side so
+  `src/core/` has no dependency on `src/main/services/`.
+- `contributions.ts::applyContributions` requires the tailer module,
+  extracts `adapter.agentKind`, and hands off to the sink. On
+  `removeContributions` the corresponding `unregisterAdapter` fires.
+
+### v0.8.2 restriction — bundled only
+User plugins that declare `tailers` produce a `console.warn` advisory
+and are otherwise skipped. Rationale: `parseUnit` runs at
+transcript-line rate and does sync fs I/O — the existing MCP-tool
+`utilityProcess` isolation adds too much per-call overhead to be
+practical here, and we won't ship user code in-process without a
+proper sandbox. v0.8.3+ picks the isolation model (fast IPC worker
+vs. per-plugin JS eval sandbox) and lifts the restriction.
+
+### Test coverage (+4)
+- `tailer plugin contribution → sink registration + withdrawal`
+- `user-source plugin with tailers is REJECTED with no sink call`
+- `plugin classified as privileged when only tailers present`
+- `changing tailer code invalidates the pinned trust hash`
+- 419 → 423 tests, all green; tsc clean.
+
+### What v0.8.2 does NOT do
+- No migration of in-tree adapters to `plugins/*` yet (task 277
+  remains open; deferred to v0.8.3+ so the bundled-plugin pipeline can
+  land alongside the isolation story).
+- No marketplace UI changes for tailer plugins yet — the manifest
+  schema is now aware, but the browse tab hasn't gained a filter chip.
+
 ## v0.8.1 — 2026-08-07
 **Codex + OpenCode adapters on top of the v0.8.0 tailer host.** The
 `TailerAdapter` interface established in v0.8.0 (and hardened in

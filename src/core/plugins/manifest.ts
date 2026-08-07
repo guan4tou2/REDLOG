@@ -8,7 +8,7 @@ import {
 
 // Contributions that cause RedLog to execute plugin-supplied code in-process.
 // Their presence makes a plugin 'privileged' and subject to the trust gate.
-const PRIVILEGED_KEYS: Array<keyof PluginContributes> = ['mcpTools', 'exporters', 'monitors']
+const PRIVILEGED_KEYS: Array<keyof PluginContributes> = ['mcpTools', 'exporters', 'monitors', 'tailers']
 
 export function tierOf(manifest: PluginManifest): PluginTier {
   const c = manifest.contributes ?? {}
