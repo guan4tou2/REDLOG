@@ -3,6 +3,34 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.1 — 2026-08-07
+Polish batch from the v0.7.0 install-and-click-through session. Three
+fixes; no schema change, no wire change.
+
+- **P1** — LootPanel header count now matches what the panel actually
+  renders (`LootPanel.tsx:71`). Pre-v0.7.1 the header read
+  `loot.getCount()` which is the live-detection in-memory dedup
+  set — empty on a fresh launch even when historical loot events
+  exist in the DB. That gave a `戰利品 (0)` header with 2 rows visible
+  below. Header now counts the post-filter, post-dedup matches; the
+  rendered list uses the same `useMemo`ised source so they can never
+  drift. Also drops the now-unused `loot:getCount` IPC read from the
+  panel.
+- **P2** — `capture.claudeCode` gets a zh/en parenthetical so the
+  Dashboard's capture-health source list reads consistently. Pre-v0.7.1
+  it sat as bare `Claude Code hook` while neighbours had
+  `Shell hook（你的終端機）` / `mitmproxy（HTTP 流量）` context. Now
+  `Claude Code hook（AI 代理）` / `Claude Code hook (AI agent)`.
+- **P3** — `chain-anchor.ts` hash-shape build extracted into a shared
+  `buildHashShapes(row, parsedData)` helper called by both
+  `verifyRowHash` (full walk) and the random-sample verify path
+  (`chain-anchor.ts:441`, `:832`). Closes the deferred TODO the
+  code-review skill flagged as Duplicated Code. If a new shape variant
+  is ever added, there's now one edit surface — the two attempt lists
+  still live at their call sites because they need different outputs
+  (walker also derives `canonicalJsonForSig` for signature verify,
+  sampler doesn't).
+
 ## v0.7.0 — 2026-08-06
 Minor bump — no new code beyond v0.6.100, ships as the landing point
 for a four-release perf/hardening run (v0.6.97 → v0.6.100). Read the

@@ -44,7 +44,7 @@
   "capture.partialHint": "Capture is set up but no source has fed an event recently.",
   "capture.openHooks": "Set up capture →",
   "capture.shellHook": "Shell hook (your terminal)",
-  "capture.claudeCode": "Claude Code hook",
+  "capture.claudeCode": "Claude Code hook (AI agent)",
   "capture.mitmproxy": "mitmproxy (HTTP traffic)",
   "capture.builtinTerminal": "RedLog terminal",
   "capture.dns": "mitmproxy DNS mode",
