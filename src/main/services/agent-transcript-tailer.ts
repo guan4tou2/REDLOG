@@ -25,7 +25,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import {
-  configureHost, startHost, stopHost, registerAdapter,
+  configureHost, startHost, stopHost, registerAdapter, setHostConfig,
   isSelfExcludedCwd, cwdPassesGate,
   catchUpSession as hostCatchUpSession,
   registerSession as hostRegisterSession,
@@ -269,13 +269,23 @@ export {
 }
 export function catchUpSession(sessionId: string, _cfgSnap?: AgentTailerConfig): void {
   // v0.8.0 A: kept for test compat. Real work delegated to host.
-  hostCatchUpSession(sessionId)
+  hostCatchUpSession('claude-code', sessionId)
 }
 export function registerSession(sourcePath: string, cfgSnap?: AgentTailerConfig): void {
   // Test-mode helper: honour claudeProjectsDir override + then hand off to
   // the host's registerSession under 'claude-code'.
+  //
+  // v0.8.0.1 F2: use setHostConfig (mutate-only) instead of configureHost
+  // (mutate + restartAll). The old shim's configureHost call would
+  // stopHost() every live session and emit a spurious `session_end` for
+  // each — corrupting the audit trail for tests that register two
+  // sessions in sequence.
+  if (cfgSnap?.claudeProjectsDir) {
+    ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
+      path.join(cfgSnap.claudeProjectsDir, '**', '*.jsonl')
+  }
   ensureClaudeRegistered()
-  if (cfgSnap) configureHost({
+  if (cfgSnap) setHostConfig({
     engagementId: cfgSnap.engagementId,
     operatorId: cfgSnap.operatorId,
     excludedPaths: cfgSnap.excludedPaths,
