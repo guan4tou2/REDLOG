@@ -32,6 +32,8 @@ import {
   type TailerAdapter, type TailerHostConfig, type ParsedTurn,
   _sessionsForTest
 } from './tailer-host'
+import { codexAdapter, overrideCodexTranscriptRoot } from './adapters/codex'
+import { opencodeAdapter, overrideOpencodeStorageRoot } from './adapters/opencode'
 
 // ─── Public config surface (unchanged from v0.7.x for main/index.ts) ────────
 
@@ -39,6 +41,12 @@ export interface AgentTailerConfig extends TailerHostConfig {
   /** Root of Claude Code's per-session transcripts. Overridable for tests
    *  and for cross-platform paths. */
   claudeProjectsDir?: string
+  /** Root of Codex CLI's session rollouts (default `~/.codex/sessions`).
+   *  v0.8.1: overridable for tests only — no user-facing config yet. */
+  codexSessionsDir?: string
+  /** Root of OpenCode storage dir (default
+   *  `~/.local/share/opencode/storage`). v0.8.1: test-only override. */
+  opencodeStorageDir?: string
 }
 
 // ─── Claude-Code-specific constants ─────────────────────────────────────────
@@ -227,28 +235,28 @@ export const claudeCodeAdapter: TailerAdapter = {
 
 // ─── Public API — thin wrappers preserving v0.7.x names ─────────────────────
 
-let claudeRegistered = false
+let adaptersRegistered = false
 
-export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
-  ensureClaudeRegistered()
-  const { claudeProjectsDir, ...hostCfg } = next
-  // claudeProjectsDir override support: if provided, patch the adapter's
-  // transcriptGlob before configuring the host so tests can point at a
-  // scratch dir.
+function applyGlobOverrides(next: Partial<AgentTailerConfig>): Partial<TailerHostConfig> {
+  const { claudeProjectsDir, codexSessionsDir, opencodeStorageDir, ...hostCfg } = next
   if (claudeProjectsDir) {
     ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
       path.join(claudeProjectsDir, '**', '*.jsonl')
   }
+  if (codexSessionsDir) overrideCodexTranscriptRoot(codexSessionsDir)
+  if (opencodeStorageDir) overrideOpencodeStorageRoot(opencodeStorageDir)
+  return hostCfg
+}
+
+export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
+  const hostCfg = applyGlobOverrides(next)
+  ensureAdaptersRegistered()
   configureHost(hostCfg)
 }
 
 export function startAgentTailer(next?: Partial<AgentTailerConfig>): void {
-  ensureClaudeRegistered()
-  const { claudeProjectsDir, ...hostCfg } = next ?? {}
-  if (claudeProjectsDir) {
-    ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
-      path.join(claudeProjectsDir, '**', '*.jsonl')
-  }
+  const hostCfg = applyGlobOverrides(next ?? {})
+  ensureAdaptersRegistered()
   startHost(hostCfg)
 }
 
@@ -256,10 +264,12 @@ export function stopAgentTailer(): void {
   stopHost()
 }
 
-function ensureClaudeRegistered(): void {
-  if (claudeRegistered) return
+function ensureAdaptersRegistered(): void {
+  if (adaptersRegistered) return
   registerAdapter(claudeCodeAdapter)
-  claudeRegistered = true
+  registerAdapter(codexAdapter)
+  registerAdapter(opencodeAdapter)
+  adaptersRegistered = true
 }
 
 // ─── Test compatibility re-exports (kept for existing tests) ────────────────
@@ -284,7 +294,7 @@ export function registerSession(sourcePath: string, cfgSnap?: AgentTailerConfig)
     ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
       path.join(cfgSnap.claudeProjectsDir, '**', '*.jsonl')
   }
-  ensureClaudeRegistered()
+  ensureAdaptersRegistered()
   if (cfgSnap) setHostConfig({
     engagementId: cfgSnap.engagementId,
     operatorId: cfgSnap.operatorId,

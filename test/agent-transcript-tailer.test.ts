@@ -10,8 +10,12 @@ import {
   registerSession,
   catchUpSession,
   _sessionsForTest,
-  stopAgentTailer
+  stopAgentTailer,
+  configureAgentTailer
 } from '../src/main/services/agent-transcript-tailer'
+import {
+  registerSession as hostRegisterSession
+} from '../src/main/services/tailer-host'
 import { initDB, closeDB } from '../src/core/db/index'
 import { queryEvents } from '../src/core/db/events'
 import { createOperator, generateToken } from '../src/core/db/operators'
@@ -328,6 +332,51 @@ describe('catchUpSession — end-to-end', () => {
     expect(endsForA.length).toBe(0)
     // Both sessions live in the host map.
     expect(_sessionsForTest().size).toBe(2)
+  })
+
+  it('OpenCode per-message adapter fans one msg into text + tool_call + tool_result (v0.8.1 B)', () => {
+    // Seed a fake OpenCode storage tree.
+    const storage = path.join(scratch, 'opencode-storage')
+    fs.mkdirSync(path.join(storage, 'session', 'projhash'), { recursive: true })
+    fs.mkdirSync(path.join(storage, 'message', 'ses_e2e'), { recursive: true })
+    const projCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-proj-'))
+    fs.writeFileSync(path.join(storage, 'session', 'projhash', 'ses_e2e.json'),
+      JSON.stringify({ id: 'ses_e2e', directory: projCwd }))
+    // Message stub + parts.
+    fs.writeFileSync(path.join(storage, 'message', 'ses_e2e', 'msg_e2e.json'), JSON.stringify({
+      id: 'msg_e2e', sessionID: 'ses_e2e', role: 'assistant',
+      model: { modelID: 'sonnet' }
+    }))
+    fs.mkdirSync(path.join(storage, 'part', 'msg_e2e'), { recursive: true })
+    fs.writeFileSync(path.join(storage, 'part', 'msg_e2e', 'prt_1.json'), JSON.stringify({
+      id: 'prt_1', messageID: 'msg_e2e', sessionID: 'ses_e2e',
+      type: 'text', text: 'let me run ls'
+    }))
+    fs.writeFileSync(path.join(storage, 'part', 'msg_e2e', 'prt_2.json'), JSON.stringify({
+      id: 'prt_2', messageID: 'msg_e2e', sessionID: 'ses_e2e',
+      type: 'tool', callID: 'call_ls', tool: 'bash',
+      state: { status: 'completed', input: { command: 'ls' }, output: 'a\nb\n' }
+    }))
+    // Configure host with the storage override, then hand-register the
+    // ses_e2e session (skips chokidar — deterministic for the test).
+    configureAgentTailer({
+      enabled: true, engagementId: 'e1', operatorId: OP,
+      opencodeStorageDir: storage
+    })
+    hostRegisterSession('opencode', path.join(storage, 'message', 'ses_e2e'))
+
+    const rows = queryEvents({ agentType: 'agent', limit: 100 })
+    const opencodeRows = rows.filter((r) => r.data.agent === 'opencode')
+    // 1 assistant_message + 1 tool_call + 1 tool_result
+    expect(opencodeRows.some((r) => r.data.subtype === 'assistant_message')).toBe(true)
+    expect(opencodeRows.some((r) => r.data.subtype === 'tool_call' && r.data.tool_name === 'bash')).toBe(true)
+    expect(opencodeRows.some((r) => r.data.subtype === 'tool_result' && r.data.tool_use_id === 'call_ls')).toBe(true)
+    // Chain: tool_result._causes → tool_call.id
+    const call = opencodeRows.find((r) => r.data.subtype === 'tool_call')!
+    const res = opencodeRows.find((r) => r.data.subtype === 'tool_result')!
+    expect((res.data._causes as string[])?.[0]).toBe(call.id)
+
+    fs.rmSync(projCwd, { recursive: true, force: true })
   })
 
   it('respects self-exclusion marker', () => {
