@@ -36,6 +36,14 @@ interface ConfigState {
     subtypes: string[]
     includeData: boolean
   }
+  // v0.7.7 U1: Settings ▸ AI Agents surface for the built-in Claude Code
+  // tailer. v0.8.0 will expand this into a list of installed tailer
+  // plugins; the shape here (enabled + emitThinking) stays the "default"
+  // per-plugin knob set going forward.
+  agentTailer?: {
+    enabled: boolean
+    emitThinking?: boolean
+  }
 }
 
 interface ManualStep {
@@ -62,7 +70,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins' | 'marketplace'>('general')
+  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'agents' | 'plugins' | 'marketplace'>('general')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -103,6 +111,7 @@ export default function Settings(): JSX.Element {
     { id: 'scope' as const, label: t('settings.scope') },
     { id: 'integrations' as const, label: t('settings.integrations') },
     { id: 'data' as const, label: t('settings.data') },
+    { id: 'agents' as const, label: t('settings.agents') },
     { id: 'plugins' as const, label: t('settings.plugins') },
     { id: 'marketplace' as const, label: t('settings.marketplace') }
   ]
@@ -610,6 +619,9 @@ export default function Settings(): JSX.Element {
               </p>
             </FieldGroup>
           </>
+        )}
+        {tab === 'agents' && (
+          <AgentsPanel t={t} config={config} setConfig={setConfig} />
         )}
         {tab === 'plugins' && <PluginsPanel t={t} />}
         {tab === 'marketplace' && <MarketplacePanel t={t} />}
@@ -1405,6 +1417,57 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
           <p className="text-xs text-zinc-600 mt-1">{t('settings.mcpStdioHint')}</p>
         </details>
       )}
+    </FieldGroup>
+  )
+}
+
+// v0.7.7 U1: Settings ▸ AI Agents panel. Currently one built-in tailer
+// (Claude Code, hard-coded in main); v0.8.0 refactors this into a plugin
+// list with per-plugin toggles + `emitThinking` per adapter. For v0.7.7
+// the panel controls the single existing tailer via `config.agentTailer`
+// and previews the fixed self-exclusion mechanism (`.redlog-app-root`).
+function AgentsPanel({
+  t, config, setConfig
+}: {
+  t: (key: string) => string
+  config: ConfigState
+  setConfig: (c: ConfigState) => void
+}): JSX.Element {
+  const at = (config.agentTailer ?? { enabled: true, emitThinking: false }) as { enabled: boolean; emitThinking?: boolean }
+  const patch = (delta: Partial<typeof at>): void => {
+    setConfig({ ...config, agentTailer: { ...at, ...delta } })
+  }
+  return (
+    <FieldGroup title={t('settings.agents')}>
+      <p className="text-xs text-zinc-600">{t('settings.agents.hint')}</p>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={at.enabled}
+            onChange={(e) => patch({ enabled: e.target.checked })}
+            className="accent-red-600"
+          />
+          <span className="text-xs text-zinc-300">{t('settings.agents.enable')}</span>
+        </label>
+        <p className="text-[11px] text-zinc-600 pl-6">{t('settings.agents.enableHint')}</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={at.emitThinking ?? false}
+            onChange={(e) => patch({ emitThinking: e.target.checked })}
+            className="accent-red-600"
+            disabled={!at.enabled}
+          />
+          <span className={`text-xs ${at.enabled ? 'text-zinc-300' : 'text-zinc-600'}`}>
+            {t('settings.agents.emitThinking')}
+          </span>
+        </label>
+        <p className="text-[11px] text-zinc-600 pl-6">{t('settings.agents.emitThinkingHint')}</p>
+        <p className="text-[11px] text-zinc-600 mt-3 border-t border-zinc-800 pt-2">
+          {t('settings.agents.selfExclusionHint')}
+        </p>
+      </div>
     </FieldGroup>
   )
 }
