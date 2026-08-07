@@ -3,6 +3,52 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.6 — 2026-08-07
+Second dogfood-defect batch. Re-installed v0.7.5 DMG, verified all
+v0.7.5 fixes landed in the shipped bundle (parent_missing 0.8% → 0.09%,
+Dashboard tile refreshed, no new `last-prompt` drift). Three more real
+bugs surfaced in the same pass; fixed here.
+
+### H1 — Two more line types silenced
+- Real Claude Code line types `frame-link` (1×) + `pr-link` (7×) added
+  to `KNOWN_IGNORED_TYPES` in `agent-transcript-tailer.ts`. Same fix
+  as v0.7.5 G1 — the shipped bundle stops emitting 8 spurious
+  `agent.transcript_schema_drift` advisories per open.
+
+### H2 — Dashboard "chain 10396 ≠ events 28338" scary warning
+- v0.7.5 G3 refreshed the events + loot count tiles on every incoming
+  event but missed `chainLen`. After the tailer added ~18K events
+  post-open, `chainLen` stayed at its mount snapshot (10396) while
+  `eventCount` raced ahead (28338). Dashboard rendered the diff as
+  a red `⚠ 證據鏈 10396 ≠ 事件 28338` warning even though sqlite
+  says every one of the 28338 rows has a non-null hash. Added
+  `chain.length()` to the same `refreshCounts` sweep — one line,
+  Dashboard drift closes to 0.
+
+### H3 — `sample BROKEN` shows event age
+- Pre-v0.7.6 the Dashboard just said `sample BROKEN` when a random
+  sample verify hit a hash mismatch. Dogfood surfaced the exact
+  scenario the operator can't tell apart: a **6-day-old
+  system/ip_transition row from 2026-08-01** (pre-tailer, pre-v0.7,
+  probably an old shape variant our verifier doesn't try) trips the
+  same UI as a fresh regression. Now:
+  - `CaptureHealth.lastSampleBroken.eventTimestamp` carries the
+    broken row's creation timestamp (`main/index.ts` looks it up via
+    `queryEventById` before calling `noteSampleBroken`).
+  - Dashboard renders `sample BROKEN (6d old)` / `(3h old)` /
+    `(fresh)` so operator triage is one glance instead of a DB dive.
+  - Root cause of THIS specific mismatch is still open — likely a
+    shape variant our v0.6.88 hash-check list doesn't cover — but
+    the UX now discloses the age so an operator knows it's not a
+    live regression.
+
+### Verified in v0.7.5 dogfood (unchanged in v0.7.6)
+- Self-exclusion via `.redlog-app-root`: 0 events for the RedLog dev
+  session UUID across 28K total events. Marker works.
+- Tailer scale: 15 real Claude Code sessions from BugBounty tree →
+  15,433 assistant + 12,236 user + 60 snapshot + 14 compact-summary
+  events, 81 sidecar files, ~50MB, all hashed.
+
 ## v0.7.5 — 2026-08-07
 Dogfood defect batch. Installed v0.7.4 DMG, opened Test-Engagement,
 let the tailer ingest 10-15 real Claude Code sessions (~9922 agent

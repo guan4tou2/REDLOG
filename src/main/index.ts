@@ -590,7 +590,14 @@ function startProject(project: ProjectMeta): void {
   try {
     const first = verifyRandomSample(100)
     if (!first.ok) {
-      noteSampleBroken({ eventId: first.brokenAtEventId || '', reason: first.brokenReason || 'unknown' })
+      // v0.7.6 H3: include the broken row's own timestamp so the Dashboard
+      // can tell "6d old pre-tailer historical row" from "fresh regression."
+      const brokenRow = first.brokenAtEventId ? queryEventById(first.brokenAtEventId) : null
+      noteSampleBroken({
+        eventId: first.brokenAtEventId || '',
+        reason: first.brokenReason || 'unknown',
+        eventTimestamp: brokenRow?.timestamp
+      })
       try {
         const ev = insertEvent('system', {
           subtype: 'chain_sample_broken',
@@ -610,7 +617,12 @@ function startProject(project: ProjectMeta): void {
     try {
       const result = verifyRandomSample(50)
       if (!result.ok) {
-        noteSampleBroken({ eventId: result.brokenAtEventId || '', reason: result.brokenReason || 'unknown' })
+        const brokenRow = result.brokenAtEventId ? queryEventById(result.brokenAtEventId) : null
+        noteSampleBroken({
+          eventId: result.brokenAtEventId || '',
+          reason: result.brokenReason || 'unknown',
+          eventTimestamp: brokenRow?.timestamp
+        })
         try {
           const ev = insertEvent('system', {
             subtype: 'chain_sample_broken',

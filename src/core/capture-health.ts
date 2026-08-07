@@ -32,8 +32,15 @@ export interface CaptureHealth {
   /** v0.6.89 P1-A: most recent chain-sample failure. Pins verdict to `dark`
    *  for the TTL window even if all sources are otherwise healthy — a
    *  broken chain is worse than a dark capture, since it means historical
-   *  audit rows have been tampered with. */
-  lastSampleBroken?: { at: number; eventId: string; reason: string }
+   *  audit rows have been tampered with.
+   *
+   *  v0.7.6 H3: `eventTimestamp` carries the broken row's own creation
+   *  time so the Dashboard can render "6d old" alongside the eventId —
+   *  operators can tell at a glance whether the flag is a fresh
+   *  regression or a pre-v0.7.x historical event they can't do anything
+   *  about (see the 2026-08-01 `system/ip_transition` case that
+   *  triggered this UX change). */
+  lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   /** Timestamp of the most-recent verifyRandomSample that returned ok:true.
    *  Dashboard renders this as "sampled Xm ago" so operators can see the
    *  background verify is actually running. */
@@ -63,16 +70,24 @@ function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
 // keeps the dark verdict visible across sample runs (5-min timer + 60-min
 // TTL means the dark state persists at least until the next 12 samples
 // have had a chance to re-check).
-let _lastSampleBroken: { at: number; eventId: string; reason: string } | null = null
+let _lastSampleBroken: { at: number; eventId: string; reason: string; eventTimestamp?: number } | null = null
 let _lastSampleOkAt: number | null = null
 const SAMPLE_BROKEN_TTL_MS = 60 * 60 * 1000
 
-export function noteSampleBroken(details: { eventId: string; reason: string }): void {
-  _lastSampleBroken = { at: Date.now(), eventId: details.eventId, reason: details.reason.slice(0, 300) }
+// v0.7.6 H3: accept optional `eventTimestamp` so the Dashboard can show
+// how old the broken row is. Callers that don't have it (older code
+// paths, tests) still work — the field is optional end-to-end.
+export function noteSampleBroken(details: { eventId: string; reason: string; eventTimestamp?: number }): void {
+  _lastSampleBroken = {
+    at: Date.now(),
+    eventId: details.eventId,
+    reason: details.reason.slice(0, 300),
+    ...(details.eventTimestamp != null ? { eventTimestamp: details.eventTimestamp } : {})
+  }
 }
 export function noteSampleOk(): void { _lastSampleOkAt = Date.now() }
 export function clearSampleBroken(): void { _lastSampleBroken = null }
-export function getLastSampleBroken(): { at: number; eventId: string; reason: string } | null {
+export function getLastSampleBroken(): { at: number; eventId: string; reason: string; eventTimestamp?: number } | null {
   if (!_lastSampleBroken) return null
   if (Date.now() - _lastSampleBroken.at > SAMPLE_BROKEN_TTL_MS) { _lastSampleBroken = null; return null }
   return _lastSampleBroken
