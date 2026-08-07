@@ -378,7 +378,26 @@ function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge
   if (brokenAtId && evt.id === brokenAtId) {
     b.push({ icon: '⛓️‍💥', reason: 'full-chain verify broke here', key: 'verify-broken' })
   }
+  // v0.7.7 U2: subagent (Task tool) turn marker. The agent tailer stamps
+  // `is_sidechain: true` on any transcript line whose original JSONL
+  // record carried the `isSidechain` flag. Rendering an explicit ↪ badge
+  // + Timeline indent (elsewhere) lets the operator tell "this was a
+  // parallel Task subagent" apart from main-thread turns at a glance —
+  // pre-v0.7.7 those events looked identical and buried the whole
+  // subagent subtree.
+  if (evt.agentType === 'agent' && d.is_sidechain === true) {
+    b.push({ icon: '↪', reason: 'subagent (Task tool) turn — separate reasoning thread', key: 'sidechain' })
+  }
   return b
+}
+
+/** v0.7.7 U2: horizontal indent for subagent turns on the Timeline.
+ *  Non-zero when the event's `data.is_sidechain === true`. Returned in
+ *  pixels so callers can add it directly to a `left` or `paddingLeft`
+ *  style without a lookup table. */
+export function subagentIndentPx(evt: RedLogEvent): number {
+  const d = (evt.data as Record<string, unknown> | undefined) ?? {}
+  return evt.agentType === 'agent' && d.is_sidechain === true ? 12 : 0
 }
 
 // BFS walk of the causal graph anchored at `anchor`. Walks `_causes` upstream
@@ -2190,13 +2209,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   const badgeTitle = badges && badges.length
                     ? '\n' + badges.map((b) => `${b.icon} ${b.reason}`).join('\n')
                     : ''
+                  // v0.7.7 U2: nudge subagent (Task-tool) events right by a
+                  // few pixels so a burst of parallel subagent turns visibly
+                  // hangs off its parent main-thread turn rather than
+                  // clobbering it. Only applies to single-event dots
+                  // (clusters already visually distinct via count label).
+                  const indent = single ? subagentIndentPx(evt) : 0
                   return (
                     <div
                       key={c.key}
                       data-timeline-event
                       className="absolute cursor-pointer flex items-center justify-center"
                       style={{
-                        left: c.x - hit / 2,
+                        left: c.x - hit / 2 + indent,
                         top: c.y - hit / 2,
                         width: hit,
                         height: hit,
@@ -2420,6 +2445,27 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   </button>
                 )
               })()}
+              {/* v0.7.7 U3: "Open sidecar" for agent.transcript_snapshot
+                  events. `snapshot_path` is inside the project's
+                  agent-transcripts/ dir; data.revealPath opens it via the
+                  OS file browser (`shell.openPath` in main). Pre-v0.7.7
+                  the sidecar was only reachable if the operator dug it out
+                  of the raw JSON view — one click now. */}
+              {selectedEvent.agentType === 'agent'
+                && (selectedEvent.data?.subtype as string | undefined) === 'transcript_snapshot'
+                && typeof selectedEvent.data?.snapshot_path === 'string' && (
+                <button
+                  onClick={async () => {
+                    const p = selectedEvent.data?.snapshot_path as string
+                    const ok = await window.redlog.data?.revealPath?.(p)
+                    if (!ok) toast(t('timeline.openSidecarFailed'), 'error')
+                  }}
+                  className="text-xs px-2 py-0.5 rounded bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60 transition-colors"
+                  title={t('timeline.openSidecarHint')}
+                >
+                  {t('timeline.openSidecar')}
+                </button>
+              )}
               <button
                 onClick={() => setShowJson(!showJson)}
                 className={`text-xs px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-zinc-700 text-zinc-200' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}

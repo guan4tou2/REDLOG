@@ -175,6 +175,20 @@ export interface RedLogConfig {
     pollMs?: number
     ignoreCommands?: string[]
   }
+  /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
+   *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
+   *  per-turn `agent.*` events into the hash chain. On by default —
+   *  operators using RedLog with a local Claude Code session almost
+   *  always want AI audit coverage; a `.redlog-app-root` marker in the
+   *  session's cwd still opts individual repos out. See
+   *  src/main/services/agent-transcript-tailer.ts. */
+  agentTailer?: {
+    enabled: boolean
+    /** Off by default — thinking blocks are large and mostly meta. Turn on
+     *  for engagements where the reasoning transcript is itself audit-
+     *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
+    emitThinking?: boolean
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -268,6 +282,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false,
     pollMs: 500,
     ignoreCommands: []
+  },
+  agentTailer: {
+    enabled: true,
+    emitThinking: false
   }
 }
 
