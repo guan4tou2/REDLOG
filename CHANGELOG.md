@@ -3,6 +3,48 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.5 — 2026-08-07
+Dogfood defect batch. Installed v0.7.4 DMG, opened Test-Engagement,
+let the tailer ingest 10-15 real Claude Code sessions (~9922 agent
+events, 81 sidecar files, ~50MB). Three real bugs surfaced; one
+pre-existing chain-sample issue deferred (not tailer-caused).
+
+### G1 — `last-prompt` schema drift silenced
+- Claude Code writes a `last-prompt` line-type record; dogfood fired
+  6 spurious `agent.transcript_schema_drift` advisories on it. Added
+  to `KNOWN_IGNORED_TYPES` (`agent-transcript-tailer.ts`) — pointer
+  metadata, correctly skipped without noise.
+
+### G2 — Pending-parent buffer restored
+- Dogfood surfaced **79 `transcript_parent_missing` advisories**. The
+  v0.7.2 design's "parent-first, assert-and-skip" assumption is
+  empirically wrong for Claude Code (adversarial-review agent flagged
+  the risk; empirical data made it definite). Added
+  `pendingByParentUuid: Map<uuid, Array<{turn, queuedAt}>>` with
+  hard cap 100 entries + 60s TTL. Children whose parents haven't
+  landed yet queue; when the parent lands, the queue flushes
+  recursively (grand-children resolve). Buffer cap OR TTL hit → fall
+  back to pre-v0.7.5 "emit without _causes + advisory once" so a
+  malformed stream can't exhaust memory.
+- Effect: the 79 dropped chain edges in the dogfood become live
+  `_causes` links; Timeline focus-chain (`f` hotkey) walks whole
+  agent conversations end-to-end.
+
+### G3 — Dashboard event count refreshes on new events
+- Dashboard "事件" tile fetched `getCount()` once at mount then never
+  updated. After the tailer ingested ~10K events post-open, the tile
+  stayed at 483 while the DB and status bar both showed 9073+. Added
+  `getCount()` refresh (also `loot.getCount()`) to the existing
+  `onNew` subscription. Cheap — v0.6.97 C's in-memory count cache
+  serves the read from RAM, so per-event refresh is one number
+  copy + one rerender.
+
+### Deferred to v0.7.6+
+- Historical event `4239af54-...` (2026-08-01, pre-v0.7.x) trips
+  `chain_sample_broken` — hash doesn't match any known shape variant.
+  Not tailer-caused; investigation deferred. Likely a schema variant
+  from a pre-canonical era that our shape-attempt list is missing.
+
 ## v0.7.4 — 2026-08-07
 Post-review defect batch. Seven fixes surfaced by two-axis code review
 (standards + spec) of the v0.7.2 tailer + v0.7.3 hook-retirement work.
