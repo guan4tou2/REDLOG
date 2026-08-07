@@ -3,6 +3,44 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.7.7 — 2026-08-07
+Operator UX polish + Settings surface for the plugin-native tailer
+roadmap. Three quick wins; no architectural change (v0.8.0 will do
+the plugin extraction).
+
+### U1 — Settings ▸ AI Agents tab
+- New Settings tab (`Settings.tsx:107`) — toggles the built-in
+  Claude Code tailer and its `emitThinking` flag from the UI. Pre-
+  v0.7.7 the only way to disable the tailer was editing the config
+  YAML or the hard-coded fallback in main. Config schema gains
+  `agentTailer: { enabled, emitThinking }` with defaults `true` /
+  `false` (`config.ts:178`). Panel also documents the
+  `.redlog-app-root` self-exclusion mechanism so operators know
+  they can commit that file to opt a repo out of tailing.
+- Shape prepared for v0.8.0: the same tab will list all installed
+  tailer plugins with per-plugin toggles when the plugin API lands.
+
+### U2 — `is_sidechain` badge + Timeline indent for subagent turns
+- `computeBadges` (`Timeline.tsx:381`) now attaches `↪` when
+  `evt.agentType === 'agent' && data.is_sidechain === true`. The
+  flag was already emitted by the tailer since v0.7.2 but never
+  keyed off in the UI — pre-v0.7.7 dogfood surfaced this as
+  operator-facing gap #2 (Task subagent subtrees were visually
+  identical to main-thread turns).
+- Single-event dots for subagent turns get a 12px right nudge
+  (`subagentIndentPx`, `Timeline.tsx:387`) so a burst of parallel
+  subagent turns visually hangs off its parent instead of clobbering
+  it. Only applies to single-event dots (clusters already carry a
+  count label so the visual grouping is already there).
+
+### U3 — `agent.transcript_snapshot` detail panel "Open sidecar" button
+- Detail panel now shows a cyan `Open sidecar` button whenever the
+  selected event is `agent.transcript_snapshot` with a
+  `snapshot_path` field (`Timeline.tsx:2454`). One click opens the
+  archived JSONL in Finder/Explorer via the existing
+  `data.revealPath` IPC. Pre-v0.7.7 the sidecar was only reachable
+  by digging the path out of the raw JSON view.
+
 ## v0.7.6 — 2026-08-07
 Second dogfood-defect batch. Re-installed v0.7.5 DMG, verified all
 v0.7.5 fixes landed in the shipped bundle (parent_missing 0.8% → 0.09%,
