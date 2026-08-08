@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { extractTarget, registerTargetExtractors, unregisterTargetExtractors } from '../src/core/target-extractor'
+import {
+  extractTarget, registerTargetExtractors, unregisterTargetExtractors,
+  extractTargetWithProvenance, listExternalTargetExtractors
+} from '../src/core/target-extractor'
 
 describe('extractTarget', () => {
   it('extracts host from ssh command', () => {
@@ -152,6 +155,77 @@ describe('extractTarget', () => {
       unregisterTargetExtractors('unit-x')
       // After unregister, plugin no longer contributes — fallback fires.
       expect(extractTarget('rescan --to host.local')).toBeNull()
+    })
+  })
+
+  describe('v0.9.1 attribution: extractTargetWithProvenance', () => {
+    afterEach(() => {
+      unregisterTargetExtractors('audit-ext')
+      unregisterTargetExtractors('twin-x')
+      unregisterTargetExtractors('twin-y')
+    })
+
+    it('plugin match carries pluginId + extractorName (default `cmd#N`)', () => {
+      registerTargetExtractors('audit-ext', [
+        { cmd: '^myscan\\s', extract: '--host\\s+(\\S+)' },
+        { cmd: '^myscan2\\s', extract: '--host\\s+(\\S+)', name: 'myscan2-target', description: 'v2 rule' }
+      ])
+      const first = extractTargetWithProvenance('myscan --host 10.0.0.9')
+      expect(first.host).toBe('10.0.0.9')
+      expect(first.pluginId).toBe('audit-ext')
+      expect(first.extractorName).toBe('^myscan\\s#0')
+
+      const second = extractTargetWithProvenance('myscan2 --host 10.0.0.10')
+      expect(second.host).toBe('10.0.0.10')
+      expect(second.extractorName).toBe('myscan2-target')
+    })
+
+    it('built-in match returns NO pluginId/extractorName (chain-shape stable)', () => {
+      const r = extractTargetWithProvenance('ssh user@10.0.0.1')
+      expect(r.host).toBe('10.0.0.1')
+      expect(r.pluginId).toBeUndefined()
+      expect(r.extractorName).toBeUndefined()
+    })
+
+    it('two plugins with the same cmd matcher are distinguishable', () => {
+      registerTargetExtractors('twin-x', [
+        { cmd: '^dualscan\\s', extract: 'xhost=(\\S+)', name: 'x-rule' }
+      ])
+      registerTargetExtractors('twin-y', [
+        { cmd: '^dualscan\\s', extract: 'yhost=(\\S+)', name: 'y-rule' }
+      ])
+      // Plugin registration order = match order. twin-x registered first, so
+      // when both patterns could match, x wins. But a command that only has
+      // yhost= should still attribute to twin-y since its extract regex fires.
+      const rx = extractTargetWithProvenance('dualscan xhost=a.example.com')
+      expect(rx.pluginId).toBe('twin-x')
+      expect(rx.extractorName).toBe('x-rule')
+      // For y-only pattern, twin-x's cmd matches but its extract regex won't
+      // — so it falls through to twin-y.
+      const ry = extractTargetWithProvenance('dualscan yhost=b.example.com')
+      expect(ry.pluginId).toBe('twin-y')
+      expect(ry.extractorName).toBe('y-rule')
+    })
+
+    it('listExternalTargetExtractors snapshot exposes name + description', () => {
+      registerTargetExtractors('audit-ext', [
+        { cmd: '^foo\\s', extract: '--t\\s+(\\S+)', name: 'foo-rule', description: 'internal fooer' }
+      ])
+      const list = listExternalTargetExtractors().filter((p) => p.pluginId === 'audit-ext')
+      expect(list.length).toBe(1)
+      expect(list[0].extractorName).toBe('foo-rule')
+      expect(list[0].description).toBe('internal fooer')
+      expect(list[0].cmd).toBe('^foo\\s')
+      expect(list[0].extract).toBe('--t\\s+(\\S+)')
+    })
+
+    it('extractTarget backward-compat shim still returns just the host string', () => {
+      registerTargetExtractors('audit-ext', [
+        { cmd: '^probe\\s', extract: '(\\S+)$' }
+      ])
+      expect(extractTarget('probe target.example')).toBe('target.example')
+      expect(extractTarget('ssh user@10.0.0.1')).toBe('10.0.0.1')
+      expect(extractTarget('nothing here')).toBeNull()
     })
   })
 })
