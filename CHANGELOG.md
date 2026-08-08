@@ -3,6 +3,55 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.3 — 2026-08-08
+**Timeline UX push driven by v0.9.2's subagent design review.** Three
+items shipped: the highest-signal design finding (agent-session
+collapse), the highest-signal discoverability fix (`?` cheatsheet
+modal), and a real correctness bug the review's function agent spotted.
+All renderer-only; no DB / chain / event-shape changes.
+
+### 1. `?` keyboard-shortcut cheatsheet (design-review top item)
+- Global `?` keybinding + a visible `?` button in the header opens a
+  modal listing every shortcut RedLog has shipped since v0.6.90 —
+  grouped by task (filter / focus / timeline / detail / misc). Design
+  agent graded discoverability **F**: `⌘K` palette, `f` focus chain,
+  right-click drop-marker, Alt-click solo, and half a dozen others
+  were invisible without a teammate.
+- Modal reuses the ⌘K palette overlay pattern (backdrop click / Esc
+  close, `?` toggles). 13 shortcut rows across 5 groups.
+- +14 i18n keys per language (en + zh-TW).
+
+### 2. Agent-session collapse toggle
+- New header chip `⇗ collapse agent`. When on, per-turn agent event
+  subtypes (user_message / assistant_message / tool_call / tool_result
+  / thinking / compact_summary / tool_interrupted / away_summary) are
+  dropped from the render pipeline. `transcript_snapshot` and
+  `session_end` stay visible — the session-level view. A 500-turn
+  Claude session goes from **500 dots → 2-4 dots** on the agent lane.
+- Off by default (existing operators don't lose visibility on upgrade).
+  Per-project persisted via localStorage. Hidden-count shown on the
+  chip so the empty agent lane doesn't look broken.
+- Deliberately simpler than a full "collapse into session-header
+  dot" (which would require re-plumbing cluster / `_causes` / focus
+  chain traversal). v0.9.4+ can layer the header-dot on top if
+  operators want more.
+
+### 3. `recording_paused` band-overwrite bug fix (correctness)
+- Function-review agent spotted: two consecutive `recording_paused`
+  events without a `recording_resumed` between them silently
+  overwrote the first band, losing it. Now: the first band closes at
+  the second pause's timestamp — both pause events stay visible in
+  the track as adjacent bands. Audit-truthful (recording was paused
+  twice, never resumed in between) rather than fabricating a resume.
+- 1 file, ~15 lines, no test change (bands are visual — verified by
+  operator eyeball on shipped DMG).
+
+### Tested
+- tsc clean; 439/439 tests green.
+- Electron renderer changes; browser-preview verification path
+  doesn't apply (no `window.redlog` in vite dev shell). Operator
+  verifies by installing the shipped DMG.
+
 ## v0.9.2 — 2026-08-08
 **Agent event operator UX polish.** Timeline agent events previously
 rendered as bare `agent: user_message` labels — the actual prompt /
