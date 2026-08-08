@@ -3,6 +3,49 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.2 — 2026-08-08
+**Agent event operator UX polish.** Timeline agent events previously
+rendered as bare `agent: user_message` labels — the actual prompt /
+response text was only reachable via the raw-JSON toggle. Now the
+lane row shows a role glyph + inline preview (truncated to 100 chars
+with `…`), and the detail panel renders the full body with the same
+collapsible/copy-full affordances shell command output uses.
+
+### A — `eventTitle` case for `agent`
+- Role-tagged one-liners per subtype: `❯ user: …` / `◂ asst: …` /
+  `⚙ tool_name: hint` / `↩ result: …` / `💭 thinking` /
+  `⇉ context compacted` / `⏹ tool interrupted` / `⌛ away summary`.
+- Housekeeping subtypes (transcript_snapshot / session_end /
+  transcript_compacted / schema_drift / parent_missing) get their
+  own summary lines instead of the useless `agent: <subtype>` fallback.
+- New `firstStringArg` helper reuses the built-in tool-command picker
+  order (command, file_path, path, url, query, pattern) so what shows
+  in the lane matches what the sensitive-path masking cache sees.
+
+### B — `AgentTurnDetail` component
+- Rendered in the detail panel for every `agent.*` event.
+- user_message / assistant_message / thinking → `CollapsibleStream`
+  on the `full` payload (falls back to `preview` when full absent),
+  `startOpen`, correct byte size + truncated indicator, copy-full
+  button for > 4 KB.
+- tool_call → `CollapsibleStream` on pretty-printed `tool_input` JSON.
+- tool_result → `CollapsibleStream` on `output`, byte-accurate against
+  `output_length` from the emitter.
+- Metadata grid: agent, session_id, model, tool_use_id,
+  transcript_uuid, usage tokens, post_compact, is_sidechain.
+
+### i18n
+- +5 keys per language: `timeline.detail.agentUser` /
+  `.agentAssistant` / `.agentThinking` / `.agentToolInput` /
+  `.agentToolOutput`. en + zh-TW updated.
+
+### Tested
+- tsc clean; 439/439 tests green (no test regressions — this is a
+  render-layer change, verifiable by installing the shipped DMG and
+  clicking any recent agent event in Timeline).
+- Renderer-only, no DB schema / chain shape change — pre-existing
+  agent events land in the new UI unchanged on first upgrade.
+
 ## v0.9.1 — 2026-08-07
 **Target extractor audit-trail attribution.** Mirrors v0.9.0's loot
 pattern attribution to target-extractor plugins: when a plugin's

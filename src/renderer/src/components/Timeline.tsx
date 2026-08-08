@@ -57,6 +57,24 @@ function displayTs(e: RedLogEvent): number {
   return e.timestamp
 }
 
+/** v0.9.2 U1: pick the first string-valued arg from a tool_call input for
+ *  the lane one-liner. Falls back to key list when the values are all
+ *  objects/arrays. Cap prevents a giant path from dominating the row. */
+function firstStringArg(input: Record<string, unknown>, cap: number): string {
+  // Priority order matches the built-in tool-command picker in tailer-host
+  // so what the row shows lines up with what the sensitive-path masking
+  // sees ("Bash: rm -rf /" reads the same on both sides).
+  for (const k of ['command', 'file_path', 'path', 'url', 'query', 'pattern']) {
+    const v = input[k]
+    if (typeof v === 'string' && v) {
+      const s = v.replace(/\s+/g, ' ').trim()
+      return s.length > cap ? s.slice(0, cap) + '…' : s
+    }
+  }
+  const keys = Object.keys(input)
+  return keys.length ? `{${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ', …' : ''}}` : ''
+}
+
 function eventTitle(event: RedLogEvent): string {
   const d = event.data
   switch (event.agentType) {
@@ -151,6 +169,44 @@ function eventTitle(event: RedLogEvent): string {
     case 'loot': {
       const m = (d.matches as Array<{ type: string; confidence: string }>)?.[0]
       return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${d.count ?? 0} detected`
+    }
+    case 'agent': {
+      // v0.9.2 U1: operator-friendly one-line for AI-agent turns. Old default
+      // fallback rendered "agent: user_message" with the payload text
+      // effectively invisible unless the operator opened raw JSON. Now the
+      // lane row shows a role glyph + the message body, truncated so long
+      // turns stay compact; the detail panel (AgentTurnDetail) has the full
+      // expand.
+      const sub = String(d.subtype ?? '')
+      // Prefer `preview` (already redaction-aware, capped at previewChars);
+      // fall back to `full` for adapters that emit content but no preview
+      // (external agents), then to `output` for tool_result.
+      const raw = String(
+        d.preview ?? d.full ?? d.output ?? d.textContent ?? ''
+      ).replace(/\s+/g, ' ').trim()
+      const cap = 100
+      const body = raw.length > cap ? raw.slice(0, cap) + '…' : raw
+      if (sub === 'user_message') return body ? `❯ user: ${body}` : `❯ user`
+      if (sub === 'assistant_message') return body ? `◂ asst: ${body}` : `◂ asst`
+      if (sub === 'tool_call') {
+        const name = String(d.tool_name ?? 'tool')
+        // For tool_call, tool_input isn't in `preview` — surface the tool
+        // name + a compact hint (first string arg) instead of empty text.
+        const input = d.tool_input as Record<string, unknown> | undefined
+        const hint = input ? firstStringArg(input, 60) : ''
+        return hint ? `⚙ ${name}: ${hint}` : `⚙ ${name}`
+      }
+      if (sub === 'tool_result') return body ? `↩ result: ${body}` : `↩ result`
+      if (sub === 'thinking') return body ? `💭 ${body}` : `💭 thinking`
+      if (sub === 'compact_summary') return `⇉ context compacted`
+      if (sub === 'tool_interrupted') return body ? `⏹ interrupted: ${body}` : `⏹ tool interrupted`
+      if (sub === 'away_summary') return body ? `⌛ away: ${body}` : `⌛ away summary`
+      if (sub === 'transcript_snapshot') return `📸 snapshot (${d.turns_emitted ?? '?'} turns)`
+      if (sub === 'session_end') return `▪ session ended (${d.turns_emitted ?? '?'} turns)`
+      if (sub === 'transcript_compacted') return `⇉ transcript reset`
+      if (sub === 'transcript_schema_drift') return `⚠ schema drift: ${d.unknown_type ?? '?'}`
+      if (sub === 'transcript_parent_missing') return `⚠ parent-missing buffer full`
+      return `agent: ${sub}`
     }
     case 'system':
       if (d.subtype === 'scope_violation') return `⚠ Scope violation: ${d.target || d.command || ''}`
@@ -2611,6 +2667,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             && (
               <CommandEndDetail data={selectedEvent.data as Record<string, unknown>} />
             )}
+          {/* v0.9.2 U1: agent-turn detail. Body text (user_message /
+              assistant_message / thinking) shown open by default via
+              CollapsibleStream so the operator sees the prompt/response
+              on click without another expand. tool_call renders the
+              parsed input JSON; tool_result its output stream. */}
+          {selectedEvent.agentType === 'agent' && (
+            <AgentTurnDetail data={selectedEvent.data as Record<string, unknown>} />
+          )}
           {/* Replay this command: only for shell.command_end from a builtin
               terminal — pulls the stdout window out of the session's .cast
               file instead of storing it in the chain. */}
@@ -2713,6 +2777,89 @@ function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Elem
       />
     </div>
   )
+}
+
+/** v0.9.2 U1: renders the payload of one `agent.*` event in the detail
+ *  panel. Reuses CollapsibleStream + MetadataGrid so operators get the
+ *  same expand/copy affordances they already know from shell events. */
+function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const subtype = String(data.subtype ?? '')
+  const isMessage = subtype === 'user_message' || subtype === 'assistant_message'
+  const isThinking = subtype === 'thinking'
+  const isToolCall = subtype === 'tool_call'
+  const isToolResult = subtype === 'tool_result'
+
+  // Message body: user_message / assistant_message emit `full` (up to 100KB
+  // cap in tailer-host; `truncated:true` when hit) + `full_length` (the
+  // pre-truncation size). Fall back to `preview` when `full` is absent
+  // (compact_summary is preview-less post v0.8.0.1 F1, but other adapters
+  // may emit preview-only).
+  const bodyText = typeof data.full === 'string'
+    ? (data.full as string)
+    : (typeof data.preview === 'string' ? (data.preview as string) : '')
+  const bodyBytes = typeof data.full_length === 'number' ? (data.full_length as number) : bodyText.length
+  const bodyTruncated = data.truncated === true
+
+  // Tool_call: `tool_input` is either the parsed object OR a shape like
+  // {_truncated:true, keys:[...]} when the raw JSON was > 100KB.
+  const toolInput = data.tool_input as Record<string, unknown> | undefined
+  const toolInputStr = toolInput ? safePretty(toolInput) : ''
+
+  // Tool_result: output is a string (capped at 100KB) with output_length
+  // holding the pre-truncation size.
+  const outputText = typeof data.output === 'string' ? (data.output as string) : ''
+  const outputBytes = typeof data.output_length === 'number' ? (data.output_length as number) : outputText.length
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {(isMessage || isThinking) && bodyText.length > 0 && (
+        <CollapsibleStream
+          label={t(isThinking ? 'timeline.detail.agentThinking' : subtype === 'user_message' ? 'timeline.detail.agentUser' : 'timeline.detail.agentAssistant')}
+          content={bodyText}
+          bytes={bodyBytes}
+          truncated={bodyTruncated}
+          accent={subtype === 'user_message' ? 'emerald' : isThinking ? 'zinc' : 'amber'}
+          startOpen
+        />
+      )}
+      {isToolCall && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolInput', { name: String(data.tool_name ?? 'tool') })}
+          content={toolInputStr}
+          accent="zinc"
+          startOpen
+        />
+      )}
+      {isToolResult && outputText.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolOutput')}
+          content={outputText}
+          bytes={outputBytes}
+          truncated={data.truncated === true}
+          accent="emerald"
+          startOpen
+        />
+      )}
+      <MetadataGrid
+        entries={[
+          ['agent', data.agent],
+          ['session_id', data.session_id],
+          ['model', data.model],
+          ['tool_use_id', data.tool_use_id],
+          ['transcript_uuid', data.transcript_uuid],
+          ['usage_tokens_in', data.usage_tokens_in],
+          ['usage_tokens_out', data.usage_tokens_out],
+          ['post_compact', data.post_compact === true ? 'true' : undefined],
+          ['is_sidechain', data.is_sidechain === true ? 'true' : undefined]
+        ]}
+      />
+    </div>
+  )
+}
+
+function safePretty(v: unknown): string {
+  try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
 const STREAM_ACCENTS: Record<'emerald' | 'amber' | 'zinc', { label: string; bar: string; bg: string; badge: string }> = {
