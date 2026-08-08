@@ -318,6 +318,32 @@ function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): void {
   sorted.splice(lo, 0, evt)
 }
 
+/** v0.9.3 U3: per-turn agent subtypes that get hidden when the operator
+ *  toggles "collapse agent sessions". `transcript_snapshot` and
+ *  `session_end` deliberately stay visible — they ARE the session-level
+ *  view. Housekeeping (schema_drift / parent_missing / transcript_
+ *  compacted) also stays visible since operators need to see anomalies. */
+const COLLAPSIBLE_AGENT_SUBTYPES = new Set([
+  'user_message',
+  'assistant_message',
+  'tool_call',
+  'tool_result',
+  'thinking',
+  'compact_summary',
+  'tool_interrupted',
+  'away_summary'
+])
+
+function isCollapsibleAgentTurn(e: RedLogEvent): boolean {
+  return e.agentType === 'agent'
+    && COLLAPSIBLE_AGENT_SUBTYPES.has(String(e.data?.subtype ?? ''))
+}
+
+function filterAgentTurns(events: RedLogEvent[], collapse: boolean): RedLogEvent[] {
+  if (!collapse) return events
+  return events.filter((e) => !isCollapsibleAgentTurn(e))
+}
+
 function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
   const closed = new Set<string>()
   for (const e of events) {
@@ -499,9 +525,33 @@ function walkFocusChain(
 
 export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
+  // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
+  // subtypes (user_message / assistant_message / tool_call / tool_result /
+  // thinking / compact_summary) — leaving transcript_snapshot + session_end
+  // so a 500-turn Claude session shows as 2-4 dots instead of drowning the
+  // agent lane. Per-project persisted; default off (existing operators
+  // don't lose visibility on upgrade). Toggle chip in the header + `?`
+  // cheatsheet lists it.
+  const [collapseAgentTurns, setCollapseAgentTurns] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-collapse-agent') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-collapse-agent', collapseAgentTurns ? '1' : '0') } catch { /* ignore */ }
+  }, [collapseAgentTurns])
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
-  const events = useMemo(() => collapseCommandPairs(rawEvents), [rawEvents])
+  // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
+  const events = useMemo(
+    () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
+    [rawEvents, collapseAgentTurns]
+  )
+  // Count of hidden agent turns to surface on the chip so the operator
+  // knows the toggle is doing something (else the empty agent lane looks
+  // like a bug). Recomputed only when raw events or toggle change.
+  const hiddenAgentTurnCount = useMemo(() => {
+    if (!collapseAgentTurns) return 0
+    return rawEvents.filter(isCollapsibleAgentTurn).length
+  }, [rawEvents, collapseAgentTurns])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -536,6 +586,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     } catch { return new Set() }
   })
   const [showJson, setShowJson] = useState(false)
+  // v0.9.3 U2: keyboard-shortcut cheatsheet modal. Every hotkey RedLog has
+  // added since v0.6.90 was previously invisible unless a teammate told you.
+  // `?` opens; Escape or click-outside closes.
+  const [showHelp, setShowHelp] = useState(false)
   // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
   // hidden by default in the detail view. The reviewer opts into a per-event
   // reveal; each reveal appends a chained system.secret_revealed event so the
@@ -1236,8 +1290,24 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     for (const e of events) {
       if (e.agentType !== 'system') continue
       const sub = e.data?.subtype as string | undefined
-      if (sub === 'recording_paused') openPause = e
-      else if (sub === 'recording_resumed' && openPause) {
+      if (sub === 'recording_paused') {
+        // v0.9.3: bug fix. Old code overwrote `openPause` silently on a
+        // second paused-without-resume, losing the first band. Close the
+        // prior band at the new pause's timestamp so BOTH paused events
+        // remain visible in the track (as adjacent bands with no gap).
+        // Adjacent-with-no-gap = "recording was paused twice, never
+        // resumed in between" — audit-truthful, not a fabricated resume.
+        if (openPause) {
+          bands.push({
+            id: `paused-${openPause.id}`,
+            x0: toX(openPause.timestamp),
+            x1: toX(e.timestamp),
+            label: t('timeline.boundaries.pausedLabel'),
+            kind: 'paused'
+          })
+        }
+        openPause = e
+      } else if (sub === 'recording_resumed' && openPause) {
         bands.push({
           id: `paused-${openPause.id}`,
           x0: toX(openPause.timestamp),
@@ -1512,6 +1582,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // v0.9.3 U2: `?` toggles the shortcut cheatsheet. Same skip-when-typing
+  // guard as the other global keys so `?` inside a shell command / search
+  // input isn't hijacked. Esc also closes when the modal is up.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+      const inField = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
+      if (inField) return
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault()
+        setShowHelp((s) => !s)
+        return
+      }
+      if (e.key === 'Escape' && showHelp) {
+        e.preventDefault()
+        setShowHelp(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showHelp])
 
   // v0.6.89.5 feature 2: `f` shortcut to enter/exit focus chain mode.
   // Anchor priority: currently-selected event, then the event under the
@@ -1791,6 +1883,73 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           </div>
         </div>
       )}
+      {/* v0.9.3 U2: keyboard-shortcut cheatsheet modal. Same overlay
+          pattern as the ⌘K palette — Escape and backdrop click both
+          close. Grouped so operators can scan by task ("I want to
+          filter" → look at the filter row) instead of memorising a
+          flat list. */}
+      {showHelp && (
+        <div
+          data-testid="timeline-help"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowHelp(false) }}
+        >
+          <div className="w-[560px] max-w-[92vw] rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">{t('timeline.help.title')}</span>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="ml-auto text-xs text-zinc-500 hover:text-zinc-200 leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10"
+                aria-label={t('timeline.help.close')}
+                title={t('timeline.help.close')}
+              >×</button>
+            </div>
+            <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
+              {([
+                ['timeline.help.group.filter', [
+                  ['/', 'timeline.help.slash'],
+                  ['⌘K', 'timeline.help.palette'],
+                  ['Alt-click', 'timeline.help.soloLane'],
+                  ['Esc', 'timeline.help.escFilter']
+                ]],
+                ['timeline.help.group.focus', [
+                  ['f', 'timeline.help.focusChain'],
+                  ['click', 'timeline.help.selectDot'],
+                  ['↑/↓', 'timeline.help.walk']
+                ]],
+                ['timeline.help.group.timeline', [
+                  ['Right-click', 'timeline.help.dropMarker'],
+                  ['drag minimap', 'timeline.help.zoom'],
+                  ['click cluster', 'timeline.help.expandCluster']
+                ]],
+                ['timeline.help.group.detail', [
+                  ['click ▶', 'timeline.help.expandBody'],
+                  ['click cause chip', 'timeline.help.jumpCause'],
+                  ['Copy full', 'timeline.help.copyFull']
+                ]],
+                ['timeline.help.group.misc', [
+                  ['?', 'timeline.help.thisMenu']
+                ]]
+              ] as Array<[string, Array<[string, string]>]>).map(([groupKey, rows]) => (
+                <div key={groupKey}>
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">{t(groupKey)}</div>
+                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                    {rows.map(([key, descKey]) => (
+                      <div key={key} className="contents">
+                        <kbd className="font-mono text-[11px] text-zinc-200 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
+                        <span className="text-zinc-400">{t(descKey)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
+              {t('timeline.help.footer')}
+            </div>
+          </div>
+        </div>
+      )}
       {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
@@ -1823,6 +1982,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           </button>
         )}
 
+        {/* v0.9.3 U2: keyboard-shortcut cheatsheet button. Every hotkey we
+            shipped (⌘K palette, `/` search, `f` focus chain, right-click
+            drop-marker, Alt-click solo, etc.) was invisible without prior
+            knowledge — Design-review agent graded discoverability F. This
+            makes the affordance visible; the modal itself lists everything. */}
+        <button
+          onClick={() => setShowHelp(true)}
+          className="ml-1 w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+          title={t('timeline.help.hint')}
+          aria-label={t('timeline.help.hint')}
+        >?</button>
+
         {/* Zoom controls */}
         <div className="flex items-center gap-1 ml-2">
           <button
@@ -1845,6 +2016,25 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             aria-label={t('timeline.zoomIn')}
           >+</button>
         </div>
+
+        {/* v0.9.3 U3: collapse-agent-turns chip. Off by default (existing
+            operators don't lose visibility on upgrade). When on, per-turn
+            agent subtypes are dropped from the render pipeline — the
+            hidden count is shown so the empty agent lane doesn't look
+            like a bug. Same visual weight as the other filter chips. */}
+        <button
+          onClick={() => setCollapseAgentTurns((v) => !v)}
+          title={collapseAgentTurns
+            ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+            : t('timeline.collapseAgent.hint')}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
+          <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
+          {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
+            <span className="font-mono tabular-nums text-[10px] text-lime-400/80">−{hiddenAgentTurnCount}</span>
+          )}
+        </button>
 
         {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
             operators can see there's a text filter (previously discoverable
