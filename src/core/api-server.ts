@@ -19,7 +19,7 @@ import {
   type Operator
 } from './db/operators'
 import { eventBus } from './event-bus'
-import { extractTarget } from './target-extractor'
+import { extractTarget, extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
@@ -385,9 +385,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           fileXfer = detectFileTransfer(cmd)
         }
 
-        const detected = extractTarget(cmd)
+        // v0.9.1: extractTargetWithProvenance stamps plugin attribution
+        // when a plugin-contributed extractor was the one that matched.
+        // Built-in matches leave the two extra fields unset → shell-event
+        // shape stays byte-identical for the built-in path.
+        const detectedResult = extractTargetWithProvenance(cmd)
+        const detected = detectedResult.host
         if (detected) {
           data.detectedTarget = detected
+          if (detectedResult.pluginId) {
+            data.extractor_plugin_id = detectedResult.pluginId
+            data.extractor_name = detectedResult.extractorName
+          }
           if (!targetId) targetId = detected
         }
 

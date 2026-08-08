@@ -74,6 +74,15 @@ export interface TargetExtractorContribution {
   /** JS RegExp source with one capture group; group 1 (or full match) is the host */
   extract: string
   flags?: string
+  /** v0.9.1: per-extractor identifier within the plugin. Stamped on
+   *  matched shell events as `extractor_name` for audit traceability
+   *  — "this target was flagged by `bugbounty-lexicon`'s `nuclei-plus`
+   *  rule, not the built-in nuclei matcher". Defaults to
+   *  `${cmd}#${index}` when omitted. */
+  name?: string
+  /** v0.9.1: one-line description of what commands this rule targets.
+   *  Not used at match time; surfaced in Settings ▸ Plugins. */
+  description?: string
 }
 
 /** 🟢 A declarative event-type: gives an agent_type a label, lane, colour and icon. */
