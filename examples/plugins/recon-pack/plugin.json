@@ -27,7 +27,12 @@
       "denylist": ["/CORP_[A-Z0-9]{20,}/"]
     },
     "targetExtractors": [
-      { "cmd": "^acme-scan\\s", "extract": "--target\\s+(\\S+)" }
+      {
+        "cmd": "^acme-scan\\s",
+        "extract": "--target\\s+(\\S+)",
+        "name": "acme-scan-target",
+        "description": "Extracts the --target host from `acme-scan` invocations"
+      }
     ],
     "eventTypes": [
       { "agentType": "acme_scan", "label": "ACME Scan", "lane": "scanner", "color": "#7c3aed", "icon": "🔭" }

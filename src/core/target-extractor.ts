@@ -68,19 +68,42 @@ function lastIPOrDomain(args: string): string | null {
 
 // Plugin-contributed extractors (🟢 declarative). Each is a cmd matcher plus a
 // single-capture-group regex whose group 1 (or full match) is the host.
-const externalPatterns: Array<{ cmd: RegExp; extract: RegExp; pluginId: string }> = []
+interface ExternalExtractor {
+  cmd: RegExp
+  extract: RegExp
+  pluginId: string
+  /** v0.9.1: per-extractor identifier — plugin-supplied `name` or the
+   *  default `${cmd}#${index}` when omitted. */
+  extractorName: string
+  /** v0.9.1: optional human description (not used at match time). */
+  description?: string
+}
+const externalPatterns: ExternalExtractor[] = []
 
 export function registerTargetExtractors(
   pluginId: string,
-  extractors: Array<{ cmd: string; extract: string; flags?: string }>
+  extractors: Array<{
+    cmd: string
+    extract: string
+    flags?: string
+    name?: string
+    description?: string
+  }>
 ): number {
   let added = 0
-  for (const e of extractors) {
+  extractors.forEach((e, i) => {
     try {
-      externalPatterns.push({ cmd: new RegExp(e.cmd), extract: new RegExp(e.extract, e.flags), pluginId })
+      const extractorName = e.name && e.name.trim() ? e.name.trim() : `${e.cmd}#${i}`
+      externalPatterns.push({
+        cmd: new RegExp(e.cmd),
+        extract: new RegExp(e.extract, e.flags),
+        pluginId,
+        extractorName,
+        description: e.description
+      })
       added++
     } catch { /* bad regex — skip */ }
-  }
+  })
   return added
 }
 
@@ -90,19 +113,48 @@ export function unregisterTargetExtractors(pluginId: string): void {
   }
 }
 
-export function extractTarget(command: string): string | null {
+/** v0.9.1: introspect the currently-registered plugin extractors for
+ *  Settings ▸ Plugins UI + audit bundle export. */
+export function listExternalTargetExtractors(): Array<{
+  pluginId: string
+  extractorName: string
+  cmd: string
+  extract: string
+  flags: string
+  description?: string
+}> {
+  return externalPatterns.map((p) => ({
+    pluginId: p.pluginId,
+    extractorName: p.extractorName,
+    cmd: p.cmd.source,
+    extract: p.extract.source,
+    flags: p.extract.flags,
+    description: p.description
+  }))
+}
+
+/** v0.9.1: extract with provenance. When a plugin extractor matches,
+ *  returns `pluginId` + `extractorName` alongside the host so callers
+ *  can stamp attribution onto shell events. Built-in matches return
+ *  neither field — event shape stays byte-identical to pre-v0.9.1
+ *  for built-in extraction (no chain-hash regression). */
+export function extractTargetWithProvenance(command: string): {
+  host: string | null
+  pluginId?: string
+  extractorName?: string
+} {
   const trimmed = command.trim()
   // Plugin extractors take precedence — they let an engagement teach RedLog
   // about bespoke tooling the built-in list doesn't know.
   for (const p of externalPatterns) {
     if (p.cmd.test(trimmed)) {
       const m = trimmed.match(p.extract)
-      if (m) return m[1] ?? m[0]
+      if (m) return { host: m[1] ?? m[0], pluginId: p.pluginId, extractorName: p.extractorName }
     }
   }
   for (const pattern of PATTERNS) {
     if (pattern.cmd.test(trimmed)) {
-      return pattern.extract(trimmed)
+      return { host: pattern.extract(trimmed) }
     }
   }
   // Fallback: only when the command carries an explicit URL scheme (http:// or
@@ -112,7 +164,14 @@ export function extractTarget(command: string): string | null {
   // recorded `shell-preexec-hook.sh`, and `ls foo.txt` recorded `foo.txt`.
   // Requiring `://` cuts the false positives without losing real cases
   // (docker/curl/wget with a URL in the middle still get caught here).
-  if (/https?:\/\//i.test(trimmed)) return extractUrlHost(trimmed)
-  return null
+  if (/https?:\/\//i.test(trimmed)) return { host: extractUrlHost(trimmed) }
+  return { host: null }
+}
+
+/** Thin backward-compatible wrapper — returns just the host. Callers that
+ *  don't want to record attribution (e.g. CDP target-id resolution) can
+ *  keep using this shape unchanged. */
+export function extractTarget(command: string): string | null {
+  return extractTargetWithProvenance(command).host
 }
 

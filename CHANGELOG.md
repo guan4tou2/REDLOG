@@ -3,6 +3,42 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.1 — 2026-08-07
+**Target extractor audit-trail attribution.** Mirrors v0.9.0's loot
+pattern attribution to target-extractor plugins: when a plugin's
+extractor rule matches a shell command, the resulting shell event now
+carries `extractor_plugin_id` + `extractor_name` so an audit reviewer
+can trace back to the exact plugin rule. Built-in extractors leave
+the two fields unset — byte-identical shape for the built-in path,
+no chain-hash regression.
+
+### A — Attribution on shell events
+- `TargetExtractorContribution` gains optional `name?: string` +
+  `description?: string` fields (v0.9.0 A pattern applied to the
+  extractor domain). Missing `name` defaults to `${cmd}#${index}`.
+  ([`types.ts:60`](src/core/plugins/types.ts:60))
+- New `extractTargetWithProvenance(cmd)` returns
+  `{ host, pluginId?, extractorName? }`. `extractTarget(cmd)` is now
+  a thin `.host` shim for callers that don't care about provenance
+  (CDP target-id resolution).
+  ([`target-extractor.ts:112`](src/core/target-extractor.ts:112))
+- `api-server.ts` shell handler uses the provenance version and
+  stamps `extractor_plugin_id` + `extractor_name` on shell event data
+  when a plugin extractor matched.
+- New `listExternalTargetExtractors()` snapshot API for future
+  Settings ▸ Plugins UI + audit-bundle export.
+- `recon-pack` example updated with `name` + `description`.
+
+### Test coverage (+5)
+- Plugin match carries pluginId + default `${cmd}#N` when name omitted.
+- Built-in match leaves both fields undefined (chain-shape stable).
+- Two plugins with the same cmd matcher are distinguishable at
+  match time (plugin-registration order = first-match wins, falls
+  through when extract regex doesn't fire).
+- `listExternalTargetExtractors` snapshot exposes cmd/extract/name.
+- `extractTarget` backward-compat shim still returns just the host.
+- 434 → 439 tests, all green; tsc clean.
+
 ## v0.9.0 — 2026-08-07
 **Loot pattern audit-trail attribution.** Third-party loot patterns
 now carry per-match `plugin_id` + `pattern_name` on emitted events so
