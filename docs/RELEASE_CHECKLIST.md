@@ -1,17 +1,32 @@
 # RELEASE_CHECKLIST
 
-Every release tags a new v0.6.x. Run through this list before pushing the tag.
+Every release tags a new v0.9.x. Run through this list before pushing the tag.
 Skipping something is fine when you know it doesn't apply, but never skip
 silently — leave a `- [~] not applicable this release: <reason>` note.
 
 ## 0. Static
 
 - [ ] `npm run build` clean
-- [ ] `npm test` → 207/207 (or higher — update this number if suite grew)
+- [ ] `npm test` → 439/439 (or higher — update this number if suite grew)
 - [ ] `diff <(jq -r 'keys[]' src/renderer/src/i18n/en.json | sort) <(jq -r 'keys[]' src/renderer/src/i18n/zh-TW.json | sort)` → empty
 - [ ] No mojibake in i18n:
   `grep -P '\xc3\x82|\xc3\x83' src/renderer/src/i18n/*.json` empty
-- [ ] `README.md` version references updated
+- [ ] `README.md` version references updated (download table filenames + the
+      "current version" line)
+- [ ] `npx playwright test` → 25/25. Needs the Electron ABI:
+      `npx electron-rebuild -f -o better-sqlite3` first, and note that a later
+      `npm test` flips it back to the Node ABI via its `pretest` hook.
+
+**Automated as of v0.9.4.** `npx playwright test` covers §0 (build + both
+suites), §13 (all of it, via `e2e/cli-smoke.spec.ts`), the geometry half of §3
+and §11, and the P0 startup gates. §15's key parity is a one-liner:
+
+```sh
+diff <(jq -r 'keys[]' src/renderer/src/i18n/en.json | sort) \
+     <(jq -r 'keys[]' src/renderer/src/i18n/zh-TW.json | sort)
+```
+
+Everything below still needs hands on the app.
 
 ## 1. Project picker
 

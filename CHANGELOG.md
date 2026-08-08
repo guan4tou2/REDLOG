@@ -3,6 +3,177 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.4 — 2026-08-09
+
+**Five P0 defects, every one of them silent.** A full-tree review produced a
+standing audit (`docs/AUDIT-2026-08-08.md`); this release clears its P0 tier.
+The through-line is that none of these were reachable from the unit suite —
+two live in the main-process startup path, one only reproduces against the
+bundled build, and three are renderer geometry. Every fix ships with an E2E
+test that was confirmed to fail against the pre-fix build.
+
+### 1. Agent-tailer path exclusions never applied (P0-1)
+
+`src/main/index.ts` called `os.homedir()` while importing only
+`{ homedir } from 'os'` — no `os` binding exists, so the call threw
+`ReferenceError` on every `startProject()` and a bare `catch {}` swallowed it.
+`excludedPaths` / `watchPaths` were therefore permanently `[]`: every path an
+operator excluded in Settings ▸ Integrations was ignored by the transcript
+tailer. The shell hook reads the same file itself, which is why the feature
+looked alive for several releases.
+
+The catch now logs anything that is not a `SyntaxError` — a gate that fails
+open must not fail quietly.
+
+### 2. Timeline lanes clipped with no scrollbar (P0-2)
+
+The lane stack was `overflow-hidden` with a 36px floor per lane. 18 lanes need
+648px + a 28px axis; after the header, minimap and event list a 1080p window
+leaves the track ~400px, so roughly the bottom third — `scope`, `process`,
+`system` — was cut off with no scrollbar and no indication. Scope violations,
+a headline feature, could be invisible.
+
+The overflow moved to the shared parent of the labels and the track (putting
+it on the track alone would slide the lanes out from under their labels).
+While the stack overflows, `deltaY` drives the vertical axis and `shift+wheel`
+keeps the horizontal scroll it does otherwise; with no overflow — the common
+case — wheel behaviour is unchanged.
+
+### 3. Markers rendered outside the track (P0-3)
+
+The time domain came from `events[0].timestamp` / `events[last].timestamp`,
+but dots are positioned with `displayTs()`, which honours a marker's
+`atTimestamp` override. A marker dropped outside the current event range got a
+negative `toX()` or one past `TRACK_W` and vanished. Measured against the
+pre-fix build: a marker 30 minutes ahead rendered at **x=30976 on a 2200px
+track**. The domain is now an O(n) scan of `displayTs` — same order as the
+`bins` / `laneEvents` memos that already re-run on every change. The minimap
+histogram bins on `displayTs` too, so it agrees with the track.
+
+### 4. Retention never ran in a packaged build (P0-4)
+
+`sweepRetention` was loaded through a runtime `require('../core/retention')`.
+Rollup cannot see through it, so the module was never bundled and the literal
+require survived into `out/main/index.js`, resolving against a non-existent
+`out/core/`. Every `startProject()` threw `MODULE_NOT_FOUND`:
+
+```
+[retention] sweep failed: Error: Cannot find module '../core/retention'
+```
+
+`terminal.castKeepDays` and `screenshots.keepDays` had no effect in any shipped
+build — `.cast` files (up to 50 MB each) and screenshots grew without bound,
+and the `system.cast_pruned` / `system.screenshot_pruned` audit events that
+explain a deleted file were never written. Unit tests missed it because they
+import `core/retention` directly and never go through the bundle. Now a static
+import, like every other core module.
+
+The justifying comment was also wrong: it claimed "same pattern as
+recoverOrphanSessions above", but that is a static import.
+
+### 5. HUD drifted left and clipped its content (P0-5)
+
+Operator report: "content is mangled and it's in the wrong place". Three
+defects in the `overlay:autosize` contract:
+
+- **One-directional x correction.** The main side only ever slid the HUD
+  *left* to keep a widening window on screen, never restoring it when the
+  window narrowed. Measured: from `x=1309`, growing to 720px moved it to
+  `x=1080`, and shrinking back to 440px left it at `x=1080` — a permanent
+  229px drift, repeated on every scale change until it pinned against the
+  screen edge. Now anchored to whichever display edge the HUD sits nearer, so
+  width changes are symmetric.
+- **Width was guessed.** `OverlayApp` reported `440 * scale (+44)`, which read
+  the **raw** config value while the render clamps to `[0.75, 2]`, and could
+  not know the real content width — a long external IP, a Wi-Fi name or an
+  active pivot route all overflow 440px and were clipped by the panel's
+  `overflow: hidden`. Now measured via `scrollWidth`, with the formula as a
+  floor. The compact bar's redundant second `overflow: hidden` was removed so
+  the measurement is possible; the panel above it already clips.
+- **Hard 720px ceiling.** Settings offers HUD scale up to 1.5, which with
+  emphasised IP needs ~726px — past the cap, guaranteed clipping. The ceiling
+  now scales with the display (`max(720, 60% of the work area)`). The height
+  ceiling had the same class of bug: it came from the **primary** display
+  regardless of which screen the HUD was on. Both now resolve the HUD's actual
+  display once and share it.
+
+### 6. Docs: architecture, audit, roadmap, I/O design note
+
+Four new pages under `docs/`, indexed from `docs/README.md`:
+
+- **`ARCHITECTURE.md`** — process/layer model, startup order, schema and
+  migration strategy, capture pipeline end to end, tailer host, evidence
+  chain, export, plugin system, IPC conventions. Replaces the README's ASCII
+  diagram, which predated the tailer host, plugin host, marketplace and cloud
+  share.
+- **`AUDIT-2026-08-08.md`** — the standing defect list, each item tagged
+  verified/reported. P0 tier now closed; trust-model, presentation, test-
+  coverage and doc-drift tiers remain open.
+- **`ROADMAP.md`** — v0.9.4 → v1.0 with an explicit 1.0 gate, plus what is
+  deliberately not planned.
+- **`timeline-io-visibility.md`** — design note (proposed). Which sources
+  capture input/output today, the seven gaps, and the `io_ref` sidecar +
+  transcript-view proposal. Keeps the v0.6.47 invariant: bytes on disk, hash
+  in the chain.
+
+README's lane count (7/15 → 18) and MCP tool count (12 → 18) corrected against
+the source.
+
+### 7. macOS builds are Apple Silicon only
+
+`electron-builder.yml` drops the `x64` mac target. Intel Macs are past the
+point where an unsigned, unnotarised dev-tool build is worth the release
+weight and the doubled artifact size. Windows x64 is unchanged. The in-app
+updater reads only `tag_name` / `html_url`, so nothing downstream depends on
+the removed asset names.
+
+README's download table now tracks the current version instead of the
+hard-coded v0.7.0 links it carried since that release.
+
+### 8. `chain verify` no longer reports tampering on a fresh project
+
+Found running RELEASE_CHECKLIST §13. `verifyLatestAnchor()` returns
+`ok: false` when there is no anchor at all, which is correct as far as "nothing
+has been verified" goes — but the consumers could not tell that apart from "the
+anchor disagrees with the chain":
+
+- the CLI printed **`MISMATCH — investigate`** and exited **2**, so
+  `chain verify` was a permanent red in any CI gate until the first hourly
+  anchor landed, and told the operator to investigate a non-problem;
+- the MCP tool handed agents a bare `{ok: false}`, so an agent following the
+  shipped `redlog-pentest` skill would report a broken evidence chain on a
+  brand-new engagement.
+
+The Settings panel already branched on `anchor === null` and got this right.
+`verifyLatestAnchor()` now also returns `noAnchor`, and the CLI has its own
+branch: `NO ANCHOR YET — nothing to verify against`, exit 0, pointing at
+`chain anchor` and `chain verify --full`. The `ok` semantics are unchanged, so
+no existing consumer shifts.
+
+### 9. CLI smoke coverage
+
+`redlog-cli` had no automated tests — `redlog-sign` was the only covered
+binary, which is how §8 shipped. `e2e/cli-smoke.spec.ts` now drives 18
+commands against a live app (whoami / status / health / mark / log / search /
+recording pause+resume / quickmark add+list / screenshot / operators / chain
+status+verify+verify --full+anchors / sanitize --dry-run / export bundle),
+asserts `replay` refuses a non-builtin-terminal event by name, and asserts
+`chain verify` stays exit 0 on a never-anchored project. Mirrors
+RELEASE_CHECKLIST §13.
+
+### Tested
+
+- 439/439 unit tests green; `npm run build` clean.
+- **26/26 E2E** (was 17). New: `e2e/timeline-geometry.spec.ts` (P0-1, P0-2,
+  P0-3, P0-4), `e2e/hud-overlay.spec.ts` (P0-5) and `e2e/cli-smoke.spec.ts`.
+- RELEASE_CHECKLIST §0, §13, §15 run clean and are now automated; i18n is
+  764/764 aligned with no mojibake, all 669 static `t()` keys resolve, and the
+  9 dynamic `t(\`…\`)` prefix families each resolve to real keys.
+- Every fix A/B-verified: reverting it makes the corresponding test fail with
+  the original symptom — `ReferenceError: os is not defined`, scroll container
+  not found, dot at x=30976, `Cannot find module '../core/retention'`, window
+  pinned at 720px.
+
 ## v0.9.3 — 2026-08-08
 **Timeline UX push driven by v0.9.2's subagent design review.** Three
 items shipped: the highest-signal design finding (agent-session

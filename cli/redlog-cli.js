@@ -510,9 +510,17 @@ Examples:
               console.log(`  clock anomalies: 0`)
             }
             if (!d.ok) process.exit(2)
+          } else if (!res.data.anchor) {
+            // Never anchored — not a mismatch. Exiting 2 here made `chain
+            // verify` a permanent red in CI until the first hourly anchor
+            // landed, and told the operator to investigate a non-problem.
+            console.log('NO ANCHOR YET — nothing to verify against')
+            if (res.data.currentHead) console.log(`  current head:       ${res.data.currentHead}`)
+            console.log('  run `redlog-cli chain anchor` to create the first one,')
+            console.log('  or `redlog-cli chain verify --full` to re-walk the chain itself')
           } else {
             console.log(res.data.ok ? 'OK — latest anchor is a prefix of current chain' : 'MISMATCH — investigate')
-            if (res.data.anchor) console.log(`  anchor event_count: ${res.data.anchor.eventCount}`)
+            console.log(`  anchor event_count: ${res.data.anchor.eventCount}`)
             if (res.data.currentHead) console.log(`  current head:       ${res.data.currentHead}`)
             if (!res.data.ok) process.exit(2)
           }

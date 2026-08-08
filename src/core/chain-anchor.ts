@@ -248,10 +248,16 @@ export function stopAnchorLoop(): void {
   if (upgradeTimer) { clearInterval(upgradeTimer); upgradeTimer = null }
 }
 
-export function verifyLatestAnchor(): { ok: boolean; anchor: ChainAnchor | null; currentHead: string | null } {
+export function verifyLatestAnchor(): { ok: boolean; anchor: ChainAnchor | null; currentHead: string | null; noAnchor?: boolean } {
   const last = getLastAnchor()
   const head = computeChainHead()
-  if (!last || !head) return { ok: false, anchor: last, currentHead: head?.hash ?? null }
+  // v0.9.4: "never anchored" is not "the anchor disagrees with the chain".
+  // `ok` stays false — nothing has been verified — but `noAnchor` lets callers
+  // say which one it is. The Settings panel already branched on `anchor ===
+  // null`; the CLI printed "MISMATCH — investigate" and exited 2, and the MCP
+  // tool handed agents a bare {ok:false}, so an agent following the ship skill
+  // would report a broken evidence chain on a brand-new project.
+  if (!last || !head) return { ok: false, noAnchor: !last, anchor: last, currentHead: head?.hash ?? null }
   const countOk = last.eventCount <= head.eventCount
   const recomputedAtAnchor = computeChainHead(last.eventCount)
   const hashOk = recomputedAtAnchor ? recomputedAtAnchor.hash === last.headHash : false

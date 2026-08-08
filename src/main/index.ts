@@ -23,6 +23,7 @@ import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAn
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
+import { sweepRetention } from '../core/retention'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
@@ -452,9 +453,14 @@ function startProject(project: ProjectMeta): void {
   // positive integer causes the sweep to run on every project open and to
   // append audit events per deletion.
   try {
-    // Lazy require — same pattern as recoverOrphanSessions above — so retention
-    // stays isolated from module load order + tests that don't touch fs.
-    const { sweepRetention } = require('../core/retention') as typeof import('../core/retention')
+    // v0.9.4 P0-4: statically imported. This used to be a runtime
+    // `require('../core/retention')`, which rollup cannot see through — the
+    // module was never bundled and the literal require survived into
+    // out/main/index.js, where it resolved against a non-existent out/core/.
+    // Every packaged build threw MODULE_NOT_FOUND into the catch below, so
+    // castKeepDays / screenshots.keepDays silently did nothing and the
+    // cast_pruned / screenshot_pruned audit events were never written. Unit
+    // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
     if (swept.cast > 0 || swept.screenshots > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
@@ -546,13 +552,23 @@ function startProject(project: ProjectMeta): void {
     let excludedPaths: string[] = []
     let watchPaths: string[] = []
     try {
-      const cfgPath = path.join(os.homedir(), '.redlog', 'hook-config.json')
+      const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
       if (fs.existsSync(cfgPath)) {
         const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as { excludedPaths?: string[]; watchPaths?: string[] }
         excludedPaths = raw.excludedPaths ?? []
         watchPaths = raw.watchPaths ?? []
       }
-    } catch { /* missing / bad file → default no-filter */ }
+    } catch (e) {
+      // A missing or malformed file is expected — the operator may never have
+      // opened Settings ▸ Integrations. Anything else gets logged: v0.9.4
+      // P0-1 was a ReferenceError swallowed right here for several releases,
+      // silently disabling every tailer exclusion while the shell hook (which
+      // reads the same file itself) kept the feature looking alive. A gate
+      // that fails open must not fail quietly.
+      if (!(e instanceof SyntaxError)) {
+        console.error('[tailer] hook-config.json unreadable; path exclusions disabled:', e)
+      }
+    }
     configureAgentTailer({
       enabled: config.agentTailer?.enabled ?? true,
       engagementId, operatorId,
@@ -951,21 +967,37 @@ app.whenReady().then(() => {
   // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
   // big empty gap. Clamp to sane bounds.
   ipcMain.on('overlay:autosize', (_e, height: number, width?: number) => {
-    const maxH = screen.getPrimaryDisplay().workAreaSize.height - 40
-    const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       const cur = overlayWindow.getBounds()
-      // Width scales with content (larger HUD scale + emphasize IP need more
-      // horizontal room). Clamp to a sane range and keep the HUD on-screen —
-      // if growing wider would push it off the right edge, slide it back.
+      // Resolve the display the HUD is actually on once, and use it for both
+      // the size ceilings and the x anchoring below. The ceilings used to come
+      // from the PRIMARY display regardless of where the HUD sat.
+      let disp: Electron.Rectangle | null = null
+      try { disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea } catch { /* no display info */ }
+      const maxH = (disp ? disp.height : screen.getPrimaryDisplay().workAreaSize.height) - 40
+      const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
+      // v0.9.4: the width ceiling was a hard 720. HUD scale 1.5 with
+      // emphasizeExternalIp already needs ~726px of content, and a long IPv6
+      // plus an active pivot route needs more — everything past the cap was
+      // silently clipped by the panel's overflow:hidden. Scale the ceiling
+      // with the display instead, keeping 720 as the floor for small screens.
+      const maxW = disp ? Math.max(720, Math.round(disp.width * 0.6)) : 720
       const w = width != null
-        ? Math.max(380, Math.min(720, Math.round(Number(width))))
+        ? Math.max(380, Math.min(maxW, Math.round(Number(width))))
         : cur.width
       let x = cur.x
-      try {
-        const disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea
-        if (x + w > disp.x + disp.width) x = Math.max(disp.x, disp.x + disp.width - w)
-      } catch { /* no display info — leave x alone */ }
+      if (disp) {
+        // v0.9.4: anchor to whichever edge the HUD currently sits nearer, so a
+        // width change grows and shrinks symmetrically. The old rule only ever
+        // slid x LEFT (to keep a widening HUD on screen) and never restored it,
+        // so every scale toggle / emphasizeIp flip walked the HUD further left
+        // until it pinned against the left edge — reported as "the HUD moved".
+        const gapL = cur.x - disp.x
+        const gapR = (disp.x + disp.width) - (cur.x + cur.width)
+        if (gapR <= gapL) x = disp.x + disp.width - gapR - w
+        // Clamp last so it can never leave the display in either direction.
+        x = Math.max(disp.x, Math.min(x, disp.x + disp.width - w))
+      }
       overlayWindow.setBounds({ x, y: cur.y, width: w, height: h })
       if (process.platform === 'win32') {
         overlayWindow.setOpacity(0.99)

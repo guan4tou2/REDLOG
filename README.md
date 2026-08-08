@@ -11,14 +11,15 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.7.0**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.9.4**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.7.0-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.7.0/RedLog-0.7.0-arm64.dmg) |
-| macOS (Intel) | [`RedLog-0.7.0.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.7.0/RedLog-0.7.0.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.7.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.7.0/RedLog.Setup.0.7.0.exe) |
-| Windows (portable) | [`RedLog.0.7.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.7.0/RedLog.0.7.0.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.9.4-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.4/RedLog-0.9.4-arm64.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.9.4.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.4/RedLog.Setup.0.9.4.exe) |
+| Windows (portable) | [`RedLog.0.9.4.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.4/RedLog.0.9.4.exe) |
+
+macOS builds are **Apple Silicon only** as of v0.9.4 — Intel Macs should build from source (`npm install && npm run build && npx electron-builder --mac`).
 
 Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
 
@@ -102,7 +103,7 @@ npx electron-builder --mac    # or --win / --linux
 
 ### Timeline & UI
 
-- **Swim-lane Timeline** — 15 lanes: shell, agent, http_navigation, dns, pivot, screenshot, clipboard, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, system. Empty lanes auto-collapse — only what this engagement touched
+- **Swim-lane Timeline** — 18 lanes: shell, agent, http_navigation, scanner, browser, dns, pivot, screenshot, clipboard, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, process, system. Empty lanes auto-collapse — only what this engagement touched
 - **Housekeeping filter** — RedLog's own lifecycle (api_started, session_start, terminal-pane open/close, the "silent" hook auto-source) stays in the DB for the record but is hidden from the timeline
 - **Command pair collapse** — a `shell.command_start` disappears once its matching `command_end` lands (same pid+cmd); still-running commands keep showing
 - **Cursor-anchored zoom** — trackpad pinch and wheel zoom stay locked to what's under the cursor
@@ -342,7 +343,7 @@ Renderer (React 18 + Tailwind CSS 3)
   ├── ProjectPicker         create (with advanced scope setup) / open / delete
   ├── Sidebar               navigation with live badges (loot, violations)
   ├── Dashboard             stats + engagement info + keyboard shortcuts
-  ├── Timeline              custom swim-lane timeline (7 lanes, dynamic height)
+  ├── Timeline              custom swim-lane timeline (18 lanes, dynamic height)
   ├── ScreenshotsView       thumbnail grid with lightbox
   ├── TargetView            auto-cataloged targets with evidence drilldown
   ├── ScopeStatus           violation log
@@ -361,7 +362,7 @@ Hooks
   └── codex-wrapper.sh      Shell wrapper for Codex/GPT
 
 MCP Server
-  └── redlog-mcp-server.js  12-tool MCP server (stdio transport)
+  └── redlog-mcp-server.js  18-tool MCP server (stdio transport)
 ```
 
 ## Project Structure
@@ -405,7 +406,7 @@ hooks/
   shell-preexec-hook.sh      zsh/bash preexec → RedLog
   codex-wrapper.sh           shell wrapper for any agent
 mcp/
-  redlog-mcp-server.js       MCP server (12 tools, stdio transport)
+  redlog-mcp-server.js       MCP server (18 tools, stdio transport)
 cli/
   redlog-cli.js              CLI tool for external integration
 shell/

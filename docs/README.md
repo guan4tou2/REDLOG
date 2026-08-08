@@ -1,6 +1,6 @@
 # RedLog Docs
 
-Wiki-style index for **v0.6.15**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
+Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
 
 ## What RedLog is (and isn't)
 
@@ -11,6 +11,13 @@ Wiki-style index for **v0.6.15**. Every page is self-contained; follow the links
 ## Start here
 
 - **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing. If you're wiring an agent to RedLog, start here.
+
+## Architecture & planning
+
+- **[Architecture](ARCHITECTURE.md)** — process/layer model, startup order, DB schema and migration strategy, the capture pipeline end to end, tailer host, evidence chain, export, plugin system, IPC conventions. Replaces the stale ASCII diagram in the README.
+- **[Roadmap](ROADMAP.md)** — what ships next and the v1.0 gate. Also states what is deliberately not planned.
+- **[Audit 2026-08-08](AUDIT-2026-08-08.md)** — standing defect list from a full-tree review: correctness, trust-model gaps, presentation, test coverage, doc drift. Each item tagged verified/reported.
+- **[Timeline I/O visibility](timeline-io-visibility.md)** — design note (proposed). Which sources capture input/output today, where the gaps are, and the `io_ref` sidecar + transcript-view proposal that closes them.
 
 ## Integrations
 
