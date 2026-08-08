@@ -41,7 +41,17 @@ export default function OverlayApp(): JSX.Element {
     const el = contentRef.current
     if (!el) return
     const h = el.offsetHeight
-    const w = Math.round(440 * scale) + (emphasizeIp ? Math.round(44 * scale) : 0)
+    // v0.9.4: width used to be a pure formula, which was wrong twice over.
+    // It read the RAW config `scale` while the render clamps it to [0.75, 2],
+    // so an out-of-band value sized the window for one scale and drew at
+    // another; and no formula can know how wide the content actually is — a
+    // long external IP, a Wi-Fi name or an active pivot route all overflow
+    // 440px and were silently clipped by the panel's overflow:hidden. Measure
+    // the content, keep the formula as a floor so a sparse HUD stays a
+    // reasonable size, and let the main side clamp the ceiling.
+    const sc = Math.max(0.75, Math.min(2, scale))
+    const floorW = Math.round(440 * sc) + (emphasizeIp ? Math.round(44 * sc) : 0)
+    const w = Math.max(floorW, el.scrollWidth + 8)
     if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })?.autosize?.(h + 18, w)
   })
 
@@ -187,7 +197,7 @@ export default function OverlayApp(): JSX.Element {
               stacked beneath it, and internal IP (right) with the Wi-Fi/wired name
               beneath it. Keeping the pivot in the external column stops it crowding
               the internal IP. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: px(10), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(14)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: px(10), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(14)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, ...dimStyle }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
               <span style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
