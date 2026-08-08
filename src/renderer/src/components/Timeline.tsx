@@ -1084,8 +1084,21 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       const now = Date.now()
       return { timeStart: now - 3600000, timeEnd: now, ticks: [] as number[] }
     }
-    const first = events[0].timestamp
-    const last = events[events.length - 1].timestamp
+    // v0.9.4 P0-3: the domain comes from `displayTs`, not `timestamp`.
+    // `events` is sorted by wall-clock, but a marker carrying an
+    // `atTimestamp` override renders somewhere else entirely — and when the
+    // operator dropped one outside the current event range (right-click on
+    // the padded edge of the track), first/last bounds pushed its `toX()`
+    // below 0 or past TRACK_W and the dot silently vanished. One O(n) scan,
+    // same order as the `bins` / `laneEvents` memos that already re-run on
+    // every event change.
+    let first = displayTs(events[0])
+    let last = first
+    for (const e of events) {
+      const d = displayTs(e)
+      if (d < first) first = d
+      if (d > last) last = d
+    }
     const pad = Math.max((last - first) * 0.05, 60000)
     const s = first - pad
     const e = last + pad
@@ -1336,7 +1349,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const counts = new Array(N).fill(0)
     const span = (timeEnd - timeStart) || 1
     for (const e of events) {
-      let i = Math.floor(((e.timestamp - timeStart) / span) * N)
+      // v0.9.4 P0-4: bin on `displayTs` so the density histogram agrees with
+      // the track. Binning on `timestamp` put an `atTimestamp`-overridden
+      // marker in a different cell than the dot the operator can see.
+      let i = Math.floor(((displayTs(e) - timeStart) / span) * N)
       i = i < 0 ? 0 : i >= N ? N - 1 : i
       counts[i]++
     }
@@ -1423,6 +1439,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         // still gives a mouse wheel a reasonable step.
         setZoom((prev) => Math.min(6, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
       } else if (e.deltaY !== 0) {
+        // v0.9.4 P0-2: while the lane stack overflows its container, deltaY
+        // has to drive the vertical axis or the newly-scrollable lanes are
+        // unreachable by wheel; shift+wheel keeps the horizontal scroll that
+        // deltaY does otherwise (dragging and the minimap also still pan).
+        // With no vertical overflow — the common case — behaviour is
+        // unchanged.
+        const outer = containerRef.current
+        if (outer && !e.shiftKey && outer.scrollHeight > outer.clientHeight + 1) return
         e.preventDefault()
         el.scrollLeft += e.deltaY
       }
@@ -2301,7 +2325,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       {/* Timeline + event list split */}
       <div className="flex-1 min-h-0 flex flex-col">
         {/* Swim lanes */}
-        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-hidden">
+        {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
+            the track, so the overflow has to live on this shared parent —
+            putting it on the track alone would slide the lanes out from
+            under their labels. 18 lanes x the 36px floor overflows a 1080p
+            window, and the old `overflow-hidden` clipped the tail of the
+            stack (scope / process / system) with no scrollbar and no hint. */}
+        <div ref={containerRef} className="flex-1 min-h-0 flex overflow-x-hidden overflow-y-auto">
           {/* Lane labels */}
           <div className="shrink-0 border-r border-zinc-800/60 bg-zinc-950/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-zinc-800/60" />

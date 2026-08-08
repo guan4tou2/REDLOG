@@ -27,14 +27,15 @@ mac:
     # request it (opt-in) so the HUD can show the real network name.
     NSLocationWhenInUseUsageDescription: RedLog uses your location only to read the current Wi-Fi network name for the operator HUD. No location data leaves your machine.
     NSLocationUsageDescription: RedLog uses your location only to read the current Wi-Fi network name for the operator HUD. No location data leaves your machine.
+  # v0.9.4: Apple Silicon only. An unsigned, unnotarised dev tool doesn't
+  # justify doubling every release's artifact size for Intel; those users
+  # build from source.
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
     - target: zip
       arch:
-        - x64
         - arm64
 win:
   icon: resources/icon-256.png
