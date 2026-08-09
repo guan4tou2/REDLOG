@@ -132,4 +132,17 @@ describeDB('capture-health', () => {
     expect(h.verdict).toBe('healthy')
     expect(h.sources.find((s) => s.id === 'mitmproxy')?.state).toBe('active')
   })
+
+  // v0.9.8: getCaptureHealth is cached for 750 ms — it runs eleven indexed
+  // probes plus a hooks check, and is hit by the Dashboard poll, the
+  // StatusBar, every REST /api/status and every agent calling redlog_status.
+  // Anything that changes what it reports has to drop the cache, or the
+  // readout lags behind the thing it is reporting on.
+  it('a config change is visible immediately, not after the cache TTL', () => {
+    mockHooks({ 'shell-zsh': false })
+    configureCaptureHealth({ clipboard: { enabled: true } })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(true)
+    configureCaptureHealth({ clipboard: { enabled: false } })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
+  })
 })

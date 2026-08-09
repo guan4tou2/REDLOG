@@ -3,6 +3,91 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.8 — 2026-08-09
+
+**Performance: profiled, then fixed.** Measured on a 50k-event database before
+touching anything — the two worst offenders were not where the earlier audit
+guessed, and one of them was catastrophic.
+
+| Path | Before | After |
+|---|---|---|
+| `insertEvent` (steady state, per event) | **16.5 ms** | **0.107 ms** |
+| Seeding 50k events | 143.6 s | 3.2 s |
+| `getCaptureHealth` (repeat calls) | 23.4 ms | ~0 ms (cached) |
+| `getCaptureHealth` (uncached) | 23.4 ms | 11.9 ms |
+| Timeline `/` filter, 8 keystrokes at 100k events | 532 ms | 72 ms |
+
+### 1. The dedup window was sorting the whole table, on every insert
+
+`insertEvent` looks back 2 seconds for a duplicate command. The query
+(`agent_type IN ('shell','agent') AND timestamp >= ? ORDER BY timestamp DESC
+LIMIT 20`) planned as:
+
+```
+SEARCH events USING INDEX idx_events_type (agent_type=?) | USE TEMP B-TREE FOR ORDER BY
+```
+
+Neither single-column index could serve both halves, so SQLite took every
+`shell` row — 43k of them at this size — and sorted them in a temp B-tree to
+find twenty. **2.8 ms per insert, and it grows with the table.** At 200
+events/s (a running scan) that alone is more than three seconds of
+main-process work per second of capture; the app cannot keep up, and every
+capture path is synchronous.
+
+A composite `(agent_type, timestamp DESC)` index makes the ordering come from
+the index. The dedup query drops from 2.805 ms to 0.019 ms, and `insertEvent`
+end-to-end from 2.714 ms to 0.121 ms. The index is created by the same
+idempotent DDL as the others, so existing projects pick it up on open.
+
+For the record, the rest of `insertEvent` was never the problem: Ed25519
+signing is 0.009 ms and the prev-hash lookup 0.002 ms.
+
+### 2. Capture health ran eleven full-bucket scans per call
+
+Each source probe was `SELECT MAX(timestamp) ... WHERE agent_type = ? AND
+json_extract(data,'$.source') = ?`. `MAX()` is an aggregate, so SQLite must
+visit every row matching the WHERE clause — and no index can serve a
+`json_extract`, so each of the eleven probes scanned the whole agent_type
+bucket. 23 ms per call, on the Dashboard poll, the StatusBar, every REST
+`/api/status`, and every agent calling `redlog_status` (which the shipped
+skill tells them to do at session start).
+
+Two changes: `ORDER BY timestamp DESC LIMIT 1` instead of `MAX()`, so the new
+composite index walks newest-first and stops at the first row satisfying the
+json filter; and a 750 ms result cache, since the reading is a freshness
+readout with a ten-minute active window.
+
+The cache is dropped by everything that changes what the readout says —
+`configureCaptureHealth`, `noteDbError` / `clearDbError`, `noteSampleBroken` /
+`noteSampleOk` / `clearSampleBroken`, `invalidateHooksCache`. A broken chain
+sample has to go dark on the very next read, not after the TTL; the
+chain-sampling tests caught this when the first version of the cache lacked
+the invalidation.
+
+### 3. Timeline filtering rebuilt every haystack on every keystroke
+
+`filterMatches` listed `filterQuery` in its deps, so each character retyped a
+nine-element array, joined it, lowercased it and called `eventTitle()` (which
+slices and replaces) — for every event. The searchable text now builds once
+per event set, and the query is debounced 120 ms. Typing "nmap -sV" over 100k
+events: 532 ms → 72 ms of scanning, and the debounce collapses eight scans
+into one.
+
+### Not changed
+
+`verifyChainFull` (648 ms at 50k) and the 100k-row export path (181 ms) are
+still synchronous on the main process. Both are deliberate operator actions
+rather than hot paths, and the chain walk has an open concurrency defect
+(AUDIT P1-1) that should be fixed in the same pass. Filed, not rushed.
+
+### Tested
+
+- 454/454 unit (+4): `test/query-plans.test.ts` asserts both hot queries are
+  index-served and free of temp B-tree sorts — they stay correct when they
+  regress, so only a plan assertion catches it. Plus cache-invalidation
+  coverage.
+- 38/38 E2E, 1 skipped.
+
 ## v0.9.7 — 2026-08-09
 
 **Capture Health becomes an exception report; HUD marking splits in two.**

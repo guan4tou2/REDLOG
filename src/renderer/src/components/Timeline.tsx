@@ -1176,13 +1176,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // eventTitle (which is what the operator actually sees), and operatorId.
   // Rebuilt on every events / query change — cheap for <= 5k events; for larger
   // sets the outer dim path already dominates so this doesn't move the needle.
-  const filterMatches = useMemo(() => {
-    if (!filterQuery.trim()) return null
-    const q = filterQuery.trim().toLowerCase()
-    const set = new Set<string>()
+  // v0.9.8: the searchable text is built once per event set, not once per
+  // keystroke. This used to allocate a nine-element array, join it, lowercase
+  // it and call eventTitle() (which slices and replaces) for EVERY event on
+  // EVERY character typed — the memo listed `filterQuery` in its deps, so a
+  // 100k-event engagement redid all of that between keypresses. Now typing
+  // only walks an array of prebuilt strings.
+  const searchIndex = useMemo(() => {
+    const idx = new Map<string, string>()
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
-      const bag = [
+      idx.set(e.id, [
         String(d?.command ?? ''),
         String(d?.url ?? ''),
         String(d?.host ?? ''),
@@ -1192,11 +1196,27 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         e.operatorId,
         operatorNames[e.operatorId] ?? '',
         eventTitle(e)
-      ].join('').toLowerCase()
-      if (bag.includes(q)) set.add(e.id)
+      ].join('').toLowerCase())
     }
+    return idx
+  }, [events, operatorNames])
+
+  // Debounced so a held key or a fast typist does not run the scan per
+  // character. 120 ms sits below the point where the filter feels laggy and
+  // above a burst of keystrokes.
+  const [filterQueryDebounced, setFilterQueryDebounced] = useState(filterQuery)
+  useEffect(() => {
+    const id = window.setTimeout(() => setFilterQueryDebounced(filterQuery), 120)
+    return () => window.clearTimeout(id)
+  }, [filterQuery])
+
+  const filterMatches = useMemo(() => {
+    const q = filterQueryDebounced.trim().toLowerCase()
+    if (!q) return null
+    const set = new Set<string>()
+    for (const [id, bag] of searchIndex) if (bag.includes(q)) set.add(id)
     return set
-  }, [events, filterQuery, operatorNames])
+  }, [searchIndex, filterQueryDebounced])
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => {

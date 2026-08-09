@@ -70,8 +70,9 @@ const DB_ERROR_TTL_MS = 60_000
 export function noteDbError(source: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err ?? '')
   _lastDbError = { source, at: Date.now(), message: msg.slice(0, 200) }
+  healthCache = null
 }
-export function clearDbError(): void { _lastDbError = null }
+export function clearDbError(): void { _lastDbError = null; healthCache = null }
 function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
   if (!_lastDbError) return undefined
   if (now - _lastDbError.at > DB_ERROR_TTL_MS) { _lastDbError = null; return undefined }
@@ -91,6 +92,9 @@ const SAMPLE_BROKEN_TTL_MS = 60 * 60 * 1000
 // how old the broken row is. Callers that don't have it (older code
 // paths, tests) still work — the field is optional end-to-end.
 export function noteSampleBroken(details: { eventId: string; reason: string; eventTimestamp?: number }): void {
+  // v0.9.8: these feed the verdict directly — a broken chain sample must go
+  // dark on the very next read, not after the health cache TTL.
+  healthCache = null
   _lastSampleBroken = {
     at: Date.now(),
     eventId: details.eventId,
@@ -98,8 +102,8 @@ export function noteSampleBroken(details: { eventId: string; reason: string; eve
     ...(details.eventTimestamp != null ? { eventTimestamp: details.eventTimestamp } : {})
   }
 }
-export function noteSampleOk(): void { _lastSampleOkAt = Date.now() }
-export function clearSampleBroken(): void { _lastSampleBroken = null }
+export function noteSampleOk(): void { healthCache = null; _lastSampleOkAt = Date.now() }
+export function clearSampleBroken(): void { healthCache = null; _lastSampleBroken = null }
 export function getLastSampleBroken(): { at: number; eventId: string; reason: string; eventTimestamp?: number } | null {
   if (!_lastSampleBroken) return null
   if (Date.now() - _lastSampleBroken.at > SAMPLE_BROKEN_TTL_MS) { _lastSampleBroken = null; return null }
@@ -118,11 +122,27 @@ const ACTIVE_WINDOW_MS = 10 * 60 * 1000
 // don't prove anything is being captured, so they never count as "recording".
 function lastEventFor(where: string, params: unknown[] = []): number | null {
   const db = getDB()
+  // v0.9.8: ORDER BY ... LIMIT 1 rather than MAX(timestamp). MAX() is an
+  // aggregate, so SQLite must visit every row matching the WHERE clause before
+  // it can answer — and most of these predicates include a json_extract() that
+  // no index can serve, so each probe scanned the whole agent_type bucket.
+  // Ordered + limited, the (agent_type, timestamp DESC) index walks newest
+  // first and stops at the first row that satisfies the json filter, which in
+  // practice is one of the first few. Same answer, bounded work.
   const row = db.prepare(
-    `SELECT MAX(timestamp) AS t FROM events WHERE ${where}`
+    `SELECT timestamp AS t FROM events WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
   ).get(...params) as { t: number | null } | undefined
   return row?.t ?? null
 }
+
+// getCaptureHealth runs eleven of those probes plus a hooks check. It is hit by
+// the Dashboard poll, the StatusBar, every REST /api/status, and every agent
+// calling redlog_status — the skill tells them to do that at session start.
+// The answer is a freshness readout with a 10-minute active window, so a
+// sub-second cache changes nothing an operator could perceive.
+let healthCache: { at: number; value: CaptureHealth } | null = null
+const HEALTH_TTL_MS = 750
+export function invalidateCaptureHealthCache(): void { healthCache = null }
 
 function stateFrom(
   installed: boolean | undefined,
@@ -146,6 +166,8 @@ function stateFrom(
 let cfgSnapshot: Record<string, unknown> = {}
 export function configureCaptureHealth(cfg: Record<string, unknown>): void {
   cfgSnapshot = cfg ?? {}
+  // A switch flip must show up on the next read, not after the TTL.
+  healthCache = null
 }
 function cfgFlag(path: string): boolean | undefined {
   let cur: unknown = cfgSnapshot
@@ -172,9 +194,16 @@ function cachedHooks(now: number): ReturnType<typeof detectHooks> {
   return value
 }
 
-export function invalidateHooksCache(): void { hooksCache = null }
+export function invalidateHooksCache(): void { hooksCache = null; healthCache = null }
 
 export function getCaptureHealth(now = Date.now()): CaptureHealth {
+  if (healthCache && now - healthCache.at < HEALTH_TTL_MS) return healthCache.value
+  const value = computeCaptureHealth(now)
+  healthCache = { at: now, value }
+  return value
+}
+
+function computeCaptureHealth(now: number): CaptureHealth {
   const hooks = cachedHooks(now)
   const hookInstalled = (id: string): boolean | undefined => hooks.find((h) => h.id === id)?.installed
 
