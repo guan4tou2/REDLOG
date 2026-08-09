@@ -3,6 +3,93 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.5 — 2026-08-09
+
+**Pause now means "do not record".** The README promised that daily/hobby work
+stayed off the audit chain while paused. It did not: the gate lived only on
+`eventBus.publish()`, so a paused RedLog still wrote every event into the DB
+and the hash chain — it muted the UI feed and the deconfliction webhook and
+nothing else. `RELEASE_CHECKLIST` §17 has said "no new events added while
+paused" the whole time, so this closes the gap between the documented
+behaviour and the code rather than changing the design.
+
+### 1. The gate moved to the single write point
+
+`insertEvent()` now drops passive capture while paused. Enforcing it there
+instead of at the 46 call sites across 14 files means no capture source can
+forget — the shell preexec hook and the mitmproxy addon are covered without
+either of them learning about recording state, which also removes the race
+between "hook checks" and "row is written".
+
+Two lanes stay exempt (`PAUSE_EXEMPT_AGENT_TYPES`):
+
+- **`system`** — RedLog's audit trail about itself and the environment
+  (`recording_paused`, `config_changed`, `sanitized`, `secret_revealed`,
+  `*_pruned`, `ip_transition`, `opsec_state_changed`, `chain_sample_broken`).
+  Dropping these would leave the pause itself unrecorded, and a gap in the
+  timeline has to stay explainable — that is the premise the whole log rests
+  on.
+- **`marker`** — someone deliberately writing something down is not passive
+  capture. This generalises the rule `screenshot-agent` already applied
+  locally: ambient triggers pause, an explicit manual capture does not.
+
+`bypassPause` covers the remaining deliberate action, the manual screenshot
+trigger, which otherwise wrote its JPEG to disk and then silently lost its
+event row.
+
+### 2. `POST /api/events` bails before any derivation — and answers 2xx
+
+Two things had to be true at the HTTP surface:
+
+- **Bail early.** The `insertEvent` gate alone would drop the main row, but the
+  shell normalisation ahead of it emits its own — `scope_violation`, `loot`,
+  `pivot`, `cleanup`, `file_transfer`. A `scope_violation` names the target
+  host of a command that was never recorded, so the paused request now returns
+  before any detector runs.
+- **Answer 200, not an error.** `shell-preexec-hook.sh` posts with `curl -sf`,
+  which treats any non-2xx as failure and spools the payload to
+  `~/.redlog/pending/` — and RedLog replays that spool on the next project
+  open. A refusal that looked like a failure would have put every paused
+  command into the chain minutes later. The paused path returns
+  `200 {ok, recording: false, skipped}`.
+
+### 3. Pause/resume rows name their origin
+
+Pause genuinely suppressing capture makes `redlog_recording` sharper than it
+was: an agent holding a token can now go properly dark, and the two bracketing
+`system` rows are the only trace. `eventBus.pause()` / `.resume()` take a
+source, and the event carries it — `ui` (operator at the keyboard, button /
+tray / ⌘.), `api` (redlog-cli or another local REST client) or `mcp` (an agent
+calling the tool). With the `operator_id` already resolved from the token, a
+reviewer can now tell an operator pausing from an agent pausing itself.
+
+The capability is kept rather than removed: an operator may legitimately want
+an agent to pause capture. Making it attributable is the right control here,
+not making it impossible.
+
+### 4. Docs
+
+`README.md` replaces the "two-gate hook privacy" bullet, which described only
+the Claude Code path, with an accurate pair: what pause covers now (every
+source, at the write point), and the fact that cwd exclusion applies to the
+transcript tailer and the Codex / OpenCode hooks but **not** to the shell
+preexec hook. `audit-trail.md` and `event-schema.md` document the `source`
+field and the exempt lanes.
+
+### Tested
+
+- **446/446 unit** (+7): `test/pause-gate.test.ts` covers the exempt set, the
+  13 passive lanes being dropped, `bypassPause`, and prev_hash linking
+  straight through a pause — dropping rows before insert never breaks the
+  chain.
+- **33/33 E2E** (+7): `e2e/recording-pause.spec.ts` drives the real HTTP
+  surface — the 200-not-error contract with an empty spool dir, no derived
+  events leaking a paused command's host or credentials, `system` + `marker`
+  still landing, and all three toggle origins (`ui` / `api` / `mcp`) labelled
+  correctly.
+- A/B verified: disabling the gate makes the paused POST answer 201 instead of
+  200-skipped, and the test catches it.
+
 ## v0.9.4 — 2026-08-09
 
 **Five P0 defects, every one of them silent.** A full-tree review produced a

@@ -115,8 +115,16 @@ export class ScreenshotAgent {
         // v0.6.89 `_causes`: EventMarker (⌘⇧M) passes the marker event id so
         // focus chain walks link marker→screenshot→(later screenshot_deleted).
         ...(causeEventId ? { _causes: [causeEventId] } : {})
-      }, { engagementId: this.engagementId, operatorId: this.operatorId })
-      if (evt) eventBus.publish(evt)
+        // v0.9.5: the pause gate now lives in insertEvent, so the local
+        // ambient-vs-manual check above needs to carry through to it —
+        // otherwise a manual capture while paused writes the JPEG to disk and
+        // then silently drops its event row, leaving an orphan file.
+      }, {
+        engagementId: this.engagementId,
+        operatorId: this.operatorId,
+        bypassPause: trigger === 'manual'
+      })
+      if (evt) eventBus.publish(evt, { bypassPause: trigger === 'manual' })
 
       return filepath
     } catch (e) {
