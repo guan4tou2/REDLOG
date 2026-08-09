@@ -60,7 +60,7 @@ pause capture — but made attributable: pause/resume rows now carry `source`
 (`ui` / `api` / `mcp`) next to the token-resolved `operator_id`, so an agent
 pausing itself is visible as such.
 
-## v0.9.6 — I/O visibility, phase 1
+## v0.9.6 — I/O visibility, phase 1 ✅ shipped
 
 Steps 1–2 of `timeline-io-visibility.md`:
 

@@ -1,4 +1,6 @@
 import crypto from 'crypto'
+import { insertEvent } from './db/events'
+import { getPrimaryOperator } from './db/operators'
 import https from 'https'
 import { URL } from 'url'
 import { getDB } from './db/index'
@@ -200,9 +202,7 @@ export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promis
   // that OTS submission failed and delivery bundles carry the reason.
   if (status === 'failed') {
     try {
-      const { insertEvent } = require('./db/events') as typeof import('./db/events')
-      const ops = require('./db/operators') as { getPrimaryOperator?: () => { id: string } | null }
-      const opId = ops.getPrimaryOperator?.()?.id
+      const opId = getPrimaryOperator()?.id
       if (opId) {
         insertEvent('system', {
           subtype: 'anchor_failed',

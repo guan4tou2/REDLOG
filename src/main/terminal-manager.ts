@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { insertEvent } from '../core/db/events'
+import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
@@ -100,6 +101,17 @@ function sendToWindow(channel: string, payload: unknown): void {
   try { mainWindow.webContents.send(channel, payload) } catch { /* window tearing down */ }
 }
 
+/** v0.9.6 (T2): current write position in a live session's .cast, so a
+ *  command_start / command_end pair can bracket its own output by byte range.
+ *  `session.castBytes` is already maintained by the write path, so this is
+ *  O(1) — the alternative, re-slicing the cast by time window on every
+ *  command_end, re-streams a growing prefix and is O(n^2) over a session. */
+export function getCastPosition(terminalId: string): { castPath: string; offset: number; truncated: boolean } | null {
+  const session = sessions.get(terminalId)
+  if (!session?.castPath) return null
+  return { castPath: session.castPath, offset: session.castBytes, truncated: session.castTruncated }
+}
+
 export function configureTerminal(opts: { engagementId: string; operatorId: string; maxCastBytes?: number }): void {
   engagementId = opts.engagementId
   operatorId = opts.operatorId
@@ -118,9 +130,6 @@ export function recoverOrphanSessions(): number {
   if (!operatorId) return 0
   let recovered = 0
   try {
-    // Lazy import to avoid pulling db into modules that get pulled by tests.
-    const { getDB } = require('../core/db/index') as typeof import('../core/db/index')
-    const { insertEvent } = require('../core/db/events') as typeof import('../core/db/events')
     // v0.6.87 A5: paginated scan via SQL (previous impl loaded up to 5000 rows
     // twice into memory then diffed in JS — big engagements with many terminal
     // sessions would silently miss orphans past the 5000 cap). SQL LEFT JOIN

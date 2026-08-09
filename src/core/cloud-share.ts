@@ -1,4 +1,5 @@
 import fs from 'fs'
+import { getProjectDir } from './db/index'
 import path from 'path'
 import crypto from 'crypto'
 import { homedir } from 'os'
@@ -266,9 +267,7 @@ function runZip(srcDir: string, destZip: string): void {
 // project is active so the UI can still open the dialog and show zero counts.
 function projectDirSafe(): string {
   try {
-    // Late-bind to sidestep circular init in tests.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return (require('./db/index') as { getProjectDir: () => string }).getProjectDir()
+    return getProjectDir()
   } catch {
     return path.join(homedir(), '.redlog', 'no-project')
   }
