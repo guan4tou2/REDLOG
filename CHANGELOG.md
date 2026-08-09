@@ -3,6 +3,69 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.10 — 2026-08-10
+
+**Settings reorganised; the three untested modules that touch evidence now have
+tests.**
+
+### 1. Ten Settings tabs down to eight
+
+The tab strip had grown by accretion — a tab per feature, in the order the
+features shipped. Reordered around the question the operator is asking:
+
+> identity → what gets recorded → what's in bounds → exposure → display →
+> external tools → retention → extensions
+
+Two merges:
+
+- **AI Agents → Capture.** The AI transcript tailer is a passive capture source
+  exactly like the clipboard, the file watcher and the process monitor — all of
+  which already lived in Capture. On its own it was a top-level tab holding
+  three checkboxes, which made it look like a subsystem rather than one source
+  among several. (Same reasoning that moved it onto the Capture Health card in
+  v0.9.7.)
+- **Marketplace → Plugins, as a sub-tab.** "What do I have" and "where do I get
+  more" are one task, and an operator installing something moves between them
+  constantly. Two of eight top-level slots for one task was the wrong trade.
+
+### 2. Tests for the three modules that touch evidence
+
+`docs/AUDIT-2026-08-08.md` §4 flagged these: *"One sends data to an external
+SOC, the other deletes evidence from disk"* — and neither had a single test.
+Nor did the bundle exporter, which produces the artefact an operator hands to a
+client.
+
+**`retention` (7 tests)** — keeps everything when `keepDays` is 0; prunes only
+past the window; **writes one audit event per deletion**, so a reviewer finding
+a missing `.cast` finds the row explaining it rather than an unexplained gap;
+sweeps each directory against its own window; ignores files it does not own;
+no-ops without an operator id.
+
+**`deconfliction` (12 tests)** — runs a real HTTP server and asserts what
+actually leaves the machine: only configured agent types and subtypes; the
+event body withheld unless `includeData` is set (the test plants a secret in
+`data` and asserts it is absent from the wire); the HMAC computed over the
+exact bytes sent, including the `sha256=` prefix that is part of the wire
+contract; batching; and that quitting mid-batch flushes rather than drops.
+
+**`bundle-export` (10 tests)** — every file listed in the manifest exists and
+matches its recorded sha256 and byte count; `manifest.sha256` covers
+`manifest.json` exactly; `events.jsonl` is parseable line-by-line in insertion
+order; the verifier and its OS wrapper ship with the bundle; agent transcripts
+are **excluded by default** and included only on explicit opt-in; operator
+token hashes never appear.
+
+### 3. E2E updated for the merged tabs
+
+`marketplace-flow.spec.ts` clicked a top-level Marketplace tab that no longer
+exists. It now goes through Plugins first, via a named helper so the next tab
+change has one place to fix.
+
+### Tested
+
+- **485/485 unit** (+29).
+- 39/39 E2E, 1 skipped.
+
 ## v0.9.9 — 2026-08-10
 
 **Profiled against a real 131k-event engagement.** v0.9.8 measured a synthetic
