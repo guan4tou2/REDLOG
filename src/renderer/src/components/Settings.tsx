@@ -70,7 +70,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'agents' | 'plugins' | 'marketplace'>('general')
+  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -103,17 +103,28 @@ export default function Settings(): JSX.Element {
 
   if (!config) return <div className="p-4 text-zinc-500">{t('settings.loading')}</div>
 
+  // v0.9.10: ten tabs down to eight, ordered by the question the operator is
+  // actually asking rather than by when each feature was added.
+  //   identity -> what gets recorded -> what's in bounds -> exposure ->
+  //   display -> external tools -> retention -> extensions
+  //
+  // Two merges:
+  //   · AI agent transcripts moved into Capture. It is a passive capture
+  //     source exactly like the clipboard, the file watcher and the process
+  //     monitor, all of which already live there; on its own it was a tab
+  //     holding three checkboxes, which made it look like a subsystem rather
+  //     than one source among several.
+  //   · Marketplace folded into Plugins as a sub-tab. "What is installed" and
+  //     "where to get more" are one task split across two top-level tabs.
   const tabs = [
     { id: 'general' as const, label: t('settings.general') },
-    { id: 'hud' as const, label: t('settings.hud') },
     { id: 'capture' as const, label: t('settings.capture') },
-    { id: 'network' as const, label: t('settings.networkIp') },
     { id: 'scope' as const, label: t('settings.scope') },
+    { id: 'network' as const, label: t('settings.networkIp') },
+    { id: 'hud' as const, label: t('settings.hud') },
     { id: 'integrations' as const, label: t('settings.integrations') },
     { id: 'data' as const, label: t('settings.data') },
-    { id: 'agents' as const, label: t('settings.agents') },
-    { id: 'plugins' as const, label: t('settings.plugins') },
-    { id: 'marketplace' as const, label: t('settings.marketplace') }
+    { id: 'plugins' as const, label: t('settings.plugins') }
   ]
 
   return (
@@ -385,6 +396,7 @@ export default function Settings(): JSX.Element {
         {tab === 'capture' && (
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
+            <AgentsPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.screenshotQuality')}>
               <Field
                 label={t('settings.jpegQuality')}
@@ -620,11 +632,7 @@ export default function Settings(): JSX.Element {
             </FieldGroup>
           </>
         )}
-        {tab === 'agents' && (
-          <AgentsPanel t={t} config={config} setConfig={setConfig} />
-        )}
-        {tab === 'plugins' && <PluginsPanel t={t} />}
-        {tab === 'marketplace' && <MarketplacePanel t={t} />}
+        {tab === 'plugins' && <PluginsTab t={t} />}
       </div>
 
       <div className="px-4 py-3 border-t border-redlog-border shrink-0">
@@ -816,6 +824,32 @@ interface PluginView {
   capabilities: string[]
   contributes: string[]
   error?: string
+}
+
+/** v0.9.10: Plugins and Marketplace were separate top-level tabs, but they are
+ *  one task — "what do I have" and "what can I get" — and the operator moves
+ *  between them constantly while installing something. Sub-tabs keep both a
+ *  click away without spending two of the eight top-level slots. */
+function PluginsTab({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const [sub, setSub] = useState<'installed' | 'marketplace'>('installed')
+  return (
+    <>
+      <div className="flex gap-1 mb-3">
+        {([['installed', t('settings.plugins')], ['marketplace', t('settings.marketplace')]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setSub(id)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              sub === id ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub === 'installed' ? <PluginsPanel t={t} /> : <MarketplacePanel t={t} />}
+    </>
+  )
 }
 
 function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
