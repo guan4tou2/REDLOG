@@ -49,7 +49,7 @@ import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabl
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, type TailerAdapter } from './services/tailer-host'
-import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
@@ -154,12 +154,39 @@ function toggleRecording(): boolean {
   return recording
 }
 
-// Quick-mark trigger shared by the global shortcut, the tray menu, and the
-// overlay button — opens the marker dialog in the main window.
+// Opens the marker dialog in the main window — shared by the global shortcut,
+// the tray menu, and the HUD's "detailed" button. Steals focus by design: the
+// operator is about to type a title and notes.
 function triggerQuickMark(): void {
   send(mainWindow, 'shortcut:marker')
   mainWindow?.show()
   mainWindow?.focus()
+}
+
+// v0.9.7: the HUD's instant mark. Drops a timestamped marker straight into the
+// chain without raising the main window — the whole point of a heads-up
+// display is that it does not pull the operator out of what they are doing.
+// The detailed path above still exists for when a title and notes are worth
+// stopping for; this one is for "something just happened, timestamp it".
+function triggerInstantMark(): { ok: boolean; id?: string } {
+  if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
+  try {
+    const at = new Date()
+    const event = insertEvent('marker', {
+      title: `HUD mark ${at.toLocaleTimeString()}`,
+      notes: '',
+      severity: 'info',
+      category: 'custom',
+      // Distinguishes an un-annotated instant mark from one the operator
+      // filled in, so a reviewer knows a bare title is intentional.
+      source: 'hud-instant'
+    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    if (event) eventBus.publish(event)
+    return { ok: !!event, id: event?.id }
+  } catch (e) {
+    noteDbError('hud-instant-mark', e)
+    return { ok: false }
+  }
 }
 
 const WINDOW_STATE_PATH = path.join(homedir(), '.redlog', 'window-state.json')
@@ -389,6 +416,7 @@ function startProject(project: ProjectMeta): void {
     operatorId
   })
   lootDetector.configure({ engagementId, operatorId })
+  configureCaptureHealth(config as unknown as Record<string, unknown>)
   configureRedaction(config.redaction)
   // 🔴 host: runs trusted plugin code in an isolated utility process, serving a
   // capability-scoped API. Wired before initPlugins so trusted plugins start.
@@ -933,6 +961,10 @@ app.whenReady().then(() => {
       quality: newConfig.screenshot.quality,
       intervalSec: newConfig.screenshot.intervalSec ?? 0
     })
+    // v0.9.7: refresh the snapshot capture-health reads its on/off switches
+    // from, so toggling a source updates the card on the next poll instead of
+    // at the next project open.
+    configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
     configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
     configureClipboardMonitor({
       enabled: newConfig.clipboard?.enabled ?? false,
@@ -970,37 +1002,21 @@ app.whenReady().then(() => {
   // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
   // big empty gap. Clamp to sane bounds.
   ipcMain.on('overlay:autosize', (_e, height: number, width?: number) => {
+    const maxH = screen.getPrimaryDisplay().workAreaSize.height - 40
+    const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       const cur = overlayWindow.getBounds()
-      // Resolve the display the HUD is actually on once, and use it for both
-      // the size ceilings and the x anchoring below. The ceilings used to come
-      // from the PRIMARY display regardless of where the HUD sat.
-      let disp: Electron.Rectangle | null = null
-      try { disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea } catch { /* no display info */ }
-      const maxH = (disp ? disp.height : screen.getPrimaryDisplay().workAreaSize.height) - 40
-      const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
-      // v0.9.4: the width ceiling was a hard 720. HUD scale 1.5 with
-      // emphasizeExternalIp already needs ~726px of content, and a long IPv6
-      // plus an active pivot route needs more — everything past the cap was
-      // silently clipped by the panel's overflow:hidden. Scale the ceiling
-      // with the display instead, keeping 720 as the floor for small screens.
-      const maxW = disp ? Math.max(720, Math.round(disp.width * 0.6)) : 720
+      // Width scales with content (larger HUD scale + emphasize IP need more
+      // horizontal room). Clamp to a sane range and keep the HUD on-screen —
+      // if growing wider would push it off the right edge, slide it back.
       const w = width != null
-        ? Math.max(380, Math.min(maxW, Math.round(Number(width))))
+        ? Math.max(380, Math.min(720, Math.round(Number(width))))
         : cur.width
       let x = cur.x
-      if (disp) {
-        // v0.9.4: anchor to whichever edge the HUD currently sits nearer, so a
-        // width change grows and shrinks symmetrically. The old rule only ever
-        // slid x LEFT (to keep a widening HUD on screen) and never restored it,
-        // so every scale toggle / emphasizeIp flip walked the HUD further left
-        // until it pinned against the left edge — reported as "the HUD moved".
-        const gapL = cur.x - disp.x
-        const gapR = (disp.x + disp.width) - (cur.x + cur.width)
-        if (gapR <= gapL) x = disp.x + disp.width - gapR - w
-        // Clamp last so it can never leave the display in either direction.
-        x = Math.max(disp.x, Math.min(x, disp.x + disp.width - w))
-      }
+      try {
+        const disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea
+        if (x + w > disp.x + disp.width) x = Math.max(disp.x, disp.x + disp.width - w)
+      } catch { /* no display info — leave x alone */ }
       overlayWindow.setBounds({ x, y: cur.y, width: w, height: h })
       if (process.platform === 'win32') {
         overlayWindow.setOpacity(0.99)
@@ -1884,6 +1900,7 @@ app.whenReady().then(() => {
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register('CommandOrControl+Shift+M', triggerQuickMark)
   ipcMain.on('overlay:quickMark', triggerQuickMark)
+  ipcMain.handle('overlay:instantMark', () => triggerInstantMark())
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))

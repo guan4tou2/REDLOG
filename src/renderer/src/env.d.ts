@@ -213,8 +213,14 @@ interface RedLogAPI {
 interface CaptureSourceInfo {
   id: string
   installed?: boolean
+  /** hook id for hooks.install/uninstall; absent = nothing to install */
+  hookId?: string
+  /** config switch state; undefined = always on, no switch */
+  enabled?: boolean
+  /** dotted config path the switch writes */
+  configPath?: string
   lastEventAt: number | null
-  state: 'active' | 'idle' | 'absent'
+  state: 'active' | 'idle' | 'absent' | 'off'
 }
 
 interface CaptureHealthInfo {

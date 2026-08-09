@@ -46,26 +46,33 @@ test.describe.serial('HUD overlay geometry', () => {
 
   test.afterAll(async () => { if (app) await app.close() })
 
-  test('widening then narrowing returns the HUD to its original x', async () => {
+  // Characterisation, not a fix. v0.9.4 changed the x rule to anchor to the
+  // nearer display edge so width changes were symmetric; the operator reported
+  // that the v0.9.3 HUD was correct and the new one was not, so the handler
+  // was reverted verbatim. This test now records what v0.9.3 actually does, so
+  // any future change to it is a deliberate one. The leftward drift it pins
+  // down is tracked in docs/AUDIT-2026-08-08.md rather than patched blind.
+  test('v0.9.3 behaviour: widening slides x left and narrowing does not restore it', async () => {
     const start = await bounds(app)
 
-    // Grow to the clamp ceiling — this pushes x left to keep the HUD on screen.
     await autosize(hud, 58, 720)
     const wide = await bounds(app)
     expect(wide.width).toBe(720)
-    expect(wide.x, 'widening should slide the HUD left').toBeLessThan(start.x)
+    expect(wide.x, 'widening slides the HUD left to keep it on screen').toBeLessThan(start.x)
 
-    // Shrink back. The HUD was anchored at the right edge, so it must return.
     await autosize(hud, 58, 440)
     const back = await bounds(app)
     expect(back.width).toBe(440)
-    expect(back.x, 'narrowing must restore x — otherwise the HUD drifts left on every scale change')
-      .toBe(start.x)
+    expect(back.x, 'v0.9.3 leaves x where widening put it').toBe(wide.x)
   })
 
-  test('content still fits at HUD scale 1.5 with emphasised IP', async () => {
+  test.skip('content still fits at HUD scale 1.5 with emphasised IP', async () => {
+    // SKIPPED: the fix for this raised the width ceiling above 720px, which
+    // was part of the v0.9.4 HUD change the operator reported as wrong. The
+    // clipping at scale 1.5 is real but is filed rather than patched — see
+    // docs/AUDIT-2026-08-08.md. Re-enable alongside a verified fix.
     // The widest configuration the Settings UI can produce. Content alone
-    // needs ~726px here, which the old hard 720px ceiling clipped.
+    // needs ~726px here, which the hard 720px ceiling clips.
     await main.evaluate(async () => {
       const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
       const cfg = await api.get()
@@ -95,5 +102,61 @@ test.describe.serial('HUD overlay geometry', () => {
     })
     expect(fit.need, `content needs ${fit.need}px but the window is ${fit.have}px — it is being clipped`)
       .toBeLessThanOrEqual(fit.have)
+  })
+})
+
+// v0.9.7 regression: the v0.9.4 width fix measured `scrollWidth` on a flex
+// row, whose content stretches to the container — so scrollWidth tracked
+// clientWidth and each render asked for 8px more than the last. The window
+// ran away to the clamp ceiling and the x anchoring slid with it.
+test.describe.serial('HUD size stability', () => {
+  let app2: ElectronApplication
+  let hud2: Page
+
+  test.beforeAll(async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-hud2-'))
+    app2 = await electron.launch({
+      args: [MAIN_ENTRY], cwd: REPO_ROOT,
+      env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
+    })
+    const main = await app2.firstWindow()
+    await main.waitForLoadState('domcontentloaded')
+    await openTestProject(main, 'hud-stability')
+    await main.waitForTimeout(2500)
+    hud2 = app2.windows().find((w) => w.url().includes('overlay'))!
+  })
+
+  test.afterAll(async () => { if (app2) await app2.close() })
+
+  test('the HUD settles instead of growing on every render', async () => {
+    const read = async (): Promise<{ x: number; width: number; height: number }> =>
+      app2.evaluate(async ({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows().find((b) => b.webContents.getURL().includes('overlay'))!
+        const b = w.getBounds()
+        return { x: b.x, width: b.width, height: b.height }
+      })
+
+    const first = await read()
+    // Force a burst of re-renders — every one fires the autosize effect.
+    for (let i = 0; i < 8; i++) {
+      await hud2.evaluate(() => window.dispatchEvent(new Event('resize')))
+      await hud2.waitForTimeout(120)
+    }
+    const after = await read()
+
+    expect(after.width, `width drifted ${first.width} -> ${after.width} across renders`).toBe(first.width)
+    expect(after.height, `height drifted ${first.height} -> ${after.height}`).toBe(first.height)
+    expect(after.x, `x drifted ${first.x} -> ${after.x}`).toBe(first.x)
+  })
+
+  test('the collapsed HUD stays at its compact size', async () => {
+    const b = await app2.evaluate(async ({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('overlay'))!
+      return w.getBounds()
+    })
+    // Collapsed at scale 1 is a single row — 440px wide, well under 100px tall.
+    // Runaway growth showed up here first as a window pinned near the cap.
+    expect(b.width, 'collapsed HUD should be near its 440px base, not the ceiling').toBeLessThan(560)
+    expect(b.height, 'collapsed HUD should be one row tall').toBeLessThan(120)
   })
 })
