@@ -69,6 +69,13 @@ export function initDB(projectDir: string): Database.Database {
     -- an implicit alias, so we index on created_at only and let SQLite use
     -- the implicit rowid as the tiebreak for ORDER BY.
     CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
+    -- v0.9.8: partial index so chain-head COUNT walks index pages instead of
+    -- the table. computeChainHead() ends with
+    -- "SELECT COUNT(*) FROM events WHERE hash IS NOT NULL", which planned as
+    -- a bare SCAN — and scanning the table means paging in the whole data
+    -- column. On a 131k-event project with 151 MB of data that was 43 ms per
+    -- call, and verifyLatestAnchor pays it twice.
+    CREATE INDEX IF NOT EXISTS idx_events_hashed ON events(created_at) WHERE hash IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS quickmarks (
       id TEXT PRIMARY KEY,
