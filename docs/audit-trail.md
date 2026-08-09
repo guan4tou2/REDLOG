@@ -73,7 +73,7 @@ chain (layer 1 → layer 2 detection).
 
 | Event | Fires when | Why it matters for review |
 |---|---|---|
-| `system.recording_paused` / `recording_resumed` | Operator toggles the recording indicator | A 20-min timeline gap without a `recording_paused` = operator was idle. With one = the gap is authorized and dated |
+| `system.recording_paused` / `recording_resumed` | Operator (or an agent) toggles recording | A 20-min timeline gap without a `recording_paused` = operator was idle. With one = the gap is authorized and dated. Since v0.9.5 pause genuinely suppresses capture, so these two rows are the *entire* record of what happened in between — they carry `source` (`ui` / `api` / `mcp`) alongside the usual `operator_id`, so a reviewer can tell an operator pausing from an agent pausing itself |
 | `system.config_changed` | Any security-relevant setting saved (scope warn-on-violation/targets/excludeTargets/scopeFile, IP whitelist/blacklist, engagement/operator id, deconfliction endpoint) — with a from→to diff | Silently turning scope warnings off or removing an IP from the blacklist leaves a chained record naming *when*, *by whom*, and *what changed* |
 | `system.scope_violation` (own `scope` lane) | Command target falls outside allowed scope | Chained record of every action that RedLog itself flagged as out-of-scope |
 | `system.ip_transition` | External IP or safety state (safe/exposed/unknown) changes | VPN dropped mid-op, egress switched pool, IP flipped to EXPOSED — the moment is dated, not only shown in the HUD |

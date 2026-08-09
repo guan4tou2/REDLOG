@@ -50,7 +50,11 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `scope_violation` — command touched a target outside allowed scope (own timeline lane `scope`)
   - `ip_transition` — external IP or safety state (safe/exposed/unknown) changed
   - `opsec_state_changed` — VPN interfaces, DNS resolvers, primary MAC, or hostname changed
-  - `recording_paused` / `recording_resumed` — operator toggled recording
+  - `recording_paused` / `recording_resumed` — recording was toggled. Carries
+    `source`: `ui` (operator at the keyboard), `api` (redlog-cli or another
+    local REST client) or `mcp` (an AI agent calling `redlog_recording`).
+    While paused RedLog records nothing except `system` and `marker` events —
+    see [audit-trail.md](audit-trail.md)
   - `config_changed` — security-relevant setting saved (scope targets, warn-on-violation, IP blacklist…) with a from→to diff
   - `browser_launched` — proxied browser opened
   - `secret_revealed` — reviewer clicked "Reveal" on an event whose data has redaction spans; records `source_event`, `fields`, and the viewing operator (four-layer redaction, layer 3 — see [redaction-design.md](redaction-design.md))

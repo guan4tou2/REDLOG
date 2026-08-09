@@ -37,7 +37,7 @@ three are renderer geometry. That is why P0-1 in particular survived several
 releases: the shell hook reads the same config file, so the feature looked
 alive.
 
-## v0.9.5 — decide what "pause" means
+## v0.9.5 — decide what "pause" means ✅ shipped
 
 The one item that cannot be deferred, because the README makes a privacy
 promise the code does not keep (AUDIT P1-2). Pick A or B, implement it, and
@@ -50,12 +50,15 @@ rewrite the README paragraph either way:
 - **B — pause stops display.** Rename to "mute" in the UI, drop the privacy
   claim, and keep hook-level `excludedPaths` as the only privacy mechanism.
 
-Recommendation: **A**, with the shell hook checking the cached recording
-state rather than an extra HTTP round-trip per command.
+**Shipped as A**, but enforced server-side rather than in the hook: the gate
+lives in `insertEvent()` and `POST /api/events` returns early, so the hook
+needs no recording check at all — which also removes the race between the
+hook's check and the write, and covers the mitmproxy addon for free.
 
-Also in scope: reconsider whether `redlog_recording` belongs in the MCP
-surface at all. A recorded agent that can mute its own recorder is a hole in
-the threat model regardless of which option wins.
+`redlog_recording` was kept — an operator may legitimately want an agent to
+pause capture — but made attributable: pause/resume rows now carry `source`
+(`ui` / `api` / `mcp`) next to the token-resolved `operator_id`, so an agent
+pausing itself is visible as such.
 
 ## v0.9.6 — I/O visibility, phase 1
 

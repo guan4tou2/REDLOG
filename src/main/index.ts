@@ -145,8 +145,8 @@ function send(win: BrowserWindow | null, channel: string, payload?: unknown): vo
 }
 
 function toggleRecording(): boolean {
-  if (eventBus.paused) eventBus.resume()
-  else eventBus.pause()
+  if (eventBus.paused) eventBus.resume('ui')
+  else eventBus.pause('ui')
   const recording = !eventBus.paused
   send(mainWindow, 'recording:changed', recording)
   send(overlayWindow, 'recording:changed', recording)
@@ -1758,7 +1758,7 @@ app.whenReady().then(() => {
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
   ipcMain.handle('recording:toggle', () => toggleRecording())
-  eventBus.on('recording', (recording: boolean) => {
+  eventBus.on('recording', (recording: boolean, source?: string) => {
     send(mainWindow, 'recording:changed', recording)
     send(overlayWindow, 'recording:changed', recording)
     if (tray) setTrayRecording(tray, recording)
@@ -1769,7 +1769,10 @@ app.whenReady().then(() => {
       try {
         const ev = insertEvent('system', {
           subtype: recording ? 'recording_resumed' : 'recording_paused',
-          description: recording ? 'Recording resumed' : 'Recording paused'
+          description: recording ? 'Recording resumed' : 'Recording paused',
+          // v0.9.5: who flipped it. With pause now actually suppressing
+          // capture, these two rows are the entire record of the gap.
+          source: source || 'unknown'
         }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
         if (ev) eventBus.publish(ev, { bypassPause: true })
       } catch { /* additive */ }

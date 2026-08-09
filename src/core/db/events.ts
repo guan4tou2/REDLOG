@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { eventBus } from '../event-bus'
 import os from 'os'
 import { getDB } from './index'
 import { monotonicNs, getNtpOffsetMs } from '../clock'
@@ -227,11 +228,40 @@ function detectClockAnomaly(
   return null
 }
 
+/** Lanes that keep recording while paused. `system` is RedLog's audit trail
+ *  about itself and the environment — dropping it would leave the pause
+ *  itself unrecorded. `marker` is an explicit "write this down" action.
+ *  Everything else is passive capture and stops. */
+export const PAUSE_EXEMPT_AGENT_TYPES: ReadonlySet<string> = new Set(['system', 'marker'])
+
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean }
 ): RedLogEvent | null {
+  // v0.9.5: pause means "do not record", not "do not display". Before this the
+  // gate lived only on eventBus.publish(), so a paused RedLog still wrote every
+  // event into the DB and the hash chain — it only stopped the UI feed and the
+  // deconfliction webhook. The README promised daily/hobby work stayed off the
+  // audit chain; it did not. Enforcing here rather than at the 46 call sites
+  // means no capture source can forget.
+  //
+  // `system` is exempt: that lane is RedLog's audit trail about itself and the
+  // environment — recording_paused/resumed, config_changed, sanitized,
+  // secret_revealed, *_pruned, ip_transition, opsec_state_changed,
+  // chain_sample_broken. Dropping those would make the pause itself
+  // unrecorded, and a gap in the timeline has to stay explainable; that is the
+  // premise the whole log rests on.
+  //
+  // `marker` is exempt for the same reason screenshot-agent already exempts a
+  // manual capture: a marker is the operator (or agent) deliberately writing
+  // something down, not something RedLog observed. Pause suppresses passive
+  // capture; it was never meant to refuse an explicit "record this".
+  //
+  // `bypassPause` covers the remaining deliberate actions — today the manual
+  // screenshot trigger.
+  if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !opts?.bypassPause && eventBus.paused) return null
+
   const db = getDB()
   const now = Date.now()
 
