@@ -68,16 +68,36 @@ function rowToAnchor(row: AnchorRow): ChainAnchor {
 export function computeChainHead(maxEvents?: number): { hash: string; headEventId: string | null; eventCount: number } | null {
   const db = getDB()
   if (maxEvents !== undefined) {
-    const rows = db.prepare(
-      `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at ASC, rowid ASC LIMIT ?`
-    ).all(maxEvents) as { id: string; hash: string }[]
-    if (!rows.length) return null
-    const last = rows[rows.length - 1]
+    // A zero-length prefix has no head. The old form got this for free from
+    // LIMIT 0 returning no rows; OFFSET -1 would not.
+    if (maxEvents <= 0) return null
+    // v0.9.8: fetch only the Nth row, not the first N. This loaded every row
+    // up to `maxEvents` into an array purely to read its last element and
+    // length — 131k rows materialised to answer a question about one of them.
+    // OFFSET walks the same index entries but keeps a single row in memory.
+    // verifyLatestAnchor calls this on every chain-status request.
+    const row = db.prepare(
+      `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at ASC, rowid ASC LIMIT 1 OFFSET ?`
+    ).get(maxEvents - 1) as { id: string; hash: string } | undefined
+    // Fewer rows exist than the anchor claims — the count below tells the
+    // caller how far the chain actually got, and it compares counts anyway.
+    if (!row) {
+      const n = (db.prepare(`SELECT COUNT(*) AS c FROM events WHERE hash IS NOT NULL`).get() as { c: number }).c
+      if (n === 0) return null
+      const tail = db.prepare(
+        `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1`
+      ).get() as { id: string; hash: string }
+      return {
+        hash: crypto.createHash('sha256').update(tail.hash).update(String(n)).digest('hex'),
+        headEventId: tail.id,
+        eventCount: n
+      }
+    }
     const hash = crypto.createHash('sha256')
-      .update(last.hash)
-      .update(String(rows.length))
+      .update(row.hash)
+      .update(String(maxEvents))
       .digest('hex')
-    return { hash, headEventId: last.id, eventCount: rows.length }
+    return { hash, headEventId: row.id, eventCount: maxEvents }
   }
   const row = db.prepare(
     `SELECT id, hash FROM events WHERE hash IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -828,26 +848,73 @@ interface SampleRow {
 
 export function verifyRandomSample(count = 50): RandomSampleResult {
   const db = getDB()
-  // ORDER BY RANDOM() is O(n) — fine at 10k events (< 20ms), acceptable at
-  // 100k, painful at 1M. A future scaling switch would sample by rowid range
-  // (SELECT id FROM events WHERE rowid = ?) with a rowid histogram; not
-  // needed at current scale but noted here so a slowdown at 1M+ rows has a
-  // clear next step.
+  // v0.9.8: sample by rowid instead of ORDER BY RANDOM().
+  //
+  // RANDOM() forces SQLite to assign a random key to every row and sort the
+  // lot — "SCAN events | USE TEMP B-TREE FOR ORDER BY". Because the sort
+  // materialises the full row, that means reading the entire `data` column
+  // too. Measured on a real 131k-event engagement whose data column is 151 MB
+  // (an AI-transcript-heavy project, where `tool_result` rows average 3.8 KB):
+  // 3.7 s for a 100-row sample, 1.8 s for 50. This runs synchronously on the
+  // main process at every project open AND on a 5-minute timer — a ~2 s
+  // freeze, four times an hour, forever.
+  //
+  // The prior note here guessed this would only matter past 1M rows. It was
+  // reasoning about row COUNT; what actually matters is total bytes, and a
+  // transcript-heavy project gets there two orders of magnitude sooner.
+  //
+  // Rowids are dense because `no_delete_events` makes DELETE impossible, so
+  // picking random integers in [MIN(rowid), MAX(rowid)] hits a real row
+  // essentially every time. Over-draw slightly to absorb any gap (a failed
+  // INSERT still burns a rowid), then take the first `count` that came back.
+  const bounds = db.prepare(`SELECT MIN(rowid) AS lo, MAX(rowid) AS hi FROM events`).get() as
+    { lo: number | null; hi: number | null } | undefined
+  if (!bounds?.lo || !bounds.hi) {
+    return { ok: true, sampled: 0, brokenAtEventId: null, brokenReason: null }
+  }
+  const span = bounds.hi - bounds.lo + 1
+  const wanted = Math.min(count, span)
+  const picks = new Set<number>()
+  if (wanted >= span) {
+    // Asking for at least as many rows as exist: take the whole range rather
+    // than drawing. Random draws would usually cover it but not always — it is
+    // the coupon-collector problem, so a small table could silently verify
+    // fewer rows than it has, and any test asserting "sampled === rowCount"
+    // would be flaky rather than wrong.
+    for (let r = bounds.lo; r <= bounds.hi; r++) picks.add(r)
+  } else {
+    // Bounded attempts so a sparse table cannot spin here; whatever we have
+    // when the budget runs out is still a valid random sample, just smaller.
+    for (let tries = 0; picks.size < wanted && tries < wanted * 4; tries++) {
+      picks.add(bounds.lo + Math.floor(Math.random() * span))
+    }
+  }
+  const ids = [...picks]
   const rows = db.prepare(
-    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+    `SELECT rowid AS rid, id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
             monotonic_ns, ntp_offset_ms
-     FROM events WHERE hash IS NOT NULL ORDER BY RANDOM() LIMIT ?`
-  ).all(count) as SampleRow[]
+     FROM events WHERE rowid IN (${ids.map(() => '?').join(',')}) AND hash IS NOT NULL`
+  ).all(...ids) as Array<SampleRow & { rid: number }>
 
   if (rows.length === 0) {
     return { ok: true, sampled: 0, brokenAtEventId: null, brokenReason: null }
   }
 
+  // v0.9.8: row-value comparison instead of the equivalent OR. Semantically
+  // identical — "the row immediately before this one in (created_at, rowid)
+  // order" — but SQLite cannot drive an index from an OR across two different
+  // predicates, so the old form degraded into a scan of the events table, and
+  // scanning means paging in the whole `data` column. Measured on a real
+  // 131k-event / 151 MB engagement: 39.5 ms per lookup, 3.95 s for the 100
+  // lookups one sample makes. The row-value form takes 0.6 ms for all 100.
+  //
+  // That single query was the entire cost of verifyRandomSample — which runs
+  // at every project open and on a 5-minute timer, synchronously on the main
+  // process.
   const prevLookup = db.prepare(
-    `SELECT hash FROM events WHERE created_at < ? OR (created_at = ? AND rowid < ?) ORDER BY created_at DESC, rowid DESC LIMIT 1`
+    `SELECT hash FROM events WHERE (created_at, rowid) < (?, ?) ORDER BY created_at DESC, rowid DESC LIMIT 1`
   )
-  const rowIdOf = db.prepare(`SELECT rowid AS rid FROM events WHERE id = ?`)
 
   // v0.6.93 P0-A: query the migration boundary — the earliest rowid whose
   // prev_hash is NOT NULL. Rows sampled AFTER this rowid must carry a
@@ -869,26 +936,21 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     try { parsedData = JSON.parse(row.data) } catch {
       return { ok: false, sampled: rows.length, brokenAtEventId: row.id, brokenReason: 'data column is not valid JSON' }
     }
-    // v0.7.1 P3: shared shape builder — one edit surface across the full
-    // walk (verifyRowHash) and this sample-verify path.
-    const shapes = buildHashShapes(row, parsedData)
-    const shapeV06 = shapes.v06()
-
-    const target = row.hash
-    const attempts: Array<{ label: string; hash: string }> = [
-      { label: 'v0.6.88', hash: canonicalSha(shapes.v06Null) },
-      { label: 'v0.6.88+strip', hash: canonicalSha(shapeV06) },
-      { label: 'v0.6', hash: jsonSha(shapeV06) },
-      { label: 'v0.6+null', hash: jsonSha(shapes.v06Null) },
-      { label: 'v0.2', hash: jsonSha(shapes.v02) },
-      { label: 'v0.1', hash: jsonSha(shapes.v01) }
-    ]
-    if (!attempts.some((a) => a.hash === target)) {
+    // v0.9.8: share verifyRowHash's lazy, newest-first shape walk instead of
+    // computing all six eagerly. The old code built an array of six hashes and
+    // only then called .some() on it — so every sampled row paid five wasted
+    // SHA-256 passes over its full serialised body, because any modern chain
+    // matches the first shape. On a transcript-heavy project where
+    // `tool_result` rows average 3.8 KB and reach 107 KB, that was the entire
+    // cost of the sample: 3.7 s for 100 rows. verifyRowHash has short-
+    // circuited since v0.7.1; only this path was left behind.
+    const { matched, attemptLabels } = verifyRowHash(row, parsedData)
+    if (!matched) {
       return {
         ok: false,
         sampled: rows.length,
         brokenAtEventId: row.id,
-        brokenReason: `hash mismatch (tried ${attempts.map((a) => a.label).join(', ')}, stored ${(target ?? '').slice(0, 16)}...)`
+        brokenReason: `hash mismatch (tried ${attemptLabels.join(', ')}, stored ${(row.hash ?? '').slice(0, 16)}...)`
       }
     }
 
@@ -897,8 +959,7 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     // boundary NULLs are the exact attack vector the v0.6.92.1 audit called
     // out (attacker hashes under shapeV01 to fool the shape-tolerant walk).
     if (row.prev_hash == null) {
-      const rid = rowIdOf.get(row.id) as { rid: number } | undefined
-      if (rid && rid.rid >= migrationBoundaryRid) {
+      if (row.rid >= migrationBoundaryRid) {
         return {
           ok: false,
           sampled: rows.length,
@@ -912,9 +973,7 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     // For rows that DO carry a prev_hash, the immediately preceding row
     // (by created_at + rowid) must exist and match.
     if (row.prev_hash != null) {
-      const rid = rowIdOf.get(row.id) as { rid: number } | undefined
-      if (!rid) continue
-      const prev = prevLookup.get(row.created_at, row.created_at, rid.rid) as { hash: string } | undefined
+      const prev = prevLookup.get(row.created_at, row.rid) as { hash: string } | undefined
       if (!prev) {
         return {
           ok: false,
