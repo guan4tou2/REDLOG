@@ -5,12 +5,25 @@ import { detectHooks } from './hooks-manager'
 // have. This module answers, at a glance: which capture sources are actually
 // feeding events right now, and is anything feeding at all?
 
-export type SourceState = 'active' | 'idle' | 'absent'
+// v0.9.7: `off` joins the set. Previously a source the operator had never
+// turned on was indistinguishable from one that was on but silent — both read
+// as `idle`, and the card listed all eight regardless, so most of it was
+// permanently grey noise. Installation and activation are now separate axes:
+//   installed — the hook exists on disk (only meaningful for hook sources)
+//   enabled   — the operator switched it on in config
+export type SourceState = 'active' | 'idle' | 'absent' | 'off'
 
 export interface CaptureSource {
   id: string
   /** installed / available where that's knowable (hooks), else undefined */
   installed?: boolean
+  /** Hook id for installHook()/uninstallHook(). Absent = nothing to install;
+   *  the source ships with the app and is governed by `enabled` alone. */
+  hookId?: string
+  /** Config switch state. `undefined` = always on, no switch to offer. */
+  enabled?: boolean
+  /** Dotted config path the switch writes, e.g. `clipboard.enabled`. */
+  configPath?: string
   /** ms epoch of the most recent event attributable to this source, or null */
   lastEventAt: number | null
   state: SourceState
@@ -111,10 +124,36 @@ function lastEventFor(where: string, params: unknown[] = []): number | null {
   return row?.t ?? null
 }
 
-function stateFrom(installed: boolean | undefined, last: number | null, now: number): SourceState {
+function stateFrom(
+  installed: boolean | undefined,
+  last: number | null,
+  now: number,
+  enabled?: boolean
+): SourceState {
+  // Switched off beats everything: the operator's explicit choice, not a
+  // fault. Reported before `absent` so a hook that is both uninstalled and
+  // disabled reads as the deliberate state rather than the broken one.
+  if (enabled === false) return 'off'
   if (installed === false) return 'absent'
   if (last !== null && now - last <= ACTIVE_WINDOW_MS) return 'active'
   return 'idle'
+}
+
+// The live config, handed in by startProject / config:save. capture-health
+// can't import loadConfig — it runs inside the same module graph the config
+// loader pulls from — and it needs the switch states to tell `off` from
+// `idle`. Same shape as the other configure* entry points.
+let cfgSnapshot: Record<string, unknown> = {}
+export function configureCaptureHealth(cfg: Record<string, unknown>): void {
+  cfgSnapshot = cfg ?? {}
+}
+function cfgFlag(path: string): boolean | undefined {
+  let cur: unknown = cfgSnapshot
+  for (const part of path.split('.')) {
+    if (typeof cur !== 'object' || cur === null) return undefined
+    cur = (cur as Record<string, unknown>)[part]
+  }
+  return typeof cur === 'boolean' ? cur : undefined
 }
 
 // detectHooks() runs `which` via execSync — cheap once, but getCaptureHealth is
@@ -139,8 +178,11 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   const hooks = cachedHooks(now)
   const hookInstalled = (id: string): boolean | undefined => hooks.find((h) => h.id === id)?.installed
 
-  // Claude Code hook writes agent events with subtype claude_code_bash.
-  const claudeLast = lastEventFor(`agent_type = 'agent' AND data LIKE '%claude_code_bash%'`)
+  // v0.9.7: the `claude-code` row is gone. That hook was retired in v0.7.3 —
+  // the script is a no-op stub and its detectHooks() entry is commented out —
+  // so `installed` was always undefined and the row rendered as a permanent
+  // "idle" with an Install button that could not work. The agent-tailer row
+  // below covers Claude Code (and Codex, and OpenCode) properly.
   // Shell preexec / agent-shell hooks write shell command_start/command_end
   // (NOT the builtin terminal, which sets source = 'builtin-terminal').
   const shellHookLast = lastEventFor(
@@ -156,33 +198,79 @@ export function getCaptureHealth(now = Date.now()): CaptureHealth {
   // the mitmproxy source above but only counts as active if DNS mode is
   // actually running), and the others are always resident and turn on via
   // Settings.
+  // v0.9.7: DNS is not a separate integration — `hooks/mitmproxy-addon.py`
+  // serves both, switched by how the operator runs mitmdump (proxy mode vs
+  // `--mode dns@5353`). Two rows implied two things to install and left one
+  // of them permanently grey for everyone not running DNS mode. One row, fed
+  // by either stream.
   const dnsLast = lastEventFor(`agent_type = 'dns'`)
   const browserLast = lastEventFor(`agent_type = 'browser'`)
   const processLast = lastEventFor(`agent_type = 'process'`)
   const fileWatcherLast = lastEventFor(`agent_type = 'file_transfer' AND json_extract(data,'$.source') = 'file-watcher'`)
 
+  // v0.9.7: clipboard, the agent transcript tailer and the screenshot agent
+  // are three of the loudest sources in the product and none of them appeared
+  // on this card — an operator could have the tailer off and the health
+  // readout would still say healthy.
+  const clipboardLast = lastEventFor(`agent_type = 'clipboard'`)
+  const tailerLast = lastEventFor(`agent_type = 'agent'`)
+  const screenshotLast = lastEventFor(`agent_type = 'screenshot'`)
+
+  const shellInstalled = hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell')
+  // Which concrete hook id an Install button should act on. Prefer whichever
+  // is already known to the detector for this platform.
+  const shellHookId = hooks.find((h) => h.id === (process.platform === 'win32' ? 'shell-powershell' : 'shell-zsh'))?.id
+    ?? hooks.find((h) => h.id.startsWith('shell-'))?.id
+
+  const mk = (
+    id: string,
+    last: number | null,
+    opts: { installed?: boolean; hookId?: string; configPath?: string } = {}
+  ): CaptureSource => {
+    const enabled = opts.configPath ? cfgFlag(opts.configPath) : undefined
+    return {
+      id,
+      installed: opts.installed,
+      hookId: opts.hookId,
+      enabled,
+      configPath: opts.configPath,
+      lastEventAt: last,
+      state: stateFrom(opts.installed, last, now, enabled)
+    }
+  }
+
   const sources: CaptureSource[] = [
-    { id: 'shell-hook', installed: hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell'), lastEventAt: shellHookLast, state: stateFrom(hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell'), shellHookLast, now) },
-    { id: 'claude-code', installed: hookInstalled('claude-code'), lastEventAt: claudeLast, state: stateFrom(hookInstalled('claude-code'), claudeLast, now) },
-    { id: 'mitmproxy', installed: undefined, lastEventAt: mitmLast, state: stateFrom(undefined, mitmLast, now) },
-    { id: 'builtin-terminal', installed: undefined, lastEventAt: builtinLast, state: stateFrom(undefined, builtinLast, now) },
-    { id: 'dns', installed: undefined, lastEventAt: dnsLast, state: stateFrom(undefined, dnsLast, now) },
-    { id: 'browser-console', installed: undefined, lastEventAt: browserLast, state: stateFrom(undefined, browserLast, now) },
-    { id: 'process-monitor', installed: undefined, lastEventAt: processLast, state: stateFrom(undefined, processLast, now) },
-    { id: 'file-watcher', installed: undefined, lastEventAt: fileWatcherLast, state: stateFrom(undefined, fileWatcherLast, now) }
+    mk('shell-hook', shellHookLast, { installed: shellInstalled, hookId: shellHookId }),
+    mk('builtin-terminal', builtinLast),
+    mk('agent-tailer', tailerLast, { configPath: 'agentTailer.enabled' }),
+    mk('mitmproxy', Math.max(mitmLast ?? 0, dnsLast ?? 0) || null, {
+      installed: hookInstalled('mitmproxy'), hookId: 'mitmproxy'
+    }),
+    mk('browser-console', browserLast),
+    mk('screenshot', screenshotLast),
+    mk('clipboard', clipboardLast, { configPath: 'clipboard.enabled' }),
+    mk('process-monitor', processLast, { configPath: 'processMonitor.enabled' }),
+    mk('file-watcher', fileWatcherLast, { configPath: 'fileWatcher.enabled' })
   ]
 
   const activeCount = sources.filter((s) => s.state === 'active').length
   // "recording" = at least one source has fed a real event ever (not just recently).
   const everFed = sources.some((s) => s.lastEventAt !== null)
   // A source is "wired" if installed, or (for non-hook sources) has ever fed.
-  const anyWired = sources.some((s) => s.installed === true) || sources.some((s) => s.installed === undefined && s.lastEventAt !== null)
+  const anyWired = sources.some((s) => s.state !== 'off' && s.installed === true)
+    || sources.some((s) => s.state !== 'off' && s.installed === undefined && s.lastEventAt !== null)
   // v0.6.96 Ops-3: a source is EXPECTED to feed if it's installed OR it has
   // ever fed. When such a source is currently idle (not active), the overall
   // verdict should tip to `partial` even if some OTHER source is still
   // healthy. Prior behaviour: shell-hook installed but silent for hours →
   // still "healthy" green if builtin-terminal was active. Now: partial.
+  //
+  // v0.9.7: a source the operator switched OFF is not "expected" — it is a
+  // choice. Before this, disabling e.g. the process monitor after it had once
+  // fed left the verdict pinned to `partial` forever, which trains operators
+  // to ignore the one indicator that is supposed to mean something.
   const expectedSilent = sources.some((s) => {
+    if (s.state === 'off') return false
     const expected = s.installed === true || (s.installed === undefined && s.lastEventAt !== null)
     return expected && s.state !== 'active'
   })

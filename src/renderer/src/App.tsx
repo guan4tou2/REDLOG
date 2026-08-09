@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
@@ -215,25 +215,79 @@ export default function App(): JSX.Element {
   )
 }
 
-function CaptureHealthCard({ capture, onNavigate }: {
+function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   capture: CaptureHealthInfo
   onNavigate: (v: string) => void
+  onRefresh: () => void
 }): JSX.Element {
   const { t } = useI18n()
 
   const SOURCE_LABEL: Record<string, string> = {
     'shell-hook': t('capture.shellHook'),
-    'claude-code': t('capture.claudeCode'),
-    'mitmproxy': t('capture.mitmproxy'),
+    'mitmproxy': t('capture.mitmproxy'),   // HTTP + DNS — one addon, one row
     'builtin-terminal': t('capture.builtinTerminal'),
+    'agent-tailer': t('capture.agentTailer'),
+    'screenshot': t('capture.screenshot'),
+    'clipboard': t('capture.clipboard'),
     // v0.6.92 W-project producers.
-    'dns': t('capture.dns'),
     'browser-console': t('capture.browserConsole'),
     'process-monitor': t('capture.processMonitor'),
     'file-watcher': t('capture.fileWatcher')
   }
   const dot = (s: string): string =>
     s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-zinc-700'
+
+  // v0.9.7: this card is an exception report, not an inventory. It used to
+  // list all eight sources unconditionally, so the healthy majority pushed the
+  // one broken row out of a glance — the opposite of what a "is anything
+  // wrong?" panel is for. Default view now shows ONLY sources that the
+  // operator switched on but that are not delivering; everything working, and
+  // everything deliberately off, collapses into a one-line summary. `manage`
+  // opens the full inventory with the controls.
+  const [manage, setManage] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  // "On but not delivering." A source switched off is a choice, not a fault;
+  // a hook that was never installed is a setup step, and the banner above
+  // already covers the nothing-is-wired case.
+  const isProblem = (s: CaptureSourceInfo): boolean =>
+    s.state === 'absent' || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null))
+  const problems = capture.sources.filter(isProblem)
+  const healthy = capture.sources.filter((s) => s.state === 'active')
+  const shown = manage ? capture.sources : problems
+  const hiddenCount = capture.sources.length - problems.length
+
+  const setEnabled = async (s: CaptureSourceInfo, on: boolean): Promise<void> => {
+    if (!s.configPath) return
+    setBusy(s.id)
+    try {
+      const cfg = await window.redlog.config.get() as Record<string, unknown>
+      const parts = s.configPath.split('.')
+      // Clone only the branch we touch — config:save replaces the whole doc,
+      // so mutating the fetched object in place would be fine, but a copy
+      // keeps this honest if the bridge ever starts caching.
+      const next = { ...cfg }
+      let cur = next as Record<string, unknown>
+      for (const p of parts.slice(0, -1)) {
+        cur[p] = { ...(cur[p] as Record<string, unknown> ?? {}) }
+        cur = cur[p] as Record<string, unknown>
+      }
+      cur[parts[parts.length - 1]] = on
+      await window.redlog.config.save(next)
+      onRefresh()
+    } finally { setBusy(null) }
+  }
+
+  const setInstalled = async (s: CaptureSourceInfo, install: boolean): Promise<void> => {
+    if (!s.hookId) return
+    setBusy(s.id)
+    try {
+      const api = window.redlog.hooks
+      const r = install ? await api?.install(s.hookId) : await api?.uninstall(s.hookId)
+      if (r && r.success === false) toast(r.message || t('capture.actionFailed'), 'error')
+      onRefresh()
+    } finally { setBusy(null) }
+  }
   const stateLabel = (s: string): string => t(`capture.state.${s}`)
 
   // v0.6.98 C: freshness stripe. Pre-v0.6.98 the state chip said only
@@ -284,7 +338,16 @@ function CaptureHealthCard({ capture, onNavigate }: {
         <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-[0.15em]">{t('capture.title')}</h2>
-          <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setManage((m) => !m)}
+              className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+              title={t('capture.manageHint')}
+            >
+              {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
+            </button>
+            <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
+          </div>
         </div>
         {(dark || partial) && (
           <p className="text-[11px] text-zinc-400 mb-3">
@@ -295,21 +358,73 @@ function CaptureHealthCard({ capture, onNavigate }: {
             </button>
           </p>
         )}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
-          {capture.sources.map((s) => (
+        <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
+          {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span className="text-zinc-300 flex-1 truncate">{SOURCE_LABEL[s.id] ?? s.id}</span>
-              <span className="text-zinc-600 text-xs">
-                {s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
+              <span className={`flex-1 truncate ${s.state === 'off' ? 'text-zinc-500' : 'text-zinc-300'}`}>
+                {SOURCE_LABEL[s.id] ?? s.id}
               </span>
-              {s.installed !== false && (
+              <span className="text-zinc-600 text-xs">
+                {s.state === 'off'
+                  ? t('capture.state.off')
+                  : s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
+              </span>
+              {!manage && s.installed !== false && s.state !== 'off' && (
                 <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
                   {fmtAge(s.lastEventAt, nowTick)}
                 </span>
               )}
+              {manage && (
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {/* Two independent axes, so two controls. A hook can be
+                      installed but switched off, or switched on but not yet
+                      installed — collapsing them into one button would hide
+                      which half is missing. */}
+                  {s.configPath && (
+                    <button
+                      disabled={busy === s.id}
+                      onClick={() => void setEnabled(s, s.enabled === false)}
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                        s.enabled === false
+                          ? 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                          : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
+                      }`}
+                    >
+                      {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
+                    </button>
+                  )}
+                  {s.hookId && (
+                    <button
+                      disabled={busy === s.id}
+                      onClick={() => void setInstalled(s, s.installed !== true)}
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                        s.installed === true
+                          ? 'border-zinc-700 text-zinc-500 hover:text-red-400'
+                          : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
+                      }`}
+                    >
+                      {s.installed === true ? t('capture.uninstall') : t('capture.install')}
+                    </button>
+                  )}
+                  {/* No switch and nothing to install: these turn on when
+                      their upstream does (mitmproxy in DNS mode, the launched
+                      browser, a terminal pane). Claiming "always on" would
+                      overstate it, so the state column speaks for itself. */}
+                  {!s.configPath && !s.hookId && (
+                    <span className="text-[10px] font-mono text-zinc-700">{t('capture.passive')}</span>
+                  )}
+                </span>
+              )}
             </div>
           ))}
+          {!manage && shown.length === 0 && (
+            <p className="text-[11px] text-zinc-500 col-span-2">
+              {healthy.length > 0
+                ? t('capture.allGood', { active: healthy.length })
+                : t('capture.noneEnabled')}
+            </p>
+          )}
         </div>
       </div>
     </section>
@@ -366,6 +481,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [scopeViolations, setScopeViolations] = useState(0)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
+  const refreshCaptureRef = useRef<() => void>(() => {})
   // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
   const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
@@ -392,6 +508,9 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
     const loadCapture = (): void => {
       try { window.redlog.capture?.health?.()?.then(setCapture).catch(() => {}) } catch { /* older preload */ }
     }
+    // v0.9.7: let the card re-poll right after an install / toggle instead of
+    // waiting out the 5s cycle — the button would otherwise look inert.
+    refreshCaptureRef.current = loadCapture
     loadCapture()
     // Anchor age poll — same guarded pattern as capture health.
     const loadAnchor = (): void => {
@@ -444,7 +563,13 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 
   return (
     <div className="p-4 space-y-3 overflow-auto h-full">
-      {capture && <CaptureHealthCard capture={capture} onNavigate={onNavigate} />}
+      {capture && (
+        <CaptureHealthCard
+          capture={capture}
+          onNavigate={onNavigate}
+          onRefresh={() => refreshCaptureRef.current()}
+        />
+      )}
 
       <section>
         <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">

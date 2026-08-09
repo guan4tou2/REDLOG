@@ -3,6 +3,98 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.7 — 2026-08-09
+
+**Capture Health becomes an exception report; HUD marking splits in two.**
+Also reverts the v0.9.4 HUD geometry changes — the operator reported the
+v0.9.3 HUD as correct and the changed one as wrong, so the three files went
+back to v0.9.3 verbatim.
+
+### 1. Capture Health lists problems, not inventory
+
+The card listed all eight sources unconditionally, so the healthy majority
+pushed the one broken row out of a glance — the opposite of what an "is
+anything wrong?" panel is for. It now shows **only sources that are switched
+on but not delivering**. Everything working, and everything deliberately off,
+collapses into one line. An "all sources (N)" toggle opens the full inventory.
+
+### 2. Installed and enabled are separate axes
+
+`installed` (the hook exists on disk) and `enabled` (the operator switched it
+on) were conflated into one `installed?: boolean`, so "never turned on" and
+"turned on but silent" both rendered as grey `idle`. `SourceState` gains
+`off`, and each source now carries `hookId` (what an install button acts on)
+and `configPath` (what a switch writes). The inventory view offers both
+controls per row.
+
+A switched-off source no longer drags the verdict to `partial`. Disabling e.g.
+the process monitor after it had once fed used to pin the verdict there
+forever, which trains operators to ignore the one indicator that is supposed
+to mean something.
+
+### 3. Three missing sources, one retired, one merged
+
+- **Added**: AI agent transcripts, clipboard, screenshots. None of them
+  appeared on this card — an operator could have the transcript tailer off and
+  the readout would still say healthy.
+- **Removed**: the `claude-code` row. That hook was retired in v0.7.3 (the
+  script is a no-op stub, its `detectHooks()` entry is commented out), so it
+  could never report `installed` and rendered as a permanent idle with an
+  Install button that did nothing. The tailer row covers Claude Code — and
+  Codex, and OpenCode — properly.
+- **Merged**: DNS folds into the mitmproxy row. Both are served by
+  `hooks/mitmproxy-addon.py`, switched by how `mitmdump` is run; two rows
+  implied two things to install and left one permanently grey for everyone not
+  running DNS mode.
+
+### 4. HUD: quick mark vs detailed mark
+
+The single MARK button called `overlay:quickMark`, which opens the marker
+dialog **in the main window** — raising and focusing it. That is the one thing
+a heads-up display should not do to note that something just happened. Now two:
+
+- **quick** (`⚡`) — a timestamped marker straight into the chain via a new
+  `overlay:instantMark`. No dialog, no focus change; the button confirms
+  inline with `✓ marked` for 1.4s, since with nothing else moving on screen
+  there would otherwise be no sign it worked. Marked `source: 'hud-instant'`
+  so a reviewer knows a bare title is intentional rather than lost.
+- **detail** (`✎`) — the previous behaviour, for when a title, notes and
+  severity are worth stopping for.
+
+The pin toggle beside them always controlled the 8-second auto-collapse, but a
+bare `📌` did not say so. Relabelled `▢ / ▣ keep open`.
+
+### 5. HUD geometry reverted to v0.9.3
+
+v0.9.4 changed three things about HUD sizing and position: width measured from
+`scrollWidth` instead of a formula, the compact bar's `overflow: hidden`
+removed, and the x-anchoring made symmetric. The operator reported the result
+as "opens expanded, wrong size, wrong position", and confirmed v0.9.3 was
+correct. `OverlayApp.tsx`, `windows.ts` and the `overlay:autosize` handler are
+back to v0.9.3 **verbatim** (diff-verified).
+
+`e2e/hud-overlay.spec.ts` now *characterises* v0.9.3's actual behaviour rather
+than asserting what a fix ought to do — including the leftward x drift on
+repeated width changes, which is real but is filed in
+`docs/AUDIT-2026-08-08.md` instead of patched blind. The scale-1.5 clipping
+test is skipped for the same reason: its fix was part of the reverted change.
+
+### 6. macOS install instructions were wrong
+
+The README said to right-click → **Open** past Gatekeeper. Since macOS 15 that
+path is gone for unsigned apps, and the quarantine flag surfaces as
+*"RedLog is damaged and can't be opened"* — which reads as a corrupt download
+rather than a security prompt. Builds are ad-hoc signed and not notarised, so
+the working instruction is `xattr -dr com.apple.quarantine /Applications/RedLog.app`,
+or **Privacy & Security ▸ Open Anyway**.
+
+### Tested
+
+- 450/450 unit (+3: the off-state, the verdict no longer tipping on a disabled
+  source, and DNS folding into mitmproxy).
+- 38/38 E2E, 1 skipped (see §5).
+- i18n 794/794 aligned.
+
 ## v0.9.6 — 2026-08-09
 
 **Command output becomes visible, and the runtime-`require` family is
