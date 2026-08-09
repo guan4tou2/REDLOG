@@ -7,6 +7,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let getCaptureHealth: typeof import('../src/core/capture-health').getCaptureHealth
+let configureCaptureHealth: typeof import('../src/core/capture-health').configureCaptureHealth
 let invalidateHooksCache: typeof import('../src/core/capture-health').invalidateHooksCache
 let hooksMod: typeof import('../src/core/hooks-manager')
 
@@ -19,6 +20,7 @@ try {
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   getCaptureHealth = chMod.getCaptureHealth
+  configureCaptureHealth = chMod.configureCaptureHealth
   invalidateHooksCache = chMod.invalidateHooksCache
   dbAvailable = true
 } catch { /* better-sqlite3 not built */ }
@@ -77,11 +79,50 @@ describeDB('capture-health', () => {
     expect(builtin?.state).toBe('active')
   })
 
-  it('recognises the Claude Code hook by its claude_code_bash subtype', () => {
-    mockHooks({ 'claude-code': true, 'shell-zsh': false })
-    ins('agent', { subtype: 'claude_code_bash', command: 'ls' })
+  // v0.9.7: the `claude-code` row is gone. That hook was retired in v0.7.3 —
+  // the script is a no-op stub, its detectHooks() entry is commented out —
+  // so the row could never report `installed` and rendered as a permanent
+  // idle with an Install button that did nothing. Agent coverage now comes
+  // from the transcript tailer, which sees every tool, not just Bash.
+  it('reports agent activity through the tailer row, not a claude-code row', () => {
+    mockHooks({ 'shell-zsh': false })
+    ins('agent', { subtype: 'tool_call', tool_name: 'Bash' })
     const h = getCaptureHealth()
-    expect(h.sources.find((s) => s.id === 'claude-code')?.state).toBe('active')
+    expect(h.sources.find((s) => s.id === 'claude-code')).toBeUndefined()
+    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('active')
+  })
+
+  // v0.9.7: DNS and HTTP are the same addon (hooks/mitmproxy-addon.py),
+  // switched by how mitmdump is run. One row, fed by either stream.
+  it('folds DNS events into the mitmproxy row', () => {
+    mockHooks({ 'shell-zsh': false })
+    ins('dns', { subtype: 'dns_query', query: 'example.test' })
+    const h = getCaptureHealth()
+    expect(h.sources.find((s) => s.id === 'dns')).toBeUndefined()
+    expect(h.sources.find((s) => s.id === 'mitmproxy')?.state).toBe('active')
+  })
+
+  // v0.9.7: installation and activation are separate axes.
+  it('reports a switched-off source as off, not idle', () => {
+    mockHooks({ 'shell-zsh': false })
+    configureCaptureHealth({ clipboard: { enabled: false }, fileWatcher: { enabled: true } })
+    const h = getCaptureHealth()
+    expect(h.sources.find((s) => s.id === 'clipboard')?.state).toBe('off')
+    expect(h.sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
+    // enabled-but-silent stays idle — that one is a real signal
+    expect(h.sources.find((s) => s.id === 'file-watcher')?.state).toBe('idle')
+  })
+
+  it('a switched-off source does not drag the verdict to partial', () => {
+    mockHooks({ 'shell-zsh': false })
+    // Feed the monitor, then switch it off: previously "expected but silent"
+    // pinned the verdict to partial forever after.
+    ins('process', { subtype: 'process_spawn', command: 'bash' })
+    ins('scanner', { subtype: 'http_request', url: 'https://x' })
+    configureCaptureHealth({ processMonitor: { enabled: false } })
+    const h = getCaptureHealth()
+    expect(h.sources.find((s) => s.id === 'process-monitor')?.state).toBe('off')
+    expect(h.verdict).toBe('healthy')
   })
 
   it('recognises mitmproxy scanner events even though it has no install flag', () => {

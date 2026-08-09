@@ -11,17 +11,31 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.9.6**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.9.7**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.9.6-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.6/RedLog-0.9.6-arm64.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.9.6.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.6/RedLog.Setup.0.9.6.exe) |
-| Windows (portable) | [`RedLog.0.9.6.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.6/RedLog.0.9.6.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.9.7-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.7/RedLog-0.9.7-arm64.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.9.7.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.7/RedLog.Setup.0.9.7.exe) |
+| Windows (portable) | [`RedLog.0.9.7.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.9.7/RedLog.0.9.7.exe) |
 
 macOS builds are **Apple Silicon only** as of v0.9.4 — Intel Macs should build from source (`npm install && npm run build && npx electron-builder --mac`).
 
-Builds are unsigned. On macOS, right-click the app → **Open** on first launch to get past Gatekeeper; on Windows, click **More info → Run anyway** past SmartScreen.
+Builds are unsigned (ad-hoc signed, not notarised).
+
+**macOS** — the download is quarantined, and since macOS 15 that shows up as
+*"RedLog is damaged and can't be opened"*. The file is fine; the right-click →
+**Open** trick no longer works for unsigned apps. After dragging the app to
+`/Applications`, clear the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/RedLog.app
+```
+
+Or open **System Settings ▸ Privacy & Security**, scroll to the blocked-app
+notice and choose **Open Anyway**.
+
+**Windows** — click **More info → Run anyway** past SmartScreen.
 
 ## Screenshots
 

@@ -72,7 +72,10 @@ contextBridge.exposeInMainWorld('redlog', {
       ipcRenderer.send('overlay:setExpanded', expanded),
     autosize: (height: number, width?: number) => ipcRenderer.send('overlay:autosize', height, width),
     hide: () => ipcRenderer.send('overlay:hide'),
+    /** Opens the full marker dialog in the main window (raises + focuses it). */
     quickMark: () => ipcRenderer.send('overlay:quickMark'),
+    /** Drops a timestamped marker without touching window focus. */
+    instantMark: (): Promise<{ ok: boolean; id?: string }> => ipcRenderer.invoke('overlay:instantMark'),
     mouseEnter: () => ipcRenderer.send('overlay:mouseEnter'),
     mouseLeave: () => ipcRenderer.send('overlay:mouseLeave'),
     onInteractive: (cb: (interactive: boolean) => void) => {
