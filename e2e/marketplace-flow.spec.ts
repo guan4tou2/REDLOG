@@ -5,6 +5,14 @@ import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { launchWithTempHome, openTestProject } from './helpers'
 
+/** v0.9.10: Settings went from ten top-level tabs to eight; Plugins and
+ *  Marketplace merged into one tab with sub-tabs, since "what is installed" and
+ *  "where to get more" are one task. Click through both. */
+async function openMarketplaceTab(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /^plugins$/i }).first().click()
+  await page.getByRole('button', { name: /^marketplace$/i }).first().click()
+}
+
 const SCREENSHOT_DIR = join(__dirname, 'screenshots')
 
 // -----------------------------------------------------------------------------
@@ -178,7 +186,9 @@ test.describe.serial('marketplace', () => {
     await page.keyboard.press(`${mod}+9`)
     const viewRoot = page.locator('[data-testid="view-root"]')
     await expect(viewRoot).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
-    await page.getByRole('button', { name: /marketplace/i }).first().click()
+    // v0.9.10: Marketplace is a sub-tab under Plugins, not a top-level tab —
+    // open the parent first.
+    await openMarketplaceTab(page)
     // The Plugins sub-tab is the default landing view — good enough for a
     // screenshot; we're not asserting on the DOM here.
     mkdirSync(SCREENSHOT_DIR, { recursive: true })
@@ -197,7 +207,9 @@ test.describe.serial('marketplace', () => {
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
     await page.keyboard.press(`${mod}+9`)
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
-    await page.getByRole('button', { name: /marketplace/i }).first().click()
+    // v0.9.10: Marketplace is a sub-tab under Plugins, not a top-level tab —
+    // open the parent first.
+    await openMarketplaceTab(page)
 
     // Sub-tab: Publishers. MarketplacePanel renders the three sub-tabs from
     // i18n strings ("Plugins" / "Publishers" / "Revocations").
@@ -335,7 +347,9 @@ test.describe.serial('marketplace', () => {
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
     await page.keyboard.press(`${mod}+9`)
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
-    await page.getByRole('button', { name: /marketplace/i }).first().click()
+    // v0.9.10: Marketplace is a sub-tab under Plugins, not a top-level tab —
+    // open the parent first.
+    await openMarketplaceTab(page)
     // Sub-tab "Plugins" — test 2 above left us on Publishers; jump back.
     // Two buttons match /Plugins/ (Settings-level tab + Marketplace sub-tab);
     // `.last()` picks the sub-tab which is rendered after the top-level tabs.
