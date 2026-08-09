@@ -3,6 +3,93 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.9 — 2026-08-10
+
+**Profiled against a real 131k-event engagement.** v0.9.8 measured a synthetic
+50k-row database; this round used a copy of an actual operator project — 131,833
+events, 245 MB on disk, 151 MB of it in the `data` column, and **99.95% of the
+rows are `agent`** (AI transcript turns, where `tool_result` averages 3.8 KB and
+peaks at 107 KB). Row *count* was never the thing that mattered; total *bytes*
+was, and a transcript-heavy project gets there two orders of magnitude sooner
+than the earlier "fine until 1M rows" note assumed.
+
+| Path | Before | After |
+|---|---|---|
+| `verifyRandomSample(100)` — every project open | **3,741 ms** | **8.9 ms** |
+| `verifyRandomSample(50)` — every 5 minutes | **1,774 ms** | **5.8 ms** |
+| `verifyLatestAnchor` | 141 ms | 2.9 ms |
+| `computeChainHead` | 43 ms | 2.8 ms |
+
+### 1. An OR that could not use an index — a 2-second freeze, four times an hour
+
+The chain sample looks up each sampled row's predecessor:
+
+```sql
+WHERE created_at < ? OR (created_at = ? AND rowid < ?)
+ORDER BY created_at DESC, rowid DESC LIMIT 1
+```
+
+`EXPLAIN QUERY PLAN` reports `SEARCH events USING INDEX idx_events_created_at`
+for this, which is why it never looked suspicious. But SQLite cannot drive a
+single index scan from an OR across two different predicates, and the fallback
+reads the events table — which means paging in the entire `data` column.
+**39.5 ms per lookup, one per sampled row.**
+
+The row-value form is semantically identical and takes **0.6 ms for all 100**:
+
+```sql
+WHERE (created_at, rowid) < (?, ?)
+```
+
+That one query was the whole of `verifyRandomSample`. It runs synchronously on
+the main process at every project open and on a 5-minute timer, so the app
+froze for ~2 seconds four times an hour, indefinitely, on any engagement of
+this size.
+
+### 2. `ORDER BY RANDOM()` materialised every row
+
+Sampling planned as `SCAN events | USE TEMP B-TREE FOR ORDER BY` — a random
+key assigned to all 131k rows and the lot sorted, forcing the full `data`
+column through the sort. Rowids are dense (the `no_delete_events` trigger
+makes DELETE impossible), so the sample now draws random integers in
+`[MIN(rowid), MAX(rowid)]` and fetches by primary key. When the request covers
+the whole range it takes every rowid instead of drawing — coupon-collector
+misses would otherwise verify fewer rows than exist, silently.
+
+### 3. The sample verified hashes eagerly; the full walk had not since v0.7.1
+
+`verifyRandomSample` built all six historical hash shapes into an array and
+*then* called `.some()` on it, so every row paid five wasted SHA-256 passes
+over its full body — any modern chain matches the first shape. `verifyRowHash`
+has short-circuited newest-first since v0.7.1; only this path was left behind.
+Both now share it.
+
+### 4. Two more scans of the 151 MB data column
+
+- `COUNT(*) WHERE hash IS NOT NULL` (the tail of `computeChainHead`) planned as
+  a bare `SCAN`. A partial index — `ON events(created_at) WHERE hash IS NOT
+  NULL` — lets the count walk index pages instead. 43 ms → 2.8 ms.
+- `computeChainHead(maxEvents)` loaded the first N rows into an array to read
+  its last element and length: 131k rows materialised to answer a question
+  about one of them. Now `LIMIT 1 OFFSET N-1`.
+
+### Note on method
+
+Every one of these looked fine in the query plan or in a synthetic benchmark.
+The OR in particular reported an index search and still degraded into a table
+read. What found them was profiling the individual statements against a copy of
+a real database, timing them in isolation, and being willing to discard two
+wrong hypotheses (large `created_at` tie groups; eager hashing) before
+measuring the one that mattered.
+
+### Tested
+
+- 456/456 unit (+2). `test/query-plans.test.ts` now also pins the prev-row
+  lookup and the chain-head count. These regress *silently* — the query stays
+  correct and only gets slow — so a plan assertion is the only thing that
+  catches them.
+- 38/38 E2E, 1 skipped.
+
 ## v0.9.8 — 2026-08-09
 
 **Performance: profiled, then fixed.** Measured on a 50k-event database before
