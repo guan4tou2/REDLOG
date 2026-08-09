@@ -43,6 +43,20 @@ export function initDB(projectDir: string): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
     CREATE INDEX IF NOT EXISTS idx_events_type ON events(agent_type);
+    -- v0.9.8: (agent_type, timestamp DESC). Both hot paths filter by
+    -- agent_type and then want the NEWEST rows, and neither single-column
+    -- index serves both halves:
+    --   * insertEvent's dedup window (agent_type IN (shell,agent) AND
+    --     timestamp >= ? ORDER BY timestamp DESC LIMIT 20) planned as
+    --     "SEARCH USING idx_events_type + USE TEMP B-TREE FOR ORDER BY" --
+    --     it pulled every shell row into a sort to find 20. Measured at
+    --     50k rows: 2.8 ms, on every single insert.
+    --   * capture-health's eleven MAX(timestamp) WHERE agent_type = ?
+    --     probes scanned the whole agent_type bucket each. 23 ms per call,
+    --     and it runs on every agent status request.
+    -- With the composite index the order comes from the index, so both
+    -- become bounded walks from the newest row.
+    CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(agent_type, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_events_engagement ON events(engagement_id);
     CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_id);
     -- v0.6.95 P0-4b: every insertEvent looks up the previous row hash via
