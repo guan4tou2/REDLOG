@@ -7,13 +7,13 @@ silently — leave a `- [~] not applicable this release: <reason>` note.
 ## 0. Static
 
 - [ ] `npm run build` clean
-- [ ] `npm test` → 439/439 (or higher — update this number if suite grew)
+- [ ] `npm test` → 446/446 (or higher — update this number if suite grew)
 - [ ] `diff <(jq -r 'keys[]' src/renderer/src/i18n/en.json | sort) <(jq -r 'keys[]' src/renderer/src/i18n/zh-TW.json | sort)` → empty
 - [ ] No mojibake in i18n:
   `grep -P '\xc3\x82|\xc3\x83' src/renderer/src/i18n/*.json` empty
 - [ ] `README.md` version references updated (download table filenames + the
       "current version" line)
-- [ ] `npx playwright test` → 25/25. Needs the Electron ABI:
+- [ ] `npx playwright test` → 33/33. Needs the Electron ABI:
       `npx electron-rebuild -f -o better-sqlite3` first, and note that a later
       `npm test` flips it back to the Node ABI via its `pretest` hook.
 
@@ -173,7 +173,9 @@ Everything below still needs hands on the app.
 
 ## 17. Cross-cutting
 
-- [ ] Recording pause: no new events added while paused, resume works
+- [~] Recording pause: no new events added while paused, resume works —
+      automated in `e2e/recording-pause.spec.ts` since v0.9.5 (also covers the
+      200-not-error contract, derived-event leakage, and toggle attribution)
 - [ ] Kill app mid-session: on relaunch, project reopens cleanly,
       chain not corrupted
 - [ ] Uninstall + reinstall via DMG: `~/.redlog/projects.json` and

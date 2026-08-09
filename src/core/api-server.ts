@@ -2,7 +2,7 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents } from './db/events'
+import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { createQuickMark, listQuickMarks } from './db/findings'
 import {
   ensurePrimaryOperator,
@@ -178,9 +178,9 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
 
       case 'redlog_recording': {
         const action = args.action as string
-        if (action === 'pause') eventBus.pause()
-        else if (action === 'resume') eventBus.resume()
-        else if (action === 'toggle') { if (eventBus.paused) eventBus.resume(); else eventBus.pause() }
+        if (action === 'pause') eventBus.pause('mcp')
+        else if (action === 'resume') eventBus.resume('mcp')
+        else if (action === 'toggle') { if (eventBus.paused) eventBus.resume('mcp'); else eventBus.pause('mcp') }
         return { recording: !eventBus.paused }
       }
 
@@ -336,6 +336,23 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const agentType = body.agent_type || body.agentType || 'external'
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
+
+      // v0.9.5: bail before ANY derivation while paused. The insertEvent gate
+      // would drop the main row anyway, but the normalisation below runs first
+      // and emits its own rows — scope_violation, loot, pivot, cleanup,
+      // file_transfer. Those are `system`/derived and would leak the very
+      // content the operator paused to keep out: a scope_violation names the
+      // target host of a command that was never recorded.
+      //
+      // Must answer 200. The shell hook posts with `curl -sf`, so any non-2xx
+      // makes it spool the payload to ~/.redlog/pending/ — which RedLog
+      // replays on the next project open, putting the paused commands into the
+      // chain after all. A refusal has to read as success on the wire.
+      if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && eventBus.paused) {
+        json(res, 200, { ok: true, recording: false, skipped: 'recording paused' })
+        return
+      }
+
       // v0.6.89 _causes wiring: resolve upstream event id from linker fields
       // that already exist on the payload (flow_id for http_*, terminal_id+pid
       // for shell command_end). The api-server keeps two small in-memory maps
@@ -654,10 +671,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/recording' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req))
-      if (body.action === 'pause') eventBus.pause()
-      else if (body.action === 'resume') eventBus.resume()
+      if (body.action === 'pause') eventBus.pause('api')
+      else if (body.action === 'resume') eventBus.resume('api')
       else if (body.action === 'toggle') {
-        if (eventBus.paused) eventBus.resume(); else eventBus.pause()
+        if (eventBus.paused) eventBus.resume('api'); else eventBus.pause('api')
       }
       json(res, 200, { recording: !eventBus.paused })
       return
