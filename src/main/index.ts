@@ -29,14 +29,15 @@ import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
-import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort } from '../core/api-server'
+import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe } from '../core/api-server'
 import {
   listOperators, createOperator, updateOperatorToken, revokeOperator,
   deleteOperator, renameOperator, generateToken, slugifyOperatorId
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
-  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions
+  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions,
+  getCastPosition
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -446,6 +447,8 @@ function startProject(project: ProjectMeta): void {
   setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+  // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
+  setCastProbe(getCastPosition)
 
   // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
   // Both default to 0 (keep forever) so existing installs see no behaviour

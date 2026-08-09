@@ -111,3 +111,46 @@ export async function readCastSlice(castPath: string, startMs: number, endMs: nu
   const joined = events.map((e) => e[2]).join('')
   return { events, text: stripAnsi(joined), bytes, truncated: false, castStartMs }
 }
+
+/** v0.9.6 (T2): read a cast by BYTE RANGE instead of time window.
+ *
+ *  `command_end` now carries `io: {off, len}` — the exact span of the cast
+ *  that this command produced, captured from the live write position at
+ *  O(1) cost. Reading that span is O(len); the time-window path has to stream
+ *  from byte 0 every call, so a long session re-reads a growing prefix per
+ *  command. The time path stays as the fallback for events recorded before
+ *  v0.9.6 and for sessions where the pair could not be bracketed.
+ *
+ *  The range may start or end mid-line, since offsets are recorded between
+ *  writes rather than on line boundaries. Partial lines at either edge are
+ *  dropped — a partial JSON array is not parseable and the loss is bounded by
+ *  one write chunk. */
+export async function readCastRange(castPath: string, off: number, len: number): Promise<CastSlice | null> {
+  if (!Number.isFinite(off) || !Number.isFinite(len) || off < 0 || len <= 0) return null
+  if (len > MAX_CAST_BYTES) return null
+  let stat: fs.Stats
+  try { stat = fs.statSync(castPath) } catch { return null }
+  if (off >= stat.size) return null
+  const end = Math.min(off + len, stat.size) - 1
+
+  const chunks: Buffer[] = []
+  try {
+    const stream = fs.createReadStream(castPath, { start: off, end })
+    for await (const c of stream) chunks.push(c as Buffer)
+  } catch { return null }
+
+  const events: Array<[number, 'o', string]> = []
+  let bytes = 0
+  for (const line of Buffer.concat(chunks).toString('utf8').split('\n')) {
+    if (!line) continue
+    let ev: unknown
+    try { ev = JSON.parse(line) } catch { continue }   // partial edge line
+    if (!Array.isArray(ev) || ev.length < 3) continue
+    if (ev[1] !== 'o' || typeof ev[0] !== 'number' || typeof ev[2] !== 'string') continue
+    events.push([ev[0] as number, 'o', ev[2] as string])
+    bytes += (ev[2] as string).length
+  }
+
+  const joined = events.map((e) => e[2]).join('')
+  return { events, text: stripAnsi(joined), bytes, truncated: off + len > stat.size, castStartMs: 0 }
+}

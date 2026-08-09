@@ -3,6 +3,99 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.9.6 — 2026-08-09
+
+**Command output becomes visible, and the runtime-`require` family is
+closed.** First half of the I/O visibility plan in
+`docs/timeline-io-visibility.md` (T2 + T3): the built-in terminal's output was
+already on disk in the session `.cast`, but nothing in the UI said so until
+you clicked through to a replay, and nothing distinguished "this command
+printed nothing" from "we never captured what it printed".
+
+### 1. `command_end` brackets its own output (T2)
+
+A built-in-terminal `command_end` now carries:
+
+```jsonc
+"io": { "stream": "cast", "ref": "<session>.cast", "off": 8421, "len": 166 }
+```
+
+The offsets come from the live cast write position, which `terminal-manager`
+already maintains for its size cap — so stamping is **O(1)**. Re-deriving the
+window by time on each `command_end` would re-stream a growing prefix of the
+file, which is O(n²) over a session.
+
+`readCastRange()` reads that span directly, and the replay endpoint prefers it
+over the time-window path (kept as the fallback for pre-v0.9.6 events and for
+pairs that could not be bracketed). Reading a command's output is now O(len)
+instead of O(file prefix).
+
+The v0.6.47 invariant holds: **bytes stay on disk, only the reference enters
+the chain.** In-chain stdout was reverted back then because TUI output blew
+past any cap and the hash ended up covering ANSI noise; an `io` reference
+reintroduces none of that. A test asserts the stamped object contains no
+output text.
+
+### 2. Absence is stated, not implied (T3)
+
+The detail panel for a shell `command_end` used to show exit code and duration
+and nothing else, so an empty panel meant either outcome. It now says which:
+
+- **output recorded** — with the size of the session-capture span, and the
+  replay control below to read it;
+- **output not captured** — external shells record the command only; the note
+  names `redlog-run` as the wrapper that does capture streams;
+- **output not bracketed** — a built-in session RedLog could not match to a
+  span, pointing at the full-session replay instead.
+
+On the track itself, a single shell `command_end` dot gains a 3px notch when
+output was recorded (amber when nothing was captured) and a red outline when
+`exit_code != 0`. Two channels of texture rather than more colour — the 18
+lane hues are already past what is reliably distinguishable.
+
+**What this deliberately does not claim.** `io.len` is the span of the *cast*,
+not the size of the output: it includes the shell's echo of the command line
+and the JSON framing of each write, so even `true` brackets ~150 B.
+Distinguishing "printed nothing" from "printed something" would mean reading
+and ANSI-stripping the range on every command — exactly the per-command cost
+the byte offsets exist to avoid. The label says "of session capture" and the
+real output byte count appears once the replay is expanded. An earlier draft
+of this release showed it as an output size and claimed a "no output" state
+that could never fire; both were wrong and were removed before shipping.
+
+### 3. The runtime-`require` family is closed (AUDIT P0-7)
+
+v0.9.4 P0-4 treated `require('../core/retention')` as a one-off. It was not.
+Four more turned up in the same shape — surviving verbatim into `out/main/`,
+resolving against directories rollup never emitted, each swallowed by a
+surrounding `catch`:
+
+| Site | What silently stopped working |
+|---|---|
+| `chain-anchor.ts` | **`system.anchor_failed` was never written.** `audit-trail.md` lists it as a drift signal, and v0.6.88 added it precisely because "an anchor failure is currently silent". In every packaged build, it stayed silent. |
+| `terminal-manager.ts` | **`recoverOrphanSessions()` always returned 0.** A terminal killed by a crash never got its synthetic `session_end`, so its cast SHA-256 was never recorded and the timeline showed a session that never closed. |
+| `cloud-share.ts` | `projectDirSafe()` always fell to its `~/.redlog/no-project` fallback, so share previews counted screenshots and casts in the wrong directory. |
+
+Unit tests could not catch any of it — they import modules directly and never
+touch the bundle. `test/cloud-share.test.ts` had gone further and *encoded*
+the bug: a comment explained that `require()` bypasses `vi.mock`, so its
+fixtures were written into the fallback path. That test now asserts the
+correct behaviour.
+
+`test/bundle-requires.test.ts` scans `out/main/` and fails on any relative
+`require()` that does not resolve to an emitted file — closing the family
+rather than the instances.
+
+### Tested
+
+- 447/447 unit (+1: bundle integrity).
+- **37/37 E2E** (+4): `e2e/command-io.spec.ts` drives a real pty — spawns a
+  built-in terminal, runs a command, and asserts the `io` range lands in the
+  chain, carries no output text, and resolves back to the command's own output
+  through the replay endpoint. None of it is reachable from a unit test: the
+  offsets come from a live cast write position.
+- i18n 771/771 aligned.
+
 ## v0.9.5 — 2026-08-09
 
 **Pause now means "do not record".** The README promised that daily/hobby work

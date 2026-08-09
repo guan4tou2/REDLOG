@@ -434,6 +434,51 @@ function formatBehind(ms: number): string {
 // run AND this event id matches `brokenAtEventId` from that run.
 interface EventBadge { icon: string; reason: string; key: string }
 
+/** v0.9.6 (T3): what the track should say about a shell command's output.
+ *  `fail` outlines the dot when the command exited non-zero; `io` decides
+ *  the small notch on its lower-right. Deliberately two channels rather than
+ *  more colour — the 18 lane hues already sit past what's reliably
+ *  distinguishable, so this reads as texture on top of the lane colour. */
+// `recorded` means a bracketed span of the session .cast belongs to this
+// command — NOT that the command printed something. The span is measured in
+// cast bytes (JSON-framed writes, including the shell's own echo of the
+// command line), so even `true` brackets ~150 B. Distinguishing "printed
+// nothing" from "printed something" would mean reading and ANSI-stripping the
+// range, which is exactly the O(len)-per-command cost the byte offsets exist
+// to avoid. So we claim only what an O(1) stamp can know.
+type IoMark = 'recorded' | 'uncaptured' | null
+function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
+  if (e.agentType !== 'shell' || e.data?.subtype !== 'command_end') return { io: null, fail: false }
+  const fail = Number(e.data?.exit_code ?? 0) !== 0
+  // Inline streams (the `redlog-run` wrapper) win — the bytes are right there.
+  const inline = typeof e.data?.stdout === 'string' || typeof e.data?.stderr === 'string' || typeof e.data?.output === 'string'
+  if (inline) {
+    // The wrapper streams ARE the output, so here the distinction is real.
+    const n = String(e.data?.stdout ?? '').length + String(e.data?.stderr ?? '').length + String(e.data?.output ?? '').length
+    return { io: n > 0 ? 'recorded' : null, fail }
+  }
+  const io = e.data?.io as { len?: number; unbracketed?: boolean } | undefined
+  if (io && typeof io.len === 'number' && !io.unbracketed && io.len > 0) {
+    return { io: 'recorded', fail }
+  }
+  // Nothing captured: an external shell without the wrapper, or a pair we
+  // couldn't bracket. Not the same as "printed nothing" — say so.
+  return { io: 'uncaptured', fail }
+}
+
+function ioTitle(m: { io: IoMark; fail: boolean }, t: (k: string) => string): string {
+  const parts: string[] = []
+  if (m.fail) parts.push(t('timeline.io.failed'))
+  if (m.io === 'recorded') parts.push(t('timeline.io.recorded'))
+  else if (m.io === 'uncaptured') parts.push(t('timeline.io.uncaptured'))
+  return parts.length ? ` · ${parts.join(' · ')}` : ''
+}
+
+const IO_MARK_COLOR: Record<Exclude<IoMark, null>, string> = {
+  recorded: '#e5e5e5',
+  uncaptured: '#f59e0b'
+}
+
 function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge[] {
   const b: EventBadge[] = []
   const d = (evt.data as Record<string, unknown> | undefined) ?? {}
@@ -2506,7 +2551,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${eventTitle(evt)}${badgeTitle}`
+                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${eventTitle(evt)}${badgeTitle}${ioTitle(ioMark(evt), t)}`
                         : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
@@ -2528,6 +2573,39 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       >
                         {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
                       </div>
+                      {/* v0.9.6 (T3): I/O texture on single shell command_end
+                          dots. A 3px notch = output exists on disk; amber =
+                          nothing was captured (distinct from "printed
+                          nothing", which gets no notch at all). Clusters are
+                          skipped — the popup lists members individually. */}
+                      {single && (() => {
+                        const m = ioMark(evt)
+                        if (!m.io && !m.fail) return null
+                        return (
+                          <>
+                            {m.fail && (
+                              <span
+                                style={{
+                                  position: 'absolute', width: dot + 5, height: dot + 5,
+                                  borderRadius: '50%', border: '1.5px solid #ef4444',
+                                  pointerEvents: 'none'
+                                }}
+                              />
+                            )}
+                            {m.io && (
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  left: hit / 2 + dot / 2 - 3, top: hit / 2 + dot / 2 - 3,
+                                  width: 3, height: 3, borderRadius: '50%',
+                                  background: IO_MARK_COLOR[m.io],
+                                  pointerEvents: 'none'
+                                }}
+                              />
+                            )}
+                          </>
+                        )
+                      })()}
                       {/* Feature 3: single-badge bubble at top-right. Only the
                           first badge shows here to keep the dot readable; the
                           rest surface in the tooltip and in the detail panel. */}
@@ -2984,6 +3062,21 @@ function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Elem
           startOpen
         />
       )}
+      {/* v0.9.6 (T2/T3): say what happened to this command's output. Before
+          this the panel showed exit code and duration and nothing else, so
+          "produced no output" and "we never captured the output" looked
+          identical — the same failure mode `recording_paused` exists to avoid
+          for timeline gaps. Three states:
+            · bytes on disk  → size + the replay control below
+            · builtin term, nothing captured → say so explicitly
+            · external shell → say output is not captured on this path, and
+              name the wrapper that does capture it */}
+      {!hasStdout && !hasStderr && !hasLegacyOutput && (
+        <IoAbsenceNote
+          builtin={data.source === 'builtin-terminal'}
+          io={data.io as Record<string, unknown> | undefined}
+        />
+      )}
       <MetadataGrid
         entries={[
           ['exit_code', data.exit_code],
@@ -2996,6 +3089,40 @@ function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Elem
         ]}
       />
     </div>
+  )
+}
+
+/** v0.9.6 (T2): explains the absence — or the on-disk location — of a shell
+ *  command's output, so an empty panel is never ambiguous. */
+function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const len = typeof io?.len === 'number' ? (io.len as number) : null
+  const bracketed = len !== null && !io?.unbracketed
+
+  // Bytes exist on disk: the replay control below this renders them. Say how
+  // much up front so the operator knows whether it's worth expanding.
+  if (bracketed && len > 0) {
+    // `len` is the cast span, not the output size — it includes the shell's
+    // echo of the command line and the JSON framing of each write. Label it
+    // as what it is; the real output byte count appears once the replay
+    // below is expanded and the range has actually been read.
+    return (
+      <p className="text-[11px] text-emerald-400/80 font-mono px-2 py-1 rounded border border-emerald-600/30 bg-emerald-900/10">
+        {t('timeline.detail.ioOnDisk', { size: formatBytes(len) })}
+      </p>
+    )
+  }
+  if (bracketed && len === 0) {
+    return (
+      <p className="text-[11px] text-zinc-500 font-mono px-2 py-1 rounded border border-zinc-800/60 bg-zinc-950/40">
+        {t('timeline.detail.ioNone')}
+      </p>
+    )
+  }
+  return (
+    <p className="text-[11px] text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+      {t(builtin ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
+    </p>
   )
 }
 

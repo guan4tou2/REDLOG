@@ -1,6 +1,7 @@
 # Timeline I/O visibility
 
-**Design note — proposed, not implemented.** Status as of v0.9.3.
+**Design note.** Steps 1–2 (T2 + T3) shipped in v0.9.6; the rest is still
+proposed. Status as of v0.9.6.
 
 ## 1. The problem
 
@@ -214,8 +215,8 @@ rather than inline in the event.
 
 | Step | Scope | Depends on |
 |---|---|---|
-| 1 | T2 built-in terminal `io.stdout` stamping | — |
-| 2 | T3 dot encoding + "output not captured" row | 1 |
+| ~~1~~ | ~~T2 built-in terminal `io` stamping~~ — shipped v0.9.6 as `io: {stream, ref, off, len}` | — |
+| ~~2~~ | ~~T3 dot encoding + "output not captured" row~~ — shipped v0.9.6 | 1 |
 | 3 | T1 `io_ref` sidecar + `io:read` IPC + bundle/retention/verifier | — |
 | 4 | T6 scanner / browser detail components | 3 |
 | 5 | T4 exchange view | 1 |
