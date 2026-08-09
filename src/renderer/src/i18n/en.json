@@ -3,7 +3,6 @@
   "app.subtitle": "Red Team Operation Log",
   "app.mark": "+ Mark",
   "app.copyVersionHint": "Double-click to select for copying",
-
   "project.new": "New Project",
   "project.create": "Create",
   "project.recent": "Recent Projects",
@@ -14,13 +13,11 @@
   "project.openMissing": "Project not found — it may have been moved or deleted.",
   "project.bridgeMissing": "RedLog’s app bridge is unavailable. Open RedLog from the installed app, not a web browser — buttons won’t work here.",
   "project.description": "Each project stores its own config, events, screenshots, and evidence log.",
-
   "time.justNow": "just now",
   "time.mAgo": "{{m}}m ago",
   "time.hAgo": "{{h}}h ago",
   "time.dAgo": "{{d}}d ago",
   "time.sAgo": "{{s}}s ago",
-
   "sidebar.dashboard": "Dashboard",
   "sidebar.terminal": "Terminal",
   "sidebar.search": "Search (⌘/)",
@@ -35,7 +32,6 @@
   "sidebar.reorderHint": "Click to open · hold to drag and reorder",
   "sidebar.config": "Config",
   "sidebar.settings": "Settings",
-
   "capture.title": "Capture Health",
   "capture.healthy": "Recording",
   "capture.partial": "Wired but idle",
@@ -78,7 +74,6 @@
   "dashboard.shortcuts": "Keyboard Shortcuts",
   "dashboard.addMarker": "Add Marker",
   "dashboard.search": "Search",
-
   "screenshots.title": "Screenshots ({{count}})",
   "screenshots.captureNow": "Capture Now",
   "screenshots.empty": "Screenshots will appear here when captured",
@@ -87,7 +82,6 @@
   "screenshots.deletedToast": "File deleted; the event stays in the hash chain",
   "screenshots.deleteTitle": "Delete screenshot file",
   "screenshots.deleteConfirm": "Deletes the JPEG file only. The event itself stays in the hash chain and a system.screenshot_deleted audit event is appended. Continue?",
-
   "ip.checking": "Checking IP...",
   "ip.safeIp": "Safe IP",
   "ip.exposedIp": "Exposed IP",
@@ -96,7 +90,6 @@
   "ip.internalIp": "Internal IP",
   "ip.safetyHint": "Set the Safe IP list (attack exits, green) and Exposed IP list (your own IPs, red) in Settings ▸ Network to enable classification",
   "ip.exposedHint": "EXPOSED: your external IP is on the Exposed IP list (your own IP) — traffic is not going through your VPN/tunnel, so your real identity is showing. Check your VPN/proxy before continuing.",
-
   "timeline.title": "Attack Timeline",
   "timeline.events": "({{count}} events)",
   "timeline.loadMore": "Load more",
@@ -142,7 +135,6 @@
   "settings.integrityFullClockAnomalies": "{n} clock anomaly / anomalies detected",
   "timeline.clusterMoreItems": "+{count} more — zoom in to see individually",
   "timeline.resizeDetailPanel": "Drag to resize the detail panel · double-click to reset",
-
   "targets.title": "Targets ({{count}})",
   "targets.subtitle": "Targets are auto-collected from your logged commands (e.g. nmap 10.0.0.1) — independent of Scope. Scope is the allowlist you set to decide in/out of scope.",
   "targets.all": "All",
@@ -156,7 +148,6 @@
   "targets.last": "Last: {{time}}",
   "targets.noEvidence": "No evidence linked to this target.",
   "targets.andMore": "... and {{count}} more",
-
   "scope.title": "Scope & Evidence",
   "scope.monitor": "Scope Monitor",
   "scope.active": "ACTIVE",
@@ -168,7 +159,6 @@
   "scope.entries": "{{count}} entries",
   "scope.recentViolations": "Recent Violations",
   "scope.openInTimeline": "Open this event in the timeline",
-
   "loot.title": "Loot ({{count}})",
   "loot.empty": "No credentials or secrets detected yet.",
   "loot.emptyDesc": "Auto-scans shell output for password hashes, API keys, JWTs, private keys, database URLs, and CTF flags.",
@@ -177,7 +167,6 @@
   "loot.target": "target",
   "loot.openInTimeline": "View in timeline",
   "loot.openInTimelineHint": "Jump to this discovery on the timeline to see the surrounding activity.",
-
   "marks.title": "Marks ({{count}})",
   "marks.capture": "+ Capture",
   "marks.export": "Export",
@@ -216,7 +205,6 @@
   "marks.openUrl": "Open in external browser",
   "marks.pageTitle": "Page Title:",
   "marks.ipLabel": "IP:",
-
   "marker.title": "New Event Marker",
   "marker.severity.info": "Info",
   "marker.severity.important": "Important",
@@ -245,14 +233,12 @@
   "marker.saving": "Saving...",
   "marker.submit": "Mark + Screenshot",
   "marker.defaultTitle": "Mark @ {{time}}",
-
   "search.placeholder": "Search commands, targets, clipboard, loot...",
   "search.hint": "Type at least 2 characters to search across all events",
   "search.noResults": "No results for \"{{query}}\"",
   "search.results": "{{count}} results",
   "search.openInTimeline": "Open in timeline",
   "search.clearFilter": "clear filter",
-
   "statusBar.rec": "REC",
   "statusBar.paused": "PAUSED",
   "statusBar.clickToPause": "Click to pause recording",
@@ -271,7 +257,6 @@
   "statusBar.timestampTitle": "Timestamp — mark this moment (auto-captures context)",
   "statusBar.overlay": "HUD",
   "statusBar.toggleOverlay": "Toggle HUD",
-
   "overlay.safeIp": "SAFE",
   "overlay.exposedIp": "EXPOSED",
   "overlay.ipUnknown": "IP?",
@@ -296,7 +281,6 @@
   "overlay.internalNet": "internal",
   "overlay.pivots": "Pivots",
   "overlay.lastCheck": "Last check",
-
   "browser.launch": "Launch Browser",
   "browser.stop": "Stop Browser",
   "browser.hint": "Open a Chromium browser routed through your proxy, with CDP enabled and an isolated profile. Configure in Settings ▸ Data.",
@@ -312,7 +296,6 @@
   "settings.browserIgnoreCert": "Ignore certificate errors (needed for mitmproxy interception)",
   "settings.browserDetected": "Auto-detected: {{path}}",
   "settings.browserNotFound": "No Chromium-based browser found — set a path above",
-
   "settings.general": "General",
   "settings.language": "Language",
   "settings.uiScale": "Interface text size",
@@ -444,7 +427,6 @@
   "settings.saveApply": "Save",
   "settings.restartHint": "Applies immediately (changing engagement/operator id needs reopening the project)",
   "settings.autoSaveHint": "Changes save automatically and apply live (changing engagement/operator id needs reopening the project)",
-
   "settings.mcp": "MCP Server (for AI agents)",
   "settings.hookWatchPaths.saved": "Hook config saved.",
   "settings.hookExcludedPaths.title": "Claude Code Hook — Excluded Paths",
@@ -480,7 +462,6 @@
   "settings.cdpConnected": "Connected: {{title}} — {{url}}",
   "settings.cdpNotConnected": "Not connected. Launch Chrome with --remote-debugging-port={{port}}",
   "settings.operatorPrimaryLocked": "Primary operator cannot be revoked or deleted from the UI.",
-
   "settings.integrity": "Timeline Integrity",
   "settings.integrityHint": "The event chain is anchored to public OpenTimestamps calendars every hour. Each receipt lets any auditor prove the chain existed at that time — verifiable independently with the `ots` CLI.",
   "settings.integrityAnchorNow": "Anchor now",
@@ -497,7 +478,6 @@
   "settings.integrityVerifiedOk": "Chain intact: latest anchor covers {{n}} events, current chain has {{m}}.",
   "settings.integrityVerifiedBad": "MISMATCH: latest anchor covered {{n}} events, current chain has {{m}} — investigate.",
   "settings.integrityVerifiedNone": "No anchors to verify yet.",
-
   "settings.deconfliction": "Deconfliction Webhook",
   "settings.deconflictionHint": "Push signed digests of matching events to the blue team so they can confirm 'is this red team?' in seconds. Only enable when the engagement's RoE says the blue team is in the loop — never during covert external red team.",
   "settings.deconflictionEnable": "Enable deconfliction webhook",
@@ -509,12 +489,9 @@
   "settings.deconflictionSubtypes": "Also forward these subtype values",
   "settings.deconflictionIncludeData": "Include full event.data (may leak PII / secrets)",
   "settings.deconflictionTest": "Send test payload",
-
   "error.crashed": "{{label}} crashed",
   "error.retry": "Retry",
-
   "common.loading": "Loading...",
-
   "confirm.cancel": "Cancel",
   "confirm.confirm": "Confirm",
   "confirm.delete": "Delete",
@@ -522,19 +499,15 @@
   "confirm.deleteProjectDesc": "All data for this project will be permanently deleted. This cannot be undone.",
   "confirm.deleteMark": "Delete Mark?",
   "confirm.deleteMarkDesc": "This mark will be permanently removed.",
-
   "toast.recordingPaused": "Recording paused",
   "toast.recordingResumed": "Recording resumed",
   "toast.exported": "Data exported successfully",
   "toast.exportFailed": "Export failed",
   "toast.copied": "Copied to clipboard",
   "toast.exportedTo": "Exported to {{path}}",
-  "toast.exportFailed": "Export failed",
   "toast.copiedMasked": "Copied (masked view — click Reveal first then Copy for raw bytes)",
-
   "terminal.shell": "Shell",
   "terminal.newTab": "New Terminal",
-
   "timeline.zoomIn": "Zoom in (Ctrl+scroll)",
   "timeline.minimapHint": "Drag to zoom to a time window · click to jump",
   "timeline.zoomOut": "Zoom out (Ctrl+scroll)",
@@ -645,15 +618,11 @@
   "timeline.tz.utc": "UTC",
   "timeline.tz.project": "Project",
   "timeline.tz.tooltip": "Display timestamps in this timezone",
-
   "dashboard.exportData": "Export Data",
-
   "overlay.mark": "Mark",
   "overlay.rec": "REC",
   "overlay.paused": "PAUSED",
-
   "screenshots.emptyDesc": "Screenshots are captured automatically on idle or manually via the capture button.",
-
   "project.advancedSetup": "Advanced Setup (optional)",
   "project.advancedSummary": "scope {scope} / safe {safe} / exposed {exposed}",
   "project.done": "Done",
@@ -666,16 +635,13 @@
   "project.warnOnViolationHint": "Same-root out-of-scope targets → red badge + event. Off has no effect on raw command recording.",
   "project.or": "or",
   "project.importProfile": "Import Profile (.yaml / .json)",
-
   "settings.profileSync": "Team Profile Sync",
   "settings.exportProfile": "Export Profile",
   "settings.importProfile": "Import Profile",
   "settings.profileHint": "Export config as a .yaml file to share scope, IP safety, and engagement settings with your team.",
-
   "toast.profileExported": "Profile exported",
   "toast.profileImported": "Profile imported — save to apply",
   "toast.scopeExported": "Scope-filtered data exported",
-
   "settings.hooks": "Hooks",
   "settings.hooksDetected": "Detected CLI Tools",
   "settings.hooksHint": "RedLog auto-detects installed CLI tools and can configure hooks to capture their activity. Enable a hook to start recording events from that tool.",
@@ -796,5 +762,12 @@
   "marketplace.rolledBackFrom": "Previous version snapshotted to {path}",
   "settings.scopeExport": "Scope-Filtered Export",
   "settings.exportScopeJson": "Export Scope-Only JSON",
-  "settings.scopeExportHint": "Exports only events matching configured scope targets. Use this when uploading logs to a remote server — out-of-scope data is excluded."
+  "settings.scopeExportHint": "Exports only events matching configured scope targets. Use this when uploading logs to a remote server — out-of-scope data is excluded.",
+  "timeline.detail.ioOnDisk": "output recorded — {{size}} of session capture, expand below to read it",
+  "timeline.detail.ioNone": "nothing recorded for this command",
+  "timeline.detail.ioUnbracketed": "output not bracketed — RedLog could not match this command to a span of the session recording. Try the full session replay below.",
+  "timeline.detail.ioNotCaptured": "output not captured — external shells record the command only. Prefix with `redlog-run` to capture stdout/stderr, or use the built-in terminal.",
+  "timeline.io.failed": "exit != 0",
+  "timeline.io.uncaptured": "output not captured",
+  "timeline.io.recorded": "output recorded"
 }

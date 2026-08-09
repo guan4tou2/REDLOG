@@ -3,7 +3,6 @@
   "app.subtitle": "紅隊行動日誌",
   "app.mark": "+ 標記",
   "app.copyVersionHint": "點兩下選取版號複製",
-
   "project.new": "新專案",
   "project.create": "建立",
   "project.recent": "最近的專案",
@@ -14,13 +13,11 @@
   "project.openMissing": "找不到專案 —— 可能已被移動或刪除。",
   "project.bridgeMissing": "RedLog 的 app bridge 無法使用。請從安裝好的 RedLog app 開啟,不要用網頁瀏覽器 —— 這裡的按鈕不會有作用。",
   "project.description": "每個專案獨立儲存設定、事件、截圖和證據日誌。",
-
   "time.justNow": "剛剛",
   "time.mAgo": "{{m}} 分鐘前",
   "time.hAgo": "{{h}} 小時前",
   "time.dAgo": "{{d}} 天前",
   "time.sAgo": "{{s}} 秒前",
-
   "sidebar.dashboard": "儀表板",
   "sidebar.terminal": "終端機",
   "sidebar.search": "搜尋 (⌘/)",
@@ -35,7 +32,6 @@
   "sidebar.reorderHint": "點擊開啟 · 長按可拖曳排序",
   "sidebar.config": "設定",
   "sidebar.settings": "設定",
-
   "capture.title": "擷取健康度",
   "capture.healthy": "記錄中",
   "capture.partial": "已設定但閒置",
@@ -78,7 +74,6 @@
   "dashboard.shortcuts": "快捷鍵",
   "dashboard.addMarker": "新增標記",
   "dashboard.search": "搜尋",
-
   "screenshots.title": "截圖（{{count}}）",
   "screenshots.captureNow": "立即擷取",
   "screenshots.empty": "擷取後截圖將顯示在此",
@@ -87,7 +82,6 @@
   "screenshots.deletedToast": "檔案已刪除;事件仍留在 hash chain 內",
   "screenshots.deleteTitle": "刪除截圖檔案",
   "screenshots.deleteConfirm": "只刪除 JPEG 檔;事件本體會留在 hash chain 內,並額外寫入一筆 system.screenshot_deleted 到 audit trail。確定?",
-
   "ip.checking": "正在檢查 IP...",
   "ip.safeIp": "安全 IP",
   "ip.exposedIp": "暴露 IP",
@@ -96,7 +90,6 @@
   "ip.internalIp": "內部 IP",
   "ip.safetyHint": "在「設定 ▸ 網路」設定安全 IP（攻擊出口，綠）與暴露 IP（自己 IP，紅）以啟用判定",
   "ip.exposedHint": "EXPOSED：目前外部 IP 命中「暴露 IP」清單（你自己的 IP）—— 代表流量沒走 VPN/tunnel，真實身分正在外露。請先檢查 VPN/proxy 連線再繼續。",
-
   "timeline.title": "攻擊時間軸",
   "timeline.events": "（{{count}} 個事件）",
   "timeline.loadMore": "載入更多",
@@ -142,7 +135,6 @@
   "settings.integrityFullClockAnomalies": "偵測到 {n} 次時鐘異常",
   "timeline.clusterMoreItems": "還有 {count} 個 — 放大以個別檢視",
   "timeline.resizeDetailPanel": "拖曳調整詳細面板高度 · 雙擊還原預設",
-
   "targets.title": "目標（{{count}}）",
   "targets.subtitle": "目標由記錄到的指令自動收集(例如 nmap 10.0.0.1),與「範圍」設定無關。範圍是你設定的允許清單,用來判定是否在範圍內。",
   "targets.all": "全部",
@@ -156,7 +148,6 @@
   "targets.last": "最近：{{time}}",
   "targets.noEvidence": "此目標沒有關聯的證據。",
   "targets.andMore": "⋯ 還有 {{count}} 筆",
-
   "scope.title": "範圍與證據",
   "scope.monitor": "範圍監控",
   "scope.active": "啟用中",
@@ -168,7 +159,6 @@
   "scope.entries": "{{count}} 筆紀錄",
   "scope.recentViolations": "近期違規",
   "scope.openInTimeline": "在時間軸開啟該事件",
-
   "loot.title": "戰利品（{{count}}）",
   "loot.empty": "尚未偵測到憑證或機密。",
   "loot.emptyDesc": "自動掃描 Shell 輸出中的密碼雜湊、API 金鑰、JWT、私鑰、資料庫 URL 和 CTF Flag。",
@@ -177,7 +167,6 @@
   "loot.target": "目標",
   "loot.openInTimeline": "在時間軸檢視",
   "loot.openInTimelineHint": "跳到時間軸上這筆發現,查看前後的相關活動。",
-
   "marks.title": "標記（{{count}}）",
   "marks.capture": "+ 擷取",
   "marks.export": "匯出",
@@ -216,7 +205,6 @@
   "marks.openUrl": "在外部瀏覽器開啟",
   "marks.pageTitle": "頁面標題：",
   "marks.ipLabel": "IP：",
-
   "marker.title": "新事件標記",
   "marker.severity.info": "資訊",
   "marker.severity.important": "重要",
@@ -245,14 +233,12 @@
   "marker.saving": "儲存中...",
   "marker.submit": "標記 + 截圖",
   "marker.defaultTitle": "Mark @ {{time}}",
-
   "search.placeholder": "搜尋指令、目標、剪貼簿、戰利品...",
   "search.hint": "輸入至少 2 個字元以跨所有事件搜尋",
   "search.noResults": "「{{query}}」沒有結果",
   "search.results": "{{count}} 項結果",
   "search.openInTimeline": "在時間軸開啟",
   "search.clearFilter": "清除篩選",
-
   "statusBar.rec": "錄製",
   "statusBar.paused": "已暫停",
   "statusBar.clickToPause": "點擊暫停錄製",
@@ -271,7 +257,6 @@
   "statusBar.timestampTitle": "時間戳記 — 標記此刻（自動擷取上下文）",
   "statusBar.overlay": "HUD",
   "statusBar.toggleOverlay": "切換 HUD",
-
   "overlay.safeIp": "安全",
   "overlay.exposedIp": "暴露",
   "overlay.ipUnknown": "IP?",
@@ -296,7 +281,6 @@
   "overlay.internalNet": "內網",
   "overlay.pivots": "跳板節點",
   "overlay.lastCheck": "最後檢查",
-
   "browser.launch": "開啟瀏覽器",
   "browser.stop": "關閉瀏覽器",
   "browser.hint": "開啟走 proxy 的 Chromium，已啟用 CDP 並使用獨立設定檔。可在「設定 ▸ 資料」調整。",
@@ -312,7 +296,6 @@
   "settings.browserIgnoreCert": "忽略憑證錯誤（mitmproxy 攔截需要）",
   "settings.browserDetected": "自動偵測到：{{path}}",
   "settings.browserNotFound": "找不到 Chromium 系瀏覽器 — 請在上方指定路徑",
-
   "settings.general": "一般",
   "settings.language": "語言",
   "settings.uiScale": "介面文字大小",
@@ -444,7 +427,6 @@
   "settings.saveApply": "儲存",
   "settings.restartHint": "設定會即時套用(變更任務/操作員 ID 需重開專案)",
   "settings.autoSaveHint": "修改後會自動儲存並即時套用(變更任務/操作員 ID 需重開專案)",
-
   "settings.mcp": "MCP 伺服器（給 AI agent）",
   "settings.hookWatchPaths.saved": "Hook 設定已儲存。",
   "settings.hookExcludedPaths.title": "Claude Code Hook — 例外清單",
@@ -480,7 +462,6 @@
   "settings.cdpConnected": "已連線:{{title}} — {{url}}",
   "settings.cdpNotConnected": "未連線。請以 --remote-debugging-port={{port}} 啟動 Chrome",
   "settings.operatorPrimaryLocked": "主 operator 無法從 UI 撤銷或刪除。",
-
   "settings.integrity": "Timeline 完整性",
   "settings.integrityHint": "事件鏈每小時自動錨定到公開的 OpenTimestamps calendar。每筆收據都能讓稽核員獨立證明鏈在該時間存在——可用 `ots` CLI 驗證。",
   "settings.integrityAnchorNow": "立即錨定",
@@ -497,7 +478,6 @@
   "settings.integrityVerifiedOk": "鏈完整：最新錨點涵蓋 {{n}} 筆，目前鏈有 {{m}} 筆。",
   "settings.integrityVerifiedBad": "不符：最新錨點涵蓋 {{n}} 筆，目前鏈只有 {{m}} 筆——請調查。",
   "settings.integrityVerifiedNone": "尚無錨點可驗證。",
-
   "settings.deconfliction": "Deconfliction Webhook",
   "settings.deconflictionHint": "把符合條件的事件（簽章過的摘要）即時推給藍隊，讓他們幾秒內判斷「這是紅隊還是真攻擊」。只在 RoE 明說藍隊在圈內時打開——covert external red team 絕對不要開。",
   "settings.deconflictionEnable": "啟用 deconfliction webhook",
@@ -509,12 +489,9 @@
   "settings.deconflictionSubtypes": "也轉發這些 subtype 的事件",
   "settings.deconflictionIncludeData": "包含完整 event.data（可能外洩 PII / 秘密）",
   "settings.deconflictionTest": "發送測試 payload",
-
   "error.crashed": "{{label}} 發生錯誤",
   "error.retry": "重試",
-
   "common.loading": "載入中...",
-
   "confirm.cancel": "取消",
   "confirm.confirm": "確認",
   "confirm.delete": "刪除",
@@ -522,19 +499,15 @@
   "confirm.deleteProjectDesc": "此專案的所有資料將被永久刪除，此操作無法復原。",
   "confirm.deleteMark": "刪除標記？",
   "confirm.deleteMarkDesc": "此標記將被永久移除。",
-
   "toast.recordingPaused": "錄製已暫停",
   "toast.recordingResumed": "錄製已恢復",
   "toast.exported": "資料匯出成功",
   "toast.exportFailed": "匯出失敗",
   "toast.copied": "已複製到剪貼簿",
   "toast.exportedTo": "已匯出至 {{path}}",
-  "toast.exportFailed": "匯出失敗",
   "toast.copiedMasked": "已複製(遮蔽後版本 — 點「顯示機密」後再複製可得原始位元組)",
-
   "terminal.shell": "終端",
   "terminal.newTab": "新增終端",
-
   "timeline.zoomIn": "放大（Ctrl+滾輪）",
   "timeline.minimapHint": "拖曳選取時間範圍以放大 · 點擊跳至該時間",
   "timeline.zoomOut": "縮小（Ctrl+滾輪）",
@@ -645,15 +618,11 @@
   "timeline.tz.utc": "UTC",
   "timeline.tz.project": "專案",
   "timeline.tz.tooltip": "以此時區顯示時間戳記",
-
   "dashboard.exportData": "匯出資料",
-
   "overlay.mark": "標記",
   "overlay.rec": "錄製",
   "overlay.paused": "已暫停",
-
   "screenshots.emptyDesc": "截圖會在閒置時自動擷取，或透過擷取按鈕手動觸發。",
-
   "project.advancedSetup": "進階設定（選填）",
   "project.advancedSummary": "範圍 {scope}／白 {safe}／黑 {exposed}",
   "project.done": "完成",
@@ -666,16 +635,13 @@
   "project.warnOnViolationHint": "與 scope 目標同 root domain 但超出 scope → 紅色 badge + 事件。關掉不影響原始指令記錄。",
   "project.or": "或",
   "project.importProfile": "匯入設定檔（.yaml / .json）",
-
   "settings.profileSync": "團隊設定同步",
   "settings.exportProfile": "匯出設定檔",
   "settings.importProfile": "匯入設定檔",
   "settings.profileHint": "將設定匯出為 .yaml 檔案，分享範圍、IP 安全和任務設定給團隊成員。",
-
   "toast.profileExported": "設定檔已匯出",
   "toast.profileImported": "設定檔已匯入 — 儲存以套用",
   "toast.scopeExported": "已匯出範圍過濾資料",
-
   "settings.hooks": "Hooks",
   "settings.hooksDetected": "偵測到的 CLI 工具",
   "settings.hooksHint": "RedLog 自動偵測已安裝的 CLI 工具，並可設定 hook 來擷取其活動。啟用 hook 即可開始記錄該工具的事件。",
@@ -796,5 +762,12 @@
   "marketplace.rolledBackFrom": "上一版已備份至 {path}",
   "settings.scopeExport": "範圍過濾匯出",
   "settings.exportScopeJson": "匯出範圍內 JSON",
-  "settings.scopeExportHint": "僅匯出符合已設定範圍目標的事件。適用於上傳日誌至遠端伺服器時——排除範圍外資料。"
+  "settings.scopeExportHint": "僅匯出符合已設定範圍目標的事件。適用於上傳日誌至遠端伺服器時——排除範圍外資料。",
+  "timeline.detail.ioOnDisk": "已記錄輸出 — 工作階段錄影 {{size}}，展開下方即可閱讀",
+  "timeline.detail.ioNone": "這條指令沒有留下任何錄影段落",
+  "timeline.detail.ioUnbracketed": "輸出無法定位 — RedLog 無法將這條指令對應到工作階段錄影的某一段。請改用下方的完整工作階段重播。",
+  "timeline.detail.ioNotCaptured": "未捕獲輸出 — 外部 shell 只記錄指令本身。在指令前加上 `redlog-run` 可捕獲 stdout/stderr，或改用內建終端機。",
+  "timeline.io.failed": "結束碼非 0",
+  "timeline.io.uncaptured": "未捕獲輸出",
+  "timeline.io.recorded": "已記錄輸出"
 }

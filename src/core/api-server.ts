@@ -25,7 +25,7 @@ import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
 import { anchorNow, listAnchors, verifyLatestAnchor, verifyChainFullAsync, getAnchorById, buildOtsBundle, upgradeAnchor, upgradeAllPending } from './chain-anchor'
 import { getChainLength } from './evidence-chain'
-import { readCastSlice } from './cast-slice'
+import { readCastSlice, readCastRange } from './cast-slice'
 import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
@@ -66,6 +66,18 @@ let scopeMonitorRef: {
   getViolationCount: () => number
   checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean }
 } | null = null
+
+/** v0.9.6 (T2): lets main wire terminal-manager's live cast position in
+ *  without core importing main. Same shape as setPluginHost / the tailer
+ *  contribution sink. */
+type CastProbe = (terminalId: string) => { castPath: string; offset: number; truncated: boolean } | null
+let castProbe: CastProbe | null = null
+export function setCastProbe(fn: CastProbe | null): void { castProbe = fn }
+
+// Byte offset in the session cast at each command_start, keyed by terminalId.
+// Bounded by the number of live terminals, and overwritten per command, so it
+// needs no eviction beyond dropping the key when the pair completes.
+const castOffsetAtStart = new Map<string, number>()
 
 export function configureApi(opts: {
   engagementId: string
@@ -393,6 +405,31 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         // mitre-common-tools plugin). Zero-config by default — no core patterns.
         // Downstream tagging (ELK/Splunk on the SIEM side) can replace this
         // entirely by disabling the plugin.
+        // v0.9.6 (T2): bracket this command's output by byte range in the
+        // session's .cast. The bytes stay on disk — only the reference enters
+        // the chain, which is the v0.6.47 invariant (in-chain stdout blew up
+        // on TUI output and made the hash cover ANSI noise). What changes is
+        // that the operator can now SEE that output exists, and how much,
+        // without clicking through to a replay.
+        const termId = typeof data.terminalId === 'string' ? data.terminalId : null
+        if (termId && data.source === 'builtin-terminal' && castProbe) {
+          const pos = castProbe(termId)
+          if (pos) {
+            if (isStart) {
+              castOffsetAtStart.set(termId, pos.offset)
+            } else if (data.subtype === 'command_end') {
+              const from = castOffsetAtStart.get(termId)
+              castOffsetAtStart.delete(termId)
+              // No matching start (hook installed mid-session, or RedLog
+              // restarted between the pair) → record that we can't bracket it
+              // rather than guessing a window.
+              data.io = from === undefined
+                ? { stream: 'cast', ref: pos.castPath, unbracketed: true, truncated: pos.truncated }
+                : { stream: 'cast', ref: pos.castPath, off: from, len: Math.max(0, pos.offset - from), truncated: pos.truncated }
+            }
+          }
+        }
+
         if (isStart) {
           const tagStamp = tagCommand(cmd)
           for (const [k, v] of Object.entries(tagStamp)) {
@@ -722,7 +759,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // Guard against zero-duration events (instantaneous commands still get
       // a small window so echoed prompt/output isn't lost to rounding).
       const startMs = target.timestamp - Math.max(duration, 100)
-      const slice = await readCastSlice(resolvedCast, startMs, target.timestamp)
+      // v0.9.6 (T2): prefer the byte range stamped at capture time — O(len)
+      // instead of streaming the file from 0. Falls back to the time window
+      // for pre-v0.9.6 events and unbracketed pairs.
+      const io = td.io as { off?: number; len?: number } | undefined
+      const slice = typeof io?.off === 'number' && typeof io.len === 'number' && io.len > 0
+        ? await readCastRange(resolvedCast, io.off, io.len)
+          ?? await readCastSlice(resolvedCast, startMs, target.timestamp)
+        : await readCastSlice(resolvedCast, startMs, target.timestamp)
       if (!slice) { json(res, 500, { error: 'failed to read cast file' }); return }
       json(res, 200, {
         command: td.command,

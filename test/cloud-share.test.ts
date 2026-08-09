@@ -122,12 +122,15 @@ describe.skipIf(!hasZip)('cloud-share prepareBundle', () => {
     //   rawBytes            = shots + casts + eventCount*512
     //   approxCompressed    = round(shots*1.02 + casts*0.15 + events*0.20)
     // eventCount comes from the mocked getEventCount() → 42.
-    // cloud-share.ts's projectDirSafe() uses CommonJS `require('./db/index')`
-    // for late binding (sidesteps circular init) — that path does NOT go
-    // through vi.mock, so the module falls to its ~/.redlog/no-project
-    // fallback. HOME is a temp dir in this describe, so land the fixture
-    // files there.
-    const projectDir = path.join(process.env.HOME!, '.redlog', 'no-project')
+    // v0.9.6: projectDirSafe() used a CommonJS `require('./db/index')` for
+    // "late binding", which vi.mock does not intercept — so this test used to
+    // place its fixtures in the ~/.redlog/no-project fallback, codifying the
+    // bug. That require also never survived bundling (it resolved against a
+    // non-existent out/core/), so cloud-share previews in a packaged build
+    // always measured the wrong directory. Now a static import, so the mock
+    // applies and fixtures go in the mocked project dir.
+    const dbMod = await import('../src/core/db/index')
+    const projectDir = dbMod.getProjectDir()
     const shotsDir = path.join(projectDir, 'screenshots')
     const castsDir = path.join(projectDir, 'casts')
     fs.mkdirSync(shotsDir, { recursive: true })
