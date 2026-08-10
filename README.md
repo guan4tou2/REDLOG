@@ -11,13 +11,13 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.11.4**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.11.5**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.11.4-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.4/RedLog-0.11.4-arm64.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.11.4.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.4/RedLog.Setup.0.11.4.exe) |
-| Windows (portable) | [`RedLog.0.11.4.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.4/RedLog.0.11.4.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.11.5-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.5/RedLog-0.11.5-arm64.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.11.5.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.5/RedLog.Setup.0.11.5.exe) |
+| Windows (portable) | [`RedLog.0.11.5.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.5/RedLog.0.11.5.exe) |
 
 macOS builds are **Apple Silicon only** as of v0.9.4 — Intel Macs should build from source (`npm install && npm run build && npx electron-builder --mac`).
 
