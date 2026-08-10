@@ -40,15 +40,18 @@ test.describe.serial('project flow', () => {
   })
 
   test('⌘1..9 switches views (v0.6.67 focus fix)', async () => {
-    // Default sidebar order: dashboard, timeline, terminal, screenshots,
-    // targets, scope, loot, marks; ⌘9 = settings. Hit a spread of them and
-    // confirm data-view swaps to match — this is what regressed pre-0.6.67.
+    // Default sidebar order: dashboard, timeline, transcript, terminal,
+    // screenshots, targets, scope, loot, marks. The sidebar takes 1..8 and
+    // ⌘9 is pinned to settings (v0.11.2) — before that the two were one
+    // concatenated list, so adding a ninth sidebar entry pushed settings past
+    // the reachable digits and it silently lost its shortcut.
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
     const viewRoot = page.locator('[data-testid="view-root"]')
 
     for (const [key, expected] of [
       ['2', 'timeline'],
-      ['3', 'terminal'],
+      ['3', 'transcript'],
+      ['4', 'terminal'],
       ['1', 'dashboard'],
       ['9', 'settings']
     ] as const) {

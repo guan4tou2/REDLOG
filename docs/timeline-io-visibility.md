@@ -217,7 +217,7 @@ rather than inline in the event.
 |---|---|---|
 | ~~1~~ | ~~T2 built-in terminal `io` stamping~~ — shipped v0.9.6 as `io: {stream, ref, off, len}` | — |
 | ~~2~~ | ~~T3 dot encoding + "output not captured" row~~ — shipped v0.9.6 | 1 |
-| 3 | T1 `io_ref` sidecar + `io:read` IPC + bundle/retention/verifier | — |
-| 4 | T6 scanner / browser detail components | 3 |
-| 5 | T4 exchange view | 1 |
-| 6 | T5 transcript view + Markdown export | 3, 4, 5 |
+| 3 | T1 `io_ref` sidecar — **still open, and now known not to block anything else**. Every source already persists what it captures (`.cast`, inline streams, `response_preview`); the sidecar only raises the caps. Do it when a cap is the actual complaint. | — |
+| ~~4~~ | ~~T6 scanner / browser detail components~~ — shipped v0.11.2 (needed no sidecar; the payloads were already captured) | — |
+| ~~5~~ | ~~T4 exchange view~~ — shipped v0.11.2, inside the transcript rather than the detail panel | — |
+| ~~6~~ | ~~T5 transcript view + Markdown export~~ — shipped v0.11.2 | — |

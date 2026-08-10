@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
+import TranscriptView from './components/TranscriptView'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
 import TimelinePanel from './components/Timeline'
@@ -26,8 +27,25 @@ type View = SidebarViewId | 'settings' | 'search'
 // ⌘/Ctrl+1..8 map to the sidebar order (which the user can reorder); ⌘9 =
 // Settings (pinned at the sidebar's bottom, not part of the reorderable list).
 // Reads fresh on demand so a drag-reorder immediately updates the shortcuts.
+// v0.11.2: Settings is pinned to ⌘9, and the sidebar takes 1..8.
+//
+// This used to be `[...sidebar, 'settings']`, which worked while the sidebar
+// held eight entries. Adding Transcript made it nine, so the concatenated list
+// ran to ten — and `parseInt(e.key)` only reaches 9, so Settings silently lost
+// its shortcut to whatever the operator had dragged into ninth place. Settings
+// is pinned separately in the sidebar and documented as ⌘9 in the `?` sheet,
+// so it keeps the slot; the ninth sidebar entry has no number, which the
+// operator controls by reordering.
+const SETTINGS_SHORTCUT_INDEX = 9
+
 function currentShortcutOrder(): View[] {
-  return [...loadSidebarOrder(), 'settings'] as View[]
+  return loadSidebarOrder().slice(0, SETTINGS_SHORTCUT_INDEX - 1) as View[]
+}
+
+function viewForShortcut(num: number): View | null {
+  if (num === SETTINGS_SHORTCUT_INDEX) return 'settings' as View
+  const order = currentShortcutOrder()
+  return num >= 1 && num <= order.length ? order[num - 1] : null
 }
 
 // Read defensively — this runs at module load, before the preload bridge is
@@ -129,10 +147,10 @@ export default function App(): JSX.Element {
       if (cmd && !e.shiftKey && !e.altKey) {
         const num = parseInt(e.key)
         if (Number.isNaN(num)) return
-        const order = currentShortcutOrder()
-        if (num >= 1 && num <= order.length) {
+        const target = viewForShortcut(num)
+        if (target) {
           e.preventDefault()
-          setView(order[num - 1])
+          setView(target)
         }
       }
     }
@@ -196,6 +214,16 @@ export default function App(): JSX.Element {
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
             {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {/* v0.11.2 (design note T5): the same events read vertically. The
+                Timeline answers "when did this happen and what did it cause";
+                this answers "what did I type and what came back", which is the
+                question an operator asks when writing an engagement up. */}
+            {view === 'transcript' && (
+              <TranscriptView
+                key={project?.id ?? 'no-project'}
+                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); onNavigate('timeline') }}
+              />
+            )}
             {view === 'screenshots' && <ScreenshotsView />}
             {view === 'targets' && <TargetView />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
@@ -711,6 +739,9 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {[
               ...shortcutOrder.map((v, i) => [`${modKey}${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
+              // Settings is pinned to ⌘9 rather than carried by shortcutOrder,
+              // so it has to be listed explicitly (v0.11.2).
+              [`${modKey}9`, t('sidebar.settings')] as [string, string],
               [isMac ? '⌘⇧M' : 'Ctrl+Shift+M', t('dashboard.addMarker')] as [string, string],
               [`${modKey}/`, t('dashboard.search')] as [string, string]
             ].map(([key, label]) => (

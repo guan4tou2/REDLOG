@@ -64,6 +64,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: '◉' },
     terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: '▸' },
     timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
+    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: '☰' },
     screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' },
     targets: { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
     scope: { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
