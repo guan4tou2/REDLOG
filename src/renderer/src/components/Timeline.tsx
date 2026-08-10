@@ -1425,6 +1425,31 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   }, [events, timeStart, timeEnd])
 
   // Keep the minimap's "current viewport" window in sync with the scroll/zoom.
+  // v0.11.1: render only the clusters near the viewport.
+  //
+  // Every cluster across the whole track was in the DOM regardless of where
+  // the operator was looking. The track is BASE_TRACK_W * zoom wide — 12000px
+  // at max zoom — while the window shows around 1200px, so ~90% of the nodes
+  // existed purely to be scrolled past. Each is an absolutely-positioned div
+  // with a child, and dimmed ones stay in the tree at opacity 0.15, so
+  // filtering costs nothing that dimming was already paying for.
+  //
+  // x is computed in the clusters memo, so this is a numeric filter over an
+  // array — far cheaper than the DOM nodes it removes. The buffer is one
+  // viewport on each side, which is what stops nodes popping in during a drag
+  // and covers the gap between a scroll event and this state landing.
+  const visibleClusters = useMemo(() => {
+    if (TRACK_W <= 0) return clusters
+    const leftPx = (view.left / 100) * TRACK_W
+    const widthPx = (view.width / 100) * TRACK_W
+    if (widthPx <= 0) return clusters
+    const from = leftPx - widthPx
+    const to = leftPx + widthPx * 2
+    // Nothing to gain once the whole track fits — skip the pass entirely.
+    if (from <= 0 && to >= TRACK_W) return clusters
+    return clusters.filter((c) => c.x >= from && c.x <= to)
+  }, [clusters, view.left, view.width, TRACK_W])
+
   const updateView = useCallback(() => {
     const el = scrollRef.current
     if (!el || TRACK_W <= 0) return
@@ -2512,8 +2537,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     />
                   )
                 })()}
-                {/* Event markers — single dot, or a counted cluster when dense */}
-                {clusters.map((c) => {
+                {/* Event markers — single dot, or a counted cluster when dense.
+                    Windowed to the viewport plus a screen either side (v0.11.1). */}
+                {visibleClusters.map((c) => {
                   const single = c.events.length === 1
                   const evt = c.events[0]
                   const sel = single && selectedEvent?.id === evt.id
