@@ -102,6 +102,45 @@ privileged path that skips the gate:
 | Content hash covers `capture[].hookFile` | P2-1 |
 | Worker recomputes sha256 on upload, or the doc stops claiming a server-side sanitize check | P2-3 |
 
+## UX & onboarding track (added 2026-08-10)
+
+Until now this roadmap has had one axis: correctness and trust. The 2026-08-10
+review (`UX-AUDIT-2026-08.md`, `UX-TIMELINE-2026-08.md`) added a second — the
+primary persona's *success*, not just the log's honesty. The finding is that
+RedLog is under-*sequenced*, not over-*featured*: P2/P3/expert surfaces are
+presented to the solo operator (P1) at full weight from the first screen, and
+the timeline's interactions are invisible, overloaded, and context-dependent.
+
+Full ticket specs (F1–F7, T1–T6) live in `UX-BACKLOG-TICKETS.md`. The tension
+to hold: none of this is a new product direction — it is making the passive-
+capture promise (`PRODUCT-POSITIONING.md`) true on first run, and making the
+existing timeline legible. Report writing, ATT&CK opinion and correlation still
+stay downstream.
+
+Shipped in v0.11.6:
+
+- **Capture Readiness onboarding** (F1, partial) — the dark-state Dashboard card
+  is now an ordered checklist with one next action, off a pure/tested model.
+- **Timeline keyboard resolver** (T5, first seam) — four keydown listeners with
+  an overloaded Escape collapsed into one pure, tested precedence.
+
+Next, in impact order (see the tickets doc for acceptance criteria):
+
+| Item | Ticket | Size |
+|---|---|---|
+| Wire the dead `EmptyState` CTA into the 6 empty views | F4 | S |
+| Persistent timeline interaction legend (3 core gestures always visible) | T1 | S |
+| Resolve the wheel-mode ambiguity (pan vs. scroll) | T2 | S–M |
+| Guided hook install + verify loop | F1-b | M |
+| Active-modes row ("why is my timeline empty") | T3 | M |
+| Settings filter box | F3 | S–M |
+| One shortcut registry, two renderers | F5 | S |
+| Discoverable search entry | F6 | S |
+
+Structural, sequenced later: header "View options" menu (T4), the remaining
+timeline seam extractions (T5), and lane virtualization (T6) — which is the same
+work as **V4** below and, once done, deletes the wheel-mode branch behind T2.
+
 ## v0.12.0 — durability and scale
 
 | Item | Ref |

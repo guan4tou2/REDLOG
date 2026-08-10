@@ -1222,10 +1222,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       eventsMapRef.current.set(event.id, event)
       binarySearchInsert(sortedRef.current, event)
     }
+    // v0.11.7 (AUDIT W19): back off from a per-frame flush once the set is big.
+    //
+    // Every flush replaces the events array, which invalidates every memo on
+    // the panel. Measured at 131,833 events those cost ~65 ms per pass even
+    // with the search index gone lazy (laneEvents 18, effectsById 33, maxZoom
+    // 11, clusters and bins on top). A requestAnimationFrame schedule asks for
+    // that 60 times a second, so during heavy ingest the panel spends every
+    // frame recomputing and none of it painting.
+    //
+    // Under the threshold a frame-accurate flush is imperceptible and worth
+    // keeping — a live tail should look live. Over it, coalescing to ~4 Hz
+    // costs at most a quarter-second of staleness on a view whose own
+    // freshness badge counts in seconds, and hands the frames back.
+    const BIG_SET = 5_000
+    const SLOW_FLUSH_MS = 250
     const scheduleFlush = (): void => {
       if (scheduled) return
       scheduled = true
-      requestAnimationFrame(flush)
+      if (sortedRef.current.length > BIG_SET) window.setTimeout(flush, SLOW_FLUSH_MS)
+      else requestAnimationFrame(flush)
     }
     const unsubBatch = window.redlog.events.onNewBatch
       ? window.redlog.events.onNewBatch((events) => {
@@ -1393,6 +1409,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return map
   }, [events, pluginTypes])
 
+  // Debounced so a held key or a fast typist does not run the scan per
+  // character. 120 ms sits below the point where the filter feels laggy and
+  // above a burst of keystrokes.
+  const [filterQueryDebounced, setFilterQueryDebounced] = useState(filterQuery)
+  useEffect(() => {
+    const id = window.setTimeout(() => setFilterQueryDebounced(filterQuery), 120)
+    return () => window.clearTimeout(id)
+  }, [filterQuery])
+
   // v0.6.89.5: reverse-effects index (feature 1) — `effectsById[causeId] =
   // [effectEventId, ...]`. Built once per events change; O(N × avg-causes).
   // Also the badges index (feature 3) so every dot render is O(1). The
@@ -1401,8 +1426,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // v0.6.91 W1: filter-match set for the `/` search. Case-insensitive substring
   // over any of: data.command / data.url / data.host / data.title / data.subtype,
   // eventTitle (which is what the operator actually sees), and operatorId.
-  // Rebuilt on every events / query change — cheap for <= 5k events; for larger
-  // sets the outer dim path already dominates so this doesn't move the needle.
+  //
+  // (The original note here said this was "cheap for <= 5k events" and that
+  // the dim path dominated for larger sets. Measured at 131,833: the index
+  // build is 126 ms and dominates everything else on the panel. Hence the
+  // early return below.)
   // v0.9.8: the searchable text is built once per event set, not once per
   // keystroke. This used to allocate a nine-element array, join it, lowercase
   // it and call eventTitle() (which slices and replaces) for EVERY event on
@@ -1411,6 +1439,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // only walks an array of prebuilt strings.
   const searchIndex = useMemo(() => {
     const idx = new Map<string, string>()
+    // v0.11.7 (AUDIT W19): built only while a filter is active.
+    //
+    // This is the most expensive memo on the panel — nine string coercions, a
+    // join, a lowercase and an eventTitle() call per event. Measured on a real
+    // 131,833-event project: **126 ms**, and it ran on every flush whether or
+    // not anything was being filtered, which is almost always.
+    //
+    // Returning early costs one comparison when idle and changes nothing when
+    // typing: the index is rebuilt on the first keystroke, and the query is
+    // already debounced 120 ms so that happens once, not per character.
+    if (!filterQueryDebounced.trim()) return idx
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
       idx.set(e.id, [
@@ -1426,16 +1465,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       ].join('').toLowerCase())
     }
     return idx
-  }, [events, operatorNames])
+  }, [events, operatorNames, filterQueryDebounced])
 
-  // Debounced so a held key or a fast typist does not run the scan per
-  // character. 120 ms sits below the point where the filter feels laggy and
-  // above a burst of keystrokes.
-  const [filterQueryDebounced, setFilterQueryDebounced] = useState(filterQuery)
-  useEffect(() => {
-    const id = window.setTimeout(() => setFilterQueryDebounced(filterQuery), 120)
-    return () => window.clearTimeout(id)
-  }, [filterQuery])
 
   const filterMatches = useMemo(() => {
     const q = filterQueryDebounced.trim().toLowerCase()
@@ -1604,7 +1635,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // reconstruct the pair's window. Trailing paused-without-resume gets drawn
   // to the current time; trailing session-end without a duration is skipped
   // (nothing sensible to draw).
-  type SessionBand = { id: string; x0: number; x1: number; label: string; kind: 'term' | 'paused' }
+  // v0.11.7 (AUDIT V11): `row` staggers overlapping labels. Every band drew
+  // its label at its own top-left, so two terminals open at once — the normal
+  // case for an operator with a shell and a listener — stacked their labels on
+  // top of each other and neither was readable.
+  type SessionBand = { id: string; x0: number; x1: number; label: string; kind: 'term' | 'paused'; row: number }
   const sessionBands = useMemo<SessionBand[]>(() => {
     if (!sessionDividers) return []
     const bands: SessionBand[] = []
@@ -1619,7 +1654,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           x0: toX(startTs),
           x1: toX(endTs),
           label: t('timeline.boundaries.termLabelFmt', { id: tid.slice(0, 4) }),
-          kind: 'term'
+          kind: 'term',
+          row: 0
         })
       }
     }
@@ -1640,7 +1676,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             x0: toX(openPause.timestamp),
             x1: toX(e.timestamp),
             label: t('timeline.boundaries.pausedLabel'),
-            kind: 'paused'
+            kind: 'paused',
+            row: 0
           })
         }
         openPause = e
@@ -1650,7 +1687,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           x0: toX(openPause.timestamp),
           x1: toX(e.timestamp),
           label: t('timeline.boundaries.pausedLabel'),
-          kind: 'paused'
+          kind: 'paused',
+          row: 0
         })
         openPause = null
       }
@@ -1661,8 +1699,21 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         x0: toX(openPause.timestamp),
         x1: toX(Math.min(Date.now(), timeEnd)),
         label: t('timeline.boundaries.pausedLabel'),
-        kind: 'paused'
+        kind: 'paused',
+        row: 0
       })
+    }
+    // Greedy interval colouring: walk left to right and put each band on the
+    // lowest row whose previous band has already ended, with a label's width
+    // of clearance so the text doesn't collide either. Bands that don't
+    // overlap all stay on row 0, which is the common case.
+    const LABEL_CLEARANCE_PX = 54
+    const rowEnds: number[] = []
+    for (const b of [...bands].sort((p, q) => p.x0 - q.x0)) {
+      let row = rowEnds.findIndex((end) => end <= b.x0)
+      if (row === -1) { row = rowEnds.length; rowEnds.push(0) }
+      rowEnds[row] = Math.max(b.x1, b.x0 + LABEL_CLEARANCE_PX)
+      b.row = row
     }
     return bands
   }, [events, sessionDividers, toX, t, timeEnd])
@@ -2805,10 +2856,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       <div className="absolute inset-0" style={{ background: bg }} />
                       <div className="absolute inset-y-0 left-0 border-l border-dashed" style={{ borderColor: border }} />
                       <div className="absolute inset-y-0 right-0 border-l border-dashed" style={{ borderColor: border }} />
-                      <span
-                        className="absolute top-0 text-[9px] font-mono px-1 rounded-b bg-zinc-900/80"
-                        style={{ left: 2, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
-                      >{b.label}</span>
+                      {/* v0.11.7 (V11): stagger by row so concurrent sessions
+                          don't stack their labels, and drop the label entirely
+                          when the band is too narrow to hold it — a 60px label
+                          bleeding out of a 4px band is worse than none. */}
+                      {w >= 34 && (
+                        <span
+                          className="absolute text-[9px] font-mono px-1 rounded-b bg-zinc-900/80 whitespace-nowrap"
+                          style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
+                        >{b.label}</span>
+                      )}
                     </div>
                   )
                 })}
