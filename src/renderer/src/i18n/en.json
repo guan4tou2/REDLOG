@@ -820,5 +820,6 @@
   "transcript.note.recorded": "output recorded — {{size}} of session capture, open this event on the Timeline to replay it",
   "transcript.note.unbracketed": "output not bracketed — use the full session replay on the Timeline",
   "transcript.note.uncaptured": "output not captured",
-  "transcript.note.pending": "no response recorded"
+  "transcript.note.pending": "no response recorded",
+  "timeline.shape.scopeViolation": "out of scope"
 }
