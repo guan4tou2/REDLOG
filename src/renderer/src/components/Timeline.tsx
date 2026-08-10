@@ -3019,6 +3019,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           {selectedEvent.agentType === 'agent' && (
             <AgentTurnDetail data={selectedEvent.data as Record<string, unknown>} />
           )}
+          {/* v0.11.2 (T6): scanner and browser events carried their payloads
+              all along — mitmproxy sends request params and a 2 KB
+              `response_preview`, CDP sends the console message and stack — but
+              neither had a detail body, so the only way to read any of it was
+              the raw-JSON toggle: unformatted, redaction-masked, in a 120px
+              box. Same treatment as shell and agent events now. */}
+          {selectedEvent.agentType === 'scanner' && (
+            <ScannerDetail data={selectedEvent.data as Record<string, unknown>} />
+          )}
+          {selectedEvent.agentType === 'browser' && (
+            <BrowserConsoleDetail data={selectedEvent.data as Record<string, unknown>} />
+          )}
           {/* Replay this command: only for shell.command_end from a builtin
               terminal — pulls the stdout window out of the session's .cast
               file instead of storing it in the chain. */}
@@ -3245,6 +3257,101 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
           ['usage_tokens_out', data.usage_tokens_out],
           ['post_compact', data.post_compact === true ? 'true' : undefined],
           ['is_sidechain', data.is_sidechain === true ? 'true' : undefined]
+        ]}
+      />
+    </div>
+  )
+}
+
+/** v0.11.2 (T6): one HTTP exchange as the operator thinks about it — what went
+ *  out, what came back. The request and response arrive as two separate chain
+ *  events linked by `flow_id`, so each renders the half it holds and names the
+ *  other half's absence rather than showing a blank. */
+function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const subtype = String(data.subtype ?? '')
+  const isResponse = subtype === 'http_response'
+  const params = data.params as Record<string, unknown> | undefined
+  const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
+  const contentType = String(data.content_type ?? '')
+  const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
+
+  // A textual body that mitmproxy chose not to capture is different from a
+  // binary one it never could — say which.
+  const bodyless = isResponse && !preview && contentLength !== null && contentLength > 0
+  const binaryish = bodyless && !!contentType && !/json|html|text|xml|javascript/i.test(contentType)
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {!isResponse && params && Object.keys(params).length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.httpRequestParams')}
+          content={safePretty(params)}
+          accent="zinc"
+          startOpen
+        />
+      )}
+      {isResponse && preview.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.httpResponseBody')}
+          content={preview}
+          bytes={contentLength ?? preview.length}
+          truncated={contentLength !== null && contentLength > preview.length}
+          accent="emerald"
+          startOpen
+        />
+      )}
+      {bodyless && (
+        <p className="text-[11px] text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+          {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
+            type: contentType || '—', size: formatBytes(contentLength ?? 0)
+          })}
+        </p>
+      )}
+      {(data.request_headers || data.response_headers) && (
+        <CollapsibleStream
+          label={t('timeline.detail.httpHeaders')}
+          content={safePretty(data.response_headers ?? data.request_headers)}
+          accent="zinc"
+        />
+      )}
+      <MetadataGrid
+        entries={[
+          ['method', data.method],
+          ['status', data.status],
+          ['content_type', contentType || undefined],
+          ['content_length', contentLength !== null ? formatBytes(contentLength) : undefined],
+          ['duration_ms', data.duration_ms],
+          ['host', data.host],
+          ['flow_id', data.flow_id]
+        ]}
+      />
+    </div>
+  )
+}
+
+/** v0.11.2 (T6): a captured browser console line. The stack is the reason this
+ *  exists — a bare message rarely says where it came from. */
+function BrowserConsoleDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const message = typeof data.message === 'string' ? (data.message as string) : ''
+  const stack = typeof data.stack_trace === 'string' ? (data.stack_trace as string) : ''
+  const level = String(data.subtype ?? '')
+  const accent = level === 'console_error' || level === 'exception' ? 'amber' : 'zinc'
+  return (
+    <div className="mt-2 space-y-1.5">
+      {message.length > 0 && (
+        <CollapsibleStream label={t('timeline.detail.consoleMessage')} content={message} accent={accent} startOpen />
+      )}
+      {stack.length > 0 && (
+        <CollapsibleStream label={t('timeline.detail.consoleStack')} content={stack} accent="zinc" />
+      )}
+      <MetadataGrid
+        entries={[
+          ['level', level.replace(/^console_/, '')],
+          ['source', data.source],
+          ['line', data.line_number],
+          ['url', data.url]
         ]}
       />
     </div>

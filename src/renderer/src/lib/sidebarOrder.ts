@@ -9,12 +9,15 @@
 // full nav order for keyboard shortcuts should append 'settings' themselves.
 
 export type SidebarViewId =
-  | 'dashboard' | 'timeline' | 'terminal' | 'screenshots'
+  | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
   | 'targets' | 'scope' | 'loot' | 'marks'
 
 export const STORAGE_KEY = 'redlog-sidebar-order-v2'
+// v0.11.2: `transcript` sits next to `timeline` — same events, read the other
+// way. loadSidebarOrder() rejects a saved list whose length no longer matches,
+// so existing installs fall back to this order once and keep their new one.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'timeline', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
+  'dashboard', 'timeline', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
 ]
 
 /** Read the persisted order, falling back to DEFAULT_ORDER if missing or

@@ -3,6 +3,79 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.2 — 2026-08-10
+
+**"I can't tell what I typed and what came back" — answered.** This closes the
+original complaint that started `docs/timeline-io-visibility.md`, with the
+transcript view (T5), the exchange folding (T4) and detail bodies for the two
+sources that had none (T6).
+
+### 1. Transcript — the Timeline read vertically
+
+A new sidebar entry beside Timeline. Same events, same redaction masking, same
+per-project scoping — laid out as a scrollable narrative instead of a forensic
+track: one exchange per block, input above output.
+
+The Timeline answers *when did this happen and what did it cause*. It is the
+right shape for that and stays unchanged. It is the wrong shape for *what did I
+type and what came back*, which is the question an operator asks when writing
+an engagement up — and answering it meant clicking dots one at a time.
+
+**Exchanges are folded (T4).** A `tool_call` and its `tool_result` are one
+block, not two rows; likewise an HTTP request and its response. The pairing
+rules mirror what the Timeline already knows — `tool_use_id` for agent turns,
+`flow_id` for HTTP. Six events in the test render as four exchanges.
+
+**Absence is stated, not implied.** A block whose output was never captured
+says so, and says which kind of absence: `output not captured` (external shell,
+no `redlog-run`), `not bracketed` (built-in session RedLog could not match to a
+span), `recorded — N of session capture` (on disk, replay it on the Timeline),
+`no response recorded` (a request whose response never arrived). This is the
+same principle as `recording_paused` explaining a gap in the track: a blank
+must never be ambiguous between "nothing happened" and "we did not look".
+
+**Copy as Markdown** exports what is currently filtered. This is the one
+report-adjacent thing RedLog can offer without becoming a reporting tool,
+because it is a verbatim transcript and not an assessment — `docs/README.md`
+still puts report writing downstream, and nothing here interprets, scores or
+diffs.
+
+### 2. Detail bodies for scanner and browser events (T6)
+
+mitmproxy has been sending request params and a 2 KB `response_preview` all
+along, and CDP has been sending console messages with stack traces. Neither had
+a detail component, so the only way to read any of it was the raw-JSON toggle:
+unformatted, redaction-masked, in a 120px box. Both now render like shell and
+agent events do, and `ScannerDetail` distinguishes a body mitmproxy chose not
+to store from one it never could (a non-textual content type).
+
+### 3. ⌘9 is pinned to Settings
+
+The shortcut list was `[...sidebar, 'settings']`, which worked while the
+sidebar held eight entries. Transcript made it nine, so the list ran to ten —
+and `parseInt(e.key)` only reaches 9, so **Settings silently lost its shortcut**
+to whatever sat in ninth place. Settings is pinned separately in the sidebar
+and documented as ⌘9 in the `?` sheet, so it keeps the slot; the sidebar takes
+1..8 and the ninth entry has no number, which the operator controls by
+reordering. The cheatsheet lists it explicitly now rather than inheriting it
+from the concatenation.
+
+### On the `io_ref` sidecar (T1)
+
+Still unbuilt, and this release establishes it was never the blocker. Every
+source already persists what it captures — the built-in terminal into `.cast`
+(referenced from the chain since v0.9.6), `redlog-run` into inline streams,
+mitmproxy into `response_preview`, agents into `full` / `output`. The sidecar
+would raise those caps; it would not make anything visible that is not visible
+now. Worth doing when a cap is the actual complaint, not before.
+
+### Tested
+
+- 489/489 unit.
+- **41/41 E2E** (+1): the transcript folds a tool call with its result and an
+  HTTP request with its response into single exchanges, renders a response body
+  that previously had no UI at all, and labels uncaptured output as such.
+
 ## v0.11.1 — 2026-08-10
 
 **A chain verify no longer locks out capture; the Timeline stops rendering
