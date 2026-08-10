@@ -484,6 +484,11 @@ export interface HashableRow {
 export interface HashShapes {
   v01: Record<string, unknown>
   v02: Record<string, unknown>
+  /** v0.2 with `prevHash` in its ORIGINAL position — before `createdAt`. See
+   *  buildHashShapes for why the position is load-bearing. */
+  v02Inline: Record<string, unknown>
+  /** v0.6 (monotonic + ntp) with the same original ordering. */
+  v06Inline: Record<string, unknown>
   v06: () => Record<string, unknown>
   v06Null: Record<string, unknown>
 }
@@ -502,6 +507,48 @@ export function buildHashShapes(row: HashableRow, parsedData: unknown): HashShap
     data: parsedData, hash: undefined, createdAt: row.created_at
   }
   const v02: Record<string, unknown> = { ...v01, prevHash: row.prev_hash }
+  // v0.11.3: the same fields, with `prevHash` where commit 33a2c86 actually
+  // put it — inline in the event literal, BEFORE `createdAt`:
+  //
+  //   const event = { …, data, prevHash, createdAt }
+  //   sha256(JSON.stringify({ ...event, hash: undefined, prevHash }))
+  //
+  // `v02` above reconstructs it as `{ ...v01, prevHash }`, which appends
+  // prevHash AFTER createdAt. `JSON.stringify` serialises in insertion order,
+  // so the two produce different bytes for identical data — and every row
+  // written between 33a2c86 and the move to canonicalStringify verifies under
+  // this ordering and no other.
+  //
+  // This is the `chain_sample_broken` root cause left open since v0.7.5. The
+  // deferred note guessed at a corrupted row; nothing was corrupt. Confirmed
+  // by rebuilding the shape from that commit and re-hashing the row the
+  // sampler flagged in a real 2026-07-28 project: exact match on the stored
+  // hash, where the current v02 differs from the first byte.
+  //
+  // Ordering only matters for the JSON.stringify shapes. canonicalStringify
+  // (v0.6.88 onward) sorts keys, which is precisely why it was adopted.
+  const v02Inline: Record<string, unknown> = {
+    id: row.id, timestamp: row.timestamp,
+    engagementId: row.engagement_id, sessionId: row.session_id,
+    operatorId: row.operator_id, agentType: row.agent_type,
+    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+    data: parsedData,
+    prevHash: row.prev_hash,
+    createdAt: row.created_at,
+    hash: undefined
+  }
+  // f1f7c70 then appended monotonicNs / ntpOffsetMs to that same literal, so
+  // they land AFTER createdAt while prevHash stays before it. Rows written
+  // between f1f7c70 and canonicalStringify verify only under this ordering.
+  // The columns are written unconditionally here — the source read them from
+  // functions that always returned a value, so a NULL column means the value
+  // was null at insert, not that the key was absent.
+  const v06Inline: Record<string, unknown> = {
+    ...v02Inline,
+    monotonicNs: row.monotonic_ns ?? null,
+    ntpOffsetMs: row.ntp_offset_ms ?? null,
+    hash: undefined
+  }
   const v06 = (): Record<string, unknown> => {
     const o: Record<string, unknown> = { ...v02 }
     if (row.monotonic_ns != null) o.monotonicNs = row.monotonic_ns
@@ -511,7 +558,7 @@ export function buildHashShapes(row: HashableRow, parsedData: unknown): HashShap
   const v06Null: Record<string, unknown> = {
     ...v02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null
   }
-  return { v01, v02, v06, v06Null }
+  return { v01, v02, v02Inline, v06Inline, v06, v06Null }
 }
 
 // Rebuild each hash shape lazily. `label` names the shape so we can log which
@@ -544,6 +591,8 @@ function verifyRowHash(row: WalkRow, parsedData: unknown):
     { label: 'v0.6',          build: shapeV06,     hash: (o) => jsonSha(o),      canonical: () => null },
     { label: 'v0.6+null',     build: shapeV06Null, hash: (o) => jsonSha(o),      canonical: () => null },
     { label: 'v0.2',          build: () => shapeV02, hash: (o) => jsonSha(o),    canonical: () => null },
+    { label: 'v0.6-inline',   build: () => shapes.v06Inline, hash: (o) => jsonSha(o), canonical: () => null },
+    { label: 'v0.2-inline',   build: () => shapes.v02Inline, hash: (o) => jsonSha(o), canonical: () => null },
     { label: 'v0.1',          build: shapeV01,     hash: (o) => jsonSha(o),      canonical: () => null }
   ]
   const attemptLabels: string[] = []

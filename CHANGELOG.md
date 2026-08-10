@@ -3,6 +3,73 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.3 — 2026-08-10
+
+**`chain_sample_broken` root cause found. It was field order — nothing was
+corrupt.**
+
+Open since v0.7.5. The background sampler kept flagging a 2026-08-01
+`system/ip_transition` row whose hash matched none of the six known shapes, and
+v0.7.6 could only soften the symptom by showing the row's age so an operator
+could tell it was not a fresh regression. The deferred note assumed a corrupted
+row.
+
+### What it actually was
+
+`JSON.stringify` serialises in **insertion order**. Commit `33a2c86` built the
+hash from the event literal itself:
+
+```js
+const event = { …, targetId, data, prevHash, createdAt }
+sha256(JSON.stringify({ ...event, hash: undefined, prevHash }))
+```
+
+so `prevHash` sits **before** `createdAt`. `buildHashShapes` reconstructs that
+era as `{ ...v01, prevHash }`, which appends it **after**. Same fields, same
+values, different bytes, different hash. `f1f7c70` then appended `monotonicNs`
+and `ntpOffsetMs` to the same literal, producing a second ordering with the
+same property.
+
+Every row written between `33a2c86` and the move to `canonicalStringify`
+verifies under those orderings and no other — which is a substantial slice of
+any project from that week.
+
+Two shapes added, `v0.2-inline` and `v0.6-inline`. Ordering only matters for
+the `JSON.stringify` shapes; `canonicalStringify` sorts keys, which is exactly
+why it was adopted in v0.6.88.
+
+### How it was found
+
+By re-deriving the shape from the commit that wrote the row, rather than
+guessing at corruption. Reconstructing `33a2c86`'s literal and re-hashing the
+flagged row reproduced the stored digest exactly, where the current `v0.2`
+shape differs from the first byte.
+
+Verified against a real 28,338-event operator project:
+
+| | before | after |
+|---|---|---|
+| `verifyChainFull` | stops at row **108** | **ok, 28,338 walked** |
+| rows unexplained by any shape | 28,231 | **0** |
+
+A second, 131,833-event project was already clean — it postdates
+`canonicalStringify` — and stays clean.
+
+### Regression cover
+
+`test/hash-shapes.test.ts` pins the real row's digest and asserts the key
+ORDER of each shape. A refactor that tidies the field order in
+`buildHashShapes` would silently un-verify years of chains while every object
+stayed deep-equal, so an ordering assertion is the only thing that catches it.
+The test also asserts that the current `v0.2` shape does *not* match the row —
+both orderings were written, so both are needed, and the distinction must not
+be simplified away.
+
+### Tested
+
+- 494/494 unit (+4).
+- 41/41 E2E, 1 skipped.
+
 ## v0.11.2 — 2026-08-10
 
 **"I can't tell what I typed and what came back" — answered.** This closes the
