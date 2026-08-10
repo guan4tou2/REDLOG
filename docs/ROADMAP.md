@@ -129,8 +129,7 @@ the docs is one they can check. Concretely:
   version, lane count, tool count and architecture (see AUDIT §5).
 - `plugins/host.ts` + `plugin-runner.js` have integration tests; the
   consent → tool-appears → revoke → tool-disappears flow is covered E2E.
-- The `chain_sample_broken` root cause from v0.7.5 is closed or documented as
-  a known historical shape.
+- ~~The `chain_sample_broken` root cause from v0.7.5~~ — ✅ closed in v0.11.3. It was field ORDER in the reconstructed hash shapes, not a corrupt row.
 
 ## Deliberately not planned
 
