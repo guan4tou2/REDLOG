@@ -3,7 +3,7 @@ import { insertEvent } from './db/events'
 import { getPrimaryOperator } from './db/operators'
 import https from 'https'
 import { URL } from 'url'
-import { getDB } from './db/index'
+import { getDB, openReadOnlyDB } from './db/index'
 import { canonicalStringify } from './db/events'
 import { verifyEventSignature } from './signing'
 
@@ -779,27 +779,35 @@ export function verifyChainFull(): FullVerifyResult {
 // shape as the sync version — Electron IPC handlers should prefer this.
 const ASYNC_CHUNK_ROWS = 1000
 export async function verifyChainFullAsync(): Promise<FullVerifyResult> {
-  const db = getDB()
   const anchor = getLastAnchor()
   const currentHead = computeChainHead()
   const state = initWalkerState()
-  const rowIter = db.prepare(WALK_STMT_SQL).iterate() as IterableIterator<WalkRow>
-  let inChunk = 0
-  for (const row of rowIter) {
-    const broken = processRow(row, state, currentHead?.hash ?? null, anchor)
-    if (broken) return broken
-    if (++inChunk >= ASYNC_CHUNK_ROWS) {
-      inChunk = 0
-      // setImmediate lets any queued IPC / renderer message process before we
-      // grab the next chunk. Node's better-sqlite3 iterator is synchronous
-      // but holding it across a setImmediate boundary is safe as long as no
-      // interleaving statement is issued against the same DB — the pubkey
-      // lookup goes through a separate prepared statement handle, which is
-      // fine.
-      await new Promise<void>((resolve) => setImmediate(resolve))
+  // v0.11.1 (AUDIT P1-1): walk on a SEPARATE read-only connection.
+  //
+  // The iterator below stays open across every setImmediate yield, and
+  // better-sqlite3 refuses `.run()` on a connection with a live iterator
+  // ("This database connection is busy executing a query"). On the primary
+  // handle that meant every capture write during a full verify failed — REST
+  // 500s, the shell hook spooling, capture-health going dark — for the tens of
+  // seconds a large chain takes. WAL lets this reader run alongside the
+  // writer, so the walk no longer blocks capture.
+  const readDb = openReadOnlyDB()
+  try {
+    const rowIter = readDb.prepare(WALK_STMT_SQL).iterate() as IterableIterator<WalkRow>
+    let inChunk = 0
+    for (const row of rowIter) {
+      const broken = processRow(row, state, currentHead?.hash ?? null, anchor)
+      if (broken) return broken
+      if (++inChunk >= ASYNC_CHUNK_ROWS) {
+        inChunk = 0
+        // Yield so queued IPC / renderer messages get a turn between chunks.
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
     }
+    return finaliseWalk(state, anchor, currentHead)
+  } finally {
+    readDb.close()
   }
-  return finaliseWalk(state, anchor, currentHead)
 }
 
 // v0.6.89 P1-A: read-path sampling verify. verifyChainFull walks the whole

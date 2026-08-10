@@ -4,6 +4,7 @@ import fs from 'fs'
 import { resetSession, assertEventsAppendOnly } from './events'
 
 let db: Database.Database | null = null
+let currentDbPath: string | null = null
 let currentProjectDir: string | null = null
 
 export function initDB(projectDir: string): Database.Database {
@@ -17,6 +18,7 @@ export function initDB(projectDir: string): Database.Database {
   fs.mkdirSync(path.join(projectDir, 'screenshots'), { recursive: true })
 
   const dbPath = path.join(projectDir, 'timeline.db')
+  currentDbPath = dbPath
   db = new Database(dbPath)
 
   db.pragma('journal_mode = WAL')
@@ -161,6 +163,32 @@ export function initDB(projectDir: string): Database.Database {
 
   currentProjectDir = projectDir
   return db
+}
+
+/** v0.11.1: a second, read-only handle on the same file.
+ *
+ *  better-sqlite3 is synchronous, and its iterator holds the connection open
+ *  for as long as it is being consumed. `verifyChainFullAsync` walks the whole
+ *  chain and yields with setImmediate between chunks so the UI keeps painting
+ *  — but the iterator stays open across those yields, and better-sqlite3
+ *  rejects any `.run()` on a connection with a live iterator:
+ *
+ *    Error: This database connection is busy executing a query
+ *
+ *  So every capture write during a full verify failed: REST returned 500,
+ *  the shell hook spooled, capture-health went dark. Reproduced with 40
+ *  inserts against a 6000-row walk — the first one threw.
+ *
+ *  The old comment argued this was safe "as long as no interleaving statement
+ *  is issued against the same DB". Background capture is precisely an
+ *  interleaving statement; the premise was wrong, not the reasoning.
+ *
+ *  WAL mode lets a reader run concurrently with a writer, so the walk gets its
+ *  own connection and the write path keeps the primary one to itself. Opened
+ *  on demand and closed by closeDB. */
+export function openReadOnlyDB(): Database.Database {
+  if (!currentDbPath) throw new Error('Database not initialized')
+  return new Database(currentDbPath, { readonly: true })
 }
 
 export function getDB(): Database.Database {

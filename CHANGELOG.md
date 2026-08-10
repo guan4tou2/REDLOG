@@ -3,6 +3,67 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.1 — 2026-08-10
+
+**A chain verify no longer locks out capture; the Timeline stops rendering
+offscreen nodes; the HUD's expanded panel stops wrapping.**
+
+### 1. A full chain verify blocked every captured event (AUDIT P1-1)
+
+`verifyChainFullAsync` yields with `setImmediate` between chunks so the UI keeps
+painting — but better-sqlite3's iterator holds its connection open across those
+yields, and the library refuses `.run()` on a connection with a live iterator:
+
+```
+Error: This database connection is busy executing a query
+```
+
+So for the tens of seconds a large chain takes, **every capture write failed**:
+REST returned 500, the shell hook spooled to `~/.redlog/pending/`,
+capture-health went dark. Reproduced with 40 inserts against a 6000-row walk —
+the first one threw.
+
+The code comment argued this was safe "as long as no interleaving statement is
+issued against the same DB". Background capture is exactly an interleaving
+statement; the premise was wrong, not the reasoning. The walk now runs on its
+own read-only connection, which WAL allows to proceed alongside the writer.
+
+### 2. Timeline renders only what is near the viewport
+
+Every cluster across the whole track was in the DOM regardless of where the
+operator was looking. At max zoom the track is 12000px behind a ~1200px window,
+so roughly 90% of the nodes existed only to be scrolled past — each an
+absolutely-positioned div with a child, and dimmed ones stay in the tree at
+opacity 0.15 rather than leaving it.
+
+`x` is already computed in the clusters memo, so windowing is a numeric filter
+over an array — far cheaper than the DOM it removes. The buffer is one viewport
+either side, which is what keeps nodes from popping in during a drag.
+
+Measured on a 13200px track: **400 nodes → 50**. Verified discriminating —
+disabling the filter puts all 400 back and the new E2E fails.
+
+### 3. HUD: the expanded panel's label column now scales with its text
+
+The detail grid used a hard-coded 70px label column while its labels render at
+`fs(11)`. At scale 1 "Last check" sat exactly on the boundary and wrapped to
+two lines; at 1.25 and 1.5 every label wrapped. Present since the original
+commit — not a regression, but it looked like one. The column is now `px(78)`,
+tied to the same factor as the type, like the rest of the panel.
+
+The keep-open toggle also goes back to a compact icon. Spelling out "KEEP OPEN"
+made it the widest control in the row and squeezed the two mark buttons that
+are the reason the row exists — v0.9.3 gave MARK the full width for good
+reason. The label lives in the tooltip; the filled/hollow square and the border
+colour carry the state. The two mark buttons go from 145px to 181px each.
+
+### Tested
+
+- 489/489 unit (+1): `test/chain-concurrency.test.ts` fires inserts *inside* a
+  6000-row walk's iterator lifetime and asserts they land.
+- 40/40 E2E (+2): the virtualisation node count, and HUD labels staying on one
+  line at every scale the Settings UI offers.
+
 ## v0.11.0 — 2026-08-10
 
 **No document in this repo now describes a security control that does not
