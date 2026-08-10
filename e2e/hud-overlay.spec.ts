@@ -149,6 +149,54 @@ test.describe.serial('HUD size stability', () => {
     expect(after.x, `x drifted ${first.x} -> ${after.x}`).toBe(first.x)
   })
 
+  // v0.11.1: the expanded panel's label column was a hard 70px while its
+  // labels render at fs(11) — "Last check" sat on the boundary at scale 1 and
+  // wrapped to two lines, and every label wrapped at scale 1.25+. The column
+  // now scales with the type. This checks the geometry rather than a
+  // screenshot: a wrapped row is exactly twice the height of an unwrapped one.
+  test('expanded panel labels stay on one line at every offered HUD scale', async () => {
+    const main2 = app2.windows().find((w) => !w.url().includes('overlay'))!
+    for (const scale of [1.0, 1.25, 1.5]) {
+      await main2.evaluate(async (sc) => {
+        const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
+        const cfg = await api.get()
+        await api.save({ ...cfg, overlay: { ...(cfg.overlay as Record<string, unknown> ?? {}), scale: sc } })
+      }, scale)
+      await hud2.waitForTimeout(500)
+      await hud2.evaluate(() => {
+        const el = Array.from(document.querySelectorAll('div')).find((d) => d.textContent?.trim() === '\u25bc') as HTMLElement | undefined
+        el?.click()
+      })
+      await hud2.waitForTimeout(400)
+
+      const wrapped = await hud2.evaluate(() => {
+        const cells = Array.from(document.querySelectorAll('div')).find((d) =>
+          getComputedStyle(d).display === 'grid' && d.children.length >= 8)
+        if (!cells) return null
+        return Array.from(cells.children).map((c) => {
+          const el = c as HTMLElement
+          const lh = parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height
+          return { text: el.textContent?.trim().slice(0, 14), lines: Math.round(el.getBoundingClientRect().height / lh) }
+        }).filter((x) => x.lines > 1)
+      })
+      expect(wrapped, `labels wrapped at HUD scale ${scale}: ${JSON.stringify(wrapped)}`).toEqual([])
+    }
+    // Restore both the scale and the collapsed state. These specs run serially
+    // against one app, so leaving the HUD expanded at scale 1.5 would fail the
+    // compact-size check below for a reason that has nothing to do with what
+    // it is testing.
+    await hud2.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('div')).find((d) => d.textContent?.trim() === '\u25b2') as HTMLElement | undefined
+      el?.click()
+    })
+    await main2.evaluate(async () => {
+      const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
+      const cfg = await api.get()
+      await api.save({ ...cfg, overlay: { ...(cfg.overlay as Record<string, unknown> ?? {}), scale: 1 } })
+    })
+    await hud2.waitForTimeout(500)
+  })
+
   test('the collapsed HUD stays at its compact size', async () => {
     const b = await app2.evaluate(async ({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('overlay'))!

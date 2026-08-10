@@ -246,7 +246,13 @@ export default function OverlayApp(): JSX.Element {
           {expanded && (
             <div style={{ padding: '0 14px 11px', fontSize: fs(11), position: 'relative', zIndex: 2, ...dimStyle }}>
               <div style={{ height: 1, background: `linear-gradient(90deg, ${FRAME}55, transparent)`, margin: '0 0 8px' }} />
-              <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', rowGap: 5, alignItems: 'baseline' }}>
+              {/* v0.11.1: the label column scales with the text. It was a hard
+                  70px while the labels render at fs(11), so "Last check" sat
+                  right on the boundary at scale 1 and wrapped to two lines —
+                  and at scale 1.25/1.5 every label wrapped. `px()` ties the
+                  column to the same factor as the type, which is what the
+                  rest of the panel already does. */}
+              <div style={{ display: 'grid', gridTemplateColumns: `${px(78)}px 1fr`, rowGap: px(5), alignItems: 'baseline' }}>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.status')}</span>
                 <span style={{ color: STATE, fontWeight: 600, textShadow: `0 0 8px ${STATE}55` }}>{STATUS_TXT}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.external')}</span>
@@ -331,12 +337,20 @@ export default function OverlayApp(): JSX.Element {
                 {/* Keep-open. This always controlled the 8s auto-collapse, but
                     a bare 📌 did not say so — relabelled to name the thing it
                     actually does. */}
+                {/* v0.11.1: back to a compact icon. Spelling out "KEEP OPEN"
+                    made this the widest control in the row and squeezed the
+                    two mark buttons that are the reason the row exists — the
+                    v0.9.3 layout gave MARK the full width for good reason.
+                    The label lives in the tooltip; the filled/hollow square
+                    carries the state, and the border colour reinforces it. */}
                 <button
                   onClick={() => setPinned((p) => !p)}
-                  style={{ padding: '6px 10px', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
-                  title={pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}
+                  style={{ padding: `${px(6)}px ${px(11)}px`, fontSize: fs(11), fontWeight: 700, color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
+                  title={`${t('overlay.keepOpen')} — ${pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}`}
+                  aria-label={t('overlay.keepOpen')}
+                  aria-pressed={pinned}
                 >
-                  {pinned ? '▣' : '▢'} {t('overlay.keepOpen').toUpperCase()}
+                  {pinned ? '▣' : '▢'}
                 </button>
               </div>
             </div>
