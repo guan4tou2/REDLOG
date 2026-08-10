@@ -73,7 +73,7 @@ Steps 1–2 of `timeline-io-visibility.md`:
   is never mistaken for absence of output.
 - Document `redlog-run` in the capture-health card, not only in a comment.
 
-## v0.10.0 — I/O visibility, phase 2
+## v0.10.0 — I/O visibility, phase 2 ✅ shipped as v0.11.2 (except the sidecar)
 
 Steps 3–6: the `io_ref` sidecar and everything that reads it.
 
