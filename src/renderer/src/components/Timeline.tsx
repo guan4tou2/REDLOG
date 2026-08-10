@@ -24,25 +24,52 @@ type LaneId = (typeof LANES)[number]
 // removed from this set. `credential_use` and `c2_checkin` remain external-only.
 const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'])
 
+// v0.11.4: desaturated to match tailwind.config.js's `soften` map, and the
+// red family separated.
+//
+// Two problems, one fix. `marker` and `scope` were the SAME hex — the two
+// lanes an operator most needs to tell apart at a glance — with `cleanup` a
+// shade away and `c2_checkin` close behind. And these were raw Tailwind
+// values, so the track was the most saturated surface in an app that
+// deliberately desaturates everything else (see the comment at the top of
+// tailwind.config.js: high-saturation on near-black vibrates).
+//
+// Eighteen hues is past what anyone reliably distinguishes anyway, so hue now
+// carries the LANE FAMILY and shape carries the rest — see dotShape(). Within
+// a family the values differ enough to separate side by side, without
+// pretending eighteen of them are individually memorable.
+//
+//   execution   green / lime          shell, agent, process
+//   network     indigo → teal         http, scanner, browser, dns, pivot
+//   evidence    blue / violet         screenshot, clipboard, file_transfer
+//   findings    amber → red           credential_use, c2, marker, loot,
+//                                     cleanup, scope
+//   plumbing    zinc                  system
 const LANE_COLORS: Record<LaneId, string> = {
-  shell: '#22c55e',
-  agent: '#84cc16',
-  http_navigation: '#6366f1',
-  scanner: '#8b5cf6',
-  browser: '#06b6d4',
-  dns: '#14b8a6',
-  pivot: '#0ea5e9',
-  screenshot: '#3b82f6',
-  clipboard: '#a855f7',
-  file_transfer: '#a78bfa',
-  credential_use: '#eab308',
-  c2_checkin: '#f43f5e',
-  marker: '#ef4444',
-  loot: '#f97316',
-  cleanup: '#dc2626',
-  scope: '#ef4444',
-  process: '#f472b6',
-  system: '#52525b'
+  // execution
+  shell: '#5ecf9c',
+  agent: '#8fc45e',
+  process: '#c98fb8',
+  // network
+  http_navigation: '#7b7fd4',
+  scanner: '#9a7fd0',
+  browser: '#3fc7d6',
+  dns: '#4bbf9e',
+  pivot: '#4fa8d8',
+  // evidence
+  screenshot: '#6b9bd8',
+  clipboard: '#c39ad8',
+  file_transfer: '#7d93c4',
+  // findings — the red family is deliberately spread so the two lanes an
+  // operator most needs to separate at a glance are not the same colour.
+  credential_use: '#d4ac5a',
+  loot: '#d68a4f',
+  c2_checkin: '#cf6f7e',
+  marker: '#d75f63',
+  scope: '#b8434f',
+  cleanup: '#8f3a45',
+  // plumbing
+  system: '#5c5c63'
 }
 
 // v0.6.87 C1: markers created by right-clicking Timeline background carry
@@ -369,6 +396,26 @@ function formatTimeLabel(date: Date): string {
 // Local so the UI never breaks — the picker itself guards against bad names.
 type TzMode = 'local' | 'utc' | 'project'
 type TsStyle = 'time' | 'timeSec' | 'full'
+/** v0.11.4 (AUDIT V6): time-only ticks are ambiguous across midnight. Prefix
+ *  the date on the first tick and on any tick that starts a new day, so a
+ *  three-day engagement stops showing three indistinguishable "09:11"s. */
+function axisLabel(
+  ts: number, i: number, ticks: number[], span: number, tz: TzMode, projectTz: string | null
+): string {
+  const time = formatTs(ts, tz, projectTz, 'time')
+  if (span < 24 * 3600_000) return time
+  const dayOf = (ms: number): string => {
+    const d = new Date(ms)
+    return tz === 'utc' ? d.toISOString().slice(0, 10) : d.toDateString()
+  }
+  if (i > 0 && dayOf(ticks[i - 1]) === dayOf(ts)) return time
+  const d = new Date(ts)
+  const date = tz === 'utc'
+    ? d.toISOString().slice(5, 10)
+    : `${d.getMonth() + 1}/${d.getDate()}`
+  return `${date} ${time}`
+}
+
 function formatTs(ms: number, tz: TzMode, projectTz: string | null, style: TsStyle = 'time'): string {
   if (!Number.isFinite(ms)) return ''
   const d = new Date(ms)
@@ -464,6 +511,49 @@ function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
   // Nothing captured: an external shell without the wrapper, or a pair we
   // couldn't bracket. Not the same as "printed nothing" — say so.
   return { io: 'uncaptured', fail }
+}
+
+/** v0.11.4 (AUDIT V3): severity and scope violations were invisible on the
+ *  track. A `critical` marker rendered identically to an `info` one — severity
+ *  appeared only as a text prefix inside eventTitle() — and a scope violation
+ *  was distinguished solely by being routed to its own lane, in a red that was
+ *  byte-identical to the marker lane's.
+ *
+ *  That is the wrong allocation of visual budget for this product. The two
+ *  things an operator scans for are "did I go out of bounds" and "what did I
+ *  flag as serious", and neither was encoded. Meanwhile chain integrity — rare,
+ *  and already announced by a banner across the top — got a badge, a ring and
+ *  a red band.
+ *
+ *  Encoded as SHAPE rather than more colour: eighteen lane hues are already
+ *  past reliable discrimination, and shape survives both a colour-blind
+ *  operator and a glance at the far edge of the screen.
+ *
+ *    scope violation   diamond          out of bounds is categorical
+ *    critical marker   ring (hollow)    reads as an outline, not a fill
+ *    important marker  larger circle
+ *    everything else   circle
+ */
+type DotShape = 'circle' | 'diamond' | 'ring'
+function dotShape(e: RedLogEvent): { shape: DotShape; scale: number } {
+  const sub = e.data?.subtype as string | undefined
+  if (e.agentType === 'system' && sub === 'scope_violation') return { shape: 'diamond', scale: 1.25 }
+  if (e.agentType === 'marker') {
+    const sev = String(e.data?.severity ?? 'info')
+    if (sev === 'critical') return { shape: 'ring', scale: 1.5 }
+    if (sev === 'important') return { shape: 'circle', scale: 1.25 }
+  }
+  return { shape: 'circle', scale: 1 }
+}
+
+function shapeTitle(e: RedLogEvent, t: (k: string) => string): string {
+  const sub = e.data?.subtype as string | undefined
+  if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}`
+  if (e.agentType === 'marker') {
+    const sev = String(e.data?.severity ?? 'info')
+    if (sev === 'critical' || sev === 'important') return ` · ${t(`marker.severity.${sev}`)}`
+  }
+  return ''
 }
 
 function ioTitle(m: { io: IoMark; fail: boolean }, t: (k: string) => string): string {
@@ -1509,10 +1599,36 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     setDrag({ x0: startX, x1: startX, w })
   }, [timeStart, timeEnd, TRACK_W, updateView])
 
+  // v0.11.4 (AUDIT V5): the list follows the viewport.
+  //
+  // It used to be "the last 50 events, always" — unrelated to where the
+  // operator had scrolled. Pan back three hours to investigate something and
+  // the list underneath still showed what happened thirty seconds ago, which
+  // is a break in the middle of the one workflow the panel exists to support.
+  //
+  // Falls back to the tail when the whole track is on screen or the viewport
+  // has not been measured yet, which is also what the operator wants while
+  // following live.
   const recentEvents = useMemo(() => {
     const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)))
-    return [...visible].reverse().slice(0, 50)
-  }, [events, hiddenLanes, pluginTypes])
+    const widthPx = (view.width / 100) * TRACK_W
+    const wholeTrackVisible = widthPx <= 0 || (view.left <= 0.01 && view.width >= 99.99)
+    if (wholeTrackVisible || timeSpan <= 0) return [...visible].reverse().slice(0, 50)
+
+    // Map the scrolled window back to wall-clock and take what falls inside.
+    const from = timeStart + (view.left / 100) * timeSpan
+    const to = from + (view.width / 100) * timeSpan
+    const inView = visible.filter((e) => {
+      const d = displayTs(e)
+      return d >= from && d <= to
+    })
+    // An empty window would look broken; show the nearest events before it so
+    // the panel still says something about where you are.
+    if (inView.length === 0) {
+      return [...visible].filter((e) => displayTs(e) <= to).reverse().slice(0, 50)
+    }
+    return inView.reverse().slice(0, 50)
+  }, [events, hiddenLanes, pluginTypes, view.left, view.width, TRACK_W, timeStart, timeSpan])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -2464,13 +2580,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             <div style={{ width: TRACK_W, position: 'relative' }}>
               {/* Time axis */}
               <div className="h-7 border-b border-zinc-800/60 relative bg-zinc-950/30">
-                {ticks.map((ts) => (
+                {ticks.map((ts, i) => (
                   <span
                     key={ts}
                     className="absolute text-xs text-zinc-600 font-mono tabular-nums -translate-x-1/2"
                     style={{ left: toX(ts), top: 6 }}
                   >
-                    {formatTs(ts, tz, projectTz, 'time')}
+                    {/* v0.11.4 (AUDIT V6): a multi-day engagement showed several
+                        identical "09:11" ticks with nothing to separate them. Once
+                        the span crosses a day, the first tick and every tick that
+                        lands on a new date carry the date too. */}
+                    {axisLabel(ts, i, ticks, timeSpan, tz, projectTz)}
                   </span>
                 ))}
               </div>
@@ -2543,7 +2663,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   const single = c.events.length === 1
                   const evt = c.events[0]
                   const sel = single && selectedEvent?.id === evt.id
-                  const dot = single ? 9 : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
+                  // v0.11.4: severity / scope raise the base size and change
+                  // the shape. Clusters keep their own sizing — the popup
+                  // lists members individually, so per-event emphasis there
+                  // would fight the count glyph.
+                  const marks = single ? dotShape(evt) : { shape: 'circle' as DotShape, scale: 1 }
+                  const dot = single
+                    ? Math.round(9 * marks.scale)
+                    : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
                   const hit = Math.max(20, dot + 8)
                   // v0.6.89.5: filter dimming. Focus-chain and anomaly-filter
                   // are mutually exclusive (enforced by the effects above), so
@@ -2594,10 +2721,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         height: hit,
                         zIndex: sel ? 10 : 2,
                         opacity: dimmed ? 0.15 : 1,
+                        // v0.11.4 (AUDIT V10): a filtered-out dot was still
+                        // clickable — it only lost opacity, keeping its full
+                        // hit box. Clicking "nothing" and getting a detail
+                        // panel for an event the filter had just excluded read
+                        // as the filter being broken.
+                        pointerEvents: dimmed ? 'none' : undefined,
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${eventTitle(evt)}${badgeTitle}${ioTitle(ioMark(evt), t)}`
+                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${eventTitle(evt)}${badgeTitle}${shapeTitle(evt, t)}${ioTitle(ioMark(evt), t)}`
                         : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
@@ -2607,9 +2740,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         className={dimmed ? 'flex items-center justify-center' : 'flex items-center justify-center transition-transform hover:scale-125'}
                         style={{
                           width: dot, height: dot,
-                          borderRadius: single ? '50%' : 5,
-                          backgroundColor: LANE_COLORS[c.lane],
-                          border: single ? undefined : '1px solid rgba(0,0,0,0.45)',
+                          // diamond = a square turned 45°; ring = hollow.
+                          borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
+                          transform: marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
+                          backgroundColor: marks.shape === 'ring' ? 'transparent' : LANE_COLORS[c.lane],
+                          border: marks.shape === 'ring'
+                            ? `2.5px solid ${LANE_COLORS[c.lane]}`
+                            : single ? undefined : '1px solid rgba(0,0,0,0.45)',
                           boxShadow: sel
                             ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
                             : inChain

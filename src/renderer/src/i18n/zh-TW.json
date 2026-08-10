@@ -820,5 +820,6 @@
   "transcript.note.recorded": "已記錄輸出 — 工作階段錄影 {{size}}，在時間軸上開啟此事件即可重播",
   "transcript.note.unbracketed": "輸出無法定位 — 請使用時間軸上的完整工作階段重播",
   "transcript.note.uncaptured": "未捕獲輸出",
-  "transcript.note.pending": "沒有記錄到回應"
+  "transcript.note.pending": "沒有記錄到回應",
+  "timeline.shape.scopeViolation": "超出範圍"
 }
