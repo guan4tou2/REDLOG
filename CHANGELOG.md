@@ -3,6 +3,64 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.7 — 2026-08-10
+
+**The Timeline stops recomputing everything sixty times a second.**
+
+### 1. Per-batch work (W19)
+
+Every incoming batch replaces the events array, which invalidates every memo on
+the panel. Measured on a real 131,833-event project:
+
+| | |
+|---|---|
+| `searchIndex` | **126 ms** |
+| `effectsById` | 33 ms |
+| `laneEvents` | 18 ms |
+| `maxZoom` | 11 ms |
+| **per flush** | **~191 ms** |
+
+Scheduled on `requestAnimationFrame`, so the panel was being asked for 191 ms
+of work sixty times a second. It spends every frame recomputing and none of it
+painting.
+
+**The search index is now built only while a filter is active.** It was the
+most expensive thing on the panel by a factor of three — nine string coercions,
+a join, a lowercase and an `eventTitle()` call per event — and it ran whether
+or not anything was being filtered, which is almost always. One comparison when
+idle; unchanged when typing, since the query is already debounced.
+
+*(The comment there claimed this was "cheap for ≤ 5k events" and that the dim
+path dominated above that. At 131k it dominated everything. Measured, not
+assumed — the note has been corrected.)*
+
+**Flushes coalesce once the set is large.** Under 5,000 events a frame-accurate
+flush is imperceptible and worth keeping: a live tail should look live. Above
+it, ~4 Hz costs at most a quarter-second of staleness on a view whose own
+freshness badge counts in seconds, and hands the frames back.
+
+Together: **191 ms → 68 ms per flush**, at 1/15th the rate.
+
+### 2. Session band labels stopped stacking (V11)
+
+Every band drew its label at its own top-left, so two terminals open at once —
+a shell and a listener, the normal case — put both labels in the same few
+pixels and neither was readable.
+
+Overlapping bands are now assigned rows by greedy interval colouring over their
+x-order, with a label's width of clearance rather than just the band's, so the
+text doesn't collide either. Non-overlapping bands all stay on row 0, which is
+the common case. A band too narrow to hold its label drops it — a 60px label
+bleeding out of a 4px band is worse than none.
+
+### Tested
+
+- 541/541 unit (+5). `test/timeline-flush.test.ts` asserts the guard sits
+  *before* the loop, that the index still rebuilds when the query changes
+  (making it lazy without that dep would leave it empty forever), and the
+  band-row colouring. All properties that regress silently.
+- 47/47 E2E.
+
 ## v0.11.6 — 2026-08-10
 
 **The last four Timeline presentation findings.** AUDIT's presentation tier is
