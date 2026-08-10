@@ -1,6 +1,6 @@
 # RedLog Plugin Marketplace — Design Spec (draft)
 
-Status: draft, pre-implementation. Nothing here ships until a v1 milestone is opened.
+Status: **shipped** since v0.6.68 (core) / v0.6.69 (UI). The threat model in §9 was corrected in v0.11.0 to describe what the code actually does — two of its claims described controls that were never built.
 
 ## 1. Goal
 
@@ -114,9 +114,9 @@ Operator override exists (edit `revocations-override.json` by hand) because an a
 ## 9. Security threats
 
 1. **Typosquatting** (`acme-redteem` vs `acme-redteam`) — the marketplace UI shows publisher next to every plugin name and dims plugins whose publisher isn't in the trust store; PR review on the git registry is the primary defence for new registrations.
-2. **Publisher key compromise** — signed revocations flip every plugin from that key to `needs-consent`; operator has to re-trust the new key explicitly. The compromised key never regains automatic trust.
+2. **Publisher key compromise** — the operator untrusts the key in Settings ▸ Plugins ▸ Marketplace ▸ Publishers; every plugin signed by it stops verifying, and an update cannot install. `~/.redlog/plugins/revocations.json` is a **local blocklist the operator maintains** — RedLog never fetches it from the network, because without a root of trust a fetched revocation list is only as honest as whoever served it (and a compromised publisher will not revoke itself). *(Earlier revisions described automatic signed revocations. That mechanism was never built; the file and the UI tab are the manual blocklist they always were.)*
 3. **Capability escalation via update** — content-hash pinning + capability comparison in `trust.ts` already forces re-consent on any capability delta. The UX highlights added capabilities in red.
-4. **Malicious index** — the registry repo's HEAD is verified by a signed tag / signed commit from a RedLog maintainer key; `index.json` mutations without a valid signature are rejected. TLS is not enough because GitHub is the CA here; the signature is what matters.
+4. **Malicious index** — **the index is untrusted and RedLog does not verify it.** There is no root key to check it against, and TLS only proves the bytes came from whoever holds the domain, which is exactly who an attacker would need to be. The index says *where to look*, never *what is safe*. The trust boundary is one step later: `installFromRegistry` verifies each tarball's Ed25519 signature against a key the **operator** pinned, and refuses a privileged plugin that has none. A hostile index can therefore waste your time and serve you a tarball, but cannot get code executed — unless you pin its key, which is why trusting a publisher is a per-publisher action showing the fingerprint you are expected to compare against that publisher's own channel. *(Earlier revisions of this document claimed unsigned index mutations were rejected. They never were; the claim was removed in v0.11.0 along with the one-click "trust all suggested publishers" button, which let whoever controlled the index pin their own key.)*
 5. **Network downgrade / MITM** — HTTPS-only, no `http://` fallback, and the tarball sha256 is pinned in the index so a modified tarball fails even if TLS is broken.
 6. **Malicious tarball contents** — the unpack rules in §4 prevent symlink escapes and path traversal; the plugin runs in the existing utility-process sandbox with capability-gated RPC (see `src/core/plugins/host.ts`), so even a hostile privileged plugin can't reach the DB handle or signing keys.
 

@@ -17,12 +17,28 @@ export function tierOf(manifest: PluginManifest): PluginTier {
     : 'declarative'
 }
 
-/** Files that must be hashed so a code change invalidates a prior trust grant. */
+/** Files that must be hashed so a code change invalidates a prior trust grant.
+ *
+ *  v0.11.0: `capture[].hookFile` is included. It was previously left out
+ *  because capture integrations are the 🟢 declarative tier and "declarative"
+ *  was read as "not code" — but a capture hook IS a shell script, one the
+ *  operator sources into their own `~/.zshrc` and which then runs on every
+ *  command they type. Excluding it meant its contents could change on an
+ *  update with no hash change and therefore no re-consent: exactly the
+ *  scenario content-hash pinning exists to prevent, on the file with the
+ *  broadest execution reach in the whole plugin model.
+ *
+ *  `collectFileRefs` already listed it for path-safety validation, so the
+ *  omission was in the hashing, not the parsing. */
 export function codeFilesOf(manifest: PluginManifest): string[] {
   const c = manifest.contributes ?? {}
-  return PRIVILEGED_KEYS
+  const files = PRIVILEGED_KEYS
     .map((k) => c[k])
     .filter((v): v is string => typeof v === 'string' && v.length > 0)
+  for (const cap of c.capture ?? []) {
+    if (typeof cap?.hookFile === 'string' && cap.hookFile) files.push(cap.hookFile)
+  }
+  return files
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,63}$/

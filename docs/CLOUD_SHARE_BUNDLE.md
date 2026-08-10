@@ -1,6 +1,6 @@
 # Cloud Share Bundle — design spec (draft)
 
-Status: **draft, not implemented**. Author-time decisions marked *(deferred)* need input before build.
+Status: **shipped** since v0.6.69. Items still marked *(deferred)* are unbuilt. The threat model in §11 was corrected in v0.11.0 — one of its claims described a server-side check that does not exist.
 
 ## 1. Goal
 
@@ -50,7 +50,7 @@ Comparison:
 }
 ```
 
-**Bounded upload size: 100 MB default, override in Settings ▸ 分享 up to a hard cap of 2 GB.** The chain-head hash and sanitized counts let the backend reject bundles whose numbers disagree with what the operator saw in the pre-upload dialog (defense against a compromised uploader silently swapping the payload).
+**Bounded upload size: 100 MB default, override in Settings ▸ 分享 up to a hard cap of 2 GB.** The chain-head hash and sanitized counts travel in `bundle.json` so a reviewer can compare them against what the operator saw in the pre-upload dialog. This is a record, not an enforcement point — the Worker does not read `bundle.json` (see §11 threat 3).
 
 ## 5. Upload flow
 
@@ -164,7 +164,7 @@ The masked preview reuses the Timeline's redaction view (`text + redactions` spa
 
 1. **Leaked share URL.** Someone forwards the link outside the intended audience. Mitigation: 40-bit suffix + rate limit on 404s, default 30-day expiry, revoke button, optional email/password gate.
 2. **Backend compromise (R2 credentials / Worker secret).** Attacker gains read of all live bundles. Mitigation: bundles are sanitized before upload (§9), sanitize policy pinned per project, plaintext screenshots still leak. Mitigation v2: optional client-side symmetric encryption (Open Question 3).
-3. **Sanitize bypass.** A plugin or a modified build uploads raw bytes labeled as sanitized. Mitigation: sanitize pass runs in the same signed code path as `redlog-cli export bundle`; `bundle.json.sanitized.events` MUST equal `manifest.json.sanitized.events`; the Worker rejects on mismatch; sanitize gate cannot be turned off by settings (§9).
+3. **Sanitize bypass.** A plugin or a modified build uploads raw bytes labeled as sanitized. Mitigation: the sanitize pass runs in the same code path as `redlog-cli export bundle`, and the review gate cannot be disabled by settings, by the CLI or by a plugin (§9). **The Worker does not check sanitize counts** — it never parses `bundle.json`, so there is no server-side enforcement; the client-side gate is the whole of it. Since v0.11.0 the Worker does verify that uploaded bytes hash to the sha256 they are stored under, which detects corruption or substitution in flight but says nothing about whether the content was sanitized. *(Earlier revisions claimed the Worker rejected count mismatches. It never did.)*
 4. **Malicious viewer / XSS in event body.** Any download-page or v2 inline-replay UI renders operator-controlled strings. Mitigation: viewer serves `Content-Security-Policy: default-src 'none'` for the download page; v2 replay MUST render event bodies as text, never as HTML, and MUST sandbox the asciinema player in a `srcdoc` iframe with `sandbox="allow-scripts"` (no `allow-same-origin`).
 5. **Long-lived shares outliving the engagement.** Operator forgets a `90d` share; three months later the client's laptop is stolen with the URL in email. Mitigation: default 30d, weekly digest email to the uploader listing their active shares, "Revoke all shares older than N days" button.
 6. **Uploader token theft.** Stolen device token uploads bundles under someone's name. Mitigation: 90-day sliding TTL, rotate-on-detection, mag-link rebinds fingerprint.

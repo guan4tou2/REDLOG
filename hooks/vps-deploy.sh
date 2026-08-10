@@ -53,7 +53,37 @@ read_local() {
 }
 
 LOCAL_PORT="${REDLOG_REMOTE_PORT:-$(read_local api-port)}"
-LOCAL_TOKEN="${REDLOG_REMOTE_TOKEN:-$(read_local api-token)}"
+
+# v0.11.0: refuse to push the PRIMARY token to a remote box.
+#
+# ~/.redlog/api-token holds the primary operator's token, which can create and
+# revoke other operators, rotate their tokens, export the full evidence bundle
+# and read every loot row. A red-team VPS is the most exposed asset in the
+# engagement — often shared, often the first thing seized or reimaged — and it
+# only ever needs to APPEND events. It also breaks silently: the primary token
+# is rewritten on every app start, so the copy on the VPS stops working without
+# saying why.
+#
+# Mint a secondary and pass it in REDLOG_REMOTE_TOKEN instead.
+if [[ -n "${REDLOG_REMOTE_TOKEN:-}" ]]; then
+  LOCAL_TOKEN="$REDLOG_REMOTE_TOKEN"
+else
+  cat >&2 <<'MSG'
+Refusing to deploy with the primary operator token.
+
+  ~/.redlog/api-token is the PRIMARY token. It can create and revoke
+  operators, rotate tokens, export the evidence bundle and read all loot.
+  A VPS only needs to append events, and the primary token is rotated on
+  every app start — so the copy you push would break silently anyway.
+
+  Create a dedicated operator and pass its token:
+
+    redlog-cli operators add vps-01
+    REDLOG_REMOTE_TOKEN=<token> hooks/vps-deploy.sh install user@vps
+
+MSG
+  exit 1
+fi
 
 case "$ACTION" in
   install)
