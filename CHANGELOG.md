@@ -3,6 +3,84 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.6 — 2026-08-10
+
+**The last four Timeline presentation findings.** AUDIT's presentation tier is
+now closed.
+
+### 1. Idle stretches can be skipped (V7)
+
+Time on the track is strictly linear, which is honest but wastes the screen: a
+two-hour lunch takes the same width as two hours of contact, so thirty minutes
+of dense work gets a tenth of the track and most of it shows nothing. Zooming
+in to read the burst then scrolls its context off the sides.
+
+A **skip idle** chip collapses any stretch longer than ten minutes with no
+events down to 48px, drawn as a hatched break carrying its duration — `⋯2h15m`.
+Everything else keeps its proportion.
+
+**Off by default, and visibly on when enabled.** A compressed axis is no longer
+proportional, and for an audit tool "the gap you are looking at is not to
+scale" has to be the operator's explicit choice, announced on screen. A
+discontinuity the operator cannot see would be worse than the space it
+reclaimed, because every later reading of the axis would be silently wrong.
+
+Two implementation notes worth recording, both found by driving it:
+
+- **Gap detection runs whether or not compression is on.** Gating it on the
+  toggle made the chip that turns it on unreachable — it only renders when
+  there is something to compress.
+- **The viewport is re-anchored across the toggle.** `TRACK_W` does not change
+  when compression flips, so a fixed `scrollLeft` would leave the operator
+  looking at empty track while everything moved beneath it. The centre
+  timestamp is captured and restored.
+
+All six screen→time conversions now go through a shared `fromX`, the inverse
+of the same piecewise mapping the track draws with.
+
+### 2. The track fills the window (V8)
+
+`BASE_TRACK_W` was a flat 2000px, so at zoom 1 a 2560px or 4K display got a
+track narrower than the space available and a band of empty panel beside it.
+It is now a floor: `max(2000, container)`. A wide window shows more time
+instead of more nothing.
+
+### 3. Dense bursts can be pulled apart (V13)
+
+The zoom ceiling was a flat 6. A burst of thousands of events inside one second
+— a scanner run, an agent tool loop — collapses into a single cluster, and no
+amount of zooming could separate it: the popup lists 50 and **the rest were
+unreachable through the UI entirely**. They were in the chain and in the
+export, just not viewable.
+
+The ceiling now derives from the tightest gap between two events in the same
+lane: enough zoom to put a cluster width between them. Sparse projects keep a
+ceiling near 6 — there is nothing to gain — and a dense burst raises it as far
+as that burst needs. Viewport virtualisation (v0.11.1) is what makes a wider
+track affordable.
+
+### 4. Event dots are reachable by keyboard (V9)
+
+They were plain `div`s with a click handler: no role, no label, no tab stop.
+The existing ↑/↓ walk only engaged **after** a mouse click had already selected
+something, so a keyboard-only operator could not reach the track at all, and a
+screen reader saw nothing.
+
+Now `<button>` with an `aria-label` carrying the timestamp, title and any
+emphasis. Roving tabindex — only the selected dot (or the first, when nothing
+is selected) is a tab stop — so Tab crosses the track in one press rather than
+stepping through every visible node, and ↑/↓ takes over from there.
+
+### Tested
+
+- 536/536 unit (+9). `test/timeline-geometry-units.test.ts` asserts the
+  geometry properties against the source: these regress silently — the app
+  keeps working, it just wastes the screen or refuses to zoom — and staging
+  them in E2E needs a 4K window and a thousand-event burst.
+- 47/47 E2E (+3): the button role and roving tabindex, the chip appearing only
+  when there is something to skip, and compression collapsing the gap while
+  keeping the operator in place.
+
 ## v0.11.5 — 2026-08-10
 
 **Opening a transcript-heavy project stopped stuttering.** One query, run once
