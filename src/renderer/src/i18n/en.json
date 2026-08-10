@@ -783,6 +783,15 @@
   "capture.actionFailed": "Action failed",
   "capture.passive": "auto",
   "capture.allGood": "All good — {{active}} source(s) delivering, nothing needs attention.",
+  "capture.setupIntro": "Nothing is feeding the timeline yet. Wire up capture in order:",
+  "capture.setupAlmost": "Capture is set up — it just needs activity to start recording:",
+  "capture.step.active": "live",
+  "capture.step.wired": "set up",
+  "capture.step.todo": "to do",
+  "capture.ctaInstallHook": "Install shell hook",
+  "capture.ctaEnableTailer": "Turn on agent capture",
+  "capture.ctaOpenTerminal": "Open a terminal",
+  "capture.ctaRunCommand": "Run a command",
   "overlay.markQuick": "quick",
   "overlay.markDetail": "detail",
   "overlay.marked": "marked",
@@ -821,5 +830,8 @@
   "transcript.note.unbracketed": "output not bracketed — use the full session replay on the Timeline",
   "transcript.note.uncaptured": "output not captured",
   "transcript.note.pending": "no response recorded",
-  "timeline.shape.scopeViolation": "out of scope"
+  "timeline.shape.scopeViolation": "out of scope",
+  "timeline.compressGaps.label": "skip idle",
+  "timeline.compressGaps.hint": "Collapse stretches longer than 10 minutes with no events, so dense work gets the width instead of the quiet. The axis stops being proportional while this is on — each collapsed stretch is drawn as a hatched break with its duration.",
+  "timeline.gapSkipped": "{{d}} with no events, collapsed"
 }

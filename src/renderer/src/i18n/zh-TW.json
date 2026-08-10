@@ -783,6 +783,15 @@
   "capture.actionFailed": "操作失敗",
   "capture.passive": "自動",
   "capture.allGood": "一切正常 — {{active}} 個來源正在供給資料，沒有需要處理的項目。",
+  "capture.setupIntro": "目前沒有任何來源在供給時間軸。請依序接上擷取來源：",
+  "capture.setupAlmost": "擷取已設定完成 — 只差有活動就會開始記錄：",
+  "capture.step.active": "運作中",
+  "capture.step.wired": "已設定",
+  "capture.step.todo": "待處理",
+  "capture.ctaInstallHook": "安裝 shell hook",
+  "capture.ctaEnableTailer": "開啟 agent 擷取",
+  "capture.ctaOpenTerminal": "開啟終端機",
+  "capture.ctaRunCommand": "執行一個指令",
   "overlay.markQuick": "快速",
   "overlay.markDetail": "仔細",
   "overlay.marked": "已標記",
@@ -821,5 +830,8 @@
   "transcript.note.unbracketed": "輸出無法定位 — 請使用時間軸上的完整工作階段重播",
   "transcript.note.uncaptured": "未捕獲輸出",
   "transcript.note.pending": "沒有記錄到回應",
-  "timeline.shape.scopeViolation": "超出範圍"
+  "timeline.shape.scopeViolation": "超出範圍",
+  "timeline.compressGaps.label": "略過閒置",
+  "timeline.compressGaps.hint": "收合超過 10 分鐘且沒有事件的時段，把寬度讓給密集的工作。開啟時軸不再等比例 — 每個被收合的時段會畫成帶時長的斜紋斷裂。",
+  "timeline.gapSkipped": "{{d}} 沒有事件，已收合"
 }

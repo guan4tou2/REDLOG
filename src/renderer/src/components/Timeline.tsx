@@ -7,10 +7,25 @@ import { toast } from './Toast'
 import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/mask'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
+import { resolveTimelineKey } from '../lib/timelineKeys'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
-const BASE_TRACK_W = 2000
+// v0.11.6 (AUDIT V8): a floor, not a fixed width. The track used to be exactly
+// 2000px at zoom 1 regardless of the window, so on a 2560px or 4K display the
+// operator got a track narrower than the space available and a band of empty
+// panel to its right. It is now max(2000, container) — a wide window shows
+// more time instead of more nothing.
+const MIN_BASE_TRACK_W = 2000
+// v0.11.6 (V7): a stretch with no events longer than this collapses to GAP_PX.
+// Ten minutes is long enough that nothing routine trips it and short enough to
+// catch a coffee break; the fixed width has to stay wide enough to draw a
+// legible break marker in.
+const GAP_MIN_MS = 10 * 60_000
+const GAP_PX = 48
+// Browsers cap element width well above this; the ceiling exists so a
+// pathological zoom can't allocate a track nothing can scroll.
+const MAX_TRACK_W = 400_000
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
 // and `process` (spawn/exit) between scope and system so it doesn't dilute
 // the top attack-narrative lanes.
@@ -457,6 +472,15 @@ function fuzzyScore(target: string, q: string): number {
 // Human-readable duration used by the follow-mode badge — "5s / 3m / 1h".
 // Bounded at "24h+" so an operator staring at a stale panel doesn't see
 // "8734h behind" which reads as broken UI.
+/** Compact duration for a compressed gap label — "2h", "45m". */
+function formatGap(ms: number): string {
+  const min = Math.round(ms / 60000)
+  if (min < 60) return `${min}m`
+  const h = Math.floor(min / 60)
+  const rem = min % 60
+  return rem ? `${h}h${rem}m` : `${h}h`
+}
+
 function formatBehind(ms: number): string {
   if (ms < 0) return '0s'
   const s = Math.round(ms / 1000)
@@ -690,7 +714,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
+  // v0.11.6 (V7). Off by default: a compressed axis is not proportional, and
+  // for an audit tool that has to be an explicit, visible choice.
+  const [compressGaps, setCompressGaps] = useState(false)
   const [containerH, setContainerH] = useState(0)
+  // v0.11.6 (V8): the track's base width follows the container, so the
+  // observer has to report width as well as height.
+  const [containerW, setContainerW] = useState(0)
   // v0.6.91 S4: persisted zoom. Clamped to the same [0.25, 6] range the ± buttons
   // enforce so a garbage value in storage can't produce a broken layout.
   const [zoom, setZoom] = useState<number>(() => {
@@ -1084,7 +1114,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
 
   useEffect(() => {
     if (!containerRef.current) return
-    const ro = new ResizeObserver(([entry]) => setContainerH(entry.contentRect.height))
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerH(entry.contentRect.height)
+      setContainerW(entry.contentRect.width)
+    })
     ro.observe(containerRef.current)
     return () => ro.disconnect()
   }, [])
@@ -1245,9 +1278,113 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return { timeStart: s, timeEnd: e, ticks: ts }
   }, [events])
 
-  const TRACK_W = Math.round(BASE_TRACK_W * zoom)
+
+  const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - LABEL_W)
+  const TRACK_W = Math.min(MAX_TRACK_W, Math.round(baseTrackW * zoom))
   const timeSpan = timeEnd - timeStart
-  const toX = useCallback((ts: number) => ((ts - timeStart) / timeSpan) * TRACK_W, [timeStart, timeSpan, TRACK_W])
+  // v0.11.6 (AUDIT V7): optional idle-gap compression.
+  //
+  // Time on the track is strictly linear, which is honest but wastes the
+  // screen: a two-hour lunch takes the same width as two hours of contact, so
+  // thirty minutes of dense work gets squeezed into a tenth of the track while
+  // most of it shows nothing. Zooming in to read the burst then scrolls the
+  // context off the sides.
+  //
+  // With compression on, any stretch longer than GAP_MIN_MS with no events
+  // collapses to a fixed GAP_PX, drawn with a break marker so the discontinuity
+  // is visible rather than implied. Everything else keeps its proportion.
+  //
+  // Off by default. A compressed axis is no longer proportional, and for an
+  // audit tool "the gap you are looking at is not to scale" has to be the
+  // operator's explicit choice, announced on screen.
+  const timeMap = useMemo(() => {
+    const linear = {
+      toX: (ts: number) => ((ts - timeStart) / timeSpan) * TRACK_W,
+      fromX: (x: number) => timeStart + (x / TRACK_W) * timeSpan,
+      gaps: [] as Array<{ x: number; from: number; to: number }>
+    }
+    if (timeSpan <= 0 || events.length === 0) return linear
+
+    // Gaps are detected whether or not compression is ON — the chip that turns
+    // it on only appears when there is something to compress, so gating
+    // detection on the toggle made the control unreachable.
+    // Gaps between consecutive events, in render order.
+    const stamps: number[] = []
+    for (const e of events) stamps.push(displayTs(e))
+    stamps.sort((a, b) => a - b)
+
+    type Seg = { t0: number; t1: number; kind: 'live' | 'gap' }
+    const segs: Seg[] = []
+    let cursor = timeStart
+    for (const ts of stamps) {
+      if (ts - cursor > GAP_MIN_MS) {
+        segs.push({ t0: cursor, t1: ts, kind: 'gap' })
+        cursor = ts
+      }
+    }
+    if (segs.length === 0) return linear
+    // Rebuild as an alternating live/gap list covering the whole domain.
+    const full: Seg[] = []
+    let at = timeStart
+    for (const g of segs) {
+      if (g.t0 > at) full.push({ t0: at, t1: g.t0, kind: 'live' })
+      full.push(g)
+      at = g.t1
+    }
+    if (at < timeEnd) full.push({ t0: at, t1: timeEnd, kind: 'live' })
+
+    // Detected but not applied: report the gaps so the chip can offer itself,
+    // and keep the linear mapping.
+    if (!compressGaps) {
+      return {
+        ...linear,
+        gaps: segs.map((g) => ({ x: linear.toX(g.t0), from: g.t0, to: g.t1 }))
+      }
+    }
+
+    const liveMs = full.filter((s) => s.kind === 'live').reduce((a, s) => a + (s.t1 - s.t0), 0)
+    const gapPx = full.filter((s) => s.kind === 'gap').length * GAP_PX
+    const livePx = Math.max(1, TRACK_W - gapPx)
+    if (liveMs <= 0) return linear
+
+    // Precompute each segment's pixel span once; lookups then binary-search.
+    const bounds: Array<{ t0: number; t1: number; x0: number; x1: number; kind: Seg['kind'] }> = []
+    let x = 0
+    for (const seg of full) {
+      const w = seg.kind === 'gap' ? GAP_PX : ((seg.t1 - seg.t0) / liveMs) * livePx
+      bounds.push({ t0: seg.t0, t1: seg.t1, x0: x, x1: x + w, kind: seg.kind })
+      x += w
+    }
+    const find = <K extends 't' | 'x'>(v: number, by: K): typeof bounds[number] => {
+      let lo = 0, hi = bounds.length - 1
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        const end = by === 't' ? bounds[mid].t1 : bounds[mid].x1
+        if (v > end) lo = mid + 1; else hi = mid
+      }
+      return bounds[lo]
+    }
+    return {
+      toX: (ts: number): number => {
+        const b = find(ts, 't')
+        // Inside a compressed gap every instant maps to its left edge — there
+        // is no meaningful position within a stretch that is not to scale.
+        if (b.kind === 'gap') return b.x0
+        const f = b.t1 === b.t0 ? 0 : (ts - b.t0) / (b.t1 - b.t0)
+        return b.x0 + f * (b.x1 - b.x0)
+      },
+      fromX: (px: number): number => {
+        const b = find(px, 'x')
+        if (b.kind === 'gap') return b.t0
+        const f = b.x1 === b.x0 ? 0 : (px - b.x0) / (b.x1 - b.x0)
+        return b.t0 + f * (b.t1 - b.t0)
+      },
+      gaps: bounds.filter((b) => b.kind === 'gap').map((b) => ({ x: b.x0, from: b.t0, to: b.t1 }))
+    }
+  }, [compressGaps, events, timeStart, timeEnd, timeSpan, TRACK_W])
+
+  const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
+  const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
   const totalH = visibleLanes.length * laneH
 
   const laneEvents = useMemo(() => {
@@ -1405,6 +1542,38 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // single clickable marker (with a count) so dense bursts stay legible. Zooming
   // in widens the track, so clusters naturally split apart into individual dots.
   const CLUSTER_PX = 14
+
+  // v0.11.6 (AUDIT V13): the zoom ceiling follows event density.
+  //
+  // It was a flat 6. A burst of thousands of events inside one second — a
+  // scanner run, an agent tool loop — collapses into a single cluster, and no
+  // amount of zooming could pull it apart: the popup lists 50 and the rest
+  // were unreachable through the UI entirely. The events were in the chain and
+  // in the export, just not viewable.
+  //
+  // The ceiling now comes from the tightest gap between two events in the same
+  // lane: enough zoom to put CLUSTER_PX between them. Sparse projects keep a
+  // ceiling near 6 (nothing to gain); a dense burst raises it as far as that
+  // burst needs. Virtualisation (v0.11.1) means a wider track costs no extra
+  // DOM, which is what makes this affordable.
+  const maxZoom = useMemo(() => {
+    let tightest = Infinity
+    for (const lane of LANES) {
+      const evs = laneEvents[lane]
+      for (let i = 1; i < evs.length; i++) {
+        const d = displayTs(evs[i]) - displayTs(evs[i - 1])
+        if (d > 0 && d < tightest) tightest = d
+      }
+    }
+    if (!Number.isFinite(tightest) || timeSpan <= 0) return 6
+    // Track width at which `tightest` maps to CLUSTER_PX.
+    const neededTrackW = (timeSpan / tightest) * CLUSTER_PX
+    return Math.max(6, Math.min(MAX_TRACK_W / MIN_BASE_TRACK_W, neededTrackW / MIN_BASE_TRACK_W))
+  }, [laneEvents, timeSpan])
+  // The wheel handler is bound once and reads this through a ref rather than
+  // re-binding on every density change.
+  const maxZoomRef = useRef(maxZoom)
+  useEffect(() => { maxZoomRef.current = maxZoom }, [maxZoom])
   const clusters = useMemo(() => {
     const out: Array<{ key: string; lane: LaneId; li: number; x: number; y: number; events: RedLogEvent[] }> = []
     visibleLanes.forEach((lane, li) => {
@@ -1518,7 +1687,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // v0.11.1: render only the clusters near the viewport.
   //
   // Every cluster across the whole track was in the DOM regardless of where
-  // the operator was looking. The track is BASE_TRACK_W * zoom wide — 12000px
+  // the operator was looking. The track is baseTrackW * zoom wide — 12000px
   // at max zoom — while the window shows around 1200px, so ~90% of the nodes
   // existed purely to be scrolled past. Each is an absolutely-positioned div
   // with a child, and dimmed ones stay in the tree at opacity 0.15, so
@@ -1587,9 +1756,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         const f0 = Math.min(startX, endX) / w
         const frac = Math.max(0.01, Math.abs(endX - startX) / w)
         pendingView.current = { t0: timeStart + f0 * span }
-        setZoom(Math.max(0.25, Math.min(6, el.clientWidth / (BASE_TRACK_W * frac))))
+        setZoom(Math.max(0.25, Math.min(maxZoomRef.current, el.clientWidth / (baseTrackW * frac))))
       } else {
-        const t = timeStart + (startX / w) * span
+        const t = fromX((startX / w) * TRACK_W)
         el.scrollLeft = Math.max(0, Math.min(((t - timeStart) / span) * TRACK_W - el.clientWidth / 2, TRACK_W - el.clientWidth))
         updateView()
       }
@@ -1616,8 +1785,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     if (wholeTrackVisible || timeSpan <= 0) return [...visible].reverse().slice(0, 50)
 
     // Map the scrolled window back to wall-clock and take what falls inside.
-    const from = timeStart + (view.left / 100) * timeSpan
-    const to = from + (view.width / 100) * timeSpan
+    const from = fromX((view.left / 100) * TRACK_W)
+    const to = fromX(((view.left + view.width) / 100) * TRACK_W)
     const inView = visible.filter((e) => {
       const d = displayTs(e)
       return d >= from && d <= to
@@ -1643,7 +1812,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         // many small events — a fixed step per event slammed straight to the limit
         // and felt like nothing happened. Scaling by deltaY makes pinch smooth and
         // still gives a mouse wheel a reasonable step.
-        setZoom((prev) => Math.min(6, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
+        setZoom((prev) => Math.min(maxZoomRef.current, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
       } else if (e.deltaY !== 0) {
         // v0.9.4 P0-2: while the lane stack overflows its container, deltaY
         // has to drive the vertical axis or the newly-scrollable lanes are
@@ -1747,7 +1916,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       el.scrollLeft = Math.max(0, Math.min(toX(ts) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     }
     updateView()
-  }, [TRACK_W, updateView, timeStart, timeEnd, loading])
+    // v0.11.6 (V7): `timeMap` is in the deps because toggling gap compression
+    // changes the ts→px mapping without changing TRACK_W. Without it the
+    // scroll position stays put while everything under it moves, which lands
+    // the operator on empty track.
+  }, [TRACK_W, timeMap, updateView, timeStart, timeEnd, loading])
 
   const toggleLane = useCallback((lane: LaneId) => {
     setHiddenLanes((prev) => {
@@ -1774,96 +1947,70 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   }, [])
   const showAllLanes = useCallback(() => setHiddenLanes(new Set()), [])
 
-  // Escape closes the event detail panel (audit finding #78). ↑/↓ walk the
-  // selected event across the visible list, respecting hidden-lane filters —
-  // audit #5. Skips inputs/textareas so typing in the search bar isn't hijacked.
-  useEffect(() => {
-    if (!selectedEvent) return
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
-      if (e.key === 'Escape') { setSelectedEvent(null); setShowJson(false); return }
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)))
-        const i = visible.findIndex((ev) => ev.id === selectedEvent.id)
-        if (i < 0) return
-        const dir = e.key === 'ArrowUp' ? -1 : 1
-        const next = visible[i + dir]
-        if (next) { e.preventDefault(); setSelectedEvent(next) }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, events, hiddenLanes])
-
-  // v0.6.91 W1: `/` focuses the header filter input. Escape (while the input
-  // is focused) clears the query AND blurs. Skipped when the user is already
-  // typing in another input, so `/` inside a shell command doesn't hijack it.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-      const inField = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
-      if (e.key === '/' && !inField && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        searchInputRef.current?.select()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  // v0.9.3 U2: `?` toggles the shortcut cheatsheet. Same skip-when-typing
-  // guard as the other global keys so `?` inside a shell command / search
-  // input isn't hijacked. Esc also closes when the modal is up.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-      const inField = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
-      if (inField) return
-      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault()
-        setShowHelp((s) => !s)
-        return
-      }
-      if (e.key === 'Escape' && showHelp) {
-        e.preventDefault()
-        setShowHelp(false)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [showHelp])
-
-  // v0.6.89.5 feature 2: `f` shortcut to enter/exit focus chain mode.
-  // Anchor priority: currently-selected event, then the event under the
-  // mouse (last hovered dot). Escape also exits. Skipped when the user is
-  // typing in an input or contenteditable to avoid hijacking search boxes.
+  // One keydown listener for the Timeline's global single-key surface. This
+  // replaced four separate window listeners that each re-implemented the "am I
+  // typing?" guard and independently handled Escape — with the detail panel,
+  // help modal and focus mode all open, one Escape press fired all three.
+  // resolveTimelineKey (pure, unit-tested in test/timeline-keys.test.ts) makes
+  // the precedence explicit and unambiguous: a modal wins, then focus mode,
+  // then the detail panel; a second Escape peels the next layer.
+  // Anchor priority for `f`: the selected event, else the last-hovered dot.
   const hoveredEventRef = useRef<RedLogEvent | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
-      if (e.key === 'Escape' && focusChain) {
-        setFocusAnchorId(null)
-        return
-      }
-      if (e.key !== 'f' && e.key !== 'F') return
-      // ignore modifier combos so this doesn't collide with ⌘F etc.
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const anchor = selectedEvent ?? hoveredEventRef.current
-      if (!anchor) return
-      e.preventDefault()
-      if (focusAnchorId === anchor.id) {
-        // toggle off — press f again on the same anchor exits focus.
-        setFocusAnchorId(null)
-      } else {
-        setFocusAnchorId(anchor.id)
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName?.toLowerCase()
+      const inField = tag === 'input' || tag === 'textarea' || !!el?.isContentEditable
+      const action = resolveTimelineKey(e, {
+        inField,
+        hasDetail: !!selectedEvent,
+        helpOpen: showHelp,
+        focusActive: focusChain !== null
+      })
+      if (action === 'none') return
+      switch (action) {
+        case 'focus-filter':
+          e.preventDefault()
+          searchInputRef.current?.focus()
+          searchInputRef.current?.select()
+          break
+        case 'toggle-help':
+          e.preventDefault()
+          setShowHelp((s) => !s)
+          break
+        case 'close-help':
+          e.preventDefault()
+          setShowHelp(false)
+          break
+        case 'exit-focus':
+          setFocusAnchorId(null)
+          break
+        case 'close-detail':
+          setSelectedEvent(null)
+          setShowJson(false)
+          break
+        case 'nav-prev':
+        case 'nav-next': {
+          const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)))
+          const i = visible.findIndex((ev) => ev.id === selectedEvent?.id)
+          if (i < 0) return
+          const next = visible[i + (action === 'nav-prev' ? -1 : 1)]
+          if (next) { e.preventDefault(); setSelectedEvent(next) }
+          break
+        }
+        case 'toggle-focus': {
+          // toggle off if `f` is pressed again on the same anchor.
+          const anchor = selectedEvent ?? hoveredEventRef.current
+          if (!anchor) return
+          e.preventDefault()
+          setFocusAnchorId((cur) => (cur === anchor.id ? null : anchor.id))
+          break
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, focusChain, focusAnchorId])
+  }, [selectedEvent, showHelp, focusChain, events, hiddenLanes, pluginTypes])
 
   // v0.6.91 W3: palette result set — fuzzy match query against events, marker
   // titles, distinct operator names, and distinct hosts. Capped at 20 items.
@@ -1952,8 +2099,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const trimmed = name.trim()
     if (!trimmed) return
     const span = (timeEnd - timeStart) || 1
-    const winStart = Math.round(timeStart + (view.left / 100) * span)
-    const winEnd = Math.round(timeStart + ((view.left + view.width) / 100) * span)
+    const winStart = Math.round(fromX((view.left / 100) * TRACK_W))
+    const winEnd = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
     try {
       await viewsApi.save({
         name: trimmed,
@@ -2240,7 +2387,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             aria-label={t('timeline.resetZoom')}
           >{Math.round(zoom * 100)}% ↺</button>
           <button
-            onClick={() => setZoom((z) => Math.min(6, z + 0.25))}
+            onClick={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
             className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
             title={t('timeline.zoomIn')}
             aria-label={t('timeline.zoomIn')}
@@ -2265,6 +2412,33 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             <span className="font-mono tabular-nums text-[10px] text-lime-400/80">−{hiddenAgentTurnCount}</span>
           )}
         </button>
+
+        {/* v0.11.6 (AUDIT V7): idle-gap compression. Only offered when there is
+            something to compress — a chip that never does anything is noise.
+            The count is on the chip because a compressed axis is not
+            proportional, and the operator should be able to see that state
+            without hovering. */}
+        {timeMap.gaps.length > 0 || compressGaps ? (
+          <button
+            onClick={() => {
+              // Keep the operator where they were. The mapping is about to
+              // change under a fixed scrollLeft, so capture the timestamp at
+              // the centre of the viewport and re-centre on it once the new
+              // mapping has rendered.
+              const el = scrollRef.current
+              if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
+              setCompressGaps((v) => !v)
+            }}
+            title={t('timeline.compressGaps.hint')}
+            className={`ml-1 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+          >
+            <span>⋯</span>
+            <span className="font-mono">{t('timeline.compressGaps.label')}</span>
+            {compressGaps && timeMap.gaps.length > 0 && (
+              <span className="font-mono tabular-nums text-[10px] text-cyan-400/80">{timeMap.gaps.length}</span>
+            )}
+          </button>
+        ) : null}
 
         {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
             operators can see there's a text filter (previously discoverable
@@ -2454,8 +2628,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           <button
             onClick={async () => {
               if (!window.redlog.data.exportTimelineSlice) return
-              const from = Math.round(timeStart + (view.left / 100) * (timeEnd - timeStart))
-              const to = Math.round(timeStart + ((view.left + view.width) / 100) * (timeEnd - timeStart))
+              const from = Math.round(fromX((view.left / 100) * TRACK_W))
+              const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
               const path = await window.redlog.data.exportTimelineSlice(from, to)
               if (path) toast(t('timeline.exportSliceOk', { path }), 'success')
               else toast(t('timeline.exportSliceFail'), 'error')
@@ -2573,7 +2747,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               if (!el || timeSpan <= 0) return
               const rect = el.getBoundingClientRect()
               const trackX = (e.clientX - rect.left) + el.scrollLeft
-              const ts = timeStart + (trackX / TRACK_W) * timeSpan
+              const ts = fromX(trackX)
               onDropMarker(Math.round(ts))
             }}
           >
@@ -2638,6 +2812,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     </div>
                   )
                 })}
+                  {/* v0.11.6 (V7): compressed stretches get a visible break —
+                      a hatched band and a duration label. A discontinuity the
+                      operator can't see is worse than the wasted space it
+                      replaced, because every later reading of the axis would
+                      be silently wrong. */}
+                  {(compressGaps ? timeMap.gaps : []).map((g) => (
+                    <div
+                      key={g.from}
+                      className="absolute top-0 border-x border-dashed border-zinc-600/50"
+                      style={{
+                        left: g.x, width: GAP_PX, height: totalH,
+                        background: 'repeating-linear-gradient(45deg, rgba(120,120,130,0.10) 0 4px, transparent 4px 8px)'
+                      }}
+                      title={t('timeline.gapSkipped', { d: formatGap(g.to - g.from) })}
+                    >
+                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] text-zinc-500 font-mono whitespace-nowrap">
+                        ⋯{formatGap(g.to - g.from)}
+                      </span>
+                    </div>
+                  ))}
                 {/* Current time line */}
                 {Date.now() >= timeStart && Date.now() <= timeEnd && (
                   <div className="absolute top-0 w-px bg-red-500/70" style={{ left: toX(Date.now()), height: totalH }} />
@@ -2709,11 +2903,31 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   // clobbering it. Only applies to single-event dots
                   // (clusters already visually distinct via count label).
                   const indent = single ? subagentIndentPx(evt) : 0
+                  // v0.11.6 (AUDIT V9): a real button, not a div.
+                  //
+                  // These were plain divs with a click handler — no role, no
+                  // label, unreachable by keyboard and invisible to a screen
+                  // reader. The ↑/↓ walk only engaged after a mouse click had
+                  // already selected something, so a keyboard-only operator
+                  // could not reach the track at all.
+                  //
+                  // Roving tabindex: only the selected dot (or the first one,
+                  // when nothing is selected) is a tab stop, so Tab moves past
+                  // the track in one press rather than through every visible
+                  // node, and ↑/↓ walks from there — the same model the
+                  // existing keyboard handler already implements.
+                  const isTabStop = single && (sel || (!selectedEvent && c === visibleClusters[0]))
                   return (
-                    <div
+                    <button
                       key={c.key}
+                      type="button"
                       data-timeline-event
-                      className="absolute cursor-pointer flex items-center justify-center"
+                      tabIndex={isTabStop ? 0 : -1}
+                      aria-label={single
+                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} ${eventTitle(evt)}${shapeTitle(evt, t)}`
+                        : t('timeline.events', { count: c.events.length })}
+                      aria-pressed={sel || undefined}
+                      className="absolute cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 rounded"
                       style={{
                         left: c.x - hit / 2 + indent,
                         top: c.y - hit / 2,
@@ -2800,7 +3014,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           {badges[0].icon}
                         </span>
                       )}
-                    </div>
+                    </button>
                   )
                 })}
                 {/* Cluster contents popover */}
@@ -2850,8 +3064,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                             const spanMs = Math.max(1, last - first)
                             const spanRatio = spanMs / Math.max(1, timeSpan)
                             const neededTrackW = (evs.length + 1) * CLUSTER_PX / Math.max(spanRatio, 0.001)
-                            const spanZoom = neededTrackW / BASE_TRACK_W
-                            const targetZoom = Math.max(zoom, Math.min(6, spanZoom))
+                            const spanZoom = neededTrackW / baseTrackW
+                            const targetZoom = Math.max(zoom, Math.min(maxZoom, spanZoom))
                             if (Math.abs(targetZoom - zoom) > 0.01) {
                               pendingCenterTs.current = evt.timestamp
                               setZoom(targetZoom)

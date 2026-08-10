@@ -18,6 +18,7 @@ import { ToastContainer } from './components/Toast'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
+import { computeCaptureReadiness } from './lib/captureReadiness'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
 import logoUrl from './assets/logo.svg'
@@ -243,7 +244,89 @@ export default function App(): JSX.Element {
   )
 }
 
-function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
+// The dark/setup onboarding block: the three core sources as an ordered
+// checklist, plus one primary CTA derived from readiness.nextStep. This is the
+// answer to "the timeline is empty, what now" that the old single-sentence hint
+// never gave. The checklist and the next-step choice come from the pure,
+// unit-tested computeCaptureReadiness — this component only renders and wires
+// the buttons to the actions the card already owns.
+function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNavigate }: {
+  readiness: ReturnType<typeof computeCaptureReadiness>
+  sources: CaptureSourceInfo[]
+  busy: string | null
+  onInstall: (s: CaptureSourceInfo, install: boolean) => Promise<void>
+  onEnable: (s: CaptureSourceInfo, on: boolean) => Promise<void>
+  onNavigate: (v: string) => void
+}): JSX.Element {
+  const { t } = useI18n()
+  const STEP_LABEL: Record<string, string> = {
+    'shell-hook': t('capture.shellHook'),
+    'agent-tailer': t('capture.agentTailer'),
+    'builtin-terminal': t('capture.builtinTerminal')
+  }
+  const glyph = (status: string): { mark: string; cls: string } =>
+    status === 'active' ? { mark: '●', cls: 'text-emerald-500' }
+      : status === 'wired' ? { mark: '◐', cls: 'text-amber-500' }
+        : { mark: '○', cls: 'text-zinc-600' }
+
+  const next = readiness.nextStep
+  const nextSource = next ? sources.find((s) => s.id === next.id) : undefined
+
+  // One CTA, chosen by which core source is next and whether it needs setup or
+  // just activity. Each maps to an action the card already implements.
+  let cta: { label: string; run: () => void } | null = null
+  if (next && nextSource) {
+    if (next.status === 'todo' && nextSource.hookId) {
+      cta = { label: t('capture.ctaInstallHook'), run: () => void onInstall(nextSource, true) }
+    } else if (next.status === 'todo' && nextSource.configPath) {
+      cta = { label: t('capture.ctaEnableTailer'), run: () => void onEnable(nextSource, true) }
+    } else if (next.status === 'todo') {
+      cta = { label: t('capture.ctaOpenTerminal'), run: () => onNavigate('terminal') }
+    } else {
+      // wired but quiet — the setup is done, it just needs a command to fire.
+      cta = { label: t('capture.ctaRunCommand'), run: () => onNavigate('terminal') }
+    }
+  }
+
+  return (
+    <div className="mb-3">
+      <p className="text-[11px] text-zinc-400 mb-2">
+        {readiness.level === 'dark' ? t('capture.setupIntro') : t('capture.setupAlmost')}
+      </p>
+      <ol className="space-y-1 mb-2.5">
+        {readiness.steps.map((s, i) => {
+          const g = glyph(s.status)
+          return (
+            <li key={s.id} className="flex items-center gap-2 text-[11px]">
+              <span className={`shrink-0 ${g.cls}`}>{g.mark}</span>
+              <span className="text-zinc-500 tabular-nums">{i + 1}.</span>
+              <span className={s.status === 'active' ? 'text-zinc-300' : 'text-zinc-400'}>
+                {STEP_LABEL[s.id] ?? s.id}
+              </span>
+              <span className="text-[10px] font-mono text-zinc-600">{t(`capture.step.${s.status}`)}</span>
+            </li>
+          )
+        })}
+      </ol>
+      <div className="flex items-center gap-3">
+        {cta && (
+          <button
+            disabled={busy !== null}
+            onClick={cta.run}
+            className="text-[11px] font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
+          >
+            {cta.label}
+          </button>
+        )}
+        <button onClick={() => onNavigate('settings')} className="text-[11px] text-zinc-500 hover:text-zinc-300 underline">
+          {t('capture.openHooks')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
   capture: CaptureHealthInfo
   onNavigate: (v: string) => void
   onRefresh: () => void
@@ -355,6 +438,11 @@ function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
 
   const dark = capture.verdict === 'dark'
   const partial = capture.verdict === 'partial'
+  // The ordered dark→recording onboarding model. Pure + unit-tested in
+  // capture-readiness.ts; this card just renders it. Drives the checklist and
+  // the single primary CTA below, replacing the old one-line "go to Settings"
+  // hint that dropped a first-run operator into a 2600-line page with no order.
+  const readiness = computeCaptureReadiness(capture)
   const barColor = dark ? 'bg-red-500' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
@@ -377,14 +465,15 @@ function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
             <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
           </div>
         </div>
-        {(dark || partial) && (
-          <p className="text-[11px] text-zinc-400 mb-3">
-            {dark ? t('capture.darkHint') : t('capture.partialHint')}
-            {' '}
-            <button onClick={() => onNavigate('settings')} className="text-red-400/90 hover:text-red-300 underline">
-              {t('capture.openHooks')}
-            </button>
-          </p>
+        {readiness.level !== 'recording' && (
+          <CaptureOnboarding
+            readiness={readiness}
+            sources={capture.sources}
+            busy={busy}
+            onInstall={setInstalled}
+            onEnable={setEnabled}
+            onNavigate={onNavigate}
+          />
         )}
         <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
           {shown.map((s) => (
