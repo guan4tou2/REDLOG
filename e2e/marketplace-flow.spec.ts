@@ -367,8 +367,17 @@ test.describe.serial('marketplace', () => {
     await expect(banner).toContainText(/trusting 1 publisher/i)
     await expect(banner).toContainText(publisherId)
 
-    // Click Trust all → writes to trusted-publishers.json and banner unmounts.
-    await page.locator('[data-testid="marketplace-trust-all-suggested"]').click()
+    // v0.11.0: no more one-click "trust everything the registry advertised" —
+    // that let whoever controlled the index pin their own key and thereafter
+    // sign privileged plugins that passed every other check. Trust is
+    // per-publisher now, shown next to the key fingerprint the operator is
+    // meant to verify out-of-band.
+    //
+    // The row must carry that fingerprint, and it must be the same string the
+    // trust store shows — computed in main from publisher-trust.ts rather than
+    // reimplemented in the renderer, where it could drift.
+    await expect(banner).toContainText(/[0-9a-f]{2}(:[0-9a-f]{2}){15}/)
+    await page.locator(`[data-testid="marketplace-trust-${publisherId}"]`).click()
 
     // Store on disk carries the injected id + key. reloadPublishers refreshes
     // React state from the IPC, which reads the store — so once the banner

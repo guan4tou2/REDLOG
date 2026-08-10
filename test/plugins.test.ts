@@ -292,3 +292,37 @@ describe('plugin MCP tool registry', () => {
     expect(miss.owned).toBe(false)
   })
 })
+
+// v0.11.0 (AUDIT P1-3): `tailers` makes RedLog require() plugin code, so it is
+// in PRIVILEGED_KEYS — but it was applied through applyContributions, which
+// runs for any plugin that is not error/disabled. The trust gate only guarded
+// host.start(), so an unconsented plugin's tailer executed in the main process
+// with no capability limits.
+describe('tailer contributions respect the trust gate', () => {
+  const mk = (status: string): Parameters<typeof applyContributions>[0] => ({
+    manifest: {
+      id: 'tailer-plugin', name: 'T', version: '1.0.0', redlogApi: 1,
+      contributes: { tailers: 'tailer.js' }
+    },
+    dir: '/nonexistent/tailer-plugin',
+    tier: 'privileged',
+    status,
+    source: 'bundled',
+    contentHash: 'x'
+  } as unknown as Parameters<typeof applyContributions>[0])
+
+  it('is classified privileged so the gate applies at all', () => {
+    expect(tierOf({ contributes: { tailers: 'tailer.js' } } as never)).toBe('privileged')
+  })
+
+  it.each(['needs-consent', 'hash-changed'])('does not load a %s plugin', (status) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A require() of the (nonexistent) module would log through console.error;
+    // the gate should stop before that and warn about the status instead.
+    applyContributions(mk(status))
+    expect(warn.mock.calls.flat().join(' ')).toContain('not "active"')
+    expect(err).not.toHaveBeenCalled()
+    warn.mockRestore(); err.mockRestore()
+  })
+})

@@ -2422,22 +2422,35 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
 
   const publisherTrusted = (id: string): boolean => publishers.some((p) => p.id === id)
 
-  // Publishers the registry advertised that the operator hasn't pinned yet —
-  // drives the "Trust these to unlock installs" banner + one-click flow so
-  // nobody has to hand-paste an SPKI key just to get started.
+  // v0.11.0: the registry index is UNTRUSTED input, and this list is the only
+  // place that mattered. `index.json` carries no signature RedLog can check —
+  // it names publishers and their keys, and nothing more. The real trust
+  // boundary is one step later: each tarball's Ed25519 signature verified
+  // against a key the operator has pinned.
+  //
+  // The old "Trust all suggested" button collapsed that boundary. Whoever
+  // controlled the index (or the domain, or a MITM without cert pinning) could
+  // advertise their own key, get it pinned in one click, and thereafter sign
+  // privileged plugins that passed every check. One button undid the whole
+  // model.
+  //
+  // Trusting a key is now per-publisher and shows the fingerprint the operator
+  // is supposed to compare against the publisher's own channel — a keypress
+  // per key, which is the correct amount of friction for "let this stranger
+  // run code in my audit tool".
   const suggestedUntrusted = (index?.publishers ?? []).filter((p) => !publisherTrusted(p.id))
-  const [trustingAll, setTrustingAll] = useState(false)
-  const trustAllSuggested = async (): Promise<void> => {
-    if (suggestedUntrusted.length === 0) return
-    setTrustingAll(true)
-    for (const p of suggestedUntrusted) {
-      for (const k of p.keys) {
-        try { await api.trustPublisher(p.id, k.publicKey, p.homepage, k.label) } catch { /* keep going */ }
+  const [trustingId, setTrustingId] = useState<string | null>(null)
+  const trustOne = async (pub: { id: string; homepage?: string; keys: Array<{ publicKey: string; label?: string }> }): Promise<void> => {
+    setTrustingId(pub.id)
+    try {
+      for (const k of pub.keys) {
+        await api.trustPublisher(pub.id, k.publicKey, pub.homepage, k.label)
       }
-    }
-    setTrustingAll(false)
-    toast(t('marketplace.publishersAdded', { n: suggestedUntrusted.length }), 'success')
-    reloadPublishers()
+      toast(t('marketplace.publisherTrusted', { id: pub.id }), 'success')
+      reloadPublishers()
+    } catch (e) {
+      toast(String((e as Error)?.message ?? e), 'error')
+    } finally { setTrustingId(null) }
   }
 
   return (
@@ -2481,17 +2494,31 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                 {t('marketplace.suggestedPublishersTitle', { n: suggestedUntrusted.length })}
               </p>
               <p className="text-[11px] text-zinc-500 mb-2">{t('marketplace.suggestedPublishersHint')}</p>
-              <ul className="mb-2 space-y-0.5">
+              <ul className="space-y-1.5">
                 {suggestedUntrusted.map((p) => (
-                  <li key={p.id} className="text-[11px] text-zinc-400 font-mono truncate" title={p.keys.map((k) => k.publicKey).join('\n')}>
-                    {p.id} · {p.keys.length} key{p.keys.length === 1 ? '' : 's'}
+                  <li key={p.id} className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-zinc-300 font-mono truncate">{p.id}</p>
+                      {/* The fingerprint is the point of this row: the operator
+                          is meant to compare it against the publisher's own
+                          site before pinning, not take the registry's word. */}
+                      {p.keys.map((k) => (
+                        <p key={k.publicKey} className="text-[10px] text-zinc-500 font-mono truncate" title={k.publicKey}>
+                          {(k as { fingerprint?: string }).fingerprint ?? k.publicKey.slice(0, 16)}{k.label ? ` · ${k.label}` : ''}
+                        </p>
+                      ))}
+                    </div>
+                    <button
+                      data-testid={`marketplace-trust-${p.id}`}
+                      onClick={() => void trustOne(p)}
+                      disabled={trustingId === p.id}
+                      className="shrink-0 px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-white rounded disabled:opacity-50"
+                    >
+                      {trustingId === p.id ? '…' : t('marketplace.trustThisPublisher')}
+                    </button>
                   </li>
                 ))}
               </ul>
-              <button data-testid="marketplace-trust-all-suggested" onClick={trustAllSuggested} disabled={trustingAll}
-                className="px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-white rounded disabled:opacity-50">
-                {trustingAll ? '…' : t('marketplace.trustAllSuggested')}
-              </button>
             </div>
           )}
 

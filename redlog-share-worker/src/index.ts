@@ -121,12 +121,34 @@ async function putBytes(req: Request, env: Env, url: URL): Promise<Response> {
 
   if (!req.body) return json({ error: 'missing body' }, 400)
   try {
-    // R2 will store the object under the sha256 key; the content SHA is
-    // re-verified on the next /share/:slug read (see sharePage).
+    // v0.11.0: verify the content actually hashes to the key it is stored
+    // under. The old comment claimed the SHA was "re-verified on the next
+    // /share/:slug read", but that check only ran when R2 happened to have
+    // recorded a checksum — and the client never sent one, so in practice
+    // nothing was ever verified. The object key is a sha256 the uploader
+    // chose; storing bytes under it without checking made the key a label
+    // rather than a claim anyone could rely on.
+    //
+    // `sha256` here is exactly what the operator's manifest names, so a
+    // mismatch means the bytes in flight are not the bytes that were
+    // reviewed. Reject rather than store: a share URL handing out unverified
+    // content is worse than a failed upload.
+    //
+    // R2's own checksum enforcement does the comparison server-side, so this
+    // costs no extra buffering.
+    const digest = new Uint8Array(sha256.match(/../g)!.map((b) => parseInt(b, 16)))
     await env.BUNDLES.put(sha256, req.body, {
-      httpMetadata: { contentType: 'application/zip' }
+      httpMetadata: { contentType: 'application/zip' },
+      sha256: digest
     })
-  } catch {
+  } catch (e) {
+    // R2 raises on a checksum mismatch; report it distinctly so an operator
+    // sees "the upload was corrupted or tampered with" rather than a generic
+    // storage error.
+    const msg = String((e as Error)?.message ?? '')
+    if (/checksum|sha-?256|digest/i.test(msg)) {
+      return json({ error: 'content does not match its declared sha256' }, 400)
+    }
     return json({ error: 'storage write failed' }, 502)
   }
   return json({ ok: true })
