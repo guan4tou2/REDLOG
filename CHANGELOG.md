@@ -3,6 +3,57 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.5 — 2026-08-10
+
+**Opening a transcript-heavy project stopped stuttering.** One query, run once
+per session instead of once per project.
+
+### The tailer re-seeded its parent map per session
+
+When a project opens, every agent session RedLog has ever seen re-registers so
+the tailer can resume without duplicating history. Each registration ran:
+
+```sql
+SELECT id, json_extract(data,'$.transcript_uuid')
+  FROM events
+ WHERE agent_type = 'agent'
+   AND json_extract(data,'$.session_id') = ?
+   AND json_extract(data,'$.agent')      = ?
+```
+
+No index can serve a `json_extract` predicate, so each one scanned the whole
+`agent` bucket. On a real engagement that bucket is 131,774 rows and the query
+takes **167 ms** — and the project has **1,075 distinct agent sessions**.
+
+**1,075 × 167 ms = 180 seconds of blocked main process**, synchronous, on open.
+That is the stutter.
+
+Building the same map in one pass takes **309 ms** for all 128,968 rows with a
+`transcript_uuid`. Slices are handed to sessions and deleted as they are
+claimed, so the index does not sit alongside the per-session maps it feeds, and
+it is dropped in `stopHost()` — the project boundary — so ids from one
+project's chain can never seed another's.
+
+### On the other candidate
+
+`recoverOrphanSessions` also runs on open and looked expensive. It is not:
+2.9 ms on the same database. An earlier measurement of ~360 ms came from a
+benchmark that reconstructed the query without its `agent_type = 'shell'`
+filter, which made it scan all 131k rows instead of the 34 shell ones. The real
+query was never the problem and was left alone.
+
+`initDB` is ~600 ms on first open of an existing project — one-off index
+creation for the composite and partial indexes added in v0.9.8 / v0.9.9, paid
+once per database.
+
+### Tested
+
+- 502/502 unit (+4). `test/tailer-seed.test.ts` asserts the index hands each
+  session exactly what the per-session query would, keys on agent as well as
+  session so two agents never cross-seed, and that the cost is one scan rather
+  than N — compared as a ratio, not a wall-clock threshold.
+- 44/44 E2E.
+
 ## v0.11.4 — 2026-08-10
 
 **The track now says what it means without being clicked.** Six presentation
