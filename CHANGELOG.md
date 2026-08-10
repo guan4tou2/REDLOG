@@ -3,6 +3,81 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.4 — 2026-08-10
+
+**The track now says what it means without being clicked.** Six presentation
+findings from `docs/AUDIT-2026-08-08.md`, all of them about the Timeline
+spending its visual budget on the wrong things.
+
+### 1. Severity and scope violations were invisible (V3)
+
+A `critical` marker rendered **identically** to an `info` one — severity
+appeared only as a text prefix inside the tooltip — and a scope violation was
+distinguished solely by being routed to its own lane, in a red byte-identical
+to the marker lane's. Meanwhile chain integrity, which is rare and already
+announced by a banner across the top, had a badge, a ring *and* a red band
+behind it.
+
+That is backwards for this product. The two things an operator scans a track
+for are *did I go out of bounds* and *what did I flag as serious*.
+
+Encoded as **shape**, not more colour — eighteen lane hues are already past
+what anyone reliably distinguishes, and shape survives a colour-blind operator
+and a glance at the far edge of the screen:
+
+| | |
+|---|---|
+| scope violation | diamond, 25% larger — out of bounds is categorical |
+| critical marker | hollow ring, 50% larger — reads as an outline |
+| important marker | larger circle |
+| everything else | circle |
+
+The tooltip names the emphasis too, so shape is never the only channel.
+
+### 2. Two lanes were the same colour (V1, V2)
+
+`marker` and `scope` were both `#ef4444` — the two lanes an operator most needs
+to separate — with `cleanup` a shade away. And the palette was raw Tailwind
+values, so the track was the most saturated surface in an app that
+deliberately desaturates everything else (`tailwind.config.js`: high
+saturation on near-black vibrates).
+
+Rebuilt so hue carries the lane **family** — execution, network, evidence,
+findings, plumbing — and the red family is spread far enough apart to separate
+side by side. Every value now sits inside the same desaturated band as the rest
+of the app.
+
+`test/lane-colours.test.ts` asserts the invariants: no duplicates, a minimum
+pairwise distance, and a saturation ceiling. None of them are visible to a
+rendering test — empty lanes auto-collapse, so the DOM never shows all eighteen
+at once, which is exactly how two of them drifted into the same hex.
+
+### 3. The event list ignored where you were looking (V5)
+
+It showed "the last 50 events, always". Pan back three hours to investigate
+something and the list underneath still showed what happened thirty seconds
+ago — a break in the middle of the one workflow the panel exists to support.
+It now follows the viewport, falling back to the tail when the whole track is
+on screen, which is also what you want while following live.
+
+### 4. Smaller things
+
+- **Filtered-out dots were still clickable (V10).** They only lost opacity,
+  keeping their full hit box, so clicking "nothing" opened a detail panel for
+  an event the filter had just excluded — which reads as the filter being
+  broken.
+- **Cross-midnight axis labels (V6).** A three-day engagement showed several
+  indistinguishable `09:11` ticks. Once the span crosses a day, the first tick
+  and every tick that starts a new date carry the date.
+- **`{n} Attack Timeline` (W13).** `timeline.title` was being used as a count
+  noun in two places. `timeline.events` already existed.
+
+### Tested
+
+- 498/498 unit (+4, the palette invariants).
+- 44/44 E2E (+3): the diamond, the severity sizes and fills, and the tooltip
+  naming the emphasis.
+
 ## v0.11.3 — 2026-08-10
 
 **`chain_sample_broken` root cause found. It was field order — nothing was
