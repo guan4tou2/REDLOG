@@ -756,6 +756,49 @@ function fileSha256(p: string): string {
 
 /** Register a session for a given adapter + source. Idempotent —
  *  duplicate calls with the same source path are a no-op. */
+/** Project-wide `transcript_uuid → event id` index, built lazily on the first
+ *  session registration after a project opens and drained as sessions claim
+ *  their slices. `null` means "not built yet"; an empty map means "built, and
+ *  this project has no agent history". */
+let seedIndex: Map<string, Map<string, string>> | null = null
+
+/** Drop the index so the next registration rebuilds it. Called when the
+ *  project changes — the old project's ids must never leak into the new one. */
+export function resetTailerSeedIndex(): void { seedIndex = null }
+
+function buildSeedIndex(): Map<string, Map<string, string>> {
+  const idx = new Map<string, Map<string, string>>()
+  const rows = getDB().prepare(
+    `SELECT id,
+            json_extract(data, '$.session_id')     AS sid,
+            json_extract(data, '$.agent')          AS agent,
+            json_extract(data, '$.transcript_uuid') AS uuid
+       FROM events
+      WHERE agent_type = 'agent'
+        AND json_extract(data, '$.transcript_uuid') IS NOT NULL`
+  ).all() as Array<{ id: string; sid: string | null; agent: string | null; uuid: string }>
+  for (const r of rows) {
+    if (!r.sid || !r.agent) continue
+    const key = `${r.agent}:${r.sid}`
+    let m = idx.get(key)
+    if (!m) { m = new Map(); idx.set(key, m) }
+    m.set(r.uuid, r.id)
+  }
+  return idx
+}
+
+function takeSeedSlice(sessionId: string, agentKind: string): Map<string, string> {
+  if (!seedIndex) seedIndex = buildSeedIndex()
+  const key = `${agentKind}:${sessionId}`
+  const slice = seedIndex.get(key)
+  if (!slice) return new Map()
+  // Transfer ownership: the caller copies these into its own session map, so
+  // holding them here as well would double the footprint of the largest
+  // structure in the tailer.
+  seedIndex.delete(key)
+  return slice
+}
+
 export function registerSession(agentKind: string, sourcePath: string): void {
   const adapter = registeredAdapters.get(agentKind)
   if (!adapter) return
@@ -801,17 +844,23 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   // v0.7.4 F2: seed the parent-map from DB so re-ingest post-sidecar-prune
   // doesn't duplicate historical events. Also seeds the per-message-file
   // dedup set (uuid = filename in that case).
+  //
+  // v0.11.5: one scan for the whole project, not one per session.
+  //
+  // This used to run its own query per registered session, filtered by
+  // `json_extract(data,'$.session_id')` — which no index can serve, so each
+  // one scanned the entire `agent` bucket. On a transcript-heavy project that
+  // is 131,774 rows and 167 ms, and every session RedLog has ever seen
+  // re-registers when the project opens. Measured on a real engagement:
+  // 1,075 sessions × 167 ms = **180 seconds** of blocked main process, which
+  // is exactly the "opening this project makes everything stutter" report.
+  //
+  // Building the whole map in a single pass takes 309 ms for the same data.
+  // Slices are handed out and deleted as sessions claim them, so the index
+  // does not sit alongside the per-session maps it feeds.
   try {
-    const db = getDB()
-    const rows = db.prepare(
-      `SELECT id, json_extract(data, '$.transcript_uuid') AS uuid
-         FROM events
-        WHERE agent_type = 'agent'
-          AND json_extract(data, '$.session_id') = ?
-          AND json_extract(data, '$.agent') = ?
-          AND json_extract(data, '$.transcript_uuid') IS NOT NULL`
-    ).all(sessionId, agentKind) as Array<{ id: string; uuid: string }>
-    for (const row of rows) s.redlogIdByUuid.set(row.uuid, row.id)
+    const slice = takeSeedSlice(sessionId, agentKind)
+    for (const [uuid, id] of slice) s.redlogIdByUuid.set(uuid, id)
   } catch (e) { noteDbError('tailer-host', e) }
 
   // For per-message adapters we ALSO read the sidecar-as-index to seed
@@ -884,6 +933,11 @@ export function stopHost(): void {
   watchersByAgent.clear()
   for (const [key] of sessions) unregisterSession(key)
   sessions.clear()
+  // The seed index is keyed by session, not by project, and holds event ids
+  // from whichever database was open when it was built. Closing the host is
+  // the boundary — dropping it here means a project switch can never hand the
+  // new project's tailer a parent id belonging to the old one.
+  resetTailerSeedIndex()
 }
 
 function restartAll(): void {
