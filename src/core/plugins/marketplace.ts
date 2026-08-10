@@ -17,7 +17,12 @@ import { validateManifest, tierOf, computeContentHash } from './manifest'
 // blast radius of a compromised registry is bounded to serving a bad plugin,
 // which the trust gate still catches on install.
 
-const DEFAULT_REGISTRY_URL = 'https://plugins.redlog.dev/index.json'
+// v0.11.0: no default registry. `plugins.redlog.dev` was never registered, so
+// shipping it as the default meant every install pointed at a domain anyone
+// could claim — and the index it serves names the publisher keys the operator
+// is invited to pin. A registry is a supply chain; the operator has to choose
+// it deliberately, and there is no honest default to choose for them.
+const DEFAULT_REGISTRY_URL = ''
 const PLUGINS_ROOT = () => join(homedir(), '.redlog', 'plugins')
 const REVOCATIONS_PATH = () => join(homedir(), '.redlog', 'plugins', 'revocations.json')
 
@@ -113,7 +118,18 @@ function httpsGetBuffer(url: string, maxBytes: number): Promise<Buffer> {
 // ---- Index fetching -------------------------------------------------------
 
 export async function fetchIndex(url = DEFAULT_REGISTRY_URL): Promise<RegistryIndex> {
+  if (!url) throw new Error('no registry URL configured — set one in Settings ▸ Plugins ▸ Marketplace')
   const raw = await httpsGetBuffer(url, MAX_INDEX_BYTES)
+  // The index is UNTRUSTED input. RedLog cannot verify it: there is no root
+  // key to check it against, and TLS only proves the bytes came from whoever
+  // holds the domain — which is exactly who an attacker would need to be.
+  // Everything here is therefore treated as a hint about WHERE to look, never
+  // as evidence that anything is safe. The trust boundary is one step later:
+  // installFromRegistry verifies each tarball's Ed25519 signature against a
+  // key the OPERATOR has pinned, and refuses a privileged plugin without one.
+  //
+  // docs/PLUGIN_MARKETPLACE.md used to claim unsigned index mutations were
+  // rejected. They never were, and the claim is gone.
   const parsed = JSON.parse(raw.toString('utf-8'))
   if (typeof parsed !== 'object' || parsed === null) throw new Error('index is not an object')
   if (!Array.isArray(parsed.entries)) throw new Error('index.entries missing')

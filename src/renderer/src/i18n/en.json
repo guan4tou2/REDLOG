@@ -748,10 +748,8 @@
   "marketplace.trustPublisher": "Trust",
   "marketplace.untrustPublisher": "Untrust",
   "marketplace.publisherAdded": "Publisher trusted",
-  "marketplace.publishersAdded": "Trusted {{n}} publisher(s)",
   "marketplace.suggestedPublishersTitle": "This registry suggests trusting {{n}} publisher(s)",
-  "marketplace.suggestedPublishersHint": "Public keys bundled with the registry. Trusting them here skips the paste-SPKI step. You can untrust from the Publishers tab later.",
-  "marketplace.trustAllSuggested": "Trust all",
+  "marketplace.suggestedPublishersHint": "The registry advertises these keys. RedLog cannot verify the registry itself — compare each fingerprint against the publisher’s own site before trusting it. A trusted key can sign plugins that run code inside RedLog.",
   "marketplace.publisherEmpty": "No publishers trusted yet.",
   "marketplace.revocationsHint": "Revocations come from the registry — listed plugins and publishers cannot install.",
   "marketplace.revocationsEmpty": "Revocation list is empty.",
@@ -792,5 +790,7 @@
   "overlay.markDetailHint": "Open the marker dialog to add a title, notes and severity (raises the main window)",
   "overlay.keepOpen": "keep open",
   "overlay.keepOpenOnHint": "Staying open. Click to let it auto-collapse after 8s again.",
-  "overlay.keepOpenOffHint": "Auto-collapses after 8s of inactivity. Click to keep it open."
+  "overlay.keepOpenOffHint": "Auto-collapses after 8s of inactivity. Click to keep it open.",
+  "marketplace.trustThisPublisher": "Trust",
+  "marketplace.publisherTrusted": "Trusted {{id}} — its signed plugins can now be installed"
 }

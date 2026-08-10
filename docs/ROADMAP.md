@@ -88,7 +88,7 @@ Steps 3–6: the `io_ref` sidecar and everything that reads it.
 Chain invariant: bytes never enter the chain, only their sha256. The v0.6.47
 revert stands.
 
-## v0.11.0 — close the trust-model gaps
+## v0.11.0 — close the trust-model gaps ✅ shipped
 
 Each of these is either a documented control that does not exist, or a
 privileged path that skips the gate:

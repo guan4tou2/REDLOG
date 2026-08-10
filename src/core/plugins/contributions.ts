@@ -56,7 +56,25 @@ export function applyContributions(p: LoadedPlugin): void {
   // with an advisory to console; a real emission via insertEvent would
   // require pulling core → main-services dependency, which we avoid here.
   if (c.tailers) {
-    if (p.source !== 'bundled') {
+    // v0.11.0: `tailers` is in PRIVILEGED_KEYS — it makes RedLog `require()`
+    // plugin-supplied code — but it was reached through applyContributions,
+    // which runs for anything not `error`/`disabled`. The trust gate only
+    // guarded `host.start()`, so a plugin sitting at `needs-consent` or
+    // `hash-changed` had its tailer module executed in the MAIN process before
+    // the operator had agreed to anything, and with no capability limits.
+    //
+    // Latent until now only because of the bundled-only rule below. Both gates
+    // stay: bundled-only because third-party tailer isolation is still
+    // unbuilt (parseUnit runs per transcript line and does sync fs I/O, which
+    // the per-call utilityProcess model cannot absorb), and the trust check
+    // because "we shipped it" is not the same as "the operator consented to
+    // this exact content" — the pinned hash is what makes an update visible.
+    if (p.status !== 'active') {
+      console.warn(
+        `[plugins] tailer contribution from "${id}" skipped — plugin status is ` +
+        `"${p.status}", not "active". Privileged code does not run before consent.`
+      )
+    } else if (p.source !== 'bundled') {
       console.warn(
         `[plugins] tailer contribution from user plugin "${id}" rejected — ` +
         `v0.8.2 supports bundled tailer contributions only. Third-party ` +

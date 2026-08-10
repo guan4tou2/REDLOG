@@ -748,10 +748,8 @@
   "marketplace.trustPublisher": "信任",
   "marketplace.untrustPublisher": "撤銷信任",
   "marketplace.publisherAdded": "已信任發行者",
-  "marketplace.publishersAdded": "已信任 {{n}} 個發行者",
   "marketplace.suggestedPublishersTitle": "此 registry 建議信任 {{n}} 個發行者",
-  "marketplace.suggestedPublishersHint": "registry 內建的公鑰；按下後跳過手動貼 SPKI 的流程。你可以之後在「發行者」分頁撤銷。",
-  "marketplace.trustAllSuggested": "全部信任",
+  "marketplace.suggestedPublishersHint": "Registry 宣告了這些金鑰。RedLog 無法驗證 registry 本身 — 信任前請將每個指紋與發布者自己的網站比對。受信任的金鑰可以簽署在 RedLog 內執行程式碼的 plugin。",
   "marketplace.publisherEmpty": "尚未信任任何發行者。",
   "marketplace.revocationsHint": "撤銷清單來自 registry；被列名的外掛與發行者無法安裝。",
   "marketplace.revocationsEmpty": "撤銷清單為空。",
@@ -792,5 +790,7 @@
   "overlay.markDetailHint": "開啟標記對話框以填寫標題、備註與嚴重度（會叫出主視窗）",
   "overlay.keepOpen": "固定展開",
   "overlay.keepOpenOnHint": "保持展開中。點擊以恢復閒置 8 秒後自動收合。",
-  "overlay.keepOpenOffHint": "閒置 8 秒後會自動收合。點擊以固定展開。"
+  "overlay.keepOpenOffHint": "閒置 8 秒後會自動收合。點擊以固定展開。",
+  "marketplace.trustThisPublisher": "信任",
+  "marketplace.publisherTrusted": "已信任 {{id}} — 其簽章的 plugin 現在可以安裝"
 }

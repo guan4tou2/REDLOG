@@ -3,6 +3,109 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.11.0 — 2026-08-10
+
+**No document in this repo now describes a security control that does not
+exist.** That was the whole of this release. `docs/AUDIT-2026-08-08.md` had six
+findings in its trust-model tier; every one is closed — either the control was
+built, or the claim was corrected.
+
+For a tool whose value proposition is "you can verify I am not lying to you", a
+threat model that overstates its own defences is a defect of the same class as
+a bug, and arguably worse: a bug fails visibly.
+
+### 1. The registry index is untrusted, and now says so (P1-4)
+
+`PLUGIN_MARKETPLACE.md` claimed *"`index.json` mutations without a valid
+signature are rejected"*. They never were — there is no root key to check
+against, `plugins.redlog.dev` was never registered, and TLS only proves the
+bytes came from whoever holds the domain, which is exactly who an attacker
+would need to be.
+
+The real trust boundary was always one step later and does work: each tarball's
+Ed25519 signature, verified against a key the **operator** pinned, with
+privileged plugins refused outright without one. So the fix is to make the
+index's status explicit rather than to build a lock for a door that does not
+exist:
+
+- **"Trust all suggested publishers" is gone.** That button was the actual
+  hole: whoever controlled the index could advertise their own key, have it
+  pinned in one click, and thereafter sign privileged plugins that passed every
+  remaining check. Trust is now per-publisher.
+- **The key fingerprint is shown next to each Trust button** — the string the
+  operator is meant to compare against the publisher's own channel. It is
+  computed in main from `publisher-trust.ts`, so it is byte-identical to what
+  the trust store displays rather than a second implementation free to drift.
+- **The unregistered default registry URL is gone.** A registry is a supply
+  chain; there is no honest default to pick on the operator's behalf.
+
+### 2. Revocations are a local blocklist, and are now called that (P1-5)
+
+The docs described signed revocations arriving over the network and flipping
+affected plugins to `needs-consent`. Nothing ever fetched them. Without a root
+of trust that mechanism cannot be built honestly anyway — a fetched revocation
+list is only as trustworthy as whoever served it, and a compromised publisher
+will not revoke itself. `revocations.json` is documented as what it always was:
+a blocklist the operator maintains.
+
+### 3. `tailers` no longer runs before consent (P1-3)
+
+`tailers` is in `PRIVILEGED_KEYS` — it makes RedLog `require()` plugin-supplied
+code — but it was reached through `applyContributions`, which runs for anything
+not `error`/`disabled`. The trust gate only guarded `host.start()`, so a plugin
+sitting at `needs-consent` or `hash-changed` had its tailer module executed **in
+the main process**, before the operator agreed to anything and with no
+capability limits.
+
+Latent, because a separate rule rejects non-bundled tailers. Both gates now
+stay: bundled-only (third-party tailer isolation is still unbuilt — `parseUnit`
+runs per transcript line and does synchronous fs I/O, which the per-call
+`utilityProcess` model cannot absorb), **and** the trust check, because "we
+shipped it" is not "the operator consented to this exact content".
+
+### 4. Capture hook scripts are covered by the content hash (P2-1)
+
+`codeFilesOf()` returned only `PRIVILEGED_KEYS`, so a 🟢 plugin's
+`capture[].hookFile` sat outside the pinned hash — and that file is a shell
+script the operator sources into their own `~/.zshrc`, which then runs on every
+command they type. Its contents could change on an update with no hash change
+and therefore no re-consent: precisely what content-hash pinning exists to
+prevent, on the file with the broadest execution reach in the plugin model.
+`collectFileRefs` already listed it for path-safety checks, so the omission was
+in the hashing, not the parsing.
+
+### 5. `vps-deploy.sh` refuses the primary token (P1-6)
+
+It defaulted to pushing `~/.redlog/api-token` — the **primary** operator token,
+which can create and revoke operators, rotate tokens, export the full evidence
+bundle and read every loot row — to a red-team VPS, the most exposed asset in
+an engagement. It also broke silently, since the primary token is rewritten on
+every app start. It now refuses, and prints the `redlog-cli operators add`
+command to mint a secondary.
+
+### 6. The share Worker verifies uploaded bytes (P2-3)
+
+`putBytes` wrote the request body into R2 under a sha256 key without checking
+that the content hashed to it — the key was a label, not a claim. A comment
+said the SHA was "re-verified on the next read", but that path only ran when R2
+happened to hold a checksum, and the client never sent one. R2's own checksum
+enforcement now does the comparison server-side, and a mismatch returns a
+distinct error so an operator sees "corrupted or tampered with" rather than a
+generic storage failure.
+
+`CLOUD_SHARE_BUNDLE.md` separately claimed the Worker rejected bundles whose
+sanitize counts disagreed with the manifest. It does not parse `bundle.json` at
+all; the client-side review gate is the whole of that defence, and the doc now
+says so.
+
+### Tested
+
+- 488/488 unit (+3): `tierOf` classifies a tailer contribution as privileged,
+  and `needs-consent` / `hash-changed` plugins are refused before the
+  `require()`.
+- 38/38 E2E, 1 skipped. The marketplace publisher flow now also asserts the
+  banner renders a real 16-byte fingerprint.
+
 ## v0.9.10 — 2026-08-10
 
 **Settings reorganised; the three untested modules that touch evidence now have

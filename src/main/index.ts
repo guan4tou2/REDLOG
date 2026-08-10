@@ -1685,17 +1685,33 @@ app.whenReady().then(() => {
   // main just exposes it over IPC. The registry client uses HTTPS only, hard
   // caps size (5 MB tarball / 1 MB index), and every install goes through
   // sha256 + Ed25519 signature verify + manifest re-validate.
+  // v0.11.0: stamp each advertised key with the same fingerprint the trust
+  // store shows. The operator is meant to compare it against the publisher's
+  // own channel before pinning, so it has to be the identical string in both
+  // places — computed here rather than in the renderer, where it would be a
+  // second implementation free to drift from publisher-trust.ts.
+  const annotateIndex = async (index: unknown): Promise<unknown> => {
+    const idx = index as { publishers?: Array<{ keys?: Array<{ publicKey: string }> }> } | null
+    if (!idx?.publishers) return index
+    const { fingerprint } = await import('../core/plugins/publisher-trust')
+    for (const p of idx.publishers) {
+      for (const k of p.keys ?? []) {
+        try { (k as { fingerprint?: string }).fingerprint = fingerprint(k.publicKey) } catch { /* malformed key */ }
+      }
+    }
+    return idx
+  }
   ipcMain.handle('marketplace:fetchIndex', async (_e, url?: string) => {
     // Dev/E2E-only override: if a test has stashed a fake index via
     // marketplace:testSetIndex, return it verbatim instead of hitting the
     // network. Kept alongside the real path so the UI code driving fetchIndex
     // stays identical between real and mocked runs.
     if (process.env.REDLOG_E2E === '1' && testFetchIndexOverride) {
-      return { ok: true, index: testFetchIndexOverride }
+      return { ok: true, index: await annotateIndex(testFetchIndexOverride) }
     }
     try {
       const { fetchIndex } = await import('../core/plugins/marketplace')
-      return { ok: true, index: await fetchIndex(url) }
+      return { ok: true, index: await annotateIndex(await fetchIndex(url)) }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }
