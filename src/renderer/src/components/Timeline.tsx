@@ -11,6 +11,7 @@ import { resolveTimelineKey } from '../lib/timelineKeys'
 import { wheelMode } from '../lib/timelineWheel'
 import { activeModes, type TimelineModeState } from '../lib/timelineModes'
 import { populatedLanes as computePopulatedLanes, visibleLanes as computeVisibleLanes, soloLaneOf } from '../lib/laneVisibility'
+import { buildLaneModel } from '../lib/timelineAxis'
 import { shortcutsForScope, modKey, MOD_TOKEN } from '../lib/shortcuts'
 
 const MIN_LANE_H = 36
@@ -1146,19 +1147,52 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // A lane with no events is dead vertical space — most engagements only ever
   // touch three or four of them. Keep the filter chip so the operator can see
   // the lane exists, but don't give it a row until something lands in it.
-  // Phase C step 1: the populated/visible resolution lives in lib/laneVisibility
-  // (unit-tested) so the axis refactor can lean on it; this is a zero-behaviour
-  // swap of the former inline `new Set(...)` / `LANES.filter(...)` memos.
-  // v0.6.95 P1-12: pluginTypes must stay in deps — a plugin-registered event
-  // lane wouldn't appear on the filter chip until an unrelated re-render.
-  const populatedLanes = useMemo(
-    () => computePopulatedLanes(events, (e) => toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)),
-    [events, pluginTypes]
-  )
+  // Phase C: the lane model is axis-driven (lib/timelineAxis + laneVisibility,
+  // both unit-tested). 'source' reproduces the former inline behaviour exactly
+  // (lanes = LANES, grouped by toLane); 'target' groups events by target with an
+  // untargeted lane last (§9/§12). Default 'source', persisted, so upgrade is a
+  // no-op until the operator opts in.
+  const [laneAxis, setLaneAxis] = useState<'source' | 'target'>(() => {
+    try { return localStorage.getItem('redlog-timeline-lane-axis') === 'target' ? 'target' : 'source' } catch { return 'source' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-lane-axis', laneAxis) } catch { /* private mode */ }
+  }, [laneAxis])
 
+  // v0.6.95 P1-12: pluginTypes must stay in deps — a plugin-registered event
+  // lane wouldn't appear until an unrelated re-render.
+  const srcLaneOf = useCallback(
+    (e: RedLogEvent): LaneId => toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes),
+    [pluginTypes]
+  )
+  const laneModel = useMemo(
+    () => buildLaneModel(
+      laneAxis,
+      events,
+      LANES.map((id) => ({ id, label: laneLabels[id] })),
+      srcLaneOf,
+      t('timeline.untargeted')
+    ),
+    [laneAxis, events, laneLabels, srcLaneOf, t]
+  )
+  const laneEvents = laneModel.laneEvents as Record<string, RedLogEvent[]>
+  const axisLanes = laneModel.lanes
+  // Label + row-marker colour for a lane id, axis-aware. Target lanes have no
+  // source-type colour, so the row marker falls back to neutral zinc; dots on
+  // the track stay coloured by source-type (see `dotColor`).
+  const laneLabelOf = useCallback(
+    (id: string): string => axisLanes.find((l) => l.id === id)?.label ?? laneLabels[id] ?? id,
+    [axisLanes, laneLabels]
+  )
+  const laneRowColor = (id: string): string => LANE_COLORS[id] ?? '#71717a'
+
+  const populatedLanes = useMemo(
+    () => computePopulatedLanes(events, laneModel.laneOf),
+    [events, laneModel]
+  )
   const visibleLanes = useMemo(
-    () => computeVisibleLanes(LANES, populatedLanes, hiddenLanes),
-    [populatedLanes, hiddenLanes]
+    () => computeVisibleLanes(axisLanes.map((l) => l.id), populatedLanes, hiddenLanes),
+    [axisLanes, populatedLanes, hiddenLanes]
   )
 
   // T3: the "Active:" row. activeModes() (lib/timelineModes.ts, unit-tested) is
@@ -1449,11 +1483,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
   const totalH = visibleLanes.length * laneH
 
-  const laneEvents = useMemo(() => {
-    const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
-    for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
-    return map
-  }, [events, pluginTypes])
+  // laneEvents now comes from `laneModel` above (axis-driven, seeded per lane).
 
   // Debounced so a held key or a fast typist does not run the scan per
   // character. 120 ms sits below the point where the filter feels laggy and
@@ -1635,8 +1665,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // DOM, which is what makes this affordable.
   const maxZoom = useMemo(() => {
     let tightest = Infinity
-    for (const lane of LANES) {
-      const evs = laneEvents[lane]
+    // Iterate the model's lane arrays directly — keyed by source lane or target
+    // depending on the axis, so a fixed `LANES` walk would miss target lanes and
+    // index undefined.
+    for (const evs of Object.values(laneEvents)) {
       for (let i = 1; i < evs.length; i++) {
         const d = displayTs(evs[i]) - displayTs(evs[i - 1])
         if (d > 0 && d < tightest) tightest = d
@@ -2507,6 +2539,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             agent subtypes are dropped from the render pipeline — the
             hidden count is shown so the empty agent lane doesn't look
             like a bug. Same visual weight as the other filter chips. */}
+        {/* Phase C: lane axis — group rows by source type (recording view) or
+            by target (reconstruction view). Source is the default. */}
+        <button
+          onClick={() => setLaneAxis((a) => (a === 'source' ? 'target' : 'source'))}
+          title={t('timeline.axisHint')}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${laneAxis === 'target' ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          <span>⊞</span>
+          <span className="font-mono">{laneAxis === 'target' ? t('timeline.axisTarget') : t('timeline.axisSource')}</span>
+        </button>
+
         <button
           onClick={() => setCollapseAgentTurns((v) => !v)}
           title={collapseAgentTurns
@@ -2752,7 +2795,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               title={t('timeline.showAllLanes')}
             >{t('timeline.showAll')}</button>
           )}
-          {LANES.map((id) => {
+          {/* Lane filter chips are source-type specific (colour + label); on the
+              target axis they're hidden for now (v1 — target lanes are data-
+              derived and use no palette). */}
+          {laneAxis === 'source' && LANES.map((id) => {
             const empty = !populatedLanes.has(id)
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
@@ -2914,8 +2960,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 className="flex items-center gap-1.5 px-2 border-b border-zinc-800/30 font-mono text-[11px]"
                 style={{ height: laneH }}
               >
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
-                <span className="text-zinc-500 truncate">{laneLabels[id]}</span>
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: laneRowColor(id) }} />
+                <span className="text-zinc-500 truncate" title={laneLabelOf(id)}>{laneLabelOf(id)}</span>
               </div>
             ))}
           </div>
@@ -3116,6 +3162,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   // node, and ↑/↓ walks from there — the same model the
                   // existing keyboard handler already implements.
                   const isTabStop = single && (sel || (!selectedEvent && c === visibleClusters[0]))
+                  // Dot colour is always the SOURCE-type colour, even on the
+                  // target axis where c.lane is a target id (no palette entry).
+                  // Multi-event clusters take their first event's source type.
+                  const dotColor = LANE_COLORS[srcLaneOf(c.events[0])] ?? laneRowColor(c.lane)
                   return (
                     <button
                       key={c.key}
@@ -3156,15 +3206,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           // diamond = a square turned 45°; ring = hollow.
                           borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
                           transform: marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
-                          backgroundColor: marks.shape === 'ring' ? 'transparent' : LANE_COLORS[c.lane],
+                          backgroundColor: marks.shape === 'ring' ? 'transparent' : dotColor,
                           border: marks.shape === 'ring'
-                            ? `2.5px solid ${LANE_COLORS[c.lane]}`
+                            ? `2.5px solid ${dotColor}`
                             : single ? undefined : '1px solid rgba(0,0,0,0.45)',
                           boxShadow: sel
-                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
+                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${dotColor}, 0 0 12px ${dotColor}60`
                             : inChain
                               ? `0 0 0 1.5px ${chainRingColor}, 0 0 8px ${chainRingColor}80`
-                              : `0 0 6px ${LANE_COLORS[c.lane]}40`
+                              : `0 0 6px ${dotColor}40`
                         }}
                       >
                         {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
