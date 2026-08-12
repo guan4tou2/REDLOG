@@ -12,6 +12,8 @@ import { wheelMode } from '../lib/timelineWheel'
 import { activeModes, type TimelineModeState } from '../lib/timelineModes'
 import { populatedLanes as computePopulatedLanes, visibleLanes as computeVisibleLanes, soloLaneOf } from '../lib/laneVisibility'
 import { buildLaneModel } from '../lib/timelineAxis'
+import { phaseSegments, phaseMarkersFromEvents } from '../lib/phaseSegments'
+import { inferPhaseSuggestions } from '../lib/phaseInference'
 import { shortcutsForScope, modKey, MOD_TOKEN } from '../lib/shortcuts'
 
 const MIN_LANE_H = 36
@@ -65,6 +67,20 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 //   findings    amber → red           credential_use, c2, marker, loot,
 //                                     cleanup, scope
 //   plumbing    zinc                  system
+// Phase C step 4: colours for the phase ribbon. Keyed by the lowercase phase
+// ids the seams emit (operator markers + inferred). Unknown phases fall back to
+// a neutral slate so a custom operator phase still renders.
+const PHASE_COLORS: Record<string, string> = {
+  recon: '#38bdf8',
+  delivery: '#a78bfa',
+  exploit: '#f472b6',
+  'credential-access': '#fbbf24',
+  'lateral-movement': '#34d399',
+  exfil: '#fb7185',
+  'anti-forensics': '#f87171'
+}
+const phaseColor = (phase: string): string => PHASE_COLORS[phase] ?? '#94a3b8'
+
 const LANE_COLORS: Record<LaneId, string> = {
   // execution
   shell: '#5ecf9c',
@@ -1159,6 +1175,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     try { localStorage.setItem('redlog-timeline-lane-axis', laneAxis) } catch { /* private mode */ }
   }, [laneAxis])
 
+  // Phase C step 4: the phase ribbon. Off by default until the operator wants it.
+  const [phaseRibbon, setPhaseRibbon] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-phase-ribbon') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-phase-ribbon', phaseRibbon ? '1' : '0') } catch { /* private mode */ }
+  }, [phaseRibbon])
+
   // v0.6.95 P1-12: pluginTypes must stay in deps — a plugin-registered event
   // lane wouldn't appear until an unrelated re-render.
   const srcLaneOf = useCallback(
@@ -1378,6 +1402,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - LABEL_W)
   const TRACK_W = Math.min(MAX_TRACK_W, Math.round(baseTrackW * zoom))
   const timeSpan = timeEnd - timeStart
+
+  // Phase C step 4: phase ribbon bands. `solid` are AUTHORITATIVE — segments
+  // between operator phase-markers (§11 乙). `inferred` are SUGGESTIONS —
+  // segments between the heuristic phase boundaries (§11 甲 / §3), rendered
+  // dashed and promotable to a real marker on click. Both reuse phaseSegments so
+  // the seams stay the single source of truth; only computed when the ribbon is on.
+  const phaseBandsSolid = useMemo(
+    () => (phaseRibbon ? phaseSegments(phaseMarkersFromEvents(events), timeEnd) : []),
+    [phaseRibbon, events, timeEnd]
+  )
+  const phaseBandsInferred = useMemo(
+    () => (phaseRibbon
+      ? phaseSegments(
+          inferPhaseSuggestions(events).map((s) => ({ ts: s.ts, phase: s.phase, markerId: s.sourceEventId })),
+          timeEnd
+        )
+      : []),
+    [phaseRibbon, events, timeEnd]
+  )
+
   // v0.11.6 (AUDIT V7): optional idle-gap compression.
   //
   // Time on the track is strictly linear, which is honest but wastes the
@@ -2550,6 +2594,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           <span className="font-mono">{laneAxis === 'target' ? t('timeline.axisTarget') : t('timeline.axisSource')}</span>
         </button>
 
+        {/* Phase C step 4: phase ribbon toggle. */}
+        <button
+          onClick={() => setPhaseRibbon((v) => !v)}
+          title={t('timeline.phaseRibbonHint')}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${phaseRibbon ? 'bg-violet-900/40 text-violet-300 hover:bg-violet-900/60' : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          <span>▤</span>
+          <span className="font-mono">{t('timeline.phaseRibbon')}</span>
+        </button>
+
         <button
           onClick={() => setCollapseAgentTurns((v) => !v)}
           title={collapseAgentTurns
@@ -3005,6 +3059,35 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         lands on a new date carry the date too. */}
                     {axisLabel(ts, i, ticks, timeSpan, tz, projectTz)}
                   </span>
+                ))}
+                {/* Phase ribbon (step 4). Solid = authoritative operator phase
+                    segments; dashed = inferred suggestions, click to promote to a
+                    real marker (§3/§11). Sits at the bottom edge of the axis row. */}
+                {phaseRibbon && phaseBandsSolid.map((b) => (
+                  <div
+                    key={`ps-${b.markerId}`}
+                    className="absolute pointer-events-none"
+                    title={b.phase}
+                    style={{
+                      left: toX(b.start), width: Math.max(2, toX(b.end ?? timeEnd) - toX(b.start)),
+                      bottom: 0, height: 5, backgroundColor: phaseColor(b.phase), opacity: 0.9
+                    }}
+                  />
+                ))}
+                {phaseRibbon && phaseBandsInferred.map((b) => (
+                  <button
+                    key={`pi-${b.markerId}`}
+                    type="button"
+                    title={t('timeline.phasePromote', { phase: b.phase })}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => onDropMarker?.(Math.round(b.start))}
+                    className="absolute cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
+                    style={{
+                      left: toX(b.start), width: Math.max(2, toX(b.end ?? timeEnd) - toX(b.start)),
+                      bottom: 0, height: 5, opacity: 0.8,
+                      backgroundImage: `repeating-linear-gradient(90deg, ${phaseColor(b.phase)} 0 4px, transparent 4px 8px)`
+                    }}
+                  />
                 ))}
               </div>
 
