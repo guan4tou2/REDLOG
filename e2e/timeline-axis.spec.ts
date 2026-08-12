@@ -49,6 +49,17 @@ test.describe.serial('timeline lane axis', () => {
 
   test.afterAll(async () => { await app?.close() })
 
+  // Normalise the axis to source before each test, deterministically and without
+  // a reload: the app already sits on the timeline (beforeAll), and the mounted
+  // Timeline listens for this event, so dispatching 'source' resets a prior
+  // test's toggle without a racy reload/re-navigation.
+  test.beforeEach(async () => {
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('redlog-timeline-set-axis', { detail: 'source' }))
+    })
+    await expect(shellLane()).toBeVisible({ timeout: 10_000 })
+  })
+
   test('source axis renders source lanes, no crash', async () => {
     await expect(page.getByText('timeline crashed')).toHaveCount(0)
     await expect(shellLane()).toBeVisible()
@@ -61,7 +72,9 @@ test.describe.serial('timeline lane axis', () => {
     await expect(page.getByText('Untargeted').first()).toBeVisible()
   })
 
-  test('toggling back to source restores source lanes', async () => {
+  test('toggling to target and back restores source lanes', async () => {
+    await page.getByRole('button').filter({ hasText: 'By source' }).first().click({ timeout: 5000 })
+    await expect(page.getByText('10.0.0.5').first()).toBeVisible()
     await page.getByRole('button').filter({ hasText: 'By target' }).first().click({ timeout: 5000 })
     await expect(page.getByText('timeline crashed')).toHaveCount(0)
     await expect(shellLane()).toBeVisible()
@@ -77,14 +90,11 @@ test.describe.serial('timeline lane axis', () => {
 
   test('the Targets sidebar entry deep-links into the timeline target axis', async () => {
     // Step 5 (O3): TargetView was removed; "Targets" now opens the timeline with
-    // the target axis on. Start from source (a prior test may have left target).
-    await page.evaluate(() => localStorage.setItem('redlog-timeline-lane-axis', 'source'))
-    await page.reload()
-    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+2' : 'Control+2')
-    await expect(shellLane()).toBeVisible({ timeout: 10_000 })
-    await page.getByText('Targets', { exact: true }).click()
-    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+    // the target axis on. beforeEach already put us on source.
+    await page.locator('nav').getByRole('button', { name: /Targets/ }).click()
+    // Success = the timeline is now on the target axis (target lanes present).
     await expect(page.getByText('10.0.0.5').first()).toBeVisible()
     await expect(page.getByText('Untargeted').first()).toBeVisible()
+    await expect(page.getByText('timeline crashed')).toHaveCount(0)
   })
 })
