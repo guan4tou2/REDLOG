@@ -1,5 +1,15 @@
 # UX Backlog — Ticket Specs
 
+> **Updated 2026-08-11 by the necessity model (`DESIGN-PRINCIPLES.md`).** Three
+> tickets change scope: **F3** (Settings) is now the *structural* reorg by
+> necessity tier / front door, not just a search box. **F1** onboarding is
+> *value-first with evidence stated as the core* + a **HUD-only** path (new: a
+> first-class HUD-only runtime mode). The **T-series** is re-read through the
+> timeline reframe (job = review; axis = target/phase; map vs. I/O reader — see
+> `UX-TIMELINE-2026-08.md`'s banner). And a new decision: the plugin
+> **marketplace is shelved** (product, not platform), so any marketplace polish
+> is out of scope. Acceptance criteria below stand.
+
 Written 2026-08-10 against v0.11.6. Each finding from `UX-AUDIT-2026-08.md`
 (F-series, whole renderer) and `UX-TIMELINE-2026-08.md` (T-series, timeline) is
 broken out here into an **independently implementable ticket**: enough spec,

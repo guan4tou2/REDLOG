@@ -1,5 +1,16 @@
 # Timeline UX — Why It Feels Complex, and How to Simplify
 
+> **Reframed 2026-08-11 by the necessity model (`DESIGN-PRINCIPLES.md` §8).**
+> Three decisions now sit *above* the T-series fixes below and change what
+> "simpler" means: (1) the timeline's job is **post-hoc reconstruction/review** —
+> live awareness goes to the HUD — so it sheds live-ops weight (follow-mode
+> urgency, live-tail primacy). (2) Its organizing axis becomes **target/phase,
+> not source-type**; the 18 source-type lanes demote to a filter and TargetView
+> folds in — which dissolves the 18-colour problem at its root. (3) The timeline
+> is the **event map**; the transcript/exchange is the **I/O reader**; they link
+> by drill-down, so the timeline never grows inline I/O content. The specific
+> T1–T6 fixes below remain valid *within* this reframing.
+
 Written 2026-08-10 against v0.11.5, from a full read of `Timeline.tsx`. This is
 the deep-dive behind finding **F2** in `UX-AUDIT-2026-08.md`. The complaint —
 "the timeline is too complex and not intuitive to operate" — is correct and, on

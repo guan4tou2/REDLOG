@@ -107,9 +107,11 @@ privileged path that skips the gate:
 Until now this roadmap has had one axis: correctness and trust. The 2026-08-10
 review (`UX-AUDIT-2026-08.md`, `UX-TIMELINE-2026-08.md`) added a second — the
 primary persona's *success*, not just the log's honesty. The finding is that
-RedLog is under-*sequenced*, not over-*featured*: P2/P3/expert surfaces are
-presented to the solo operator (P1) at full weight from the first screen, and
-the timeline's interactions are invisible, overloaded, and context-dependent.
+RedLog is **mostly** under-*sequenced* rather than over-*featured*: P2/P3/expert
+surfaces are presented to the solo operator (P1) at full weight from the first
+screen, and the timeline's interactions are invisible, overloaded, and
+context-dependent. The one genuine *over-build* is the plugin **marketplace** —
+shelved as premature (see the necessity model below).
 
 Full ticket specs (F1–F7, T1–T6) live in `UX-BACKLOG-TICKETS.md`. The tension
 to hold: none of this is a new product direction — it is making the passive-
@@ -140,6 +142,53 @@ Next, in impact order (see the tickets doc for acceptance criteria):
 Structural, sequenced later: header "View options" menu (T4), the remaining
 timeline seam extractions (T5), and lane virtualization (T6) — which is the same
 work as **V4** below and, once done, deletes the wheel-mode branch behind T2.
+
+## Necessity model & design decisions (added 2026-08-11)
+
+A decision review settled what RedLog is, which features earn their place, and
+how the kept ones should be designed. The durable laws live in
+`DESIGN-PRINCIPLES.md`; the roadmap-affecting outcomes:
+
+**Verdicts on the feature surface** (necessity test: strengthen the chain ∨ feed
+capture ∨ serve the live-OPSEC front door):
+
+- **Core, untouchable:** chain + OTS + signing + bundle + operator attribution;
+  the capture that feeds it; the detection/sanitize/prune machinery that makes
+  broad capture safe (loot, redaction, scope, io sidecar, retention, export
+  sanitize); the proxied browser (capture enabler); the IP/OPSEC/pivot monitors
+  (doubly necessary — feed the chain *and* the HUD).
+- **Second front door, main but frozen:** the live-OPSEC HUD — first-class
+  HUD-only runtime mode; OPSEC scope does not grow.
+- **Accept but freeze:** team affordances (multi-op, deconfliction, config sync —
+  no central server); local code plugins (no exporters/monitors); cloud share
+  (opt-in BYO).
+- **Shelved:** the plugin **marketplace** — product, not platform. Do not invest
+  or market as core until a real distribution signal appears.
+- **Kept as necessary extensibility:** declarative plugins.
+
+**Design direction for the kept features:**
+
+- **Timeline** = reconstruction/review surface (live goes to the HUD); reorganise
+  around a **target/phase axis** (source-type demotes to a filter, TargetView
+  folds in); timeline is the **event map**, transcript/exchange the **I/O
+  reader**, linked by drill-down. Reframes tickets T1–T6 and folds the
+  Timeline/TargetView/Transcript/Search sprawl toward three distinct-job views.
+- **Capture items** obey the **two-tier attribute law**: facts are authoritative;
+  every interpretation (phase, ambiguous target, loot type, scope verdict, MITRE)
+  is a labelled, promotable *suggestion*, never written as fact. New: `phase` as
+  operator-marker segments with inferred dashed suggestions; conservative target
+  attribution with an "untargeted" catch-all.
+- **Onboarding** = value-first (zero-setup HUD) with evidence stated as the core
+  and the Capture Readiness checklist as the invited next step. Extends F1/F1-b.
+- **Settings** reorganise by necessity tier / front door (essentials prominent,
+  frozen behind "advanced", marketplace removed) — the structural half of F3.
+- **Control plane** = one canonical implementation (REST) with thin, generated
+  adapters (MCP blessed, shell/Codex thin); minimal, evidence-relevant op set.
+
+These are not scheduled as a single release — they are the lens the F/T tickets
+above are re-read through. Anything here that contradicts "report/ATT&CK/
+correlation stay downstream" would be a change to the non-goals, and there is
+none: inference stays a suggestion, never authoritative output.
 
 ## v0.12.0 — durability and scale
 

@@ -1,5 +1,14 @@
 # UX & Complexity Audit — 2026-08-10
 
+> **Refined 2026-08-11 by the necessity model (`DESIGN-PRINCIPLES.md`, roadmap
+> "Necessity model & design decisions").** Two theses below are updated: (1)
+> "not over-featured, under-sequenced" is now *mostly* under-sequenced — the
+> plugin **marketplace** is a genuine over-build, **shelved**. (2) The HUD is not
+> just an OPSEC add-on but a **co-headline second front door** with its own
+> (P4) persona, so the onboarding findings (F1) are reframed as *value-first with
+> evidence stated as the core* and a **HUD-only** path. Findings and line
+> numbers below stand; read them through that lens.
+
 Written against v0.11.5 by a full-tree read of `src/renderer/`, cross-checked
 against `PRODUCT-POSITIONING.md` (personas) and external research on how
 pentesters actually adopt tools. Companion to the correctness-focused
