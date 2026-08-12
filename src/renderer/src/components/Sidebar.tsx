@@ -16,7 +16,7 @@ interface NavItem {
 
 // Shared with App.tsx's ⌘1..9 shortcut handler so the two orders can't
 // drift. See src/renderer/src/lib/sidebarOrder.ts.
-import { DEFAULT_ORDER, loadSidebarOrder, saveSidebarOrder } from '../lib/sidebarOrder'
+import { DEFAULT_ORDER, loadSidebarOrder, saveSidebarOrder, type SidebarViewId } from '../lib/sidebarOrder'
 
 // Aliased so existing call sites don't need to change; the persistence lives
 // in the shared module now so App.tsx's ⌘1..9 handler sees the same order.
@@ -76,7 +76,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const onPointerDown = useCallback((e: React.PointerEvent, id: string) => {
     if (e.button !== 0) return
-    press.current = { id, y: e.clientY, from: order.indexOf(id) }
+    press.current = { id, y: e.clientY, from: order.indexOf(id as SidebarViewId) }
     didDrag.current = false
   }, [order])
 
@@ -93,11 +93,11 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     }
 
     const target = Math.max(0, Math.min(order.length - 1, p.from + Math.round(dy / ITEM_STRIDE_PX)))
-    const current = order.indexOf(p.id)
+    const current = order.indexOf(p.id as SidebarViewId)
     if (target === current) return
     const next = [...order]
     next.splice(current, 1)
-    next.splice(target, 0, p.id)
+    next.splice(target, 0, p.id as SidebarViewId)
     setOrder(next)
   }, [order])
 

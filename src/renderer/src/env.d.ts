@@ -77,6 +77,7 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    openExternal: (url: string) => Promise<void>
   }
   project: {
     list: () => Promise<ProjectMeta[]>
@@ -106,6 +107,9 @@ interface RedLogAPI {
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
+    // Layer 3 (four-layer redaction): logs a chained system.secret_revealed
+    // audit event whenever the reviewer reveals raw bytes of a redacted span.
+    logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean; id?: string; error?: string }>
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
@@ -164,6 +168,20 @@ interface RedLogAPI {
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
   }
+  hooks: {
+    detect: () => Promise<HookInfo[]>
+    install: (hookId: string) => Promise<{ success: boolean; message: string }>
+    uninstall: (hookId: string) => Promise<{ success: boolean; message: string }>
+  }
+  plugins: {
+    list: () => Promise<PluginInfo[]>
+    eventTypes: () => Promise<PluginEventType[]>
+    reload: () => Promise<unknown>
+    openFolder: () => Promise<void>
+    setEnabled: (id: string, enabled: boolean) => Promise<unknown>
+    grant: (id: string) => Promise<unknown>
+    revoke: (id: string) => Promise<unknown>
+  }
   recording: {
     get: () => Promise<boolean>
     toggle: () => Promise<boolean>
@@ -188,6 +206,11 @@ interface RedLogAPI {
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
     moveToCorner?: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
+    // The HUD window is bridged by a separate preload (src/preload/overlay.ts)
+    // that shares this `window.redlog` type. These two are HUD-only: the main
+    // window never exposes them, hence optional.
+    quickMark?: () => void
+    instantMark?: () => Promise<{ ok: boolean; id?: string }>
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
@@ -210,6 +233,36 @@ interface RedLogAPI {
   }
 }
 
+interface HookInfo {
+  id: string
+  name: string
+  description: string
+  agentType: string
+  installed: boolean
+  available: boolean
+  installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  hookFile: string
+  manualSteps?: Array<{ label: string; command?: string }>
+}
+
+interface PluginInfo {
+  id: string
+  name: string
+  version?: string
+  enabled: boolean
+  trust?: string
+  granted?: boolean
+  eventTypes?: PluginEventType[]
+  error?: string
+}
+
+interface PluginEventType {
+  agentType: string
+  lane?: string
+  color?: string
+  label?: string
+}
+
 interface CaptureSourceInfo {
   id: string
   installed?: boolean
@@ -230,7 +283,9 @@ interface CaptureHealthInfo {
   lastEventAt: number | null
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
-  lastSampleBroken?: { at: number; eventId: string; reason: string }
+  // v0.7.6 H3: `eventTimestamp` carries the broken row's own creation time so
+  // the Dashboard can label a stale historical row apart from a fresh one.
+  lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
 }
 
@@ -294,8 +349,10 @@ interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null }
-  screenshot?: { quality?: number }
+  // `enforcement` is a legacy field kept for importing pre-migration profiles
+  // (config.ts migrates 'warn'|'log' → warnOnViolation:boolean on load).
+  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: 'warn' | 'log' }
+  screenshot?: { quality?: number; intervalSec?: number }
 }
 
 interface Window {

@@ -1220,12 +1220,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   )
   const laneRowColor = (id: string): string => (LANE_COLORS as Record<string, string>)[id] ?? '#71717a'
 
+  // The laneVisibility seam is generic over `LaneId = string`; here every id
+  // originates from the LANES tuple, so narrow back to Timeline's LaneId union.
   const populatedLanes = useMemo(
-    () => computePopulatedLanes(events, laneModel.laneOf),
+    () => computePopulatedLanes(events, laneModel.laneOf) as Set<LaneId>,
     [events, laneModel]
   )
   const visibleLanes = useMemo(
-    () => computeVisibleLanes(axisLanes.map((l) => l.id), populatedLanes, hiddenLanes),
+    () => computeVisibleLanes(axisLanes.map((l) => l.id), populatedLanes, hiddenLanes) as LaneId[],
     [axisLanes, populatedLanes, hiddenLanes]
   )
 
@@ -2298,11 +2300,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // Operator / host → drop the value into the filter query (feature 1 dim path
   // picks it up automatically).
   const activatePaletteItem = useCallback((item: PaletteItem) => {
-    if (item.kind === 'event' || item.kind === 'marker') {
+    if ('value' in item) {
+      setFilterQuery(item.value)
+    } else {
       setSelectedEvent(item.event)
       scrollToEvent(item.event)
-    } else {
-      setFilterQuery(item.value)
     }
     setPaletteOpen(false)
     setPaletteQuery('')
@@ -2456,7 +2458,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 const isSel = i === paletteIndex
                 return (
                   <button
-                    key={item.kind === 'event' || item.kind === 'marker' ? item.event.id : `${item.kind}-${item.value}`}
+                    key={'value' in item ? `${item.kind}-${item.value}` : item.event.id}
                     onMouseEnter={() => setPaletteIndex(i)}
                     onClick={() => activatePaletteItem(item)}
                     className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}
@@ -4013,7 +4015,7 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           })}
         </p>
       )}
-      {(data.request_headers || data.response_headers) && (
+      {Boolean(data.request_headers || data.response_headers) && (
         <CollapsibleStream
           label={t('timeline.detail.httpHeaders')}
           content={safePretty(data.response_headers ?? data.request_headers)}
