@@ -298,8 +298,6 @@ interface RedLogConfigPartial {
   screenshot?: { quality?: number }
 }
 
-declare global {
-  interface Window {
-    redlog: RedLogAPI
-  }
+interface Window {
+  redlog: RedLogAPI
 }

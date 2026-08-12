@@ -44,7 +44,7 @@ function targetKeyOf(event: EventLike): string | null {
  * every group eventIds are sorted ascending by timestamp, and firstTs/lastTs bound the
  * group's time range. Empty input yields [].
  */
-export function groupByTarget(events: EventLike[]): TargetGroup[] {
+export function groupByTarget(events: readonly EventLike[]): TargetGroup[] {
   // Bucket events by target while preserving nothing but membership; sorting happens
   // once at the end so unsorted input still produces correct group and member order.
   const buckets = new Map<string | null, EventLike[]>()
