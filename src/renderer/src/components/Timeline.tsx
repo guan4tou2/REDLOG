@@ -10,6 +10,7 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { wheelMode } from '../lib/timelineWheel'
 import { activeModes, type TimelineModeState } from '../lib/timelineModes'
+import { populatedLanes as computePopulatedLanes, visibleLanes as computeVisibleLanes, soloLaneOf } from '../lib/laneVisibility'
 import { shortcutsForScope, modKey, MOD_TOKEN } from '../lib/shortcuts'
 
 const MIN_LANE_H = 36
@@ -1145,18 +1146,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // A lane with no events is dead vertical space — most engagements only ever
   // touch three or four of them. Keep the filter chip so the operator can see
   // the lane exists, but don't give it a row until something lands in it.
-  const populatedLanes = useMemo(() => {
-    const seen = new Set<LaneId>()
-    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
-    return seen
-    // v0.6.95 P1-12: pluginTypes was missing from deps — a plugin-registered
-    // event lane wouldn't appear on the filter chip until an unrelated state
-    // change re-ran the memo. Same fix applied to `laneEvents` and
-    // `recentEvents` below.
-  }, [events, pluginTypes])
+  // Phase C step 1: the populated/visible resolution lives in lib/laneVisibility
+  // (unit-tested) so the axis refactor can lean on it; this is a zero-behaviour
+  // swap of the former inline `new Set(...)` / `LANES.filter(...)` memos.
+  // v0.6.95 P1-12: pluginTypes must stay in deps — a plugin-registered event
+  // lane wouldn't appear on the filter chip until an unrelated re-render.
+  const populatedLanes = useMemo(
+    () => computePopulatedLanes(events, (e) => toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)),
+    [events, pluginTypes]
+  )
 
   const visibleLanes = useMemo(
-    () => LANES.filter((l) => populatedLanes.has(l) && !hiddenLanes.has(l)),
+    () => computeVisibleLanes(LANES, populatedLanes, hiddenLanes),
     [populatedLanes, hiddenLanes]
   )
 
@@ -1168,12 +1169,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // (showAllLanes) is always a real action. The soloed lane's display label is
   // carried as the chip value so the row reads "solo: shell", not the raw id.
   const modeChips = useMemo(() => {
-    const isSolo = visibleLanes.length === 1 && hiddenLanes.size > 0
+    const solo = soloLaneOf(visibleLanes, hiddenLanes)
     const state: TimelineModeState = {
       focusActive: focusChain !== null,
       anomalyOnly: anomalyFilter,
       collapseAgentTurns,
-      soloLane: isSolo ? laneLabels[visibleLanes[0]] : null,
+      soloLane: solo ? laneLabels[solo] : null,
       hiddenLaneCount: hiddenLanes.size,
       filterQuery
     }
