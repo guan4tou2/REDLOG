@@ -22,7 +22,7 @@ import { computeCaptureReadiness } from './lib/captureReadiness'
 import { emptyStateFor } from './lib/emptyState'
 import { shortcutsForScope, MOD_TOKEN } from './lib/shortcuts'
 import { useI18n } from './i18n'
-import { loadSidebarOrder, type SidebarViewId } from './lib/sidebarOrder'
+import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
 import logoUrl from './assets/logo.svg'
 
 type View = SidebarViewId | 'settings' | 'search'
