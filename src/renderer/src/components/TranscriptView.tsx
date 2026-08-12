@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
+import { EmptyState } from './Feedback'
+import { emptyStateFor } from '../lib/emptyState'
 import { toast } from './Toast'
 
 /**
@@ -217,8 +219,9 @@ function safeJson(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-export default function TranscriptView({ onOpenInTimeline }: {
+export default function TranscriptView({ onOpenInTimeline, onEmptyAction }: {
   onOpenInTimeline?: (id: string, ts: number) => void
+  onEmptyAction?: (target: string) => void
 }): JSX.Element {
   const { t } = useI18n()
   const [events, setEvents] = useState<Ev[]>([])
@@ -322,9 +325,19 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
         {loading && <p className="text-xs text-zinc-600">{t('transcript.loading')}</p>}
-        {!loading && shown.length === 0 && (
-          <p className="text-xs text-zinc-600">{t('transcript.empty')}</p>
-        )}
+        {!loading && shown.length === 0 && (() => {
+          const es = emptyStateFor('transcript', { captureDark: false })
+          return (
+            <EmptyState
+              icon="▤"
+              title={t(es.titleKey)}
+              subtitle={t(es.subtitleKey)}
+              action={es.action && es.action.target !== 'doc'
+                ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+                : undefined}
+            />
+          )
+        })()}
         {shown.map((b) => {
           const open = expanded.has(b.id)
           const big = (b.output?.length ?? 0) > MAX_INLINE

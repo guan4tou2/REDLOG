@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { EmptyState } from './Feedback'
+import { emptyStateFor } from '../lib/emptyState'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 
@@ -20,7 +22,10 @@ function getTagColor(title: string): typeof TAG_COLORS[0] {
   return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
 }
 
-export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
+export function QuickMarksView({ onOpenInTimeline, onEmptyAction }: {
+  onOpenInTimeline?: (ts: number) => void
+  onEmptyAction?: (target: string) => void
+} = {}): JSX.Element {
   const [marks, setMarks] = useState<QuickMark[]>([])
   const [selected, setSelected] = useState<QuickMark | null>(null)
   const [creating, setCreating] = useState(false)
@@ -166,9 +171,25 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             )
           })}
           {filteredMarks.length === 0 && !creating && (
-            <div className="p-4 text-xs text-zinc-600 text-center">
-              {marks.length === 0 ? t('marks.empty') : t('marks.noSearchMatches', { query: search })}
-            </div>
+            marks.length === 0 ? (() => {
+              // True-empty (no marks at all) gets the shared EmptyState + CTA;
+              // the search-filtered-empty case keeps its plain "no matches" line.
+              const es = emptyStateFor('marks', { captureDark: false })
+              return (
+                <EmptyState
+                  icon="◈"
+                  title={t(es.titleKey)}
+                  subtitle={t(es.subtitleKey)}
+                  action={es.action && es.action.target !== 'doc'
+                    ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+                    : undefined}
+                />
+              )
+            })() : (
+              <div className="p-4 text-xs text-zinc-600 text-center">
+                {t('marks.noSearchMatches', { query: search })}
+              </div>
+            )
           )}
         </div>
       </div>
