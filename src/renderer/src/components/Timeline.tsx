@@ -1174,6 +1174,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   useEffect(() => {
     try { localStorage.setItem('redlog-timeline-lane-axis', laneAxis) } catch { /* private mode */ }
   }, [laneAxis])
+  // Phase C step 5: the "Targets" sidebar entry deep-links here by dispatching
+  // this event (TargetView was removed — the target axis subsumes it).
+  useEffect(() => {
+    const onSetAxis = (e: Event): void => {
+      const detail = (e as CustomEvent).detail
+      if (detail === 'source' || detail === 'target') setLaneAxis(detail)
+    }
+    window.addEventListener('redlog-timeline-set-axis', onSetAxis)
+    return () => window.removeEventListener('redlog-timeline-set-axis', onSetAxis)
+  }, [])
 
   // Phase C step 4: the phase ribbon. Off by default until the operator wants it.
   const [phaseRibbon, setPhaseRibbon] = useState<boolean>(() => {
