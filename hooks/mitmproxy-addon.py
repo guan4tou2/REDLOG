@@ -28,7 +28,7 @@ What gets logged:
     - DNS response:  response_code, answers, duration_ms, _causes ← query event
 
 Environment variables:
-    REDLOG_MAX_BODY    Max request/response body bytes to capture (default 2048)
+    REDLOG_MAX_BODY    Max request/response body bytes to capture (default 16384)
     REDLOG_SKIP_STATIC Skip static assets like .css/.js/.png/.woff (default true)
     REDLOG_VERBOSE     Log every request/DNS message to stderr (default false)
 """
@@ -51,7 +51,10 @@ from mitmproxy import http, ctx
 REDLOG_PORT_FILE = Path.home() / ".redlog" / "api-port"
 REDLOG_TOKEN_FILE = Path.home() / ".redlog" / "api-token"
 
-MAX_BODY = int(os.environ.get("REDLOG_MAX_BODY", "2048"))
+# 16 KB by default (was 2 KB) — enough to review a typical JSON/form request or
+# response body without truncation. Bodies still live inline on the event (no
+# sidecar yet), so this trades a little DB size for actually-reviewable payloads.
+MAX_BODY = int(os.environ.get("REDLOG_MAX_BODY", "16384"))
 SKIP_STATIC = os.environ.get("REDLOG_SKIP_STATIC", "true").lower() in ("true", "1", "yes")
 VERBOSE = os.environ.get("REDLOG_VERBOSE", "false").lower() in ("true", "1", "yes")
 
