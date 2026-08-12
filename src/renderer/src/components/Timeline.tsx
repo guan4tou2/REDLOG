@@ -1209,16 +1209,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     ),
     [laneAxis, events, laneLabels, srcLaneOf, t]
   )
-  const laneEvents = laneModel.laneEvents as Record<string, RedLogEvent[]>
+  const laneEvents = laneModel.laneEvents
   const axisLanes = laneModel.lanes
   // Label + row-marker colour for a lane id, axis-aware. Target lanes have no
   // source-type colour, so the row marker falls back to neutral zinc; dots on
   // the track stay coloured by source-type (see `dotColor`).
   const laneLabelOf = useCallback(
-    (id: string): string => axisLanes.find((l) => l.id === id)?.label ?? laneLabels[id] ?? id,
+    (id: string): string => axisLanes.find((l) => l.id === id)?.label ?? (laneLabels as Record<string, string>)[id] ?? id,
     [axisLanes, laneLabels]
   )
-  const laneRowColor = (id: string): string => LANE_COLORS[id] ?? '#71717a'
+  const laneRowColor = (id: string): string => (LANE_COLORS as Record<string, string>)[id] ?? '#71717a'
 
   const populatedLanes = useMemo(
     () => computePopulatedLanes(events, laneModel.laneOf),
@@ -1242,7 +1242,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       focusActive: focusChain !== null,
       anomalyOnly: anomalyFilter,
       collapseAgentTurns,
-      soloLane: solo ? laneLabels[solo] : null,
+      soloLane: solo ? laneLabelOf(solo) : null,
       hiddenLaneCount: hiddenLanes.size,
       filterQuery
     }
@@ -3992,7 +3992,7 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           label={t('timeline.detail.httpRequestBody')}
           content={data.request_body_preview as string}
           bytes={(data.request_body_preview as string).length}
-          accent="cyan"
+          accent="zinc"
           startOpen
         />
       )}

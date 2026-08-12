@@ -21,14 +21,13 @@ export interface AxisLane {
   label: string
 }
 
-// Minimal event shape both axes need. Target axis reads id/timestamp/targetId
-// (via groupByTarget); source axis reads whatever the caller's sourceLaneOf
-// needs (e.g. agentType/subtype) — hence the open index signature.
+// Minimal event shape both axes need. The functions are generic over the
+// caller's concrete event type (e.g. RedLogEvent), so no open index signature is
+// needed — sourceLaneOf reads whatever fields it wants off the concrete type.
 export interface AxisEvent {
   id: string
   timestamp: number
   targetId?: string | null
-  [k: string]: unknown
 }
 
 /** Stable id for the catch-all lane holding events with no target (§12). */

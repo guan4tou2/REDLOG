@@ -27,7 +27,8 @@
     "pree2e": "electron-rebuild -f -o better-sqlite3",
     "e2e": "playwright test",
     "pree2e:ui": "electron-rebuild -f -o better-sqlite3",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
