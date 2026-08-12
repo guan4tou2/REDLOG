@@ -17,7 +17,7 @@ function detectLocale(): Locale {
   return 'en'
 }
 
-function interpolate(template: string, vars?: Record<string, string | number>): string {
+function interpolate(template: string, vars?: Record<string, string | number | null | undefined>): string {
   if (!vars) return template
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? `{{${key}}}`))
 }
@@ -25,7 +25,7 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
 interface I18nContextValue {
   locale: Locale
   setLocale: (l: Locale) => void
-  t: (key: string, vars?: Record<string, string | number>) => string
+  t: (key: string, vars?: Record<string, string | number | null | undefined>) => string
 }
 
 const I18nContext = createContext<I18nContextValue>(null!)
@@ -38,7 +38,7 @@ export function I18nProvider({ children }: { children: ReactNode }): JSX.Element
     localStorage.setItem('redlog-locale', l)
   }, [])
 
-  const t = useCallback((key: string, vars?: Record<string, string | number>): string => {
+  const t = useCallback((key: string, vars?: Record<string, string | number | null | undefined>): string => {
     const str = locales[locale]?.[key] ?? locales['en'][key] ?? key
     return interpolate(str, vars)
   }, [locale])

@@ -104,11 +104,11 @@ export default function OverlayApp(): JSX.Element {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [expanded, interactive, pinned])
 
-  const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded(false) }
+  const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded?.(false) }
   const toggleExpand = (): void => {
     const next = !expanded
     setExpanded(next)
-    window.redlog.overlay?.setExpanded(next)
+    window.redlog.overlay?.setExpanded?.(next)
   }
 
   // fs = font-size scaler; ip = extra emphasis for the external IP.
@@ -326,7 +326,7 @@ export default function OverlayApp(): JSX.Element {
                       {justMarked ? `✓ ${t('overlay.marked').toUpperCase()}` : `⚡ ${t('overlay.markQuick').toUpperCase()}`}
                     </button>
                     <button
-                      onClick={() => window.redlog.overlay?.quickMark()}
+                      onClick={() => window.redlog.overlay?.quickMark?.()}
                       style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                       title={`${t('overlay.markDetailHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
                     >

@@ -15,8 +15,8 @@ interface ConfigState {
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
-  screenshot: { quality: number }
-  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
+  screenshot: { quality: number; intervalSec?: number }
+  overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
@@ -802,7 +802,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
-    (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks)
+    window.redlog.hooks.detect().then(setHooks)
   }, [])
 
   const copy = (text: string): void => {
@@ -812,12 +812,12 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
     setHookLoading(hook.id)
-    const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }>; uninstall: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
+    const hooksApi = window.redlog.hooks
     const result = hook.installed
       ? await hooksApi.uninstall(hook.id)
       : await hooksApi.install(hook.id)
     toast(result.message, result.success ? 'success' : 'error')
-    const updated = await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect()
+    const updated = await window.redlog.hooks.detect()
     setHooks(updated)
     setHookLoading(null)
   }
@@ -1277,7 +1277,7 @@ function ExportBundlePanel({ t }: { t: (key: string, vars?: Record<string, strin
   )
 }
 
-function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
+function IntegrityPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
   const [busy, setBusy] = useState(false)
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null)

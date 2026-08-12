@@ -81,8 +81,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
     if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
-    if (profile.network?.whitelist ?? profile.network?.safeIPs) setWhitelist(profile.network.whitelist ?? profile.network.safeIPs)
-    if (profile.network?.blacklist ?? profile.network?.exposedIPs) setBlacklist(profile.network.blacklist ?? profile.network.exposedIPs)
+    if (profile.network?.whitelist ?? profile.network?.safeIPs) setWhitelist((profile.network.whitelist ?? profile.network.safeIPs)!)
+    if (profile.network?.blacklist ?? profile.network?.exposedIPs) setBlacklist((profile.network.blacklist ?? profile.network.exposedIPs)!)
     // Migrate legacy 'log' → warnings off; 'warn' or unset → on. Direct boolean wins.
     if (profile.scope?.warnOnViolation !== undefined) setWarnOnViolation(profile.scope.warnOnViolation)
     else if (profile.scope?.enforcement) setWarnOnViolation(profile.scope.enforcement !== 'log')
