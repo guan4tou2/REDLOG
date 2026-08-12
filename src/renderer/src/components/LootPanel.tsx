@@ -1,9 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useI18n } from '../i18n'
-import { LoadingSpinner } from './Feedback'
+import { LoadingSpinner, EmptyState } from './Feedback'
+import { emptyStateFor } from '../lib/emptyState'
 import { toast } from './Toast'
 
-export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
+export function LootPanel({ onOpenInTimeline, onEmptyAction }: {
+  onOpenInTimeline?: (eventId: string, ts: number) => void
+  onEmptyAction?: (target: string) => void
+}): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
     id: string
     timestamp: number
@@ -138,15 +142,19 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         )
       })()}
 
-      {lootEvents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-            <span className="text-2xl text-zinc-700">◆</span>
-          </div>
-          <p className="text-sm text-zinc-500">{t('loot.empty')}</p>
-          <p className="text-xs text-zinc-700 text-center max-w-xs">{t('loot.emptyDesc')}</p>
-        </div>
-      ) : (
+      {lootEvents.length === 0 ? (() => {
+        const es = emptyStateFor('loot', { captureDark: false })
+        return (
+          <EmptyState
+            icon="◆"
+            title={t(es.titleKey)}
+            subtitle={t(es.subtitleKey)}
+            action={es.action && es.action.target !== 'doc'
+              ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+              : undefined}
+          />
+        )
+      })() : (
         // v0.7.1 P1: rendering uses the same `visibleList` that feeds the
         // header count, so what you see and what the header says can never
         // disagree. Each source event keeps its own grouping so the "click

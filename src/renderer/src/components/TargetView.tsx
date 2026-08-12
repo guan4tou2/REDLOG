@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { EmptyState } from './Feedback'
+import { emptyStateFor } from '../lib/emptyState'
 
 interface TargetEntry {
   target: string
@@ -30,7 +32,7 @@ function matchesScope(target: string, pattern: string): boolean {
   return target === pattern
 }
 
-export function TargetView(): JSX.Element {
+export function TargetView({ onEmptyAction }: { onEmptyAction?: (target: string) => void } = {}): JSX.Element {
   const [targets, setTargets] = useState<TargetEntry[]>([])
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
@@ -159,9 +161,19 @@ export function TargetView(): JSX.Element {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
-        <p className="text-zinc-500 text-sm">{t('targets.empty')}</p>
-      ) : (
+      {filtered.length === 0 ? (() => {
+        const es = emptyStateFor('targets', { captureDark: false })
+        return (
+          <EmptyState
+            icon="◎"
+            title={t(es.titleKey)}
+            subtitle={t(es.subtitleKey)}
+            action={es.action && es.action.target !== 'doc'
+              ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+              : undefined}
+          />
+        )
+      })() : (
         <div className="space-y-2">
           {filtered.map((tgt) => (
             <div key={tgt.target}>

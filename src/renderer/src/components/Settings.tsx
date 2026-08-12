@@ -3,6 +3,7 @@ import { useI18n, type Locale } from '../i18n'
 import { toast } from './Toast'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
+import { matchGroups, type SettingsGroupIndex } from '../lib/settingsSearch'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -68,9 +69,71 @@ const LOCALE_LABELS: Record<Locale, string> = {
   'zh-TW': '繁體中文'
 }
 
+type TabId = 'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'
+
+// F3 (UX-BACKLOG / DESIGN-PRINCIPLES §9): a static index of every FieldGroup on
+// the page so the header filter can find a setting by its group title OR any of
+// its field labels without the operator having to remember which of the 8 tabs
+// it lives in. Titles and labels are i18n keys resolved at render time; the pure
+// match rule lives in lib/settingsSearch.ts. Order mirrors on-screen order so a
+// filtered result list reads top-to-bottom like the real page. This is
+// presentation metadata only — it points at controls, it does not own them.
+interface SettingsGroupSource {
+  tab: TabId
+  groupId: string
+  titleKey: string
+  labelKeys: string[]
+}
+
+const SETTINGS_GROUPS: SettingsGroupSource[] = [
+  // general
+  { tab: 'general', groupId: 'engagement', titleKey: 'settings.engagement', labelKeys: ['settings.id', 'settings.name'] },
+  { tab: 'general', groupId: 'operator', titleKey: 'settings.operatorGroup', labelKeys: ['settings.id', 'settings.name'] },
+  { tab: 'general', groupId: 'language', titleKey: 'settings.language', labelKeys: [] },
+  { tab: 'general', groupId: 'uiScale', titleKey: 'settings.uiScale', labelKeys: [] },
+  // capture
+  { tab: 'capture', groupId: 'hooks', titleKey: 'settings.hooksDetected', labelKeys: [] },
+  { tab: 'capture', groupId: 'agents', titleKey: 'settings.agents', labelKeys: [] },
+  { tab: 'capture', groupId: 'screenshotQuality', titleKey: 'settings.screenshotQuality', labelKeys: ['settings.jpegQuality'] },
+  { tab: 'capture', groupId: 'clipboard', titleKey: 'settings.clipboardGroup', labelKeys: ['settings.clipboardEnable', 'settings.clipboardStorePreview'] },
+  { tab: 'capture', groupId: 'fileWatcher', titleKey: 'settings.fileWatcherGroup', labelKeys: ['settings.fileWatcherPaths', 'settings.fileWatcherIgnore'] },
+  { tab: 'capture', groupId: 'processMonitor', titleKey: 'settings.processMonitorGroup', labelKeys: ['settings.processMonitorIgnore'] },
+  // scope
+  { tab: 'scope', groupId: 'scopeEnforcement', titleKey: 'settings.scopeEnforcement', labelKeys: ['settings.warnOnViolation'] },
+  { tab: 'scope', groupId: 'inScopeTargets', titleKey: 'settings.inScopeTargets', labelKeys: ['settings.targetsLabel'] },
+  { tab: 'scope', groupId: 'excludedTargets', titleKey: 'settings.excludedTargets', labelKeys: ['settings.excludeLabel'] },
+  { tab: 'scope', groupId: 'scopeFile', titleKey: 'settings.scopeFile', labelKeys: ['settings.scopeFileLabel'] },
+  // network
+  { tab: 'network', groupId: 'ipSafety', titleKey: 'settings.ipSafety', labelKeys: ['settings.whitelist', 'settings.blacklist'] },
+  { tab: 'network', groupId: 'polling', titleKey: 'settings.polling', labelKeys: ['settings.ipMode', 'settings.checkInterval', 'settings.confirmations', 'settings.ipProviders', 'settings.showWifiName'] },
+  { tab: 'network', groupId: 'vpnAdapters', titleKey: 'settings.vpnAdapters', labelKeys: [] },
+  // hud
+  { tab: 'hud', groupId: 'overlay', titleKey: 'settings.overlayGroup', labelKeys: ['settings.overlayShowInDock'] },
+  // integrations
+  { tab: 'integrations', groupId: 'mcp', titleKey: 'settings.mcp', labelKeys: [] },
+  { tab: 'integrations', groupId: 'hookExcludedPaths', titleKey: 'settings.hookExcludedPaths.title', labelKeys: [] },
+  { tab: 'integrations', groupId: 'operators', titleKey: 'settings.operators', labelKeys: [] },
+  { tab: 'integrations', groupId: 'deconfliction', titleKey: 'settings.deconfliction', labelKeys: [] },
+  { tab: 'integrations', groupId: 'browser', titleKey: 'settings.browser', labelKeys: [] },
+  { tab: 'integrations', groupId: 'cdp', titleKey: 'settings.cdp', labelKeys: ['settings.testConnection'] },
+  // data
+  { tab: 'data', groupId: 'screenshotSchedule', titleKey: 'settings.screenshotGroup', labelKeys: [] },
+  { tab: 'data', groupId: 'update', titleKey: 'settings.updateGroup', labelKeys: ['settings.checkUpdate'] },
+  { tab: 'data', groupId: 'exportAll', titleKey: 'settings.exportAll', labelKeys: ['settings.exportJson'] },
+  { tab: 'data', groupId: 'exportBundle', titleKey: 'settings.exportBundleTitle', labelKeys: [] },
+  { tab: 'data', groupId: 'scopeExport', titleKey: 'settings.scopeExport', labelKeys: ['settings.exportScopeJson'] },
+  { tab: 'data', groupId: 'cloudShare', titleKey: 'cloudShare.title', labelKeys: [] },
+  { tab: 'data', groupId: 'integrity', titleKey: 'settings.integrity', labelKeys: [] },
+  { tab: 'data', groupId: 'profileSync', titleKey: 'settings.profileSync', labelKeys: ['settings.exportProfile', 'settings.importProfile'] },
+  // plugins
+  { tab: 'plugins', groupId: 'plugins', titleKey: 'settings.plugins', labelKeys: [] },
+  { tab: 'plugins', groupId: 'marketplace', titleKey: 'settings.marketplace', labelKeys: [] }
+]
+
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
+  const [tab, setTab] = useState<TabId>('general')
+  const [filter, setFilter] = useState('')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -127,6 +190,20 @@ export default function Settings(): JSX.Element {
     { id: 'plugins' as const, label: t('settings.plugins') }
   ]
 
+  // F3: resolve the static group index against the current locale and run the
+  // pure matcher. An empty/whitespace query means "no filter" — the page keeps
+  // its normal tabbed view; a real query flattens hits from every tab into one
+  // navigable list so a setting is found by name, not by remembering its tab.
+  const query = filter.trim()
+  const groupIndex: SettingsGroupIndex[] = SETTINGS_GROUPS.map((g) => ({
+    tab: g.tab,
+    groupId: g.groupId,
+    title: t(g.titleKey),
+    labels: g.labelKeys.map((k) => t(k))
+  }))
+  const matchedGroups = query ? matchGroups(filter, groupIndex) : []
+  const tabLabel = (id: string): string => tabs.find((tb) => tb.id === id)?.label ?? id
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-1 px-3 py-2 border-b border-redlog-border shrink-0">
@@ -141,10 +218,40 @@ export default function Settings(): JSX.Element {
             {tb.label}
           </button>
         ))}
-        {saved && <span className="ml-auto text-green-400 text-xs">{t('settings.saved')}</span>}
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t('settings.filterPlaceholder')}
+          aria-label={t('settings.filterPlaceholder')}
+          className="ml-auto w-44 px-2 py-1 text-xs bg-zinc-900 border border-redlog-border rounded text-zinc-200 placeholder-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+        />
+        {saved && <span className="text-green-400 text-xs">{t('settings.saved')}</span>}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {query ? (
+          matchedGroups.length === 0 ? (
+            <p className="text-xs text-zinc-500">{t('settings.filterNoResults', { query: filter })}</p>
+          ) : (
+            // Flattened cross-tab results: each hit is a button that jumps to the
+            // owning tab (and clears the filter so the real controls show). The
+            // tab name travels with every hit so the operator knows where the
+            // setting lives — the F3 acceptance case ("typing 'exclude' surfaces
+            // the scope exclusion list regardless of active tab").
+            matchedGroups.map((g) => (
+              <button
+                key={`${g.tab}:${g.groupId}`}
+                onClick={() => { setTab(g.tab as TabId); setFilter('') }}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left bg-zinc-900 border border-redlog-border rounded hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+              >
+                <span className="text-xs text-zinc-200">{g.title}</span>
+                <span className="text-[10px] uppercase tracking-wider text-zinc-500">{tabLabel(g.tab)}</span>
+              </button>
+            ))
+          )
+        ) : (
+        <>
         {tab === 'general' && (
           <>
             <FieldGroup title={t('settings.engagement')}>
@@ -633,6 +740,8 @@ export default function Settings(): JSX.Element {
           </>
         )}
         {tab === 'plugins' && <PluginsTab t={t} />}
+        </>
+        )}
       </div>
 
       <div className="px-4 py-3 border-t border-redlog-border shrink-0">

@@ -8,6 +8,9 @@ import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
+import { wheelMode } from '../lib/timelineWheel'
+import { activeModes, type TimelineModeState } from '../lib/timelineModes'
+import { shortcutsForScope, modKey, MOD_TOKEN } from '../lib/shortcuts'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -755,6 +758,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // added since v0.6.90 was previously invisible unless a teammate told you.
   // `?` opens; Escape or click-outside closes.
   const [showHelp, setShowHelp] = useState(false)
+  // T2(b): the transient wheel-mode hint. While the lane stack overflows, a
+  // plain wheel scrolls lanes (the one surprising gesture wheelMode() resolves);
+  // this flashes an inline hint on the track's right edge whenever overflow is
+  // live, then fades after a beat of no wheel input. `wheelHintTimer` holds the
+  // pending fade so a fresh wheel event resets it instead of stacking timers.
+  const [wheelHintOn, setWheelHintOn] = useState(false)
+  const wheelHintTimer = useRef<number | null>(null)
+  // T1: the persistent interaction legend under the minimap is collapsible; the
+  // operator's choice is chrome, not engagement state, so it rides a plain
+  // global key like the session-dividers / collapse-agent prefs (not the
+  // per-project scoped keys, which carry review state). Default expanded.
+  const [legendCollapsed, setLegendCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-legend-collapsed') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-legend-collapsed', legendCollapsed ? '1' : '0') } catch { /* ignore */ }
+  }, [legendCollapsed])
   // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
   // hidden by default in the detail view. The reviewer opts into a per-event
   // reveal; each reveal appends a chained system.secret_revealed event so the
@@ -1139,6 +1159,31 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     () => LANES.filter((l) => populatedLanes.has(l) && !hiddenLanes.has(l)),
     [populatedLanes, hiddenLanes]
   )
+
+  // T3: the "Active:" row. activeModes() (lib/timelineModes.ts, unit-tested) is
+  // the single source of which non-default modes are hiding/transforming events;
+  // this just feeds it the current state and renders the returned chips. A "solo"
+  // is only claimed when exactly one lane survives AND something is actually
+  // hidden — a naturally single-lane engagement isn't a solo — so the chip's ✕
+  // (showAllLanes) is always a real action. The soloed lane's display label is
+  // carried as the chip value so the row reads "solo: shell", not the raw id.
+  const modeChips = useMemo(() => {
+    const isSolo = visibleLanes.length === 1 && hiddenLanes.size > 0
+    const state: TimelineModeState = {
+      focusActive: focusChain !== null,
+      anomalyOnly: anomalyFilter,
+      collapseAgentTurns,
+      soloLane: isSolo ? laneLabels[visibleLanes[0]] : null,
+      hiddenLaneCount: hiddenLanes.size,
+      filterQuery
+    }
+    return activeModes(state)
+  }, [focusChain, anomalyFilter, collapseAgentTurns, visibleLanes, hiddenLanes, filterQuery, laneLabels])
+
+  // T1/F5: the modifier symbol (⌘ on macOS, Ctrl elsewhere) resolved once from
+  // the preload-exposed platform, shared by the interaction legend and the `?`
+  // cheatsheet so both agree with the SHORTCUTS registry's MOD_TOKEN.
+  const mod = modKey((window as { redlog?: { platform?: string } }).redlog?.platform ?? '')
 
   const laneH = useMemo(() => {
     if (visibleLanes.length === 0) return MIN_LANE_H
@@ -1854,7 +1899,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const el = scrollRef.current
     if (!el) return
     const onWheel = (e: WheelEvent): void => {
-      if (e.ctrlKey || e.metaKey) {
+      // T2: the once-invisible pan/scroll/zoom branch is now the pure wheelMode()
+      // resolver (lib/timelineWheel.ts, unit-tested). `overflow` reproduces the
+      // old `scrollHeight > clientHeight + 1` check on the shared vertical-scroll
+      // parent; the three booleans map 1:1 onto the previous inline conditions so
+      // behaviour is unchanged — zoom on the zoom modifier, scroll-y only while
+      // the stack overflows and no modifier escapes it, pan-x everywhere else.
+      const outer = containerRef.current
+      const overflow = !!outer && outer.scrollHeight > outer.clientHeight + 1
+      const mode = wheelMode({ overflow, shiftKey: e.shiftKey, zoomKey: e.ctrlKey || e.metaKey })
+
+      // T2(b): flash the inline hint whenever overflow is live so the surprising
+      // scroll-y gesture explains itself as it happens. Only while overflow — the
+      // common (fitting) case stays clean — and it fades after a beat of no wheel.
+      if (overflow) {
+        setWheelHintOn(true)
+        if (wheelHintTimer.current != null) window.clearTimeout(wheelHintTimer.current)
+        wheelHintTimer.current = window.setTimeout(() => setWheelHintOn(false), 2500)
+      }
+
+      if (mode === 'zoom') {
         e.preventDefault()
         setCluster(null)
         const cursorX = e.clientX - el.getBoundingClientRect().left
@@ -1864,15 +1928,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         // and felt like nothing happened. Scaling by deltaY makes pinch smooth and
         // still gives a mouse wheel a reasonable step.
         setZoom((prev) => Math.min(maxZoomRef.current, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
+      } else if (mode === 'scroll-y') {
+        // v0.9.4 P0-2: while the lane stack overflows, let the native vertical
+        // scroll through (do NOT preventDefault) so the lanes clipped below the
+        // fold are reachable by wheel. Shift is the escape hatch back to pan-x.
+        return
       } else if (e.deltaY !== 0) {
-        // v0.9.4 P0-2: while the lane stack overflows its container, deltaY
-        // has to drive the vertical axis or the newly-scrollable lanes are
-        // unreachable by wheel; shift+wheel keeps the horizontal scroll that
-        // deltaY does otherwise (dragging and the minimap also still pan).
-        // With no vertical overflow — the common case — behaviour is
-        // unchanged.
-        const outer = containerRef.current
-        if (outer && !e.shiftKey && outer.scrollHeight > outer.clientHeight + 1) return
+        // pan-x: the common, unsurprising case — deltaY drives the time axis.
         e.preventDefault()
         el.scrollLeft += e.deltaY
       }
@@ -1997,6 +2059,22 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     })
   }, [])
   const showAllLanes = useCallback(() => setHiddenLanes(new Set()), [])
+
+  // T3: dispatch a mode chip's ✕ to the existing clear path for that mode. The
+  // clearAction ids come from activeModes(); each maps to the same setter the
+  // header/keyboard already uses, so a chip never invents new clearing logic.
+  // clear-solo and clear-hidden-lanes both just restore every lane (a solo is a
+  // set of hidden lanes), so both route through showAllLanes.
+  const clearMode = useCallback((action: string) => {
+    switch (action) {
+      case 'clear-focus': setFocusAnchorId(null); break
+      case 'clear-anomaly': setAnomalyFilter(false); break
+      case 'clear-collapse-agent': setCollapseAgentTurns(false); break
+      case 'clear-solo':
+      case 'clear-hidden-lanes': showAllLanes(); break
+      case 'clear-filter': setFilterQuery(''); break
+    }
+  }, [showAllLanes])
 
   // One keydown listener for the Timeline's global single-key surface. This
   // replaced four separate window listeners that each re-implemented the "am I
@@ -2332,45 +2410,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 title={t('timeline.help.close')}
               >×</button>
             </div>
-            <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
-              {([
-                ['timeline.help.group.filter', [
-                  ['/', 'timeline.help.slash'],
-                  ['⌘K', 'timeline.help.palette'],
-                  ['Alt-click', 'timeline.help.soloLane'],
-                  ['Esc', 'timeline.help.escFilter']
-                ]],
-                ['timeline.help.group.focus', [
-                  ['f', 'timeline.help.focusChain'],
-                  ['click', 'timeline.help.selectDot'],
-                  ['↑/↓', 'timeline.help.walk']
-                ]],
-                ['timeline.help.group.timeline', [
-                  ['Right-click', 'timeline.help.dropMarker'],
-                  ['drag minimap', 'timeline.help.zoom'],
-                  ['click cluster', 'timeline.help.expandCluster']
-                ]],
-                ['timeline.help.group.detail', [
-                  ['click ▶', 'timeline.help.expandBody'],
-                  ['click cause chip', 'timeline.help.jumpCause'],
-                  ['Copy full', 'timeline.help.copyFull']
-                ]],
-                ['timeline.help.group.misc', [
-                  ['?', 'timeline.help.thisMenu']
-                ]]
-              ] as Array<[string, Array<[string, string]>]>).map(([groupKey, rows]) => (
-                <div key={groupKey}>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">{t(groupKey)}</div>
-                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                    {rows.map(([key, descKey]) => (
-                      <div key={key} className="contents">
-                        <kbd className="font-mono text-[11px] text-zinc-200 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
-                        <span className="text-zinc-400">{t(descKey)}</span>
-                      </div>
-                    ))}
+            {/* F5: rendered from the shared SHORTCUTS registry (lib/shortcuts.ts)
+                so this cheatsheet and the Dashboard shortcuts card can no longer
+                drift. `shortcutsForScope('timeline')` returns the global keys plus
+                the timeline-only ones; the MOD_TOKEN placeholder in each combo is
+                swapped for the resolved modKey, and each labelKey maps to a
+                shortcut.* i18n string. */}
+            <div className="px-4 py-3 max-h-[70vh] overflow-y-auto">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                {shortcutsForScope('timeline').map((s) => (
+                  <div key={s.id} className="contents">
+                    <kbd className="font-mono text-[11px] text-zinc-200 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap">
+                      {s.keys.split(MOD_TOKEN).join(mod)}
+                    </kbd>
+                    <span className="text-zinc-400">{t(s.labelKey)}</span>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
             <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
               {t('timeline.help.footer')}
@@ -2729,6 +2785,41 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         </div>
       </div>
 
+      {/* T3: active-modes row. Renders directly under the header, and ONLY when
+          at least one sticky mode is hiding/transforming events — activeModes()
+          returns [] at all-default, so a clean timeline shows no bar at all. It
+          answers "why is the track near-empty?" (DESIGN-PRINCIPLES §8) with one
+          dismissible chip per mode plus a clear-all. */}
+      {modeChips.length > 0 && (
+        <div
+          data-testid="timeline-active-modes"
+          className="flex items-center gap-1.5 px-4 py-1.5 border-b border-zinc-800/80 bg-zinc-900/40 shrink-0 overflow-x-auto"
+        >
+          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 shrink-0">
+            {t('timeline.mode.active')}
+          </span>
+          {modeChips.map((chip) => (
+            <span
+              key={chip.id}
+              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800/70 text-zinc-200 border border-zinc-700"
+            >
+              {t(chip.labelKey, chip.value != null ? { value: chip.value } : undefined)}
+              <button
+                onClick={() => clearMode(chip.clearAction)}
+                className="text-zinc-500 hover:text-zinc-100 leading-none w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-white/10"
+                title={t('timeline.mode.clear')}
+                aria-label={t('timeline.mode.clear')}
+              >×</button>
+            </span>
+          ))}
+          <button
+            onClick={() => modeChips.forEach((c) => clearMode(c.clearAction))}
+            className="shrink-0 ml-1 text-[10px] font-mono text-zinc-500 hover:text-zinc-200 px-1.5 py-0.5 rounded hover:bg-white/[0.05] transition-colors"
+            title={t('timeline.mode.clearAll')}
+          >{t('timeline.mode.clearAll')}</button>
+        </div>
+      )}
+
       {/* Density minimap — overview of the whole engagement. Drag to zoom to a
           window, click to jump. The bright frame marks the current viewport. */}
       <div
@@ -2753,8 +2844,58 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         )}
       </div>
 
+      {/* T1: persistent interaction legend. A low-weight strip under the minimap
+          carrying the three core gestures (pan / zoom / filter) plus a pointer to
+          the full ? cheatsheet — so pan, zoom and filter are never a secret. The
+          {mod} token resolves once via modKey(platform), shared with the F5
+          registry. Collapsible; the choice persists in legendCollapsed. */}
+      <div className="shrink-0 border-b border-zinc-800/80 bg-zinc-950/40 px-4 py-1 flex items-center gap-3 text-[10px] font-mono text-zinc-600 select-none">
+        {!legendCollapsed && (
+          <div className="flex items-center gap-3 min-w-0 overflow-x-auto">
+            <span className="whitespace-nowrap">{t('timeline.legend.pan')}</span>
+            <span className="whitespace-nowrap">{t('timeline.legend.zoom', { mod })}</span>
+            <button
+              onClick={() => searchInputRef.current?.focus()}
+              className="whitespace-nowrap hover:text-zinc-300 transition-colors"
+            >{t('timeline.legend.filter')}</button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="whitespace-nowrap hover:text-zinc-300 transition-colors"
+            >{t('timeline.legend.shortcuts')}</button>
+          </div>
+        )}
+        {legendCollapsed && (
+          <button
+            onClick={() => setShowHelp(true)}
+            className="whitespace-nowrap hover:text-zinc-300 transition-colors"
+            title={t('timeline.legend.shortcuts')}
+          >?</button>
+        )}
+        <button
+          onClick={() => setLegendCollapsed((v) => !v)}
+          className="ml-auto shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hover:text-zinc-300 transition-colors"
+          title={legendCollapsed ? t('timeline.legend.expand') : t('timeline.legend.collapse')}
+          aria-label={legendCollapsed ? t('timeline.legend.expand') : t('timeline.legend.collapse')}
+          aria-expanded={!legendCollapsed}
+        >{legendCollapsed ? '⌃' : '⌄'}</button>
+      </div>
+
       {/* Timeline + event list split */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        {/* T2(b): the transient wheel-mode hint, pinned to the track's right edge.
+            Shown only while the lane stack overflows (wheelHintOn is set solely on
+            an overflow wheel), so the common fitting case stays clean. It names the
+            surprising gesture — plain wheel scrolls lanes — and the ⇧ escape hatch
+            back to horizontal pan. pointer-events-none so it never eats a wheel. */}
+        {wheelHintOn && (
+          <div
+            data-testid="timeline-wheel-hint"
+            className="absolute z-30 top-9 right-3 pointer-events-none rounded-md border border-zinc-700 bg-zinc-900/95 px-2 py-1 text-[10px] font-mono text-zinc-300 shadow-lg leading-tight"
+          >
+            <div>{t('timeline.wheelHint.scrolling')}</div>
+            <div className="text-zinc-500">{t('timeline.wheelHint.panWith')}</div>
+          </div>
+        )}
         {/* Swim lanes */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
