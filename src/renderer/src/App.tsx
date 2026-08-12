@@ -248,7 +248,7 @@ export default function App(): JSX.Element {
             {view === 'transcript' && (
               <TranscriptView
                 key={project?.id ?? 'no-project'}
-                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); onNavigate('timeline') }}
+                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
                 onEmptyAction={handleEmptyAction}
               />
             )}
