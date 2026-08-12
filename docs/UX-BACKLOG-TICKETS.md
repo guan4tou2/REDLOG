@@ -50,6 +50,7 @@ The fast, high-impact pairs first, structural work after.
 | 10 | **T5** — extract timeline pure seams + first interaction tests | Makes every later timeline change safe | M–L | 🟡 |
 | 11 | **F7** — sidebar reorder affordance | Minor discoverability polish | S | ⚪ |
 | 12 | **T6** — lane virtualization | Structural; also closes T2 permanently (= ROADMAP V4) | L | ⚪ |
+| 13 | **PL1** — plugin lifecycle: one card, Install≠Enable | Removes the two-tab split + the orphaned-hook footgun | M–L | ⚪ |
 
 Already shipped in v0.11.6: **F1 (partial)** — Capture Readiness onboarding
 checklist; **T5 first seam** — the Timeline keyboard resolver.
@@ -266,6 +267,68 @@ checklist; **T5 first seam** — the Timeline keyboard resolver.
 - **Acceptance:** the lane stack never vertically overflows; scroll performance
   holds on a 100k-event engagement; T2's wheel branch is deleted.
 - **Effort:** L. **Note:** the one genuinely structural item; sequence last.
+
+---
+
+## PL-series — plugin & capture lifecycle
+
+### PL1 — Unify the plugin lifecycle into one card; disambiguate Install ≠ Enable ⚪
+
+- **Persona:** P1 / P3. **Source:** `CAPTURE-SOURCE-TAXONOMY.md` §Part 4 (four
+  gates); this session's UI review of `Settings.tsx`.
+- **Problem:** a plugin's lifecycle is **split across two tabs with overloaded
+  wording**, and one gate has a silent footgun:
+  - Enable/trust (gates 2–3) live in **Plugins tab** (`PluginsPanel`); capture-hook
+    install (gate 4) lives in **Capture tab → Hooks detected** (`HooksPanel`). A
+    plugin that contributes a capture hook appears in **both**, with no
+    cross-link — the operator can enable it and never realise its hook isn't wired
+    ("enabled but not recording" is invisible).
+  - The word **"Enable/Disable" is overloaded**: in Plugins it means gate 2
+    (in-process, reversible, zero external footprint); the Hooks button labelled
+    `hookEnable`/`hookDisable` (`Settings.tsx` L878) actually means gate 4 —
+    **writing into `.zshrc` / `~/.claude/settings.json`**, external state that
+    outlives RedLog.
+  - **Disable ≠ Uninstall footgun:** `setPluginEnabled(false)` (`plugins/index.ts`)
+    only flips `state.json`; it does **not** remove the hook line. Disabling or
+    deleting a plugin **leaves orphaned hook lines** in the operator's shell/agent
+    config that keep firing whether or not RedLog is open.
+- **Proposed (full refactor — optimise for final effect, not minimal diff):**
+  - **One lifecycle card per plugin** (in Plugins tab) rendering all four gates as
+    a single progression: `Present → Enabled → (Trusted, 🔴) → Hook installed`,
+    with the current state and the *one* next action surfaced. A contributed
+    capture hook shows its install state inline on the same card (no tab hop).
+  - **Two distinct verbs, never shared:** **Enable/Disable** for gate 2 only;
+    **Install/Uninstall** for gate 4 (the button that writes external config).
+    Rename the Hooks button accordingly and restyle it to read as a
+    system-mutating action (it edits files outside RedLog).
+  - **"Enabled but not wired" is a first-class, legible state** with a clear
+    "Install hook to start capturing" CTA — reuse the `captureReadiness` state
+    machine so this ties into onboarding (F1/F1-b).
+  - **Kill the orphan:** disabling/deleting a plugin that has installed hooks
+    prompts to uninstall them (or clearly flags them as still-installed with a
+    one-click cleanup). Hook uninstall is always its own explicit action.
+  - The Capture-tab Hooks list may remain as the *system-wide* hook inventory, but
+    plugin-contributed hooks deep-link to/from their plugin card so the two views
+    agree.
+- **Acceptance:**
+  - A plugin with a capture hook shows enable-state **and** hook-install-state on
+    one card; the operator never needs both tabs to get it capturing.
+  - No control labelled "Enable" writes to `.zshrc`/`.claude/settings.json`; every
+    such write is labelled "Install" and visually marked as external.
+  - Disabling or deleting a plugin with an installed hook cannot silently leave an
+    orphaned hook line — the flow either removes it or surfaces it with a cleanup
+    action.
+  - "Enabled but hook not installed" renders a distinct state with a next-step CTA.
+  - i18n parity: all new keys in `en.json` and `zh-TW.json`, same edit.
+- **Seam (house rule — pure function first):** `lib/pluginLifecycle.ts` —
+  `computePluginLifecycle(plugin, hooks, trust)` → a view model
+  `{ present, enabled, trusted, hooks: [{id, installed}], nextAction, orphanedHooks }`
+  merging `PluginView` (from `window.redlog.plugins`) with hook state (from
+  `window.redlog.hooks` / `capture-health`). Test `test/plugin-lifecycle.test.ts`
+  before the card renders/dispatches it; reuse `computeCaptureReadiness` for the
+  wired/active transitions.
+- **Effort:** M–L. **Depends on:** none hard; composes with F1-b (guided install)
+  and the `captureReadiness` seam.
 
 ---
 
