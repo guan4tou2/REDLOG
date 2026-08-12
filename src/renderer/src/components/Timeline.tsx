@@ -300,6 +300,35 @@ function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventTy
   return 'system'
 }
 
+// A concurrent *instance* within a lane — the thing an operator needs to tell
+// apart when several of the same source run at once: two open terminals, two
+// agent sessions. Generalized so the axis distinction isn't hardcoded to
+// terminals; any source with a persistent per-session identity can join by
+// returning a stable key here. HTTP/scanner flows are deliberately excluded —
+// each request is its own flow_id, so they aren't a persistent instance and
+// would badge every dot. Returns null when the event has no such identity.
+function instanceOf(e: RedLogEvent): { lane: string; key: string; kind: string } | null {
+  const d = e.data ?? {}
+  if (e.agentType === 'shell') {
+    const tid = d.terminalId ?? d.terminal_id
+    if (typeof tid === 'string' && tid) return { lane: 'shell', key: `t:${tid}`, kind: 'term' }
+    // External (hook) shells carry no terminalId; the shell process pid is a
+    // stable per-window identity, so concurrent external shells still separate.
+    if (typeof d.pid === 'number' || (typeof d.pid === 'string' && d.pid)) return { lane: 'shell', key: `p:${d.pid}`, kind: 'sh' }
+    return null
+  }
+  if (e.agentType === 'agent') {
+    const sid = d.session_id
+    if (typeof sid === 'string' && sid) return { lane: 'agent', key: `s:${sid}`, kind: 'session' }
+    return null
+  }
+  return null
+}
+
+// Stable colours for instance ordinals (#1, #2, …). Chosen to read against the
+// dark track and to not collide with the lane hues they sit on top of.
+const INSTANCE_COLORS = ['#38bdf8', '#f472b6', '#a3e635', '#fbbf24', '#c084fc', '#fb7185', '#2dd4bf', '#f97316']
+
 interface PluginEventType {
   agentType: string
   label: string
@@ -732,6 +761,35 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     if (!collapseAgentTurns) return 0
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
+  // Multi-instance distinction: assign each distinct instance (terminal / agent
+  // session) a stable 1-based ordinal within its lane, and remember which lanes
+  // have more than one active instance. Dots and the detail panel only surface
+  // the ordinal for those lanes, so a single terminal / session stays unadorned.
+  const instanceInfo = useMemo(() => {
+    const perLane = new Map<string, string[]>()
+    for (const e of events) {
+      const inst = instanceOf(e)
+      if (!inst) continue
+      const keys = perLane.get(inst.lane) ?? []
+      if (!keys.includes(inst.key)) { keys.push(inst.key); perLane.set(inst.lane, keys) }
+    }
+    const ordinal = new Map<string, number>()
+    const multiLanes = new Set<string>()
+    for (const [lane, keys] of perLane) {
+      if (keys.length > 1) multiLanes.add(lane)
+      keys.forEach((k, i) => ordinal.set(`${lane}::${k}`, i + 1))
+    }
+    return { ordinal, multiLanes }
+  }, [events])
+  // The instance ordinal + colour for one event, or null when its lane has no
+  // concurrency worth distinguishing (or the event has no instance identity).
+  const instanceMark = useCallback((e: RedLogEvent): { ord: number; kind: string; color: string } | null => {
+    const inst = instanceOf(e)
+    if (!inst || !instanceInfo.multiLanes.has(inst.lane)) return null
+    const ord = instanceInfo.ordinal.get(`${inst.lane}::${inst.key}`)
+    if (!ord) return null
+    return { ord, kind: inst.kind, color: INSTANCE_COLORS[(ord - 1) % INSTANCE_COLORS.length] }
+  }, [instanceInfo])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -3347,6 +3405,22 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           </>
                         )
                       })()}
+                      {/* Multi-instance ordinal (top-left): only shows when the
+                          event's lane has more than one concurrent instance —
+                          two terminals, two agent sessions — so a single
+                          terminal keeps a clean dot. Colour + number match the
+                          chip in the detail panel. */}
+                      {single && (() => {
+                        const im = instanceMark(evt)
+                        if (!im) return null
+                        return (
+                          <span
+                            className="absolute -top-0.5 -left-0.5 rounded-full text-[8px] leading-none font-bold flex items-center justify-center pointer-events-none"
+                            style={{ width: 11, height: 11, background: '#0a0a0a', color: im.color, border: `1px solid ${im.color}` }}
+                            title={`${im.kind} #${im.ord}`}
+                          >{im.ord}</span>
+                        )
+                      })()}
                       {/* Feature 3: single-badge bubble at top-right. Only the
                           first badge shows here to keep the dot readable; the
                           rest surface in the tooltip and in the detail panel. */}
@@ -3421,7 +3495,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
                           <span className="text-zinc-600 font-mono text-[11px] tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
-                          <span className="text-zinc-300 text-xs truncate">{eventTitle(evt)}</span>
+                          <span className="text-zinc-300 text-xs truncate flex-1 min-w-0">{eventTitle(evt)}</span>
+                          {(() => {
+                            const im = instanceMark(evt)
+                            if (!im) return null
+                            return (
+                              <span
+                                className="ml-auto shrink-0 text-[9px] font-mono font-bold leading-none px-1 py-0.5 rounded"
+                                style={{ color: im.color, border: `1px solid ${im.color}55` }}
+                                title={`${im.kind} #${im.ord}`}
+                              >#{im.ord}</span>
+                            )
+                          })()}
                         </button>
                       ))}
                       {overflow > 0 && (
@@ -3513,6 +3598,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
                 {operatorLabel(selectedEvent.operatorId)}
               </span>
+              {(() => {
+                const im = instanceMark(selectedEvent)
+                if (!im) return null
+                return (
+                  <span
+                    className="text-[11px] font-mono px-1.5 py-0.5 rounded"
+                    style={{ color: im.color, border: `1px solid ${im.color}55`, background: `${im.color}14` }}
+                  >{im.kind} #{im.ord}</span>
+                )
+              })()}
             </div>
             <div className="flex items-center gap-2">
               {(() => {
@@ -3733,7 +3828,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             && selectedEvent.data?.subtype === 'command_end'
             && selectedEvent.data?.source === 'builtin-terminal'
             && (
-              <ReplayCommand eventId={selectedEvent.id} mode="command" />
+              <ReplayCommand
+                eventId={selectedEvent.id}
+                mode="command"
+                castBytes={castSpanBytes(selectedEvent.data as Record<string, unknown>)}
+              />
             )}
           {/* Session-level replay: for session_start / session_end, replays
               the ENTIRE pty session. Critical when the operator ssh'd into
@@ -3774,6 +3873,14 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// The size of the .cast span a builtin-terminal command produced, when the
+// command was bracketed (io.len present and not `unbracketed`). Used to decide
+// whether ReplayCommand can cheaply auto-load the output for an inline preview.
+function castSpanBytes(data: Record<string, unknown> | undefined): number | undefined {
+  const io = data?.io as { len?: number; unbracketed?: boolean } | undefined
+  return io && typeof io.len === 'number' && !io.unbracketed ? io.len : undefined
 }
 
 // Structured detail body for a shell command_end event. Renders separate
@@ -4175,16 +4282,27 @@ function MetadataGrid({ entries }: { entries: Array<[string, unknown]> }): JSX.E
   )
 }
 
+// Command slices at or below this size auto-load so the operator sees the
+// output inline without a click — the "see I/O on the timeline" affordance.
+// Larger slices (and the heavy session player) stay behind the manual button,
+// so selecting an event never pulls a giant dump into the renderer by itself.
+const REPLAY_AUTOLOAD_LIMIT = 512 * 1024
+// Lines of stdout shown before the "show full output" expander.
+const REPLAY_PREVIEW_LINES = 8
+
 // Pulled from the session's asciinema .cast on disk — not from the event
 // row. Rendering here keeps the chain event clean (command + exit + duration
-// only) while still letting the operator see what actually printed.
-function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 'command' | 'session' }): JSX.Element {
+// only) while still letting the operator see what actually printed. For a
+// bracketed command whose slice is small, the output previews automatically;
+// large slices and whole-session replays stay one deliberate click away.
+function ReplayCommand({ eventId, mode = 'command', castBytes }: { eventId: string; mode?: 'command' | 'session'; castBytes?: number }): JSX.Element {
   const [text, setText] = useState<string | null>(null)
   const [events, setEvents] = useState<Array<[number, 'o', string]> | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [showFull, setShowFull] = useState(false)
   const { t } = useI18n()
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -4202,20 +4320,35 @@ function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 
       const evs = (r as { events?: Array<[number, 'o', string]> }).events
       if (evs && evs.length > 0) setEvents(evs)
       setTruncated(Boolean((r as { truncated?: boolean }).truncated))
-      setExpanded(true)
+      setLoaded(true)
     } finally {
       setLoading(false)
     }
   }
+
+  // A small, bracketed command slice is cheap to read, so auto-load it. The
+  // detail panel is not remounted per selection, so reset state when eventId
+  // changes (otherwise the previous command's output would leak into the new
+  // panel) and re-trigger the auto-load.
+  const autoEligible = mode === 'command' && typeof castBytes === 'number' && castBytes > 0 && castBytes <= REPLAY_AUTOLOAD_LIMIT
+  useEffect(() => {
+    setText(null); setEvents(null); setError(null); setTruncated(false); setShowFull(false); setLoaded(false)
+    if (autoEligible) void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId])
+
   const btnLabel = mode === 'session' ? 'timeline.replay.sessionButton' : 'timeline.replay.button'
-  if (!expanded) {
+  if (!loaded && !loading) {
     return (
       <button
-        onClick={load}
+        onClick={() => void load()}
         disabled={loading}
         className="mt-1.5 text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
-      >{loading ? t('timeline.replay.loading') : t(btnLabel)}</button>
+      >{t(btnLabel)}</button>
     )
+  }
+  if (!loaded && loading) {
+    return <p className="mt-1.5 text-xs text-zinc-500 font-mono">{t('timeline.replay.loading')}</p>
   }
   if (error) return <p className="mt-1.5 text-xs text-red-400">{t('timeline.replay.failed', { error })}</p>
   // Session replays get the full player (xterm + scrubber + speed). If the
@@ -4224,11 +4357,24 @@ function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 
   if (mode === 'session' && events && events.length > 0) {
     return <SessionReplayPlayer events={events} truncated={truncated} />
   }
-  const heightCls = mode === 'session' ? 'max-h-[400px]' : 'max-h-[200px]'
+  const full = text ?? ''
+  const lines = full.split('\n')
+  const isLong = lines.length > REPLAY_PREVIEW_LINES + 1 || full.length > 800
+  const shown = showFull || !isLong ? full : lines.slice(0, REPLAY_PREVIEW_LINES).join('\n')
+  const heightCls = mode === 'session' || showFull ? 'max-h-[400px]' : 'max-h-[200px]'
   return (
-    <pre className={`mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed ${heightCls} overflow-y-auto whitespace-pre-wrap`}>
-      {text || t('timeline.replay.empty')}
-    </pre>
+    <div className="mt-1.5">
+      <pre className={`p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed ${heightCls} overflow-y-auto whitespace-pre-wrap`}>
+        {shown || t('timeline.replay.empty')}
+      </pre>
+      {isLong && (
+        <button
+          onClick={() => setShowFull((v) => !v)}
+          className="mt-1 text-[10px] font-mono text-cyan-500 hover:text-cyan-400"
+        >{showFull ? t('timeline.replay.showLess') : t('timeline.replay.showFull', { size: formatBytes(full.length) })}</button>
+      )}
+      {truncated && <p className="mt-1 text-[10px] font-mono text-amber-400">{t('timeline.replay.truncated')}</p>}
+    </div>
   )
 }
 
