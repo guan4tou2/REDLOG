@@ -1,6 +1,6 @@
 # RedLog Docs
 
-Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
+Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
 
 ## What RedLog is (and isn't)
 
@@ -20,6 +20,9 @@ Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links 
 - **[Roadmap](ROADMAP.md)** — what ships next and the v1.0 gate. Also states what is deliberately not planned.
 - **[Audit 2026-08-08](AUDIT-2026-08-08.md)** — standing defect list from a full-tree review: correctness, trust-model gaps, presentation, test coverage, doc drift. Each item tagged verified/reported.
 - **[UX & complexity audit 2026-08-10](UX-AUDIT-2026-08.md)** — persona-driven review of the renderer: where breadth has outrun the solo operator (Timeline 3,875 lines / Settings 2,681 lines), the first-run friction gap, and a prioritized backlog. Companion to the correctness audit above.
+- **[UX audit 2026-08-13](UX-AUDIT-2026-08-13.md)** — per-view operability review (16 views): the resize/proportion gap (only one draggable pane app-wide), discoverability of hidden gestures, and cross-view consistency. Prioritized fix list. Feeds the two design docs below.
+- **[Design system — UI/UX language & framework](DESIGN-SYSTEM.md)** — the single normative source for colour (the `soften`/HUD palette + residual bright-accent drift to fix), typography (unifying the two parallel size scales), icons, component patterns, and the resize/layout framework (`<SplitPane>`, collapsible sidebar, breakpoints). Codifies what's scattered across `tailwind.config.js`, `lib/hud.ts`, and `index.css`.
+- **[Timeline discoverability — wheel & axis](DESIGN-TIMELINE-DISCOVERABILITY.md)** — deep-dive extending DESIGN-TIMELINE-INTERACTION §T2: turns the wheel-mode hint from reactive-flash into a persistent, always-true indicator (`wheelModeLabel` seam), and adds the axis-switching track A1–A3 (labelled source/target control, preserving lane filters under the target axis, the transition chip).
 - **[Timeline UX deep-dive 2026-08-10](UX-TIMELINE-2026-08.md)** — the F2 deep-dive: why the timeline feels unintuitive (invisible, overloaded, context-dependent gestures), what it is *not* (lanes/data are fine), and the T1–T6 simplification plan.
 - **[UX backlog — ticket specs](UX-BACKLOG-TICKETS.md)** — every finding (F1–F7, T1–T6) broken out into an independently implementable ticket: problem, proposed solution, acceptance criteria, pure test seam, effort, priority order.
 - **[Timeline interaction redesign draft](DESIGN-TIMELINE-INTERACTION.md)** — concrete UI proposal with ASCII wireframes for the legend (T1), the wheel-mode decision matrix (T2), and the active-modes row (T3), plus the build order.
@@ -63,6 +66,7 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 - **[Audit trail](audit-trail.md)** — SHA-256 event chain + hourly OpenTimestamps anchoring + full re-walk verify (with wall-vs-monotonic clock-anomaly detection) + `.ots` bundle export + four-layer redaction. Threat model, what's detected, what isn't.
 - **[Event schema](event-schema.md)** — standard `agent_type` values and data keys (Ghostwriter-compatible). Read before designing a new event source.
 - **[Redaction design](redaction-design.md)** — design note (proposed, not yet implemented). Four-layer model: capture full → detect spans → mask in UI → sanitize on export. Why capture-time redaction is the wrong default for an evidence tool, and how the append-only chain makes deferred sanitization safe. Tracks [#6](https://github.com/guan4tou2/REDLOG/issues/6).
+- **[Cloud share bundle](CLOUD_SHARE_BUNDLE.md)** — the shareable-bundle format: manifest shape, the redaction gate that runs before upload, sanitize counts, expiry, and the Worker's independent size cap. The remote-upload Snapshot in the delivery path.
 
 ## Extending RedLog
 
@@ -83,6 +87,7 @@ The reusable decompositions behind capture and plugin design — read these befo
 - **[Timeline elements](TIMELINE-ELEMENTS.md)** — the method as a *structural lens* on the timeline: **7 encoding channels × 4 interaction modes**, each declaring §3 fact-vs-suggestion, restating the UX-TIMELINE complexity as channel/mode overloading. Defers to `SPEC-TIMELINE-AXIS.md` / `UX-TIMELINE-2026-08.md` / §8 for the design itself.
 - **[Event-type vocabulary](EVENT-TYPE-VOCABULARY.md)** — the seam that ties capture, timeline, and §3 together: every `agent_type` classified by **origin** (authored / captured / agent / derived / system / plugin) and **authority**, plus the rule that a capture plugin emitting a new event kind **must** pair with an `eventTypes` contribution to claim its timeline identity (lane/colour/glyph) — or its evidence lands illegible in the "other" lane.
 - **[Off-chain content stores](OFF-CHAIN-CONTENT-STORES.md)** — the heavy content kept *off* the chain (`.cast`, io_ref bodies, screenshots) is one pattern in two shapes — **Blob** (content-addressed, dedup, whole/ranged) and **Stream** (time-indexed, sliced) — under one invariant (digest on-chain, bytes off-chain, pruned≠tampered) and one lifecycle engine, replacing today's three ad-hoc stores.
+- **[Decomposition backlog](DECOMPOSITION-BACKLOG.md)** — the ~30 "Gaps" rows from the nine framework docs, **deduplicated** into a prioritized backlog: two keystones (the §3 inferred-`detection` primitive; off-chain store unification), zero-core quick wins (`scan-parsers` pack, `mcp-tee` example), and the unification/contribution-surface work — each tagged code/doc and cross-referenced to the doc that surfaced it.
 
 ## Agent skills (drop-in)
 
@@ -91,6 +96,8 @@ The reusable decompositions behind capture and plugin design — read these befo
 ## Project ops
 
 - **[Releasing](releasing.md)** — two-phase cross-platform release via GitHub Actions (build matrix → single release job), plus the local `npm rebuild better-sqlite3` gotcha after packaging.
+- **[Release checklist](RELEASE_CHECKLIST.md)** — the pre-release verification gates: what `npx playwright test` automates (§0 build + smoke, as of v0.9.4) and the manual checks that remain. Companion to Releasing.
+- **[Windows setup](windows-setup.md)** — platform-specific install/build steps and gotchas for Windows; pairs with the [Windows compatibility audit](WINDOWS_COMPAT_AUDIT.md).
 
 ## Machine-readable
 
