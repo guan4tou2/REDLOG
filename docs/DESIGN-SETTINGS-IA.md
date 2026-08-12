@@ -122,19 +122,30 @@ stays until its groups are gone.
   screenshotted in the app.
 - **A6** i18n parity for the new tab labels.
 
-## Open questions (for ratification)
+## RATIFIED 2026-08-12
 
-- **Q1 — A or B?** Recommend A + collapsed-Advanced. Full two-level (B) is more
-  disruptive; worth it?
-- **Q2 — "Evidence" vs "Engagement" as the tab name** for engagement/operators/
-  integrity/export? "Evidence" states the purpose; "Engagement" is the current
-  mental model. Recommend **Evidence**.
-- **Q3 — merge HUD + Network into one "OPSEC" tab** (recommended, §4 one front
-  door), or keep them separate? Merging is truer to the model but changes two
-  familiar tabs into one.
-- **Q4 — fold PL1** (the new "plugin lifecycle: Install≠Enable" ticket) into this
-  reorg's Advanced/Plugins tab, or keep it a separate follow-up? Recommend
-  separate — PL1 is a behaviour change, this is layout only.
+- **Q1 → Option B (two-level).** Four essential tabs up front + a single
+  **Advanced** tab whose sections are **collapsed by default**. (More ambitious
+  than the A recommendation — the user chose the stronger progressive-disclosure
+  cut.)
+- **Q2 → "Evidence"** for engagement / operators / integrity / export.
+- **Q3 → merge** HUD + Network into one **OPSEC** tab (§4, one front door).
+- **Q4 → PL1 stays a separate follow-up** (behaviour change, not layout).
+
+### Ratified target structure
+
+Five tabs, left→right: **Capture · Scope · Evidence · OPSEC · Advanced**.
+
+| Tab | Contents (FieldGroups / panels) |
+|---|---|
+| **Capture** | hooks (HooksPanel), agent-tailer, clipboard, screenshot (quality + group), file-watcher, process-monitor, hook-excluded-paths |
+| **Scope** | enforcement, in-scope, excluded, scope-file |
+| **Evidence** | engagement, operators, integrity (chain verify), export-all, export-bundle, scope-export, profile-sync |
+| **OPSEC** | HUD/overlay group, ip-safety, polling, vpn-adapters |
+| **Advanced** *(sections collapsed by default)* | Integrations (cdp/proxied-browser, mcp, agents) · Team (deconfliction) · Plugins (local/declarative) · Cloud share · App (language, UI scale, update-check) |
+
+`General` dissolves. New i18n tab labels: `settings.evidence`, `settings.opsec`,
+`settings.advanced`. No config-key or behaviour changes.
 
 Cross-references: `DESIGN-PRINCIPLES.md` §4/§9 · `UX-AUDIT-2026-08.md` F3 ·
 `UX-BACKLOG-TICKETS.md` (F3, PL1) · `Settings.tsx` L182–742.

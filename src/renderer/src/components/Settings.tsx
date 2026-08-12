@@ -69,13 +69,15 @@ const LOCALE_LABELS: Record<Locale, string> = {
   'zh-TW': '繁體中文'
 }
 
-type TabId = 'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'
+// v0.11.8 (DESIGN-SETTINGS-IA Option B): five tabs, ordered by the operator's
+// question. Advanced is a two-level tab whose sections are collapsed by default.
+type TabId = 'capture' | 'scope' | 'evidence' | 'opsec' | 'advanced'
 
 // F3 (UX-BACKLOG / DESIGN-PRINCIPLES §9): a static index of every FieldGroup on
 // the page so the header filter can find a setting by its group title OR any of
-// its field labels without the operator having to remember which of the 8 tabs
-// it lives in. Titles and labels are i18n keys resolved at render time; the pure
-// match rule lives in lib/settingsSearch.ts. Order mirrors on-screen order so a
+// its field labels without the operator having to remember which tab it lives
+// in. Titles and labels are i18n keys resolved at render time; the pure match
+// rule lives in lib/settingsSearch.ts. Order mirrors on-screen order so a
 // filtered result list reads top-to-bottom like the real page. This is
 // presentation metadata only — it points at controls, it does not own them.
 interface SettingsGroupSource {
@@ -86,53 +88,50 @@ interface SettingsGroupSource {
 }
 
 const SETTINGS_GROUPS: SettingsGroupSource[] = [
-  // general
-  { tab: 'general', groupId: 'engagement', titleKey: 'settings.engagement', labelKeys: ['settings.id', 'settings.name'] },
-  { tab: 'general', groupId: 'operator', titleKey: 'settings.operatorGroup', labelKeys: ['settings.id', 'settings.name'] },
-  { tab: 'general', groupId: 'language', titleKey: 'settings.language', labelKeys: [] },
-  { tab: 'general', groupId: 'uiScale', titleKey: 'settings.uiScale', labelKeys: [] },
   // capture
   { tab: 'capture', groupId: 'hooks', titleKey: 'settings.hooksDetected', labelKeys: [] },
   { tab: 'capture', groupId: 'agents', titleKey: 'settings.agents', labelKeys: [] },
-  { tab: 'capture', groupId: 'screenshotQuality', titleKey: 'settings.screenshotQuality', labelKeys: ['settings.jpegQuality'] },
   { tab: 'capture', groupId: 'clipboard', titleKey: 'settings.clipboardGroup', labelKeys: ['settings.clipboardEnable', 'settings.clipboardStorePreview'] },
+  { tab: 'capture', groupId: 'screenshotQuality', titleKey: 'settings.screenshotQuality', labelKeys: ['settings.jpegQuality'] },
+  { tab: 'capture', groupId: 'screenshotSchedule', titleKey: 'settings.screenshotGroup', labelKeys: [] },
   { tab: 'capture', groupId: 'fileWatcher', titleKey: 'settings.fileWatcherGroup', labelKeys: ['settings.fileWatcherPaths', 'settings.fileWatcherIgnore'] },
   { tab: 'capture', groupId: 'processMonitor', titleKey: 'settings.processMonitorGroup', labelKeys: ['settings.processMonitorIgnore'] },
+  { tab: 'capture', groupId: 'hookExcludedPaths', titleKey: 'settings.hookExcludedPaths.title', labelKeys: [] },
   // scope
   { tab: 'scope', groupId: 'scopeEnforcement', titleKey: 'settings.scopeEnforcement', labelKeys: ['settings.warnOnViolation'] },
   { tab: 'scope', groupId: 'inScopeTargets', titleKey: 'settings.inScopeTargets', labelKeys: ['settings.targetsLabel'] },
   { tab: 'scope', groupId: 'excludedTargets', titleKey: 'settings.excludedTargets', labelKeys: ['settings.excludeLabel'] },
   { tab: 'scope', groupId: 'scopeFile', titleKey: 'settings.scopeFile', labelKeys: ['settings.scopeFileLabel'] },
-  // network
-  { tab: 'network', groupId: 'ipSafety', titleKey: 'settings.ipSafety', labelKeys: ['settings.whitelist', 'settings.blacklist'] },
-  { tab: 'network', groupId: 'polling', titleKey: 'settings.polling', labelKeys: ['settings.ipMode', 'settings.checkInterval', 'settings.confirmations', 'settings.ipProviders', 'settings.showWifiName'] },
-  { tab: 'network', groupId: 'vpnAdapters', titleKey: 'settings.vpnAdapters', labelKeys: [] },
-  // hud
-  { tab: 'hud', groupId: 'overlay', titleKey: 'settings.overlayGroup', labelKeys: ['settings.overlayShowInDock'] },
-  // integrations
-  { tab: 'integrations', groupId: 'mcp', titleKey: 'settings.mcp', labelKeys: [] },
-  { tab: 'integrations', groupId: 'hookExcludedPaths', titleKey: 'settings.hookExcludedPaths.title', labelKeys: [] },
-  { tab: 'integrations', groupId: 'operators', titleKey: 'settings.operators', labelKeys: [] },
-  { tab: 'integrations', groupId: 'deconfliction', titleKey: 'settings.deconfliction', labelKeys: [] },
-  { tab: 'integrations', groupId: 'browser', titleKey: 'settings.browser', labelKeys: [] },
-  { tab: 'integrations', groupId: 'cdp', titleKey: 'settings.cdp', labelKeys: ['settings.testConnection'] },
-  // data
-  { tab: 'data', groupId: 'screenshotSchedule', titleKey: 'settings.screenshotGroup', labelKeys: [] },
-  { tab: 'data', groupId: 'update', titleKey: 'settings.updateGroup', labelKeys: ['settings.checkUpdate'] },
-  { tab: 'data', groupId: 'exportAll', titleKey: 'settings.exportAll', labelKeys: ['settings.exportJson'] },
-  { tab: 'data', groupId: 'exportBundle', titleKey: 'settings.exportBundleTitle', labelKeys: [] },
-  { tab: 'data', groupId: 'scopeExport', titleKey: 'settings.scopeExport', labelKeys: ['settings.exportScopeJson'] },
-  { tab: 'data', groupId: 'cloudShare', titleKey: 'cloudShare.title', labelKeys: [] },
-  { tab: 'data', groupId: 'integrity', titleKey: 'settings.integrity', labelKeys: [] },
-  { tab: 'data', groupId: 'profileSync', titleKey: 'settings.profileSync', labelKeys: ['settings.exportProfile', 'settings.importProfile'] },
-  // plugins
-  { tab: 'plugins', groupId: 'plugins', titleKey: 'settings.plugins', labelKeys: [] },
-  { tab: 'plugins', groupId: 'marketplace', titleKey: 'settings.marketplace', labelKeys: [] }
+  // evidence
+  { tab: 'evidence', groupId: 'engagement', titleKey: 'settings.engagement', labelKeys: ['settings.id', 'settings.name'] },
+  { tab: 'evidence', groupId: 'operator', titleKey: 'settings.operatorGroup', labelKeys: ['settings.id', 'settings.name'] },
+  { tab: 'evidence', groupId: 'operators', titleKey: 'settings.operators', labelKeys: [] },
+  { tab: 'evidence', groupId: 'integrity', titleKey: 'settings.integrity', labelKeys: [] },
+  { tab: 'evidence', groupId: 'exportAll', titleKey: 'settings.exportAll', labelKeys: ['settings.exportJson'] },
+  { tab: 'evidence', groupId: 'exportBundle', titleKey: 'settings.exportBundleTitle', labelKeys: [] },
+  { tab: 'evidence', groupId: 'scopeExport', titleKey: 'settings.scopeExport', labelKeys: ['settings.exportScopeJson'] },
+  { tab: 'evidence', groupId: 'profileSync', titleKey: 'settings.profileSync', labelKeys: ['settings.exportProfile', 'settings.importProfile'] },
+  // opsec
+  { tab: 'opsec', groupId: 'overlay', titleKey: 'settings.overlayGroup', labelKeys: ['settings.overlayShowInDock'] },
+  { tab: 'opsec', groupId: 'ipSafety', titleKey: 'settings.ipSafety', labelKeys: ['settings.whitelist', 'settings.blacklist'] },
+  { tab: 'opsec', groupId: 'polling', titleKey: 'settings.polling', labelKeys: ['settings.ipMode', 'settings.checkInterval', 'settings.confirmations', 'settings.ipProviders', 'settings.showWifiName'] },
+  { tab: 'opsec', groupId: 'vpnAdapters', titleKey: 'settings.vpnAdapters', labelKeys: [] },
+  // advanced
+  { tab: 'advanced', groupId: 'mcp', titleKey: 'settings.mcp', labelKeys: [] },
+  { tab: 'advanced', groupId: 'browser', titleKey: 'settings.browser', labelKeys: [] },
+  { tab: 'advanced', groupId: 'cdp', titleKey: 'settings.cdp', labelKeys: ['settings.testConnection'] },
+  { tab: 'advanced', groupId: 'deconfliction', titleKey: 'settings.deconfliction', labelKeys: [] },
+  { tab: 'advanced', groupId: 'plugins', titleKey: 'settings.plugins', labelKeys: [] },
+  { tab: 'advanced', groupId: 'marketplace', titleKey: 'settings.marketplace', labelKeys: [] },
+  { tab: 'advanced', groupId: 'cloudShare', titleKey: 'cloudShare.title', labelKeys: [] },
+  { tab: 'advanced', groupId: 'language', titleKey: 'settings.language', labelKeys: [] },
+  { tab: 'advanced', groupId: 'uiScale', titleKey: 'settings.uiScale', labelKeys: [] },
+  { tab: 'advanced', groupId: 'update', titleKey: 'settings.updateGroup', labelKeys: ['settings.checkUpdate'] }
 ]
 
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<TabId>('general')
+  const [tab, setTab] = useState<TabId>('capture')
   const [filter, setFilter] = useState('')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
@@ -166,28 +165,20 @@ export default function Settings(): JSX.Element {
 
   if (!config) return <div className="p-4 text-zinc-500">{t('settings.loading')}</div>
 
-  // v0.9.10: ten tabs down to eight, ordered by the question the operator is
-  // actually asking rather than by when each feature was added.
-  //   identity -> what gets recorded -> what's in bounds -> exposure ->
-  //   display -> external tools -> retention -> extensions
-  //
-  // Two merges:
-  //   · AI agent transcripts moved into Capture. It is a passive capture
-  //     source exactly like the clipboard, the file watcher and the process
-  //     monitor, all of which already live there; on its own it was a tab
-  //     holding three checkboxes, which made it look like a subsystem rather
-  //     than one source among several.
-  //   · Marketplace folded into Plugins as a sub-tab. "What is installed" and
-  //     "where to get more" are one task split across two top-level tabs.
+  // v0.11.8 (DESIGN-SETTINGS-IA Option B): eight tabs down to five, each named
+  // for the operator's question rather than a subsystem —
+  //   what gets recorded (Capture) -> what's in bounds (Scope) ->
+  //   what proves the work (Evidence) -> what leaks (OPSEC) -> the rest.
+  // General/HUD/Network/Integrations/Data dissolve: HUD+Network merge into one
+  // OPSEC front door; identity+integrity+export gather under Evidence; and
+  // everything rarely touched folds into Advanced, whose sections are collapsed
+  // by default (progressive disclosure).
   const tabs = [
-    { id: 'general' as const, label: t('settings.general') },
     { id: 'capture' as const, label: t('settings.capture') },
     { id: 'scope' as const, label: t('settings.scope') },
-    { id: 'network' as const, label: t('settings.networkIp') },
-    { id: 'hud' as const, label: t('settings.hud') },
-    { id: 'integrations' as const, label: t('settings.integrations') },
-    { id: 'data' as const, label: t('settings.data') },
-    { id: 'plugins' as const, label: t('settings.plugins') }
+    { id: 'evidence' as const, label: t('settings.evidence') },
+    { id: 'opsec' as const, label: t('settings.opsec') },
+    { id: 'advanced' as const, label: t('settings.advanced') }
   ]
 
   // F3: resolve the static group index against the current locale and run the
@@ -252,7 +243,168 @@ export default function Settings(): JSX.Element {
           )
         ) : (
         <>
-        {tab === 'general' && (
+        {tab === 'capture' && (
+          <>
+            <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
+            <AgentsPanel t={t} config={config} setConfig={setConfig} />
+            <FieldGroup title={t('settings.clipboardGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.clipboard?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.clipboardEnable')}</span>
+              </label>
+              <p className="text-xs text-zinc-600">{t('settings.clipboardEnableHint')}</p>
+              {config.clipboard?.enabled && (
+                <label className="flex items-center gap-2 cursor-pointer mt-2">
+                  <input
+                    type="checkbox"
+                    checked={config.clipboard?.storePreview === true}
+                    onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: true, storePreview: e.target.checked } })}
+                    className="accent-red-600"
+                  />
+                  <span className="text-xs text-zinc-300">{t('settings.clipboardStorePreview')}</span>
+                </label>
+              )}
+              {config.clipboard?.enabled && (
+                <p className="text-xs text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
+              )}
+            </FieldGroup>
+            <FieldGroup title={t('settings.screenshotQuality')}>
+              <Field
+                label={t('settings.jpegQuality')}
+                value={String(config.screenshot?.quality ?? 85)}
+                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+                type="number"
+              />
+              <p className="text-xs text-zinc-600">
+                {t('settings.qualityHint')}
+              </p>
+            </FieldGroup>
+            <FieldGroup title={t('settings.screenshotGroup')}>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { v: 0, k: 'settings.screenshot.interval.off' },
+                  { v: 30, k: 'settings.screenshot.interval.30s' },
+                  { v: 60, k: 'settings.screenshot.interval.60s' },
+                  { v: 300, k: 'settings.screenshot.interval.5m' }
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
+                    className={`px-3 py-1 text-xs rounded ${
+                      (config.screenshot.intervalSec ?? 0) === opt.v
+                        ? 'bg-red-600 text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >{t(opt.k)}</button>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-600 mt-2">{t('settings.screenshot.intervalHint')}</p>
+            </FieldGroup>
+            <FieldGroup title={t('settings.fileWatcherGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.fileWatcher?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.fileWatcherEnable')}</span>
+              </label>
+              <p className="text-xs text-zinc-600">{t('settings.fileWatcherEnableHint')}</p>
+              {config.fileWatcher?.enabled && (
+                <>
+                  <ListField
+                    label={t('settings.fileWatcherPaths')}
+                    items={config.fileWatcher?.watchPaths ?? []}
+                    onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, watchPaths: items } })}
+                    placeholder={t('settings.fileWatcherPathsPlaceholder')}
+                  />
+                  <ListField
+                    label={t('settings.fileWatcherIgnore')}
+                    items={config.fileWatcher?.ignorePatterns ?? []}
+                    onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, ignorePatterns: items } })}
+                    placeholder={t('settings.fileWatcherIgnorePlaceholder')}
+                  />
+                  <p className="text-xs text-zinc-600">{t('settings.fileWatcherIgnoreHint')}</p>
+                </>
+              )}
+            </FieldGroup>
+            <FieldGroup title={t('settings.processMonitorGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.processMonitor?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.processMonitorEnable')}</span>
+              </label>
+              <p className="text-xs text-zinc-600">{t('settings.processMonitorEnableHint')}</p>
+              {config.processMonitor?.enabled && (
+                <>
+                  <ListField
+                    label={t('settings.processMonitorIgnore')}
+                    items={config.processMonitor?.ignoreCommands ?? []}
+                    onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: true, ignoreCommands: items } })}
+                    placeholder={t('settings.processMonitorIgnorePlaceholder')}
+                  />
+                  <p className="text-xs text-zinc-600">{t('settings.processMonitorIgnoreHint')}</p>
+                </>
+              )}
+            </FieldGroup>
+            <HookWatchPathsPanel t={t} />
+          </>
+        )}
+
+        {tab === 'scope' && (
+          <>
+            <FieldGroup title={t('settings.scopeEnforcement')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.scope.warnOnViolation !== false}
+                  onChange={(e) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
+              </label>
+              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
+            </FieldGroup>
+            <FieldGroup title={t('settings.inScopeTargets')}>
+              <ListField
+                label={t('settings.targetsLabel')}
+                items={config.scope.targets}
+                onChange={(items) => setConfig({ ...config, scope: { ...config.scope, targets: items } })}
+                placeholder={t('settings.targetsPlaceholder')}
+              />
+            </FieldGroup>
+            <FieldGroup title={t('settings.excludedTargets')}>
+              <ListField
+                label={t('settings.excludeLabel')}
+                items={config.scope.excludeTargets}
+                onChange={(items) => setConfig({ ...config, scope: { ...config.scope, excludeTargets: items } })}
+                placeholder={t('settings.excludePlaceholder')}
+              />
+            </FieldGroup>
+            <FieldGroup title={t('settings.scopeFile')}>
+              <Field
+                label={t('settings.scopeFileLabel')}
+                value={config.scope.scopeFile || ''}
+                onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
+              />
+              <p className="text-xs text-zinc-600">
+                {t('settings.scopeFileHint')}
+              </p>
+            </FieldGroup>
+          </>
+        )}
+
+        {tab === 'evidence' && (
           <>
             <FieldGroup title={t('settings.engagement')}>
               <Field label={t('settings.id')} value={config.engagement.id} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, id: v } })} />
@@ -262,141 +414,73 @@ export default function Settings(): JSX.Element {
               <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
               <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
             </FieldGroup>
-            <FieldGroup title={t('settings.language')}>
-              <div className="flex gap-2">
-                {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
-                  <button
-                    key={l}
-                    onClick={() => setLocale(l)}
-                    className={`px-3 py-1.5 text-xs rounded ${
-                      locale === l
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                    }`}
-                  >
-                    {LOCALE_LABELS[l]}
-                  </button>
-                ))}
-              </div>
-            </FieldGroup>
-            <FieldGroup title={t('settings.uiScale')}>
-              <UiScaleControl t={t} />
-            </FieldGroup>
-          </>
-        )}
-
-        {tab === 'integrations' && (
-          <>
-            <McpPanel t={t} />
-            <HookWatchPathsPanel t={t} />
             <OperatorsPanel t={t} />
-            <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
-            <BrowserPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.cdp')}>
-              <p className="text-xs text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
+            <IntegrityPanel t={t} />
+            <FieldGroup title={t('settings.exportAll')}>
               <button
                 onClick={async () => {
-                  // Uses the CDP port from BrowserPanel above (config.browser.
-                  // cdpPort) — the previous separate field silently didn't
-                  // auto-save so users often set two different ports without
-                  // knowing (audit finding P0 #43).
-                  const port = config.browser?.cdpPort ?? 9222
-                  await window.redlog.cdp.setPort(port)
-                  const cdpTab = await window.redlog.cdp.getTab()
-                  if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
-                  else toast(t('settings.cdpNotConnected', { port: String(port) }), 'error')
+                  const path = await window.redlog.data.exportJson()
+                  setExportResult(path ? t('settings.savedTo', { path }) : t('settings.exportFailed'))
+                  setTimeout(() => setExportResult(null), 5000)
                 }}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
               >
-                {t('settings.testConnection')}
+                {t('settings.exportJson')}
               </button>
+              {exportResult && <p className="text-xs text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
+              <p className="text-xs text-zinc-600">
+                {t('settings.exportHint')}
+              </p>
             </FieldGroup>
-          </>
-        )}
-
-        {tab === 'network' && (
-          <>
-            <FieldGroup title={t('settings.ipSafety')}>
-              <ListField
-                label={t('settings.whitelist')}
-                items={config.network.whitelist}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, whitelist: items } })}
-                placeholder={t('settings.safeIpPlaceholder')}
-              />
-              <ListField
-                label={t('settings.blacklist')}
-                items={config.network.blacklist}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
-                placeholder={t('settings.exposedIpPlaceholder')}
-              />
+            <ExportBundlePanel t={t} />
+            <FieldGroup title={t('settings.scopeExport')}>
+              <button
+                onClick={async () => {
+                  const p = await (window.redlog.data as { exportScopeFiltered: () => Promise<string | null> }).exportScopeFiltered()
+                  setExportResult(p ? t('settings.savedTo', { path: p }) : t('settings.exportFailed'))
+                  if (p) toast(t('toast.scopeExported'), 'success')
+                  setTimeout(() => setExportResult(null), 5000)
+                }}
+                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+              >
+                {t('settings.exportScopeJson')}
+              </button>
+              <p className="text-xs text-zinc-600">
+                {t('settings.scopeExportHint')}
+              </p>
             </FieldGroup>
-            <FieldGroup title={t('settings.polling')}>
-              <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">{t('settings.ipMode')}</label>
-                <div className="flex gap-1">
-                  {(['auto', 'dns', 'http'] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setConfig({ ...config, network: { ...config.network, ipMode: m } })}
-                      className={`px-3 py-1 text-xs rounded transition-colors ${
-                        (config.network.ipMode ?? 'auto') === m ? 'bg-red-600/80 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                      }`}
-                    >
-                      {t(`settings.ipMode.${m}`)}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
+            <FieldGroup title={t('settings.profileSync')}>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const path = await window.redlog.config.exportProfile()
+                    if (path) toast(t('toast.profileExported'), 'success')
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                >
+                  {t('settings.exportProfile')}
+                </button>
+                <button
+                  onClick={async () => {
+                    const profile = await window.redlog.config.importProfile() as Record<string, unknown> | null
+                    if (profile) {
+                      setConfig(profile as unknown as ConfigState)
+                      toast(t('toast.profileImported'), 'success')
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                >
+                  {t('settings.importProfile')}
+                </button>
               </div>
-              {isMacOS && (
-                <div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={config.network.showWifiName ?? false}
-                      onChange={(e) => {
-                        const on = e.target.checked
-                        setConfig({ ...config, network: { ...config.network, showWifiName: on } })
-                        // Trigger the macOS Location Services prompt; once granted,
-                        // the OS un-redacts the SSID for the next network poll.
-                        if (on && navigator.geolocation) {
-                          navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
-                        }
-                      }}
-                      className="accent-red-600"
-                    />
-                    <span className="text-[11px] text-zinc-300">{t('settings.showWifiName')}</span>
-                  </label>
-                  <p className="text-xs text-zinc-600 mt-1">{t('settings.showWifiNameHint')}</p>
-                </div>
-              )}
-              <Field
-                label={t('settings.checkInterval')}
-                value={String(config.network.checkInterval)}
-                onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 60 } })}
-                type="number"
-              />
-              <p className="text-xs text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
-              <Field
-                label={t('settings.confirmations')}
-                value={String(config.network.confirmations ?? 3)}
-                onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
-                type="number"
-              />
-              <p className="text-xs text-zinc-600">{t('settings.confirmationsHint')}</p>
-              <ListField
-                label={t('settings.ipProviders')}
-                items={config.network.providers ?? []}
-                onChange={(items) => setConfig({ ...config, network: { ...config.network, providers: items } })}
-                placeholder="https://ip.internal.example/json"
-              />
-              <p className="text-xs text-zinc-600">{t('settings.ipProvidersHint')}</p>
+              <p className="text-xs text-zinc-600">
+                {t('settings.profileHint')}
+              </p>
             </FieldGroup>
-            <VpnAdaptersField config={config} setConfig={setConfig} />
           </>
         )}
 
-        {tab === 'hud' && (
+        {tab === 'opsec' && (
           <>
             <FieldGroup title={t('settings.overlayGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
@@ -497,249 +581,156 @@ export default function Settings(): JSX.Element {
                 </>
               )}
             </FieldGroup>
-          </>
-        )}
-
-        {tab === 'capture' && (
-          <>
-            <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
-            <AgentsPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.screenshotQuality')}>
+            <FieldGroup title={t('settings.ipSafety')}>
+              <ListField
+                label={t('settings.whitelist')}
+                items={config.network.whitelist}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, whitelist: items } })}
+                placeholder={t('settings.safeIpPlaceholder')}
+              />
+              <ListField
+                label={t('settings.blacklist')}
+                items={config.network.blacklist}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
+                placeholder={t('settings.exposedIpPlaceholder')}
+              />
+            </FieldGroup>
+            <FieldGroup title={t('settings.polling')}>
+              <div>
+                <label className="block text-[11px] text-zinc-400 mb-1">{t('settings.ipMode')}</label>
+                <div className="flex gap-1">
+                  {(['auto', 'dns', 'http'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setConfig({ ...config, network: { ...config.network, ipMode: m } })}
+                      className={`px-3 py-1 text-xs rounded transition-colors ${
+                        (config.network.ipMode ?? 'auto') === m ? 'bg-red-600/80 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {t(`settings.ipMode.${m}`)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
+              </div>
+              {isMacOS && (
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.network.showWifiName ?? false}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        setConfig({ ...config, network: { ...config.network, showWifiName: on } })
+                        // Trigger the macOS Location Services prompt; once granted,
+                        // the OS un-redacts the SSID for the next network poll.
+                        if (on && navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
+                        }
+                      }}
+                      className="accent-red-600"
+                    />
+                    <span className="text-[11px] text-zinc-300">{t('settings.showWifiName')}</span>
+                  </label>
+                  <p className="text-xs text-zinc-600 mt-1">{t('settings.showWifiNameHint')}</p>
+                </div>
+              )}
               <Field
-                label={t('settings.jpegQuality')}
-                value={String(config.screenshot?.quality ?? 85)}
-                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+                label={t('settings.checkInterval')}
+                value={String(config.network.checkInterval)}
+                onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 60 } })}
                 type="number"
               />
-              <p className="text-xs text-zinc-600">
-                {t('settings.qualityHint')}
-              </p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.clipboardGroup')}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.clipboard?.enabled === true}
-                  onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: e.target.checked } })}
-                  className="accent-red-600"
-                />
-                <span className="text-xs text-zinc-300">{t('settings.clipboardEnable')}</span>
-              </label>
-              <p className="text-xs text-zinc-600">{t('settings.clipboardEnableHint')}</p>
-              {config.clipboard?.enabled && (
-                <label className="flex items-center gap-2 cursor-pointer mt-2">
-                  <input
-                    type="checkbox"
-                    checked={config.clipboard?.storePreview === true}
-                    onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: true, storePreview: e.target.checked } })}
-                    className="accent-red-600"
-                  />
-                  <span className="text-xs text-zinc-300">{t('settings.clipboardStorePreview')}</span>
-                </label>
-              )}
-              {config.clipboard?.enabled && (
-                <p className="text-xs text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
-              )}
-            </FieldGroup>
-            <FieldGroup title={t('settings.fileWatcherGroup')}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.fileWatcher?.enabled === true}
-                  onChange={(e) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: e.target.checked } })}
-                  className="accent-red-600"
-                />
-                <span className="text-xs text-zinc-300">{t('settings.fileWatcherEnable')}</span>
-              </label>
-              <p className="text-xs text-zinc-600">{t('settings.fileWatcherEnableHint')}</p>
-              {config.fileWatcher?.enabled && (
-                <>
-                  <ListField
-                    label={t('settings.fileWatcherPaths')}
-                    items={config.fileWatcher?.watchPaths ?? []}
-                    onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, watchPaths: items } })}
-                    placeholder={t('settings.fileWatcherPathsPlaceholder')}
-                  />
-                  <ListField
-                    label={t('settings.fileWatcherIgnore')}
-                    items={config.fileWatcher?.ignorePatterns ?? []}
-                    onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, ignorePatterns: items } })}
-                    placeholder={t('settings.fileWatcherIgnorePlaceholder')}
-                  />
-                  <p className="text-xs text-zinc-600">{t('settings.fileWatcherIgnoreHint')}</p>
-                </>
-              )}
-            </FieldGroup>
-            <FieldGroup title={t('settings.processMonitorGroup')}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.processMonitor?.enabled === true}
-                  onChange={(e) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: e.target.checked } })}
-                  className="accent-red-600"
-                />
-                <span className="text-xs text-zinc-300">{t('settings.processMonitorEnable')}</span>
-              </label>
-              <p className="text-xs text-zinc-600">{t('settings.processMonitorEnableHint')}</p>
-              {config.processMonitor?.enabled && (
-                <>
-                  <ListField
-                    label={t('settings.processMonitorIgnore')}
-                    items={config.processMonitor?.ignoreCommands ?? []}
-                    onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: true, ignoreCommands: items } })}
-                    placeholder={t('settings.processMonitorIgnorePlaceholder')}
-                  />
-                  <p className="text-xs text-zinc-600">{t('settings.processMonitorIgnoreHint')}</p>
-                </>
-              )}
-            </FieldGroup>
-          </>
-        )}
-
-        {tab === 'data' && (
-          <>
-            <FieldGroup title={t('settings.screenshotGroup')}>
-              <div className="flex items-center gap-2 flex-wrap">
-                {[
-                  { v: 0, k: 'settings.screenshot.interval.off' },
-                  { v: 30, k: 'settings.screenshot.interval.30s' },
-                  { v: 60, k: 'settings.screenshot.interval.60s' },
-                  { v: 300, k: 'settings.screenshot.interval.5m' }
-                ].map((opt) => (
-                  <button
-                    key={opt.v}
-                    onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
-                    className={`px-3 py-1 text-xs rounded ${
-                      (config.screenshot.intervalSec ?? 0) === opt.v
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                    }`}
-                  >{t(opt.k)}</button>
-                ))}
-              </div>
-              <p className="text-xs text-zinc-600 mt-2">{t('settings.screenshot.intervalHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.updateGroup')}>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => window.redlog.app.checkForUpdates()}
-                  className="px-3 py-1 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
-                >
-                  {t('settings.checkUpdate')}
-                </button>
-                <span className="text-xs text-zinc-600 font-mono">v{__APP_VERSION__}</span>
-              </div>
-              <p className="text-xs text-zinc-600">{t('settings.checkUpdateHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.exportAll')}>
-              <button
-                onClick={async () => {
-                  const path = await window.redlog.data.exportJson()
-                  setExportResult(path ? t('settings.savedTo', { path }) : t('settings.exportFailed'))
-                  setTimeout(() => setExportResult(null), 5000)
-                }}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
-              >
-                {t('settings.exportJson')}
-              </button>
-              {exportResult && <p className="text-xs text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
-              <p className="text-xs text-zinc-600">
-                {t('settings.exportHint')}
-              </p>
-            </FieldGroup>
-            <ExportBundlePanel t={t} />
-            <FieldGroup title={t('settings.scopeExport')}>
-              <button
-                onClick={async () => {
-                  const p = await (window.redlog.data as { exportScopeFiltered: () => Promise<string | null> }).exportScopeFiltered()
-                  setExportResult(p ? t('settings.savedTo', { path: p }) : t('settings.exportFailed'))
-                  if (p) toast(t('toast.scopeExported'), 'success')
-                  setTimeout(() => setExportResult(null), 5000)
-                }}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
-              >
-                {t('settings.exportScopeJson')}
-              </button>
-              <p className="text-xs text-zinc-600">
-                {t('settings.scopeExportHint')}
-              </p>
-            </FieldGroup>
-            <CloudSharePanel t={t} />
-            <IntegrityPanel t={t} />
-            <FieldGroup title={t('settings.profileSync')}>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    const path = await window.redlog.config.exportProfile()
-                    if (path) toast(t('toast.profileExported'), 'success')
-                  }}
-                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
-                >
-                  {t('settings.exportProfile')}
-                </button>
-                <button
-                  onClick={async () => {
-                    const profile = await window.redlog.config.importProfile() as Record<string, unknown> | null
-                    if (profile) {
-                      setConfig(profile as unknown as ConfigState)
-                      toast(t('toast.profileImported'), 'success')
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
-                >
-                  {t('settings.importProfile')}
-                </button>
-              </div>
-              <p className="text-xs text-zinc-600">
-                {t('settings.profileHint')}
-              </p>
-            </FieldGroup>
-          </>
-        )}
-
-        {tab === 'scope' && (
-          <>
-            <FieldGroup title={t('settings.scopeEnforcement')}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.scope.warnOnViolation !== false}
-                  onChange={(e) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: e.target.checked } })}
-                  className="accent-red-600"
-                />
-                <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
-              </label>
-              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.inScopeTargets')}>
-              <ListField
-                label={t('settings.targetsLabel')}
-                items={config.scope.targets}
-                onChange={(items) => setConfig({ ...config, scope: { ...config.scope, targets: items } })}
-                placeholder={t('settings.targetsPlaceholder')}
-              />
-            </FieldGroup>
-            <FieldGroup title={t('settings.excludedTargets')}>
-              <ListField
-                label={t('settings.excludeLabel')}
-                items={config.scope.excludeTargets}
-                onChange={(items) => setConfig({ ...config, scope: { ...config.scope, excludeTargets: items } })}
-                placeholder={t('settings.excludePlaceholder')}
-              />
-            </FieldGroup>
-            <FieldGroup title={t('settings.scopeFile')}>
+              <p className="text-xs text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
               <Field
-                label={t('settings.scopeFileLabel')}
-                value={config.scope.scopeFile || ''}
-                onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
+                label={t('settings.confirmations')}
+                value={String(config.network.confirmations ?? 3)}
+                onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
+                type="number"
               />
-              <p className="text-xs text-zinc-600">
-                {t('settings.scopeFileHint')}
-              </p>
+              <p className="text-xs text-zinc-600">{t('settings.confirmationsHint')}</p>
+              <ListField
+                label={t('settings.ipProviders')}
+                items={config.network.providers ?? []}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, providers: items } })}
+                placeholder="https://ip.internal.example/json"
+              />
+              <p className="text-xs text-zinc-600">{t('settings.ipProvidersHint')}</p>
             </FieldGroup>
+            <VpnAdaptersField config={config} setConfig={setConfig} />
           </>
         )}
-        {tab === 'plugins' && <PluginsTab t={t} />}
+
+        {tab === 'advanced' && (
+          <>
+            <Collapsible title={t('settings.advanced.integrations')}>
+              <McpPanel t={t} />
+              <BrowserPanel t={t} config={config} setConfig={setConfig} />
+              <FieldGroup title={t('settings.cdp')}>
+                <p className="text-xs text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
+                <button
+                  onClick={async () => {
+                    // Uses the CDP port from BrowserPanel above (config.browser.
+                    // cdpPort) — the previous separate field silently didn't
+                    // auto-save so users often set two different ports without
+                    // knowing (audit finding P0 #43).
+                    const port = config.browser?.cdpPort ?? 9222
+                    await window.redlog.cdp.setPort(port)
+                    const cdpTab = await window.redlog.cdp.getTab()
+                    if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
+                    else toast(t('settings.cdpNotConnected', { port: String(port) }), 'error')
+                  }}
+                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+                >
+                  {t('settings.testConnection')}
+                </button>
+              </FieldGroup>
+            </Collapsible>
+            <Collapsible title={t('settings.advanced.team')}>
+              <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
+            </Collapsible>
+            <Collapsible title={t('settings.advanced.plugins')}>
+              <PluginsTab t={t} />
+            </Collapsible>
+            <Collapsible title={t('settings.advanced.cloud')}>
+              <CloudSharePanel t={t} />
+            </Collapsible>
+            <Collapsible title={t('settings.advanced.app')}>
+              <FieldGroup title={t('settings.language')}>
+                <div className="flex gap-2">
+                  {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => setLocale(l)}
+                      className={`px-3 py-1.5 text-xs rounded ${
+                        locale === l
+                          ? 'bg-red-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {LOCALE_LABELS[l]}
+                    </button>
+                  ))}
+                </div>
+              </FieldGroup>
+              <FieldGroup title={t('settings.uiScale')}>
+                <UiScaleControl t={t} />
+              </FieldGroup>
+              <FieldGroup title={t('settings.updateGroup')}>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => window.redlog.app.checkForUpdates()}
+                    className="px-3 py-1 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                  >
+                    {t('settings.checkUpdate')}
+                  </button>
+                  <span className="text-xs text-zinc-600 font-mono">v{__APP_VERSION__}</span>
+                </div>
+                <p className="text-xs text-zinc-600">{t('settings.checkUpdateHint')}</p>
+              </FieldGroup>
+            </Collapsible>
+          </>
+        )}
         </>
         )}
       </div>
@@ -772,6 +763,27 @@ function FieldGroup({ title, children }: { title: string; children: React.ReactN
     <div className="space-y-2">
       <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{title}</h3>
       <div className="space-y-2">{children}</div>
+    </div>
+  )
+}
+
+// v0.11.8 (DESIGN-SETTINGS-IA Option B): a self-contained collapsible section
+// for the Advanced tab. Each section owns its own open state and starts
+// collapsed — the two-level progressive-disclosure cut that keeps rarely
+// touched settings one click away without cluttering the four front-door tabs.
+function Collapsible({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border border-redlog-border rounded">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+      >
+        <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{title}</span>
+        <span className="text-zinc-500 text-xs" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div className="px-3 pb-3 pt-1 space-y-4 border-t border-redlog-border">{children}</div>}
     </div>
   )
 }
