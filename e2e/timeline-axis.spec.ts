@@ -66,4 +66,12 @@ test.describe.serial('timeline lane axis', () => {
     await expect(page.getByText('timeline crashed')).toHaveCount(0)
     await expect(shellLane()).toBeVisible()
   })
+
+  test('phase ribbon toggles on without crashing', async () => {
+    // The scanner/dns events infer a "recon" phase, so the ribbon has a dashed
+    // band to render. Just guard that enabling it doesn't crash the track.
+    await page.getByRole('button').filter({ hasText: 'Phases' }).first().click({ timeout: 5000 })
+    await expect(page.getByText('timeline crashed')).toHaveCount(0)
+    await expect(shellLane()).toBeVisible()
+  })
 })
