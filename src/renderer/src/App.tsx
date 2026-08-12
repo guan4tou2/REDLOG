@@ -7,7 +7,6 @@ import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
 import ProjectPicker from './components/ProjectPicker'
-import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
 import { SearchPanel } from './components/SearchPanel'
@@ -74,6 +73,21 @@ export default function App(): JSX.Element {
     if (target === 'dashboard') setView('dashboard')
     else if (target === 'marker') setShowMarker(true)
     else if (target === 'screenshot') window.redlog.screenshot.capture().catch(() => {})
+  }
+
+  // Navigation. Phase C step 5 (O3): the standalone TargetView is gone — the
+  // timeline's target lane axis subsumes it — so the "Targets" entry deep-links
+  // into the Timeline with the target axis switched on (persisted + a live event
+  // in case the panel is already mounted).
+  const goTo = (v: View): void => {
+    setFocusEvent(null)
+    if (v === 'targets') {
+      try { localStorage.setItem('redlog-timeline-lane-axis', 'target') } catch { /* private mode */ }
+      window.dispatchEvent(new CustomEvent('redlog-timeline-set-axis', { detail: 'target' }))
+      setView('timeline')
+      return
+    }
+    setView(v)
   }
 
   useEffect(() => {
@@ -163,7 +177,7 @@ export default function App(): JSX.Element {
         const target = viewForShortcut(num)
         if (target) {
           e.preventDefault()
-          setView(target)
+          goTo(target)
         }
       }
     }
@@ -216,7 +230,7 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
+        <Sidebar active={view} onNavigate={(v) => goTo(v as View)} />
 
         <div className="flex-1 min-w-0" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view}>
@@ -239,7 +253,8 @@ export default function App(): JSX.Element {
               />
             )}
             {view === 'screenshots' && <ScreenshotsView onEmptyAction={handleEmptyAction} />}
-            {view === 'targets' && <TargetView onEmptyAction={handleEmptyAction} />}
+            {/* Phase C step 5 (O3): TargetView removed — the "Targets" sidebar
+                entry deep-links into the Timeline's target axis via goTo(). */}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} onEmptyAction={handleEmptyAction} />}
             {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} onEmptyAction={handleEmptyAction} />}
