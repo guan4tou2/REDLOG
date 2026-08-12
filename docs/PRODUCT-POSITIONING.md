@@ -25,18 +25,39 @@ explains it.
 > and hand a client or my own legal team something they can trust — **without
 > spending the engagement taking notes.**
 
-Two halves, and both are load-bearing:
+One core, one feeder — not two co-equal halves (see `DESIGN-PRINCIPLES.md` §1):
 
-1. **Complete + defensible** — the record has to survive scrutiny. That is the
-   hash chain, the OpenTimestamps anchor, the operator attribution, the signed
-   bundle. This is what separates RedLog from a scratchpad.
-2. **Without taking notes** — capture has to be passive. The moment logging
-   depends on the operator remembering to log, the record has holes exactly
-   where the interesting things happened. This is why hooks are the backbone
-   and MCP is only the control plane (see `agent-integration.md`).
+1. **The core is evidentiary.** The reason RedLog exists is the tamper-evident
+   record a third party can verify: the hash chain, the OpenTimestamps anchor,
+   the operator attribution, the signed bundle. This is what separates RedLog
+   from a scratchpad, and it is what every feature ultimately answers to.
+2. **Passive capture is the feeder, not the point.** Capture must be passive
+   because a record you must remember to make has holes exactly where the
+   interesting things happened, and a holey record is not defensible. So passive
+   capture is *necessary* — but its necessity is derived from the evidentiary
+   core, not independent of it. This is why hooks are the backbone and MCP is
+   only the control plane (see `agent-integration.md`).
 
-Everything RedLog does is in service of one of these two. A feature that serves
-neither is scope creep.
+**Necessity test** (the yardstick for every feature): it earns its place iff it
+strengthens the chain, feeds capture that would otherwise be lost, or serves the
+live-OPSEC front door (below). Anything else is a *frozen secondary identity* or
+scope creep. The full tiering and the design laws behind it live in
+`DESIGN-PRINCIPLES.md`.
+
+## Two front doors, one reason to exist
+
+RedLog has two entry points, and conflating them mis-sizes half the roadmap:
+
+- **Evidence recorder** *(primary)* — the reason RedLog exists. Remove it and
+  what's left is an OPSEC widget, not RedLog.
+- **Live-OPSEC HUD** *(co-headline)* — a genuinely standalone-usable second
+  front door. Some operators use *only* the HUD (external-IP / EXPOSED alarm,
+  live pivot chain, capture-health) and never record an engagement. It is a main,
+  marketed, on-its-own-usable feature — but its OPSEC scope is **frozen**: it
+  does not grow new OPSEC features. There is a first-class HUD-only runtime mode
+  (main window closed; monitors + overlay + tray keep running), and first-run
+  leads with the zero-setup HUD value while stating plainly that evidence
+  recording is the core. See `DESIGN-PRINCIPLES.md` §4.
 
 ## Who it's for
 
@@ -65,6 +86,17 @@ Drives the engagement through Claude Code / Codex / OpenCode. Their risk is a
 the transcript tailer + shell hooks (passive, can't be forgotten) with MCP as an
 explicit control plane. This persona is why "hooks log, MCP operates" is a hard
 rule, not a preference.
+
+### P4 — The HUD-only operator
+
+Uses RedLog purely as a live-OPSEC display — external-IP / EXPOSED alarm, live
+pivot chain, capture-health at a glance — and may never record an engagement.
+Enters through the second front door (above). Cares about: **zero setup, always
+on top, out of the way.** This persona is why the HUD must run with the main
+window closed and why first-run must give OPSEC value before asking for any
+capture wiring. They are a first-class user, not an edge case — but the tray and
+overlay always keep the evidence core one click away, because that is what RedLog
+is *for*.
 
 ### S1 — The evidence consumer *(stakeholder, not a user)*
 

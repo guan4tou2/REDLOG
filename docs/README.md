@@ -14,6 +14,7 @@ Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links 
 
 ## Product & planning
 
+- **[Design principles](DESIGN-PRINCIPLES.md)** — the durable design laws behind RedLog: evidence-core, capture-broad-sanitize-later, the two-tier attribute law (record facts, never interpretation-as-fact), two front doors, accept-but-freeze, agents-are-a-capture-source, one-implementation control plane, timeline-as-reconstruction. The yardstick every "should we build X?" answers to; positioning and roadmap elaborate it.
 - **[Product positioning](PRODUCT-POSITIONING.md)** — the single source of truth for who RedLog is for (personas P1–P3 + the evidence-consumer stakeholder), the job to be done, the explicit non-goals, and where RedLog sits vs. Ghostwriter / RedEye / PwnDoc / manual oplogs. When positioning and roadmap disagree, this page wins.
 - **[Architecture](ARCHITECTURE.md)** — process/layer model, startup order, DB schema and migration strategy, the capture pipeline end to end, tailer host, evidence chain, export, plugin system, IPC conventions. Replaces the stale ASCII diagram in the README.
 - **[Roadmap](ROADMAP.md)** — what ships next and the v1.0 gate. Also states what is deliberately not planned.
