@@ -139,24 +139,25 @@ not rebuilt.
 | Phase inference reads as authoritative | Enforced by design: dashed rendering + promote-to-marker; inference never writes to the chain (§3) |
 | Concurrent edits to Timeline.tsx (has happened) | Single-owner sequential passes; check `git status`/mtime before each |
 
-## Open questions (resolve before step 2/4)
+## Open questions — RESOLVED 2026-08-11
 
-- **O1 — phase representation:** ribbon overlay (recommended) vs. a third
-  `laneAxis='phase'` mode. Recommendation: ribbon, because phase is temporal and
-  ribbon lets target×phase coexist. Needs a yes/no.
-- **O2 — default axis at ship:** keep `source` default (safest, recommended) or
-  make `target` the default once proven? Recommendation: ship `source`-default,
-  revisit after dogfooding.
-- **O3 — TargetView fate (step 5):** deprecate/remove vs. keep as a deep-link
-  into `laneAxis='target'`. Recommendation: keep as a deep-link first, remove only
-  after the axis fully subsumes it.
+- **O1 — phase representation → RIBBON overlay.** Phase renders as a horizontal
+  time-band at the top of the time axis, independent of the lane axis, so target
+  lanes and phase coexist. (Not a third `laneAxis='phase'` mode.)
+- **O2 — default axis at ship → keep `source`.** `target` is opt-in; nothing
+  changes on upgrade until the operator switches. Revisit the default after
+  dogfooding.
+- **O3 — TargetView → REMOVE.** The `target` lane axis fully subsumes TargetView;
+  step 5 deletes the separate view rather than keeping it as a deep-link. (More
+  decisive than the original recommendation — the axis is the one place targets
+  are reviewed.)
 
 ## Sequencing summary
 
 Step 1 (T5 seams, no behaviour change) → Step 2 (`timelineAxis` seam, source
 default) → Step 3 (wire target axis behind View options) → Step 4 (phase ribbon +
-promote) → Step 5 (fold TargetView). Steps 1–2 are low-risk and can start
-immediately; 3–5 gate on O1/O2/O3.
+promote) → Step 5 (**remove** TargetView, per O3). Steps 1–2 shipped (commits
+7c98579, dfceb47); O1–O3 resolved, so 3–5 are unblocked.
 
 Cross-references: `DESIGN-PRINCIPLES.md` §3/§8/§9/§11/§12 · `UX-TIMELINE-2026-08.md`
 (T-series) · `UX-BACKLOG-TICKETS.md` (T4/T5/T6) · Phase B commit `d8494c2`.
