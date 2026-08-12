@@ -935,12 +935,24 @@ interface PluginView {
   error?: string
 }
 
+/** §5 shelved (DESIGN-PRINCIPLES.md): RedLog is a product, not a platform. The
+ *  plugin marketplace (signed registry / publisher trust / one-click trust) is
+ *  zero current demand × high ongoing cost × negligence-becomes-risk over-build,
+ *  so it is hidden from the default Settings — kept in code, not deleted. Flip to
+ *  true to restore the Marketplace sub-tab once a real distribution need appears. */
+const MARKETPLACE_ENABLED = false
+
 /** v0.9.10: Plugins and Marketplace were separate top-level tabs, but they are
  *  one task — "what do I have" and "what can I get" — and the operator moves
  *  between them constantly while installing something. Sub-tabs keep both a
  *  click away without spending two of the eight top-level slots. */
 function PluginsTab({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [sub, setSub] = useState<'installed' | 'marketplace'>('installed')
+  // §5 shelved: with the marketplace hidden there is only the installed panel,
+  // so skip the sub-tab bar entirely and show it directly (see MARKETPLACE_ENABLED).
+  if (!MARKETPLACE_ENABLED) {
+    return <PluginsPanel t={t} />
+  }
   return (
     <>
       <div className="flex gap-1 mb-3">

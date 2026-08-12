@@ -132,7 +132,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               title={`${item.label} · ${isMac ? '⌘' : 'Ctrl+'}${index + 1}${index === 0 ? '  (' + t('sidebar.reorderHint') + ')' : ''}`}
               aria-label={`${item.label} — ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
+              className={`group w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
                 draggingId === item.id ? 'bg-white/[0.07] cursor-grabbing' : ''
               } ${
                 isActive
@@ -146,10 +146,15 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               <span className={`text-[13px] leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
                 {item.icon}
               </span>
-              <span className={`text-[11px] leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
+              <span className={`text-[11px] leading-none truncate font-medium flex-1 min-w-0 ${isActive ? 'text-red-400' : ''}`}>
                 {item.label}
               </span>
               {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-zinc-500')}
+              {/* F7: a low-weight drag-handle so "these reorder" is visible on
+                  hover, not buried in the first item's tooltip. Purely a hint —
+                  the whole button is the pointer drag target (handlers above),
+                  this glyph changes no drag logic. */}
+              <span aria-hidden className="text-[11px] leading-none text-zinc-500 opacity-0 group-hover:opacity-60 transition-opacity duration-150 cursor-grab shrink-0">⠿</span>
             </button>
           )
         })}

@@ -217,6 +217,22 @@ export default function App(): JSX.Element {
         </div>
         <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* F6: a persistent pointer entry to the Search view. It was only
+              reachable via ⌘/ (or ⌘K) before, so a newcomer couldn't find the
+              headline full-text search by looking. Kept out of the sidebar to
+              leave DEFAULT_ORDER length + the ⌘1..N numbering untouched. */}
+          <button
+            onClick={() => setView('search')}
+            className={`px-2 py-1 rounded-md border transition-colors ${
+              view === 'search'
+                ? 'text-red-400 bg-red-500/10 border-red-500/15'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05] border-transparent'
+            }`}
+            title={t('app.search')}
+            aria-label={t('app.search')}
+          >
+            <span aria-hidden className="text-[13px] leading-none">⌕</span>
+          </button>
           <LaunchBrowserButton />
           <button
             onClick={() => setShowMarker(true)}
