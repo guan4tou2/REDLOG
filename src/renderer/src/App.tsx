@@ -15,12 +15,14 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
-import { LoadingSpinner } from './components/Feedback'
+import { LoadingSpinner, EmptyState } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { computeCaptureReadiness } from './lib/captureReadiness'
+import { emptyStateFor } from './lib/emptyState'
+import { shortcutsForScope, MOD_TOKEN } from './lib/shortcuts'
 import { useI18n } from './i18n'
-import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
+import { loadSidebarOrder, type SidebarViewId } from './lib/sidebarOrder'
 import logoUrl from './assets/logo.svg'
 
 type View = SidebarViewId | 'settings' | 'search'
@@ -63,6 +65,16 @@ export default function App(): JSX.Element {
   const [showMarker, setShowMarker] = useState(false)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const { t } = useI18n()
+
+  // F4: turns an empty view's CTA target (from emptyStateFor) into an app-level
+  // action. Threaded to the empty views so their "nothing here" screens have a
+  // way forward instead of being dead ends. 'doc' has no in-app destination yet,
+  // so those CTAs are suppressed at the view rather than wired to a no-op.
+  const handleEmptyAction = (target: string): void => {
+    if (target === 'dashboard') setView('dashboard')
+    else if (target === 'marker') setShowMarker(true)
+    else if (target === 'screenshot') window.redlog.screenshot.capture().catch(() => {})
+  }
 
   useEffect(() => {
     window.redlog.project.active().then((p) => {
@@ -223,13 +235,14 @@ export default function App(): JSX.Element {
               <TranscriptView
                 key={project?.id ?? 'no-project'}
                 onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); onNavigate('timeline') }}
+                onEmptyAction={handleEmptyAction}
               />
             )}
-            {view === 'screenshots' && <ScreenshotsView />}
-            {view === 'targets' && <TargetView />}
+            {view === 'screenshots' && <ScreenshotsView onEmptyAction={handleEmptyAction} />}
+            {view === 'targets' && <TargetView onEmptyAction={handleEmptyAction} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
-            {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
+            {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} onEmptyAction={handleEmptyAction} />}
+            {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} onEmptyAction={handleEmptyAction} />}
             {view === 'settings' && <Settings />}
             {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
           </ErrorBoundary>
@@ -831,8 +844,14 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               // Settings is pinned to ⌘9 rather than carried by shortcutOrder,
               // so it has to be listed explicitly (v0.11.2).
               [`${modKey}9`, t('sidebar.settings')] as [string, string],
-              [isMac ? '⌘⇧M' : 'Ctrl+Shift+M', t('dashboard.addMarker')] as [string, string],
-              [`${modKey}/`, t('dashboard.search')] as [string, string]
+              // Non-view global shortcuts come from the single shortcut registry
+              // (lib/shortcuts.ts) so this card and the Timeline `?` cheatsheet
+              // stay in sync — adding a global shortcut there surfaces it here,
+              // and it picks up ones this card used to omit (e.g. ⌘. pause).
+              // switch-view is rendered dynamically above (per reorderable order).
+              ...shortcutsForScope('global')
+                .filter((s) => s.id !== 'switch-view')
+                .map((s) => [s.keys.replaceAll(MOD_TOKEN, isMac ? '⌘' : 'Ctrl+'), t(s.labelKey)] as [string, string])
             ].map(([key, label]) => (
               <div key={key} className="flex items-center gap-2.5">
                 <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{key}</kbd>
@@ -865,7 +884,7 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   )
 }
 
-function ScreenshotsView(): JSX.Element {
+function ScreenshotsView({ onEmptyAction }: { onEmptyAction?: (target: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -937,15 +956,21 @@ function ScreenshotsView(): JSX.Element {
           {t('screenshots.captureNow')}
         </button>
       </div>
-      {screenshots.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-            <span className="text-2xl text-zinc-700">◻</span>
-          </div>
-          <p className="text-zinc-500 text-sm">{t('screenshots.empty')}</p>
-          <p className="text-zinc-700 text-xs">{t('screenshots.emptyDesc')}</p>
-        </div>
-      ) : (() => {
+      {screenshots.length === 0 ? (() => {
+        // F4: the shared EmptyState with a working CTA, driven by the pure
+        // emptyStateFor map, instead of a hand-rolled dead end.
+        const es = emptyStateFor('screenshots', { captureDark: false })
+        return (
+          <EmptyState
+            icon="◻"
+            title={t(es.titleKey)}
+            subtitle={t(es.subtitleKey)}
+            action={es.action && es.action.target !== 'doc'
+              ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+              : undefined}
+          />
+        )
+      })() : (() => {
         // Trigger filter (audit #32) — all captures land in one grid mixing
         // periodic / manual / mark-triggered. Chip toggles narrow the view.
         const triggerCounts = new Map<string, number>()
