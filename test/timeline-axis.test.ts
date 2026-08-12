@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lanesForAxis, laneOfEvent, UNTARGETED_LANE } from '../src/renderer/src/lib/timelineAxis'
+import { lanesForAxis, laneOfEvent, buildLaneModel, UNTARGETED_LANE } from '../src/renderer/src/lib/timelineAxis'
 import type { AxisEvent, AxisLane } from '../src/renderer/src/lib/timelineAxis'
 
 // timelineAxis is the Phase C seam that lets the timeline's swim-lane rows come
@@ -73,5 +73,29 @@ describe('laneOfEvent', () => {
     const events = [ev('a', 1, 'a.com'), ev('b', 2, null), ev('c', 3, 'b.com')]
     const laneIds = new Set(lanesForAxis('target', events, SOURCE_LANES, 'U').map((l) => l.id))
     for (const e of events) expect(laneIds.has(laneOfEvent('target', e, sourceLaneOf))).toBe(true)
+  })
+})
+
+describe('buildLaneModel', () => {
+  it('source: lanes are the source lanes, grouped by sourceLaneOf, every lane seeded', () => {
+    const events = [ev('a', 1, null, 'shell'), ev('b', 2, null, 'dns'), ev('c', 3, null, 'shell')]
+    const m = buildLaneModel('source', events, SOURCE_LANES, sourceLaneOf, 'Untargeted')
+    expect(m.lanes).toEqual(SOURCE_LANES)
+    expect(m.laneEvents['shell'].map((e) => e.id)).toEqual(['a', 'c'])
+    expect(m.laneEvents['dns'].map((e) => e.id)).toEqual(['b'])
+    expect(m.laneOf(events[0])).toBe('shell')
+  })
+
+  it('target: lanes from grouping, events bucketed by target, untargeted seeded', () => {
+    const events = [ev('a', 10, 'x.com'), ev('b', 20, null), ev('c', 30, 'x.com')]
+    const m = buildLaneModel('target', events, SOURCE_LANES, sourceLaneOf, 'Untargeted')
+    expect(m.lanes.map((l) => l.id)).toEqual(['x.com', UNTARGETED_LANE])
+    expect(m.laneEvents['x.com'].map((e) => e.id)).toEqual(['a', 'c'])
+    expect(m.laneEvents[UNTARGETED_LANE].map((e) => e.id)).toEqual(['b'])
+  })
+
+  it('every lane in `lanes` has an entry even when empty (source seeding)', () => {
+    const m = buildLaneModel('source', [ev('a', 1, null, 'shell')], SOURCE_LANES, sourceLaneOf, 'U')
+    expect(m.laneEvents['dns']).toEqual([]) // seeded empty, safe to index
   })
 })
