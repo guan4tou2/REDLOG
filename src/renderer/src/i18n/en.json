@@ -845,6 +845,7 @@
   "marketplace.publisherTrusted": "Trusted {{id}} — its signed plugins can now be installed",
   "timeline.detail.httpRequestParams": "request",
   "timeline.detail.httpResponseBody": "response body",
+  "timeline.detail.httpRequestBody": "request body",
   "timeline.detail.httpHeaders": "headers",
   "timeline.detail.httpBodyNotCaptured": "response body not captured — {{size}} of {{type}}. mitmproxy stores a 2 KB preview of textual responses only.",
   "timeline.detail.httpBodyBinary": "response body not captured — {{size}} of {{type}}, which is not a textual type.",

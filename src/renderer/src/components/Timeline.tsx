@@ -3984,6 +3984,18 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           startOpen
         />
       )}
+      {/* The request body the mitmproxy addon captures (request_body_preview) was
+          collected but never shown — only params were. Render it like the
+          response body so POST/PUT payloads are actually reviewable. */}
+      {!isResponse && typeof data.request_body_preview === 'string' && (data.request_body_preview as string).length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.httpRequestBody')}
+          content={data.request_body_preview as string}
+          bytes={(data.request_body_preview as string).length}
+          accent="cyan"
+          startOpen
+        />
+      )}
       {isResponse && preview.length > 0 && (
         <CollapsibleStream
           label={t('timeline.detail.httpResponseBody')}

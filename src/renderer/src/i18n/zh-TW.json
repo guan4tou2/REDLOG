@@ -845,6 +845,7 @@
   "marketplace.publisherTrusted": "已信任 {{id}} — 其簽章的 plugin 現在可以安裝",
   "timeline.detail.httpRequestParams": "請求內容",
   "timeline.detail.httpResponseBody": "回應主體",
+  "timeline.detail.httpRequestBody": "請求主體",
   "timeline.detail.httpHeaders": "標頭",
   "timeline.detail.httpBodyNotCaptured": "未捕獲回應主體 — {{size}} 的 {{type}}。mitmproxy 僅儲存文字型回應的 2 KB 預覽。",
   "timeline.detail.httpBodyBinary": "未捕獲回應主體 — {{size}} 的 {{type}}，並非文字型內容。",
