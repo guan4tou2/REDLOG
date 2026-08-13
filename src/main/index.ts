@@ -24,6 +24,8 @@ import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../c
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention } from '../core/retention'
+import { classifyTarget } from '../core/scope-monitor'
+import type { ScopeVerdict } from '../core/artifact-pin'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
@@ -493,7 +495,12 @@ function startProject(project: ProjectMeta): void {
     // castKeepDays / screenshots.keepDays silently did nothing and the
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
-    const swept = sweepRetention(config, { engagementId, operatorId })
+    // Feed a pure scope classifier so io lifecycle GC pins in-scope bodies and
+    // evicts out-of-scope ones first under size pressure (SPEC-SCOPE-AWARE-
+    // LIFECYCLE.md scope-as-pin). Pure — no violation side effects.
+    const resolveScope = (target: string): ScopeVerdict =>
+      classifyTarget(target, { targets: scopeTargets, excludeTargets: config.scope.excludeTargets })
+    const swept = sweepRetention(config, { engagementId, operatorId, resolveScope })
     if (swept.cast > 0 || swept.screenshots > 0 || swept.io > 0 || swept.ioCompressed > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast + ${swept.screenshots} screenshot(s) + ${swept.io} io body(ies); compressed ${swept.ioCompressed} io body(ies)`)
     }

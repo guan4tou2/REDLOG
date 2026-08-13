@@ -1,5 +1,6 @@
 import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
+import type { ScopeVerdict } from './artifact-pin'
 
 interface ScopeConfig {
   /** When a command's target is out-of-scope AND shares a root domain with a
@@ -45,6 +46,24 @@ function extractRootDomains(targets: string[]): Set<string> {
 }
 
 const IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
+
+/** Pure scope classification — no side effects, unlike `checkTarget` which
+ *  records violations. This is the classifier scope-aware sanitize and retention
+ *  share (SPEC-SCOPE-AWARE-LIFECYCLE.md Part A). An empty/absent target is
+ *  `unknown` (the caller decides the safe default per action); no scope set at
+ *  all means everything is in scope. */
+export function classifyTarget(
+  target: string | null | undefined,
+  cfg: { targets: string[]; excludeTargets: string[] }
+): ScopeVerdict {
+  if (!target) return 'unknown'
+  if (cfg.targets.length === 0) return 'in_scope'
+  const isIP = IP_RE.test(target)
+  const isExcluded = cfg.excludeTargets.some((ex) => (isIP ? matchesCIDR(target, ex) : matchesDomain(target, ex)))
+  if (isExcluded) return 'excluded'
+  const isInScope = cfg.targets.some((t) => (isIP ? matchesCIDR(target, t) : matchesDomain(target, t)))
+  return isInScope ? 'in_scope' : 'out_of_scope'
+}
 
 export class ScopeMonitor {
   private config: ScopeConfig = { warnOnViolation: true, targets: [], excludeTargets: [] }
