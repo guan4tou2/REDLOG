@@ -81,6 +81,11 @@ contextBridge.exposeInMainWorld('redlog', {
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
     isConfigured: () => ipcRenderer.invoke('scope:isConfigured')
   },
+  // io_ref sidecar: pull a full HTTP body on demand by its digest (ref).
+  io: {
+    read: (ref: string, off?: number, len?: number): Promise<{ ok: boolean; text?: string; bytes?: number; error?: string; maxBytes?: number }> =>
+      ipcRenderer.invoke('io:read', ref, off, len)
+  },
   chain: {
     length: () => ipcRenderer.invoke('chain:length'),
     anchors: () => ipcRenderer.invoke('chain:anchors'),

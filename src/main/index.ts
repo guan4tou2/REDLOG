@@ -54,6 +54,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { readBody as readIoBody, resolveRef as resolveIoRef, MAX_IO_READ_BYTES } from '../core/io-store'
 
 // Windows text rendering: DirectComposition improves font clarity on low-DPI
 // screens; DirectWrite uses the native font rasterizer for crisper CJK glyphs.
@@ -493,8 +494,8 @@ function startProject(project: ProjectMeta): void {
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
-    if (swept.cast > 0 || swept.screenshots > 0) {
-      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
+    if (swept.cast > 0 || swept.screenshots > 0 || swept.io > 0) {
+      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.io} io body(ies)`)
     }
   } catch (e) { console.error('[retention] sweep failed:', e) }
 
@@ -1177,6 +1178,30 @@ app.whenReady().then(() => {
         if (ev) eventBus.publish(ev)
       }
       return { ok: true }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
+  // --- io_ref sidecar (SPEC-IO-SIDECAR.md) ---
+  // Read a full HTTP body out of <projectDir>/io/<sha256>.bin on demand.
+  // Unlike the removed screenshot:read, this takes a `ref` (a sha256 stem),
+  // not an arbitrary filePath — `resolveRef` rejects anything that isn't a
+  // 64-hex digest resolving inside io/, so a compromised renderer cannot coax
+  // a read of any other file (A7). Returns text (bodies are text content-types)
+  // plus how many bytes were read and whether more remain past the cap.
+  ipcMain.handle('io:read', (_e, ref: string, off?: number, len?: number) => {
+    try {
+      const dir = getProjectDir()
+      // A well-formed ref whose file is missing reads as pruned, not tampered.
+      if (resolveIoRef(dir, ref) === null) return { ok: false, error: 'invalid ref' }
+      const buf = readIoBody(dir, ref, off, len)
+      if (buf === null) {
+        // Distinguish "too large to inline" from "gone": a valid ref with no
+        // range that returns null is either pruned or over the read cap.
+        return { ok: false, error: 'unavailable', maxBytes: MAX_IO_READ_BYTES }
+      }
+      return { ok: true, text: buf.toString('utf8'), bytes: buf.length }
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }

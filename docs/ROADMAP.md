@@ -73,14 +73,17 @@ Steps 1–2 of `timeline-io-visibility.md`:
   is never mistaken for absence of output.
 - Document `redlog-run` in the capture-health card, not only in a comment.
 
-## v0.10.0 — I/O visibility, phase 2 ✅ shipped as v0.11.2 (except the sidecar)
+## v0.10.0 — I/O visibility, phase 2 ✅ shipped as v0.11.2 (sidecar landed 2026-08-13)
 
 Steps 3–6: the `io_ref` sidecar and everything that reads it.
 
-- `<projectDir>/io/` append-only store; `io:read` IPC; bundle export,
-  retention pruning (`system.io_pruned`) and `redlog-verify.py` support.
-- `ScannerDetail` / `BrowserConsoleDetail`; raise `REDLOG_MAX_BODY` once
-  bodies are out of the event row.
+- ✅ **io_ref sidecar** (`SPEC-IO-SIDECAR.md`): `<projectDir>/io/<sha256>.bin`
+  content-addressed store (`src/core/io-store.ts`); full HTTP bodies sidecarred
+  at `POST /api/events` (option B) with only the digest chained; `io:read` IPC;
+  `ScannerDetail` lazy full-body load; bundle export copies `io/` + manifest;
+  retention pruning (`system.io_pruned`); `redlog-verify.py` re-hashes each
+  sidecar body (pruned ≠ tampered). Addon posts `*_body_full` (≤ `REDLOG_MAX_IO`,
+  default 2 MB) only when the 16 KB preview truncates.
 - Exchange view pairing `tool_call` ↔ `tool_result` and
   `command_start` ↔ `command_end`.
 - Transcript view + Markdown export.

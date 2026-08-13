@@ -4065,6 +4065,73 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
   )
 }
 
+/** io_ref sidecar view model on a scanner event (SPEC-IO-SIDECAR.md). Present
+ *  only when the captured body exceeded the inline preview cap, so the full
+ *  bytes live on disk and the event carries just this digest. */
+interface IoRefView { ref: string; len: number; sha256?: string; truncated?: boolean; ct?: string }
+
+/** A body whose full bytes are in the io/ sidecar: show the truncated inline
+ *  preview immediately, with a "load full body" affordance that pulls the
+ *  complete bytes on demand via `io:read` (bounded by the read cap). An
+ *  over-cap or pruned body says so rather than dumping raw bytes (SPEC step 4). */
+function SidecarBody({ label, preview, io, accent }: {
+  label: string
+  preview: string
+  io: IoRefView
+  accent: 'emerald' | 'amber' | 'zinc'
+}): JSX.Element {
+  const { t } = useI18n()
+  const [full, setFull] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = async (): Promise<void> => {
+    setLoading(true); setError(null)
+    try {
+      const r = await window.redlog.io.read(io.ref)
+      if (r.ok && typeof r.text === 'string') setFull(r.text)
+      else setError(r.maxBytes
+        ? t('timeline.detail.ioTooLarge', { max: formatBytes(r.maxBytes) })
+        : t('timeline.detail.ioUnavailable'))
+    } catch {
+      setError(t('timeline.detail.ioUnavailable'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <CollapsibleStream
+        label={label}
+        content={full ?? preview}
+        bytes={io.len}
+        truncated={full === null}
+        accent={accent}
+        startOpen
+      />
+      {full === null && (
+        <div className="flex items-center gap-2 px-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="text-2xs font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+          >
+            {loading ? t('timeline.detail.ioLoading') : t('timeline.detail.ioLoadFull', { size: formatBytes(io.len) })}
+          </button>
+          {io.truncated && (
+            <span className="text-2xs font-mono text-amber-400" title={t('timeline.detail.ioCeilingHint')}>
+              {t('timeline.detail.ioCeiling')}
+            </span>
+          )}
+          {error && <span className="text-2xs font-mono text-amber-400">{error}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** v0.11.2 (T6): one HTTP exchange as the operator thinks about it — what went
  *  out, what came back. The request and response arrive as two separate chain
  *  events linked by `flow_id`, so each renders the half it holds and names the
@@ -4075,6 +4142,9 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
   const isResponse = subtype === 'http_response'
   const params = data.params as Record<string, unknown> | undefined
   const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
+  const io = data.io as { request?: IoRefView; response?: IoRefView } | undefined
+  const reqIo = io?.request
+  const rspIo = io?.response
   const contentType = String(data.content_type ?? '')
   const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
 
@@ -4097,23 +4167,27 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           collected but never shown — only params were. Render it like the
           response body so POST/PUT payloads are actually reviewable. */}
       {!isResponse && typeof data.request_body_preview === 'string' && (data.request_body_preview as string).length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpRequestBody')}
-          content={data.request_body_preview as string}
-          bytes={(data.request_body_preview as string).length}
-          accent="zinc"
-          startOpen
-        />
+        reqIo
+          ? <SidecarBody label={t('timeline.detail.httpRequestBody')} preview={data.request_body_preview as string} io={reqIo} accent="zinc" />
+          : <CollapsibleStream
+              label={t('timeline.detail.httpRequestBody')}
+              content={data.request_body_preview as string}
+              bytes={(data.request_body_preview as string).length}
+              accent="zinc"
+              startOpen
+            />
       )}
       {isResponse && preview.length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpResponseBody')}
-          content={preview}
-          bytes={contentLength ?? preview.length}
-          truncated={contentLength !== null && contentLength > preview.length}
-          accent="emerald"
-          startOpen
-        />
+        rspIo
+          ? <SidecarBody label={t('timeline.detail.httpResponseBody')} preview={preview} io={rspIo} accent="emerald" />
+          : <CollapsibleStream
+              label={t('timeline.detail.httpResponseBody')}
+              content={preview}
+              bytes={contentLength ?? preview.length}
+              truncated={contentLength !== null && contentLength > preview.length}
+              accent="emerald"
+              startOpen
+            />
       )}
       {bodyless && (
         <p className="text-[11px] text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">

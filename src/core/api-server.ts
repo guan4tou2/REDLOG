@@ -37,6 +37,7 @@ import { getCaptureHealth } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
+import { stampIoRefs, readBody as readIoBody, resolveRef as resolveIoRef, MAX_IO_READ_BYTES } from './io-store'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -508,6 +509,20 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
             data.redactions = [...redactions, ...result.redacted.map((r) => ({ ...r, field }))]
           }
         }
+      }
+
+      // io_ref sidecar (SPEC-IO-SIDECAR.md): move any posted full HTTP body into
+      // <projectDir>/io/<sha256>.bin and replace it with a digest-only ref BEFORE
+      // chaining, so the chain closes over the sha256, never the bytes (the
+      // v0.6.47 invariant). No-op for events without a `*_body_full` field.
+      try {
+        stampIoRefs(data, getProjectDir())
+      } catch (e) {
+        // No active project dir (or write failed): never let raw bytes fall
+        // through into the chain — drop the full-body fields, keep the preview.
+        for (const f of ['request_body_full', 'request_body_ct', 'request_body_full_truncated',
+          'response_body_full', 'response_body_ct', 'response_body_full_truncated']) delete data[f]
+        console.warn(`[api] io sidecar skipped: ${(e as Error).message}`)
       }
 
       const event = insertEvent(agentType, data, {
