@@ -2521,16 +2521,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     onClick={() => activatePaletteItem(item)}
                     className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}
                   >
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-500 w-14 shrink-0">
+                    <span className="text-2xs font-mono uppercase tracking-wider text-zinc-500 w-14 shrink-0">
                       {t(groupKey)}
                     </span>
                     <span className="text-xs font-mono text-zinc-200 truncate flex-1">{item.label}</span>
-                    <span className="text-[10px] font-mono text-zinc-600 shrink-0">{item.sub}</span>
+                    <span className="text-2xs font-mono text-zinc-600 shrink-0">{item.sub}</span>
                   </button>
                 )
               })}
             </div>
-            <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
+            <div className="px-3 py-1.5 border-t border-zinc-800 text-2xs font-mono text-zinc-500 text-center">
               {t('timeline.palette.footer')}
             </div>
           </div>
@@ -2552,7 +2552,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">{t('timeline.help.title')}</span>
               <button
                 onClick={() => setShowHelp(false)}
-                className="ml-auto text-xs text-zinc-500 hover:text-zinc-200 leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10"
+                className="ml-auto text-xs text-zinc-500 hover:text-zinc-200 leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 hit-target"
                 aria-label={t('timeline.help.close')}
                 title={t('timeline.help.close')}
               >×</button>
@@ -2575,7 +2575,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 ))}
               </div>
             </div>
-            <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
+            <div className="px-3 py-1.5 border-t border-zinc-800 text-2xs font-mono text-zinc-500 text-center">
               {t('timeline.help.footer')}
             </div>
           </div>
@@ -2595,7 +2595,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           </span>
           <button
             onClick={() => setFocusAnchorId(null)}
-            className="text-zinc-400 hover:text-zinc-100 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+            className="text-zinc-400 hover:text-zinc-100 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hit-target"
             title={t('timeline.focusChain.exit')}
             aria-label={t('timeline.focusChain.exit')}
           >×</button>
@@ -2620,7 +2620,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             makes the affordance visible; the modal itself lists everything. */}
         <button
           onClick={() => setShowHelp(true)}
-          className="ml-1 w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+          className="ml-1 w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
           title={t('timeline.help.hint')}
           aria-label={t('timeline.help.hint')}
         >?</button>
@@ -2629,7 +2629,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         <div className="flex items-center gap-1 ml-2">
           <button
             onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
             title={t('timeline.zoomOut')}
             aria-label={t('timeline.zoomOut')}
           >−</button>
@@ -2642,7 +2642,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           >{Math.round(zoom * 100)}% ↺</button>
           <button
             onClick={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
             title={t('timeline.zoomIn')}
             aria-label={t('timeline.zoomIn')}
           >+</button>
@@ -2684,7 +2684,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
           <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
           {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-            <span className="font-mono tabular-nums text-[10px] text-lime-400/80">−{hiddenAgentTurnCount}</span>
+            <span className="font-mono tabular-nums text-2xs text-lime-400/80">−{hiddenAgentTurnCount}</span>
           )}
         </button>
 
@@ -2710,7 +2710,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             <span>⋯</span>
             <span className="font-mono">{t('timeline.compressGaps.label')}</span>
             {compressGaps && timeMap.gaps.length > 0 && (
-              <span className="font-mono tabular-nums text-[10px] text-cyan-400/80">{timeMap.gaps.length}</span>
+              <span className="font-mono tabular-nums text-2xs text-cyan-400/80">{timeMap.gaps.length}</span>
             )}
           </button>
         ) : null}
@@ -2766,7 +2766,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   setFollowMode(true)
                 }}
                 title={isLive ? t('timeline.follow.jumpToNow') : t('timeline.follow.jumpToNow')}
-                className={`whitespace-nowrap text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                className={`whitespace-nowrap text-2xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
                   isLive
                     ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
                     : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
@@ -2776,7 +2776,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 onClick={() => setFollowMode((v) => !v)}
                 title={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
                 aria-label={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                className="w-5 h-5 flex items-center justify-center text-[10px] text-zinc-500 hover:text-zinc-200 bg-zinc-800/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+                className="w-5 h-5 flex items-center justify-center text-2xs text-zinc-500 hover:text-zinc-200 bg-zinc-800/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
               >{followMode ? '⏸' : '▶'}</button>
             </div>
           )
@@ -2803,7 +2803,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             {viewsOpen && (
               <div className="absolute top-full right-0 mt-1 z-40 w-72 rounded border border-zinc-700 bg-zinc-900/95 shadow-xl">
                 <div className="px-2 py-1.5 border-b border-zinc-800">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">{t('timeline.views.saveNew')}</div>
+                  <div className="text-2xs font-mono uppercase tracking-wider text-zinc-500 mb-1">{t('timeline.views.saveNew')}</div>
                   <input
                     value={viewsName}
                     onChange={(e) => setViewsName(e.target.value)}
@@ -2830,14 +2830,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         className="flex-1 text-left text-xs font-mono text-zinc-200 truncate"
                         title={v.name}
                       >{v.name}</button>
-                      <span className="text-[10px] font-mono text-zinc-600 tabular-nums">
+                      <span className="text-2xs font-mono text-zinc-600 tabular-nums">
                         {formatTs(v.createdAt, tz, projectTz, 'time')}
                       </span>
                       <button
                         onClick={() => void deleteView(v.id)}
                         title={t('timeline.views.delete')}
                         aria-label={t('timeline.views.delete')}
-                        className="text-zinc-500 hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+                        className="text-zinc-500 hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hit-target"
                       >×</button>
                     </div>
                   ))}
@@ -2966,7 +2966,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           data-testid="timeline-active-modes"
           className="flex items-center gap-1.5 px-4 py-1.5 border-b border-zinc-800/80 bg-zinc-900/40 shrink-0 overflow-x-auto"
         >
-          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 shrink-0">
+          <span className="text-2xs font-mono uppercase tracking-wider text-zinc-500 shrink-0">
             {t('timeline.mode.active')}
           </span>
           {modeChips.map((chip) => (
@@ -2985,7 +2985,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           ))}
           <button
             onClick={() => modeChips.forEach((c) => clearMode(c.clearAction))}
-            className="shrink-0 ml-1 text-[10px] font-mono text-zinc-500 hover:text-zinc-200 px-1.5 py-0.5 rounded hover:bg-white/[0.05] transition-colors"
+            className="shrink-0 ml-1 text-2xs font-mono text-zinc-500 hover:text-zinc-200 px-1.5 py-0.5 rounded hover:bg-white/[0.05] transition-colors"
             title={t('timeline.mode.clearAll')}
           >{t('timeline.mode.clearAll')}</button>
         </div>
@@ -3020,7 +3020,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           the full ? cheatsheet — so pan, zoom and filter are never a secret. The
           {mod} token resolves once via modKey(platform), shared with the F5
           registry. Collapsible; the choice persists in legendCollapsed. */}
-      <div className="shrink-0 border-b border-zinc-800/80 bg-zinc-950/40 px-4 py-1 flex items-center gap-3 text-[10px] font-mono text-zinc-600 select-none">
+      <div className="shrink-0 border-b border-zinc-800/80 bg-zinc-950/40 px-4 py-1 flex items-center gap-3 text-xs font-mono text-zinc-600 select-none">
         {!legendCollapsed && (
           <div className="flex items-center gap-3 min-w-0 overflow-x-auto">
             <span className="whitespace-nowrap">{t('timeline.legend.pan')}</span>
@@ -3044,7 +3044,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         )}
         <button
           onClick={() => setLegendCollapsed((v) => !v)}
-          className="ml-auto shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hover:text-zinc-300 transition-colors"
+          className="ml-auto shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hover:text-zinc-300 transition-colors hit-target"
           title={legendCollapsed ? t('timeline.legend.expand') : t('timeline.legend.collapse')}
           aria-label={legendCollapsed ? t('timeline.legend.expand') : t('timeline.legend.collapse')}
           aria-expanded={!legendCollapsed}
@@ -3061,7 +3061,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         {wheelHintOn && (
           <div
             data-testid="timeline-wheel-hint"
-            className="absolute z-30 top-9 right-3 pointer-events-none rounded-md border border-zinc-700 bg-zinc-900/95 px-2 py-1 text-[10px] font-mono text-zinc-300 shadow-lg leading-tight"
+            className="absolute z-30 top-9 right-3 pointer-events-none rounded-md border border-zinc-700 bg-zinc-900/95 px-2 py-1 text-xs font-mono text-zinc-300 shadow-lg leading-tight"
           >
             <div>{t('timeline.wheelHint.scrolling')}</div>
             <div className="text-zinc-500">{t('timeline.wheelHint.panWith')}</div>
@@ -3203,7 +3203,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           bleeding out of a 4px band is worse than none. */}
                       {w >= 34 && (
                         <span
-                          className="absolute text-[9px] font-mono px-1 rounded-b bg-zinc-900/80 whitespace-nowrap"
+                          className="absolute text-3xs font-mono px-1 rounded-b bg-zinc-900/80 whitespace-nowrap"
                           style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
                         >{b.label}</span>
                       )}
@@ -3225,7 +3225,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       }}
                       title={t('timeline.gapSkipped', { d: formatGap(g.to - g.from) })}
                     >
-                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] text-zinc-500 font-mono whitespace-nowrap">
+                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-3xs text-zinc-500 font-mono whitespace-nowrap">
                         ⋯{formatGap(g.to - g.from)}
                       </span>
                     </div>
@@ -3415,7 +3415,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         if (!im) return null
                         return (
                           <span
-                            className="absolute -top-0.5 -left-0.5 rounded-full text-[8px] leading-none font-bold flex items-center justify-center pointer-events-none"
+                            className="absolute -top-0.5 -left-0.5 rounded-full text-3xs leading-none font-bold flex items-center justify-center pointer-events-none"
                             style={{ width: 11, height: 11, background: '#0a0a0a', color: im.color, border: `1px solid ${im.color}` }}
                             title={`${im.kind} #${im.ord}`}
                           >{im.ord}</span>
@@ -3426,7 +3426,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           rest surface in the tooltip and in the detail panel. */}
                       {single && badges && badges.length > 0 && (
                         <span
-                          className="absolute -top-0.5 -right-0.5 rounded-full bg-zinc-950/95 border border-amber-500/60 text-[8px] leading-none flex items-center justify-center pointer-events-none"
+                          className="absolute -top-0.5 -right-0.5 rounded-full bg-zinc-950/95 border border-amber-500/60 text-3xs leading-none flex items-center justify-center pointer-events-none"
                           style={{ width: 12, height: 12 }}
                         >
                           {badges[0].icon}
@@ -3501,7 +3501,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                             if (!im) return null
                             return (
                               <span
-                                className="ml-auto shrink-0 text-[9px] font-mono font-bold leading-none px-1 py-0.5 rounded"
+                                className="ml-auto shrink-0 text-3xs font-mono font-bold leading-none px-1 py-0.5 rounded"
                                 style={{ color: im.color, border: `1px solid ${im.color}55` }}
                                 title={`${im.kind} #${im.ord}`}
                               >#{im.ord}</span>
@@ -3568,7 +3568,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         <>
           {/* Drag handle — 4px hit strip along the top edge; visual accent on hover. */}
           <div
-            className="shrink-0 h-1 cursor-row-resize bg-zinc-800/50 hover:bg-red-500/40 transition-colors relative"
+            className="shrink-0 h-1 cursor-row-resize bg-zinc-800/50 hover:bg-red-500/40 transition-colors relative hit-target-v"
             title={t('timeline.resizeDetailPanel')}
             onMouseDown={(e) => {
               e.preventDefault()
@@ -3785,7 +3785,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               Suppressed entirely once the operator is already in focus mode
               so it doesn't add noise. */}
           {!focusChain && (
-            <p className="mt-1 text-[10px] text-zinc-600 font-mono">
+            <p className="mt-1 text-2xs text-zinc-600 font-mono">
               {t('timeline.focusChain.enterHint')}
             </p>
           )}
@@ -4226,13 +4226,13 @@ function CollapsibleStream({
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2 px-2 py-1 text-left"
       >
-        <span className="text-[10px] text-zinc-500 font-mono w-3">{open ? '▼' : '▶'}</span>
+        <span className="text-2xs text-zinc-500 font-mono w-3">{open ? '▼' : '▶'}</span>
         <span className={`text-[11px] font-mono font-semibold uppercase tracking-wider ${acc.label}`}>{label}</span>
-        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
+        <span className={`text-2xs font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
           {formatBytes(shownBytes)}
         </span>
         {truncated && (
-          <span className="text-[10px] font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
+          <span className="text-2xs font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
             {t('timeline.detail.truncated')}
           </span>
         )}
@@ -4242,7 +4242,7 @@ function CollapsibleStream({
             tabIndex={0}
             onClick={(e) => { e.stopPropagation(); void copyFull() }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void copyFull() } }}
-            className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 cursor-pointer"
+            className="ml-auto text-2xs font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 cursor-pointer"
           >
             {copied ? t('timeline.detail.copied') : t('timeline.detail.copyFull')}
           </span>
@@ -4252,7 +4252,7 @@ function CollapsibleStream({
         <pre className="mx-2 mb-2 p-2 bg-zinc-950 rounded border border-zinc-800/60 text-xs text-zinc-300 font-mono max-h-80 overflow-y-auto whitespace-pre-wrap break-all">
           {preview}
           {isLarge && (
-            <span className="block mt-2 text-[10px] text-zinc-500">
+            <span className="block mt-2 text-2xs text-zinc-500">
               {t('timeline.detail.previewCut', { shown: formatBytes(preview.length), total: formatBytes(shownBytes) })}
             </span>
           )}
@@ -4370,10 +4370,10 @@ function ReplayCommand({ eventId, mode = 'command', castBytes }: { eventId: stri
       {isLong && (
         <button
           onClick={() => setShowFull((v) => !v)}
-          className="mt-1 text-[10px] font-mono text-cyan-500 hover:text-cyan-400"
+          className="mt-1 text-2xs font-mono text-cyan-500 hover:text-cyan-400"
         >{showFull ? t('timeline.replay.showLess') : t('timeline.replay.showFull', { size: formatBytes(full.length) })}</button>
       )}
-      {truncated && <p className="mt-1 text-[10px] font-mono text-amber-400">{t('timeline.replay.truncated')}</p>}
+      {truncated && <p className="mt-1 text-2xs font-mono text-amber-400">{t('timeline.replay.truncated')}</p>}
     </div>
   )
 }
