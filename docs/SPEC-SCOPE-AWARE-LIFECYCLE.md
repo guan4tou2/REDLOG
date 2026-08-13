@@ -1,5 +1,25 @@
 # Spec — Scope-Aware Sanitize + Retention + Artifact Rotation
 
+> **Implementation status (2026-08-13).**
+> - ✅ **Part C — artifact lifecycle (G1, G2, G4):** shipped. `config.io` gains
+>   `warmDays` + `maxBytes` (G1); `artifact-pin.ts` pin score (G4);
+>   `artifact-gc.ts` `planArtifactRotation` — age-or-size, refcount-gated,
+>   pin-ordered (G2); `io-store` warm compress (gzip, original-digest-preserving)
+>   + transparent read/verify; `retention.ts` `sweepIoLifecycle` wires it, with
+>   marker/loot `_causes` pinning; `redlog-verify.py` + bundle-export handle warm
+>   bodies. 42 unit tests (A4/A5/A6/A7).
+> - ✅ **Part B — decision core + scope wiring (G3 partial):** `classifyTarget`
+>   (pure, side-effect-free scope verdict) and `planScopeSanitize` (Part B
+>   planner incl. io-sidecar coverage + `unknown` flagging, A1/A2) shipped and
+>   unit-tested; the classifier is wired into retention so scope-priority eviction
+>   is **live** (A5 fully). 8 more tests.
+> - ⏳ **Remaining (Part B execution):** the `runScopeSanitize` orchestrator that
+>   applies the plan — reuse `sanitize.ts` for inline fields, plus **io sidecar
+>   body replacement at export** (write a sanitized replacement body, record the
+>   digest swap in `system.sanitized` so verify reads it as *sanitized* not
+>   *tampered*) — and the `internal` vs `client-deliverable` export profiles (§9).
+>   The tested planner already produces the exact work-list this needs.
+
 Written 2026-08-13. Unifies three previously-separate storage concerns into one
 mechanism: **the hash chain is a small, immutable WORM spine; every heavy capture
 artifact is a refcounted, scope-prioritized, lifecycle-managed store.** It extends
