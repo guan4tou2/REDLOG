@@ -10,9 +10,12 @@
 import fs from 'fs'
 import path from 'path'
 import { getProjectDir, getDB } from './db/index'
-import { insertEvent } from './db/events'
+import { insertEvent, queryEvents } from './db/events'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
+import { compressBody, resolveExisting, ioDir } from './io-store'
+import { planArtifactRotation, type ArtifactBody } from './artifact-gc'
+import { isPinned, pinScore, type ScopeVerdict } from './artifact-pin'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
 // upstream event so focus chain walks light up the "originally recorded here
@@ -91,13 +94,121 @@ function sweepDir(
   return pruned
 }
 
+// Strongest scope verdict wins when a deduped body is referenced by events of
+// differing scope — in_scope pins hardest, excluded weakest. Mirrors the pin
+// tier order so a body cited by any in-scope event is kept longest.
+const SCOPE_STRENGTH: Record<ScopeVerdict, number> = { in_scope: 3, unknown: 2, out_of_scope: 1, excluded: 0 }
+function strongerScope(a: ScopeVerdict, b: ScopeVerdict): ScopeVerdict {
+  return SCOPE_STRENGTH[b] > SCOPE_STRENGTH[a] ? b : a
+}
+
+/** io_ref sidecar lifecycle sweep (SPEC-SCOPE-AWARE-LIFECYCLE.md Part C).
+ *  Unlike the file-mtime `sweepDir` used for casts/screenshots, io bodies are
+ *  content-addressed and deduped, so pruning is a mark-and-sweep GC over
+ *  event→sha refs: a body is age-prunable only when its NEWEST referencing event
+ *  is past the window, and under size pressure UNPINNED (out-of-scope / unmarked)
+ *  bodies are evicted before pinned ones. Warm bodies are compressed first.
+ *
+ *  `resolveScope` is optional: without it every body's scope is `unknown`, so
+ *  pinning still honours marker/loot references and operator pins, but scope
+ *  priority is inert until a pure classifier is supplied (Part B feeds it). */
+export function sweepIoLifecycle(
+  projectDir: string,
+  cfg: { keepDays: number; warmDays: number; maxBytes: number },
+  opts: { engagementId: string; operatorId: string; resolveScope?: (target: string) => ScopeVerdict }
+): { compressed: number; pruned: number } {
+  const dir = ioDir(projectDir)
+  if (!opts.operatorId || !fs.existsSync(dir)) return { compressed: 0, pruned: 0 }
+  // Nothing configured (keep-forever, no warm, no cap) → no work.
+  if (cfg.keepDays <= 0 && cfg.warmDays <= 0 && cfg.maxBytes <= 0) return { compressed: 0, pruned: 0 }
+
+  const now = Date.now()
+  const events = queryEvents({ limit: 100000 })
+
+  // sha → referencing-event facts (newest use, owning ids, targets).
+  const refs = new Map<string, { newestTs: number; ownerIds: Set<string>; targets: Set<string> }>()
+  // event ids cited by any marker/loot `_causes` — their referenced io bodies pin.
+  const citedIds = new Set<string>()
+  for (const e of events) {
+    if (e.agentType === 'marker' || e.agentType === 'loot') {
+      const causes = (e.data?._causes as unknown[] | undefined)
+      if (Array.isArray(causes)) for (const c of causes) if (typeof c === 'string') citedIds.add(c)
+    }
+    const io = e.data?.io as { request?: { ref?: unknown }; response?: { ref?: unknown } } | undefined
+    if (!io) continue
+    for (const slot of ['request', 'response'] as const) {
+      const ref = io[slot]?.ref
+      if (typeof ref !== 'string') continue
+      const cur = refs.get(ref) ?? { newestTs: 0, ownerIds: new Set<string>(), targets: new Set<string>() }
+      cur.newestTs = Math.max(cur.newestTs, e.timestamp)
+      cur.ownerIds.add(e.id)
+      const tgt = (e.targetId ?? (e.data?.detectedTarget as string) ?? (e.data?.host as string)) || ''
+      if (tgt) cur.targets.add(tgt)
+      refs.set(ref, cur)
+    }
+  }
+
+  // Build the on-disk body list with each body's resolved facts.
+  const bodies: ArtifactBody[] = []
+  let names: string[] = []
+  try { names = fs.readdirSync(dir) } catch { return { compressed: 0, pruned: 0 } }
+  for (const name of names) {
+    const compressed = name.endsWith('.bin.gz')
+    if (!name.endsWith('.bin') && !compressed) continue
+    const sha = name.replace(/\.bin(\.gz)?$/, '')
+    let size = 0, mtimeMs = now
+    try { const st = fs.statSync(path.join(dir, name)); size = st.size; mtimeMs = st.mtimeMs } catch { continue }
+    const r = refs.get(sha)
+    // Refcount gate: age is the NEWEST referencing event's age; an orphan body
+    // (no live reference) falls back to its file age.
+    const newest = r?.newestTs ?? mtimeMs
+    const ageDays = Math.max(0, (now - newest) / DAY_MS)
+    let scope: ScopeVerdict = 'unknown'
+    if (opts.resolveScope && r) for (const t of r.targets) scope = strongerScope(scope, opts.resolveScope(t))
+    const referencedByMarkerOrLoot = !!r && [...r.ownerIds].some((id) => citedIds.has(id))
+    const pin = { scope, referencedByMarkerOrLoot, operatorPinned: false }
+    bodies.push({ sha, bytes: size, compressed, ageDays, pruneDays: cfg.keepDays, pinned: isPinned(pin), pinScore: pinScore(pin) })
+  }
+
+  const plan = planArtifactRotation(bodies, { warmDays: cfg.warmDays, maxBytes: cfg.maxBytes })
+
+  // Warm first (pure win, no audit event — reversible + verify-transparent).
+  let compressed = 0
+  for (const sha of plan.toCompress) if (compressBody(projectDir, sha)) compressed++
+
+  // Then prune — each deletion appends a chained system.io_pruned so a missing
+  // body reads as pruned-by-policy, never tampered.
+  let pruned = 0
+  for (const sha of plan.toPrune) {
+    const found = resolveExisting(projectDir, sha)
+    if (!found) continue
+    let size = 0
+    try { size = fs.statSync(found.file).size } catch { /* raced */ }
+    try {
+      fs.unlinkSync(found.file)
+      pruned++
+      try {
+        const ev = insertEvent('system', {
+          subtype: 'io_pruned',
+          path: found.file,
+          bytes: size,
+          sha256: sha,
+          description: `pruned by io retention (${cfg.keepDays}d / ${cfg.maxBytes || '∞'}B)`
+        }, opts)
+        if (ev) eventBus.publish(ev)
+      } catch (e) { noteDbError('io-lifecycle-sweep', e) }
+    } catch { /* file gone / permission — skip */ }
+  }
+  return { compressed, pruned }
+}
+
 export function sweepRetention(config: {
   terminal?: { castKeepDays?: number }
   screenshots?: { keepDays?: number }
   agentTranscripts?: { keepDays?: number }
-  io?: { keepDays?: number }
-}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number; io: number } {
-  const zero = { cast: 0, screenshots: 0, agentTranscripts: 0, io: 0 }
+  io?: { keepDays?: number; warmDays?: number; maxBytes?: number }
+}, opts: { engagementId: string; operatorId: string; resolveScope?: (target: string) => ScopeVerdict }): { cast: number; screenshots: number; agentTranscripts: number; io: number; ioCompressed: number } {
+  const zero = { cast: 0, screenshots: 0, agentTranscripts: 0, io: 0, ioCompressed: 0 }
   if (!opts.operatorId) return zero
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return zero }
@@ -136,17 +247,14 @@ export function sweepRetention(config: {
     'agent_transcript_pruned',
     opts
   )
-  // io_ref sidecar bodies (SPEC-IO-SIDECAR.md): same arc as .cast pruning — the
-  // chain (digests only) is untouched, so a pruned body verifies as *pruned*,
-  // not tampered. No `_causes` link: bodies are deduped by digest, so one file
-  // can back many events and a single cause would be arbitrary; the io_pruned
-  // event records the path + size so the gap stays explainable.
-  const io = sweepDir(
-    path.join(projectDir, 'io'),
-    config.io?.keepDays ?? 0,
-    (n) => n.endsWith('.bin'),
-    'io_pruned',
+  // io_ref sidecar bodies (SPEC-SCOPE-AWARE-LIFECYCLE.md Part C): a full
+  // lifecycle GC, not a flat file-mtime sweep — refcount-gated, size-aware,
+  // scope-pinned, with a warm (compress) stage before prune. The chain (digests
+  // only) is untouched, so a pruned body verifies as *pruned*, not tampered.
+  const ioResult = sweepIoLifecycle(
+    projectDir,
+    { keepDays: config.io?.keepDays ?? 0, warmDays: config.io?.warmDays ?? 0, maxBytes: config.io?.maxBytes ?? 0 },
     opts
   )
-  return { cast, screenshots, agentTranscripts, io }
+  return { cast, screenshots, agentTranscripts, io: ioResult.pruned, ioCompressed: ioResult.compressed }
 }

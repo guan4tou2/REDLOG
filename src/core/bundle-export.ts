@@ -178,7 +178,9 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     for (const name of fs.readdirSync(srcIo)) {
       const s = path.join(srcIo, name)
       const d = path.join(dstIo, name)
-      if (name.endsWith('.bin') && fs.statSync(s).isFile()) {
+      // Copy both raw (`.bin`) and warm (`.bin.gz`) bodies — the verifier
+      // decompresses warm ones before hashing (SPEC-SCOPE-AWARE-LIFECYCLE.md).
+      if ((name.endsWith('.bin') || name.endsWith('.bin.gz')) && fs.statSync(s).isFile()) {
         fs.copyFileSync(s, d)
         const info = sha256File(d)
         files.push({ path: `io/${name}`, ...info })

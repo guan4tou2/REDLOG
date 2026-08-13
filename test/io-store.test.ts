@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
-import { putBody, readBody, resolveRef, verifyBody, ioDir, stampIoRefs, MAX_IO_READ_BYTES } from '../src/core/io-store'
+import { putBody, readBody, resolveRef, resolveExisting, verifyBody, ioDir, stampIoRefs, compressBody, ioStoreSize, MAX_IO_READ_BYTES } from '../src/core/io-store'
 
 // io_ref sidecar store (SPEC-IO-SIDECAR.md step 1). Content-addressed, deduped,
 // range-readable, path-guarded. The chain only ever sees the sha256 these
@@ -164,6 +164,71 @@ describe('stampIoRefs (option B, A2)', () => {
     expect(data.request_body_full).toBeUndefined()
     expect(data.request_body_ct).toBeUndefined()
     expect(data.io).toBeUndefined()
+  })
+})
+
+describe('warm compression (SPEC-SCOPE-AWARE-LIFECYCLE Part C, A4)', () => {
+  it('compresses a body in place, reclaiming the raw file but keeping the digest', () => {
+    const body = Buffer.from(JSON.stringify({ blob: 'A'.repeat(50 * 1024) }))   // compressible
+    const { ref } = putBody(dir, body)
+    const rawSize = fs.statSync(path.join(ioDir(dir), `${ref}.bin`)).size
+    expect(compressBody(dir, ref)).toBe(true)
+    // raw gone, gz present and smaller
+    expect(fs.existsSync(path.join(ioDir(dir), `${ref}.bin`))).toBe(false)
+    const gzPath = path.join(ioDir(dir), `${ref}.bin.gz`)
+    expect(fs.existsSync(gzPath)).toBe(true)
+    expect(fs.statSync(gzPath).size).toBeLessThan(rawSize)
+    // resolveExisting reports it as compressed
+    expect(resolveExisting(dir, ref)).toEqual({ file: gzPath, compressed: true })
+  })
+
+  it('reads a warm body back transparently — full and ranged', () => {
+    const body = Buffer.from('0123456789'.repeat(2000))
+    const { ref } = putBody(dir, body)
+    compressBody(dir, ref)
+    expect(readBody(dir, ref)!.equals(body)).toBe(true)
+    expect(readBody(dir, ref, 5, 5)!.toString()).toBe('56789')
+  })
+
+  it('verifies a warm body against its ORIGINAL sha256 (A4)', () => {
+    const body = Buffer.from('attested then compressed')
+    const { ref } = putBody(dir, body)
+    compressBody(dir, ref)
+    expect(verifyBody(dir, ref)).toBe(true)
+  })
+
+  it('detects tampering of a warm body', () => {
+    const { ref } = putBody(dir, Buffer.from('original body'))
+    compressBody(dir, ref)
+    // overwrite the gz with a valid gzip of different bytes
+    const zlib = require('zlib') as typeof import('zlib')
+    fs.writeFileSync(path.join(ioDir(dir), `${ref}.bin.gz`), zlib.gzipSync(Buffer.from('tampered')))
+    expect(verifyBody(dir, ref)).toBe(false)
+  })
+
+  it('putBody dedups against an already-warm body (no raw rewrite)', () => {
+    const body = Buffer.from('dedup me')
+    const { ref } = putBody(dir, body)
+    compressBody(dir, ref)
+    putBody(dir, body)   // same bytes, already compressed
+    expect(fs.existsSync(path.join(ioDir(dir), `${ref}.bin`))).toBe(false)   // not re-materialized raw
+    const files = fs.readdirSync(ioDir(dir)).filter((f) => f.startsWith(ref))
+    expect(files).toEqual([`${ref}.bin.gz`])
+  })
+
+  it('compressBody is a no-op-true when already warm, false when pruned', () => {
+    const { ref } = putBody(dir, Buffer.from('x'))
+    compressBody(dir, ref)
+    expect(compressBody(dir, ref)).toBe(true)   // idempotent
+    fs.unlinkSync(path.join(ioDir(dir), `${ref}.bin.gz`))
+    expect(compressBody(dir, ref)).toBe(false)  // gone
+  })
+
+  it('ioStoreSize sums raw and warm bodies', () => {
+    putBody(dir, Buffer.from('a'.repeat(1000)))
+    const { ref } = putBody(dir, Buffer.from('b'.repeat(1000)))
+    compressBody(dir, ref)
+    expect(ioStoreSize(dir)).toBeGreaterThan(0)
   })
 })
 

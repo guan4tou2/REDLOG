@@ -439,12 +439,24 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     io_bad_at: Optional[str] = None
     io_dir = bundle_dir / "io"
     for ref, ev_id in io_refs.items():
-        f = io_dir / f"{ref}.bin"
-        if not f.exists():
+        raw = io_dir / f"{ref}.bin"
+        gz = io_dir / f"{ref}.bin.gz"
+        # Warm (compressed) bodies keep the ORIGINAL sha256 as their stem, so we
+        # decompress before hashing (SPEC-SCOPE-AWARE-LIFECYCLE.md A4). A missing
+        # file (neither raw nor warm) is pruned, not tampered.
+        if raw.exists():
+            f, compressed = raw, False
+        elif gz.exists():
+            f, compressed = gz, True
+        else:
             io_pruned += 1
             continue
         try:
-            actual = hashlib.sha256(f.read_bytes()).hexdigest()
+            data = f.read_bytes()
+            if compressed:
+                import gzip as _gzip
+                data = _gzip.decompress(data)
+            actual = hashlib.sha256(data).hexdigest()
         except Exception:
             io_pruned += 1
             continue

@@ -105,8 +105,21 @@ export interface RedLogConfig {
      *  project open. `0` (default) = keep forever, matching cast/screenshot
      *  conventions. The chained digest stays; a `system.io_pruned` audit event
      *  is appended per deletion, so a pruned body verifies as pruned, not
-     *  tampered (SPEC-IO-SIDECAR.md). */
+     *  tampered (SPEC-IO-SIDECAR.md). This is the *prune* age of the three-stage
+     *  lifecycle (SPEC-SCOPE-AWARE-LIFECYCLE.md Part C). */
     keepDays?: number
+    /** Warm stage: compress io bodies (gzip in place → `<sha>.bin.gz`) once they
+     *  are older than this many days. `0` (default) = never compress. The
+     *  ORIGINAL sha256 is kept, so `redlog-verify` decompresses and re-hashes;
+     *  reads decompress transparently. Compression is pure win before prune. */
+    warmDays?: number
+    /** Size cap for the whole `io/` store, in bytes. `0` (default) = no cap.
+     *  When exceeded, rotation compresses then prunes **unpinned**
+     *  (out-of-scope / unmarked) bodies first — in-scope + loot/marker-referenced
+     *  bodies are pinned and evicted last (SPEC-SCOPE-AWARE-LIFECYCLE.md scope-as-pin).
+     *  A body still referenced by any event inside its window is never deleted
+     *  (refcount-gated). */
+    maxBytes?: number
   }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
@@ -245,7 +258,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
     keepDays: 0
   },
   io: {
-    keepDays: 0
+    keepDays: 0,
+    warmDays: 0,
+    maxBytes: 0
   },
   clipboard: {
     enabled: false,
