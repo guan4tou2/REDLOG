@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { EmptyState } from './Feedback'
+import { ICON } from '../lib/icons'
+import { SplitPane } from './SplitPane'
 import { emptyStateFor } from '../lib/emptyState'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
@@ -94,8 +96,8 @@ export function QuickMarksView({ onOpenInTimeline, onEmptyAction }: {
   }
 
   return (
-    <div className="flex h-full">
-      <div className="w-80 border-r border-redlog-border flex flex-col">
+    <SplitPane id="findings-list-detail" direction="horizontal" defaultSize={320} min={240} max={560} otherMin={320}>
+      <div className="flex flex-col h-full">
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex-1 truncate">
@@ -177,7 +179,7 @@ export function QuickMarksView({ onOpenInTimeline, onEmptyAction }: {
               const es = emptyStateFor('marks', { captureDark: false })
               return (
                 <EmptyState
-                  icon="◈"
+                  icon={ICON.marks}
                   title={t(es.titleKey)}
                   subtitle={t(es.subtitleKey)}
                   action={es.action && es.action.target !== 'doc'
@@ -194,7 +196,7 @@ export function QuickMarksView({ onOpenInTimeline, onEmptyAction }: {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="h-full overflow-auto p-4">
         {creating && (
           <QuickMarkForm
             browserTab={browserTab}
@@ -219,7 +221,7 @@ export function QuickMarksView({ onOpenInTimeline, onEmptyAction }: {
           </div>
         )}
       </div>
-    </div>
+    </SplitPane>
   )
 }
 
