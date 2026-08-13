@@ -22,6 +22,7 @@ import { emptyStateFor } from './lib/emptyState'
 import { shortcutsForScope, MOD_TOKEN } from './lib/shortcuts'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
+import { ICON } from './lib/icons'
 import logoUrl from './assets/logo.svg'
 
 type View = SidebarViewId | 'settings' | 'search'
@@ -149,6 +150,15 @@ export default function App(): JSX.Element {
         }).catch(() => {})
         return
       }
+      // ⌘/Ctrl+B toggles the sidebar collapse (VS Code convention). The Sidebar
+      // owns the state + persistence; we just fire the event it listens for.
+      if (cmd && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('redlog:toggle-sidebar'))
+        return
+      }
       // ⌘⇧⌥ + arrow snaps the HUD to a corner of the display it's currently
       // on (audit finding #53). Was ⌘⌥ initially but macOS Sequoia's built-in
       // window tiling grabs that combo before the app sees it, so add Shift
@@ -231,7 +241,7 @@ export default function App(): JSX.Element {
             title={t('app.search')}
             aria-label={t('app.search')}
           >
-            <span aria-hidden className="text-[13px] leading-none">⌕</span>
+            <span aria-hidden className="text-[13px] leading-none">{ICON.search}</span>
           </button>
           <LaunchBrowserButton />
           <button
@@ -347,7 +357,7 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
               <span className={s.status === 'active' ? 'text-zinc-300' : 'text-zinc-400'}>
                 {STEP_LABEL[s.id] ?? s.id}
               </span>
-              <span className="text-[10px] font-mono text-zinc-600">{t(`capture.step.${s.status}`)}</span>
+              <span className="text-2xs font-mono text-zinc-600">{t(`capture.step.${s.status}`)}</span>
             </li>
           )
         })}
@@ -501,7 +511,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setManage((m) => !m)}
-              className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-2xs font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
               title={t('capture.manageHint')}
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
@@ -532,7 +542,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                   : s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {!manage && s.installed !== false && s.state !== 'off' && (
-                <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
+                <span className={`text-2xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
                   {fmtAge(s.lastEventAt, nowTick)}
                 </span>
               )}
@@ -546,7 +556,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                     <button
                       disabled={busy === s.id}
                       onClick={() => void setEnabled(s, s.enabled === false)}
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                      className={`text-2xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.enabled === false
                           ? 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
                           : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
@@ -559,7 +569,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                     <button
                       disabled={busy === s.id}
                       onClick={() => void setInstalled(s, s.installed !== true)}
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                      className={`text-2xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.installed === true
                           ? 'border-zinc-700 text-zinc-500 hover:text-red-400'
                           : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
@@ -573,7 +583,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
                   {!s.configPath && !s.hookId && (
-                    <span className="text-[10px] font-mono text-zinc-700">{t('capture.passive')}</span>
+                    <span className="text-2xs font-mono text-zinc-700">{t('capture.passive')}</span>
                   )}
                 </span>
               )}
@@ -993,7 +1003,7 @@ function ScreenshotsView({ onEmptyAction }: { onEmptyAction?: (target: string) =
         const es = emptyStateFor('screenshots', { captureDark: false })
         return (
           <EmptyState
-            icon="◻"
+            icon={ICON.screenshots}
             title={t(es.titleKey)}
             subtitle={t(es.subtitleKey)}
             action={es.action && es.action.target !== 'doc'
@@ -1079,7 +1089,7 @@ function ScreenshotsView({ onEmptyAction }: { onEmptyAction?: (target: string) =
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity hit-target"
                     title={t('screenshots.deleteTitle')}
                     aria-label={t('screenshots.deleteTitle')}
                   >×</button>

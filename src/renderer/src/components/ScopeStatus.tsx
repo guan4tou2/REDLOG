@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
+import { ICON } from '../lib/icons'
 import { toast } from './Toast'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
@@ -69,7 +70,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
         {!configured && (
           <div className="flex flex-col items-center py-6 gap-2">
             <div className="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
-              <span className="text-xl text-zinc-600">⊘</span>
+              <span className="text-xl text-zinc-600">{ICON.scope}</span>
             </div>
             <p className="text-zinc-500 text-xs">
               {t('scope.hint')}

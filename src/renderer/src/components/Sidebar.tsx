@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { ICON } from '../lib/icons'
 
 interface SidebarProps {
   active: string
@@ -43,6 +44,24 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
   const didDrag = useRef(false)
   const { t } = useI18n()
 
+  // Collapsible sidebar (DESIGN-SYSTEM §6.3): icon-only ↔ labelled, persisted.
+  // Toggled by the chevron below or ⌘B (App dispatches redlog:toggle-sidebar).
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-sidebar-collapsed') === '1' } catch { return false }
+  })
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c
+      try { localStorage.setItem('redlog-sidebar-collapsed', next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }, [])
+  useEffect(() => {
+    const h = (): void => toggleCollapsed()
+    window.addEventListener('redlog:toggle-sidebar', h)
+    return () => window.removeEventListener('redlog:toggle-sidebar', h)
+  }, [toggleCollapsed])
+
   useEffect(() => {
     window.redlog.loot.getCount().then(setLootCount)
     window.redlog.scope.getViolationCount().then(setScopeViolations)
@@ -61,15 +80,15 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     ) : null
 
   const itemMap: Record<string, NavItem> = {
-    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: '◉' },
-    terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: '▸' },
-    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
-    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: '☰' },
-    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' },
-    targets: { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
-    scope: { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-    loot: { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-amber-500' },
-    marks: { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
+    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: ICON.dashboard },
+    terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ICON.terminal },
+    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: ICON.timeline },
+    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: ICON.transcript },
+    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: ICON.screenshots },
+    targets: { id: 'targets', label: t('sidebar.targets'), icon: ICON.targets },
+    scope: { id: 'scope', label: t('sidebar.scope'), icon: ICON.scope, badge: scopeViolations, badgeColor: 'bg-red-500' },
+    loot: { id: 'loot', label: t('sidebar.loot'), icon: ICON.loot, badge: lootCount, badgeColor: 'bg-amber-500' },
+    marks: { id: 'marks', label: t('sidebar.marks'), icon: ICON.marks }
   }
 
   const items = order.map((id) => itemMap[id]).filter(Boolean)
@@ -117,7 +136,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
   }, [onNavigate])
 
   return (
-    <nav className="w-[140px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
+    <nav className={`${collapsed ? 'w-[52px]' : 'w-[140px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
       <div className="space-y-0.5">
         {items.map((item, index) => {
           const isActive = active === item.id
@@ -133,6 +152,8 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               aria-label={`${item.label} — ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
               aria-current={isActive ? 'page' : undefined}
               className={`group w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
+                collapsed ? 'justify-center' : ''
+              } ${
                 draggingId === item.id ? 'bg-white/[0.07] cursor-grabbing' : ''
               } ${
                 isActive
@@ -143,27 +164,40 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               {isActive && (
                 <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
               )}
-              <span className={`text-[13px] leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
+              <span className={`text-[13px] leading-none w-4 text-center shrink-0 transition-colors relative ${isActive ? 'text-red-400' : ''}`}>
                 {item.icon}
+                {/* Collapsed: the count badge can't sit inline, so surface it as a
+                    corner dot on the icon — presence still visible at a glance. */}
+                {collapsed && 'badge' in item && item.badge ? (
+                  <span className={`absolute -top-1 -right-1.5 w-2 h-2 rounded-full ${item.badgeColor || 'bg-zinc-500'} ring-2 ring-redlog-bg`} />
+                ) : null}
               </span>
-              <span className={`text-[11px] leading-none truncate font-medium flex-1 min-w-0 ${isActive ? 'text-red-400' : ''}`}>
-                {item.label}
-              </span>
-              {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-zinc-500')}
+              {!collapsed && (
+                <span className={`text-[11px] leading-none truncate font-medium flex-1 min-w-0 ${isActive ? 'text-red-400' : ''}`}>
+                  {item.label}
+                </span>
+              )}
+              {!collapsed && 'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-zinc-500')}
               {/* F7: a low-weight drag-handle so "these reorder" is visible on
                   hover, not buried in the first item's tooltip. Purely a hint —
                   the whole button is the pointer drag target (handlers above),
-                  this glyph changes no drag logic. */}
-              <span aria-hidden className="text-[11px] leading-none text-zinc-500 opacity-0 group-hover:opacity-60 transition-opacity duration-150 cursor-grab shrink-0">⠿</span>
+                  this glyph changes no drag logic. Expanded-only. */}
+              {!collapsed && (
+                <span aria-hidden className="text-[11px] leading-none text-zinc-500 opacity-0 group-hover:opacity-60 transition-opacity duration-150 cursor-grab shrink-0">{ICON.dragHandle}</span>
+              )}
             </button>
           )
         })}
       </div>
 
-      <div className="mt-auto pt-3 border-t border-zinc-800/40">
+      <div className="mt-auto pt-3 border-t border-zinc-800/40 space-y-0.5">
         <button
           onClick={() => onNavigate('settings')}
+          title={collapsed ? t('sidebar.config') : undefined}
+          aria-label={t('sidebar.config')}
           className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
+            collapsed ? 'justify-center' : ''
+          } ${
             active === 'settings'
               ? 'text-red-400'
               : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
@@ -172,8 +206,25 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           {active === 'settings' && (
             <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
           )}
-          <span className={`text-[13px] leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>⚙</span>
-          <span className={`text-[11px] leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
+          <span className={`text-[13px] leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>{ICON.settings}</span>
+          {!collapsed && (
+            <span className={`text-[11px] leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
+          )}
+        </button>
+        {/* Collapse toggle (DESIGN-SYSTEM §6.3) — icon-only ↔ labelled. */}
+        <button
+          onClick={toggleCollapsed}
+          title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+          aria-expanded={!collapsed}
+          className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
+            collapsed ? 'justify-center' : ''
+          }`}
+        >
+          <span aria-hidden className="text-[13px] leading-none w-4 text-center shrink-0">{collapsed ? '»' : '«'}</span>
+          {!collapsed && (
+            <span className="text-[11px] leading-none truncate font-medium">{t('sidebar.collapse')}</span>
+          )}
         </button>
       </div>
     </nav>
