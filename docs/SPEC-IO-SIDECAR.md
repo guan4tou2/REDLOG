@@ -1,5 +1,15 @@
 # Spec — io_ref Sidecar for Full Request/Response Bodies
 
+> **✅ Implemented 2026-08-13.** All five build-order steps landed:
+> `src/core/io-store.ts` (`putBody`/`readBody`/`stampIoRefs`/`verifyBody`, 19
+> unit tests); sidecaring at `POST /api/events` (option B) + the mitmproxy addon
+> posting `*_body_full` when the preview truncates; the `io:read` IPC
+> (`ref`-only, so no arbitrary-path read); `ScannerDetail`'s "load full body"
+> affordance; and bundle-export copy + retention `system.io_pruned` +
+> `redlog-verify.py` re-hash (pruned ≠ tampered). Read cap `MAX_IO_READ_BYTES`
+> = 8 MB; a body over the read cap or pruned is reported, never dumped as raw
+> bytes. Retention knob: `config.io.keepDays` (default 0 = keep forever).
+
 Written 2026-08-12. The last unshipped piece of the v0.10.0 I/O-visibility work
 (ROADMAP: "shipped as v0.11.2 except the sidecar"): store **full** captured HTTP
 request/response bodies (and any other large capture payload) in a prunable

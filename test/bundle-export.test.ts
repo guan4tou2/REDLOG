@@ -104,6 +104,20 @@ describeDB('evidence bundle export', () => {
     expect(fs.existsSync(path.join(outDir, 'agent-transcripts', 'claude-1.jsonl'))).toBe(true)
   })
 
+  it('copies io_ref sidecar bodies into the bundle, hashed into the manifest', () => {
+    // io/<sha256>.bin — the body a scanner event references by digest only.
+    const body = '{"leaked":"' + 'Z'.repeat(40 * 1024) + '"}'
+    const sha = crypto.createHash('sha256').update(Buffer.from(body, 'utf8')).digest('hex')
+    seedFile('io', `${sha}.bin`, body)
+    ins('scanner', { subtype: 'http_response', url: 'http://x/y', status: 200, io: { response: { ref: sha, len: body.length, sha256: sha } } })
+    const { outDir, manifest } = exportBundle('eng')
+    const copied = path.join(outDir, 'io', `${sha}.bin`)
+    expect(fs.existsSync(copied), 'sidecar body copied into bundle').toBe(true)
+    const entry = manifest.files.find((f) => f.path === `io/${sha}.bin`)
+    expect(entry, 'io body listed in manifest').toBeTruthy()
+    expect(entry!.sha256).toBe(sha)   // file name IS its digest — content-addressed
+  })
+
   it('never exports operator token hashes', () => {
     const { outDir } = exportBundle('eng')
     const opsPath = path.join(outDir, 'operators.json')

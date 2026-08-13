@@ -164,6 +164,28 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     }
   }
 
+  // 6a. io/ — copy every sidecar body (io_ref, SPEC-IO-SIDECAR.md). The events
+  // carry only the sha256; the full HTTP request/response bodies live here, so
+  // a bundle without them would verify but be unreadable. Each file is
+  // content-addressed (its name IS its sha256), and hashed into the manifest
+  // like casts/screenshots so an auditor can confirm the bytes match the digest
+  // the chain attests. A retention-pruned body simply isn't present — the
+  // manifest omission is the honest record, same as a pruned cast.
+  const srcIo = path.join(projectDir, 'io')
+  const dstIo = path.join(bundleDir, 'io')
+  if (fs.existsSync(srcIo)) {
+    fs.mkdirSync(dstIo, { recursive: true })
+    for (const name of fs.readdirSync(srcIo)) {
+      const s = path.join(srcIo, name)
+      const d = path.join(dstIo, name)
+      if (name.endsWith('.bin') && fs.statSync(s).isFile()) {
+        fs.copyFileSync(s, d)
+        const info = sha256File(d)
+        files.push({ path: `io/${name}`, ...info })
+      }
+    }
+  }
+
   // 6b. agent-transcripts/ — copied ONLY when opts.includeAgentTranscripts.
   // Default-exclude rationale: the raw sidecar `.jsonl` files hold verbatim
   // conversation content (user prompts + assistant responses + tool_use +

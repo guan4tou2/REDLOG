@@ -55,7 +55,7 @@ describeDB('retention sweep', () => {
     const cast = seed('casts', 'old.cast', 400)
     const shot = seed('screenshots', 'old.jpg', 400)
     const swept = sweepRetention({}, OPTS)
-    expect(swept).toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0 })
+    expect(swept).toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0, io: 0 })
     expect(fs.existsSync(cast)).toBe(true)
     expect(fs.existsSync(shot)).toBe(true)
   })
@@ -85,9 +85,20 @@ describeDB('retention sweep', () => {
     const swept = sweepRetention(
       { terminal: { castKeepDays: 30 }, screenshots: { keepDays: 0 }, agentTranscripts: { keepDays: 10 } }, OPTS
     )
-    expect(swept).toEqual({ cast: 1, screenshots: 0, agentTranscripts: 1 })
+    expect(swept).toEqual({ cast: 1, screenshots: 0, agentTranscripts: 1, io: 0 })
     expect(auditEvents('screenshot_pruned')).toBe(0)
     expect(auditEvents('agent_transcript_pruned')).toBe(1)
+  })
+
+  it('prunes io_ref sidecar bodies on their own window, with an audit event', () => {
+    const oldBody = seed('io', 'a'.repeat(64) + '.bin', 40)
+    const freshBody = seed('io', 'b'.repeat(64) + '.bin', 2)
+    const swept = sweepRetention({ io: { keepDays: 30 } }, OPTS)
+    expect(swept.io).toBe(1)
+    expect(fs.existsSync(oldBody)).toBe(false)
+    expect(fs.existsSync(freshBody)).toBe(true)
+    // pruned, not vanished: the reviewer finds a row explaining the gap
+    expect(auditEvents('io_pruned')).toBe(1)
   })
 
   it('ignores files it does not own', () => {
@@ -99,7 +110,7 @@ describeDB('retention sweep', () => {
   it('is a no-op without an operator id — every event needs attribution', () => {
     const f = seed('casts', 'a.cast', 400)
     expect(sweepRetention({ terminal: { castKeepDays: 1 } }, { engagementId: 'e', operatorId: '' }))
-      .toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0 })
+      .toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0, io: 0 })
     expect(fs.existsSync(f)).toBe(true)
   })
 

@@ -123,6 +123,9 @@ interface RedLogAPI {
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
   }
+  io: {
+    read: (ref: string, off?: number, len?: number) => Promise<{ ok: boolean; text?: string; bytes?: number; error?: string; maxBytes?: number }>
+  }
   chain: {
     length: () => Promise<number>
     anchors: () => Promise<ChainAnchorInfo[]>

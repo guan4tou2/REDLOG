@@ -95,10 +95,12 @@ export function sweepRetention(config: {
   terminal?: { castKeepDays?: number }
   screenshots?: { keepDays?: number }
   agentTranscripts?: { keepDays?: number }
-}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number } {
-  if (!opts.operatorId) return { cast: 0, screenshots: 0, agentTranscripts: 0 }
+  io?: { keepDays?: number }
+}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number; io: number } {
+  const zero = { cast: 0, screenshots: 0, agentTranscripts: 0, io: 0 }
+  if (!opts.operatorId) return zero
   let projectDir: string
-  try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0, agentTranscripts: 0 } }
+  try { projectDir = getProjectDir() } catch { return zero }
   const castDays = config.terminal?.castKeepDays ?? 0
   const shotDays = config.screenshots?.keepDays ?? 0
   // v0.7.2 F: agent-transcripts sweep.
@@ -134,5 +136,17 @@ export function sweepRetention(config: {
     'agent_transcript_pruned',
     opts
   )
-  return { cast, screenshots, agentTranscripts }
+  // io_ref sidecar bodies (SPEC-IO-SIDECAR.md): same arc as .cast pruning — the
+  // chain (digests only) is untouched, so a pruned body verifies as *pruned*,
+  // not tampered. No `_causes` link: bodies are deduped by digest, so one file
+  // can back many events and a single cause would be arbitrary; the io_pruned
+  // event records the path + size so the gap stays explainable.
+  const io = sweepDir(
+    path.join(projectDir, 'io'),
+    config.io?.keepDays ?? 0,
+    (n) => n.endsWith('.bin'),
+    'io_pruned',
+    opts
+  )
+  return { cast, screenshots, agentTranscripts, io }
 }

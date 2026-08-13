@@ -100,6 +100,14 @@ export interface RedLogConfig {
      *  `system.screenshot_pruned` audit event is appended per deletion. */
     keepDays?: number
   }
+  io?: {
+    /** io_ref sidecar bodies (io/<sha256>.bin) auto-delete after N days on
+     *  project open. `0` (default) = keep forever, matching cast/screenshot
+     *  conventions. The chained digest stays; a `system.io_pruned` audit event
+     *  is appended per deletion, so a pruned body verifies as pruned, not
+     *  tampered (SPEC-IO-SIDECAR.md). */
+    keepDays?: number
+  }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
     enabled: boolean
@@ -234,6 +242,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
     castKeepDays: 0
   },
   screenshots: {
+    keepDays: 0
+  },
+  io: {
     keepDays: 0
   },
   clipboard: {
