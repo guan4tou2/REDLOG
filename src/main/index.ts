@@ -494,8 +494,8 @@ function startProject(project: ProjectMeta): void {
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
-    if (swept.cast > 0 || swept.screenshots > 0 || swept.io > 0) {
-      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.io} io body(ies)`)
+    if (swept.cast > 0 || swept.screenshots > 0 || swept.io > 0 || swept.ioCompressed > 0) {
+      console.log(`[retention] pruned ${swept.cast} .cast + ${swept.screenshots} screenshot(s) + ${swept.io} io body(ies); compressed ${swept.ioCompressed} io body(ies)`)
     }
   } catch (e) { console.error('[retention] sweep failed:', e) }
 
