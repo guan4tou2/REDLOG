@@ -101,4 +101,66 @@ describeDB('api-server', () => {
     expect(r.status).toBe(200)
     expect(typeof (await r.json()).count).toBe('number')
   })
+
+  // io_ref sidecar (SPEC-IO-SIDECAR.md A1/A2): a posted full body lands in
+  // <projectDir>/io/<sha256>.bin, the chained event carries only the digest,
+  // and the bytes are retrievable — here straight off disk (the io:read IPC is
+  // the renderer-facing equivalent, covered by io-store unit tests).
+  it('sidecars a large posted body and keeps only the digest on the event', async () => {
+    const bigBody = JSON.stringify({ dump: 'Z'.repeat(40 * 1024) })   // > 16 KB preview cap
+    const post = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_type: 'scanner',
+        target_id: 'example.test',
+        data: {
+          subtype: 'http_response',
+          url: 'http://example.test/dump',
+          status: 200,
+          response_preview: bigBody.slice(0, 16384),
+          response_body_full: bigBody,
+          response_body_ct: 'application/json',
+        },
+      }),
+    })
+    expect(post.status).toBe(200)
+
+    // Read the event back: full bytes gone, io ref present (A2).
+    const listed = await fetch(`${base}/api/events?agent_type=scanner&limit=10`, { headers: authHeaders })
+    const payload = await listed.json() as unknown
+    const rows = Array.isArray(payload) ? payload : ((payload as { events?: unknown[] }).events ?? [])
+    const ev = (rows as Array<{ data: unknown }>)
+      .map((e) => (typeof e.data === 'string' ? JSON.parse(e.data) : e.data) as Record<string, unknown>)
+      .find((d) => d.subtype === 'http_response' && d.url === 'http://example.test/dump')
+    expect(ev, 'sidecarred response event').toBeTruthy()
+    expect(ev!.response_body_full, 'raw bytes must not be chained').toBeUndefined()
+    const io = ev!.io as { response?: { ref: string; len: number; sha256: string; ct: string } }
+    expect(io?.response?.ref).toMatch(/^[0-9a-f]{64}$/)
+    expect(io!.response!.len).toBe(Buffer.byteLength(bigBody, 'utf8'))
+    expect(io!.response!.ct).toBe('application/json')
+
+    // The bytes really landed in the sidecar and match the digest (A1/A4).
+    const onDisk = fs.readFileSync(path.join(tmpDir, 'io', `${io!.response!.ref}.bin`))
+    expect(onDisk.toString('utf8')).toBe(bigBody)
+  })
+
+  it('does not sidecar a small body (preview is already complete)', async () => {
+    const small = JSON.stringify({ ok: true })
+    await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_type: 'scanner',
+        data: { subtype: 'http_response', url: 'http://example.test/small', status: 200, response_preview: small },
+      }),
+    })
+    const listed = await fetch(`${base}/api/events?agent_type=scanner&limit=20`, { headers: authHeaders })
+    const payload = await listed.json() as unknown
+    const rows = Array.isArray(payload) ? payload : ((payload as { events?: unknown[] }).events ?? [])
+    const ev = (rows as Array<{ data: unknown }>)
+      .map((e) => (typeof e.data === 'string' ? JSON.parse(e.data) : e.data) as Record<string, unknown>)
+      .find((d) => d.url === 'http://example.test/small')
+    expect(ev!.io).toBeUndefined()
+  })
 })

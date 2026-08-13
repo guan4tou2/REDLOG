@@ -89,6 +89,22 @@ test('mitmproxy addon captures request + response bodies end to end', async () =
     setTimeout(() => { c.kill(); reject(new Error('curl timed out')) }, 15_000)
   })
   console.log('[mitm] curl got:', curlOut.slice(0, 120))
+
+  // 4b) io_ref sidecar (SPEC-IO-SIDECAR.md A1/A2): a request body larger than
+  //     the 16 KB inline preview cap. The echo reflects it, so BOTH directions
+  //     exceed the cap and should sidecar. Assert the event keeps only a digest.
+  const bigValue = 'B'.repeat(40 * 1024)   // > REDLOG_MAX_BODY (16 KB)
+  await new Promise<void>((resolve, reject) => {
+    const c = spawn('curl', [
+      '-s', '-x', `http://127.0.0.1:${PROXY_PORT}`,
+      '-X', 'POST', `http://127.0.0.1:${echoPort}/api/upload`,
+      '-H', 'content-type: application/json',
+      '-d', JSON.stringify({ blob: bigValue })
+    ])
+    c.on('close', () => resolve())
+    c.on('error', reject)
+    setTimeout(() => { c.kill(); reject(new Error('curl(big) timed out')) }, 15_000)
+  })
   await new Promise((r) => setTimeout(r, 2500)) // addon posts to RedLog async
 
   // 5) Read back the scanner events RedLog stored.
@@ -100,8 +116,10 @@ test('mitmproxy addon captures request + response bodies end to end', async () =
   const events = (raw as Array<{ data: unknown }>).map((e) => ({
     data: (typeof e.data === 'string' ? JSON.parse(e.data) : e.data) as Record<string, unknown>
   }))
-  const req = events.find((e) => e.data?.subtype === 'http_request_start')
-  const rsp = events.find((e) => e.data?.subtype === 'http_response')
+  const req = events.find((e) => e.data?.subtype === 'http_request_start' && String(e.data?.url).includes('/api/login'))
+  const rsp = events.find((e) => e.data?.subtype === 'http_response' && String(e.data?.url).includes('/api/login'))
+  const bigReq = events.find((e) => e.data?.subtype === 'http_request_start' && String(e.data?.url).includes('/api/upload'))
+  const bigRsp = events.find((e) => e.data?.subtype === 'http_response' && String(e.data?.url).includes('/api/upload'))
 
   console.log('[mitm] scanner events:', events.length,
     'req?', !!req, 'rsp?', !!rsp,
@@ -120,6 +138,17 @@ test('mitmproxy addon captures request + response bodies end to end', async () =
   // the flow is paired via flow_id → _causes on the response
   expect(req?.data?.flow_id).toBeTruthy()
   expect(rsp?.data?.flow_id).toBe(req?.data?.flow_id)
+
+  // io_ref sidecar: the >16 KB bodies carry a digest-only ref, not raw bytes,
+  // and the preview is truncated while the ref records the full length (A1/A2).
+  const reqIo = (bigReq?.data?.io as { request?: { ref: string; len: number } } | undefined)?.request
+  const rspIo = (bigRsp?.data?.io as { response?: { ref: string; len: number } } | undefined)?.response
+  expect(reqIo?.ref, 'request body sidecarred').toMatch(/^[0-9a-f]{64}$/)
+  expect(reqIo!.len).toBeGreaterThan(16 * 1024)
+  expect(bigReq?.data?.request_body_full, 'raw request bytes not chained').toBeUndefined()
+  expect(String(bigReq?.data?.request_body_preview)).toContain('...[truncated')
+  expect(rspIo?.ref, 'response body sidecarred').toMatch(/^[0-9a-f]{64}$/)
+  expect(rspIo!.len).toBeGreaterThan(16 * 1024)
 
   await app.close()
 })
