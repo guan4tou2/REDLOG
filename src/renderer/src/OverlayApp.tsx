@@ -131,7 +131,7 @@ export default function OverlayApp(): JSX.Element {
   // same factor. Without this the middle gap stays fixed while text shrinks —
   // small scale looks loose, large scale looks cramped.
   const px = (n: number): number => Math.round(n * s)
-  const hair = <span style={{ width: 1, height: px(13), background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
+  const hair = <span style={{ width: 1, height: px(13), background: hexA(CYAN, 0.25), flexShrink: 0 }} />
 
   const safety = status?.ipSafety ?? 'unknown'
   const link = status?.link
@@ -153,8 +153,8 @@ export default function OverlayApp(): JSX.Element {
   const iconBtn: React.CSSProperties = {
     color: CYAN, fontSize: fs(10), cursor: 'pointer', width: 18, height: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: interactive ? 'rgba(34,211,238,0.10)' : 'transparent',
-    border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
+    background: interactive ? hexA(CYAN, 0.10) : 'transparent',
+    border: `1px solid ${interactive ? hexA(CYAN, 0.35) : 'transparent'}`,
     transition: 'background 0.12s, border-color 0.12s'
   }
   const latestPivot = pivots[0]
@@ -184,7 +184,7 @@ export default function OverlayApp(): JSX.Element {
           }}
         >
           {/* scanlines */}
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `repeating-linear-gradient(0deg, ${hexA(CYAN, 0.035)} 0px, ${hexA(CYAN, 0.035)} 1px, transparent 1px, transparent 3px)`, opacity: 0.6 }} />
 
           {/* buttons (top-right): expand + hide only. The pin toggle used to
               live here too, but the operator asked to move it into the

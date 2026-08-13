@@ -54,7 +54,30 @@ body {
 }
 
 .drag-over {
-  border-top: 2px solid #ef4444 !important;
+  border-top: 2px solid #d75f63 !important; /* soften map red-400 (DESIGN-SYSTEM §1.5) */
+}
+
+/* Hit-slop: enlarge a small control's pointer/click target WITHOUT growing its
+ * visual box, via a transparent ::before overlay. Apple HIG asks for 44pt touch
+ * targets; RedLog is a dense pointer-driven desktop tool, so we set a desktop
+ * floor of ~28px (see docs/DESIGN-SYSTEM.md §0.1, audit C8). The overlay claims
+ * the surrounding dead space, so keep two hit-target controls ≥12px apart — the
+ * slops then meet only in the gap between them, never over a neighbour's glyph.
+ * The control must be able to position the overlay: `.hit-target` sets
+ * position:relative for you (a button is static by default). */
+.hit-target { position: relative; }
+.hit-target::before {
+  content: '';
+  position: absolute;
+  inset: -0.375rem; /* -6px each side: a 16px control → 28px, a 20px control → 32px */
+}
+/* Vertical-only slop for thin, full-width drag handles (e.g. the 4px detail-
+ * panel grip) — grows the grab band without widening it into neighbours. */
+.hit-target-v { position: relative; }
+.hit-target-v::before {
+  content: '';
+  position: absolute;
+  inset: -0.5rem 0; /* -8px top/bottom only: a 4px handle → 20px grab height */
 }
 
 .timeline-grabbing {
