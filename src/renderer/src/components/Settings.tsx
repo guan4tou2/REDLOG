@@ -237,7 +237,7 @@ export default function Settings(): JSX.Element {
                 className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left bg-zinc-900 border border-redlog-border rounded hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
               >
                 <span className="text-xs text-zinc-200">{g.title}</span>
-                <span className="text-[10px] uppercase tracking-wider text-zinc-500">{tabLabel(g.tab)}</span>
+                <span className="text-2xs uppercase tracking-wider text-zinc-500">{tabLabel(g.tab)}</span>
               </button>
             ))
           )
@@ -2636,7 +2636,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                           is meant to compare it against the publisher's own
                           site before pinning, not take the registry's word. */}
                       {p.keys.map((k) => (
-                        <p key={k.publicKey} className="text-[10px] text-zinc-500 font-mono truncate" title={k.publicKey}>
+                        <p key={k.publicKey} className="text-2xs text-zinc-500 font-mono truncate" title={k.publicKey}>
                           {(k as { fingerprint?: string }).fingerprint ?? k.publicKey.slice(0, 16)}{k.label ? ` · ${k.label}` : ''}
                         </p>
                       ))}
