@@ -19,6 +19,10 @@ extraResources:
   # 🔴 plugin isolation runner — forked into a utilityProcess for trusted plugins
   - from: resources/plugin-runner.js
     to: plugin-runner.js
+  # Bundled plugin packs (scan-parsers, c2-tailers, …) — discovered from
+  # <resources>/plugins at runtime by loader.ts::bundledRoot().
+  - from: plugins
+    to: plugins
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools

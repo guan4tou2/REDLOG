@@ -27,7 +27,8 @@ network:
 
 # Scope definition (optional)
 scope:
-  # warn | block | log
+  # warn | log  (legacy field; migrated to scope.warnOnViolation on load.
+  #               `block` was removed — RedLog never blocks, see docs/ALERT-ROLES.md Part D)
   enforcement: warn
   # In-scope targets (IPs, CIDRs, wildcard domains)
   targets:

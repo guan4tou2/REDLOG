@@ -1,0 +1,51 @@
+{
+  "id": "scan-parsers",
+  "name": "Scan Parsers",
+  "version": "1.0.0",
+  "description": "Bundled pack (SPEC-AI-ERA-PLUGINS Gap 1): parse structured scanner output (nmap greppable, nuclei JSONL) into typed scanner.scan_result timeline events. Runs no code inside RedLog — the parser is a shell-side pipe stage that POSTs to the local API.",
+  "author": "RedLog",
+  "redlogApi": 1,
+  "contributes": {
+    "targetExtractors": [
+      {
+        "cmd": "^nuclei\\s",
+        "extract": "-u\\s+https?://([^/\\s]+)",
+        "name": "nuclei-target",
+        "description": "Extracts the host from a `nuclei -u <url>` invocation"
+      },
+      {
+        "cmd": "^(nmap|masscan)\\s",
+        "extract": "(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(?:/\\d{1,2})?)",
+        "name": "nmap-target-ip",
+        "description": "Extracts an IPv4 / CIDR target from an nmap or masscan command"
+      }
+    ],
+    "capture": [
+      {
+        "id": "nmap-scan-parser",
+        "name": "nmap → scan_result",
+        "description": "Pipe nmap greppable output through the parser so each host+ports lands as a scanner.scan_result event.",
+        "agentType": "scanner",
+        "requires": ["nmap", "node"],
+        "hookFile": "hooks/nmap-redlog.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Run your scan through the wrapper (it echoes nmap's output and captures it)", "command": "\"{hookFile}\" -sV 10.0.0.0/24" },
+          { "label": "Or pipe an existing greppable scan file", "command": "cat scan.gnmap | node \"{pluginDir}/scan-to-redlog.js\" nmap" }
+        ]
+      },
+      {
+        "id": "nuclei-scan-parser",
+        "name": "nuclei → scan_result",
+        "description": "Pipe nuclei JSONL output through the parser so each finding lands as a scanner.scan_result event (severity recorded as the tool reported it).",
+        "agentType": "scanner",
+        "requires": ["nuclei", "node"],
+        "hookFile": "hooks/nuclei-redlog.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Run nuclei through the wrapper", "command": "\"{hookFile}\" -u https://target.example.com" }
+        ]
+      }
+    ]
+  }
+}

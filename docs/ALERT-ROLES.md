@@ -278,3 +278,155 @@ Both roles fill the same headings:
   alerting will disagree about what "out of scope" means.
 - **`DELIVERY-TARGETS.md`** — the deconfliction Stream is an alert consumer (G-C2).
 - **`DETECTOR-ROLES.md`** — loot/credential detections are Detectors, not Alerts.
+
+---
+
+# Part C — Toggles: what may be silenced, and at what granularity
+
+## C.1 The rule (falls out of the tier axis)
+
+> **Verdicts have no switches. Surfaces do.**
+> Within surfaces: **fact-tier alerts may be de-emphasised, never removed;
+> inferred-tier alerts may be silenced.**
+
+`overlay.flashOnExposed` is the existing correct precedent: it does not make
+`exposed` disappear, it only stops the flash. Any new toggle must be checkable
+against that shape — if flipping it can make a fact-tier verdict *unobservable*,
+it is the wrong toggle.
+
+## C.2 Self alarm: zero new toggles
+
+| Candidate | Verdict |
+|---|---|
+| "silence `exposed`" | ✗ fact — never |
+| "silence `off_profile`" | ✗ fact — never |
+| "opt out of `presumed_safe` outlining" | ✗ not a toggle — it is a *presentation of uncertainty*; making it optional re-creates the false green (A-3) |
+| "hide `settling` / `stale`" | ✗ these are bug fixes (G-A3), not preferences |
+| lan-profile whitelist (G-A4) | ✓ but it is a **config field**, not a toggle — same shape as `ipWhitelist` |
+
+The IP side needs **no new booleans**. Every gap in Part A is a correctness fix or
+a new list field.
+
+## C.3 Target alarm: one threshold, replacing the existing boolean
+
+The distance ladder is **ordered** (D1 > D2 > D3). An ordered space needs a floor,
+not N independent booleans — N booleans would let an operator construct incoherent
+states ("warn on unrelated but not on adjacent") and would violate §9 (surface
+weight mirrors necessity).
+
+```
+scope.alertFloor: 'excluded_only' | 'adjacent' | 'all'      // default: 'adjacent'
+```
+
+| Value | Emits | Use case |
+|---|---|---|
+| `excluded_only` | D1 | recon-heavy phase; third-party services dominate the target stream |
+| `adjacent` **(default)** | D1 + D2 | normal engagement — "right subnet/domain, wrong host" is the signal you want |
+| `all` | D1 + D2 + D3 | strict authorisation: *any* target not on the list is on the record |
+
+D1 is absent from every "off" position by construction — that is the fact-tier rule
+made structural rather than remembered.
+
+**Migration** (the `enforcement` → `warnOnViolation` migration in `config.ts` is the
+precedent to copy): `warnOnViolation: true` → `'adjacent'`; `false` →
+`'excluded_only'`. Note `false` does **not** map to a "none" — D1 already fires
+regardless of `warnOnViolation` today, so the mapping preserves current behaviour
+exactly.
+
+Note that `'all'` is today's *accidental* behaviour on the IP path (G-B3). Making it
+a deliberate, named choice instead of an unintended default is the whole point.
+
+## C.4 The one tuning parameter (not a toggle)
+
+```
+scope.proximityBits: number    // default 24 — container width for single-IP entries
+```
+
+**There is deliberately no domain-side counterpart.** The domain container is the
+registrable domain, fixed by the public suffix list (G-B2) — there is no coherent
+"expand N labels" knob, and offering one would invite `*.co.uk`-shaped scopes. The
+asymmetry is intentional; record it so nobody adds `proximityLabels` for symmetry's
+sake.
+
+**Net: one enum replaces one boolean, plus one integer. No new switches.**
+
+---
+
+# Part D — Prevention: RedLog cannot block, and what to do instead
+
+## D.1 Why blocking is off the table (three verifiable reasons, not just the law)
+
+`enforcement: block` was **removed** — `config.ts` migrates only `'warn' | 'log'`,
+and the surviving `# warn | block | log` comment in `config.example.yaml` is stale.
+The removal was correct, for reasons stronger than §1:
+
+1. **The seam is fire-and-forget by construction.** `shell/redlog-hook.zsh`
+   `_redlog_preexec` does fire *before* execution — the seam exists — but it posts
+   with `curl -sf ... &!`: backgrounded, response discarded, 1s connect timeout. To
+   block, the shell would have to *wait on a localhost round-trip before every
+   command*, and a wedged RedLog would wedge the operator's shell mid-engagement.
+   An evidence tool that can freeze your terminal will be uninstalled.
+2. **Coverage is heuristic, and a 70%-coverage gate is worse than none.**
+   `extractTargetWithProvenance()` cannot see targets inside pipelines, loops,
+   scripts, or custom tooling. A gate the operator *trusts* but that silently
+   passes a third of traffic converts a caught mistake into an uncaught one.
+3. **A blocked action leaves the weaker record.** RedLog's deliverable is
+   "provably did not exceed scope," not "was unable to exceed scope." The former
+   survives a blocked-but-bypassed path; the latter is refuted by one `curl`.
+
+## D.2 The prevention ladder (P0–P3) — mirrors the distance ladder
+
+Prevention is not blocking; it is **moving friction earlier**, to where an alert
+cannot help. Earlier is strictly more effective.
+
+| | Stage | Mechanism | Owner | Status |
+|---|---|---|---|---|
+| **P0** | before the engagement | scope arrives from the authorisation document, not from typing | `scope.scopeFile` | ✅ exists |
+| **P1** | before the tool runs | **RedLog exports its scope into the tools' own scope formats** | new (G-D1) | ❌ **the gap** |
+| **P2** | at invocation | opt-in wrapper asks for confirmation on D1 | `redlog-run` | ❌ (G-D2) |
+| **P3** | after the fact | alert + event + **positive adherence proof** | `scope-monitor` + export | 🟡 partial |
+
+### P1 is the real answer
+
+RedLog already holds an authoritative scope — and uses it **only to judge, after the
+fact**. The highest-value prevention work is to emit it in the formats the tools that
+actually do the reaching can enforce:
+
+| Target format | From | Enforces |
+|---|---|---|
+| `nmap --excludefile` | `excludeTargets` (+ D3 complement) | hard skip at scan time |
+| Burp Suite target scope JSON | `targets` / `excludeTargets` → include/exclude rules | proxy-level out-of-scope drop |
+| ZAP context file | same | same |
+| `ffuf` / `httpx` deny list | `excludeTargets` | request-level skip |
+
+This inverts the responsibility correctly: **enforcement belongs to the tool; RedLog's
+job is to make sure the tool has the right scope.** It passes the §1 test (serves the
+live-OPSEC front door), needs no gatekeeper role, and — unlike a wrapper — survives
+the operator running the tool outside RedLog's shell.
+
+### P2 — friction is only legitimate when the operator opted into wearing it
+
+`redlog-run` is a wrapper the operator chooses to invoke. A wrapper *may* pre-flight
+`checkTarget()` and require confirmation on **D1 only** (fact tier, explicitly
+forbidden target). This is not RedLog blocking; it is a voluntary guard the operator
+can drop at any moment, and core capture stays non-blocking. **Never extend it to
+D2** — inferred-tier friction on every near-miss trains the operator to reflex-confirm,
+destroying D1's meaning.
+
+### P3 — the missing half is the *positive* proof
+
+`data:exportViolations` proves violations happened. Nothing today produces the more
+valuable artifact: **every target touched, its distance classification, and the D0
+count** — "247 targets, 247 in scope, 0 excluded, 3 adjacent (listed with timestamps
+and commands)". For a client deliverable that is worth more than any block would have
+been, and it is the evidentiary framing §1 actually asks for.
+
+## D.3 Additional gaps
+
+| # | Gap | Kind | Notes |
+|---|---|---|---|
+| **G-C3** | `scope.alertFloor` enum replacing `warnOnViolation`, + `proximityBits` | code | Depends on G-B1/G-B4. |
+| **G-D1** | Scope export adapters (nmap / Burp / ZAP / deny-list) | code | **Highest-value prevention work.** A Snapshot delivery target — see `DELIVERY-TARGETS.md`. |
+| **G-D2** | `redlog-run` D1 pre-flight confirmation (opt-in, D1 only) | code | Must not touch the non-blocking `preexec` path. |
+| **G-D3** | Scope-adherence report (positive proof, not just violations) | code | Pairs with the bundle export. |
+| **G-D4** | Scope provenance — which file, loaded when, by whom, with what diff | code | `config_changed` records the diff; the *source document* is not attributed. |
