@@ -124,7 +124,7 @@ describeDB('api-server', () => {
         },
       }),
     })
-    expect(post.status).toBe(200)
+    expect(post.status).toBe(201)   // POST /api/events answers 201 Created
 
     // Read the event back: full bytes gone, io ref present (A2).
     const listed = await fetch(`${base}/api/events?agent_type=scanner&limit=10`, { headers: authHeaders })

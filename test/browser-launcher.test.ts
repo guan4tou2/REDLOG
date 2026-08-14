@@ -48,4 +48,36 @@ describe('browser launcher args', () => {
     expect(args).toContain('--foo')
     expect(args).not.toContain('')
   })
+
+  // ignoreCertErrors defaults ON: the whole point of the launcher is routing
+  // through mitmproxy, whose CA the isolated profile does not trust.
+  it('accepts the intercepting proxy CA by default', () => {
+    expect(buildArgs(DEFAULT_BROWSER, PROFILE)).toContain('--ignore-certificate-errors')
+  })
+
+  it('leaves cert validation intact when the operator turns it off', () => {
+    const args = buildArgs({ ...DEFAULT_BROWSER, ignoreCertErrors: false }, PROFILE)
+    expect(args).not.toContain('--ignore-certificate-errors')
+  })
+
+  it('omits the start URL when none is configured', () => {
+    expect(buildArgs(DEFAULT_BROWSER, PROFILE).some((a) => !a.startsWith('--'))).toBe(false)
+  })
+
+  it('keeps the start URL last even with extra args configured', () => {
+    const args = buildArgs(
+      { ...DEFAULT_BROWSER, extraArgs: ['--incognito'], startUrl: 'https://example.com' },
+      PROFILE
+    )
+    expect(args[args.length - 1]).toBe('https://example.com')
+    expect(args).toContain('--incognito')
+  })
+
+  it('a fully stripped-down config produces no flags at all', () => {
+    const args = buildArgs(
+      { binary: '', proxy: '', cdpPort: 0, isolateProfile: false, ignoreCertErrors: false, startUrl: '', extraArgs: [] },
+      PROFILE
+    )
+    expect(args).toEqual([])
+  })
 })
