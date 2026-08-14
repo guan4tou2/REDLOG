@@ -1,0 +1,36 @@
+{
+  "id": "c2-tailers",
+  "name": "C2 Log Tailers",
+  "version": "1.0.0",
+  "description": "Bundled pack (SPEC-AI-ERA-PLUGINS Gap 2): follow a C2 framework log (Sliver, or any framework via the generic JSONL contract) and land beacon check-ins, task results and pivots on the RedLog timeline. Runs shell-side (out-of-process) and POSTs to the local API — no code runs inside RedLog.",
+  "author": "RedLog",
+  "redlogApi": 1,
+  "contributes": {
+    "capture": [
+      {
+        "id": "sliver-log-tail",
+        "name": "Sliver → c2_checkin",
+        "description": "Follow a Sliver session/beacon JSON log; each object becomes a scanner.c2_checkin event.",
+        "agentType": "scanner",
+        "requires": ["node"],
+        "hookFile": "hooks/sliver-tail.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Point the tailer at your Sliver JSON log (adjust the path)", "command": "\"{hookFile}\" ~/.sliver/logs/sliver.json" }
+        ]
+      },
+      {
+        "id": "generic-c2-tail",
+        "name": "Generic C2 → timeline",
+        "description": "Follow any C2 log emitted in the RedLog-C2 JSONL contract ({kind:'checkin'|'task'|'pivot', ...}); see README.",
+        "agentType": "scanner",
+        "requires": ["node"],
+        "hookFile": "hooks/generic-tail.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Have your framework append RedLog-C2 JSONL to a file, then follow it", "command": "\"{hookFile}\" /path/to/c2-events.jsonl" }
+        ]
+      }
+    ]
+  }
+}
