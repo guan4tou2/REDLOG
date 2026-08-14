@@ -169,6 +169,10 @@ export interface RedLogConfig {
     events: string[]
     subtypes: string[]
     includeData: boolean
+    /** Lowest §3 authority tier to forward. 'inferred' (default) sends both
+     *  tiers, labelled; 'fact' holds proximity inferences back so the blue team
+     *  is only told about observed rule matches. See `ALERT-ROLES.md` G-C2. */
+    authorityFloor: 'inferred' | 'fact'
   }
   /** Cloud-share bundle backend (spec: docs/CLOUD_SHARE_BUNDLE.md).
    *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
@@ -308,7 +312,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     secret: '',
     events: ['marker', 'system', 'credential_use', 'c2_checkin'],
     subtypes: ['scope_violation'],
-    includeData: false
+    includeData: false,
+    authorityFloor: 'inferred'
   },
   cloudShare: {
     endpoint: '',
@@ -357,13 +362,19 @@ function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown>
     if (network.dailyIPs && !network.blacklist && !network.exposedIPs) { network.blacklist = network.dailyIPs; delete network.dailyIPs }
     if (network.exposedIPs && !network.blacklist) { network.blacklist = network.exposedIPs; delete network.exposedIPs }
   }
-  // scope.enforcement: 'warn'|'log' → scope.warnOnViolation: boolean.
-  // The old 'log' mode was misleading — it didn't actually log, it silently did
-  // nothing. Treat both as "warnings on" so existing users get the safer default
-  // instead of silently losing the badge; they can turn it off in Settings.
+  // scope.enforcement: 'warn' | 'log' | 'block' → scope.warnOnViolation: boolean.
+  //
+  // Only 'log' meant "stay quiet" — and it was misleading even then, since it
+  // did not actually log anything, it silently did nothing. Every other value,
+  // including the removed 'block' and anything unrecognised, migrates to
+  // warnings ON. That direction matters: 'block' was the STRICTEST setting the
+  // old field offered, so mapping it to silence would answer a request for more
+  // protection with less, on a config the operator never revisits because they
+  // believe it is already handled. An operator who wants quiet can turn it off
+  // in Settings; one who is quiet without asking never finds out.
   const scope = parsed.scope as Record<string, unknown> | undefined
   if (scope && 'enforcement' in scope && !('warnOnViolation' in scope)) {
-    scope.warnOnViolation = scope.enforcement === 'warn' || scope.enforcement === undefined
+    scope.warnOnViolation = scope.enforcement !== 'log'
     delete scope.enforcement
   }
   return parsed
@@ -386,6 +397,59 @@ export function saveConfig(projectDir: string, config: RedLogConfig): void {
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
 }
 
+/** Expand `\Q…\E` literal-quoting, at any position and however many times.
+ *  Text outside the quoted runs is returned as-is, escapes intact. */
+function expandQuoted(s: string): string {
+  let out = ''
+  let i = 0
+  while (i < s.length) {
+    const q = s.indexOf('\\Q', i)
+    if (q === -1) { out += s.slice(i); break }
+    out += s.slice(i, q)
+    const e = s.indexOf('\\E', q + 2)
+    out += e === -1 ? s.slice(q + 2) : s.slice(q + 2, e)
+    i = e === -1 ? s.length : e + 2
+  }
+  return out
+}
+
+// Anything still regex-shaped after decoding means the entry was not one of the
+// forms Burp emits from its own UI — an operator hand-wrote a pattern.
+const REGEX_META = /[\\^$*+?()[\]{}|]/
+
+/** Burp/ZAP hold a scope host as a **regex**, not a hostname. Decode the shapes
+ *  those tools actually write into RedLog target syntax:
+ *
+ *    ^example\.com$          → example.com          (exact host)
+ *    \Qexample.com\E         → example.com          (literal-quoted)
+ *    .*\.example\.com$       → *.example.com        ("and subdomains")
+ *    .*\Qcorp.example.com\E  → *.corp.example.com   (same, literal-quoted)
+ *
+ *  Anything that still looks like a regex afterwards is handed back UNTOUCHED
+ *  rather than dropped or half-converted. Such an entry matches nothing, but it
+ *  stays visible in the scope list — a scope target that silently disappears is
+ *  the failure with no symptom: the operator sees a scope loaded successfully
+ *  and never learns that the hosts they were told to test are missing from it.
+ *
+ *  Before this, only a `\Q` at position 0 was stripped, so Burp's own
+ *  "and subdomains" export (`.*\Qcorp.example.com\E`) landed in the scope list
+ *  as `*\Qcorp.example.com` and matched nothing (G-CFG2). */
+export function burpHostToTarget(host: string): string {
+  let s = host.trim().replace(/^\^/, '').replace(/\$$/, '')
+
+  // Leading `.*` is Burp's "and subdomains"; the `.` or `\.` joining it to the
+  // host belongs to the wildcard, not to the name.
+  let subdomains = false
+  if (s.startsWith('.*')) {
+    subdomains = true
+    s = s.slice(2).replace(/^\\?\./, '')
+  }
+
+  const decoded = expandQuoted(s).replace(/\\\./g, '.')
+  if (!decoded || REGEX_META.test(decoded)) return host
+  return subdomains ? `*.${decoded}` : decoded
+}
+
 export function loadScopeFile(scopeFilePath: string): string[] {
   try {
     const raw = fs.readFileSync(scopeFilePath, 'utf-8')
@@ -395,7 +459,7 @@ export function loadScopeFile(scopeFilePath: string): string[] {
       const data = JSON.parse(raw)
       if (data.target?.scope) {
         return data.target.scope.flatMap((s: { host?: string }) => {
-          if (s.host) return [s.host.replace(/^\\Q|\\E$/g, '').replace(/^\.\*/g, '*')]
+          if (s.host) return [burpHostToTarget(s.host)]
           return []
         })
       }

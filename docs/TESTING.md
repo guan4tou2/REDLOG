@@ -292,10 +292,26 @@ verified to recognise `wg0`, `tun0`, `tap0`, `tailscale0`, `nordlynx`, `proton0`
 
 `scopeFile` parsing (`config-options`): plain text is one target per line with
 `#` comments and blank lines dropped; a file with no extension is read as text;
-a JSON array keeps only its string entries; a Burp/ZAP `target.scope` document
-unwraps `\Q…\E` host quoting and turns a leading `.*` into `*`; malformed JSON,
-an unrecognised JSON shape, and a missing file all yield `[]` rather than
-throwing — an unreadable scope must never take the project open down with it.
+a JSON array keeps only its string entries; malformed JSON, an unrecognised JSON
+shape, and a missing file all yield `[]` rather than throwing — an unreadable
+scope must never take the project open down with it.
+
+Burp/ZAP hold a scope host as a **regex**, so `burpHostToTarget()` decodes the
+shapes those tools write into RedLog target syntax:
+
+| Burp host | Decoded | Meaning |
+|---|---|---|
+| `^example\.com$` | `example.com` | exact host |
+| `\Qexample.com\E` | `example.com` | literal-quoted |
+| `.*\.example\.com$` | `*.example.com` | "and subdomains" |
+| `.*\Qcorp.example.com\E` | `*.corp.example.com` | same, literal-quoted |
+
+`\Q…\E` runs are expanded wherever they appear and however many times; a
+hand-written pattern that is still regex-shaped afterwards (`(dev|prod)\.…`) is
+handed back **untouched** rather than dropped or half-converted. It matches
+nothing, but it stays visible in the scope list — a scope target that vanishes
+is the failure with no symptom, since the operator sees a scope load
+successfully and never learns which hosts are missing from it.
 
 ## 2.4 `screenshot`
 
@@ -391,6 +407,7 @@ Plugin-contributed denylist entries merge in and unregister cleanly
 | `events` | `marker, system, credential_use, c2_checkin` | only these agent types are forwarded | `deconfliction` |
 | `subtypes` | `scope_violation` | forwarded even when the agent type is not listed | `deconfliction` |
 | `includeData` | `false` | **the PII gate** — the event body is omitted unless this is on | `deconfliction` |
+| `authorityFloor` | `inferred` | lowest §3 authority tier to forward: `inferred` sends both tiers labelled; `fact` holds D2 proximity inferences back so the blue team only hears about observed rule matches (G-C2) | `deconfliction` |
 
 Events batch into a single POST and buffered events flush on shutdown rather
 than being dropped (`deconfliction`).
@@ -446,8 +463,9 @@ Legacy migration (`config-options`, `config`):
 | `network.dailyIPs` | `network.blacklist` | |
 | `network.exposedIPs` | `network.blacklist` | |
 | `scope.enforcement: warn` | `warnOnViolation: true` | |
-| `scope.enforcement: log` | `warnOnViolation: false` | the old `log` mode did nothing |
-| `scope.enforcement: block` | `warnOnViolation: false` | **G-CFG1** — see Part 6 |
+| `scope.enforcement: log` | `warnOnViolation: false` | the only value that meant quiet (and it did not even log) |
+| `scope.enforcement: block` | `warnOnViolation: true` | `block` was the strictest value the old field offered; answering it with silence would give less protection than was asked for, on a config nobody revisits |
+| `scope.enforcement: <anything else>` | `warnOnViolation: true` | unrecognised values fail loud, not quiet |
 
 An explicit `warnOnViolation` is never overwritten by a stale `enforcement` key.
 
@@ -564,8 +582,6 @@ real SSID instead of a generic `Wi-Fi`. See G-NET1 before filing anything.
 | ID | Gap | Impact |
 |---|---|---|
 | **G-NET1** | `network.showWifiName` is written by Settings and read by nothing. `detectLink()` always probes for the SSID; the toggle's only real effect is prompting for Location Services on macOS. | The switch does not do what its label implies — an operator who turns it off still has the SSID probed and displayed once the OS permission exists. |
-| **G-CFG1** | `scope.enforcement: block` migrates to `warnOnViolation: false`. | A config written before `block` was removed asked for the *strictest* handling and lands on the *quietest* one. Recorded in `config-options`; the migration comment in `config.ts` also claims both legacy modes map to "warnings on", which no longer matches the code. |
-| **G-CFG2** | `loadScopeFile` only strips a `\Q` escape at position 0, so Burp's `.*\Qhost\E` form survives as `*\Qhost` and matches nothing. | A Burp scope export with "and subdomains" entries silently loses those targets. Recorded in `config-options`. |
 | **G-A2** | Blacklist-only mode reports `safe` for an unmatched address — an inference ("not obviously you"), not an observation. | Documented in `ALERT-ROLES.md`; the verdict deserves its own state rather than borrowing `safe`. |
 | **G-C3** | `warnOnViolation` is a boolean, so D3 cannot be turned back on. An operator who wants to see *everything* has no setting for it — `ALERT-ROLES.md` Part C.3 replaces it with a three-value `alertFloor`. | D3 is only observable through `getUnrelatedCount()`, which no surface renders yet. |
 | **G-UI1** | `overlay.showInDock`, `cloudShare.authToken`, `marketplace.defaultRegistryUrl` and `processMonitor.pollMs` are manual-only. | Main-process/IPC-only paths; the matrix rows above point at §5 instead of a test. |
