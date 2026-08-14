@@ -14,7 +14,7 @@ interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
-  scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
+  scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; proximityBits?: number; scopeFile: string }
   screenshot: { quality: number; intervalSec?: number }
   overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
@@ -98,7 +98,7 @@ const SETTINGS_GROUPS: SettingsGroupSource[] = [
   { tab: 'capture', groupId: 'processMonitor', titleKey: 'settings.processMonitorGroup', labelKeys: ['settings.processMonitorIgnore'] },
   { tab: 'capture', groupId: 'hookExcludedPaths', titleKey: 'settings.hookExcludedPaths.title', labelKeys: [] },
   // scope
-  { tab: 'scope', groupId: 'scopeEnforcement', titleKey: 'settings.scopeEnforcement', labelKeys: ['settings.warnOnViolation'] },
+  { tab: 'scope', groupId: 'scopeEnforcement', titleKey: 'settings.scopeEnforcement', labelKeys: ['settings.warnOnViolation', 'settings.proximityBits'] },
   { tab: 'scope', groupId: 'inScopeTargets', titleKey: 'settings.inScopeTargets', labelKeys: ['settings.targetsLabel'] },
   { tab: 'scope', groupId: 'excludedTargets', titleKey: 'settings.excludedTargets', labelKeys: ['settings.excludeLabel'] },
   { tab: 'scope', groupId: 'scopeFile', titleKey: 'settings.scopeFile', labelKeys: ['settings.scopeFileLabel'] },
@@ -374,6 +374,21 @@ export default function Settings(): JSX.Element {
                 <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
               </label>
               <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
+              {/* How wide the D2 "adjacent" zone is. Only meaningful while
+                  warnings are on — with them off, D2 never fires at all. */}
+              {config.scope.warnOnViolation !== false && (
+                <div className="mt-3">
+                  <Field
+                    label={t('settings.proximityBits')}
+                    value={String(config.scope.proximityBits ?? 24)}
+                    onChange={(v) => setConfig({
+                      ...config,
+                      scope: { ...config.scope, proximityBits: Math.min(32, Math.max(1, parseInt(v) || 24)) }
+                    })}
+                  />
+                  <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.proximityBitsHint')}</p>
+                </div>
+              )}
             </FieldGroup>
             <FieldGroup title={t('settings.inScopeTargets')}>
               <ListField
