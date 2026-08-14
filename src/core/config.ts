@@ -40,6 +40,10 @@ export interface RedLogConfig {
     checkInterval: number
     providers: string[]
     confirmations: number
+    /** Consecutive failed reads before the safety verdict expires to 'unknown'.
+     *  Deliberately tighter than `confirmations`: being slow to promote a new
+     *  address is safe, being slow to expire an old verdict is not. Default: 2. */
+    staleAfter: number
     /** how to fetch the external IP: quiet DNS, HTTP echo, or DNS→HTTP fallback */
     ipMode: 'dns' | 'http' | 'auto'
     /** macOS gates the Wi-Fi SSID behind Location Services; opt in to request it
@@ -48,12 +52,25 @@ export interface RedLogConfig {
     vpnAdapters: VpnAdapter[]
   }
   scope: {
-    /** Whether to raise a violation event + red badge when a command's target
-     *  falls out of scope but shares a root domain with a scope target.
-     *  Excluded targets always raise a violation regardless. Default: true. */
+    /** Whether D2 (adjacent) violations raise an event + red badge — a target
+     *  that is out of scope but sits in a scope entry's container (same subnet
+     *  as a single-IP entry, or same registrable domain). D1 (excluded targets)
+     *  always raises regardless; D3 (unrelated) is never raised, only counted.
+     *  See `ALERT-ROLES.md` Part B. Default: true. */
     warnOnViolation: boolean
     targets: string[]
     excludeTargets: string[]
+    /** Container width for the D2 zone derived from a *single-IP* scope entry:
+     *  scope `192.168.1.10` makes `192.168.1.0/24` adjacent at the default 24.
+     *  Entries already written as CIDRs are not widened. There is deliberately
+     *  no domain-side counterpart — the domain container is the registrable
+     *  domain, which is not a tunable (`ALERT-ROLES.md` Part C.4). */
+    proximityBits: number
+    /** Extra multi-label public suffixes on top of the built-in table, used to
+     *  decide "same registrable domain" for D2. Additive; built-ins cannot be
+     *  removed. Add one when an engagement sits on a suffix RedLog does not
+     *  know (`public-suffix.ts` explains why the table is curated). */
+    publicSuffixes: string[]
     scopeFile: string | null
   }
   screenshot: {
@@ -227,6 +244,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     checkInterval: 60,
     providers: [],
     confirmations: 3,
+    staleAfter: 2,
     ipMode: 'auto',
     showWifiName: false,
     vpnAdapters: DEFAULT_VPN_ADAPTERS
@@ -235,6 +253,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     warnOnViolation: true,
     targets: [],
     excludeTargets: [],
+    proximityBits: 24,
+    publicSuffixes: [],
     scopeFile: null
   },
   screenshot: {

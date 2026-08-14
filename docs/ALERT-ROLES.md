@@ -77,14 +77,21 @@ combinations (`w`/`b` are undefined when the corresponding list is empty):
 | A-6 | ✓ | ✓ | ✓ | ✓ | `exposed` + `config_conflict` | fact | `exposed` | ⚠️ conflict never surfaced |
 | A-7 | ✓ | ✓ | ✓ | ✗ | `exposed` | fact | `exposed` | ✅ |
 | A-8 | ✓ | ✓ | ✗ | ✓ | `safe` | fact | `safe` | ✅ |
-| A-9 | ✓ | ✓ | ✗ | ✗ | `off_profile` | fact | **`safe`** | ❌ **false green** |
+| A-9 | ✓ | ✓ | ✗ | ✗ | `off_profile` | fact | `unknown` | 🟡 false green **fixed** (G-A1); still under-stated pending G-A2 |
 
-**A-9 is the dangerous cell.** `ip-monitor.ts` `classify()` falls through to
-`if (this.blacklist.length > 0) return 'safe'` *after* the whitelist test has already
+**A-9 was the dangerous cell — fixed (G-A1).** `classify()` used to fall through to
+`if (this.blacklist.length > 0) return 'safe'` *after* the whitelist test had already
 failed. Concretely: whitelist `10.8.0.0/24` (my VPN), blacklist `1.2.3.4` (my home
 IP), actual egress `5.6.7.8` (VPN dropped, now on café NAT) → **SAFE, solid green**.
 The blacklist-mode shortcut was written for the blacklist-only case (A-3) and was
 never re-scoped when a whitelist is also present.
+
+The rule now reads: **declaring a whitelist declares an expectation; being outside it
+is never `safe`** — which closes A-9 and leaves A-5's existing `unknown` consistent
+with it. Both are honestly *under*-stated until `off_profile` exists (G-A2): amber
+says "I don't know," where the truth is the stronger "you are not where you said you
+would be." Amber is not a false green, so the hazard is closed; the precision is not
+yet there.
 
 **A-5 is the mirror mistake.** Declaring a whitelist *is* declaring an expectation;
 being outside it is an observed deviation (fact), not a lack of information
@@ -107,22 +114,70 @@ Three states cannot express nine cells. The closed set is five, plus modifiers:
 These do **not** create new cells; they qualify any cell. This is the part that keeps
 the matrix from exploding.
 
-| Modifier | Source | Today | Should be |
-|---|---|---|---|
-| `settling` | new address seen < `confirmations` times | already tracked; **not rendered** | badge shows last stable verdict, visibly de-emphasised |
-| `stale` | `check()` threw — all providers/resolvers failed | `error` set, **verdict retained unchanged** | verdict decays to `unknown` after N failed polls |
-| `family` | reading is IPv6 | silently mis-classified (below) | verdict per family, or explicit "v6 unchecked" |
+| Modifier | Source | Status |
+|---|---|---|
+| `settling` | new address seen < `confirmations` times | ✅ **shipped** — badge shows the last stable verdict, hollow dot + reason |
+| `stale` | `consecutiveFailures` reached `network.staleAfter` | ✅ **shipped** — verdict decays to `unknown`, last address retained |
+| `family` | reading is IPv6 | ❌ silently mis-classified (below) — G-A5 |
 
-**`stale` is a live hazard.** A VPN kill-switch dropping the network is exactly when
-external-IP lookup fails — and today the badge keeps showing the last verdict (often
-green) indefinitely, with only `lastCheck` moving.
+**`stale` was a live hazard.** A VPN kill-switch dropping the network is exactly when
+external-IP lookup fails — and the badge kept showing the last verdict (often green)
+indefinitely, with only `lastCheck` moving. Neither modifier was even *declared* on
+the renderer's `IPStatus`, so no surface could have shown them.
 
-**IPv6 is structurally broken, verified:** `ipInCIDR()` compares an IPv6 address to a
-CIDR by string-equality against the network part, so `2001:db8::1` ∈ `2001:db8::/32`
-returns **false**. Any v6 whitelist never matches (→ A-5/A-9), and a v6 egress against
-a v4-only blacklist takes the A-3 fall-through → `safe`. The DNS path filters to v4
-(`IPV4_RE`) so this only bites in `http` / fallback mode — but that is the mode a
-restrictive network forces you into.
+Three rules the fix pins down:
+
+1. **The decay is uniform.** An `exposed` verdict decays too. Holding a red alarm on
+   a reading we can no longer confirm is the same dishonesty as holding a green one —
+   `unknown` is what we actually know. The last seen address stays on screen, so the
+   decay re-labels rather than erases.
+2. **`staleAfter` (default 2) is deliberately tighter than `confirmations`
+   (default 3).** The thresholds look alike but point opposite ways: being slow to
+   *promote* a new address is safe — you keep showing a verdict you verified. Being
+   slow to *expire* an old one is not. One failure can be a provider hiccup; two in a
+   row at the shipped 60s poll is two minutes of no contact.
+3. **One decision, three surfaces.** `lib/ip-badge.ts` maps (verdict, settling,
+   stale) → (tone, qualified, reason). StatusBar, IPStatusCard and the HUD keep their
+   own styling but cannot disagree about the verdict. `qualified` renders as a hollow,
+   unglowing dot — a filled dot is reserved for "this is what we see right now".
+
+**Two further defects surfaced while fixing this**, both in the same
+unchanged-address branch of `check()`, which reset the flags but never re-ran
+`classify()`:
+
+- A decayed verdict **never recovered** if the network came back on the *same* exit IP
+  — the common case for a VPN blip. The badge stayed amber indefinitely.
+- Editing the safe/exposed lists in Settings **did not move the badge** until the
+  external address happened to change.
+
+The verdict is a pure function of (address, lists), so it is now derived on every
+poll rather than only on address change.
+
+**IPv6 was structurally broken — fixed (G-A5).** `ipInCIDR()` compared an IPv6
+address to a CIDR by string-equality against the network part, so `2001:db8::1` ∈
+`2001:db8::/32` returned **false**. Any v6 whitelist never matched (→ A-5/A-9), and a
+v6 egress against a v4-only blacklist took the A-3 fall-through → `safe`. The A-9 fix
+did not reach v6 at all.
+
+`ip-match.ts` now does real prefix matching for both families, and is the **single**
+matcher for the subsystem — `ip-monitor.ts` and `scope-monitor.ts` each carried their
+own `ipToLong` + CIDR copy before. It also compares parsed values rather than strings,
+so `2001:db8::1` matches the fully expanded `2001:0db8:0000:...:0001`, and reports an
+IPv4-mapped address (`::ffff:10.8.0.5`) as IPv4 — providers return that form, and an
+operator whose whitelist says `10.8.0.0/24` means it to match. Malformed input is
+`false`, never an accidental wildcard.
+
+**The scope side had the same defect in a worse direction (G-B5).** `scope-monitor`'s
+`IP_RE` matched only dotted quads, so a v6 target was routed through the *domain*
+matcher: a v6 CIDR scope entry never matched, and on the adjacency path a v6 host fell
+out as `unrelated` — **silent**. Per Part D that is the one direction this subsystem
+must not fail in, so the fix covers both monitors rather than only the one the gap row
+named. A single-IP v6 scope entry expands to its **/64** rather than to
+`proximityBits`: v6 subnets are /64 near-universally, so there is no operator choice
+to expose (Part C.4).
+
+**Remaining v6 limitation (not a defect):** the DNS lookup path filters to v4
+(`IPV4_RE`), so a v6 external address is only ever *read* in `http` / fallback mode.
 
 ## A.4 The unclassified half
 
@@ -160,11 +215,25 @@ and closes in one line:
 
 | Scope entry | Kind | Container (= the D2 zone) | Rationale |
 |---|---|---|---|
-| `192.168.1.10` | single IP | `192.168.1.0/24` | operator enumerated hosts → the segment is the near-miss zone |
-| `10.0.0.0/8` | CIDR | *(none)* | operator already drew the boundary; outside it is D3 |
+| `192.168.1.10` | single IP | `192.168.1.0/24` | a bare IP carries no boundary; deriving one *fills a gap* |
+| `10.0.0.0/8` | CIDR | *(none)* | the operator stated a boundary; widening it *invents authorisation* |
 | `10.0.5.0/24` | CIDR | *(none)* | same |
-| `www.example.com` | single host | `*.example.com` (registrable domain) | operator enumerated hosts → sibling subdomains are the near-miss zone |
-| `*.example.com` | wildcard | *(none)* | operator already drew the boundary |
+| `www.example.com` | single host | `*.example.com` (registrable domain) | sibling subdomains are the near-miss zone |
+| `*.staging.example.com` | wildcard | `*.example.com` (registrable domain) | **still expands** — see the asymmetry below |
+
+**Correction (2026-08-14, during implementation).** An earlier revision of this
+table said a wildcard entry does *not* expand, by analogy with CIDRs. That was
+wrong, and the counterexample is the case D2 most exists for: scope
+`*.staging.example.com`, operator hits `prod.example.com`. Under "no expansion"
+that is D3 — silent. It must be D2.
+
+The asymmetry is real and deliberate: **the domain container is always the
+registrable domain, because that domain is the *ownership* boundary the
+authorisation is actually about.** A wildcard is a sub-boundary *within* something
+owned, not the ownership boundary itself. A CIDR has no comparable ownership
+boundary recoverable from the string — `10.0.0.0/8` tells you nothing about whether
+the org also owns `192.168.0.0/16` — which is why it cannot expand. The rule at the
+top of this section governs the IP side; the domain side always expands.
 
 So both requested alerts fall out of one rule:
 
@@ -180,38 +249,73 @@ ranges and wrong for a routed /30 hand-off.
 
 ## B.3 Where `ScopeMonitor` sits today
 
-| Case | Today | Ladder | Delta |
-|---|---|---|---|
-| in `targets` | no violation | D0 | ✅ |
-| in `excludeTargets` | violation, ignores `warnOnViolation` | D1 | ✅ |
-| domain, shares root domain | violation | D2 | ✅ in spirit — root-domain approximation is wrong (B.4) |
-| domain, different root | silent | D3 | ✅ |
-| **IP, out of scope** | **violation, always** | conflates D2+D3 | ❌ scanning `8.8.8.8` alerts identically to hitting the wrong host on the target segment |
-| single-IP scope entries | no container derived | D2 unreachable | ❌ **the exact case requested is not implemented** |
+| Case | Ladder | Status |
+|---|---|---|
+| in `targets` | D0 | ✅ |
+| in `excludeTargets` | D1 | ✅ fires regardless of `warnOnViolation` |
+| domain, shares registrable domain | D2 `adjacent_domain` | ✅ — but the registrable-domain approximation is still wrong (B.4 / G-B2) |
+| domain, different root | D3 | ✅ counted |
+| single-IP scope entry, same segment | D2 `adjacent_subnet` | ✅ **shipped (G-B1)** |
+| IP outside every container | D3 | ✅ **shipped (G-B3)** — was "violation, always" |
 
-The `if (!isIP)` guard in `checkTarget()` means the proximity filter applies to domains
-only; IPs skip it and every out-of-scope IP raises. The result is the classic alerting
-death spiral — the noisy channel gets muted, and the D2 signal dies with it.
+Before G-B1/G-B3 the `if (!isIP)` guard in `checkTarget()` meant the proximity filter
+applied to domains only; IPs skipped it and every out-of-scope IP raised. That is the
+classic alerting death spiral — the noisy channel gets muted, and the D2 signal dies
+with it. Both branches now walk the same ladder via the pure `classifyDistance()`.
 
-## B.4 The registrable-domain defect (verified)
+**D3 is counted, not dropped** (`getUnrelatedCount()`): "silent" must be
+distinguishable from "not looking", and the adherence report (G-D1) needs the
+denominator. Note also that a D3 target still lands in the timeline as
+`detectedTarget` like any other command — only the *alert* is suppressed, never the
+record.
 
-`getRootDomain()` takes the last two labels. So `shop.example.co.uk` →
-`co.uk`, and `anything.bbc.co.uk` → `co.uk` as well. With scope `*.example.co.uk`,
-**every `.co.uk` host in the world becomes D2-adjacent.** Multi-label public suffixes
-(`.co.uk`, `.com.tw`, `.com.au`, `.co.jp`) are exactly the ones common in engagements
-where this matters. Needs a public-suffix table — gap G-B2.
+## B.4 The registrable-domain defect — fixed (G-B2)
+
+`getRootDomain()` took the last two labels. So `shop.example.co.uk` → `co.uk`, and
+`anything.bbc.co.uk` → `co.uk` as well. With scope `*.example.co.uk`, **every
+`.co.uk` host in the world became D2-adjacent.** The platform half bit harder in
+practice: a scope of `target.github.io` made every GitHub Pages site a near-miss,
+and the same for `*.s3.amazonaws.com`, `*.azurewebsites.net`, `*.herokuapp.com`.
+
+`public-suffix.ts` now derives the true registrable domain (public suffix + one
+label, longest suffix wins) from a curated table, with `scope.publicSuffixes` for
+per-engagement additions.
+
+**Why a curated table and not the full PSL.** The full list means a runtime
+dependency (~3 MB; `tldts` is present only as a `jsdom` dev-transitive, not in the
+shipped app). RedLog ships eight runtime dependencies deliberately — for an evidence
+tool, supply-chain surface is a cost every user pays. The deciding argument is the
+**failure direction**, which is asymmetric:
+
+| Table error | Effect | Verdict |
+|---|---|---|
+| suffix **missing** | falls back to last-two-labels → over-match → noisier D2 | exactly today's behaviour — degrades to the status quo, never below it |
+| suffix **wrongly present** | same-owner hosts get different registrable domains → D3 → **silence** | unacceptable: Part D means there is no second line of defence |
+
+So the table carries only unambiguous suffixes; anything doubtful is left out,
+costing noise rather than silence, and operators extend it per engagement. That
+property is pinned by a test, not just asserted here.
+
+**Known gap:** regional S3 forms (`s3.us-east-1.amazonaws.com`) are absent and fall
+back to `amazonaws.com` — over-match, per the safe direction above.
 
 ## B.5 What D2 must say when it fires
 
-A D2 alert is **inferred**, so per the tier axis it must name its inference. Today
-`recordViolation()` writes `reason: 'out_of_scope'` for both the domain-adjacent case
-and (via the IP path) the unrelated case. The reason vocabulary should close to:
+A D2 alert is **inferred**, so per the tier axis it must name its inference. The
+`reason` vocabulary is now closed (G-B4) — it used to write `out_of_scope` for both
+the domain-adjacent case and (via the IP path) the unrelated case, leaving them
+indistinguishable downstream:
 
 `excluded_target` (D1, fact) · `adjacent_subnet` (D2, inferred) ·
 `adjacent_domain` (D2, inferred) · `unrelated` (D3 — counted, not emitted)
 
-That vocabulary is also what lets the deconfliction feed forward D1 while holding D2
-back, instead of the current all-or-nothing `subtypes: ['scope_violation']`.
+The `scope_violation` event also carries `authority: 'fact' | 'inferred'` — the data
+half of the §3 split (K1 owns the `EventTypeDef` half and the dashed rendering). That
+pair is what will let the deconfliction feed forward D1 while holding D2 back (G-C2),
+instead of the current all-or-nothing `subtypes: ['scope_violation']`.
+
+**Wire-format note:** consumers parsing exported violations will see
+`adjacent_domain` where they previously saw `out_of_scope`.
 
 ---
 
@@ -255,15 +359,16 @@ Both roles fill the same headings:
 
 | # | Gap | Kind | Notes |
 |---|---|---|---|
-| **G-A1** | `classify()` returns `safe` when both lists are configured and neither matches (A-9) | code | The false green. Highest severity in the subsystem. |
+| **G-A1** | ~~`classify()` returns `safe` when both lists are configured and neither matches (A-9)~~ | ✅ **fixed** | A whitelist miss is never `safe`. Verdict is `unknown` pending the `off_profile` state (G-A2). Test seam: exported pure `classifyIP()`, table-driven over A-1..A-9 in `test/ip-monitor.test.ts`. |
 | **G-A2** | No `off_profile` / `presumed_safe` verdicts — 3 states cannot encode 9 cells | code + UI | Blocks A-3/A-5 being expressible at all. |
-| **G-A3** | `settling` and `error` never reach the badge; verdict never decays on repeated failure | code + UI | VPN-kill-switch hazard. |
+| **G-A3** | ~~`settling` and `error` never reach the badge; verdict never decays~~ | ✅ **fixed** | Decay to `unknown` after `network.staleAfter` (default 2); shared `lib/ip-badge.ts` renders both modifiers on all three surfaces. Also fixed: verdict never re-derived on an unchanged address. |
 | **G-A4** | `internalIP` collected but never classified; no lan-profile | code | Also the input Part B's subnet proximity would like. |
-| **G-A5** | IPv6 CIDR matching is string-equality — v6 whitelists never match | code | Verified. Affects `http`/fallback mode. |
-| **G-B1** | No container derivation for single-IP scope entries → 同網段 alert unreachable | code | The requested feature. Needs `scope.proximityBits`. |
-| **G-B2** | `getRootDomain()` = last two labels → `.co.uk`/`.com.tw` over-match | code | Needs a public-suffix table. |
-| **G-B3** | IP out-of-scope bypasses the proximity filter → D3 alerts as loudly as D2 | code | The noise source that gets the channel muted. |
-| **G-B4** | `reason` vocabulary is not closed; D2 and D3 are indistinguishable downstream | code | Blocks tier-aware deconfliction forwarding. |
+| **G-A5** | ~~IPv6 CIDR matching is string-equality — v6 whitelists never match~~ | ✅ **fixed** | Shared `ip-match.ts` (both families, parsed-value comparison, v4-mapped handling). Replaced two duplicate matchers. |
+| **G-B1** | ~~No container derivation for single-IP scope entries~~ | ✅ **fixed** | Single-IP entries expand to `scope.proximityBits` (default 24). CIDR entries never widen. |
+| **G-B2** | ~~`getRootDomain()` = last two labels → `.co.uk`/`.com.tw` over-match~~ | ✅ **fixed** | Curated table in `public-suffix.ts` + `scope.publicSuffixes`. No new runtime dependency; incomplete → noise, never silence. |
+| **G-B3** | ~~IP out-of-scope bypasses the proximity filter~~ | ✅ **fixed** | Both branches walk one ladder via pure `classifyDistance()`. D3 counted via `getUnrelatedCount()`. |
+| **G-B4** | ~~`reason` vocabulary is not closed~~ | ✅ **fixed** | Closed to 3 values + `authority` on the event. G-C2 (tier-aware forwarding) is now unblocked. |
+| **G-B5** | ~~`IP_RE` is dotted-quad only, so a v6 target is routed to the domain matcher and falls out as `unrelated` — silent~~ | ✅ **fixed** | The scope-side twin of G-A5, found while fixing it. Same shared matcher; v6 single-IP entries expand to /64. |
 | **G-C1** | No shared severity vocabulary between Self and Target alarms | doc + code | Each grew its own colours; a §3-honest UI needs one scale. |
 | **G-C2** | Deconfliction forwards `scope_violation` wholesale — inferred D2 goes to the blue team as though it were a fact | code | Depends on G-B4. |
 
@@ -343,90 +448,89 @@ scope.proximityBits: number    // default 24 — container width for single-IP e
 ```
 
 **There is deliberately no domain-side counterpart.** The domain container is the
-registrable domain, fixed by the public suffix list (G-B2) — there is no coherent
-"expand N labels" knob, and offering one would invite `*.co.uk`-shaped scopes. The
-asymmetry is intentional; record it so nobody adds `proximityLabels` for symmetry's
-sake.
+registrable domain — there is no coherent "expand N labels" knob, and offering one
+would invite `*.co.uk`-shaped scopes. The asymmetry is intentional; record it so
+nobody adds `proximityLabels` for symmetry's sake.
+
+`scope.publicSuffixes` is **not** that counterpart. It does not tune how far the
+container reaches; it corrects *where the boundary is* for a suffix the built-in
+table does not know. Width knob vs. correctness input — different kinds.
 
 **Net: one enum replaces one boolean, plus one integer. No new switches.**
 
 ---
 
-# Part D — Prevention: RedLog cannot block, and what to do instead
+# Part D — Prevention is a non-goal
 
-## D.1 Why blocking is off the table (three verifiable reasons, not just the law)
+## D.1 The boundary
 
-`enforcement: block` was **removed** — `config.ts` migrates only `'warn' | 'log'`,
-and the surviving `# warn | block | log` comment in `config.example.yaml` is stale.
-The removal was correct, for reasons stronger than §1:
+> **RedLog records and warns. It does not prevent, gate, or block.**
+
+This is not a limitation to be worked around later — it is the boundary that
+defines the subsystem. Everything in Parts A–C is *the whole intervention*, and
+Part D exists to say so explicitly, because "surely it should also stop me" is the
+first thing everyone asks.
+
+`enforcement: block` was **removed** — `config.ts` migrates only `'warn' | 'log'`.
+Three reasons, stronger than citing the law:
 
 1. **The seam is fire-and-forget by construction.** `shell/redlog-hook.zsh`
    `_redlog_preexec` does fire *before* execution — the seam exists — but it posts
    with `curl -sf ... &!`: backgrounded, response discarded, 1s connect timeout. To
-   block, the shell would have to *wait on a localhost round-trip before every
-   command*, and a wedged RedLog would wedge the operator's shell mid-engagement.
-   An evidence tool that can freeze your terminal will be uninstalled.
+   gate, the shell would have to *wait on a localhost round-trip before every
+   command*, and a wedged RedLog would wedge the operator's terminal mid-engagement.
 2. **Coverage is heuristic, and a 70%-coverage gate is worse than none.**
    `extractTargetWithProvenance()` cannot see targets inside pipelines, loops,
-   scripts, or custom tooling. A gate the operator *trusts* but that silently
-   passes a third of traffic converts a caught mistake into an uncaught one.
-3. **A blocked action leaves the weaker record.** RedLog's deliverable is
-   "provably did not exceed scope," not "was unable to exceed scope." The former
-   survives a blocked-but-bypassed path; the latter is refuted by one `curl`.
+   scripts, or custom tooling. A gate the operator *trusts* but that silently passes
+   a third of traffic converts a caught mistake into an uncaught one.
+3. **A blocked action leaves the weaker record.** RedLog's deliverable is "provably
+   did not exceed scope," not "was unable to exceed scope." The former survives a
+   bypassed path; the latter is refuted by one `curl`.
 
-## D.2 The prevention ladder (P0–P3) — mirrors the distance ladder
+## D.2 The consequence: the alert-quality bar goes *up*, not down
 
-Prevention is not blocking; it is **moving friction earlier**, to where an alert
-cannot help. Earlier is strictly more effective.
+Declining to block does not lower what the alerting subsystem owes — it raises it.
+With no second line of defence:
 
-| | Stage | Mechanism | Owner | Status |
-|---|---|---|---|---|
-| **P0** | before the engagement | scope arrives from the authorisation document, not from typing | `scope.scopeFile` | ✅ exists |
-| **P1** | before the tool runs | **RedLog exports its scope into the tools' own scope formats** | new (G-D1) | ❌ **the gap** |
-| **P2** | at invocation | opt-in wrapper asks for confirmation on D1 | `redlog-run` | ❌ (G-D2) |
-| **P3** | after the fact | alert + event + **positive adherence proof** | `scope-monitor` + export | 🟡 partial |
+- **A false green is unrecoverable.** Nothing downstream catches what the badge got
+  wrong. This is why G-A1 (the A-9 false green) is the highest-severity item in the
+  whole subsystem, not a cosmetic issue.
+- **Noise is a safety defect, not an annoyance.** A muted channel is a removed
+  defence. G-B3 (D3 alerting as loudly as D2) is therefore a correctness bug.
+- **Latency is the only "prevention" available.** A D2 warning raised at
+  `command_start` reaches the operator within seconds — the drift-to-discovery
+  window *is* the whole mitigation. Shortening it is legitimate work; adding a gate
+  is not.
 
-### P1 is the real answer
+## D.3 What RedLog *does* contribute to staying in scope
 
-RedLog already holds an authoritative scope — and uses it **only to judge, after the
-fact**. The highest-value prevention work is to emit it in the formats the tools that
-actually do the reaching can enforce:
+Entirely within record-and-warn:
 
-| Target format | From | Enforces |
-|---|---|---|
-| `nmap --excludefile` | `excludeTargets` (+ D3 complement) | hard skip at scan time |
-| Burp Suite target scope JSON | `targets` / `excludeTargets` → include/exclude rules | proxy-level out-of-scope drop |
-| ZAP context file | same | same |
-| `ffuf` / `httpx` deny list | `excludeTargets` | request-level skip |
+| | Contribution | Mechanism | Status |
+|---|---|---|---|
+| **before** | the scope is correct and legible, sourced from the authorisation document rather than typed | `scope.scopeFile` | ✅ exists |
+| **during** | a fast, correctly-tiered warning the operator can act on (Parts A–C) | `IPMonitor` / `ScopeMonitor` | 🟡 gaps open |
+| **after** | **positive adherence proof**, not just a violation list | export | ❌ gap |
 
-This inverts the responsibility correctly: **enforcement belongs to the tool; RedLog's
-job is to make sure the tool has the right scope.** It passes the §1 test (serves the
-live-OPSEC front door), needs no gatekeeper role, and — unlike a wrapper — survives
-the operator running the tool outside RedLog's shell.
+The *after* column is the underbuilt one. `data:exportViolations` proves violations
+happened; nothing produces the more valuable artifact — **every target touched, its
+distance classification, and the D0 count**: "247 targets, 247 in scope, 0 excluded,
+3 adjacent (with timestamps and commands)". For a client deliverable that is worth
+more than any block would have been, and it is the evidentiary framing §1 asks for.
 
-### P2 — friction is only legitimate when the operator opted into wearing it
+## D.4 Explicit non-goals (considered, rejected — do not re-propose)
 
-`redlog-run` is a wrapper the operator chooses to invoke. A wrapper *may* pre-flight
-`checkTarget()` and require confirmation on **D1 only** (fact tier, explicitly
-forbidden target). This is not RedLog blocking; it is a voluntary guard the operator
-can drop at any moment, and core capture stays non-blocking. **Never extend it to
-D2** — inferred-tier friction on every near-miss trains the operator to reflex-confirm,
-destroying D1's meaning.
+| Non-goal | Why not |
+|---|---|
+| Blocking / gating command execution | D.1 — all three reasons |
+| Confirmation prompts before a D1 target, even in an opt-in wrapper | Friction is prevention wearing a costume; it also trains reflex-confirmation, which degrades D1's meaning |
+| Exporting scope into tool-enforceable formats (nmap `--excludefile`, Burp scope, deny-lists) | Legitimate work, but it is *prevention tooling*, not record-and-warn. Out of RedLog's remit. |
+| Proxy/DNS-level interception of out-of-scope traffic | Same, plus it makes RedLog a network component with an availability contract it must not have |
 
-### P3 — the missing half is the *positive* proof
-
-`data:exportViolations` proves violations happened. Nothing today produces the more
-valuable artifact: **every target touched, its distance classification, and the D0
-count** — "247 targets, 247 in scope, 0 excluded, 3 adjacent (listed with timestamps
-and commands)". For a client deliverable that is worth more than any block would have
-been, and it is the evidentiary framing §1 actually asks for.
-
-## D.3 Additional gaps
+## D.5 Additional gaps
 
 | # | Gap | Kind | Notes |
 |---|---|---|---|
 | **G-C3** | `scope.alertFloor` enum replacing `warnOnViolation`, + `proximityBits` | code | Depends on G-B1/G-B4. |
-| **G-D1** | Scope export adapters (nmap / Burp / ZAP / deny-list) | code | **Highest-value prevention work.** A Snapshot delivery target — see `DELIVERY-TARGETS.md`. |
-| **G-D2** | `redlog-run` D1 pre-flight confirmation (opt-in, D1 only) | code | Must not touch the non-blocking `preexec` path. |
-| **G-D3** | Scope-adherence report (positive proof, not just violations) | code | Pairs with the bundle export. |
-| **G-D4** | Scope provenance — which file, loaded when, by whom, with what diff | code | `config_changed` records the diff; the *source document* is not attributed. |
+| **G-D1** | Scope-adherence report (positive proof, not just violations) | code | The one real gap left in Part D. Pairs with the bundle export (`DELIVERY-TARGETS.md`, Snapshot role). |
+| **G-D2** | Scope provenance — which file, loaded when, by whom, with what diff | code | `config_changed` records the diff; the *source document* is not attributed. |
