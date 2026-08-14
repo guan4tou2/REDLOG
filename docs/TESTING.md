@@ -269,7 +269,7 @@ default fails a named test rather than a distant integration.
 | `providers` | `[]` | URLs | §1.4 | `ip-monitor-options` |
 | `confirmations` | `3` | ≥1 | §1.3; UI clamps to ≥1 | `ip-monitor-options` |
 | `ipMode` | `auto` | `dns` \| `http` \| `auto` | §1.4 | `ip-monitor-dns` |
-| `showWifiName` | `false` | bool | macOS only; toggling **on** asks for Location Services so the OS un-redacts the SSID. It does **not** gate the link probe — see G-NET1 | — |
+| `showWifiName` | `false` | bool | off drops the SSID from the link before it reaches any surface, keeping the link **type** (the UI renders a generic "Wi-Fi"); on shows it. The macOS toggle also asks for Location Services, since the OS redacts the SSID without it. Turning it off applies immediately rather than at the next 20 s poll | `wifi-name-policy` |
 | `vpnAdapters` | 12 built-ins, all enabled | `{name, pattern, enabled}` | patterns are user regexes matched case-insensitively against interface names | `vpn-adapters` |
 
 `vpnAdapters` detail (`vpn-adapters`): a disabled adapter matches nothing; an
@@ -573,7 +573,10 @@ CPU/coverage tradeoff, not a bug.
 ### 5.9 Wi-Fi SSID (`network.showWifiName`, macOS)
 
 Toggle it on, accept the Location Services prompt, and confirm the HUD shows the
-real SSID instead of a generic `Wi-Fi`. See G-NET1 before filing anything.
+real SSID instead of a generic `Wi-Fi`. Toggle it back off — the HUD must drop
+to `Wi-Fi` straight away, not at the next poll. The SSID names the building you
+are sitting in and the HUD is the surface most likely to be in frame on a
+screenshot, so "off" has to mean off everywhere, immediately.
 
 ---
 
@@ -581,7 +584,6 @@ real SSID instead of a generic `Wi-Fi`. See G-NET1 before filing anything.
 
 | ID | Gap | Impact |
 |---|---|---|
-| **G-NET1** | `network.showWifiName` is written by Settings and read by nothing. `detectLink()` always probes for the SSID; the toggle's only real effect is prompting for Location Services on macOS. | The switch does not do what its label implies — an operator who turns it off still has the SSID probed and displayed once the OS permission exists. |
 | **G-A2** | Blacklist-only mode reports `safe` for an unmatched address — an inference ("not obviously you"), not an observation. | Documented in `ALERT-ROLES.md`; the verdict deserves its own state rather than borrowing `safe`. |
 | **G-C3** | `warnOnViolation` is a boolean, so D3 cannot be turned back on. An operator who wants to see *everything* has no setting for it — `ALERT-ROLES.md` Part C.3 replaces it with a three-value `alertFloor`. | D3 is only observable through `getUnrelatedCount()`, which no surface renders yet. |
 | **G-UI1** | `overlay.showInDock`, `cloudShare.authToken`, `marketplace.defaultRegistryUrl` and `processMonitor.pollMs` are manual-only. | Main-process/IPC-only paths; the matrix rows above point at §5 instead of a test. |
