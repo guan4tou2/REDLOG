@@ -10,7 +10,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { loadConfig, saveConfig, loadScopeFile, DEFAULT_VPN_ADAPTERS } from '../src/core/config'
+import { loadConfig, saveConfig, loadScopeFile, burpHostToTarget, DEFAULT_VPN_ADAPTERS } from '../src/core/config'
+import { classifyTarget } from '../src/core/scope-monitor'
 
 let tmpDir: string
 
@@ -85,6 +86,7 @@ describe('shipped defaults — one assertion per option', () => {
     ['deconfliction.events', ['marker', 'system', 'credential_use', 'c2_checkin']],
     ['deconfliction.subtypes', ['scope_violation']],
     ['deconfliction.includeData', false],
+    ['deconfliction.authorityFloor', 'inferred'],
 
     ['cloudShare.endpoint', ''],
     ['cloudShare.authToken', ''],
@@ -240,12 +242,19 @@ describe('legacy field migration', () => {
     expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(false)
   })
 
-  it('enforcement: block (removed) → warnings OFF — documented downgrade risk', () => {
-    // A config written before `block` was removed asked for the STRICTEST
-    // handling and lands on the quietest one. Recorded here as current
-    // behaviour, not as the desired one — see docs/TESTING.md, gap G-CFG1.
+  it('enforcement: block (removed) → warnings ON — the strictest value cannot land on silence', () => {
     write('scope:\n  enforcement: block\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(false)
+    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+  })
+
+  it('an unrecognised enforcement value migrates to warnings ON, not off', () => {
+    write('scope:\n  enforcement: nonsense\n')
+    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+  })
+
+  it('only the literal "log" — the one value that meant quiet — migrates to off', () => {
+    write('scope:\n  enforcement: LOG\n')
+    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
   })
 
   it('an explicit warnOnViolation is not overwritten by a stale enforcement key', () => {
@@ -276,20 +285,11 @@ describe('scope.scopeFile — external scope documents', () => {
     expect(loadScopeFile(p)).toEqual(['10.0.0.1', 'target.com'])
   })
 
-  it('Burp/ZAP target-scope JSON: unwraps a fully \\Q…\\E-quoted host', () => {
+  it('Burp/ZAP target-scope JSON: decodes each host shape and skips entries without one', () => {
     const p = scopeFile('burp.json', JSON.stringify({
       target: { scope: [{ host: '\\Qexample.com\\E' }, { host: '.*.example.com' }, {}] }
     }))
-    // entries without a host are skipped; a leading `.*` becomes the `*` wildcard
     expect(loadScopeFile(p)).toEqual(['example.com', '*.example.com'])
-  })
-
-  it('leaves a \\Q escape that is not at the start of the host in place (gap G-CFG2)', () => {
-    // Burp writes `.*\Qcorp.example.com\E` for "and subdomains". The unwrap only
-    // strips \Q at position 0, so this lands in the scope list with the escape
-    // still attached and matches nothing. Recorded as current behaviour.
-    const p = scopeFile('burp2.json', JSON.stringify({ target: { scope: [{ host: '.*\\Qcorp.example.com\\E' }] } }))
-    expect(loadScopeFile(p)).toEqual(['*\\Qcorp.example.com'])
   })
 
   it('JSON that is neither shape yields an empty list, not a crash', () => {
@@ -304,5 +304,55 @@ describe('scope.scopeFile — external scope documents', () => {
 
   it('a missing file yields an empty list — an unreadable scope must not throw', () => {
     expect(loadScopeFile(path.join(tmpDir, 'nope.txt'))).toEqual([])
+  })
+})
+
+// G-CFG2: Burp holds a scope host as a REGEX. Only a `\Q` at position 0 used to
+// be stripped, so Burp's own "and subdomains" export landed as `*\Qcorp.example.com`
+// and matched nothing — the scope silently lost the hosts the engagement was about.
+describe('burpHostToTarget — the shapes Burp and ZAP actually write', () => {
+  const cases: Array<[string, string, string]> = [
+    ['literal-quoted host', '\\Qexample.com\\E', 'example.com'],
+    ['anchored, dot-escaped host', '^example\\.com$', 'example.com'],
+    ['anchored + literal-quoted', '^\\Qexample.com\\E$', 'example.com'],
+    ['and-subdomains, dot-escaped', '.*\\.example\\.com$', '*.example.com'],
+    ['and-subdomains, literal-quoted', '.*\\Qcorp.example.com\\E', '*.corp.example.com'],
+    ['and-subdomains, unescaped dot', '.*.example.com', '*.example.com'],
+    ['and-subdomains with no joining dot', '.*example.com', '*.example.com'],
+    ['deep host', '^\\Qapi.staging.example.com\\E$', 'api.staging.example.com'],
+    ['bare hostname (already RedLog syntax)', 'example.com', 'example.com'],
+    ['bare IP', '10.0.0.1', '10.0.0.1'],
+    ['surrounding whitespace', '  \\Qexample.com\\E  ', 'example.com'],
+    ['several quoted runs', '\\Qapi.\\E\\Qexample.com\\E', 'api.example.com'],
+    ['unterminated \\Q run', '\\Qexample.com', 'example.com']
+  ]
+
+  for (const [name, host, expected] of cases) {
+    it(`${name}: ${host} → ${expected}`, () => {
+      expect(burpHostToTarget(host)).toBe(expected)
+    })
+  }
+
+  // Hand-written patterns are handed back untouched: they match nothing, but a
+  // scope target that VANISHES is the failure with no symptom — the operator
+  // sees "scope loaded" and never learns what is missing from it.
+  const passthrough = ['(dev|prod)\\.example\\.com', 'example\\.(com|net)', 'host[0-9]+\\.example\\.com', '.*']
+  for (const host of passthrough) {
+    it(`keeps an undecodable pattern visible rather than dropping it: ${host}`, () => {
+      expect(burpHostToTarget(host)).toBe(host)
+    })
+  }
+
+  it('a glob already in RedLog syntax survives unchanged', () => {
+    expect(burpHostToTarget('*.example.com')).toBe('*.example.com')
+  })
+
+  it('the decoded target is what the scope classifier actually matches on', () => {
+    // The point of the fix: the result has to work in classifyTarget, not just
+    // look right. `*.corp.example.com` covers its anchor host and any child.
+    const decoded = burpHostToTarget('.*\\Qcorp.example.com\\E')
+    expect(classifyTarget('www.corp.example.com', { targets: [decoded], excludeTargets: [] })).toBe('in_scope')
+    expect(classifyTarget('corp.example.com', { targets: [decoded], excludeTargets: [] })).toBe('in_scope')
+    expect(classifyTarget('other.example.com', { targets: [decoded], excludeTargets: [] })).toBe('out_of_scope')
   })
 })
