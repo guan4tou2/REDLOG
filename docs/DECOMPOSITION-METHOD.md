@@ -71,6 +71,7 @@ decomposed the same way, and lists which RedLog subsystems are next.
 | **Delivery / export targets** | ✅ done | timing/cardinality → Snapshot vs Stream | sanitize profile by audience (full / scope-sanitized / filtered) | `DELIVERY-TARGETS.md` |
 | **Off-chain content stores** | ✅ done | content shape → Blob (io_ref, screenshot) vs Stream (`.cast`) | on-chain digest vs off-chain bytes; content- vs path-addressed | `OFF-CHAIN-CONTENT-STORES.md` |
 | **Timeline surface** | ✅ done (structural lens) | 6 encoding channels × 4 interaction modes | fact vs inferred suggestion (§3, solid/dashed) | `TIMELINE-ELEMENTS.md` (defers to `SPEC-TIMELINE-AXIS.md` for design) |
+| **Alerting (IP + scope)** | 🟡 decomposed (code gaps open) | signal shape → Self alarm (state) vs Target alarm (event) | fact / inferred / unknown (§3); distance ladder D0–D3 | `ALERT-ROLES.md` |
 | **Event-type vocabulary** | ✅ done | origin → authored/captured/agent/derived/system/plugin | authoritative vs inferred (§3); declares timeline identity | `EVENT-TYPE-VOCABULARY.md` (field ref: `event-schema.md`) |
 
 **Already closed elsewhere (cross-link, don't redo):** trust tiers 🟢/🔴;

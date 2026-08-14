@@ -8,6 +8,8 @@ import { listQuickMarks } from './db/findings'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
+import { getSanitizedIo, runScopeSanitize } from './scope-sanitize'
+import { classifyTarget } from './scope-monitor'
 
 interface ManifestFile {
   path: string
@@ -59,6 +61,19 @@ export interface ExportBundleOpts {
    *  is the safe default, and this flag is the opt-in for engagements that
    *  legitimately need the pre-redaction content. */
   includeAgentTranscripts?: boolean
+  /** Export profile (SPEC-SCOPE-AWARE-LIFECYCLE.md §9 progressive disclosure).
+   *  `internal` (default) exports full content. `client-deliverable` runs the
+   *  scope planner first — out-of-scope / excluded event bodies AND their io
+   *  sidecar bodies are sanitized (the scope_violation + touched host remain),
+   *  `unknown` targets are left for operator decision. Requires `scope` +
+   *  `operatorId` so the sanitize can attribute + classify. */
+  profile?: 'internal' | 'client-deliverable'
+  /** Scope config for the `client-deliverable` profile. */
+  scope?: { targets: string[]; excludeTargets: string[] }
+  /** Operator id that owns the sanitize pass (client-deliverable profile). */
+  operatorId?: string
+  /** Also sanitize `unknown`-target events (operator opt-in, default false). */
+  sanitizeUnknown?: boolean
 }
 
 export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
@@ -70,6 +85,21 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const bundleDir = path.join(outRoot ?? path.join(projectDir, 'exports'), `bundle-${ts}`)
   fs.mkdirSync(bundleDir, { recursive: true })
+
+  // client-deliverable profile: run the scope sanitize pass BEFORE packaging so
+  // the events.jsonl + io swaps below serve redacted out-of-scope content. The
+  // pass appends a chained system.sanitized (tamper-evident) and writes to the
+  // sanitized_events / sanitized_io side tables the export already reads.
+  if (opts.profile === 'client-deliverable' && opts.scope && opts.operatorId) {
+    const candidates = queryEvents({ limit: 1_000_000 }).map((e) => ({ id: e.id, targetId: e.targetId, data: e.data }))
+    runScopeSanitize({
+      events: candidates,
+      classify: (t) => classifyTarget(t, opts.scope!),
+      operatorId: opts.operatorId,
+      engagementId,
+      includeUnknown: opts.sanitizeUnknown === true
+    })
+  }
 
   const files: ManifestFile[] = []
 
@@ -174,16 +204,31 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const srcIo = path.join(projectDir, 'io')
   const dstIo = path.join(bundleDir, 'io')
   if (fs.existsSync(srcIo)) {
+    // Layer-4 scope sanitize (SPEC-SCOPE-AWARE-LIFECYCLE.md Part B): a body with
+    // a sanitized replacement is served REDACTED under its original digest name;
+    // verify reads the system.sanitized io swap and confirms the bytes hash to
+    // the replacement digest → sanitized, not tampered. The source store is
+    // untouched. One replacement per digest (io bodies are deduped).
+    const sanitizedIo = getSanitizedIo()
+    const writtenSanitized = new Set<string>()
     fs.mkdirSync(dstIo, { recursive: true })
     for (const name of fs.readdirSync(srcIo)) {
       const s = path.join(srcIo, name)
-      const d = path.join(dstIo, name)
-      // Copy both raw (`.bin`) and warm (`.bin.gz`) bodies — the verifier
-      // decompresses warm ones before hashing (SPEC-SCOPE-AWARE-LIFECYCLE.md).
-      if ((name.endsWith('.bin') || name.endsWith('.bin.gz')) && fs.statSync(s).isFile()) {
+      if (!(name.endsWith('.bin') || name.endsWith('.bin.gz')) || !fs.statSync(s).isFile()) continue
+      const stem = name.replace(/\.bin(\.gz)?$/, '')
+      const swap = sanitizedIo.get(stem)
+      if (swap) {
+        // Write the redacted replacement once, as an uncompressed `.bin`.
+        if (writtenSanitized.has(stem)) continue
+        writtenSanitized.add(stem)
+        const outName = `${stem}.bin`
+        const d = path.join(dstIo, outName)
+        fs.writeFileSync(d, Buffer.from(swap.value, 'utf8'))
+        files.push({ path: `io/${outName}`, ...sha256File(d) })
+      } else {
+        const d = path.join(dstIo, name)
         fs.copyFileSync(s, d)
-        const info = sha256File(d)
-        files.push({ path: `io/${name}`, ...info })
+        files.push({ path: `io/${name}`, ...sha256File(d) })
       }
     }
   }

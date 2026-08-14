@@ -1356,11 +1356,26 @@ app.whenReady().then(() => {
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
 
   // --- Evidence bundle ---
-  ipcMain.handle('data:exportBundle', () => {
+  ipcMain.handle('data:exportBundle', (_e, opts?: { profile?: 'internal' | 'client-deliverable'; sanitizeUnknown?: boolean }) => {
     if (!activeProject) return { ok: false, error: 'no-active-project' }
     try {
       const cfg = loadConfig(getProjectPath(activeProject))
-      const bundle = exportBundle(cfg.engagement.id)
+      // client-deliverable profile scope-sanitizes out-of-scope bodies (incl. io
+      // sidecars) before packaging (SPEC-SCOPE-AWARE-LIFECYCLE.md Part B).
+      const deliverable = opts?.profile === 'client-deliverable'
+      let scopeTargetsForExport = cfg.scope.targets
+      if (deliverable && cfg.scope.scopeFile) {
+        const loaded = loadScopeFile(cfg.scope.scopeFile)
+        if (loaded.length > 0) scopeTargetsForExport = [...scopeTargetsForExport, ...loaded]
+      }
+      const bundle = exportBundle(cfg.engagement.id, deliverable
+        ? {
+            profile: 'client-deliverable',
+            scope: { targets: scopeTargetsForExport, excludeTargets: cfg.scope.excludeTargets },
+            operatorId: currentOperatorId ?? '',
+            sanitizeUnknown: opts?.sanitizeUnknown === true
+          }
+        : undefined)
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
     } catch (e) {
       return { ok: false, error: (e as Error)?.message ?? String(e) }
