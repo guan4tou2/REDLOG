@@ -13,12 +13,21 @@
 >   planner incl. io-sidecar coverage + `unknown` flagging, A1/A2) shipped and
 >   unit-tested; the classifier is wired into retention so scope-priority eviction
 >   is **live** (A5 fully). 8 more tests.
-> - ⏳ **Remaining (Part B execution):** the `runScopeSanitize` orchestrator that
->   applies the plan — reuse `sanitize.ts` for inline fields, plus **io sidecar
->   body replacement at export** (write a sanitized replacement body, record the
->   digest swap in `system.sanitized` so verify reads it as *sanitized* not
->   *tampered*) — and the `internal` vs `client-deliverable` export profiles (§9).
->   The tested planner already produces the exact work-list this needs.
+> - ✅ **Part B execution (G3 complete):** shipped. `scope-sanitize.ts`
+>   `runScopeSanitize` applies the plan — whole-body placeholder for out-of-scope
+>   inline fields (`sanitized_events`) **and** io sidecar bodies (new
+>   `sanitized_io` table), refcount-safe (a body cited by any kept in-scope event
+>   is never sanitized), appending one chained `system.sanitized` with
+>   `io_replacements`. `bundle-export` serves the redacted bodies under their
+>   original names; `redlog-verify.py` reads the swap and reports them
+>   *sanitized*, never *tampered* (A1/A6). `internal` vs `client-deliverable`
+>   export profiles wired through `exportBundle` + the `data:exportBundle` IPC
+>   (§9). `unknown` targets are never auto-sanitized unless the operator opts in
+>   (A2). Pure placeholder + DB round-trip tests added.
+>
+> **The full spec (Parts A/B/C) is now implemented.** The one deliberate scope
+> boundary: the CLI/HTTP export path stays internal-profile; the client-
+> deliverable profile is exposed through the app (IPC) export.
 
 Written 2026-08-13. Unifies three previously-separate storage concerns into one
 mechanism: **the hash chain is a small, immutable WORM spine; every heavy capture

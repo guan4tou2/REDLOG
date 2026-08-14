@@ -134,6 +134,20 @@ export function initDB(projectDir: string): Database.Database {
       PRIMARY KEY (source_event_id, field)
     );
     CREATE INDEX IF NOT EXISTS idx_sanitized_source ON sanitized_events(source_event_id);
+
+    -- Scope-aware sanitize of io sidecar bodies (SPEC-SCOPE-AWARE-LIFECYCLE.md
+    -- Part B). Keyed by the ORIGINAL body digest (io bodies are deduped by
+    -- content, so one sanitize applies to every event that cites the sha). The
+    -- bundle export serves sanitized_value under io/<orig_sha256>.bin; verify
+    -- reads the system.sanitized digest swap and confirms the bytes hash to
+    -- replacement_sha256 → sanitized, not tampered.
+    CREATE TABLE IF NOT EXISTS sanitized_io (
+      orig_sha256 TEXT PRIMARY KEY,
+      sanitized_value TEXT NOT NULL,
+      replacement_sha256 TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      sanitized_event_id TEXT NOT NULL
+    );
   `)
 
   // Migrate: add columns if missing (older DB versions)

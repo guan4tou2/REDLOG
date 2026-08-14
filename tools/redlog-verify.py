@@ -275,6 +275,28 @@ def _extract_io_refs(row: Dict[str, Any]) -> List[str]:
     return refs
 
 
+def _extract_io_swaps(row: Dict[str, Any]) -> Dict[str, str]:
+    """Scope-sanitize io digest swaps (SPEC-SCOPE-AWARE-LIFECYCLE.md Part B) from
+    a system.sanitized event: {orig_sha: replacement_sha}. The bundle serves the
+    redacted replacement under the ORIGINAL name, so verify must expect the
+    replacement digest for those bodies — a match is *sanitized*, not tampered."""
+    if row.get("agent_type") != "system":
+        return {}
+    data_field = row.get("data")
+    if isinstance(data_field, str):
+        try:
+            data_field = json.loads(data_field)
+        except Exception:
+            return {}
+    if not isinstance(data_field, dict) or data_field.get("subtype") != "sanitized":
+        return {}
+    swaps: Dict[str, str] = {}
+    for r in (data_field.get("io_replacements") or []):
+        if isinstance(r, dict) and isinstance(r.get("ref"), str) and isinstance(r.get("sha256"), str):
+            swaps[r["ref"]] = r["sha256"]
+    return swaps
+
+
 def _iter_events(events_path: Path):
     with events_path.open("r", encoding="utf-8") as fh:
         for lineno, line in enumerate(fh, start=1):
@@ -326,12 +348,15 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     last_hash: Optional[str] = None
     bundle_engagement = manifest.get("engagementId")
     io_refs: Dict[str, str] = {}   # ref -> first event id that carries it
+    io_swaps: Dict[str, str] = {}  # orig sha -> replacement sha (scope sanitize)
 
     for lineno, row in _iter_events(events_path):
         walked += 1
         rid = row.get("id", f"<line {lineno}>")
         for ref in _extract_io_refs(row):
             io_refs.setdefault(ref, str(rid))
+        for orig, repl in _extract_io_swaps(row).items():
+            io_swaps[orig] = repl
 
         row_prev = row.get("prev_hash")
         if row_prev is not None:
@@ -436,6 +461,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     # tampering and fails the bundle.
     io_ok = 0
     io_pruned = 0
+    io_sanitized = 0
     io_bad_at: Optional[str] = None
     io_dir = bundle_dir / "io"
     for ref, ev_id in io_refs.items():
@@ -459,6 +485,21 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
             actual = hashlib.sha256(data).hexdigest()
         except Exception:
             io_pruned += 1
+            continue
+        # Scope-sanitized body: the bundle serves the redacted replacement under
+        # the original name, so its bytes must hash to the RECORDED replacement
+        # digest. Match = sanitized (expected), mismatch = tampered.
+        if ref in io_swaps:
+            if actual == io_swaps[ref]:
+                io_sanitized += 1
+            else:
+                io_bad_at = ev_id
+                print(
+                    f"IO SIDECAR TAMPERED: sanitized io/{ref}.bin does not match "
+                    f"its recorded replacement digest (event {ev_id}); computed {actual[:16]}...",
+                    file=sys.stderr,
+                )
+                break
             continue
         if actual == ref:
             io_ok += 1
@@ -502,6 +543,8 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"BAD SIGNATURE    : {bad_sig_at}")
     if io_refs:
         summary = f"{io_ok} verified"
+        if io_sanitized:
+            summary += f", {io_sanitized} sanitized (scope — not tampered)"
         if io_pruned:
             summary += f", {io_pruned} pruned (retention — not tampered)"
         print(f"IO sidecars      : {summary}")
