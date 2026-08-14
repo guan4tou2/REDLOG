@@ -95,6 +95,7 @@ The reusable decompositions behind capture and plugin design — read these befo
 
 ## Project ops
 
+- **[Test matrix](TESTING.md)** — every config option × value × expected behaviour, with the test that proves each one: the alert path end to end (IP verdict matrix A-1..A-9, range boundaries, settling, scope distance ladder D0–D3, HUD/dashboard display), the per-block config matrix, config merge + migration semantics, the manual QA that no unit test can reach, and the known gaps. Read this before changing a default or touching the alert path.
 - **[Releasing](releasing.md)** — two-phase cross-platform release via GitHub Actions (build matrix → single release job), plus the local `npm rebuild better-sqlite3` gotcha after packaging.
 - **[Release checklist](RELEASE_CHECKLIST.md)** — the pre-release verification gates: what `npx playwright test` automates (§0 build + smoke, as of v0.9.4) and the manual checks that remain. Companion to Releasing.
 - **[Windows setup](windows-setup.md)** — platform-specific install/build steps and gotchas for Windows; pairs with the [Windows compatibility audit](WINDOWS_COMPAT_AUDIT.md).
