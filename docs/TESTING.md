@@ -32,8 +32,8 @@ blocks (`ALERT-ROLES.md` Part D), so a verdict that is wrong or invisible is the
 whole defence failing — there is nothing downstream to catch it.
 
 ```
-egress IP ──► classifyIP ──► settling ──► IPStatus ──► HUD frame + dashboard card
-command  ──► classifyTarget ──► warnOnViolation ──► violation event ──► ScopeStatus
+egress IP ──► classifyIP ──► settling/stale ──► ipBadge ──► HUD + card + status bar
+command  ──► classifyDistance ──► alertFloor ──► violation event ──► ScopeStatus
 ```
 
 ## 1.1 IP verdict matrix — which list wins
@@ -41,24 +41,41 @@ command  ──► classifyTarget ──► warnOnViolation ──► violation 
 Two lists, each independently set or unset, and an address that may hit either.
 Nine reachable cells.
 
+Five verdicts, because the two lists answer different kinds of question. Three
+are **observations** and one is an **inference**, and §3 says an inference may
+never wear a fact's colour:
+
+| Verdict | Authority | Means |
+|---|---|---|
+| `safe` | fact | on an address you declared safe |
+| `exposed` | fact | on an address you declared to be *you* |
+| `off_profile` | fact | you declared an expectation and this is **outside** it |
+| `presumed_safe` | **inference** | "not obviously you" — a blacklist is set and this missed it |
+| `unknown` | — | nothing declared; there is no question to answer |
+
 | # | whitelist | blacklist | address hits | Verdict | Why |
 |---|---|---|---|---|---|
 | A-1 | — | — | — | `unknown` | nothing declared, nothing to judge against |
 | A-2 | — | set | blacklist | `exposed` | your own IP is showing |
-| A-3 | — | set | neither | `safe` | blacklist-only mode infers "behind the tunnel" |
+| A-3 | — | set | neither | `presumed_safe` | an inference, and rendered as one |
 | A-4 | set | — | whitelist | `safe` | on a declared exit |
-| A-5 | set | — | neither | `unknown` | declaring a whitelist declares an expectation |
+| A-5 | set | — | neither | `off_profile` | an observed deviation from a declared expectation |
 | A-6 | set | set | both | `exposed` | config conflict resolves to the alarming side |
 | A-7 | set | set | blacklist | `exposed` | identity leak is never masked |
 | A-8 | set | set | whitelist | `safe` | |
-| A-9 | set | set | neither | `unknown` | **the VPN-dropped-onto-café-NAT case** |
+| A-9 | set | set | neither | `off_profile` | **the VPN-dropped-onto-café-NAT case** |
 
 Proof: `ip-monitor` (table-driven, one `it` per row).
 
-A-9 is the regression that G-A1 fixed — it used to answer `safe` because the
-blacklist-only shortcut ran even after a configured whitelist had already
-missed. `ip-monitor` keeps both the truth-table row and the scenario-shaped
-assertion so a future refactor cannot silently re-introduce it.
+Two fixes are pinned here against re-introduction:
+
+- **G-A1** — A-9 answered `safe`, because the blacklist-only shortcut ran even
+  after a configured whitelist had already missed. `ip-monitor` keeps both the
+  truth-table row and the scenario-shaped assertion.
+- **G-A2** — A-3 answered `safe` (an inference in a fact's solid green) and A-5
+  answered `unknown`, which understated an observed deviation into the same
+  amber bucket as "nothing is configured at all". Both now have their own
+  verdict.
 
 ## 1.2 Range matching — `network.whitelist` / `network.blacklist`
 
@@ -76,7 +93,22 @@ assertion so a future refactor cannot silently re-introduce it.
 | `[]` (default) | list is not configured → see A-1/A-3/A-5 | `ip-monitor`, `config-options` |
 
 The blacklist is evaluated first and wins outright; a whitelist that is set but
-missed downgrades to `unknown`, never to `safe`.
+missed answers `off_profile` — never `safe`, and never the same `unknown` that
+"nothing configured" gets.
+
+## 1.2.1 `network.staleAfter` — a verdict expires
+
+| Value | Behaviour | Proof |
+|---|---|---|
+| `2` (default) | after 2 consecutive failed reads the verdict decays to `unknown` and `stale` is set | `ip-monitor` |
+| `N` | same, at N | `ip-monitor` |
+| `0`, negative | rejected, default kept | `ip-monitor` |
+| a later success | verdict re-computes, `stale` clears | `ip-monitor` |
+
+A dropped VPN and a dead IP provider look identical from outside the process, so
+neither may keep rendering the last good answer at full confidence. `stale` beats
+`settling` on the badge: no reading at all is a stronger statement than an
+unconfirmed one (`ip-badge`).
 
 ## 1.3 `network.confirmations` — flap protection
 
@@ -174,57 +206,87 @@ collapse to `out_of_scope` here).
 CIDR and wildcard mechanics themselves (`/8` `/16` `/24` `/32`, `*.` prefix, root
 extraction) are table-tested in `scope-monitor`.
 
-## 1.7 `scope.warnOnViolation` — whether the operator is told
+## 1.7 `scope.alertFloor` — how much the operator is told
 
-The switch silences the **inferred** tier only. D1 is a fact and fires
-regardless; D3 is never alerted either way (a scan of `google.com` during an
-`*.example.com` engagement is noise, and noise is a safety defect — a muted
-channel is a removed defence).
+The lowest rung that still raises an alert. It replaced the `warnOnViolation`
+boolean (G-C3), which could only silence D2 and gave an operator who wanted to
+see *everything* no setting at all.
 
-| Distance | `true` (default) | `false` | Proof |
-|---|---|---|---|
-| D0 in scope | no violation | no violation | `scope-monitor-behaviour` |
-| D1 excluded | **violation** | **violation** — "keep off X" is not a preference call | `scope-monitor-behaviour` |
-| D2 adjacent subnet | **violation** + event + badge | silent, `inScope: false` | `scope-monitor-behaviour` |
-| D2 adjacent domain | **violation** + event + badge | silent, `inScope: false` | `scope-monitor-behaviour` |
-| D3 unrelated | no violation, counted | no violation, counted | `scope-monitor-behaviour` |
+| Distance | `excluded_only` | `adjacent` (default) | `all` | Proof |
+|---|---|---|---|---|
+| D0 in scope | no violation | no violation | no violation | `scope-monitor-behaviour` |
+| D1 excluded | **violation** | **violation** | **violation** | `scope-monitor-behaviour` |
+| D2 adjacent subnet | silent, `inScope: false` | **violation** | **violation** | `scope-monitor-behaviour` |
+| D2 adjacent domain | silent, `inScope: false` | **violation** | **violation** | `scope-monitor-behaviour` |
+| D3 unrelated | counted only | counted only | **violation** | `scope-monitor-behaviour` |
+
+D1 fires at every floor: "keep off X" is not a preference call. D3 is counted at
+every floor, because silent is not the same as not looking — the count is what
+proves the difference (`getUnrelatedCount()`).
 
 Bookkeeping: violations accumulate rather than dedupe, each carries
 target/command/timestamp, `getViolations()` returns a copy, and the full command
 is kept in memory while the chained event slices it to 200 chars
-(`scope-monitor-behaviour`). D3 hits increment `getUnrelatedCount()` — silent is
-not the same as not looking, and the count is what proves it. A violation event
-is `system` / `subtype: scope_violation` and carries `reason`
-(`excluded_target` \| `adjacent_subnet` \| `adjacent_domain`) plus `authority`
-(`fact` \| `inferred`), so downstream can tell an observation from an inference;
+(`scope-monitor-behaviour`). A violation event is `system` /
+`subtype: scope_violation` carrying `reason` (`excluded_target` \|
+`adjacent_subnet` \| `adjacent_domain` \| `unrelated`) and `authority`
+(`fact` \| `inferred`), so downstream can tell an observation from an inference
+rather than seeing one undifferentiated red (`scope-violation-event`).
 `scope_violation` is also the default deconfliction subtype (`deconfliction`).
 
 Whatever the tier, the command itself still lands in the timeline — only the
 *alert* is suppressed, never the record.
 
-`configure()` semantics: omitting `warnOnViolation` on a later call keeps the
-current value; replacing `targets` re-derives the containers used for D2; a
-re-configured `proximityBits` takes effect on the next check
-(`scope-monitor-behaviour`).
+`configure()` semantics: omitting `alertFloor` on a later call keeps the current
+value; replacing `targets` re-derives the containers used for D2; a re-configured
+`proximityBits` takes effect on the next check (`scope-monitor-behaviour`).
+
+## 1.7.1 One severity scale for both alarms
+
+The self alarm (IP) and the target alarm (scope) grew separate colour
+vocabularies: four tones on one side, an on/off light on the other, so a D1 hit
+on a forbidden host and a D2 proximity inference rendered identically. G-C1 puts
+both on one scale — `ok` < `notice` < `unknown` < `warn` < `critical`
+(`alert-severity`).
+
+| Input | Severity |
+|---|---|
+| `exposed` / D1 `excluded_target` | `critical` — the thing you must not do, observed, non-silenceable |
+| `off_profile` / D2 adjacent | `warn` |
+| D3 `unrelated` (only at `alertFloor: all`) | `notice` — a recorded departure, not an alarm |
+| `unknown` | `unknown` |
+| `safe` / `presumed_safe` | `ok` |
+
+`worstSeverity()` folds several inputs into the single dot the status bar shows.
+Authority is carried **orthogonally** to severity: `dotShape()` renders an
+inferred event as a hollow/dashed mark and an observed one as solid, so a
+judgement never looks like a measurement at any severity (`dot-shape`,
+`authority`, `authority-stamp`).
 
 ## 1.8 Alert display — the verdict has to be seen
 
-HUD overlay (`OverlayApp`) and dashboard card (`IPStatusCard`), proof
-`alert-display` throughout.
+The same verdict has to be legible on three surfaces, and the two qualified
+verdicts must not borrow a plain one's confidence. Proof: `alert-display`
+(HUD + dashboard) and `alert-surfaces` (status bar); the decision itself is
+`ip-badge`.
 
-The same verdict has to be legible on three surfaces. Proof: `alert-display`
-(HUD + dashboard) and `alert-surfaces` (status bar).
-
-| Verdict | HUD frame | HUD label | Dashboard card | Status bar |
+| Verdict | Severity | HUD label | Dashboard card | Status bar |
 |---|---|---|---|---|
-| `safe` | cyan `#3fc7d6` | `SAFE` | green dot, `Safe IP` | green dot, `SAFE` + address |
-| `exposed` | red `#d75f63` + flash | `EXPOSED` | red pulsing dot, `Exposed IP` + "check your VPN" hint | red dot, `EXPOSED` |
-| `unknown` | cyan | `IP?` | yellow dot, `Unknown IP` + "configure the lists" hint | amber dot, `IP?` |
+| `safe` | `ok` | `SAFE` | green dot, `Safe IP` | green dot, `SAFE` + address |
+| `presumed_safe` | `ok` | `PRESUMED` | `Presumed safe` + "nothing to confirm it against" hint | `SAFE`, qualified |
+| `off_profile` | `warn` | `OFF-PROFILE` | `Off-profile IP` + "not where you declared" hint | `OFF-PROFILE` |
+| `exposed` | `critical` | `EXPOSED` | red pulsing dot + "check your VPN" hint | red dot, `EXPOSED` |
+| `unknown` | `unknown` | `IP?` | yellow dot + "configure the lists" hint | amber dot, `IP?` |
+| any + `stale` | forced `unknown` | verdict expired | `No current reading` + "a dropped VPN looks exactly like this" | `NO READ` |
+
+The HUD frame turns red on `exposed` (`#d75f63`) and stays cyan (`#3fc7d6`)
+otherwise; `flashOnExposed` controls only the flash, never the colour.
 
 Also asserted: the expanded pane spells the verdict out in words
-(`Exposed IP — Not Protected`) rather than relying on colour alone; an `unknown`
-verdict carries the instruction that fixes it; a provider error is shown instead
-of pretending the reading is fresh; a missing reading renders `—` rather than a
+(`Exposed IP — Not Protected`, `Presumed safe — inferred, not verified`) rather
+than relying on colour alone; every qualified verdict carries the instruction
+that would upgrade it to a verified one; a provider error is shown instead of
+pretending the reading is fresh; a missing reading renders `—` rather than a
 stale address, and the status bar omits the address entirely.
 
 **Scope alerts** (`alert-surfaces`): the status bar shows `SCOPE OK` or
@@ -268,6 +330,7 @@ default fails a named test rather than a distant integration.
 | `checkInterval` | `60` | seconds | §1.5; UI coerces junk to 60 | `ip-monitor-options` |
 | `providers` | `[]` | URLs | §1.4 | `ip-monitor-options` |
 | `confirmations` | `3` | ≥1 | §1.3; UI clamps to ≥1 | `ip-monitor-options` |
+| `staleAfter` | `2` | ≥1 | §1.2.1 — consecutive failed reads before the verdict expires to `unknown` + `stale` | `ip-monitor` |
 | `ipMode` | `auto` | `dns` \| `http` \| `auto` | §1.4 | `ip-monitor-dns` |
 | `showWifiName` | `false` | bool | off drops the SSID from the link before it reaches any surface, keeping the link **type** (the UI renders a generic "Wi-Fi"); on shows it. The macOS toggle also asks for Location Services, since the OS redacts the SSID without it. Turning it off applies immediately rather than at the next 20 s poll | `wifi-name-policy` |
 | `vpnAdapters` | 12 built-ins, all enabled | `{name, pattern, enabled}` | patterns are user regexes matched case-insensitively against interface names | `vpn-adapters` |
@@ -284,10 +347,11 @@ verified to recognise `wg0`, `tun0`, `tap0`, `tailscale0`, `nordlynx`, `proton0`
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| `warnOnViolation` | `true` | §1.7 — silences D2 only | `scope-monitor-behaviour` |
+| `alertFloor` | `adjacent` | §1.7 — `excluded_only` \| `adjacent` \| `all`; the lowest rung that still alerts | `scope-monitor-behaviour` |
 | `targets` | `[]` | §1.6; empty = everything in scope | `scope-monitor-behaviour` |
 | `excludeTargets` | `[]` | D1: always warns when hit | `scope-monitor-behaviour` |
-| `proximityBits` | `24` | container width derived for a **single-IP** scope entry; entries already written as CIDRs are never widened; values outside 1–32 or non-integers fall back to 24. Settings ▸ Scope renders it under the warn toggle and hides it when warnings are off (nothing to widen); the UI clamps to 1–32 and coerces junk to 24 | `scope-monitor-behaviour`, `config-options`, `settings-interaction` |
+| `proximityBits` | `24` | container width derived for a **single-IP** scope entry; entries already written as CIDRs are never widened; values outside 1–32 or non-integers fall back to 24. Settings ▸ Scope renders it under the alert-floor control and hides it at `excluded_only` (with D2 silenced there is nothing to widen); the UI clamps to 1–32 and coerces junk to 24 | `scope-monitor-behaviour`, `config-options`, `settings-interaction` |
+| `publicSuffixes` | `[]` | extra multi-label suffixes on top of the built-in table, so an engagement on a suffix RedLog has not heard of is not blocked on a release. **Additive only** — the built-ins cannot be removed | `public-suffix` |
 | `scopeFile` | `null` | external scope document, loaded on open | `config-options` |
 
 `scopeFile` parsing (`config-options`): plain text is one target per line with
@@ -466,6 +530,8 @@ Legacy migration (`config-options`, `config`):
 | `scope.enforcement: log` | `warnOnViolation: false` | the only value that meant quiet (and it did not even log) |
 | `scope.enforcement: block` | `warnOnViolation: true` | `block` was the strictest value the old field offered; answering it with silence would give less protection than was asked for, on a config nobody revisits |
 | `scope.enforcement: <anything else>` | `warnOnViolation: true` | unrecognised values fail loud, not quiet |
+| `scope.warnOnViolation: false` | `alertFloor: 'excluded_only'` | the boolean could only silence D2 (G-C3) |
+| `scope.warnOnViolation: true` | `alertFloor: 'adjacent'` | |
 
 An explicit `warnOnViolation` is never overwritten by a stale `enforcement` key.
 
@@ -482,6 +548,11 @@ An explicit `warnOnViolation` is never overwritten by a stale `enforcement` key.
 | scope violations list, empty/not-set states, 10-row cap, chain length, export button | §1.8 | `alert-surfaces` |
 | HUD live-update subscriptions (Settings → open overlay) | §1.8 | `alert-surfaces` |
 | Settings controls: each toggle / number field writes the right config key, with its UI-layer coercion | §2.x | `settings-interaction` |
+| one severity scale across both alarms; `worstSeverity` folding | §1.7.1 | `alert-severity` |
+| inferred-vs-observed rendering (dot shape), orthogonal to severity | §1.7.1 | `dot-shape` |
+| `authority` resolution + the stamp `insertEvent` writes | §1.7.1 | `authority`, `authority-stamp` |
+| `scope_violation` payload: `reason` + `authority` per rung | §1.7 | `scope-violation-event` |
+| registrable-domain table incl. operator-added suffixes | §2.3 | `public-suffix` |
 | settings search index covers every group | option discoverability | `settings-search` |
 | timeline lanes, axis, clustering, modes, wheel, geometry | timeline behaviour | `timeline-*` |
 | capture onboarding + readiness | empty/partial states | `capture-onboarding-render`, `capture-readiness`, `empty-state` |
@@ -538,9 +609,11 @@ green. This is the A-9 case from §1.1.
    single-IP entry expands to `/24`.
 4. Run `curl google.com` and `nmap 8.8.8.8` → no alert (D3, by design); the
    commands are still in the timeline.
-5. Add `dc01.app.example.com` to `excludeTargets`, turn warnings **off**, hit it
-   → still alerts (`reason: excluded_target`, `authority: fact`). Hit
-   `vpn.example.com` and `192.168.1.55` again → silent.
+5. Add `dc01.app.example.com` to `excludeTargets`, set `alertFloor:
+   excluded_only`, hit it → still alerts (`reason: excluded_target`,
+   `authority: fact`). Hit `vpn.example.com` and `192.168.1.55` again → silent.
+6. Set `alertFloor: all` and run `nmap 8.8.8.8` → now it alerts too, as
+   `notice`-severity `unrelated`, visibly below the D1/D2 rungs.
 
 ### 5.4 `overlay.showInDock` (macOS)
 
@@ -584,8 +657,6 @@ screenshot, so "off" has to mean off everywhere, immediately.
 
 | ID | Gap | Impact |
 |---|---|---|
-| **G-A2** | Blacklist-only mode reports `safe` for an unmatched address — an inference ("not obviously you"), not an observation. | Documented in `ALERT-ROLES.md`; the verdict deserves its own state rather than borrowing `safe`. |
-| **G-C3** | `warnOnViolation` is a boolean, so D3 cannot be turned back on. An operator who wants to see *everything* has no setting for it — `ALERT-ROLES.md` Part C.3 replaces it with a three-value `alertFloor`. | D3 is only observable through `getUnrelatedCount()`, which no surface renders yet. |
 | **G-UI1** | `overlay.showInDock`, `cloudShare.authToken`, `marketplace.defaultRegistryUrl` and `processMonitor.pollMs` are manual-only. | Main-process/IPC-only paths; the matrix rows above point at §5 instead of a test. |
 
 Adding a config option? Add its default to the table in `config-options`, its
