@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ipBadge } from '../lib/ip-badge'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { ICON } from '../lib/icons'
@@ -82,9 +83,17 @@ export default function StatusBar(): JSX.Element {
     toast(newState ? t('toast.recordingResumed') : t('toast.recordingPaused'), newState ? 'success' : 'warning')
   }
 
-  const safety = ipStatus?.ipSafety ?? 'unknown'
+  // G-A3: the verdict, plus whether it is still backed by a current reading.
+  // `qualified` means the badge must not read at full confidence.
+  const badge = ipBadge(ipStatus)
+  const safety = badge.tone
   const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-red-500' : 'bg-amber-500'
-  const safetyLabel = safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
+  const safetyLabel = badge.reason === 'stale'
+    ? t('statusBar.ipStale')
+    : safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
+  const safetyTitle = badge.reason === 'stale'
+    ? t('statusBar.staleHint', { n: ipStatus?.consecutiveFailures ?? 0 })
+    : badge.reason === 'settling' ? t('statusBar.settlingHint') : undefined
 
   const hours = Math.floor(uptime / 3600)
   const mins = Math.floor((uptime % 3600) / 60)
@@ -139,9 +148,15 @@ export default function StatusBar(): JSX.Element {
 
       <Sep />
 
-      <div className="flex items-center gap-1.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
-        <span className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
+      <div className="flex items-center gap-1.5" title={safetyTitle}>
+        {/* Hollow dot when the reading behind the verdict is not current — a
+            filled dot is reserved for "this is what we see right now". */}
+        <span
+          className={badge.qualified
+            ? `w-1.5 h-1.5 rounded-full border ${safetyDot.replace('bg-', 'border-')} animate-pulse-slow`
+            : `w-1.5 h-1.5 rounded-full ${safetyDot}`}
+        />
+        <span className={`${safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}${badge.qualified ? ' opacity-70' : ''}`}>
           {safetyLabel}
         </span>
         {ipStatus?.externalIP && (

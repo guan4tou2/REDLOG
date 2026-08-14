@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { usePivots } from '../lib/usePivots'
+import { ipBadge } from '../lib/ip-badge'
 
 function useTimeAgo(): (ts: number) => string {
   const { t } = useI18n()
@@ -38,18 +39,26 @@ export default function IPStatusCard(): JSX.Element {
     )
   }
 
-  const safety = status.ipSafety
+  // G-A3: a verdict whose reading has expired must not present as a live one.
+  const badge = ipBadge(status)
+  const safety = badge.tone
   const STATUS_CONFIG = {
     safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400' },
     exposed: { indicator: 'bg-red-500', label: t('ip.exposedIp'), color: 'text-red-400' },
     unknown: { indicator: 'bg-yellow-500', label: t('ip.unknownIp'), color: 'text-yellow-400' }
   }
-  const cfg = STATUS_CONFIG[safety]
+  const cfg = badge.reason === 'stale'
+    ? { ...STATUS_CONFIG.unknown, label: t('ip.staleIp') }
+    : STATUS_CONFIG[safety]
 
   return (
     <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
       <div className="flex items-center gap-3">
-        <span className={`w-3 h-3 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`} />
+        <span
+          className={badge.qualified
+            ? `w-3 h-3 rounded-full border-2 ${cfg.indicator.replace('bg-', 'border-')} bg-transparent`
+            : `w-3 h-3 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`}
+        />
         <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
         <span className="ml-auto text-xs text-neutral-500">{timeAgo(status.lastCheck)}</span>
       </div>
@@ -107,7 +116,24 @@ export default function IPStatusCard(): JSX.Element {
         </p>
       )}
 
-      {safety === 'unknown' && (
+      {badge.reason === 'stale' && (
+        <p className="text-xs text-yellow-500/90 flex items-start gap-1.5">
+          <span className="shrink-0">⚠</span>
+          <span>{t('ip.staleHint', { n: status.consecutiveFailures ?? 0 })}</span>
+        </p>
+      )}
+
+      {badge.reason === 'settling' && (
+        <p className="text-xs text-neutral-400 flex items-start gap-1.5">
+          <span className="shrink-0">⋯</span>
+          <span>{t('ip.settlingHint')}</span>
+        </p>
+      )}
+
+      {/* Only for a genuinely unclassifiable address — a decayed verdict is also
+          'unknown', but telling the operator to configure lists they already
+          configured is the wrong advice for a dropped network. */}
+      {safety === 'unknown' && badge.reason === null && (
         <p className="text-xs text-yellow-500/90 flex items-start gap-1.5">
           <span className="shrink-0">ⓘ</span>
           <span>{t('ip.safetyHint')}</span>

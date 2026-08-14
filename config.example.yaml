@@ -35,6 +35,18 @@ scope:
     - 10.0.0.0/8
     - 192.168.1.0/24
     - "*.example.com"
+  # Container width for the D2 "same subnet, wrong host" alert. It applies only
+  # to SINGLE-IP scope entries: had the list above contained 192.168.1.10, then
+  # 192.168.1.0/24 would count as adjacent and hitting .55 would warn. Entries
+  # already written as CIDRs (10.0.0.0/8) state their own boundary and are never
+  # widened; outside them is unrelated, not adjacent.
+  proximityBits: 24
+  # Extra multi-label public suffixes, used to decide "same registrable domain"
+  # for the D2 same-domain alert. RedLog ships a curated table (co.uk, com.tw,
+  # github.io, s3.amazonaws.com, ...); add here only what it does not know. An
+  # unknown suffix over-matches (noisy) rather than going silent, so this is a
+  # noise-reduction knob, not a safety-critical one.
+  publicSuffixes: []
   # Explicitly excluded targets
   excludeTargets:
     - 10.0.0.1

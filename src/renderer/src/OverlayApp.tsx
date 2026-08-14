@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
+import { ipBadge } from './lib/ip-badge'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
 import { usePivots } from './lib/usePivots'
@@ -133,13 +134,20 @@ export default function OverlayApp(): JSX.Element {
   const px = (n: number): number => Math.round(n * s)
   const hair = <span style={{ width: 1, height: px(13), background: hexA(CYAN, 0.25), flexShrink: 0 }} />
 
-  const safety = status?.ipSafety ?? 'unknown'
+  // G-A3: `badge.tone` is the verdict AFTER stale decay, so a green frame can
+  // never outlive the reading behind it. `qualified` dims the tick.
+  const badge = ipBadge(status)
+  const safety = badge.tone
   const link = status?.link
   const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
     : link?.type === 'wired' ? t('overlay.wired') : ''
   const STATE = { safe: HUD.green, exposed: HUD.red, unknown: HUD.amber }[safety]
-  const LABEL = { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
-  const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
+  const LABEL = badge.reason === 'stale'
+    ? t('overlay.ipStale')
+    : { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
+  const STATUS_TXT = badge.reason === 'stale'
+    ? t('overlay.staleIpStatus')
+    : { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
   // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
   const FRAME = safety === 'exposed' ? HUD.red : CYAN
   // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
@@ -158,7 +166,9 @@ export default function OverlayApp(): JSX.Element {
     transition: 'background 0.12s, border-color 0.12s'
   }
   const latestPivot = pivots[0]
-  const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
+  const tick = (c: string): React.CSSProperties => badge.qualified
+    ? { width: 6, height: 6, borderRadius: '50%', background: 'transparent', border: `1px solid ${c}`, boxShadow: 'none', flexShrink: 0 }
+    : { width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 }
 
   // Pass-through dimming — applied to individual "chrome" children instead
   // of the outer wrapper. CSS opacity on a parent forces every descendant

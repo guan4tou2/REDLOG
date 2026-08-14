@@ -1,17 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import { classifyDistance } from '../src/core/scope-monitor'
+import { getRegistrableDomain } from '../src/core/public-suffix'
+import { ipInCIDR } from '../src/core/ip-match'
 
-// Test the pure matching logic extracted from ScopeMonitor without DB dependency
-
-function ipToLong(ip: string): number {
-  return ip.split('.').reduce((acc, o) => (acc << 8) + parseInt(o), 0) >>> 0
-}
-
-function matchesCIDR(ip: string, cidr: string): boolean {
-  if (!cidr.includes('/')) return ip === cidr
-  const [net, bits] = cidr.split('/')
-  const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0
-  return (ipToLong(ip) & mask) === (ipToLong(net) & mask)
-}
+// Unit coverage for the matching primitives, all driving the SHIPPED functions.
+// This file used to carry local copies of `ipToLong`/`matchesCIDR`/`getRootDomain`
+// and a re-implementation of the ladder. Every one of those copies eventually
+// disagreed with the real thing — the ladder after G-B1/G-B3, the root-domain
+// rule after G-B2, the CIDR matcher after G-A5 — so none of them are left.
+// Exhaustive v6/v4 matcher coverage lives in `ip-match.test.ts`.
 
 function matchesDomain(host: string, pattern: string): boolean {
   if (pattern.startsWith('*.')) {
@@ -20,37 +17,31 @@ function matchesDomain(host: string, pattern: string): boolean {
   return host === pattern
 }
 
-function getRootDomain(host: string): string {
-  const parts = host.split('.')
-  if (parts.length <= 2) return host
-  return parts.slice(-2).join('.')
-}
-
 describe('CIDR matching', () => {
   it('matches exact IP', () => {
-    expect(matchesCIDR('10.0.0.1', '10.0.0.1')).toBe(true)
-    expect(matchesCIDR('10.0.0.2', '10.0.0.1')).toBe(false)
+    expect(ipInCIDR('10.0.0.1', '10.0.0.1')).toBe(true)
+    expect(ipInCIDR('10.0.0.2', '10.0.0.1')).toBe(false)
   })
 
   it('matches /24 range', () => {
-    expect(matchesCIDR('192.168.1.1', '192.168.1.0/24')).toBe(true)
-    expect(matchesCIDR('192.168.1.254', '192.168.1.0/24')).toBe(true)
-    expect(matchesCIDR('192.168.2.1', '192.168.1.0/24')).toBe(false)
+    expect(ipInCIDR('192.168.1.1', '192.168.1.0/24')).toBe(true)
+    expect(ipInCIDR('192.168.1.254', '192.168.1.0/24')).toBe(true)
+    expect(ipInCIDR('192.168.2.1', '192.168.1.0/24')).toBe(false)
   })
 
   it('matches /16 range', () => {
-    expect(matchesCIDR('10.10.5.1', '10.10.0.0/16')).toBe(true)
-    expect(matchesCIDR('10.11.0.1', '10.10.0.0/16')).toBe(false)
+    expect(ipInCIDR('10.10.5.1', '10.10.0.0/16')).toBe(true)
+    expect(ipInCIDR('10.11.0.1', '10.10.0.0/16')).toBe(false)
   })
 
   it('matches /8 range', () => {
-    expect(matchesCIDR('10.255.255.255', '10.0.0.0/8')).toBe(true)
-    expect(matchesCIDR('11.0.0.1', '10.0.0.0/8')).toBe(false)
+    expect(ipInCIDR('10.255.255.255', '10.0.0.0/8')).toBe(true)
+    expect(ipInCIDR('11.0.0.1', '10.0.0.0/8')).toBe(false)
   })
 
   it('matches /32 single host', () => {
-    expect(matchesCIDR('10.0.0.1', '10.0.0.1/32')).toBe(true)
-    expect(matchesCIDR('10.0.0.2', '10.0.0.1/32')).toBe(false)
+    expect(ipInCIDR('10.0.0.1', '10.0.0.1/32')).toBe(true)
+    expect(ipInCIDR('10.0.0.2', '10.0.0.1/32')).toBe(false)
   })
 })
 
@@ -74,84 +65,68 @@ describe('domain matching', () => {
   })
 })
 
-describe('root domain extraction', () => {
+// Was a local last-two-labels copy. That rule shipped as the G-B2 defect, so the
+// duplicate is gone and these now pin the real derivation. Full coverage of the
+// suffix table lives in `public-suffix.test.ts`.
+describe('registrable domain extraction', () => {
   it('returns same for 2-part domain', () => {
-    expect(getRootDomain('example.com')).toBe('example.com')
+    expect(getRegistrableDomain('example.com')).toBe('example.com')
   })
 
   it('extracts root from subdomain', () => {
-    expect(getRootDomain('api.example.com')).toBe('example.com')
+    expect(getRegistrableDomain('api.example.com')).toBe('example.com')
   })
 
   it('extracts root from deep subdomain', () => {
-    expect(getRootDomain('a.b.c.example.com')).toBe('example.com')
+    expect(getRegistrableDomain('a.b.c.example.com')).toBe('example.com')
+  })
+
+  it('does not stop at a multi-label public suffix', () => {
+    expect(getRegistrableDomain('a.b.c.example.co.uk')).toBe('example.co.uk')
   })
 })
 
-describe('scope filtering logic', () => {
-  const IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
-
-  function checkScope(
-    target: string,
-    targets: string[],
-    excludeTargets: string[] = []
-  ): { inScope: boolean; violation: boolean } {
-    if (targets.length === 0) return { inScope: true, violation: false }
-
-    const isExcluded = excludeTargets.some((ex) =>
-      IP_RE.test(target) ? matchesCIDR(target, ex) : matchesDomain(target, ex)
-    )
-    if (isExcluded) return { inScope: false, violation: true }
-
-    const isInScope = targets.some((t) =>
-      IP_RE.test(target) ? matchesCIDR(target, t) : matchesDomain(target, t)
-    )
-    if (isInScope) return { inScope: true, violation: false }
-
-    const isIP = IP_RE.test(target)
-    if (!isIP) {
-      const targetRoot = getRootDomain(target)
-      const scopeRoots = new Set<string>()
-      for (const t of targets) {
-        if (IP_RE.test(t) || t.includes('/')) continue
-        const domain = t.startsWith('*.') ? t.slice(2) : t
-        scopeRoots.add(getRootDomain(domain))
-      }
-      if (!scopeRoots.has(targetRoot)) {
-        return { inScope: false, violation: false }
-      }
-    }
-
-    return { inScope: false, violation: true }
-  }
+describe('scope filtering logic — the real classifyDistance', () => {
+  const violates = (d: string): boolean => d === 'excluded' || d.startsWith('adjacent_')
 
   it('everything in scope when no targets configured', () => {
-    expect(checkScope('anything.com', []).inScope).toBe(true)
+    expect(classifyDistance('anything.com', { targets: [], excludeTargets: [] })).toBe('in_scope')
   })
 
   it('in-scope target matches', () => {
-    expect(checkScope('10.0.0.1', ['10.0.0.0/24']).inScope).toBe(true)
+    expect(classifyDistance('10.0.0.1', { targets: ['10.0.0.0/24'], excludeTargets: [] })).toBe('in_scope')
   })
 
-  it('out-of-scope IP is a violation', () => {
-    const result = checkScope('10.0.0.1', ['192.168.1.0/24'])
-    expect(result.inScope).toBe(false)
-    expect(result.violation).toBe(true)
+  // Was 'out-of-scope IP is a violation'. A written CIDR states its own
+  // boundary, so its complement is unrelated (D3), not adjacent (D2) — G-B3.
+  it('an IP outside a stated CIDR is unrelated, not a violation', () => {
+    const d = classifyDistance('10.0.0.1', { targets: ['192.168.1.0/24'], excludeTargets: [] })
+    expect(d).toBe('unrelated')
+    expect(violates(d)).toBe(false)
+  })
+
+  it('an IP in the same segment as a single-IP entry IS a violation — G-B1', () => {
+    const d = classifyDistance('192.168.1.55', { targets: ['192.168.1.10'], excludeTargets: [] })
+    expect(d).toBe('adjacent_subnet')
+    expect(violates(d)).toBe(true)
   })
 
   it('unrelated domain is NOT a violation', () => {
-    const result = checkScope('google.com', ['*.example.com'])
-    expect(result.violation).toBe(false)
+    expect(classifyDistance('google.com', { targets: ['*.example.com'], excludeTargets: [] })).toBe('unrelated')
   })
 
   it('same-root out-of-scope IS a violation', () => {
-    const result = checkScope('other.example.com', ['*.app.example.com'])
-    expect(result.violation).toBe(true)
+    const d = classifyDistance('other.example.com', { targets: ['*.app.example.com'], excludeTargets: [] })
+    expect(d).toBe('adjacent_domain')
+    expect(violates(d)).toBe(true)
   })
 
   it('excluded target is a violation', () => {
-    const result = checkScope('internal.example.com', ['*.example.com'], ['internal.example.com'])
-    expect(result.inScope).toBe(false)
-    expect(result.violation).toBe(true)
+    const d = classifyDistance('internal.example.com', {
+      targets: ['*.example.com'],
+      excludeTargets: ['internal.example.com']
+    })
+    expect(d).toBe('excluded')
+    expect(violates(d)).toBe(true)
   })
 })

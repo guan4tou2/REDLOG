@@ -333,6 +333,8 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   check('scope.warnOnViolation', oldCfg.scope?.warnOnViolation, newCfg.scope?.warnOnViolation)
   check('scope.targets', oldCfg.scope?.targets, newCfg.scope?.targets)
   check('scope.excludeTargets', oldCfg.scope?.excludeTargets, newCfg.scope?.excludeTargets)
+  check('scope.proximityBits', oldCfg.scope?.proximityBits, newCfg.scope?.proximityBits)
+  check('scope.publicSuffixes', oldCfg.scope?.publicSuffixes, newCfg.scope?.publicSuffixes)
   check('scope.scopeFile', oldCfg.scope?.scopeFile, newCfg.scope?.scopeFile)
   check('network.blacklist', oldCfg.network?.blacklist, newCfg.network?.blacklist)
   check('network.whitelist', oldCfg.network?.whitelist, newCfg.network?.whitelist)
@@ -397,6 +399,7 @@ function startProject(project: ProjectMeta): void {
     checkInterval: config.network.checkInterval,
     providers: config.network.providers,
     confirmations: config.network.confirmations,
+    staleAfter: config.network.staleAfter,
     ipMode: config.network.ipMode
   })
   screenshotAgent.configure({
@@ -415,6 +418,8 @@ function startProject(project: ProjectMeta): void {
     warnOnViolation: config.scope.warnOnViolation !== false,
     targets: scopeTargets,
     excludeTargets: config.scope.excludeTargets,
+    proximityBits: config.scope.proximityBits,
+    publicSuffixes: config.scope.publicSuffixes,
     engagementId,
     operatorId
   })
@@ -953,7 +958,8 @@ app.whenReady().then(() => {
       ipMode: newConfig.network.ipMode,
       checkInterval: newConfig.network.checkInterval,
       providers: newConfig.network.providers,
-      confirmations: newConfig.network.confirmations
+      confirmations: newConfig.network.confirmations,
+      staleAfter: newConfig.network.staleAfter
     })
     let targets = newConfig.scope.targets
     if (newConfig.scope.scopeFile) {
@@ -963,7 +969,9 @@ app.whenReady().then(() => {
     scopeMonitor.configure({
       warnOnViolation: newConfig.scope.warnOnViolation !== false,
       targets,
-      excludeTargets: newConfig.scope.excludeTargets
+      excludeTargets: newConfig.scope.excludeTargets,
+      proximityBits: newConfig.scope.proximityBits,
+      publicSuffixes: newConfig.scope.publicSuffixes
     })
     screenshotAgent.configure({
       quality: newConfig.screenshot.quality,

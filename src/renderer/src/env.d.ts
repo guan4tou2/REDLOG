@@ -16,6 +16,12 @@ interface IPStatus {
   ipSafety: 'safe' | 'exposed' | 'unknown'
   lastCheck: number
   error: string | null
+  /** A new address is being confirmed; the displayed one is the last stable read. */
+  settling?: boolean
+  /** Consecutive failed reads. */
+  consecutiveFailures?: number
+  /** The verdict outlived its reading and has decayed to 'unknown'. */
+  stale?: boolean
     link?: { type: 'wifi' | 'wired' | 'unknown'; name: string }
 }
 
