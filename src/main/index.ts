@@ -4,7 +4,7 @@ import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray, setTrayRecording } from './tray'
-import { IPMonitor, IPStatus } from '../core/ip-monitor'
+import { IPMonitor, IPStatus, verdictAuthority } from '../core/ip-monitor'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -53,7 +53,7 @@ import { setTailerContributionSink, type TailerLike } from '../core/plugins/tail
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
-import { detectLink } from './services/network-info'
+import { detectLink, applyWifiNamePolicy } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
 import { readBody as readIoBody, resolveRef as resolveIoRef, MAX_IO_READ_BYTES } from '../core/io-store'
@@ -281,11 +281,25 @@ function applyDock(): void {
   if (keepDockIcon) app.dock?.show()
   else app.dock?.hide()
 }
+// `network.showWifiName` — off by default; see applyWifiNamePolicy for why the
+// SSID is treated as a disclosure rather than a display preference.
+let showWifiName = false
 function startLinkMonitor(): void {
-  const refresh = (): void => { detectLink().then((l) => { currentLink = l }).catch(() => {}) }
+  const refresh = (): void => {
+    detectLink().then((l) => { currentLink = applyWifiNamePolicy(l, showWifiName) }).catch(() => {})
+  }
   refresh()
   if (linkTimer) clearInterval(linkTimer)
   linkTimer = setInterval(refresh, 20_000)
+}
+function setShowWifiName(on: boolean): void {
+  const was = showWifiName
+  showWifiName = on
+  // Turning it off must take the name off the HUD NOW, not at the next 20s
+  // poll — the operator flipping this switch is usually about to share a screen.
+  if (!on) currentLink = applyWifiNamePolicy(currentLink, false)
+  // Turning it on has to re-probe: the cached link no longer carries a name.
+  else if (!was) startLinkMonitor()
 }
 
 // Last broadcast state, kept module-level to detect transitions. A change in
@@ -305,9 +319,15 @@ function broadcastIPStatus(status: IPStatus): void {
     const ipChanged = status.externalIP != null && status.externalIP !== lastBroadcastIP
     if (safetyChanged || ipChanged) {
       try {
+        // K1 split-authority, the same shape as `scope_violation`: a transition
+        // INTO `presumed_safe` records an inference ("not obviously you"),
+        // every other verdict records an observed rule match. No type-level
+        // default can be right for both, so the emitter stamps it per event.
+        const tier = verdictAuthority(status.ipSafety)
         const ev = insertEvent('system', {
           subtype: 'ip_transition',
           from_safety: lastBroadcastSafety, to_safety: status.ipSafety,
+          ...(tier ? { authority: tier } : {}),
           from_ip: lastBroadcastIP, to_ip: status.externalIP ?? null,
           description: safetyChanged
             ? `IP safety ${lastBroadcastSafety} → ${status.ipSafety}${ipChanged ? ` (${lastBroadcastIP ?? '?'} → ${status.externalIP})` : ''}`
@@ -481,6 +501,7 @@ function startProject(project: ProjectMeta): void {
   } catch (e) { console.error('[plugins] init failed:', e) }
   configureDeconfliction(config.deconfliction)
   setVpnAdapters(config.network.vpnAdapters)
+  setShowWifiName(config.network.showWifiName === true)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
@@ -1003,6 +1024,7 @@ app.whenReady().then(() => {
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     setVpnAdapters(newConfig.network.vpnAdapters)
+    setShowWifiName(newConfig.network.showWifiName === true)
     // The HUD reads its config once at mount — push overlay settings so toggling
     // "show Mark button" takes effect live instead of only after a restart.
     send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)

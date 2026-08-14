@@ -77,6 +77,21 @@ async function detectLinux(): Promise<NetworkLink> {
   return { type: 'unknown', name: '' }
 }
 
+/** Apply `network.showWifiName`. The SSID is a **location disclosure**: it names
+ *  the building the operator is sitting in, and it rides along on every
+ *  `ip:status` into the HUD — which is the one surface guaranteed to be in
+ *  frame on a screenshot or a screen-share. The setting existed and was
+ *  honoured by nothing (G-NET1): the probe always ran and the name was always
+ *  shown once the OS permission existed, whichever way the toggle was set.
+ *
+ *  Off keeps the link TYPE (the UI renders a generic "Wi-Fi") and drops only
+ *  the name — "am I on Wi-Fi or wired" is an OPSEC fact worth showing; "which
+ *  Wi-Fi" is the part that leaks. */
+export function applyWifiNamePolicy(link: NetworkLink, showWifiName: boolean): NetworkLink {
+  if (showWifiName || link.type !== 'wifi' || !link.name) return link
+  return { type: 'wifi', name: '' }
+}
+
 export async function detectLink(): Promise<NetworkLink> {
   try {
     if (process.platform === 'darwin') return await detectMac()
