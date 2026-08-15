@@ -22,87 +22,90 @@ function write(yaml: string): void {
   fs.writeFileSync(path.join(tmpDir, 'config.yaml'), yaml)
 }
 
+// dot-path → expected default. Keeping it as a table means adding a config
+// field is a one-line change here, and forgetting to add one is visible —
+// enforced by the guard test at the bottom of this file, not by memory.
+const DEFAULTS: Array<[string, unknown]> = [
+  ['engagement.id', 'default'],
+  ['engagement.name', 'Default Engagement'],
+  ['operator.id', 'operator-1'],
+  ['operator.name', 'Operator'],
+
+  ['network.whitelist', []],
+  ['network.blacklist', []],
+  ['network.checkInterval', 60],
+  ['network.providers', []],
+  ['network.confirmations', 3],
+  ['network.ipMode', 'auto'],
+  ['network.staleAfter', 2],
+  ['network.showWifiName', false],
+
+  ['scope.alertFloor', 'adjacent'],
+  ['scope.targets', []],
+  ['scope.excludeTargets', []],
+  ['scope.proximityBits', 24],
+  ['scope.publicSuffixes', []],
+  ['scope.scopeFile', null],
+
+  ['screenshot.quality', 85],
+  ['screenshot.intervalSec', 0],
+
+  ['overlay.showMarkButton', true],
+  ['overlay.showInDock', true],
+  ['overlay.flashOnExposed', true],
+  ['overlay.scale', 1.0],
+  ['overlay.emphasizeExternalIp', false],
+  ['overlay.passThrough', false],
+  ['overlay.passThroughOpacity', 0.4],
+
+  ['terminal.maxCastBytes', 52428800],   // 50 MB
+  ['terminal.castKeepDays', 0],          // 0 = keep forever
+  ['screenshots.keepDays', 0],
+  ['io.keepDays', 0],
+  ['io.warmDays', 0],
+  ['io.maxBytes', 0],
+
+  ['clipboard.enabled', false],          // opt-in: clipboards hold secrets
+  ['clipboard.pollMs', 1500],
+  ['clipboard.storePreview', false],
+
+  ['browser.binary', ''],                // '' = auto-detect
+  ['browser.proxy', 'http://127.0.0.1:8080'],
+  ['browser.cdpPort', 9222],
+  ['browser.isolateProfile', true],
+  ['browser.ignoreCertErrors', true],
+  ['browser.startUrl', ''],
+  ['browser.extraArgs', []],
+
+  ['redaction.allowlist', []],
+  ['redaction.denylist', []],
+  ['redaction.entropyThreshold', 4.5],
+  ['redaction.minLength', 20],
+
+  ['deconfliction.enabled', false],
+  ['deconfliction.url', ''],
+  ['deconfliction.secret', ''],
+  ['deconfliction.events', ['marker', 'system', 'credential_use', 'c2_checkin']],
+  ['deconfliction.subtypes', ['scope_violation']],
+  ['deconfliction.includeData', false],
+  ['deconfliction.authorityFloor', 'inferred'],
+
+  ['cloudShare.endpoint', ''],
+  ['cloudShare.authToken', ''],
+
+  ['fileWatcher.enabled', false],
+  ['fileWatcher.watchPaths', []],
+  ['fileWatcher.ignorePatterns', []],
+
+  ['processMonitor.enabled', false],
+  ['processMonitor.pollMs', 500],
+  ['processMonitor.ignoreCommands', []],
+
+  ['agentTailer.enabled', true],         // on by default: AI audit coverage
+  ['agentTailer.emitThinking', false]
+]
+
 describe('shipped defaults — one assertion per option', () => {
-  // dot-path → expected default. Keeping it as a table means adding a config
-  // field is a one-line change here, and forgetting to add one is visible.
-  const DEFAULTS: Array<[string, unknown]> = [
-    ['engagement.id', 'default'],
-    ['engagement.name', 'Default Engagement'],
-    ['operator.id', 'operator-1'],
-    ['operator.name', 'Operator'],
-
-    ['network.whitelist', []],
-    ['network.blacklist', []],
-    ['network.checkInterval', 60],
-    ['network.providers', []],
-    ['network.confirmations', 3],
-    ['network.ipMode', 'auto'],
-    ['network.showWifiName', false],
-
-    ['scope.warnOnViolation', true],
-    ['scope.targets', []],
-    ['scope.excludeTargets', []],
-    ['scope.proximityBits', 24],
-    ['scope.scopeFile', null],
-
-    ['screenshot.quality', 85],
-    ['screenshot.intervalSec', 0],
-
-    ['overlay.showMarkButton', true],
-    ['overlay.showInDock', true],
-    ['overlay.flashOnExposed', true],
-    ['overlay.scale', 1.0],
-    ['overlay.emphasizeExternalIp', false],
-    ['overlay.passThrough', false],
-    ['overlay.passThroughOpacity', 0.4],
-
-    ['terminal.maxCastBytes', 52428800],   // 50 MB
-    ['terminal.castKeepDays', 0],          // 0 = keep forever
-    ['screenshots.keepDays', 0],
-    ['io.keepDays', 0],
-    ['io.warmDays', 0],
-    ['io.maxBytes', 0],
-
-    ['clipboard.enabled', false],          // opt-in: clipboards hold secrets
-    ['clipboard.pollMs', 1500],
-    ['clipboard.storePreview', false],
-
-    ['browser.binary', ''],                // '' = auto-detect
-    ['browser.proxy', 'http://127.0.0.1:8080'],
-    ['browser.cdpPort', 9222],
-    ['browser.isolateProfile', true],
-    ['browser.ignoreCertErrors', true],
-    ['browser.startUrl', ''],
-    ['browser.extraArgs', []],
-
-    ['redaction.allowlist', []],
-    ['redaction.denylist', []],
-    ['redaction.entropyThreshold', 4.5],
-    ['redaction.minLength', 20],
-
-    ['deconfliction.enabled', false],
-    ['deconfliction.url', ''],
-    ['deconfliction.secret', ''],
-    ['deconfliction.events', ['marker', 'system', 'credential_use', 'c2_checkin']],
-    ['deconfliction.subtypes', ['scope_violation']],
-    ['deconfliction.includeData', false],
-    ['deconfliction.authorityFloor', 'inferred'],
-
-    ['cloudShare.endpoint', ''],
-    ['cloudShare.authToken', ''],
-
-    ['fileWatcher.enabled', false],
-    ['fileWatcher.watchPaths', []],
-    ['fileWatcher.ignorePatterns', []],
-
-    ['processMonitor.enabled', false],
-    ['processMonitor.pollMs', 500],
-    ['processMonitor.ignoreCommands', []],
-
-    ['agentTailer.enabled', true],         // on by default: AI audit coverage
-    ['agentTailer.emitThinking', false]
-  ]
-
   function at(obj: unknown, dotted: string): unknown {
     return dotted.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown>)?.[k], obj)
   }
@@ -161,9 +164,9 @@ describe('merge semantics — what a partial file does to the rest', () => {
   })
 
   it('an explicit false is kept — not treated as "unset, use the default"', () => {
-    write('scope:\n  warnOnViolation: false\nagentTailer:\n  enabled: false\n')
+    write('scope:\n  alertFloor: excluded_only\nagentTailer:\n  enabled: false\n')
     const c = loadConfig(tmpDir)
-    expect(c.scope.warnOnViolation).toBe(false)
+    expect(c.scope.alertFloor).toBe('excluded_only')
     expect(c.agentTailer?.enabled).toBe(false)
   })
 
@@ -232,34 +235,60 @@ describe('legacy field migration', () => {
     expect(net.vpnIPs).toBeUndefined()
   })
 
-  it('enforcement: warn → warnings on', () => {
+  // G-C3 turned this into a TWO-HOP chain: enforcement → warnOnViolation →
+  // alertFloor. Both hops still run on load, so a config file written before
+  // either rename lands on the right floor without the operator touching it.
+  const floor = (): string => loadConfig(tmpDir).scope.alertFloor
+
+  it('enforcement: warn → alerts on near-misses', () => {
     write('scope:\n  enforcement: warn\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+    expect(floor()).toBe('adjacent')
   })
 
-  it('enforcement: log → warnings OFF (the old mode did nothing)', () => {
+  it('enforcement: log → the quietest floor (the old mode did nothing)', () => {
     write('scope:\n  enforcement: log\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(false)
+    expect(floor()).toBe('excluded_only')
   })
 
-  it('enforcement: block (removed) → warnings ON — the strictest value cannot land on silence', () => {
+  // `excluded_only`, not a "none": `warnOnViolation: false` never silenced D1
+  // either — excluded targets always raised regardless — so the two-value
+  // control was always this floor under another name.
+  it('the quietest floor still alerts on explicitly excluded targets', () => {
+    write('scope:\n  enforcement: log\n')
+    expect(floor()).not.toBe('none')
+    expect(['excluded_only', 'adjacent', 'all']).toContain(floor())
+  })
+
+  it('enforcement: block (removed) → alerts ON — the strictest value cannot land on silence', () => {
     write('scope:\n  enforcement: block\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+    expect(floor()).toBe('adjacent')
   })
 
-  it('an unrecognised enforcement value migrates to warnings ON, not off', () => {
+  it('an unrecognised enforcement value migrates to alerts ON, not off', () => {
     write('scope:\n  enforcement: nonsense\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+    expect(floor()).toBe('adjacent')
   })
 
-  it('only the literal "log" — the one value that meant quiet — migrates to off', () => {
+  it('only the literal "log" — the one value that meant quiet — migrates to the quiet floor', () => {
     write('scope:\n  enforcement: LOG\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+    expect(floor()).toBe('adjacent')
   })
 
   it('an explicit warnOnViolation is not overwritten by a stale enforcement key', () => {
     write('scope:\n  enforcement: log\n  warnOnViolation: true\n')
-    expect(loadConfig(tmpDir).scope.warnOnViolation).toBe(true)
+    expect(floor()).toBe('adjacent')
+  })
+
+  it('warnOnViolation: true → adjacent, false → excluded_only', () => {
+    write('scope:\n  warnOnViolation: true\n')
+    expect(floor()).toBe('adjacent')
+    write('scope:\n  warnOnViolation: false\n')
+    expect(floor()).toBe('excluded_only')
+  })
+
+  it('an explicit alertFloor wins over both legacy keys', () => {
+    write('scope:\n  enforcement: log\n  warnOnViolation: false\n  alertFloor: all\n')
+    expect(floor()).toBe('all')
   })
 })
 
@@ -356,3 +385,45 @@ describe('burpHostToTarget — the shapes Burp and ZAP actually write', () => {
     expect(classifyTarget('other.example.com', { targets: [decoded], excludeTargets: [] })).toBe('out_of_scope')
   })
 })
+
+// The maintenance contract, made executable.
+//
+// `docs/TESTING.md` ends with "adding a config option? add its default to the
+// table in config-options". A sentence in a doc is not a gate: `proximityBits`,
+// `authorityFloor`, `staleAfter`, `alertFloor` and `publicSuffixes` all landed
+// during one week of work on this subsystem, and each was one forgotten line
+// away from shipping a default that nothing asserts. This walks the real
+// default config and fails on anything the table has not accounted for.
+describe('the defaults table covers every shipped option', () => {
+  /** Every leaf path of the default config, in dot form. Arrays count as leaves
+   *  — a list default is a single value from the table's point of view. */
+  function leafPaths(value: unknown, prefix = ''): string[] {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return prefix ? [prefix] : []
+    return Object.entries(value as Record<string, unknown>)
+      .flatMap(([k, v]) => leafPaths(v, prefix ? `${prefix}.${k}` : k))
+  }
+
+  // Asserted, but not as a literal: the adapter list has its own structural
+  // tests, and the registry URL is matched by shape so a repo move is not a
+  // failing test.
+  const ASSERTED_ELSEWHERE = new Set(['network.vpnAdapters', 'marketplace.defaultRegistryUrl'])
+
+  it('no option ships a default that the table does not name', () => {
+    const covered = new Set(DEFAULTS.map(([path]) => path))
+    const missing = leafPaths(loadConfig(tmpDir))
+      .filter((p) => !covered.has(p) && !ASSERTED_ELSEWHERE.has(p))
+    expect(missing, `add these to DEFAULTS (and to docs/TESTING.md Part 2): ${missing.join(', ')}`).toEqual([])
+  })
+
+  it('the table names no option that has been removed', () => {
+    const live = new Set(leafPaths(loadConfig(tmpDir)))
+    const stale = DEFAULTS.map(([path]) => path).filter((p) => !live.has(p))
+    expect(stale, `these are in DEFAULTS but no longer in the config: ${stale.join(', ')}`).toEqual([])
+  })
+
+  it('every exemption still corresponds to a real option', () => {
+    const live = new Set(leafPaths(loadConfig(tmpDir)))
+    for (const path of ASSERTED_ELSEWHERE) expect(live.has(path)).toBe(true)
+  })
+})
+
