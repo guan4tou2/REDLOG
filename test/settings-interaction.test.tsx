@@ -22,6 +22,8 @@ const { default: Settings } = await import('../src/renderer/src/components/Setti
 
 const unsub = (): void => {}
 const saved: Array<Record<string, unknown>> = []
+/** URLs the marketplace panel asked the bridge to fetch. */
+const fetched: Array<string | undefined> = []
 
 const BASE_CONFIG = {
   engagement: { id: 'eng', name: 'Engagement' },
@@ -30,7 +32,7 @@ const BASE_CONFIG = {
     whitelist: ['10.8.0.0/24'], blacklist: ['1.2.3.4'], checkInterval: 60,
     providers: [], confirmations: 3, ipMode: 'auto', showWifiName: false, vpnAdapters: []
   },
-  scope: { warnOnViolation: true, targets: ['*.app.example.com'], excludeTargets: [], proximityBits: 24, scopeFile: '' },
+  scope: { alertFloor: 'adjacent', targets: ['*.app.example.com'], excludeTargets: [], proximityBits: 24, scopeFile: '' },
   screenshot: { quality: 85, intervalSec: 0 },
   overlay: {
     showMarkButton: true, showInDock: true, flashOnExposed: true,
@@ -67,7 +69,14 @@ function installBridge(): void {
     deconfliction: { get: async () => BASE_CONFIG.deconfliction, test: async () => ({ ok: true, status: 200 }) },
     data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
     plugins: { list: async () => [], setEnabled: async () => true, install: async () => ({ ok: true }), uninstall: async () => true },
-    marketplace: { fetchRegistry: async () => ({ plugins: [] }), install: async () => ({ ok: true }) },
+    marketplace: {
+      fetchIndex: async (url?: string) => { fetched.push(url); return { ok: true, index: { plugins: [] } } },
+      listPublishers: async () => [],
+      revocations: async () => ({ plugins: [], publishers: [] }),
+      trustPublisher: async () => ({ ok: true }),
+      untrustPublisher: async () => ({ ok: true }),
+      install: async () => ({ ok: true })
+    },
     cloudShare: { upload: async () => null },
     updater: { check: async () => null, onStatus: () => unsub },
     events: { onNew: () => unsub },
@@ -102,21 +111,35 @@ function field(text: string | RegExp): HTMLInputElement {
   return wrapper.querySelector('input') as HTMLInputElement
 }
 
-beforeEach(() => { saved.length = 0 })
+beforeEach(() => { saved.length = 0; fetched.length = 0 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('Scope tab', () => {
-  it('the warn toggle writes scope.warnOnViolation', async () => {
+  // G-C3: the boolean became a three-value floor, because the distance ladder
+  // is ordered — N booleans would let an operator build incoherent states.
+  it('the floor selector writes scope.alertFloor', async () => {
     await open('Scope')
-    fireEvent.click(await screen.findByText('Warn on out-of-scope targets'))
-    expect((await save()).scope.warnOnViolation).toBe(false)
+    fireEvent.click(await screen.findByText('Forbidden only'))
+    expect((await save()).scope.alertFloor).toBe('excluded_only')
   })
 
-  it('turning warnings off hides the adjacency width — it has nothing to widen', async () => {
+  it('the strictest floor is reachable too', async () => {
+    await open('Scope')
+    fireEvent.click(await screen.findByText('Everything off-list'))
+    expect((await save()).scope.alertFloor).toBe('all')
+  })
+
+  it('dropping to the lowest floor hides the adjacency width — it has nothing to widen', async () => {
     await open('Scope')
     expect(await screen.findByText(/Adjacent zone width/)).toBeTruthy()
-    fireEvent.click(screen.getByText('Warn on out-of-scope targets'))
+    fireEvent.click(screen.getByText('Forbidden only'))
     await waitFor(() => expect(screen.queryByText(/Adjacent zone width/)).toBeNull())
+  })
+
+  // The fact-tier rule made structural: there is no position that silences D1.
+  it('every floor still alerts on explicitly excluded targets', async () => {
+    await open('Scope')
+    expect(await screen.findByText(/Explicitly excluded targets alert at every setting/)).toBeTruthy()
   })
 
   it('proximityBits writes the value the ScopeMonitor consumes', async () => {
@@ -284,7 +307,7 @@ describe('Capture tab', () => {
 describe('cross-cutting', () => {
   it('changing one option leaves every other block untouched', async () => {
     await open('Scope')
-    fireEvent.click(await screen.findByText('Warn on out-of-scope targets'))
+    fireEvent.click(await screen.findByText('Forbidden only'))
     const cfg = await save()
     expect(cfg.network).toEqual(BASE_CONFIG.network)
     expect(cfg.overlay).toEqual(BASE_CONFIG.overlay)
@@ -302,5 +325,42 @@ describe('cross-cutting', () => {
     expect((hit.parentElement as HTMLElement).textContent).toContain('Scope')
     fireEvent.click(hit)
     expect(await screen.findByText(/Adjacent zone width/)).toBeTruthy()
+  })
+})
+
+// marketplace.defaultRegistryUrl was filed as manual-only (G-UI1). It is not
+// manual — it is DORMANT: `MARKETPLACE_ENABLED = false` shelves the only panel
+// that reads it (the marketplace was judged the one genuine over-build), so the
+// setting has no UI consumer at all right now. Recording that here means
+// un-shelving the panel trips a test that says "and now this option is live
+// again", instead of the option quietly coming back untested.
+describe('Advanced ▸ Plugins — the marketplace is shelved', () => {
+  function expandSection(title: string): void {
+    const btn = screen.getAllByRole('button')
+      .find((b) => b.getAttribute('aria-expanded') === 'false' && b.textContent?.includes(title))
+    expect(btn, `no collapsed section titled ${title}`).toBeTruthy()
+    fireEvent.click(btn as HTMLElement)
+  }
+
+  async function openPlugins(): Promise<void> {
+    await open('Advanced')
+    await screen.findByText('Save')
+    expandSection('Plugins')
+  }
+
+  it('shows the installed-plugins panel directly, with no marketplace sub-tab', async () => {
+    await openPlugins()
+    expect(screen.queryByText('Marketplace')).toBeNull()
+  })
+
+  it('the registry URL box — the only consumer of the setting — is not rendered', async () => {
+    await openPlugins()
+    expect(screen.queryByPlaceholderText('https://example.test/index.json')).toBeNull()
+    expect(screen.queryByText('Fetch index')).toBeNull()
+  })
+
+  it('nothing fetches a registry while the panel is shelved', async () => {
+    await openPlugins()
+    expect(fetched).toHaveLength(0)
   })
 })
