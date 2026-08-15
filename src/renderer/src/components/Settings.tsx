@@ -13,8 +13,8 @@ const isMacOS = (window as { redlog?: { platform?: string } }).redlog?.platform 
 interface ConfigState {
   engagement: { id: string; name: string }
   operator: { id: string; name: string }
-  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
-  scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; proximityBits?: number; scopeFile: string }
+  network: { whitelist: string[]; blacklist: string[]; lanProfile?: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
+  scope: { alertFloor?: 'excluded_only' | 'adjacent' | 'all'; targets: string[]; excludeTargets: string[]; proximityBits?: number; scopeFile: string }
   screenshot: { quality: number; intervalSec?: number }
   overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
@@ -36,6 +36,7 @@ interface ConfigState {
     events: string[]
     subtypes: string[]
     includeData: boolean
+    authorityFloor?: 'inferred' | 'fact'
   }
   // v0.7.7 U1: Settings ▸ AI Agents surface for the built-in Claude Code
   // tailer. v0.8.0 will expand this into a list of installed tailer
@@ -98,7 +99,7 @@ const SETTINGS_GROUPS: SettingsGroupSource[] = [
   { tab: 'capture', groupId: 'processMonitor', titleKey: 'settings.processMonitorGroup', labelKeys: ['settings.processMonitorIgnore'] },
   { tab: 'capture', groupId: 'hookExcludedPaths', titleKey: 'settings.hookExcludedPaths.title', labelKeys: [] },
   // scope
-  { tab: 'scope', groupId: 'scopeEnforcement', titleKey: 'settings.scopeEnforcement', labelKeys: ['settings.warnOnViolation', 'settings.proximityBits'] },
+  { tab: 'scope', groupId: 'scopeEnforcement', titleKey: 'settings.scopeEnforcement', labelKeys: ['settings.alertFloor.adjacent', 'settings.proximityBits'] },
   { tab: 'scope', groupId: 'inScopeTargets', titleKey: 'settings.inScopeTargets', labelKeys: ['settings.targetsLabel'] },
   { tab: 'scope', groupId: 'excludedTargets', titleKey: 'settings.excludedTargets', labelKeys: ['settings.excludeLabel'] },
   { tab: 'scope', groupId: 'scopeFile', titleKey: 'settings.scopeFile', labelKeys: ['settings.scopeFileLabel'] },
@@ -113,7 +114,7 @@ const SETTINGS_GROUPS: SettingsGroupSource[] = [
   { tab: 'evidence', groupId: 'profileSync', titleKey: 'settings.profileSync', labelKeys: ['settings.exportProfile', 'settings.importProfile'] },
   // opsec
   { tab: 'opsec', groupId: 'overlay', titleKey: 'settings.overlayGroup', labelKeys: ['settings.overlayShowInDock'] },
-  { tab: 'opsec', groupId: 'ipSafety', titleKey: 'settings.ipSafety', labelKeys: ['settings.whitelist', 'settings.blacklist'] },
+  { tab: 'opsec', groupId: 'ipSafety', titleKey: 'settings.ipSafety', labelKeys: ['settings.whitelist', 'settings.blacklist', 'settings.lanProfile'] },
   { tab: 'opsec', groupId: 'polling', titleKey: 'settings.polling', labelKeys: ['settings.ipMode', 'settings.checkInterval', 'settings.confirmations', 'settings.ipProviders', 'settings.showWifiName'] },
   { tab: 'opsec', groupId: 'vpnAdapters', titleKey: 'settings.vpnAdapters', labelKeys: [] },
   // advanced
@@ -364,19 +365,37 @@ export default function Settings(): JSX.Element {
         {tab === 'scope' && (
           <>
             <FieldGroup title={t('settings.scopeEnforcement')}>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.scope.warnOnViolation !== false}
-                  onChange={(e) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: e.target.checked } })}
-                  className="accent-red-600"
-                />
-                <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
-              </label>
-              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
-              {/* How wide the D2 "adjacent" zone is. Only meaningful while
-                  warnings are on — with them off, D2 never fires at all. */}
-              {config.scope.warnOnViolation !== false && (
+              {/* G-C3: the distance ladder is ORDERED, so the control is a floor
+                  rather than N booleans — those would let an operator build
+                  incoherent states ("warn on unrelated but not on adjacent").
+                  D1 is present in every option by construction, which is the
+                  fact-tier rule made structural instead of remembered. */}
+              <div className="flex gap-1">
+                {(['excluded_only', 'adjacent', 'all'] as const).map((floor) => {
+                  const active = (config.scope.alertFloor ?? 'adjacent') === floor
+                  return (
+                    <button
+                      key={floor}
+                      type="button"
+                      onClick={() => setConfig({ ...config, scope: { ...config.scope, alertFloor: floor } })}
+                      className={`flex-1 px-2 py-1.5 text-xs rounded border transition-colors ${
+                        active
+                          ? 'bg-red-900/25 border-red-700/50 text-red-200'
+                          : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:bg-zinc-800'
+                      }`}
+                    >
+                      {t(`settings.alertFloor.${floor}`)}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+                {t(`settings.alertFloorHint.${config.scope.alertFloor ?? 'adjacent'}`)}
+              </p>
+              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.alertFloorD1Note')}</p>
+              {/* How wide the D2 "adjacent" zone is. Meaningless at the lowest
+                  floor — there, D2 never fires at all. */}
+              {(config.scope.alertFloor ?? 'adjacent') !== 'excluded_only' && (
                 <div className="mt-3">
                   <Field
                     label={t('settings.proximityBits')}
@@ -609,6 +628,16 @@ export default function Settings(): JSX.Element {
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
                 placeholder={t('settings.exposedIpPlaceholder')}
               />
+              {/* G-A4: the same two-list machinery, pointed at the INTERNAL
+                  address. No LAN blacklist — "this is my own segment" is what
+                  the profile already says, from the other direction. */}
+              <ListField
+                label={t('settings.lanProfile')}
+                items={config.network.lanProfile ?? []}
+                onChange={(items) => setConfig({ ...config, network: { ...config.network, lanProfile: items } })}
+                placeholder={t('settings.lanProfilePlaceholder')}
+              />
+              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.lanProfileHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.polling')}>
               <div>
@@ -1663,7 +1692,7 @@ function DeconflictionPanel({
 }): JSX.Element {
   const dc = config.deconfliction ?? {
     enabled: false, url: '', secret: '', events: ['marker', 'system', 'credential_use', 'c2_checkin'],
-    subtypes: ['scope_violation'], includeData: false
+    subtypes: ['scope_violation'], includeData: false, authorityFloor: 'inferred' as const
   }
   const [secretVisible, setSecretVisible] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -1740,6 +1769,16 @@ function DeconflictionPanel({
             />
             <span className="text-[11px] text-zinc-400">{t('settings.deconflictionIncludeData')}</span>
           </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dc.authorityFloor === 'fact'}
+              onChange={(e) => patch({ authorityFloor: e.target.checked ? 'fact' : 'inferred' })}
+              className="accent-red-600"
+            />
+            <span className="text-[11px] text-zinc-400">{t('settings.deconflictionFactOnly')}</span>
+          </label>
+          <p className="text-[11px] text-zinc-600 pl-6">{t('settings.deconflictionFactOnlyHint')}</p>
           <button
             onClick={handleTest}
             disabled={!dc.url || testing}

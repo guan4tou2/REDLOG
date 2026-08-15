@@ -7,29 +7,36 @@
 // could sit on green while the reading behind it was 40 seconds dead. The
 // styling stays local; the decision lives here.
 
-export type IPBadgeTone = 'safe' | 'exposed' | 'unknown'
+import { ipSeverity, type Severity } from './alertSeverity'
 
 export interface IPBadge {
-  /** What colour the surface should use. */
-  tone: IPBadgeTone
-  /** The verdict is not backed by a current reading — render it de-emphasised
-   *  (dimmed / outlined / no flash), never at full confidence. */
+  /** Where this verdict sits on the SHARED scale the scope alarm also uses
+   *  (G-C1). Fewer levels than verdicts on purpose: `presumed_safe` is `ok`
+   *  like `safe`, and `qualified` is what separates them. */
+  severity: Severity
+  /** Render de-emphasised (hollow / unglowing / no flash), never at full
+   *  confidence. Two different things land here and both must: the READING is
+   *  not current (`stale`, `settling`), or the reading is current but the
+   *  JUDGEMENT is an inference (`presumed`). */
   qualified: boolean
-  reason: 'stale' | 'settling' | null
+  reason: 'stale' | 'settling' | 'presumed' | null
 }
 
 interface BadgeInput {
-  ipSafety?: IPBadgeTone
+  ipSafety?: 'safe' | 'presumed_safe' | 'off_profile' | 'exposed' | 'unknown'
   settling?: boolean
   stale?: boolean
 }
 
 export function ipBadge(status: BadgeInput | null | undefined): IPBadge {
-  const tone = status?.ipSafety ?? 'unknown'
-  // `stale` wins over `settling`: no reading at all is a stronger statement than
-  // an unconfirmed one. Tone is forced rather than trusted — the main process
-  // already decays it, and a surface must not out-run that if the two ever drift.
-  if (status?.stale) return { tone: 'unknown', qualified: true, reason: 'stale' }
-  if (status?.settling) return { tone, qualified: true, reason: 'settling' }
-  return { tone, qualified: false, reason: null }
+  const verdict = status?.ipSafety ?? 'unknown'
+  const severity = ipSeverity(verdict)
+
+  // Precedence runs from "how much do we know" outward. No reading at all beats
+  // an unconfirmed reading, which beats a confirmed reading we can only draw an
+  // inference from. All three qualify the badge; they differ in what to say.
+  if (status?.stale) return { severity: 'unknown', qualified: true, reason: 'stale' }
+  if (status?.settling) return { severity, qualified: true, reason: 'settling' }
+  if (verdict === 'presumed_safe') return { severity, qualified: true, reason: 'presumed' }
+  return { severity, qualified: false, reason: null }
 }

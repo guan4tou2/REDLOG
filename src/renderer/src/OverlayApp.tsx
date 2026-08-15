@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { ipBadge } from './lib/ip-badge'
+import { SEVERITY_HUD } from './lib/alertSeverity'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
 import { usePivots } from './lib/usePivots'
@@ -137,21 +138,22 @@ export default function OverlayApp(): JSX.Element {
   // G-A3: `badge.tone` is the verdict AFTER stale decay, so a green frame can
   // never outlive the reading behind it. `qualified` dims the tick.
   const badge = ipBadge(status)
-  const safety = badge.tone
+  const safety = status?.ipSafety ?? 'unknown'
   const link = status?.link
   const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
     : link?.type === 'wired' ? t('overlay.wired') : ''
-  const STATE = { safe: HUD.green, exposed: HUD.red, unknown: HUD.amber }[safety]
+  // G-C1: the frame colour is the shared scale; only the words are per-verdict.
+  const STATE = SEVERITY_HUD[badge.severity]
   const LABEL = badge.reason === 'stale'
     ? t('overlay.ipStale')
-    : { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
+    : { safe: t('overlay.safeIp'), presumed_safe: t('overlay.presumedSafeIp'), off_profile: t('overlay.offProfileIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
   const STATUS_TXT = badge.reason === 'stale'
     ? t('overlay.staleIpStatus')
-    : { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
+    : { safe: t('overlay.safeIpStatus'), presumed_safe: t('overlay.presumedSafeIpStatus'), off_profile: t('overlay.offProfileIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
   // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
-  const FRAME = safety === 'exposed' ? HUD.red : CYAN
+  const FRAME = badge.severity === 'critical' ? HUD.red : CYAN
   // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
-  const alarm = safety === 'exposed' && flashExposed
+  const alarm = badge.severity === 'critical' && !badge.qualified && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
   const BTN_CLIP = 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)'
 

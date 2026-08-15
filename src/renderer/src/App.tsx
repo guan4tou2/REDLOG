@@ -859,7 +859,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
                 <p className="text-zinc-200 text-sm mt-0.5">
                   {t('dashboard.targets', {
                     count: (config.scope?.targets as string[])?.length || 0,
-                    mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
+                    mode: t(`dashboard.alertFloor.${(config.scope?.alertFloor as string | undefined) ?? 'adjacent'}`)
                   })}
                 </p>
               </div>

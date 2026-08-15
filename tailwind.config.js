@@ -12,6 +12,9 @@ const soften = {
   emerald: { ...colors.emerald, 300: '#8fddb6', 400: '#5ecf9c', 500: '#4bbf8a' },
   green: { ...colors.green, 300: '#8fddb6', 400: '#5ecf9c', 500: '#4bbf8a' },
   amber: { ...colors.amber, 300: '#e2c886', 400: '#d4ac5a', 500: '#c69a45' },
+  // off_profile — sits between red (exposed) and amber (unknown), softened to
+  // the same degree so it doesn't vibrate next to them.
+  orange: { ...colors.orange, 300: '#e3ab84', 400: '#d78550', 500: '#c9773f' },
   yellow: { ...colors.yellow, 300: '#e2c886', 400: '#d4ac5a', 500: '#c69a45' },
   cyan: { ...colors.cyan, 300: '#7fe0ea', 400: '#3fc7d6', 500: '#2ba9b8' }
 }

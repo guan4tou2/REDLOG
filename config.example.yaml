@@ -27,9 +27,14 @@ network:
 
 # Scope definition (optional)
 scope:
-  # warn | log  (legacy field; migrated to scope.warnOnViolation on load.
-  #               `block` was removed — RedLog never blocks, see docs/ALERT-ROLES.md Part D)
-  enforcement: warn
+  # How far down the distance ladder alerts fire:
+  #   excluded_only  D1 only — targets you explicitly forbade
+  #   adjacent       D1 + D2 — also "right subnet / right domain, wrong host"  (default)
+  #   all            D1 + D2 + D3 — strict: any target not on the list is on the record
+  # D1 fires from every position: an explicit exclusion is not a preference call.
+  alertFloor: adjacent
+  # Legacy, migrated on load: `enforcement: warn|log` → `warnOnViolation` → `alertFloor`.
+  # (`block` was removed — RedLog never blocks, see docs/ALERT-ROLES.md Part D.)
   # In-scope targets (IPs, CIDRs, wildcard domains)
   targets:
     - 10.0.0.0/8

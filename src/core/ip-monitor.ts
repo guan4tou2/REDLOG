@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import os from 'os'
 import { Resolver } from 'dns/promises'
 import { ipInCIDR } from './ip-match'
+import type { Authority } from './authority'
 
 export type IPMode = 'dns' | 'http' | 'auto'
 
@@ -35,7 +36,21 @@ async function getExternalIPviaDNS(): Promise<string> {
   throw new Error('All DNS resolvers failed')
 }
 
-export type IPSafety = 'safe' | 'exposed' | 'unknown'
+/** The verdict vocabulary (`ALERT-ROLES.md` A.2). Three states could not encode
+ *  the nine reachable cells of the combination matrix, so two of them lied:
+ *  `presumed_safe` was reported as `safe` (an inference shown as a fact — the
+ *  A-3 false green) and `off_profile` as `unknown` (an observed deviation shown
+ *  as missing information). */
+export type IPSafety = 'safe' | 'presumed_safe' | 'off_profile' | 'exposed' | 'unknown'
+
+/** §3 tier per verdict (K1). `null` = the verdict makes no claim either way,
+ *  which is what `unknown` means. This is what stops a surface from having to
+ *  re-derive "is this an inference?" from the verdict name. */
+export function verdictAuthority(v: IPSafety): Authority | null {
+  if (v === 'presumed_safe') return 'inferred'
+  if (v === 'unknown') return null
+  return 'fact'
+}
 
 export interface IPStatus {
   externalIP: string | null
@@ -45,6 +60,18 @@ export interface IPStatus {
   error: string | null
   /** True while a new address is being confirmed — the displayed one is the last stable read. */
   settling: boolean
+  /** A-4 (G-A4): the INTERNAL address against the engagement's expected LAN
+   *  segments. `internalIP` was collected and displayed but never judged, so a
+   *  laptop that silently reassociated to a guest SSID mid-engagement looked
+   *  exactly like one still on the client VLAN. Reuses `classifyIP` with the
+   *  lan profile as the whitelist and no blacklist, so only three of the nine
+   *  cells are reachable — `safe`, `off_profile`, `unknown`. There is
+   *  deliberately no LAN blacklist: "this is my own segment" is what the
+   *  profile already says, from the other direction. */
+  lanSafety: IPSafety
+  /** A-6: the current address matches both the whitelist and the blacklist.
+   *  The verdict stays `exposed`; this surfaces the contradictory config. */
+  listConflict: boolean
   /** Consecutive failed reads. Reset to 0 by any success. */
   consecutiveFailures: number
   /** The verdict is no longer backed by a current reading: `consecutiveFailures`
@@ -93,21 +120,37 @@ export function classifyIP(
   // leaking, which is the alert that must never be masked by a whitelist hit.
   if (cfg.blacklist.length > 0 && cfg.blacklist.some((cidr) => ipInCIDR(ip, cidr))) return 'exposed'
 
-  // Declaring a whitelist declares an expectation. Being outside it is never
-  // 'safe' — not even when a blacklist is also configured and this address
-  // happens to miss it. That fall-through (G-A1) reported the VPN-dropped-onto-
-  // café-NAT case as solid green SAFE: whitelist 10.8.0.0/24, blacklist
-  // 1.2.3.4 (home), egress 5.6.7.8 — matches neither, yet answered 'safe'.
-  // RedLog never blocks, so a wrong green has nothing downstream to catch it.
+  // Declaring a whitelist declares an expectation, so being outside it is an
+  // OBSERVED DEVIATION — a fact, not missing information. G-A1 stopped this
+  // answering 'safe' (the VPN-dropped-onto-café-NAT false green); G-A2 stops it
+  // answering 'unknown', which understated it into the same amber bucket as
+  // "nothing is configured at all".
   if (cfg.whitelist.length > 0) {
-    return cfg.whitelist.some((cidr) => ipInCIDR(ip, cidr)) ? 'safe' : 'unknown'
+    return cfg.whitelist.some((cidr) => ipInCIDR(ip, cidr)) ? 'safe' : 'off_profile'
   }
 
-  // Blacklist-only mode: configured but unmatched → behind VPN/tunnel → safe.
-  // Strictly this is an inference ("not obviously you"), not an observation;
-  // giving it its own verdict is G-A2.
-  if (cfg.blacklist.length > 0) return 'safe'
+  // Blacklist-only mode: configured but unmatched. This is an INFERENCE — "not
+  // obviously you" is not the same statement as "on the list you approved" —
+  // and it used to be reported as plain `safe`, i.e. an inference wearing a
+  // fact's solid green. It gets its own verdict so the UI can render it as the
+  // qualified claim it is.
+  if (cfg.blacklist.length > 0) return 'presumed_safe'
   return 'unknown'
+}
+
+/** A-6: the address is on BOTH lists. The verdict is `exposed` and that is
+ *  correct — the blacklist wins — but the operator has a contradictory config
+ *  they will never discover from a red badge that looks like every other red
+ *  badge. Reported alongside the verdict rather than as one, because it says
+ *  something about the CONFIG, not about where the operator is. */
+export function hasListConflict(
+  ip: string,
+  cfg: { whitelist: string[]; blacklist: string[] }
+): boolean {
+  return (
+    cfg.blacklist.some((cidr) => ipInCIDR(ip, cidr)) &&
+    cfg.whitelist.some((cidr) => ipInCIDR(ip, cidr))
+  )
 }
 
 function getInternalIP(): string | null {
@@ -157,6 +200,7 @@ export class IPMonitor extends EventEmitter {
   private interval: ReturnType<typeof setInterval> | null = null
   private whitelist: string[] = []
   private blacklist: string[] = []
+  private lanProfile: string[] = []
   private checkIntervalMs = 10_000
   private providers: string[] = [...DEFAULT_IP_PROVIDERS]
   private confirmations = DEFAULT_CONFIRMATIONS
@@ -168,9 +212,11 @@ export class IPMonitor extends EventEmitter {
     externalIP: null,
     internalIP: null,
     ipSafety: 'unknown',
+    lanSafety: 'unknown',
     lastCheck: 0,
     error: null,
     settling: false,
+    listConflict: false,
     consecutiveFailures: 0,
     stale: false
   }
@@ -182,6 +228,7 @@ export class IPMonitor extends EventEmitter {
   configure(opts: {
     whitelist?: string[]
     blacklist?: string[]
+    lanProfile?: string[]
     checkInterval?: number
     providers?: string[]
     confirmations?: number
@@ -190,6 +237,7 @@ export class IPMonitor extends EventEmitter {
   }): void {
     if (opts.whitelist) this.whitelist = opts.whitelist
     if (opts.blacklist) this.blacklist = opts.blacklist
+    if (opts.lanProfile) this.lanProfile = opts.lanProfile
     if (opts.checkInterval) this.checkIntervalMs = opts.checkInterval * 1000
     if (opts.providers?.length) this.providers = opts.providers
     if (typeof opts.confirmations === 'number' && opts.confirmations > 0) {
@@ -211,6 +259,17 @@ export class IPMonitor extends EventEmitter {
 
   private classify(ip: string): IPSafety {
     return classifyIP(ip, { whitelist: this.whitelist, blacklist: this.blacklist })
+  }
+
+  /** Same classifier, different list. No LAN-specific verdict vocabulary — the
+   *  doc predicted the whitelist machinery would serve this, and it does. */
+  private classifyLan(ip: string | null): IPSafety {
+    if (!ip) return 'unknown'
+    return classifyIP(ip, { whitelist: this.lanProfile, blacklist: [] })
+  }
+
+  private conflict(ip: string): boolean {
+    return hasListConflict(ip, { whitelist: this.whitelist, blacklist: this.blacklist })
   }
 
   start(): void {
@@ -250,7 +309,9 @@ export class IPMonitor extends EventEmitter {
         this._status = {
           ...this._status,
           ipSafety: this.classify(externalIP),
+          listConflict: this.conflict(externalIP),
           internalIP,
+          lanSafety: this.classifyLan(internalIP),
           lastCheck: Date.now(),
           error: null,
           settling: false,
@@ -270,6 +331,8 @@ export class IPMonitor extends EventEmitter {
             externalIP,
             internalIP,
             ipSafety: this.classify(externalIP),
+            listConflict: this.conflict(externalIP),
+            lanSafety: this.classifyLan(internalIP),
             lastCheck: Date.now(),
             error: null,
             settling: false,
@@ -281,6 +344,7 @@ export class IPMonitor extends EventEmitter {
           this._status = {
             ...this._status,
             internalIP,
+            lanSafety: this.classifyLan(internalIP),
             lastCheck: Date.now(),
             error: null,
             settling: true,
@@ -296,9 +360,19 @@ export class IPMonitor extends EventEmitter {
       // seen address stays on screen so nothing is lost, only re-labelled.
       const consecutiveFailures = this._status.consecutiveFailures + 1
       const stale = consecutiveFailures >= this.staleAfter
+      // The internal address is a LOCAL read of the network interfaces — it
+      // does not depend on the lookup that just failed. `Promise.all` above
+      // discards it along with the rejection, so re-read it here rather than
+      // letting a dead internet blank out a fact we still have. It matters
+      // more since G-A4: dropping off the client VLAN is MORE likely when the
+      // network is misbehaving, which is exactly when the external poll fails.
+      // `lanSafety` therefore never goes stale — nothing about it expired.
+      const internalIP = getInternalIP()
       this._status = {
         ...this._status,
         ipSafety: stale ? 'unknown' : this._status.ipSafety,
+        internalIP,
+        lanSafety: this.classifyLan(internalIP),
         lastCheck: Date.now(),
         error: err instanceof Error ? err.message : 'Unknown error',
         consecutiveFailures,

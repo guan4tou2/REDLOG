@@ -71,13 +71,13 @@ combinations (`w`/`b` are undefined when the corresponding list is empty):
 |---|:-:|:-:|:-:|:-:|---|---|---|---|
 | A-1 | ✗ | ✗ | – | – | `unknown` | unknown | `unknown` | ✅ |
 | A-2 | ✗ | ✓ | ✓ | – | `exposed` | fact | `exposed` | ✅ |
-| A-3 | ✗ | ✓ | ✗ | – | `presumed_safe` | **inferred** | `safe` | ⚠️ inference shown as fact |
+| A-3 | ✗ | ✓ | ✗ | – | `presumed_safe` | **inferred** | `presumed_safe` | ✅ **fixed** (G-A2) |
 | A-4 | ✓ | ✗ | – | ✓ | `safe` | fact | `safe` | ✅ |
-| A-5 | ✓ | ✗ | – | ✗ | `off_profile` | fact | `unknown` | ⚠️ under-warned |
-| A-6 | ✓ | ✓ | ✓ | ✓ | `exposed` + `config_conflict` | fact | `exposed` | ⚠️ conflict never surfaced |
+| A-5 | ✓ | ✗ | – | ✗ | `off_profile` | fact | `off_profile` | ✅ **fixed** (G-A2) |
+| A-6 | ✓ | ✓ | ✓ | ✓ | `exposed` + conflict | fact | `exposed` + `listConflict` | ✅ **fixed** (G-A2) |
 | A-7 | ✓ | ✓ | ✓ | ✗ | `exposed` | fact | `exposed` | ✅ |
 | A-8 | ✓ | ✓ | ✗ | ✓ | `safe` | fact | `safe` | ✅ |
-| A-9 | ✓ | ✓ | ✗ | ✗ | `off_profile` | fact | `unknown` | 🟡 false green **fixed** (G-A1); still under-stated pending G-A2 |
+| A-9 | ✓ | ✓ | ✗ | ✗ | `off_profile` | fact | `off_profile` | ✅ **fixed** (G-A1 then G-A2) |
 
 **A-9 was the dangerous cell — fixed (G-A1).** `classify()` used to fall through to
 `if (this.blacklist.length > 0) return 'safe'` *after* the whitelist test had already
@@ -87,11 +87,10 @@ The blacklist-mode shortcut was written for the blacklist-only case (A-3) and wa
 never re-scoped when a whitelist is also present.
 
 The rule now reads: **declaring a whitelist declares an expectation; being outside it
-is never `safe`** — which closes A-9 and leaves A-5's existing `unknown` consistent
-with it. Both are honestly *under*-stated until `off_profile` exists (G-A2): amber
-says "I don't know," where the truth is the stronger "you are not where you said you
-would be." Amber is not a false green, so the hazard is closed; the precision is not
-yet there.
+is never `safe`.** G-A1 closed the false green by routing A-5 and A-9 to `unknown`;
+G-A2 then gave them the verdict they actually deserve. Amber said "I don't know",
+where the truth is the stronger "you are not where you said you would be" — an
+observed deviation filed as missing information.
 
 **A-5 is the mirror mistake.** Declaring a whitelist *is* declaring an expectation;
 being outside it is an observed deviation (fact), not a lack of information
@@ -101,13 +100,32 @@ being outside it is an observed deviation (fact), not a lack of information
 
 Three states cannot express nine cells. The closed set is five, plus modifiers:
 
-| Verdict | Tier | Meaning | UI |
-|---|---|---|---|
-| `exposed` | fact | on the blacklist — real identity is leaking | red, flash |
-| `off_profile` | fact | a whitelist exists and this is not in it | red-amber, no flash |
-| `safe` | fact | on the whitelist | green |
-| `presumed_safe` | inferred | blacklist-only, no match — "not obviously you" | green **outline**, not fill |
-| `unknown` | unknown | nothing configured / no reading | amber |
+| Verdict | Tier | Meaning | Tone | Qualified? |
+|---|---|---|---|---|
+| `exposed` | fact | on the blacklist — real identity is leaking | red | no (flashes) |
+| `off_profile` | fact | a whitelist exists and this is not in it | orange | no |
+| `safe` | fact | on the whitelist | green | no |
+| `presumed_safe` | **inferred** | blacklist-only, no match — "not obviously you" | green | **yes** — hollow, unglowing |
+| `unknown` | — (no claim) | nothing configured / no reading | amber | no |
+
+**Five verdicts, four tones.** `presumed_safe` shares the `safe` tone and is
+separated by `qualified`, so a surface paints four colours rather than five and an
+inference can never render as a solid green fill. That reuses the `lib/ip-badge.ts`
+mechanism G-A3 built for `stale`/`settling` — the precedence runs from "how much do
+we know" outward: no reading beats an unconfirmed reading beats a confirmed reading
+we can only infer from.
+
+`verdictAuthority()` maps each verdict onto K1's `Authority`, so no surface
+re-derives "is this an inference?" from the verdict's name. `unknown` returns `null`:
+it asserts nothing, so it makes no claim to a tier. The `ip_transition` event stamps
+the result per event — a transition into `presumed_safe` records an inference while
+every other one records an observation, the same split-authority shape as
+`scope_violation`.
+
+**A-6 (`listConflict`)** is reported *alongside* the verdict, not as one. The verdict
+is `exposed` and correct — the blacklist wins — but a red badge looks like every
+other red badge, so the operator would never learn their two lists contradict each
+other. It says something about the CONFIG, not about where the operator is.
 
 ## A.3 The confidence modifiers (orthogonal — they multiply, not add rows)
 
@@ -179,12 +197,46 @@ to expose (Part C.4).
 **Remaining v6 limitation (not a defect):** the DNS lookup path filters to v4
 (`IPV4_RE`), so a v6 external address is only ever *read* in `http` / fallback mode.
 
-## A.4 The unclassified half
+## A.4 The unclassified half — fixed (G-A4)
 
-`internalIP` is collected, displayed, and **never classified**. There is no
-lan-profile concept ("I expect to be on 10.10.x.x this engagement") even though the
-same whitelist machinery would serve it — and the Target alarm's new subnet-proximity
-rule (Part B) needs exactly that notion of "my segment." Gap G-A4.
+`internalIP` was collected, displayed, and **never classified**. A laptop that
+silently reassociated to a guest SSID mid-engagement read exactly like one still on
+the client VLAN, and the external verdict cannot catch it: the egress can be
+perfectly fine while you are on the wrong network.
+
+`network.lanProfile` declares the internal segments the engagement expects, and the
+prediction in this section held — **the same whitelist machinery serves it**, with no
+new verdict vocabulary and no new severity step. `classifyIP` runs with the profile
+as the whitelist and no blacklist, so exactly three of the nine cells are reachable:
+
+| lanProfile | Internal address | Verdict |
+|---|---|---|
+| unset | anything | `unknown` — nothing declared, nothing claimed (A-1) |
+| set | inside a listed CIDR | `safe` (A-4) |
+| set | outside every listed CIDR | `off_profile` (A-5) |
+
+**There is deliberately no LAN blacklist.** "This is my own segment" is what the
+profile already says, from the other direction — adding a second list would give the
+same fact two contradictory homes.
+
+**`lanSafety` never goes stale.** It is a local read of the network interfaces, so
+nothing about it expires when an external lookup fails. Fixing that surfaced a
+pre-existing defect: `Promise.all` discarded a perfectly good internal read along
+with the external rejection. The failure path now re-reads it — losing your LAN
+verdict because the *internet* died is exactly backwards, since dropping off the
+client VLAN is more likely precisely when the network is misbehaving.
+
+A move between internal segments joins the existing `ip_transition` event
+(`from_lan_safety` / `to_lan_safety`), because it is the same class of drift signal
+as the egress changing.
+
+**Considered and not done:** feeding `internalIP` into the Target alarm's D2
+subnet-proximity rule — "the target is on *my* segment but not in scope". The
+containers there are derived from *scope entries*, which is a statement about what
+was authorised; deriving one from wherever the operator's laptop happens to sit is a
+different claim, and adding D2 sources is exactly what the ladder decomposition
+exists to keep deliberate. It would need its own row, not a quiet widening of this
+one.
 
 ---
 
@@ -310,9 +362,29 @@ indistinguishable downstream:
 `adjacent_domain` (D2, inferred) · `unrelated` (D3 — counted, not emitted)
 
 The `scope_violation` event also carries `authority: 'fact' | 'inferred'` — the data
-half of the §3 split (K1 owns the `EventTypeDef` half and the dashed rendering). That
-pair is what will let the deconfliction feed forward D1 while holding D2 back (G-C2),
-instead of the current all-or-nothing `subtypes: ['scope_violation']`.
+half of the §3 split. K1's minimal slice has since landed the rest: `core/authority.ts`
+resolves authority for **every** event type (per-event stamp first, then
+`EventTypeDef.authority`, then a built-in table, then `fact`), `insertEvent` writes
+`inferred` into the hashed row, and `lib/dotShape.ts` renders it as a dashed,
+unfilled dot — the same statement the phase ribbon was already making, no longer
+phase-only.
+
+`scope_violation` is the case that forced per-event precedence: it is `fact` for an
+excluded target and `inferred` for a proximity match, so no type-level default can be
+right for it. That corrected a mis-classification in `EVENT-TYPE-VOCABULARY.md`, which
+had filed it under detector-derived (uniformly inferred) *and* under `system`
+(uniformly authoritative).
+
+That pair now drives the deconfliction feed (G-C2). Both fields ride **outside** the
+`includeData` PII gate, because they are bounded enums: a receiver must be able to
+triage a `scope_violation` without being handed the command text. `authorityFloor:
+'fact'` holds inferences back; the default still forwards both, labelled.
+
+**Why the default is not fact-only.** Both tiers describe activity that really
+happened — the tier is about how confident RedLog is that it *matters*, not about
+whether it occurred. Quietly telling the blue team less about real out-of-scope
+activity is the wrong direction to fail in, so narrowing an outward feed is an
+explicit act.
 
 **Wire-format note:** consumers parsing exported violations will see
 `adjacent_domain` where they previously saw `out_of_scope`.
@@ -355,22 +427,65 @@ Both roles fill the same headings:
 6. **Test seam** — Self: a table-driven test over the combination matrix. Target: a
    table-driven test over the distance ladder.
 
+## The severity scale (G-C1)
+
+The two roles grew their colour vocabularies independently and they did not line up.
+The Self alarm had four tones, one per verdict. The Target alarm had an **on/off
+light** — `scopeViolations > 0 ? red : green` — so a D1 hit on an explicitly
+forbidden host and a D2 proximity inference rendered identically. G-B4 made them
+distinguishable in the data and G-C2 on the wire; the operator's eye was where the
+distinction stopped.
+
+One scale, four steps, both roles:
+
+| Severity | Colour | Self alarm | Target alarm |
+|---|---|---|---|
+| `critical` | red | `exposed` | D1 `excluded_target` |
+| `warn` | orange | `off_profile` | D2 `adjacent_subnet` / `adjacent_domain` |
+| `unknown` | amber | `unknown` | — |
+| `notice` | grey | — | D3 `unrelated`, only under `alertFloor: 'all'` (G-C3) |
+| `ok` | green | `safe`, `presumed_safe` | D0, silenced D3 |
+
+`notice` ranks below `unknown`: "here is something that happened, out of scope but
+unrelated" asks less of the operator than "I cannot tell you whether you are safe".
+
+D1 sits level with `exposed` deliberately: both are the thing the operator must not
+do, both observed, both non-silenceable — one is an OPSEC failure, the other an
+authorisation failure.
+
+**Severity and authority are orthogonal — do not fold one into the other.**
+
+- **severity** (this scale) — how loudly to shout. Sets the **colour**.
+- **authority** (K1) — observed or inferred. Sets the **fill**: solid, or hollow
+  and unglowing.
+
+That is why `presumed_safe` and a D2 near-miss are both inferred yet look nothing
+alike: `ok` + inferred is a hollow green, `warn` + inferred a hollow orange.
+Collapsing the axes would force one of those two to lie. It is also why
+`presumed_safe` is `ok` and not `warn` — it is the *good* answer, merely an inferred
+one, and the caveat belongs on the authority axis rather than in an inflated colour.
+
+`lib/alertSeverity.ts` owns the levels and both colour tables (`SEVERITY_HUD` for the
+overlay, `SEVERITY_CLASS` for the app), replacing three hand-maintained per-verdict
+maps. `worstSeverity()` gives the summary rule: one observed rule match outranks any
+number of inferences.
+
 ## Gaps (backlog)
 
 | # | Gap | Kind | Notes |
 |---|---|---|---|
 | **G-A1** | ~~`classify()` returns `safe` when both lists are configured and neither matches (A-9)~~ | ✅ **fixed** | A whitelist miss is never `safe`. Verdict is `unknown` pending the `off_profile` state (G-A2). Test seam: exported pure `classifyIP()`, table-driven over A-1..A-9 in `test/ip-monitor.test.ts`. |
-| **G-A2** | No `off_profile` / `presumed_safe` verdicts — 3 states cannot encode 9 cells | code + UI | Blocks A-3/A-5 being expressible at all. |
+| **G-A2** | ~~No `off_profile` / `presumed_safe` verdicts — 3 states cannot encode 9 cells~~ | ✅ **fixed** | Five verdicts, four tones, `verdictAuthority()` mapping onto K1's `Authority`. A-6 surfaced as `listConflict`. All nine cells now encodable. |
 | **G-A3** | ~~`settling` and `error` never reach the badge; verdict never decays~~ | ✅ **fixed** | Decay to `unknown` after `network.staleAfter` (default 2); shared `lib/ip-badge.ts` renders both modifiers on all three surfaces. Also fixed: verdict never re-derived on an unchanged address. |
-| **G-A4** | `internalIP` collected but never classified; no lan-profile | code | Also the input Part B's subnet proximity would like. |
+| **G-A4** | ~~`internalIP` collected but never classified; no lan-profile~~ | ✅ **fixed** | `network.lanProfile` + `IPStatus.lanSafety`, reusing `classifyIP` — no new vocabulary. Also fixed: a failed external poll used to discard the local internal read. Feeding it into D2 proximity was considered and declined (A.4). |
 | **G-A5** | ~~IPv6 CIDR matching is string-equality — v6 whitelists never match~~ | ✅ **fixed** | Shared `ip-match.ts` (both families, parsed-value comparison, v4-mapped handling). Replaced two duplicate matchers. |
 | **G-B1** | ~~No container derivation for single-IP scope entries~~ | ✅ **fixed** | Single-IP entries expand to `scope.proximityBits` (default 24). CIDR entries never widen. |
 | **G-B2** | ~~`getRootDomain()` = last two labels → `.co.uk`/`.com.tw` over-match~~ | ✅ **fixed** | Curated table in `public-suffix.ts` + `scope.publicSuffixes`. No new runtime dependency; incomplete → noise, never silence. |
 | **G-B3** | ~~IP out-of-scope bypasses the proximity filter~~ | ✅ **fixed** | Both branches walk one ladder via pure `classifyDistance()`. D3 counted via `getUnrelatedCount()`. |
 | **G-B4** | ~~`reason` vocabulary is not closed~~ | ✅ **fixed** | Closed to 3 values + `authority` on the event. G-C2 (tier-aware forwarding) is now unblocked. |
 | **G-B5** | ~~`IP_RE` is dotted-quad only, so a v6 target is routed to the domain matcher and falls out as `unrelated` — silent~~ | ✅ **fixed** | The scope-side twin of G-A5, found while fixing it. Same shared matcher; v6 single-IP entries expand to /64. |
-| **G-C1** | No shared severity vocabulary between Self and Target alarms | doc + code | Each grew its own colours; a §3-honest UI needs one scale. |
-| **G-C2** | Deconfliction forwards `scope_violation` wholesale — inferred D2 goes to the blue team as though it were a fact | code | Depends on G-B4. |
+| **G-C1** | ~~No shared severity vocabulary between Self and Target alarms~~ | ✅ **fixed** | Four-step scale in `lib/alertSeverity.ts`, both roles mapped onto it. The Target alarm had no scale at all — it was an on/off light — so D1 and D2 now differ on screen, and violations carry `reason` + `authority` to the UI. |
+| **G-C2** | ~~Deconfliction forwards `scope_violation` wholesale~~ | ✅ **fixed** | Every forwarded event carries `authority` + `reason` outside the `includeData` gate; `deconfliction.authorityFloor` can hold inferences back. Default still forwards both. |
 
 ## Cross-references
 
@@ -423,23 +538,34 @@ weight mirrors necessity).
 scope.alertFloor: 'excluded_only' | 'adjacent' | 'all'      // default: 'adjacent'
 ```
 
-| Value | Emits | Use case |
-|---|---|---|
-| `excluded_only` | D1 | recon-heavy phase; third-party services dominate the target stream |
-| `adjacent` **(default)** | D1 + D2 | normal engagement — "right subnet/domain, wrong host" is the signal you want |
-| `all` | D1 + D2 + D3 | strict authorisation: *any* target not on the list is on the record |
+| Value | Emits | Severity of the new rung | Use case |
+|---|---|---|---|
+| `excluded_only` | D1 | — | recon-heavy phase; third-party services dominate the target stream |
+| `adjacent` **(default)** | D1 + D2 | `warn` | normal engagement — "right subnet/domain, wrong host" is the signal you want |
+| `all` | D1 + D2 + D3 | `notice` | strict authorisation: *any* target not on the list is on the record |
 
 D1 is absent from every "off" position by construction — that is the fact-tier rule
-made structural rather than remembered.
+made structural rather than remembered, and it is pinned by a test.
 
-**Migration** (the `enforcement` → `warnOnViolation` migration in `config.ts` is the
-precedent to copy): `warnOnViolation: true` → `'adjacent'`; `false` →
-`'excluded_only'`. Note `false` does **not** map to a "none" — D1 already fires
-regardless of `warnOnViolation` today, so the mapping preserves current behaviour
-exactly.
+**Migration is a two-hop chain**, both hops still running on load:
+`enforcement` → `warnOnViolation` → `alertFloor`. `warnOnViolation: true` →
+`'adjacent'`; `false` → `'excluded_only'`. Note `false` does **not** map to a "none"
+— D1 already fired regardless of `warnOnViolation`, so the boolean was always this
+floor under another name and the mapping preserves behaviour exactly.
 
-Note that `'all'` is today's *accidental* behaviour on the IP path (G-B3). Making it
-a deliberate, named choice instead of an unintended default is the whole point.
+`'all'` is the pre-G-B3 IP path's *accidental* behaviour made into a deliberate,
+named choice. Two things follow from letting D3 emit at all:
+
+- **It needs its own `reason`.** `unrelated` joins the closed vocabulary, at **fact**
+  tier: unlike D2 there is no proximity heuristic involved, just an observed
+  non-match against a stated list.
+- **It needs its own severity step.** `notice` (grey) was added to the scale for it.
+  Giving D3 `warn` would put the noise G-B3 removed back *inside* the violation list;
+  giving it `ok` would render a recorded departure green. On the record, not shouting.
+
+The D3 **count** (`getUnrelatedCount()`) is kept at every floor regardless — "silent"
+must stay distinguishable from "not looking", and the adherence report (G-D1) needs
+the denominator.
 
 ## C.4 The one tuning parameter (not a toggle)
 
@@ -508,15 +634,64 @@ Entirely within record-and-warn:
 
 | | Contribution | Mechanism | Status |
 |---|---|---|---|
-| **before** | the scope is correct and legible, sourced from the authorisation document rather than typed | `scope.scopeFile` | ✅ exists |
+| **before** | the scope is correct and legible, sourced from the authorisation document rather than typed — **and attributable to it** | `scope.scopeFile` + `readScopeFile` provenance | ✅ shipped |
 | **during** | a fast, correctly-tiered warning the operator can act on (Parts A–C) | `IPMonitor` / `ScopeMonitor` | 🟡 gaps open |
-| **after** | **positive adherence proof**, not just a violation list | export | ❌ gap |
+| **after** | **positive adherence proof**, not just a violation list | `scope-adherence.ts` + export | ✅ shipped |
 
-The *after* column is the underbuilt one. `data:exportViolations` proves violations
-happened; nothing produces the more valuable artifact — **every target touched, its
-distance classification, and the D0 count**: "247 targets, 247 in scope, 0 excluded,
-3 adjacent (with timestamps and commands)". For a client deliverable that is worth
-more than any block would have been, and it is the evidentiary framing §1 asks for.
+The *after* column used to be the underbuilt one. `data:exportViolations` proves
+violations happened — the **accusation** half — and a client reading it cannot tell
+three near-misses out of 250 targets from three out of five. `scope-adherence.ts`
+builds the other half: **every target touched, its distance classification, and the
+denominator** — "247 targets, 244 in scope, 0 excluded, 3 adjacent", with per-target
+first/last seen, action counts and command samples.
+
+Three things make it defensible rather than merely reassuring:
+
+1. **It re-classifies from the event stream**, not from the alert log, so D0 targets
+   — the ones that never fired anything — are counted. Those are the proof.
+2. **Recorded violations travel alongside**, exactly as they were chained at the
+   time, under whatever scope was in force then.
+3. **Re-classification uses the *current* scope, and the report says so.** Any
+   `config_changed` that touched a `scope.*` key is listed, and any target whose
+   live classification disagrees with what was recorded is called out. A scope
+   edited mid-engagement is a caveat stated out loud, not a silent error.
+
+**Scope provenance (G-D2).** The report states "judged against this scope", and
+`readScopeFile` now makes that scope attributable: a **sha256 of the file bytes**,
+the entry count, its mtime, and when RedLog read it. A chained `scope_loaded` event
+records the same at the two *authoritative* load points — project open and config
+save — deduped on digest so reopening a project does not fill the timeline with
+identical rows. The read-only re-reads that build an export deliberately do **not**
+emit: an export must not manufacture history.
+
+The digest is the join between the report and the authorisation document a reviewer
+was handed. Without it, "the scope was `/engagements/acme/scope.txt`" is a claim
+taken on trust.
+
+It also closes a silent failure: a scope file that parses to **zero entries**
+contributes no targets, and "scope active" read exactly like a correctly loaded one.
+The entry count makes that visible, and the panel says so.
+
+**In the signed bundle too.** Alongside the standalone export
+(`data:exportAdherence`) and the live summary in Scope & Evidence, the report ships
+as `scope-adherence.json` inside the evidence bundle — a hashed entry in
+`manifest.files`, so it inherits the manifest sha256 and the HMAC and travels signed
+with the rest of the evidence. A loose JSON file claiming "244 of 247 in scope"
+proves nothing; the same file under the bundle's integrity does. The manifest also
+carries the headline (`scopeAdherence`), so a reviewer reading only `manifest.json`
+sees the claim, and the bundle README tells them how to check the scope digest
+against the document they issued.
+
+**The invariant that keeps it honest:** the report is built from the rows **as
+written to the bundle**, after the layer-4 sanitize swap — never from the raw DB. A
+`client-deliverable` bundle sanitizes out-of-scope bodies, and a report built from
+raw rows would have been a side channel straight around that gate. A property test
+asserts every command sample in the report also appears in `events.jsonl`, so the
+guarantee survives future changes to the sanitize rules.
+
+Both profiles get it: an internal bundle that cannot state what it stayed inside of
+is missing the same proof. No scope configured means **no file and a null claim** —
+an empty report would read as "nothing was out of bounds".
 
 ## D.4 Explicit non-goals (considered, rejected — do not re-propose)
 
@@ -531,6 +706,6 @@ more than any block would have been, and it is the evidentiary framing §1 asks 
 
 | # | Gap | Kind | Notes |
 |---|---|---|---|
-| **G-C3** | `scope.alertFloor` enum replacing `warnOnViolation`, + `proximityBits` | code | Depends on G-B1/G-B4. |
-| **G-D1** | Scope-adherence report (positive proof, not just violations) | code | The one real gap left in Part D. Pairs with the bundle export (`DELIVERY-TARGETS.md`, Snapshot role). |
-| **G-D2** | Scope provenance — which file, loaded when, by whom, with what diff | code | `config_changed` records the diff; the *source document* is not attributed. |
+| **G-C3** | ~~`scope.alertFloor` enum replacing `warnOnViolation`, + `proximityBits`~~ | ✅ **fixed** | Three-value floor + two-hop migration + Settings selector. `'all'` needed a `unrelated` reason (fact tier) and a `notice` severity step. `proximityBits` landed with G-B1. |
+| **G-D1** | ~~Scope-adherence report (positive proof, not just violations)~~ | ✅ **fixed** | `scope-adherence.ts` + loose export + live summary + `scope-adherence.json` in the signed bundle with a `scopeAdherence` manifest headline. Built from post-sanitize rows, so it cannot bypass the client-deliverable gate. |
+| **G-D2** | ~~Scope provenance — which file, loaded when, by whom, with what diff~~ | ✅ **fixed** | `readScopeFile` returns a sha256 + entry count + mtime; a chained `scope_loaded` event records it at the two authoritative load points; the adherence report embeds it. Also catches a scope file that parses to zero. |

@@ -20,7 +20,13 @@ import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 import OverlayApp from '../src/renderer/src/OverlayApp'
 
 const unsub = (): void => {}
-type Violation = { target: string; command: string; timestamp: number }
+type Violation = {
+  target: string
+  command: string
+  timestamp: number
+  reason: 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain'
+  authority: 'fact' | 'inferred'
+}
 
 interface Opts {
   ipSafety?: 'safe' | 'exposed' | 'unknown'
@@ -154,7 +160,19 @@ describe('StatusBar — the always-visible verdict', () => {
 })
 
 describe('ScopeStatus — the Scope & Evidence view', () => {
-  const violation = (target: string): Violation => ({ target, command: `curl ${target}`, timestamp: 1_700_000_000_000 })
+  // G-C1: a violation now carries WHICH rung of the ladder fired, because the
+  // list stopped being uniformly red — a forbidden-target hit and a proximity
+  // near-miss are different severities and no longer look alike.
+  const violation = (
+    target: string,
+    reason: 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain' = 'excluded_target'
+  ): Violation => ({
+    target,
+    command: `curl ${target}`,
+    timestamp: 1_700_000_000_000,
+    reason,
+    authority: reason === 'excluded_target' ? 'fact' : 'inferred'
+  })
 
   it('no scope set: NOT SET plus the hint that fixes it', async () => {
     renderWith(<ScopeStatus />, { scopeConfigured: false, violations: [] })
@@ -183,6 +201,20 @@ describe('ScopeStatus — the Scope & Evidence view', () => {
     const c = renderWith(<ScopeStatus />, { violations: many })
     expect(await screen.findByText('14 scope violation(s) detected')).toBeTruthy()
     expect(c.querySelectorAll('.bg-red-900\\/20')).toHaveLength(10)
+  })
+
+  // G-C1: the list used to be one red for everything.
+  it('a proximity near-miss does not render like a forbidden-target hit', async () => {
+    const c = renderWith(<ScopeStatus />, {
+      violations: [violation('dc01.example.com'), violation('vpn.example.com', 'adjacent_domain')]
+    })
+    await screen.findByText('dc01.example.com')
+    expect(c.querySelectorAll('.bg-red-900\\/20')).toHaveLength(1)
+    expect(c.querySelectorAll('.bg-orange-900\\/15')).toHaveLength(1)
+    // §3: the inferred one is outlined, not asserted.
+    expect(c.querySelectorAll('.border-dashed')).toHaveLength(1)
+    expect(screen.getByText('same domain')).toBeTruthy()
+    expect(screen.getByText('forbidden target')).toBeTruthy()
   })
 
   it('shows the chain length so the evidence log is visible next to the violations', async () => {

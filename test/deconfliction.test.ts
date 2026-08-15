@@ -41,7 +41,7 @@ describe('deconfliction webhook', () => {
     url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/soc`
   })
   afterEach(async () => {
-    configureDeconfliction({ enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false })
+    configureDeconfliction({ enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false, authorityFloor: 'inferred' })
     await new Promise<void>((r) => server.close(() => r()))
   })
 
@@ -134,6 +134,76 @@ describe('deconfliction webhook', () => {
   it('testWebhook fails cleanly with no url', async () => {
     const r = await testWebhook({ enabled: true, url: '', secret: 's', events: [], subtypes: [], includeData: false })
     expect(r.ok).toBe(false)
+  })
+
+  // G-C2. A `scope_violation` for a neighbouring host is a proximity INFERENCE;
+  // one for an explicitly excluded target is an observed rule match. Before
+  // this the blue team received both in the same shape, with nothing on the
+  // wire to tell them apart — an inference delivered as a fact.
+  describe('authority tiering', () => {
+    const violation = (authority: 'fact' | 'inferred', reason: string): RedLogEvent =>
+      ev({ agentType: 'system', data: { subtype: 'scope_violation', reason, authority } })
+
+    const bodyOf = (): Record<string, unknown> => JSON.parse(received[0].body)[0]
+
+    it('labels every forwarded event with its authority and reason', async () => {
+      on({ events: ['system'] })
+      notifyDeconfliction(violation('inferred', 'adjacent_subnet'))
+      _flushDeconflictionForTest()
+      await settle()
+      expect(bodyOf().authority).toBe('inferred')
+      expect(bodyOf().reason).toBe('adjacent_subnet')
+    })
+
+    // Both are bounded enums, so they ride outside the PII gate — the receiver
+    // must be able to triage without being handed the command text.
+    it('carries the labels even with includeData off', async () => {
+      on({ events: ['system'], includeData: false })
+      notifyDeconfliction(violation('fact', 'excluded_target'))
+      _flushDeconflictionForTest()
+      await settle()
+      expect(bodyOf().authority).toBe('fact')
+      expect(bodyOf().data).toBeUndefined()
+    })
+
+    it('forwards both tiers by default — narrowing an outward feed is deliberate', async () => {
+      on({ events: ['system'] })
+      notifyDeconfliction(violation('inferred', 'adjacent_domain'))
+      notifyDeconfliction(violation('fact', 'excluded_target'))
+      _flushDeconflictionForTest()
+      await settle()
+      expect(JSON.parse(received[0].body)).toHaveLength(2)
+    })
+
+    it('a fact floor holds the inference back and lets the rule match through', async () => {
+      on({ events: ['system'], authorityFloor: 'fact' })
+      notifyDeconfliction(violation('inferred', 'adjacent_domain'))
+      notifyDeconfliction(violation('fact', 'excluded_target'))
+      _flushDeconflictionForTest()
+      await settle()
+      const batch = JSON.parse(received[0].body)
+      expect(batch).toHaveLength(1)
+      expect(batch[0].reason).toBe('excluded_target')
+    })
+
+    // Absence of `authority` is not an inferred claim. Silently cutting the
+    // blue team off from every other event type is the wrong way to fail.
+    it('an event with no authority field still forwards under a fact floor', async () => {
+      on({ events: ['marker'], authorityFloor: 'fact' })
+      notifyDeconfliction(ev({ agentType: 'marker' }))
+      _flushDeconflictionForTest()
+      await settle()
+      expect(received).toHaveLength(1)
+    })
+
+    // The gate runs after the match, so it holds whichever branch matched.
+    it('the floor applies to subtype-matched events too, not just agent-type ones', async () => {
+      on({ events: [], subtypes: ['scope_violation'], authorityFloor: 'fact' })
+      notifyDeconfliction(violation('inferred', 'adjacent_subnet'))
+      _flushDeconflictionForTest()
+      await settle()
+      expect(received).toHaveLength(0)
+    })
   })
 
   it('round-trips its config', () => {

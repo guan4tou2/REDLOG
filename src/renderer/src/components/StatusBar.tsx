@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ipBadge } from '../lib/ip-badge'
+import { SEVERITY_CLASS, scopeSeverity as scopeSev, worstSeverity, type Severity } from '../lib/alertSeverity'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { ICON } from '../lib/icons'
@@ -8,7 +9,9 @@ export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [eventCount, setEventCount] = useState(0)
   const [lootCount, setLootCount] = useState(0)
-  const [scopeViolations, setScopeViolations] = useState(0)
+  // G-C1: the severity of what happened, not just how much. `getViolationCount`
+  // could only ever drive an on/off light.
+  const [violations, setViolations] = useState<Array<{ reason: string; authority: string }>>([])
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
   const [stamped, setStamped] = useState(false)
@@ -29,14 +32,14 @@ export default function StatusBar(): JSX.Element {
     window.redlog.ip.getStatus().then(setIpStatus)
     window.redlog.events.getCount().then(setEventCount)
     window.redlog.loot.getCount().then(setLootCount)
-    window.redlog.scope.getViolationCount().then(setScopeViolations)
+    window.redlog.scope.getViolations().then(setViolations)
     window.redlog.recording.get().then(setRecording)
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
     const unsubEvent = window.redlog.events.onNew(() => {
       setEventCount((c) => c + 1)
       window.redlog.loot.getCount().then(setLootCount)
-      window.redlog.scope.getViolationCount().then(setScopeViolations)
+      window.redlog.scope.getViolations().then(setViolations)
     })
     const unsubRec = window.redlog.recording.onChange(setRecording)
     window.redlog.overlay.isVisible().then(setOverlayVisible)
@@ -86,14 +89,23 @@ export default function StatusBar(): JSX.Element {
   // G-A3: the verdict, plus whether it is still backed by a current reading.
   // `qualified` means the badge must not read at full confidence.
   const badge = ipBadge(ipStatus)
-  const safety = badge.tone
-  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-red-500' : 'bg-amber-500'
-  const safetyLabel = badge.reason === 'stale'
-    ? t('statusBar.ipStale')
-    : safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
+  const scopeViolations = violations.length
+  const scopeSeverity: Severity = worstSeverity(
+    violations.map((v) => scopeSev(v.reason as 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'))
+  )
+  // Hollow only when EVERY violation present is an inference — one observed
+  // rule match among them and the dot must assert.
+  const scopeInferredOnly = scopeViolations > 0 && violations.every((v) => v.authority === 'inferred')
+
+  const LABEL = { safe: t('statusBar.safeIp'), presumed_safe: t('statusBar.safeIp'), off_profile: t('statusBar.offProfileIp'), exposed: t('statusBar.exposedIp'), unknown: t('statusBar.ipUnknown') }
+  const sev = SEVERITY_CLASS[badge.severity]
+  const safetyDot = sev.dot
+  const safetyLabel = badge.reason === 'stale' ? t('statusBar.ipStale') : LABEL[ipStatus?.ipSafety ?? 'unknown']
   const safetyTitle = badge.reason === 'stale'
     ? t('statusBar.staleHint', { n: ipStatus?.consecutiveFailures ?? 0 })
-    : badge.reason === 'settling' ? t('statusBar.settlingHint') : undefined
+    : badge.reason === 'settling' ? t('statusBar.settlingHint')
+      : badge.reason === 'presumed' ? t('statusBar.presumedHint')
+        : ipStatus?.ipSafety === 'off_profile' ? t('statusBar.offProfileHint') : undefined
 
   const hours = Math.floor(uptime / 3600)
   const mins = Math.floor((uptime % 3600) / 60)
@@ -156,7 +168,7 @@ export default function StatusBar(): JSX.Element {
             ? `w-1.5 h-1.5 rounded-full border ${safetyDot.replace('bg-', 'border-')} animate-pulse-slow`
             : `w-1.5 h-1.5 rounded-full ${safetyDot}`}
         />
-        <span className={`${safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}${badge.qualified ? ' opacity-70' : ''}`}>
+        <span className={`${sev.text}${badge.qualified ? ' opacity-70' : ''}`}>
           {safetyLabel}
         </span>
         {ipStatus?.externalIP && (
@@ -167,15 +179,22 @@ export default function StatusBar(): JSX.Element {
       <Sep />
 
       <div className="flex items-center gap-1.5">
-        {scopeViolations > 0 ? (
+        {scopeViolations > 0 ? (() => {
+          // G-C1: this used to be `count > 0 ? red : green`, so a proximity
+          // near-miss shouted exactly as loudly as touching a forbidden host.
+          // Worst-wins, and the dot is hollow when every violation present is
+          // an inference (§3) — a solid dot asserts.
+          const s = SEVERITY_CLASS[scopeSeverity]
+          return (
+            <>
+              <span className={scopeInferredOnly ? `w-1.5 h-1.5 rounded-full border ${s.border}` : `w-1.5 h-1.5 rounded-full ${s.dot}`} />
+              <span className={`${s.text}${scopeInferredOnly ? ' opacity-70' : ''}`}>{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
+            </>
+          )
+        })() : (
           <>
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
-          </>
-        ) : (
-          <>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${SEVERITY_CLASS.ok.dot}`} />
+            <span className={SEVERITY_CLASS.ok.text}>{t('statusBar.scopeOk')}</span>
           </>
         )}
       </div>

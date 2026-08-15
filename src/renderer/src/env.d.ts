@@ -13,7 +13,11 @@ interface ProjectMeta {
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  ipSafety: 'safe' | 'exposed' | 'unknown'
+  ipSafety: 'safe' | 'presumed_safe' | 'off_profile' | 'exposed' | 'unknown'
+  /** G-A4: the internal address judged against `network.lanProfile`. Only
+   *  'safe' | 'off_profile' | 'unknown' are reachable — there is no LAN
+   *  blacklist. */
+  lanSafety?: 'safe' | 'off_profile' | 'unknown'
   lastCheck: number
   error: string | null
   /** A new address is being confirmed; the displayed one is the last stable read. */
@@ -22,6 +26,8 @@ interface IPStatus {
   consecutiveFailures?: number
   /** The verdict outlived its reading and has decayed to 'unknown'. */
   stale?: boolean
+  /** A-6: the address matches both lists — a contradictory config. */
+  listConflict?: boolean
     link?: { type: 'wifi' | 'wired' | 'unknown'; name: string }
 }
 
@@ -125,9 +131,36 @@ interface RedLogAPI {
     capture: (causeEventId?: string) => Promise<string | null>
   }
   scope: {
-    getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>
+    getViolations: () => Promise<Array<{
+      target: string
+      command: string
+      timestamp: number
+      /** Which rung of the distance ladder fired (G-B4). */
+      reason: 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+      /** §3 tier (K1) — `excluded_target` is observed, both `adjacent_*` inferred. */
+      authority: 'fact' | 'inferred'
+    }>>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
+    /** G-D1: the positive half — every target touched and how it classifies.
+     *  Optional like `exportViolations`: a panel must not crash when paired
+     *  with a bridge that predates the method. */
+    adherenceSummary?: () => Promise<{
+      totals: { targets: number; actions: number; in_scope: number; excluded: number; adjacent_subnet: number; adjacent_domain: number; unrelated: number }
+      summary: string
+      scopeChanges: number
+      /** G-D2: which document the scope came from. Null when the operator typed
+       *  the targets in directly rather than loading an authorisation file. */
+      provenance: {
+        path: string
+        digest: string
+        bytes: number
+        entries: number
+        modifiedAt: number
+        loadedAt: number
+        error?: string
+      } | null
+    } | null>
   }
   io: {
     read: (ref: string, off?: number, len?: number) => Promise<{ ok: boolean; text?: string; bytes?: number; error?: string; maxBytes?: number }>
@@ -174,6 +207,7 @@ interface RedLogAPI {
     exportMarks?: () => Promise<string | null>
     exportLoot?: () => Promise<string | null>
     exportViolations?: () => Promise<string | null>
+    exportAdherence?: () => Promise<string | null>
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
   }
@@ -360,7 +394,7 @@ interface RedLogConfigPartial {
   network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   // `enforcement` is a legacy field kept for importing pre-migration profiles
   // (config.ts migrates 'warn'|'log' → warnOnViolation:boolean on load).
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: 'warn' | 'log' }
+  scope?: { alertFloor?: 'excluded_only' | 'adjacent' | 'all'; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; warnOnViolation?: boolean; enforcement?: 'warn' | 'log' }
   screenshot?: { quality?: number; intervalSec?: number }
 }
 

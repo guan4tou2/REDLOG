@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { usePivots } from '../lib/usePivots'
 import { ipBadge } from '../lib/ip-badge'
+import { SEVERITY_CLASS, ipSeverity } from '../lib/alertSeverity'
 
 function useTimeAgo(): (ts: number) => string {
   const { t } = useI18n()
@@ -41,15 +42,26 @@ export default function IPStatusCard(): JSX.Element {
 
   // G-A3: a verdict whose reading has expired must not present as a live one.
   const badge = ipBadge(status)
-  const safety = badge.tone
-  const STATUS_CONFIG = {
-    safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400' },
-    exposed: { indicator: 'bg-red-500', label: t('ip.exposedIp'), color: 'text-red-400' },
-    unknown: { indicator: 'bg-yellow-500', label: t('ip.unknownIp'), color: 'text-yellow-400' }
+  const safety = status.ipSafety
+  // G-C1: colour comes from the shared scale; only the LABEL is verdict-specific.
+  const sev = SEVERITY_CLASS[badge.severity]
+  const LABEL: Record<typeof safety, string> = {
+    safe: t('ip.safeIp'),
+    presumed_safe: t('ip.presumedSafeIp'),
+    off_profile: t('ip.offProfileIp'),
+    exposed: t('ip.exposedIp'),
+    unknown: t('ip.unknownIp')
   }
-  const cfg = badge.reason === 'stale'
-    ? { ...STATUS_CONFIG.unknown, label: t('ip.staleIp') }
-    : STATUS_CONFIG[safety]
+  // Only judged when a LAN profile exists — an unconfigured one has nothing to
+  // say, and colouring it amber would imply a problem that has not been stated.
+  const lanSev = status.lanSafety && status.lanSafety !== 'unknown'
+    ? SEVERITY_CLASS[ipSeverity(status.lanSafety)]
+    : null
+  const cfg = {
+    indicator: sev.dot,
+    color: sev.text.replace('/80', ''),
+    label: badge.reason === 'stale' ? t('ip.staleIp') : LABEL[safety]
+  }
 
   return (
     <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3">
@@ -70,7 +82,13 @@ export default function IPStatusCard(): JSX.Element {
         </div>
         <div>
           <p className="text-xs text-neutral-500 mb-1">{t('ip.internalIp')}</p>
-          <p className="text-lg font-mono text-neutral-200">{status.internalIP ?? '—'}</p>
+          {/* G-A4: this value was displayed but never judged, so a laptop that
+              reassociated to a guest SSID mid-engagement looked identical to one
+              still on the client VLAN. It reads on the SAME severity scale as
+              the external verdict — one scale, both questions. */}
+          <p className={`text-lg font-mono ${lanSev ? lanSev.text.replace('/80', '') : 'text-neutral-200'}`}>
+            {status.internalIP ?? '—'}
+          </p>
         </div>
       </div>
 
@@ -120,6 +138,37 @@ export default function IPStatusCard(): JSX.Element {
         <p className="text-xs text-yellow-500/90 flex items-start gap-1.5">
           <span className="shrink-0">⚠</span>
           <span>{t('ip.staleHint', { n: status.consecutiveFailures ?? 0 })}</span>
+        </p>
+      )}
+
+      {safety === 'off_profile' && (
+        <p className="text-xs text-orange-400/90 flex items-start gap-1.5">
+          <span className="shrink-0">⚠</span>
+          <span>{t('ip.offProfileHint')}</span>
+        </p>
+      )}
+
+      {status.lanSafety === 'off_profile' && (
+        <p className="text-xs text-orange-400/90 flex items-start gap-1.5">
+          <span className="shrink-0">⚠</span>
+          <span>{t('ip.lanOffProfileHint')}</span>
+        </p>
+      )}
+
+      {badge.reason === 'presumed' && (
+        <p className="text-xs text-neutral-400 flex items-start gap-1.5">
+          <span className="shrink-0">≈</span>
+          <span>{t('ip.presumedHint')}</span>
+        </p>
+      )}
+
+      {/* A-6: the verdict above is `exposed` and correct — the blacklist wins —
+          but a red badge looks like every other red badge, so the operator
+          would never learn their two lists contradict each other. */}
+      {status.listConflict && (
+        <p className="text-xs text-orange-400/90 flex items-start gap-1.5">
+          <span className="shrink-0">⚑</span>
+          <span>{t('ip.listConflictHint')}</span>
         </p>
       )}
 

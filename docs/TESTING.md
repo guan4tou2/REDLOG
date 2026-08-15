@@ -107,6 +107,24 @@ The blacklist is evaluated first and wins outright; a whitelist that is set but
 missed answers `off_profile` — never `safe`, and never the same `unknown` that
 "nothing configured" gets.
 
+## 1.2.0 `network.lanProfile` — which segment you expect to be ON
+
+The same classifier as `whitelist`, pointed at the INTERNAL address, with no
+blacklist — so only three of the nine cells are reachable.
+
+| Value | Internal address | Verdict | Proof |
+|---|---|---|---|
+| unset | anything | `unknown` — nothing was declared, so nothing is claimed | `ip-monitor` |
+| set | inside a listed CIDR | `safe` | `ip-monitor` |
+| set | outside every listed CIDR | `off_profile` | `ip-monitor` |
+
+`internalIP` was collected and displayed but never judged, so a laptop that
+silently reassociated to a guest SSID read exactly like one still on the client
+VLAN — the external IP can be perfectly fine while you are on the wrong network.
+The LAN verdict never goes `stale`: it is a local read of the network
+interfaces, so a failed external lookup does not expire it (and the failed poll
+now re-reads it rather than discarding it with the rejection).
+
 ## 1.2.1 `network.staleAfter` — a verdict expires
 
 | Value | Behaviour | Proof |

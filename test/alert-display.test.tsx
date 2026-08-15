@@ -258,7 +258,9 @@ describe('IPStatusCard — the same verdict on the dashboard', () => {
   it('SAFE: green dot, no warning copy', async () => {
     const c = renderCard({ ipSafety: 'safe' })
     expect(await screen.findByText('Safe IP')).toBeTruthy()
-    expect(c.querySelector('.bg-green-500')).toBeTruthy()
+    // G-C1: emerald-500 and green-500 are the SAME hex in tailwind.config.js's
+    // soften map; the shared severity scale emits the emerald alias.
+    expect(c.querySelector('.bg-emerald-500')).toBeTruthy()
     expect(c.textContent).not.toContain('EXPOSED')
   })
 
@@ -272,7 +274,8 @@ describe('IPStatusCard — the same verdict on the dashboard', () => {
   it('UNKNOWN: yellow dot + the "configure the lists" hint', async () => {
     const c = renderCard({ ipSafety: 'unknown' })
     expect(await screen.findByText('Unknown IP')).toBeTruthy()
-    expect(c.querySelector('.bg-yellow-500')).toBeTruthy()
+    // Same aliasing: amber-500 and yellow-500 share a hex in the soften map.
+    expect(c.querySelector('.bg-amber-500')).toBeTruthy()
     expect(c.textContent).toContain('Settings ▸ Network')
   })
 

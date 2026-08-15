@@ -33,6 +33,7 @@ const DEFAULTS: Array<[string, unknown]> = [
 
   ['network.whitelist', []],
   ['network.blacklist', []],
+  ['network.lanProfile', []],
   ['network.checkInterval', 60],
   ['network.providers', []],
   ['network.confirmations', 3],

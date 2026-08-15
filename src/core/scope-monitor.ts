@@ -5,11 +5,13 @@ import { buildSuffixSet, DEFAULT_SUFFIXES, getRegistrableDomain } from './public
 import { ipInCIDR, ipFamily, isIPLiteral, V6_PROXIMITY_BITS } from './ip-match'
 
 interface ScopeConfig {
-  /** Whether D2 (adjacent) alerts fire. D1 (excluded) always fires regardless —
-   *  a fact-tier verdict is not a preference call. False = D1 only.
-   *  (`ALERT-ROLES.md` Part C.3 replaces this boolean with a three-value
-   *  `alertFloor` once D3 needs to be selectable again — G-C3.) */
-  warnOnViolation: boolean
+  /** How far down the distance ladder alerts fire (`ALERT-ROLES.md` C.3). The
+   *  ladder is ORDERED, so the control is a floor, not N independent booleans —
+   *  those would let an operator construct incoherent states ("warn on
+   *  unrelated but not on adjacent"). D1 is absent from every "off" position by
+   *  construction, which makes the fact-tier rule structural instead of
+   *  something each caller has to remember. */
+  alertFloor: AlertFloor
   targets: string[]
   excludeTargets: string[]
   /** Container width for deriving a single-IP scope entry's D2 zone. A scope of
@@ -52,6 +54,25 @@ export type ScopeDistance =
   | 'adjacent_subnet'   // D2 — inferred
   | 'adjacent_domain'   // D2 — inferred
   | 'unrelated'         // D3
+
+/** The closed `reason` vocabulary (G-B4) as a type. D3 never produces a
+ *  violation, so it has no entry. */
+export type ViolationReason = 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+
+/** D1 only · D1+D2 (default) · D1+D2+D3. `all` is today's ACCIDENTAL behaviour
+ *  on the pre-G-B3 IP path made into a deliberate, named choice — strict
+ *  authorisation where any target not on the list belongs on the record. */
+export type AlertFloor = 'excluded_only' | 'adjacent' | 'all'
+
+export interface ScopeViolation {
+  target: string
+  command: string
+  timestamp: number
+  reason: ViolationReason
+  /** §3 tier (K1). `excluded_target` is an observed rule match; both
+   *  `adjacent_*` are proximity judgements. */
+  authority: 'fact' | 'inferred'
+}
 
 function normaliseBits(bits: number | undefined): number {
   return Number.isInteger(bits) && (bits as number) >= 1 && (bits as number) <= 32
@@ -140,7 +161,7 @@ export function classifyTarget(
 
 export class ScopeMonitor {
   private config: ScopeConfig = {
-    warnOnViolation: true,
+    alertFloor: 'adjacent',
     targets: [],
     excludeTargets: [],
     proximityBits: DEFAULT_PROXIMITY_BITS,
@@ -150,14 +171,18 @@ export class ScopeMonitor {
   private suffixes: Set<string> = DEFAULT_SUFFIXES
   private engagementId = 'default'
   private operatorId = ''
-  private violations: Array<{ target: string; command: string; timestamp: number }> = []
+  /** G-C1: the record carries WHICH rung of the ladder fired. Without it the UI
+   *  could only count violations, so a D1 explicit-exclusion hit and a D2
+   *  proximity inference rendered as the same red — the distinction G-B4 put in
+   *  the data and G-C2 put on the wire stopped at the operator's eye. */
+  private violations: ScopeViolation[] = []
   /** D3 is silent, not dropped: the count is what lets the operator (and the
    *  adherence report, G-D1) see how much was suppressed. Without it, "silent"
    *  is indistinguishable from "not looking". */
   private unrelated = 0
 
   configure(opts: {
-    warnOnViolation?: boolean
+    alertFloor?: AlertFloor
     targets?: string[]
     excludeTargets?: string[]
     proximityBits?: number
@@ -165,7 +190,7 @@ export class ScopeMonitor {
     engagementId?: string
     operatorId?: string
   }): void {
-    if (opts.warnOnViolation !== undefined) this.config.warnOnViolation = opts.warnOnViolation
+    if (opts.alertFloor !== undefined) this.config.alertFloor = opts.alertFloor
     if (opts.targets) this.config.targets = opts.targets
     if (opts.excludeTargets) this.config.excludeTargets = opts.excludeTargets
     if (opts.proximityBits !== undefined) this.config.proximityBits = normaliseBits(opts.proximityBits)
@@ -195,16 +220,22 @@ export class ScopeMonitor {
       return { inScope: false, violation: true }
     }
 
-    // D3 — counted, never emitted.
+    // D3 — always counted; emitted only under the strictest floor. Note the
+    // count is kept either way: "silent" must stay distinguishable from "not
+    // looking", and the adherence report (G-D1) needs the denominator.
     if (distance === 'unrelated') {
       this.unrelated += 1
-      return { inScope: false, violation: false }
+      if (this.config.alertFloor !== 'all') return { inScope: false, violation: false }
+      // A non-match against a stated list is an OBSERVATION — unlike D2 there
+      // is no proximity heuristic involved, so this is fact tier.
+      this.recordViolation(target, command, 'unrelated', 'fact')
+      return { inScope: false, violation: true }
     }
 
-    // D2 — inferred tier, and therefore silenceable. Warnings off = no badge,
-    // no event, no deconfliction alert. The raw shell command still lands in
-    // the timeline like any other command — RedLog never blocks.
-    if (!this.config.warnOnViolation) return { inScope: false, violation: false }
+    // D2 — inferred tier, and therefore silenceable. Floored out = no badge, no
+    // event, no deconfliction alert. The raw shell command still lands in the
+    // timeline like any other command — RedLog never blocks.
+    if (this.config.alertFloor === 'excluded_only') return { inScope: false, violation: false }
     this.recordViolation(target, command, distance, 'inferred')
     return { inScope: false, violation: true }
   }
@@ -222,10 +253,10 @@ export class ScopeMonitor {
   private recordViolation(
     target: string,
     command: string,
-    reason: 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain',
+    reason: ViolationReason,
     authority: 'fact' | 'inferred'
   ): void {
-    this.violations.push({ target, command, timestamp: Date.now() })
+    this.violations.push({ target, command, timestamp: Date.now(), reason, authority })
     if (!this.operatorId) return
 
     try {
@@ -240,7 +271,7 @@ export class ScopeMonitor {
     } catch { /* DB may not be ready */ }
   }
 
-  getViolations(): Array<{ target: string; command: string; timestamp: number }> {
+  getViolations(): ScopeViolation[] {
     return [...this.violations]
   }
 

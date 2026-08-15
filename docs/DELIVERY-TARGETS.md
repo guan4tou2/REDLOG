@@ -23,7 +23,7 @@ a role — see the axes below.
 
 | Target | Role | Audience | Sanitize profile | Timing | Transport | Integrity | Source |
 |---|---|---|---|---|---|---|---|
-| **Evidence bundle** | Snapshot | third-party / court / client | layer-4 sanitized (raw→sanitized swap) or full (opt-in) | batch | local file (out dir) | Ed25519 sig + OTS anchor + manifest + sanitized-reconciliation | `bundle-export.ts` |
+| **Evidence bundle** | Snapshot | third-party / court / client | layer-4 sanitized (raw→sanitized swap) or full (opt-in) | batch | local file (out dir) | Ed25519 sig + OTS anchor + manifest + sanitized-reconciliation + **scope-adherence proof** (`ALERT-ROLES.md` G-D1) | `bundle-export.ts` |
 | **Cloud share** | Snapshot | operator / shareable link | redaction-gated (`RedactionPreview`) | batch | remote PUT (Worker/S3) + `expiresAt` | manifest + sanitize counts (verify it also signs/anchors — gap #3) | `cloud-share.ts` + `-uploader.ts` |
 | **Deconfliction feed** | Stream | blue team | subtype-filtered (`scope_violation` default) + `includeData` flag | real-time per-event | signed webhook (HTTP POST) | HMAC per body | `deconfliction.ts` |
 

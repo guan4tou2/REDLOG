@@ -28,12 +28,14 @@ function installBridge(status: Record<string, unknown>): void {
 const BASE = {
   externalIP: '10.8.0.5',
   internalIP: '10.0.0.2',
-  ipSafety: 'safe' as const,
+  ipSafety: 'safe' as 'safe' | 'presumed_safe' | 'off_profile' | 'exposed' | 'unknown',
   lastCheck: 1_700_000_000_000,
   error: null as string | null,
   settling: false,
   consecutiveFailures: 0,
-  stale: false
+  stale: false,
+  listConflict: false,
+  lanSafety: 'unknown' as 'safe' | 'off_profile' | 'unknown'
 }
 
 async function renderCard(over: Partial<typeof BASE> = {}): Promise<void> {
@@ -89,5 +91,81 @@ describe('IPStatusCard — expired and unconfirmed verdicts reach the eye', () =
     expect(screen.getByText('Safe IP')).toBeTruthy()
     expect(screen.getByText(/being confirmed/)).toBeTruthy()
     expect(screen.queryByText('No current reading')).toBeNull()
+  })
+})
+
+// G-A2 at the pixel. The claim of this ticket is that an inference must not
+// look like a fact and an observed deviation must not look like missing
+// information — both are claims about what the operator SEES, so neither is
+// proved by a unit test on the verdict alone.
+describe('IPStatusCard — the five verdicts are distinguishable', () => {
+  afterEach(cleanup)
+
+  it('a verified exit reads as Safe IP with no caveat', async () => {
+    await renderCard({ ipSafety: 'safe' })
+    expect(screen.getByText('Safe IP')).toBeTruthy()
+    expect(screen.queryByText(/inference/i)).toBeNull()
+  })
+
+  it('an inferred exit does NOT read as Safe IP', async () => {
+    await renderCard({ ipSafety: 'presumed_safe' })
+    expect(screen.queryByText('Safe IP')).toBeNull()
+    expect(screen.getByText('Presumed safe')).toBeTruthy()
+    expect(screen.getByText(/nothing to confirm it against/)).toBeTruthy()
+  })
+
+  it('a whitelist miss reads as a deviation, not as missing information', async () => {
+    await renderCard({ ipSafety: 'off_profile' })
+    expect(screen.getByText('Off-profile IP')).toBeTruthy()
+    // The old behaviour: same amber "go configure your lists" advice as a
+    // completely unconfigured RedLog. The lists ARE configured — that is the
+    // whole point of the verdict.
+    expect(screen.queryByText(/Settings ▸ Network to enable classification/)).toBeNull()
+    expect(screen.getByText(/not where you declared/)).toBeTruthy()
+  })
+
+  it('an unconfigured RedLog still gets the configure-your-lists advice', async () => {
+    await renderCard({ ipSafety: 'unknown' })
+    expect(screen.getByText(/Settings ▸ Network/)).toBeTruthy()
+  })
+
+  it('surfaces a contradictory config without changing the verdict', async () => {
+    await renderCard({ ipSafety: 'exposed', listConflict: true })
+    expect(screen.getByText('Exposed IP')).toBeTruthy()
+    expect(screen.getByText(/BOTH your Safe IP and Exposed IP lists/)).toBeTruthy()
+  })
+
+  it('says nothing about lists when they do not contradict', async () => {
+    await renderCard({ ipSafety: 'exposed', listConflict: false })
+    expect(screen.queryByText(/BOTH your Safe IP/)).toBeNull()
+  })
+})
+
+// G-A4 at the pixel: the internal address used to be inert text.
+describe('IPStatusCard — the internal address is judged too', () => {
+  afterEach(cleanup)
+
+  it('says nothing when no LAN profile is declared', async () => {
+    await renderCard({ lanSafety: 'unknown' })
+    expect(screen.getByText('10.0.0.2')).toBeTruthy()
+    expect(screen.queryByText(/wrong network/)).toBeNull()
+  })
+
+  it('flags an internal address off the expected segment', async () => {
+    await renderCard({ lanSafety: 'off_profile' })
+    expect(screen.getByText(/not on any of the LAN segments/)).toBeTruthy()
+    expect(screen.getByText(/guest SSID/)).toBeTruthy()
+  })
+
+  // The point of the whole ticket: the external verdict cannot catch this.
+  it('an off-profile LAN is flagged even while the egress reads safe', async () => {
+    await renderCard({ ipSafety: 'safe', lanSafety: 'off_profile' })
+    expect(screen.getByText('Safe IP')).toBeTruthy()
+    expect(screen.getByText(/wrong network/)).toBeTruthy()
+  })
+
+  it('says nothing when the internal address is where it should be', async () => {
+    await renderCard({ lanSafety: 'safe' })
+    expect(screen.queryByText(/wrong network/)).toBeNull()
   })
 })
