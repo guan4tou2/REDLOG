@@ -12,6 +12,17 @@ npm run e2e                    # Playwright, needs a built app
 npm run typecheck              # renderer types
 ```
 
+**After an e2e run, `npm test` will fail to start.** `pree2e` points
+`node_modules/.bin/node-gyp` at `@electron/node-gyp`, so `pretest`'s
+`npm rebuild better-sqlite3` then builds the native module against Electron
+headers and vitest cannot load it (`Could not locate the bindings file`, even
+though the file is right there — it is the ABI that is wrong). Recover with:
+
+```
+rm -rf node_modules/better-sqlite3/build
+(cd node_modules/better-sqlite3 && ../../node_modules/node-gyp/bin/node-gyp.js rebuild --release)
+```
+
 ## How to read a row
 
 | Column | Meaning |
@@ -396,7 +407,7 @@ event records trigger, size, dimensions and sha256.
 | Option | Default | Values | Behaviour | Proof |
 |---|---|---|---|---|
 | `showMarkButton` | `true` | bool | `false` hides both mark buttons in the expanded pane, keeping the keep-open toggle | `alert-display` |
-| `showInDock` | `true` | bool | macOS only: keeps a Dock icon once the HUD is shown | manual §5.4 |
+| `showInDock` | `true` | bool | macOS only: keeps a Dock icon once the HUD is shown. Stays manual — `app.dock.hide()` takes effect asynchronously via the activation policy and its result is **not observable** through `app.dock.isVisible()` in an automated Electron run (polled 5 s, still reports visible), which is also why main re-runs `applyDock()` on a timer and on overlay show | manual §5.4 |
 | `flashOnExposed` | `true` | bool | `false` keeps the red frame but stops the flashing; never flashes while `safe` | `alert-display` |
 | `scale` | `1.0` | 0.85 / 1.0 / 1.25 / 1.5 in the UI | scales type and padding; **clamped to 0.75–2.0**; `0` and negatives are ignored (treated as unset) | `alert-display` |
 | `emphasizeExternalIp` | `false` | bool | multiplies **only** the external IP by a further 1.4×, compounding with `scale` | `alert-display` |
@@ -481,9 +492,9 @@ than being dropped (`deconfliction`).
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
 | `cloudShare.endpoint` | `''` | empty falls back to the local `file://` stub uploader | `cloud-share`, `cloud-share-uploader` |
-| `cloudShare.authToken` | `''` | sent as the bearer to the Worker | manual §5.6 |
+| `cloudShare.authToken` | `''` | sent as `Authorization: Bearer …` on the upload init | `cloud-share-uploader` |
 | `cloudShare.maxBundleBytes` | unset → 100 MB | an oversized bundle is rejected and the zip cleaned up | `cloud-share` |
-| `marketplace.defaultRegistryUrl` | bundled example registry | the placeholder + one-click fetch target; an empty box in Settings falls back to it | manual §5.7 |
+| `marketplace.defaultRegistryUrl` | bundled example registry | **dormant**: `MARKETPLACE_ENABLED = false` shelves the only panel that reads it, so the setting currently has no UI consumer at all. The shelved state itself is asserted, so un-shelving trips a test rather than quietly reviving an untested option | `settings-interaction` |
 
 Bundle building is gated on the reviewed-by-operator flag and produces
 zip + `manifest.json` (`cloud-share`); registry installs enforce revocation,
@@ -497,7 +508,7 @@ signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust
 | `fileWatcher.watchPaths` | `[]` | empty is a no-op even when enabled | `file-watcher` |
 | `fileWatcher.ignorePatterns` | `[]` | added on top of the built-in ignores | `file-watcher` |
 | `processMonitor.enabled` | `false` | off by default; Windows emits a one-shot advisory | `process-monitor` |
-| `processMonitor.pollMs` | `500` | poll cadence (CPU/coverage tradeoff) | manual §5.8 |
+| `processMonitor.pollMs` | `500` | poll cadence; floored at 200 ms, and at **2000 ms on Windows** where a cold PowerShell spawn is 800–1500 ms and a 500 ms cadence would stack calls | `process-monitor-cadence` |
 | `processMonitor.ignoreCommands` | `[]` | leading-token match, on top of the built-ins | `process-monitor` |
 | `agentTailer.enabled` | `true` | on by default; a `.redlog-app-root` marker opts a repo out | `agent-transcript-tailer` |
 | `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-transcript-tailer` |
@@ -548,6 +559,7 @@ An explicit `warnOnViolation` is never overwritten by a stale `enforcement` key.
 | scope violations list, empty/not-set states, 10-row cap, chain length, export button | §1.8 | `alert-surfaces` |
 | HUD live-update subscriptions (Settings → open overlay) | §1.8 | `alert-surfaces` |
 | Settings controls: each toggle / number field writes the right config key, with its UI-layer coercion | §2.x | `settings-interaction` |
+| process-monitor poll cadence + platform floors | §2.12 | `process-monitor-cadence` |
 | one severity scale across both alarms; `worstSeverity` folding | §1.7.1 | `alert-severity` |
 | inferred-vs-observed rendering (dot shape), orthogonal to severity | §1.7.1 | `dot-shape` |
 | `authority` resolution + the stamp `insertEvent` writes | §1.7.1 | `authority`, `authority-stamp` |
@@ -618,7 +630,10 @@ green. This is the A-9 case from §1.1.
 ### 5.4 `overlay.showInDock` (macOS)
 
 Show the HUD with the option on → Dock icon stays. Turn it off → Dock icon
-disappears while the HUD keeps working.
+disappears while the HUD keeps working. **This step cannot be automated**: the
+Dock change goes through the macOS activation policy asynchronously and
+`app.dock.isVisible()` keeps reporting the old value in an automated run, so an
+e2e assertion here would be a false green rather than coverage.
 
 ### 5.5 `terminal.maxCastBytes`
 
@@ -626,24 +641,7 @@ Set a small cap (e.g. 4096), run `yes | head -100000` in the built-in terminal,
 and confirm the `.cast` ends with the `[redlog: cast truncated at N bytes]`
 marker and the event records `castTruncated`.
 
-### 5.6 `cloudShare.authToken`
-
-Point `endpoint` at a deployed `redlog-share-worker`, set the token, share a
-bundle. Then clear the token → the upload must fail with an auth error rather
-than silently falling back to the local stub.
-
-### 5.7 `marketplace.defaultRegistryUrl`
-
-Override it with an internal mirror, open Settings ▸ Plugins, leave the registry
-box empty and fetch → the override URL is used.
-
-### 5.8 `processMonitor.pollMs`
-
-Set 100 ms and 5000 ms, spawn a short-lived process, and confirm the shorter
-cadence catches it while the longer one may miss it — this is the documented
-CPU/coverage tradeoff, not a bug.
-
-### 5.9 Wi-Fi SSID (`network.showWifiName`, macOS)
+### 5.6 Wi-Fi SSID (`network.showWifiName`, macOS)
 
 Toggle it on, accept the Location Services prompt, and confirm the HUD shows the
 real SSID instead of a generic `Wi-Fi`. Toggle it back off — the HUD must drop
@@ -657,7 +655,7 @@ screenshot, so "off" has to mean off everywhere, immediately.
 
 | ID | Gap | Impact |
 |---|---|---|
-| **G-UI1** | `overlay.showInDock`, `cloudShare.authToken`, `marketplace.defaultRegistryUrl` and `processMonitor.pollMs` are manual-only. | Main-process/IPC-only paths; the matrix rows above point at §5 instead of a test. |
+| **G-UI1** | `overlay.showInDock` is the last manual-only option. `app.dock.hide()` changes the macOS activation policy asynchronously and the result does not surface through `app.dock.isVisible()` in an automated run, so the assertion would be a false green. | One setting, verified by §5.4. The other three originally filed here turned out not to need e2e at all: `authToken` was already covered (`cloud-share-uploader`), `pollMs` is decided synchronously (`process-monitor-cadence`), and `defaultRegistryUrl` is dormant behind a shelved panel. |
 
 Adding a config option? Add its default to the table in `config-options`, its
 behaviour to the relevant Part 2 section, and — if it changes what the operator
