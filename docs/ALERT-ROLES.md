@@ -472,6 +472,21 @@ number of inferences.
 
 ## Gaps (backlog)
 
+Fifteen in total, split across two tables — twelve here (A/B/C) and three under
+`D.5` (`G-C3`, `G-D1`, `G-D2`). All fifteen are now closed. Which commit closed
+what, so the arithmetic is checkable rather than asserted:
+
+| Commits | Gaps closed | Count |
+|---|---|---|
+| `4cc4ca7`, `594156b`, `9518079` | G-A1, G-A3, G-A5, G-B1, G-B2, G-B3, G-B4, G-B5 | 8 |
+| `5e155a1` | *(none — the K1 `authority` primitive the rest depend on)* | 0 |
+| `c99d78f` | G-A2, G-A4, G-C1, G-C2, G-C3, G-D1, G-D2 | 7 |
+
+> **Errata.** `c99d78f`'s commit message says it closes "the remaining fourteen
+> gaps". It closes **seven** — the number above. The message is wrong and is left
+> as written: correcting it means rewriting history on a shared branch, which
+> costs more than the error does. This table is the accurate record.
+
 | # | Gap | Kind | Notes |
 |---|---|---|---|
 | **G-A1** | ~~`classify()` returns `safe` when both lists are configured and neither matches (A-9)~~ | ✅ **fixed** | A whitelist miss is never `safe`. Verdict is `unknown` pending the `off_profile` state (G-A2). Test seam: exported pure `classifyIP()`, table-driven over A-1..A-9 in `test/ip-monitor.test.ts`. |
