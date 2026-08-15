@@ -95,6 +95,12 @@ export interface EventTypeContribution {
   color?: string
   /** short emoji/glyph shown in lists */
   icon?: string
+  /** §3 (K1): does this type record an observation or a judgement? Unset means
+   *  `fact`. An inferred type renders dashed on the timeline instead of solid,
+   *  so a detector plugin that asserts its guesses as facts is a bug the type
+   *  system can now catch. If the type emits both, leave this unset and stamp
+   *  `data.authority` per event — that always wins. */
+  authority?: 'fact' | 'inferred'
 }
 
 /** 🟢 A capture integration — mirrors hooks-manager's PluginManifest shape. */

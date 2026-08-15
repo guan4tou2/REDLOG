@@ -8,7 +8,10 @@ collapse into a handful of keystones. Each item notes: what, which docs surfaced
 it, code vs doc/example, what it unblocks / depends on, and whether it touches
 another session's active territory (coordinate before editing).
 
-> **Status:** this is a planning doc. Nothing here is started. Items marked
+> **Status (updated 2026-08-14):** no longer accurate as written — parts of K1 and
+> K2 have shipped (see the ✅ marks below and `git log`). Treat this as a planning
+> doc, **not** a shipped-state tracker: verify against code before relying on any
+> row. Items marked
 > ⚠️ touch files other sessions are actively editing (`Timeline.tsx`,
 > `Settings.tsx`, `retention.ts`, `plugins/types.ts`) — coordinate first.
 
@@ -18,16 +21,25 @@ another session's active territory (coordinate before editing).
 The single highest-leverage item. Surfaced **four times**: `PLUGIN-ROLES` gap #3,
 `DETECTOR-ROLES` gap #3, `EVENT-TYPE-VOCABULARY` gap #2, `TIMELINE-ELEMENTS` G4.
 - Define a shared **inferred-`detection` event shape** — confidence, detector
-  attribution, one-click promote-to-marker.
-- Add **`authority: 'fact' | 'inferred'`** to `EventTypeDef` (`event-registry.ts`).
-- Wire the **solid-vs-dashed** rendering to `authority` uniformly across *every*
-  timeline element, not just phase.
+  attribution, one-click promote-to-marker. **Still open.** Note `authority` and
+  `confidence` turned out to be **orthogonal axes**, not one field: authority is
+  two-valued and decides rendering + forwarding; confidence grades an inference
+  and is meaningless on a fact. `plugins/types.ts` already exports `Confidence`;
+  `core/authority.ts` owns the other axis. Do not merge them.
+- ✅ **Add `authority: 'fact' | 'inferred'` to `EventTypeDef`** — done, plus
+  `EventTypeContribution.authority` for plugins, a built-in default table, and
+  per-event override precedence (`core/authority.ts`). `insertEvent` stamps
+  `inferred` into the **hashed** row, so the label cannot be stripped without
+  breaking the chain; absence means `fact`.
+- 🟡 **Solid-vs-dashed wired to `authority`** — done for timeline event dots
+  (`lib/dotShape.ts`) and already done for the phase ribbon. Other timeline
+  elements and the one-click promote flow beyond phase are still open.
 - **Unblocks:** plugin Labeller role, semantic injection labels (K2/K3), timeline
   honesty (G4), detector suggestions rendering as promotable. **Code.**
 
 ### K2 — Off-chain content unification  ⚠️ (retention.ts, new store module)
 Surfaced across `OFF-CHAIN-CONTENT-STORES` (gaps 1–6) + `SPEC-SCOPE-AWARE-LIFECYCLE`
-(G1–G2). The keystone inside it: **io_ref is spec-only, never implemented**.
+(G1–G2). ~~The keystone inside it: **io_ref is spec-only, never implemented**.~~ (No longer true — `src/core/io-store.ts` shipped; re-scope this item against code.)
 - Implement the **io_ref Blob store** (the keystone — no runtime code exists today).
 - Wire an **io keep-window + size cap** into `config.ts` (lifecycle G1).
 - Collapse the **three parallel retention branches** (`terminal.castKeepDays` +
