@@ -1,4 +1,5 @@
 import fs from 'fs'
+import crypto from 'crypto'
 import path from 'path'
 import yaml from 'js-yaml'
 
@@ -37,6 +38,13 @@ export interface RedLogConfig {
     whitelist: string[]
     /** blacklist — your own fixed IPs; seeing one means identity leak → EXPOSED */
     blacklist: string[]
+    /** lanProfile — the internal segments you expect to be ON this engagement
+     *  (e.g. the client VLAN). Judged with the same classifier as `whitelist`,
+     *  so only three verdicts are reachable: on it, off it, or unconfigured.
+     *  Catches a laptop that silently reassociated to a guest SSID — the
+     *  external IP can look perfectly fine while you are on the wrong network.
+     *  See `ALERT-ROLES.md` A.4. */
+    lanProfile: string[]
     checkInterval: number
     providers: string[]
     confirmations: number
@@ -52,12 +60,16 @@ export interface RedLogConfig {
     vpnAdapters: VpnAdapter[]
   }
   scope: {
-    /** Whether D2 (adjacent) violations raise an event + red badge — a target
-     *  that is out of scope but sits in a scope entry's container (same subnet
-     *  as a single-IP entry, or same registrable domain). D1 (excluded targets)
-     *  always raises regardless; D3 (unrelated) is never raised, only counted.
-     *  See `ALERT-ROLES.md` Part B. Default: true. */
-    warnOnViolation: boolean
+    /** How far down the distance ladder alerts fire (`ALERT-ROLES.md` B + C.3):
+     *  - `excluded_only` — D1 only: targets the engagement explicitly forbade.
+     *  - `adjacent` (default) — D1 + D2: also a target that is out of scope but
+     *    inside a scope entry's container (same subnet as a single-IP entry, or
+     *    same registrable domain). "Right subnet, wrong box."
+     *  - `all` — D1 + D2 + D3: strict authorisation; any target not on the list
+     *    goes on the record. This is what the pre-G-B3 IP path did by accident.
+     *  The ladder is ordered, so this is a floor rather than N booleans, and D1
+     *  fires from every position — a fact-tier verdict is not a preference. */
+    alertFloor: 'excluded_only' | 'adjacent' | 'all'
     targets: string[]
     excludeTargets: string[]
     /** Container width for the D2 zone derived from a *single-IP* scope entry:
@@ -245,6 +257,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
   network: {
     whitelist: [],
     blacklist: [],
+    lanProfile: [],
     checkInterval: 60,
     providers: [],
     confirmations: 3,
@@ -254,7 +267,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     vpnAdapters: DEFAULT_VPN_ADAPTERS
   },
   scope: {
-    warnOnViolation: true,
+    alertFloor: 'adjacent',
     targets: [],
     excludeTargets: [],
     proximityBits: 24,
@@ -373,9 +386,18 @@ function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown>
   // believe it is already handled. An operator who wants quiet can turn it off
   // in Settings; one who is quiet without asking never finds out.
   const scope = parsed.scope as Record<string, unknown> | undefined
-  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope)) {
+  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope) && !('alertFloor' in scope)) {
     scope.warnOnViolation = scope.enforcement !== 'log'
     delete scope.enforcement
+  }
+  // scope.warnOnViolation: boolean → scope.alertFloor (G-C3). The boolean was
+  // the two-value version of the same floor, so this preserves behaviour
+  // exactly: `false` never silenced D1 (excluded targets always raised
+  // regardless), which is precisely what `excluded_only` means — it does NOT
+  // map to a "none", because there isn't one.
+  if (scope && 'warnOnViolation' in scope && !('alertFloor' in scope)) {
+    scope.alertFloor = scope.warnOnViolation === false ? 'excluded_only' : 'adjacent'
+    delete scope.warnOnViolation
   }
   return parsed
 }
@@ -450,9 +472,64 @@ export function burpHostToTarget(host: string): string {
   return subdomains ? `*.${decoded}` : decoded
 }
 
-export function loadScopeFile(scopeFilePath: string): string[] {
+/** Where the scope RedLog judged an engagement against actually came from
+ *  (G-D2). `ALERT-ROLES.md` D.3 lists "the scope is correct and legible, sourced
+ *  from the authorisation document rather than typed" as RedLog's *before*
+ *  contribution — but `scopeFile` recorded only a path, so nothing tied the
+ *  judgement to a document a reviewer could check. The adherence report (G-D1)
+ *  states "judged against this scope"; without this, that scope is unattributed
+ *  exactly where the claim needs backing. */
+export interface ScopeProvenance {
+  path: string
+  /** sha256 of the file BYTES — what a reviewer recomputes to prove the scope
+   *  document they are holding is the one the engagement was judged against. */
+  digest: string
+  bytes: number
+  /** Entries the parser actually extracted. A scope file that parses to ZERO is
+   *  the silent failure this catches: today it simply contributes no targets,
+   *  and an operator reading "scope active" has no way to notice. */
+  entries: number
+  /** Filesystem mtime, so a file edited in place is visible even when the
+   *  operator never told RedLog anything changed. */
+  modifiedAt: number
+  loadedAt: number
+  /** Set when the file could not be read or parsed at all. */
+  error?: string
+}
+
+/** Read a scope file and say where it came from. `loadScopeFile` is the
+ *  targets-only wrapper the existing call sites use. `now` is injectable so the
+ *  result is deterministic under test. */
+export function readScopeFile(
+  scopeFilePath: string,
+  now: number = Date.now()
+): { targets: string[]; provenance: ScopeProvenance } {
+  const base: ScopeProvenance = {
+    path: scopeFilePath, digest: '', bytes: 0, entries: 0, modifiedAt: 0, loadedAt: now
+  }
+  let bytes: Buffer
   try {
-    const raw = fs.readFileSync(scopeFilePath, 'utf-8')
+    bytes = fs.readFileSync(scopeFilePath)
+  } catch (err) {
+    return { targets: [], provenance: { ...base, error: (err as Error).message } }
+  }
+  const digest = crypto.createHash('sha256').update(bytes).digest('hex')
+  let modifiedAt = 0
+  try { modifiedAt = Math.floor(fs.statSync(scopeFilePath).mtimeMs) } catch { /* best effort */ }
+
+  const targets = parseScopeFile(scopeFilePath, bytes.toString('utf-8'))
+  return {
+    targets,
+    provenance: { ...base, digest, bytes: bytes.length, entries: targets.length, modifiedAt }
+  }
+}
+
+export function loadScopeFile(scopeFilePath: string): string[] {
+  return readScopeFile(scopeFilePath).targets
+}
+
+function parseScopeFile(scopeFilePath: string, raw: string): string[] {
+  try {
     const ext = path.extname(scopeFilePath).toLowerCase()
 
     if (ext === '.json') {

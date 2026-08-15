@@ -3,7 +3,7 @@
 // `scope-monitor.test.ts` re-implements the matching logic inline, so it proves
 // the algorithm is sound but never touches the shipped class — which means the
 // one option that decides whether an operator is warned at all,
-// `scope.warnOnViolation`, had no coverage. This file drives the class itself.
+// `scope.alertFloor`, had no coverage. This file drives the class itself.
 //
 // No operatorId is configured anywhere below: `recordViolation` short-circuits
 // before `insertEvent` without one, so the violation bookkeeping is exercised
@@ -48,12 +48,12 @@ describe('classifyTarget — the four verdicts', () => {
   })
 })
 
-describe('ScopeMonitor.checkTarget — warnOnViolation on (default)', () => {
+describe('ScopeMonitor.checkTarget — alertFloor: adjacent (default)', () => {
   let m: ScopeMonitor
 
   beforeEach(() => {
     m = new ScopeMonitor()
-    m.configure({ targets: SCOPE, excludeTargets: EXCLUDED, warnOnViolation: true })
+    m.configure({ targets: SCOPE, excludeTargets: EXCLUDED, alertFloor: 'adjacent' })
   })
 
   it('in-scope target: in scope, no violation, nothing recorded', () => {
@@ -107,12 +107,12 @@ describe('ScopeMonitor.checkTarget — warnOnViolation on (default)', () => {
   })
 })
 
-describe('ScopeMonitor.checkTarget — warnOnViolation off', () => {
+describe('ScopeMonitor.checkTarget — alertFloor: excluded_only', () => {
   let m: ScopeMonitor
 
   beforeEach(() => {
     m = new ScopeMonitor()
-    m.configure({ targets: SCOPE, excludeTargets: EXCLUDED, warnOnViolation: false })
+    m.configure({ targets: SCOPE, excludeTargets: EXCLUDED, alertFloor: 'excluded_only' })
   })
 
   it('a same-root out-of-scope host is silent: still out of scope, no violation', () => {
@@ -126,7 +126,7 @@ describe('ScopeMonitor.checkTarget — warnOnViolation off', () => {
 
   it('silences an adjacent subnet as well — D2 is inferred, so it is silenceable', () => {
     const q = new ScopeMonitor()
-    q.configure({ targets: ['192.168.1.10'], warnOnViolation: false })
+    q.configure({ targets: ['192.168.1.10'], alertFloor: 'excluded_only' })
     expect(q.checkTarget('192.168.1.55', 'nmap 192.168.1.55').violation).toBe(false)
   })
 
@@ -155,16 +155,16 @@ describe('ScopeMonitor.configure — which fields a partial update touches', () 
     expect(m.isConfigured()).toBe(true)
   })
 
-  it('warnOnViolation defaults to on when the caller omits it', () => {
+  it('the floor defaults to adjacent when the caller omits it', () => {
     const m = new ScopeMonitor()
     m.configure({ targets: SCOPE })
     expect(m.checkTarget('vpn.example.com', 'curl vpn.example.com').violation).toBe(true)
   })
 
-  it('omitting warnOnViolation on a later call keeps the value already set', () => {
+  it('omitting alertFloor on a later call keeps the value already set', () => {
     const m = new ScopeMonitor()
-    m.configure({ targets: SCOPE, warnOnViolation: false })
-    m.configure({ targets: SCOPE, excludeTargets: [] })   // no warnOnViolation key
+    m.configure({ targets: SCOPE, alertFloor: 'excluded_only' })
+    m.configure({ targets: SCOPE, excludeTargets: [] })   // no alertFloor key
     expect(m.checkTarget('vpn.example.com', 'curl vpn.example.com').violation).toBe(false)
   })
 
@@ -266,7 +266,7 @@ describe('ScopeMonitor — D2 subnet adjacency end-to-end', () => {
 
   beforeEach(() => {
     m = new ScopeMonitor()
-    m.configure({ targets: ['192.168.1.10', '192.168.1.20'], excludeTargets: [], warnOnViolation: true })
+    m.configure({ targets: ['192.168.1.10', '192.168.1.20'], excludeTargets: [], alertFloor: 'adjacent' })
   })
 
   it('warns on the wrong box in the right segment', () => {
@@ -328,7 +328,7 @@ describe('classifyDistance — registrable domain, not last-two-labels', () => {
 describe('ScopeMonitor — publicSuffixes wiring', () => {
   it('configure rebuilds the suffix set and the next check uses it', () => {
     const m = new ScopeMonitor()
-    m.configure({ targets: ['*.a.corp.internal'], warnOnViolation: true })
+    m.configure({ targets: ['*.a.corp.internal'], alertFloor: 'adjacent' })
     expect(m.checkTarget('b.corp.internal', 'curl b.corp.internal').violation).toBe(true)
     m.configure({ publicSuffixes: ['corp.internal'] })
     expect(m.checkTarget('b.corp.internal', 'curl b.corp.internal').violation).toBe(false)
@@ -396,5 +396,76 @@ describe('classifyTarget over IPv6 — sanitize and alerting must agree', () => 
 
   it('an out-of-scope v6 host is out_of_scope', () => {
     expect(classifyTarget('2001:db8:0:2::5', cfg)).toBe('out_of_scope')
+  })
+})
+
+// G-C3. The ladder is ORDERED, so the control is a floor rather than N
+// booleans — those would let an operator construct incoherent states ("warn on
+// unrelated but not on adjacent"). D1 is present at every position by
+// construction, which makes the fact-tier rule structural instead of something
+// each caller has to remember.
+describe('alertFloor — the three positions', () => {
+  const CFG = { targets: ['192.168.1.10', '*.app.example.com'], excludeTargets: ['dc01.app.example.com'] }
+  const at = (alertFloor: 'excluded_only' | 'adjacent' | 'all'): ScopeMonitor => {
+    const m = new ScopeMonitor()
+    m.configure({ ...CFG, alertFloor })
+    return m
+  }
+
+  const D1 = ['dc01.app.example.com', 'nmap dc01.app.example.com'] as const
+  const D2 = ['192.168.1.55', 'nmap 192.168.1.55'] as const
+  const D3 = ['8.8.8.8', 'dig @8.8.8.8 example.com'] as const
+
+  it('excluded_only: D1 alone', () => {
+    const m = at('excluded_only')
+    expect(m.checkTarget(...D1).violation).toBe(true)
+    expect(m.checkTarget(...D2).violation).toBe(false)
+    expect(m.checkTarget(...D3).violation).toBe(false)
+  })
+
+  it('adjacent (default): D1 + D2', () => {
+    const m = at('adjacent')
+    expect(m.checkTarget(...D1).violation).toBe(true)
+    expect(m.checkTarget(...D2).violation).toBe(true)
+    expect(m.checkTarget(...D3).violation).toBe(false)
+  })
+
+  it('all: D1 + D2 + D3 — the strict-authorisation position', () => {
+    const m = at('all')
+    expect(m.checkTarget(...D1).violation).toBe(true)
+    expect(m.checkTarget(...D2).violation).toBe(true)
+    expect(m.checkTarget(...D3).violation).toBe(true)
+  })
+
+  // The whole reason it is a floor and not three checkboxes.
+  it('there is no position that silences D1', () => {
+    for (const floor of ['excluded_only', 'adjacent', 'all'] as const) {
+      expect(at(floor).checkTarget(...D1).violation).toBe(true)
+    }
+  })
+
+  it('a D3 emission is fact tier — a non-match has no proximity heuristic in it', () => {
+    const m = at('all')
+    m.checkTarget(...D3)
+    const [v] = m.getViolations()
+    expect(v.reason).toBe('unrelated')
+    expect(v.authority).toBe('fact')
+  })
+
+  // The count is kept at every floor: "silent" must stay distinguishable from
+  // "not looking", and the adherence report (G-D1) needs the denominator.
+  it('D3 is counted at every floor, emitted at only one', () => {
+    for (const floor of ['excluded_only', 'adjacent', 'all'] as const) {
+      const m = at(floor)
+      m.checkTarget(...D3)
+      expect(m.getUnrelatedCount()).toBe(1)
+      expect(m.getViolationCount()).toBe(floor === 'all' ? 1 : 0)
+    }
+  })
+
+  it('in-scope traffic is untouched at every floor', () => {
+    for (const floor of ['excluded_only', 'adjacent', 'all'] as const) {
+      expect(at(floor).checkTarget('192.168.1.10', 'nmap 192.168.1.10')).toEqual({ inScope: true, violation: false })
+    }
   })
 })

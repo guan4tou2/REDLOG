@@ -15,6 +15,7 @@ export const HUD = {
   red: '#d75f63',      // danger / exposed / recording
   green: '#5ecf9c',    // safe
   amber: '#d4ac5a',    // unknown / idle / partial
+  orange: '#d78550',   // off_profile — observed deviation, short of a leak
   // neutrals
   muted: '#5f7a82',    // labels
   value: '#cfe8ee',    // primary values (cyan-tinted, not pure white)
