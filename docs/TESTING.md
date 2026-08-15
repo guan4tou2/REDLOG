@@ -660,3 +660,10 @@ screenshot, so "off" has to mean off everywhere, immediately.
 Adding a config option? Add its default to the table in `config-options`, its
 behaviour to the relevant Part 2 section, and — if it changes what the operator
 sees — an assertion in `alert-display`.
+
+The first of those is **enforced, not requested**: `config-options` walks the
+real default config and fails on any option the table does not name (and on any
+table entry whose option has been removed). It found `network.staleAfter` and
+`scope.publicSuffixes` the first time it ran — both had reached Part 2 of this
+document but not the assertions, which is exactly the drift a sentence in a doc
+cannot prevent.
