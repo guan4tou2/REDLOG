@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { dotShape, isInferredEvent, type DotShape } from '../lib/dotShape'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -601,33 +602,21 @@ function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
  *
  *  Encoded as SHAPE rather than more colour: eighteen lane hues are already
  *  past reliable discrimination, and shape survives both a colour-blind
- *  operator and a glance at the far edge of the screen.
- *
- *    scope violation   diamond          out of bounds is categorical
- *    critical marker   ring (hollow)    reads as an outline, not a fill
- *    important marker  larger circle
- *    everything else   circle
+ *  operator and a glance at the far edge of the screen. The shape table itself
+ *  now lives in `lib/dotShape.ts` (moved there so the §3 solid-vs-dashed rule
+ *  it carries is testable); this function is the text half of the same glyph.
  */
-type DotShape = 'circle' | 'diamond' | 'ring'
-function dotShape(e: RedLogEvent): { shape: DotShape; scale: number } {
-  const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation') return { shape: 'diamond', scale: 1.25 }
-  if (e.agentType === 'marker') {
-    const sev = String(e.data?.severity ?? 'info')
-    if (sev === 'critical') return { shape: 'ring', scale: 1.5 }
-    if (sev === 'important') return { shape: 'circle', scale: 1.25 }
-  }
-  return { shape: 'circle', scale: 1 }
-}
-
 function shapeTitle(e: RedLogEvent, t: (k: string) => string): string {
   const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}`
+  // The shape carries the §3 tier too — a glyph the operator has to decode from
+  // stroke style alone is not a label.
+  const tier = isInferredEvent(e) ? ` · ${t('timeline.authority.inferred')}` : ''
+  if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}${tier}`
   if (e.agentType === 'marker') {
     const sev = String(e.data?.severity ?? 'info')
-    if (sev === 'critical' || sev === 'important') return ` · ${t(`marker.severity.${sev}`)}`
+    if (sev === 'critical' || sev === 'important') return ` · ${t(`marker.severity.${sev}`)}${tier}`
   }
-  return ''
+  return tier
 }
 
 function ioTitle(m: { io: IoMark; fail: boolean }, t: (k: string) => string): string {
@@ -3259,7 +3248,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   // the shape. Clusters keep their own sizing — the popup
                   // lists members individually, so per-event emphasis there
                   // would fight the count glyph.
-                  const marks = single ? dotShape(evt) : { shape: 'circle' as DotShape, scale: 1 }
+                  const marks = single ? dotShape(evt) : { shape: 'circle' as DotShape, scale: 1, inferred: false }
                   const dot = single
                     ? Math.round(9 * marks.scale)
                     : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
@@ -3359,15 +3348,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           // diamond = a square turned 45°; ring = hollow.
                           borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
                           transform: marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
-                          backgroundColor: marks.shape === 'ring' ? 'transparent' : dotColor,
-                          border: marks.shape === 'ring'
-                            ? `2.5px solid ${dotColor}`
-                            : single ? undefined : '1px solid rgba(0,0,0,0.45)',
+                          // §3: inferred = dashed outline over an unfilled body,
+                          // the same statement the phase ribbon makes. A filled,
+                          // glowing dot asserts; this one suggests.
+                          backgroundColor: marks.inferred || marks.shape === 'ring' ? 'transparent' : dotColor,
+                          border: marks.inferred
+                            ? `1.5px dashed ${dotColor}`
+                            : marks.shape === 'ring'
+                              ? `2.5px solid ${dotColor}`
+                              : single ? undefined : '1px solid rgba(0,0,0,0.45)',
                           boxShadow: sel
                             ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${dotColor}, 0 0 12px ${dotColor}60`
                             : inChain
                               ? `0 0 0 1.5px ${chainRingColor}, 0 0 8px ${chainRingColor}80`
-                              : `0 0 6px ${dotColor}40`
+                              : marks.inferred ? 'none' : `0 0 6px ${dotColor}40`
                         }}
                       >
                         {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}

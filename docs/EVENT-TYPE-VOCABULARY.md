@@ -39,8 +39,21 @@ which also fixes its default authority (§3):
 | **Operator-authored** | `marker` | **authoritative** (operator assertion) | own lane, solid |
 | **Primary-capture** | `shell`/`terminal`, `http`, `http_navigation`, `browser`, `scanner`, `dns`, `screenshot`, `clipboard`, `process` | **authoritative** (a thing actually happened) | source lane / target lane, solid |
 | **Agent** | `agent` (tool-calls) | authoritative (the agent did call the tool) | agent lane, solid |
-| **Detector-derived** | `loot`, `scope_violation`, `pivot`, `cleanup`, `file_transfer` | **inferred** (interpretation, §3) | own lane, **dashed/promotable** (see gap #2) |
+| **Detector-derived** | `loot`, `pivot`, `cleanup`, `file_transfer` | **inferred** (interpretation, §3) | own lane, **dashed** ✅ |
 | **System / meta** | `system` (`recording_paused`, `config_changed`, `sanitized`, `*_pruned`, `ip_transition`, `opsec_state_changed`) | authoritative (system fact / drift signal) | system lane / ribbon, solid |
+| **Split-authority** | `system`/`scope_violation` | **per event** — `fact` for an excluded target, `inferred` for a proximity match | diamond, stroke set by `data.authority` |
+
+**Correction (2026-08-14, found while implementing K1).** An earlier revision of
+this table filed `scope_violation` under detector-derived. Two things were wrong:
+it is a **`system` subtype**, not an agent_type, and its authority is **not fixed
+by type** — hitting an explicitly excluded target is an observed rule match
+(`fact`), while hitting a neighbouring host is a proximity judgement
+(`inferred`). See `ALERT-ROLES.md` B.5.
+
+That single case is why authority resolution is **per-event first**: no
+type-level default can be right for a type that legitimately emits both. The
+type-level default (`EventTypeDef.authority`, and the built-in table in
+`core/authority.ts`) is the fallback, never the override.
 | **Plugin-contributed** | any of the above, via a plugin | inherits the class it emits into | **must be declared** via `eventTypes` |
 
 **Completeness:** an event can only be *authored* by the operator, *captured* from
@@ -65,7 +78,7 @@ channels:
   see gap #3).
 - `color` → the **Colour** channel (source-type encoding — see gap #4).
 - `icon` → the **Glyph** channel.
-- **missing** `authority` → cannot drive the fact/suggestion (solid/dashed) split
+- ~~**missing** `authority`~~ → ✅ resolved per event, defaulting by type (gap #2)
   (gap #2).
 
 ## Gaps this framework surfaces
@@ -73,7 +86,7 @@ channels:
 | # | Gap | Fix |
 |---|---|---|
 | 1 | `eventTypes` is **optional** — a plugin can emit a new `agent_type` with no identity → "other" lane | make a new-emitting `capture`/`tailer` **require** a paired `eventTypes` (load-time warn/lint); surface undeclared kinds in Settings ▸ Plugins |
-| 2 | `EventTypeDef` has **no `authority` field** — a plugin's inferred detection can't render dashed | add `authority: 'fact' \| 'inferred'` to `EventTypeDef`; wire to the solid/dashed split (same as `TIMELINE-ELEMENTS.md` G4 + the Labeller role) |
+| 2 | ~~`EventTypeDef` has no `authority` field~~ | ✅ **done (K1 slice).** `EventTypeDef.authority` + `EventTypeContribution.authority`; resolved by `core/authority.ts`, stamped into the hashed row by `insertEvent`, read by `lib/dotShape.ts` for the solid/dashed split. Promote-to-marker beyond phase is still open. |
 | 3 | `lane` is an **open string** — a plugin can invent a lane that doesn't map to the target/phase axis | reconcile the lane vocabulary with the `lanesForAxis` model (§8): a plugin lane is a *source* lane (a filter), never a new organizing axis |
 | 4 | `color` is per-`agent_type`, but the timeline binds **Colour ← source-type**; a plugin picking arbitrary colours collides with the palette | derive plugin colours from the source-type palette, or document the collision rule |
 | 5 | vocabulary is documented in `event-schema.md` but the **origin/authority classification** isn't formalised there | keep this doc as the classification; `event-schema.md` stays the field reference |

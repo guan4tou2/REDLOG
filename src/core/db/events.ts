@@ -1,4 +1,6 @@
 import crypto from 'crypto'
+import { authorityOf } from '../authority'
+import { registeredAuthority } from '../event-registry'
 import { eventBus } from '../event-bus'
 import os from 'os'
 import { getDB } from './index'
@@ -328,10 +330,30 @@ export function insertEvent(
   const hostname = os.hostname()
   const paddedMono = padMonoNs(monotonicNs())
 
+  // K1: stamp the §3 authority before hashing, for exactly the reason the clock
+  // anomaly below is — a label saying "this row is an interpretation, not an
+  // observation" is worthless in an evidence bundle if it can be stripped
+  // without breaking the chain.
+  //
+  // Only `inferred` is ever written. Absence means `fact`, which is both the
+  // documented default (`authority.ts`) and the overwhelming majority, so this
+  // adds a field to detector output and to nothing else — the shape of a shell
+  // or marker row is unchanged. Resolving here rather than at the ~46 call
+  // sites means no detector can forget, and rather than in the renderer means
+  // there is one table, not a second copy on the far side of the process
+  // boundary (the renderer cannot import core — see `lib/mask.ts`).
+  const resolved = authorityOf({ agentType, data }, registeredAuthority)
+  const dataWithAuthority: Record<string, unknown> =
+    resolved === 'inferred' && data.authority === undefined
+      ? { ...data, authority: 'inferred' }
+      : data
+
   // v0.6.88 P2-A: tag the event before hashing so the anomaly is part of
   // the chain (a later attacker can't strip it without a hash mismatch).
   const anomaly = detectClockAnomaly(now, paddedMono, hostname)
-  const dataForChain: Record<string, unknown> = anomaly ? { ...data, _clock_anomaly: anomaly } : data
+  const dataForChain: Record<string, unknown> = anomaly
+    ? { ...dataWithAuthority, _clock_anomaly: anomaly }
+    : dataWithAuthority
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
