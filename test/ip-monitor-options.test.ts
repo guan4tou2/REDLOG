@@ -258,8 +258,11 @@ describe('whitelist / blacklist range matching', () => {
     ['203.0.113.42', '203.0.113.4'],   // bare IP is exact, not a prefix
     ['10.8.0.0/24', '2001:db8::1']     // family mismatch never matches
   ]
+  // G-A2: a whitelist miss used to answer `unknown`, which put "you are not
+  // where you declared you would be" in the same amber bucket as "nothing is
+  // configured at all". It is an observed deviation, so it has its own verdict.
   for (const [cidr, ip] of outOfRange) {
-    it(`${ip} is outside ${cidr}`, () => expect(wl(cidr, ip)).toBe('unknown'))
+    it(`${ip} is outside ${cidr}`, () => expect(wl(cidr, ip)).toBe('off_profile'))
   }
 
   // Was "an IPv6 CIDR matches only the literal prefix address (documented
@@ -272,7 +275,7 @@ describe('whitelist / blacklist range matching', () => {
   })
 
   it('an IPv6 address outside the prefix is still not safe', () => {
-    expect(wl('2001:db8:0:1::/64', '2001:db8:0:2::1')).toBe('unknown')
+    expect(wl('2001:db8:0:1::/64', '2001:db8:0:2::1')).toBe('off_profile')
   })
 
   it('a hit on any one entry of a multi-entry list is enough', () => {

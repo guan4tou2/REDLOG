@@ -79,7 +79,8 @@ contextBridge.exposeInMainWorld('redlog', {
   scope: {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
-    isConfigured: () => ipcRenderer.invoke('scope:isConfigured')
+    isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
+    adherenceSummary: () => ipcRenderer.invoke('scope:adherenceSummary')
   },
   // io_ref sidecar: pull a full HTTP body on demand by its digest (ref).
   io: {
@@ -125,6 +126,7 @@ contextBridge.exposeInMainWorld('redlog', {
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
     exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
     exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
+    exportAdherence: () => ipcRenderer.invoke('data:exportAdherence'),
     exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
