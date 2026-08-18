@@ -368,6 +368,9 @@ function defaultPickCommandForCache(_toolName: string | undefined, input: Record
 
 interface EmitContext {
   session: SessionState
+  /** Set when flushing orphaned pending-parent turns so they emit without
+   *  _causes instead of being re-buffered. */
+  _skipParentBuffer?: boolean
 }
 
 function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
@@ -380,12 +383,18 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   // before parents in ~0.09% of turns. Buffer them; flush recursively
   // when the parent lands.
   let causesArr: string[] | undefined
-  if (t.parentUuid) {
+  if (t.parentUuid && !ctx._skipParentBuffer) {
     const parentRid = s.redlogIdByUuid.get(t.parentUuid)
     if (parentRid) {
       causesArr = [parentRid]
     } else {
-      sweepStalePending(s)
+      const orphans = sweepStalePending(s)
+      // Emit orphaned turns that waited past TTL — they go out without
+      // _causes rather than being silently dropped.
+      for (const ot of orphans) {
+        if (!ot.uuid || s.redlogIdByUuid.has(ot.uuid)) continue
+        emitTurn(ot, { ...ctx, _skipParentBuffer: true })
+      }
       const queue = s.pendingByParentUuid.get(t.parentUuid) ?? []
       if (queue.length + pendingSize(s) < MAX_PENDING_CHILDREN) {
         queue.push({ turn: t, queuedAt: Date.now() })
@@ -521,13 +530,18 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   } catch (e) { noteDbError('tailer-host', e) }
 }
 
-function sweepStalePending(s: SessionState): void {
+function sweepStalePending(s: SessionState): ParsedTurn[] {
   const cutoff = Date.now() - PENDING_TTL_MS
+  const orphans: ParsedTurn[] = []
   for (const [parentUuid, queue] of s.pendingByParentUuid) {
     const alive = queue.filter((q) => q.queuedAt >= cutoff)
+    for (const q of queue) {
+      if (q.queuedAt < cutoff) orphans.push(q.turn)
+    }
     if (alive.length === 0) s.pendingByParentUuid.delete(parentUuid)
     else if (alive.length !== queue.length) s.pendingByParentUuid.set(parentUuid, alive)
   }
+  return orphans
 }
 
 function pendingSize(s: SessionState): number {

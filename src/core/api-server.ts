@@ -707,10 +707,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/recording' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req))
-      if (body.action === 'pause') eventBus.pause('api')
-      else if (body.action === 'resume') eventBus.resume('api')
-      else if (body.action === 'toggle') {
+      let body: Record<string, unknown> = {}
+      try { body = JSON.parse(await readBody(req)) } catch { /* empty body → default to toggle */ }
+      const action = body.action ?? 'toggle'
+      if (action === 'pause') eventBus.pause('api')
+      else if (action === 'resume') eventBus.resume('api')
+      else {
         if (eventBus.paused) eventBus.resume('api'); else eventBus.pause('api')
       }
       json(res, 200, { recording: !eventBus.paused })

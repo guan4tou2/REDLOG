@@ -124,8 +124,16 @@ function restart(): void {
   pollTimer = setInterval(poll, interval)
 }
 
+let polling = false
+
 async function poll(): Promise<void> {
+  if (polling) return
   if (eventBus.paused) return
+  polling = true
+  try { await pollInner() } finally { polling = false }
+}
+
+async function pollInner(): Promise<void> {
   let rows: PsRow[]
   try { rows = await runPs() } catch { return }
   const nowMap = new Map<number, PsRow>()
@@ -172,8 +180,10 @@ async function poll(): Promise<void> {
   for (const p of filteredExits) {
     emitExit(p)
   }
-  // Update knownProcs snapshot for next diff.
-  knownProcs = new Map(rows.map((r) => [r.pid, {
+  // Update knownProcs snapshot for next diff — filter own descendants
+  // so dead short-lived subprocesses (e.g. the powershell.exe spawned
+  // every poll for WMI) don't produce spurious process_exit events.
+  knownProcs = new Map(rows.filter((r) => !ownDescendants.has(r.pid) && r.pid !== ownPid).map((r) => [r.pid, {
     pid: r.pid, ppid: r.ppid, command: r.command,
     startedAt: knownProcs.get(r.pid)?.startedAt ?? Date.now()
   }]))
