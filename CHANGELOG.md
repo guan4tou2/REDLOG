@@ -3,6 +3,76 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.12.2 — 2026-08-18
+
+**Four more wins from the audit + a design doc for v0.13's two-tier chain.**
+
+### 1. `eventBus.publish` fanout deferred via `queueMicrotask`
+
+Before: publish synchronously called every listener on the writer's stack —
+renderer IPC broadcast + deconfliction webhook + AlertBus surface fan-out
+(4 policies × 5 surfaces in the v0.12.0 shape). Any listener that did real
+work (webhook fetch queue, IPC serialize) charged the caller for it.
+
+After: publish schedules the fanout via `queueMicrotask`. Caller returns
+immediately after the DB insert; listeners drain on the next microtask
+tick (still same event loop turn, before I/O). Ordering between two
+`publish()` calls is preserved (microtasks are FIFO). Pause check stays
+synchronous — a listener joining mid-microtask must still see the same
+"paused" state the writer saw.
+
+Zero visible change; removes a latent stacking hazard as more subscribers
+land.
+
+### 2. `secret-redaction` prefilter
+
+Before: `redactSecrets` ran 8 regex `.replace()` calls on every string —
+including plain-prose agent turn bodies. At 100 tool_result turns per
+minute that's 800 wasted regex passes.
+
+After: one anchored regex tests for any pattern-trigger substring
+(`=`/`:`/space/`AKIA`/`sk-`/`sk_`/`BEGIN`/`eyJ`/`ghp_`/`glpat`); if none
+present, skip the 8 passes entirely. Golden-input parity preserved (17
+existing fixtures still pass); +2 tests: prefilter fast path + regression
+guard that every real secret still redacts (catches a future prefilter
+tightening that silently drops a pattern).
+
+### 3. `deepRedactStrings` per-tool allowlist (`redactToolInput`)
+
+Before: `tool_call` events ran `deepRedactStrings` over the ENTIRE
+`tool_input` tree on every turn — including `Read`'s numeric `offset`/`limit`
+and `file_path` (path strings never contain the secrets we scan for).
+
+After: `TOOL_INPUT_SCAN_FIELDS` maps `toolName → Set<field>` of which
+top-level fields need scanning. `Read`/`Glob` scan nothing (all metadata);
+`Bash` scans only `command`; `Edit` scans `old_string`+`new_string`;
+`WebFetch` scans `prompt`. Unknown tools fall back to full-tree scan (safe
+default). New `redactToolInput(toolName, input)` helper. +9 tests.
+
+### 4. Timeline `maxZoom` + `timeStart/timeEnd` sorted-array fast path
+
+- `timeStart`/`timeEnd`: `events` is already sorted by `eventCompare`, so
+  min = `events[0].timestamp`, max = `events[last].timestamp`. Only markers
+  with `atTimestamp` can point outside that window — scan only those
+  (typically <20 rows) to widen the bounds. On a 131k-event project this
+  drops from O(N) with a per-event `displayTs()` call to O(N) with just
+  an `agentType` check + O(markers) work.
+- `maxZoom`: inline `displayTs` (99%+ of events are non-marker so the
+  function call was pure overhead), and short-circuit once the running
+  tightest gap crosses the `MAX_TRACK_W` ceiling — no denser gap can
+  raise the zoom ceiling.
+
+### Design doc: `docs/DESIGN-two-tier-chain.md` (v0.13 preview)
+
+831-line doc for the two-tier evidence chain landing in v0.13. Recommends
+a separate `events_logged` table (over a `chained BOOLEAN` column) so the
+append-only triggers on `events` stay inviolate. Includes tier
+classification for every real `(agent_type, subtype)` in the codebase, the
+`_causes` cross-tier rule (allowed — soft pointer), verifier / export
+bundle / renderer changes, migration story, and open questions
+(plugin-contributed default tier, logged-tier retention, webhook forwarding).
+Not implementation — decision point before v0.13.
+
 ## v0.12.1 — 2026-08-18
 
 **Three real perf wins that were hiding in the write path.**
