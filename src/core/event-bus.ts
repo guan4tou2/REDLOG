@@ -27,10 +27,21 @@ class RedLogEventBus extends EventEmitter {
     this.emit('recording', true, source)
   }
 
+  // v0.12.2: fanout is deferred via queueMicrotask so the caller (insertEvent
+  // + everywhere that publishes after a DB write) returns before listeners
+  // run. Every subscriber today either coalesces (renderer IPC batch,
+  // deconfliction webhook, AlertBus surfaces) or is already async — the sync
+  // fanout was a latent stacking hazard as more subscribers land. Ordering
+  // between two publish() calls is preserved (microtasks drain FIFO on the
+  // same tick), so a command_start followed by command_end still reaches
+  // subscribers in that order. Pause check stays synchronous — a listener
+  // rejoining mid-microtask would otherwise miss the "paused" gate.
   publish(event: RedLogEvent, opts?: { bypassPause?: boolean }): void {
     if (this._paused && !opts?.bypassPause) return
-    this.emit('event', event)
-    this.emit(`event:${event.agentType}`, event)
+    queueMicrotask(() => {
+      this.emit('event', event)
+      this.emit(`event:${event.agentType}`, event)
+    })
   }
 }
 
