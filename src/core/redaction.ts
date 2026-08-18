@@ -21,25 +21,80 @@ const pluginRules = new Map<string, { denylist: string[]; allowlist: string[] }>
 
 export function registerRedactionRules(pluginId: string, rules: { denylist?: string[]; allowlist?: string[] }): void {
   pluginRules.set(pluginId, { denylist: rules.denylist ?? [], allowlist: rules.allowlist ?? [] })
+  invalidateCache()
 }
 
 export function unregisterRedactionRules(pluginId: string): void {
   pluginRules.delete(pluginId)
+  invalidateCache()
 }
 
-function effectiveRules(): RedactionRules {
-  if (pluginRules.size === 0) return activeRules
-  const denylist = [...activeRules.denylist]
-  const allowlist = [...activeRules.allowlist]
-  for (const r of pluginRules.values()) {
-    denylist.push(...r.denylist)
-    allowlist.push(...r.allowlist)
+// v0.12.1: cache the merged rules + precompiled patterns. Before this,
+// `effectiveRules` allocated two arrays + two Sets on every getRules() call
+// and matchesAny recompiled every /regex/ pattern per token — at 20 denylist
+// regex × 100 tokens per shell command_end stdout that's 2000 new RegExp()
+// calls per event. Cache invalidates on configureRedaction /
+// (un)registerRedactionRules.
+interface CompiledPattern {
+  raw: string
+  re: RegExp | null    // non-null when raw is /.../ shaped
+  literal: string | null  // non-null when raw is a plain includes() substring
+}
+interface CachedRules {
+  rules: RedactionRules
+  denyCompiled: CompiledPattern[]
+  allowCompiled: CompiledPattern[]
+}
+let cachedRules: CachedRules | null = null
+
+function compilePattern(p: string): CompiledPattern | null {
+  if (!p) return null
+  if (p.startsWith('/') && p.endsWith('/') && p.length > 2) {
+    try { return { raw: p, re: new RegExp(p.slice(1, -1)), literal: null } }
+    catch { return null }
   }
-  return { ...activeRules, denylist: [...new Set(denylist)], allowlist: [...new Set(allowlist)] }
+  return { raw: p, re: null, literal: p }
+}
+
+function compileList(patterns: string[]): CompiledPattern[] {
+  const out: CompiledPattern[] = []
+  for (const p of patterns) {
+    const c = compilePattern(p)
+    if (c) out.push(c)
+  }
+  return out
+}
+
+function ensureCache(): CachedRules {
+  if (cachedRules) return cachedRules
+  const rules = pluginRules.size === 0
+    ? activeRules
+    : (() => {
+        const denylist = [...activeRules.denylist]
+        const allowlist = [...activeRules.allowlist]
+        for (const r of pluginRules.values()) {
+          denylist.push(...r.denylist)
+          allowlist.push(...r.allowlist)
+        }
+        return { ...activeRules, denylist: [...new Set(denylist)], allowlist: [...new Set(allowlist)] }
+      })()
+  cachedRules = {
+    rules,
+    denyCompiled: compileList(rules.denylist),
+    allowCompiled: compileList(rules.allowlist)
+  }
+  return cachedRules
+}
+
+function invalidateCache(): void { cachedRules = null }
+
+function effectiveRules(): RedactionRules {
+  return ensureCache().rules
 }
 
 export function configureRedaction(rules: Partial<RedactionRules>): void {
   activeRules = { ...activeRules, ...rules }
+  invalidateCache()
 }
 
 export function getRules(): RedactionRules {
@@ -60,17 +115,10 @@ export function shannonEntropy(s: string): number {
 
 const TOKEN_RE = /[A-Za-z0-9_\-\.\/+=]{16,}/g
 
-function matchesAny(patterns: string[], token: string): boolean {
-  for (const p of patterns) {
-    if (!p) continue
-    if (p.startsWith('/') && p.endsWith('/') && p.length > 2) {
-      try {
-        const re = new RegExp(p.slice(1, -1))
-        if (re.test(token)) return true
-      } catch { /* invalid regex, ignore */ }
-    } else if (token.includes(p)) {
-      return true
-    }
+function matchesCompiled(compiled: CompiledPattern[], token: string): boolean {
+  for (const c of compiled) {
+    if (c.re) { if (c.re.test(token)) return true }
+    else if (c.literal !== null && token.includes(c.literal)) return true
   }
   return false
 }
@@ -91,11 +139,19 @@ export function redact(text: string, rules: RedactionRules = effectiveRules()): 
   // Clone the regex per call so shared `TOKEN_RE.lastIndex` state can't leak
   // between concurrent redact() calls (the module-level regex has /g).
   const re = new RegExp(TOKEN_RE.source, TOKEN_RE.flags)
+  // v0.12.1: pick the precompiled lists when the caller passed the cached
+  // rules object (the common path — main + tailer + insertEvent). When
+  // callers pass a NEW rules object (api-server merges lootValues into the
+  // denylist per event), compile once here rather than per token.
+  const cache = ensureCache()
+  const useCached = rules === cache.rules
+  const denyCompiled = useCached ? cache.denyCompiled : compileList(rules.denylist)
+  const allowCompiled = useCached ? cache.allowCompiled : compileList(rules.allowlist)
   while ((m = re.exec(text)) !== null) {
     const token = m[0]
     const offset = m.index
-    if (matchesAny(rules.allowlist, token)) continue
-    if (matchesAny(rules.denylist, token)) {
+    if (matchesCompiled(allowCompiled, token)) continue
+    if (matchesCompiled(denyCompiled, token)) {
       redacted.push({ pattern: 'denylist', hint: `${token.length} chars`, start: offset, end: offset + token.length })
       continue
     }
