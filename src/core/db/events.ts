@@ -25,6 +25,74 @@ export interface RedLogEvent {
   // used for `hash`. Nullable — operators created pre-v0.6.89 (or when
   // keygen fails) write unsigned rows, which the chain hash still protects.
   signature?: string | null
+  // v0.13.0: tier this event was written to. `chained` = the primary
+  // hash-chained + signed + anchored path (unchanged from earlier
+  // versions). `logged` = supporting-evidence table (`events_logged`);
+  // no hash / signature / anchor. Rows constructed by legacy callers
+  // without setting this default to `chained`. See
+  // docs/DESIGN-two-tier-chain.md.
+  tier?: 'chained' | 'logged'
+}
+
+// ─── v0.13.0 two-tier classifier ────────────────────────────────────────────
+//
+// Tier assignment is data-driven from (agent_type, subtype). The rubric:
+//   Q1. Would a court/blue team ask for THIS row alone?  → chained.
+//   Q2. Does it earn keep via `_causes` to a chained row? → logged.
+// See docs/DESIGN-two-tier-chain.md §2 for the full table and reasoning.
+// Anything not listed here defaults to `chained` — unknown-source rows
+// are treated as high-value evidence until an operator (or a plugin
+// manifest) opts them into `logged`.
+
+/** (agent_type, subtype) tuples that write to `events_logged` instead of
+ *  `events`. Keyed as `"agent_type:subtype"` to mirror the shape of
+ *  `PAUSE_EXEMPT_AGENT_TYPES` (constant-time membership check). */
+const LOGGED_TIER: ReadonlySet<string> = new Set([
+  // mitmproxy DNS producer (agent_type=dns)
+  'dns:dns_query',
+  'dns:dns_response',
+  // mitmproxy HTTP producer (agent_type=scanner)
+  'scanner:http_request_start',
+  'scanner:http_response',
+  'scanner:http_error',
+  'scanner:http_request_dropped',
+  // CDP browser console. `browser_launched` + top-level navigation stay
+  // CHAINED — they're session-genesis rows.
+  'browser:console',
+  // Agent chain-of-thought — the `tool_call` that follows IS chained.
+  'agent:thinking',
+  // Process-monitor self-instrumentation. `process_spawn`/`process_exit`
+  // are provisionally logged; §2.3 of the design doc flags a reconsider
+  // ticket if a real IR investigation ever cites one.
+  'process:process_spawn',
+  'process:process_exit',
+  'system:process_monitor_saturated',
+  'system:process_monitor_ps_unavailable'
+])
+
+/** Special case (design doc §4.1): `system.ip_verdict` tier depends on
+ *  the `data.ip_verdict_kind` field — the unchanged-tick shape is
+ *  heartbeat (logged), anything else is a real state change (chained). */
+function isLoggedTierIPVerdict(agentType: string, data: Record<string, unknown>): boolean {
+  return agentType === 'system'
+    && data.subtype === 'ip_verdict'
+    && data.ip_verdict_kind === 'unchanged'
+}
+
+/** Which table an insertEvent call should target. Every real (agentType,
+ *  subtype) pair emitted by RedLog must resolve here to exactly one
+ *  tier — the `tier-classifier-total` test enforces that. Unknown pairs
+ *  default to `chained` as the fail-safe direction (see §2.1 of the design
+ *  doc: downgrading chained→logged later would need a version bump;
+ *  upgrading logged→chained is additive). */
+export function classifyTier(
+  agentType: string,
+  data: Record<string, unknown>
+): 'chained' | 'logged' {
+  const subtype = typeof data.subtype === 'string' ? data.subtype : ''
+  if (LOGGED_TIER.has(`${agentType}:${subtype}`)) return 'logged'
+  if (isLoggedTierIPVerdict(agentType, data)) return 'logged'
+  return 'chained'
 }
 
 let sessionId = crypto.randomUUID()
@@ -239,6 +307,30 @@ export function insertEvent(
   data: Record<string, unknown>,
   opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean }
 ): RedLogEvent | null {
+  // Pause enforcement stays at the front door for BOTH tiers. See the
+  // block comment below (previously the head of this function) for why
+  // `system`/`marker` are exempt and why the gate lives here instead of
+  // at the 46 call sites.
+  if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !opts?.bypassPause && eventBus.paused) return null
+
+  // v0.13.0: two-tier dispatch. The chained arm is the ENTIRE historical
+  // body of insertEvent (hash + Ed25519 sign + INSERT into `events`). The
+  // logged arm skips the chain machinery entirely and lands in
+  // `events_logged`. See docs/DESIGN-two-tier-chain.md §4.
+  const tier = classifyTier(agentType, data)
+  if (tier === 'logged') return insertLoggedEvent(agentType, data, opts)
+  return insertChainedEvent(agentType, data, opts)
+}
+
+/** The historical chained path — hash-linked + Ed25519-signed, lands in
+ *  `events`. See the block comment before insertEvent for the pause
+ *  reasoning; every existing invariant (dedup window, prev_hash cache,
+ *  clock-anomaly stamp, canonical serialisation, signature) stays here. */
+function insertChainedEvent(
+  agentType: string,
+  data: Record<string, unknown>,
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean }
+): RedLogEvent | null {
   // v0.9.5: pause means "do not record", not "do not display". Before this the
   // gate lived only on eventBus.publish(), so a paused RedLog still wrote every
   // event into the DB and the hash chain — it only stopped the UI feed and the
@@ -260,7 +352,6 @@ export function insertEvent(
   //
   // `bypassPause` covers the remaining deliberate actions — today the manual
   // screenshot trigger.
-  if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !opts?.bypassPause && eventBus.paused) return null
 
   const db = getDB()
   const now = Date.now()
@@ -404,6 +495,73 @@ export function insertEvent(
   return event
 }
 
+/** The logged-tier insert path (v0.13.0). Deliberately does NOT:
+ *  - Update `cachedLastHash` (no chain contribution).
+ *  - Update `cachedEventCount` (that count is chain-scoped — the anchor
+ *    uses it).
+ *  - Run `detectClockAnomaly` (only meaningful on rows the chain will
+ *    one day rehash).
+ *  - Compute canonical JSON or sign anything.
+ *  - Enter the shell-command dedup window (dedup is chained-tier
+ *    concern; logged rows are high-volume and dedup would cost more
+ *    than it saves).
+ *
+ *  The returned event has `hash: undefined`, `signature: null`,
+ *  `prevHash: null`, `monotonicNs: null`, `ntpOffsetMs: null`, and
+ *  `tier: 'logged'`. Callers reading `event.hash` on a logged row and
+ *  expecting a value have a bug the tier classifier just exposed — that
+ *  is the design intent, not a regression. */
+function insertLoggedEvent(
+  agentType: string,
+  data: Record<string, unknown>,
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string }
+): RedLogEvent | null {
+  if (!opts?.operatorId) {
+    throw new Error(`insertEvent (logged): operatorId is required (agent_type=${agentType}). ` +
+      `Every event must resolve to a known operator — see docs/operators.md.`)
+  }
+  const db = getDB()
+  const now = Date.now()
+  const event: RedLogEvent = {
+    id: crypto.randomUUID(),
+    timestamp: now,
+    engagementId: opts.engagementId ?? 'default',
+    sessionId,
+    operatorId: opts.operatorId,
+    agentType,
+    hostname: os.hostname(),
+    sourceIP: null,
+    targetId: opts.targetId ?? null,
+    data,
+    createdAt: now,
+    // Deliberately absent — see the block above.
+    hash: undefined,
+    prevHash: null,
+    monotonicNs: null,
+    ntpOffsetMs: null,
+    signature: null,
+    tier: 'logged'
+  }
+  try {
+    db.prepare(`
+      INSERT INTO events_logged
+        (id, timestamp, engagement_id, session_id, operator_id, agent_type,
+         hostname, source_ip, target_id, data, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event.id, event.timestamp, event.engagementId, event.sessionId,
+      event.operatorId, event.agentType, event.hostname, event.sourceIP,
+      event.targetId, JSON.stringify(event.data), event.createdAt
+    )
+  } catch (e) {
+    // Logged-tier writes should fail loud — there's no chain cache to
+    // invalidate, so callers just get null and can decide what to do.
+    console.error('[insertLoggedEvent] insert failed:', e)
+    return null
+  }
+  return event
+}
+
 export function queryEvents(opts: {
   agentType?: string
   limit?: number
@@ -425,6 +583,11 @@ export function queryEvents(opts: {
   // visible client-side, which meant the pager marked itself "all loaded"
   // when fewer than 200 came back — but the visible count was tiny.
   excludeHousekeeping?: boolean
+  /** v0.13.0: which tier(s) to include. Default `all` — the operator's
+   *  Timeline shows both tiers. `chained` is what the auditor view and
+   *  the bundle verifier consume; `logged` is available for
+   *  logged-tier-only queries (rare — mostly a debug affordance). */
+  tier?: 'all' | 'chained' | 'logged'
 }): RedLogEvent[] {
   const db = getDB()
   const conditions: string[] = []
@@ -456,11 +619,44 @@ export function queryEvents(opts: {
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   const limit = opts.limit ?? 200
+  const tier = opts.tier ?? 'all'
 
-  const rows = db.prepare(
-    `SELECT * FROM events ${where} ORDER BY timestamp DESC LIMIT ?`
-  ).all(...params, limit) as Array<Record<string, unknown>>
+  // v0.13.0: one SELECT per participating tier, UNION ALL, outer ORDER +
+  // LIMIT. Both tables carry compatible shape for the columns we return
+  // (hash/prev_hash/signature/monotonic_ns/ntp_offset_ms are NULL on
+  // logged rows and typed on chained rows). Both `idx_events_ts` and
+  // `idx_events_logged_ts` deliver rows already-ordered, so the outer
+  // sort is a k-way merge over two sorted inputs.
+  const chainedSelect = `
+    SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+           hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+           monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+    FROM events ${where}
+  `
+  const loggedSelect = `
+    SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+           hostname, source_ip, target_id, data,
+           NULL AS hash, NULL AS prev_hash, created_at,
+           NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+           'logged' AS tier
+    FROM events_logged ${where}
+  `
 
+  let sql: string
+  let bind: unknown[]
+  if (tier === 'chained') {
+    sql = `${chainedSelect} ORDER BY timestamp DESC LIMIT ?`
+    bind = [...params, limit]
+  } else if (tier === 'logged') {
+    sql = `${loggedSelect} ORDER BY timestamp DESC LIMIT ?`
+    bind = [...params, limit]
+  } else {
+    sql = `SELECT * FROM (${chainedSelect} UNION ALL ${loggedSelect})
+           ORDER BY timestamp DESC LIMIT ?`
+    bind = [...params, ...params, limit]
+  }
+
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
 }
 
@@ -469,19 +665,44 @@ export function queryEvents(opts: {
 // slice request — for events older than the newest 5000, the find returned
 // undefined and the caller reported "event not found". The primary-key
 // lookup on `id` is a hash index scan, ~µs regardless of table size.
+//
+// v0.13.0: check chained table first, then logged. Chained wins on the
+// (impossible in practice) UUID collision — auditors get the chained
+// answer when there's ambiguity.
 export function queryEventById(id: string): RedLogEvent | null {
   const db = getDB()
-  const row = db.prepare('SELECT * FROM events WHERE id = ? LIMIT 1').get(id) as
+  const chained = db.prepare('SELECT * FROM events WHERE id = ? LIMIT 1').get(id) as
     Record<string, unknown> | undefined
-  return row ? rowToEvent(row) : null
+  if (chained) return rowToEvent({ ...chained, tier: 'chained' })
+  const logged = db.prepare('SELECT * FROM events_logged WHERE id = ? LIMIT 1').get(id) as
+    Record<string, unknown> | undefined
+  return logged ? rowToEvent({ ...logged, tier: 'logged' }) : null
 }
 
-export function getEventCount(): number {
-  if (cachedEventCount !== null) return cachedEventCount
+/** Count rows in the chained tier by default. The chain-anchor code path
+ *  MUST see chained-only (that count sizes the head hash). v0.13.0 adds
+ *  the `tier` option for renderer / capture-health callers that want the
+ *  total or the logged-tier row count. */
+export function getEventCount(opts?: { tier?: 'chained' | 'logged' | 'all' }): number {
+  const tier = opts?.tier ?? 'chained'
+  if (tier === 'chained') {
+    if (cachedEventCount !== null) return cachedEventCount
+    const db = getDB()
+    const row = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }
+    cachedEventCount = row.count
+    return row.count
+  }
   const db = getDB()
-  const row = db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }
-  cachedEventCount = row.count
-  return row.count
+  if (tier === 'logged') {
+    const row = db.prepare('SELECT COUNT(*) as count FROM events_logged').get() as { count: number }
+    return row.count
+  }
+  // 'all'
+  const chained = cachedEventCount !== null
+    ? cachedEventCount
+    : (db.prepare('SELECT COUNT(*) as count FROM events').get() as { count: number }).count
+  const logged = (db.prepare('SELECT COUNT(*) as count FROM events_logged').get() as { count: number }).count
+  return chained + logged
 }
 
 export function searchEvents(query: string, limit = 100): RedLogEvent[] {
@@ -554,6 +775,12 @@ function rowToEvent(row: Record<string, unknown>): RedLogEvent {
     createdAt: row.created_at as number,
     monotonicNs: (row.monotonic_ns as string | null) ?? null,
     ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null,
-    signature: (row.signature as string | null) ?? null
+    signature: (row.signature as string | null) ?? null,
+    // v0.13.0: honour tier hint from the SELECT (queryEvents adds
+    // `'chained' AS tier`/`'logged' AS tier`; queryEventById spreads
+    // it in). Rows without a hint default to `chained` — every legacy
+    // row lives in `events`, so this default is correct for any query
+    // path that pre-dates the two-tier split.
+    tier: ((row.tier as 'chained' | 'logged' | undefined) ?? 'chained')
   }
 }

@@ -134,6 +134,42 @@ export function initDB(projectDir: string): Database.Database {
       PRIMARY KEY (source_event_id, field)
     );
     CREATE INDEX IF NOT EXISTS idx_sanitized_source ON sanitized_events(source_event_id);
+
+    -- v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.3): the
+    -- logged tier for supporting evidence -- DNS lookups, HTTP flow
+    -- bookkeeping, CDP console lines, agent thinking, ip_verdict
+    -- unchanged-tick heartbeats. Rows here are NOT hash-chained, NOT
+    -- Ed25519-signed, and NOT covered by the OTS anchor. The absence of
+    -- prev_hash + hash + signature + monotonic_ns + ntp_offset_ms is
+    -- the tier -- every reader that unions the two tables discovers
+    -- that at compile time (no hash field to reference on the row).
+    --
+    -- Retention (docs/DESIGN-logged-tier-retention.md): unlike events,
+    -- this table has NO append-only trigger. Sweep code path deletes
+    -- rows past retention.loggedTier.keepDays (default 30d), emitting
+    -- one chained system.retention_pruned_logged summary per sweep.
+    CREATE TABLE IF NOT EXISTS events_logged (
+      id            TEXT PRIMARY KEY,
+      timestamp     INTEGER NOT NULL,
+      engagement_id TEXT NOT NULL,
+      session_id    TEXT NOT NULL,
+      operator_id   TEXT NOT NULL,
+      agent_type    TEXT NOT NULL,
+      hostname      TEXT NOT NULL DEFAULT '',
+      source_ip     TEXT,
+      target_id     TEXT,
+      data          TEXT NOT NULL DEFAULT '{}',
+      created_at    INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_events_logged_ts         ON events_logged(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_events_logged_type_ts    ON events_logged(agent_type, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_logged_engagement ON events_logged(engagement_id);
+    CREATE INDEX IF NOT EXISTS idx_events_logged_target     ON events_logged(target_id);
+    -- Retention sweep uses created_at (not timestamp) -- see
+    -- DESIGN-logged-tier-retention.md sec.5.2. created_at is monotonic
+    -- in wall-clock terms since it is set inside the insert transaction
+    -- from Date.now(); timestamp can lag or lead per producer clock.
+    CREATE INDEX IF NOT EXISTS idx_events_logged_created_at ON events_logged(created_at);
   `)
 
   // Migrate: add columns if missing (older DB versions)
