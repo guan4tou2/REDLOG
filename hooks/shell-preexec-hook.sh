@@ -154,12 +154,15 @@ if [[ -n "${ZSH_VERSION:-}" ]]; then
 
 # --- Bash hooks ---
 elif [[ -n "${BASH_VERSION:-}" ]]; then
+  _REDLOG_SOURCING=1
+
   _redlog_debug_trap() {
-    if [[ "$BASH_COMMAND" != "$PROMPT_COMMAND" ]] && [[ -z "$_REDLOG_LAST_CMD" ]]; then
-      _REDLOG_LAST_CMD="$BASH_COMMAND"
-      _REDLOG_CMD_START=$SECONDS
-      _redlog_send_event "command_start" "$BASH_COMMAND"
-    fi
+    [[ -n "${_REDLOG_SOURCING:-}" ]] && return
+    [[ "$BASH_COMMAND" == "$PROMPT_COMMAND" ]] && return
+    [[ -n "$_REDLOG_LAST_CMD" ]] && return
+    _REDLOG_LAST_CMD="$BASH_COMMAND"
+    _REDLOG_CMD_START=$SECONDS
+    _redlog_send_event "command_start" "$BASH_COMMAND"
   }
 
   _redlog_prompt_command() {
@@ -293,3 +296,5 @@ if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
 else
   echo "[redlog] shell hook active — commands will be logged to RedLog timeline"
 fi
+
+unset _REDLOG_SOURCING
