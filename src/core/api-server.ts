@@ -325,7 +325,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     //   claude mcp add --transport http redlog http://127.0.0.1:<port>/mcp \
     //     --header "Authorization: Bearer <operator-token>"
     if ((route === '/mcp' || route === '/api/mcp') && req.method === 'POST') {
-      const parsed = JSON.parse(await readBody(req))
+      let parsed: unknown
+      try { parsed = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const dispatch = makeMcpDispatch(operator)
       const messages = Array.isArray(parsed) ? parsed : [parsed]
       const extraTools = listPluginTools().map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
@@ -344,7 +345,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/events' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req))
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const agentType = body.agent_type || body.agentType || 'external'
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
@@ -621,7 +623,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/marker' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req))
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const event = insertEvent('marker', {
         title: body.title || 'Untitled',
         notes: body.notes || '',
@@ -634,7 +637,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/loot/scan' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req))
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       if (!lootDetectorRef) {
         json(res, 503, { error: 'Loot detector not available' })
         return
@@ -690,7 +694,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/quickmarks' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req))
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const mark = createQuickMark({
         title: body.title || 'Untitled',
         url: body.url,
@@ -730,8 +735,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // terminalId) to get its castPath, then slice the .cast from the
     // preceding command_start to command_end.
     if (route === '/api/terminal/replay' && req.method === 'POST') {
-      const body = JSON.parse(await readBody(req)) as { eventId?: string }
-      const eventId = body.eventId
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const eventId = body.eventId as string | undefined
       if (!eventId) { json(res, 400, { error: 'eventId required' }); return }
       const target = queryEventById(eventId)
       if (!target) { json(res, 404, { error: 'event not found' }); return }
@@ -824,8 +830,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // Four-layer redaction, layer 4 — sanitize event bytes for pre-delivery.
     // POST /api/sanitize { event_ids, fields, reason?, dry_run? }
     if (route === '/api/sanitize' && req.method === 'POST') {
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       try {
-        const body = JSON.parse(await readBody(req))
         const result = sanitize({
           eventIds: Array.isArray(body.event_ids) ? body.event_ids : [],
           fields: Array.isArray(body.fields) && body.fields.length ? body.fields : ['output', 'output_preview', 'command'],
@@ -911,7 +918,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 403, { error: 'Only the primary operator can create operators' })
         return
       }
-      const body = JSON.parse(await readBody(req))
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const name = (body.name || '').toString().trim()
       if (!name) { json(res, 400, { error: 'name is required' }); return }
       const id = (body.id || '').toString().trim() || slugifyOperatorId(name)
@@ -955,7 +963,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
       if (!action && req.method === 'PATCH') {
         if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        const body = JSON.parse(await readBody(req))
+        let body: Record<string, unknown>
+        try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
         const name = (body.name || '').toString().trim()
         if (!name) { json(res, 400, { error: 'name is required' }); return }
         const ok = renameOperator(targetId, name)
