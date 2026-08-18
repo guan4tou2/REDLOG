@@ -1,5 +1,5 @@
 import { getDB } from './db/index'
-import { detectHooks } from './hooks-manager'
+import { detectHooks, invalidateCommandCache } from './hooks-manager'
 
 // "You are recording nothing" is the worst silent failure an audit tool can
 // have. This module answers, at a glance: which capture sources are actually
@@ -178,13 +178,14 @@ function cfgFlag(path: string): boolean | undefined {
   return typeof cur === 'boolean' ? cur : undefined
 }
 
-// detectHooks() runs `which` via execSync — cheap once, but getCaptureHealth is
-// on a hot path (every new event + every status poll), and doing synchronous
-// subprocess spawns there blocks the main process and freezes the UI. Hook
-// install status barely changes during a session (and Settings re-detects on
-// install), so cache it briefly.
+// detectHooks() runs `which`/`where` via spawnSync — on Windows each `where`
+// costs 70-300ms and we probe 4+ binaries, blocking the main process for 500ms+.
+// Hook availability virtually never changes mid-session: the operator isn't
+// installing mitmproxy while the app is open.  Cache for 2 minutes; Settings
+// calls `invalidateHooksCache()` on open and after install/uninstall so the
+// panel always shows fresh data.
 let hooksCache: { at: number; value: ReturnType<typeof detectHooks> } | null = null
-const HOOKS_TTL_MS = 15_000
+const HOOKS_TTL_MS = 120_000
 
 function cachedHooks(now: number): ReturnType<typeof detectHooks> {
   if (hooksCache && now - hooksCache.at < HOOKS_TTL_MS) return hooksCache.value
@@ -194,7 +195,7 @@ function cachedHooks(now: number): ReturnType<typeof detectHooks> {
   return value
 }
 
-export function invalidateHooksCache(): void { hooksCache = null; healthCache = null }
+export function invalidateHooksCache(): void { hooksCache = null; healthCache = null; invalidateCommandCache() }
 
 export function getCaptureHealth(now = Date.now()): CaptureHealth {
   if (healthCache && now - healthCache.at < HEALTH_TTL_MS) return healthCache.value
