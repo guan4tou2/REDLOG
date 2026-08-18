@@ -47,6 +47,7 @@ import * as os from 'os'
 import * as crypto from 'crypto'
 import chokidar, { FSWatcher } from 'chokidar'
 import { insertEvent } from '../../core/db/events'
+import { extractTarget } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError } from '../../core/capture-health'
@@ -210,6 +211,17 @@ export interface TailerHostConfig {
   /** Legacy v0.6.59 whitelist. When non-empty, ONLY these cwds are
    *  tailed. */
   watchPaths?: string[]
+  /** v0.12.0: called after every `agent.tool_call` event insert with the
+   *  extracted target host (if any). Feeds the alert subsystem's Scope
+   *  policy so agent-driven scope violations register the same way shell
+   *  and http ones do. Optional — if unset, agent tool calls skip the
+   *  scope check (the event still lands in the chain). */
+  scopeDispatch?: (input: {
+    target: string
+    source: 'agent_tool'
+    action: string
+    sourceEventId: string | null
+  }) => void
 }
 
 // ─── Session state ──────────────────────────────────────────────────────────
@@ -362,6 +374,28 @@ function defaultPickCommandForCache(_toolName: string | undefined, input: Record
     if (typeof v === 'string' && v) return v
   }
   return null
+}
+
+/** v0.12.0: pull a host out of a tool_input's picked string. URLs get their
+ *  hostname; anything shell-command-shaped goes through the same target
+ *  extractor the shell lane uses (`curl example.com`, `nmap 10.0.0.5`, …).
+ *  Returns null when nothing plausibly host-shaped shows up — file paths
+ *  and free-text prompts should NOT trigger a scope check. */
+function extractTargetFromToolInput(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  // A picked `url` field is already a URL; parse rather than shell-lex it.
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed)
+      return u.hostname || null
+    } catch { return null }
+  }
+  // File paths shouldn't route through the shell extractor either — an
+  // absolute path just happens to start with a slash that extractTarget's
+  // heuristics don't want.
+  if (trimmed.startsWith('/') || trimmed.startsWith('~')) return null
+  return extractTarget(trimmed)
 }
 
 // ─── Emit ───────────────────────────────────────────────────────────────────
@@ -521,6 +555,25 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       s.redlogIdByUuid.set(t.uuid, ev.id)
       s.turnsEmitted++
       eventBus.publish(ev)
+      // v0.12.0: hand tool_call events to the alert subsystem so agent-
+      // driven activity registers in the Scope report the same way shell
+      // and http do. Extraction uses the same picker as the sensitive-
+      // path cache — command/url/file_path/path/query, first hit wins.
+      if (subtype === 'tool_call' && cfg.scopeDispatch && t.toolInput) {
+        const picker = s.adapter.pickCommandForCache ?? defaultPickCommandForCache
+        const raw = picker(t.toolName, t.toolInput)
+        if (raw) {
+          const target = extractTargetFromToolInput(raw)
+          if (target) {
+            cfg.scopeDispatch({
+              target,
+              source: 'agent_tool',
+              action: `${t.toolName ?? 'tool'} ${raw}`.slice(0, 200),
+              sourceEventId: ev.id
+            })
+          }
+        }
+      }
       const waiting = s.pendingByParentUuid.get(t.uuid)
       if (waiting) {
         s.pendingByParentUuid.delete(t.uuid)
