@@ -38,6 +38,16 @@ mislabelled that as `safe`) is no longer reachable.
   `policies`, `surface`, `bus`) plus `index` — public exports only from `index`
 * `src/main/services/producers/ip-signal-producer.ts` — polls external + local
   address, holds the 3-in-a-row confirmation window, dispatches every tick
+* `scopeSignalFor(agentType, data)` in `api-server.ts` routes every incoming
+  event to a `TargetHitSignal` when it carries a checkable host — shell
+  `command_start` (source=shell), scanner `http_request_start` (source=http),
+  dns `dns_query` (source=dns). Everything else no-ops.
+* `configureAgentTailer({ scopeDispatch })` hook — the tailer extracts a
+  target from every `agent.tool_call`'s `tool_input` (URL parsed for
+  hostname, shell-shaped strings through the target-extractor, absolute
+  paths + free text skipped) and hands it to the alert bus with
+  source=agent_tool. This closes the last silent lane: a Claude session
+  hitting an out-of-scope host now shows up in the scope report
 * `src/main/services/alert-runtime.ts` — one convenience wrapper that bundles
   bus + policies + surfaces + producer; main sees `alertRuntime.configure(cfg)`
   and doesn't touch the internals

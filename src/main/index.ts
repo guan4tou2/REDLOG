@@ -584,7 +584,11 @@ function startProject(project: ProjectMeta): void {
       enabled: config.agentTailer?.enabled ?? true,
       engagementId, operatorId,
       excludedPaths, watchPaths,
-      emitThinking: config.agentTailer?.emitThinking ?? false
+      emitThinking: config.agentTailer?.emitThinking ?? false,
+      // v0.12.0: route agent tool_call events through the alert subsystem
+      // so a Claude / Codex / OpenCode session hitting an out-of-scope host
+      // registers a scope_violation the same way a shell command would.
+      scopeDispatch: (input) => alertRuntime.dispatchTargetHit(input)
     })
   }
 

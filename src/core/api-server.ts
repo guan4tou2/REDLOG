@@ -78,6 +78,44 @@ interface AlertRuntimeSlice {
 }
 let alertRuntimeRef: AlertRuntimeSlice | null = null
 
+/** Shape a scope-check signal from an incoming event by (agentType, subtype).
+ *  Returns null when the event doesn't carry a checkable target — most
+ *  agent types don't (marker, session_start, capture_health, …), and even
+ *  within a checkable type only certain subtypes matter (dns_query but not
+ *  dns_response; command_start but not command_end). Keeping the mapping
+ *  in one function means adding a new source is a one-line edit here, not
+ *  a hunt through the dispatch site. */
+function scopeSignalFor(
+  agentType: string,
+  data: Record<string, unknown>
+): { target: string; source: 'shell' | 'dns' | 'http' | 'scanner' | 'agent_tool'; action: string } | null {
+  if (agentType === 'shell' && data.subtype === 'command_start') {
+    const target = (data.detectedTarget as string | undefined) ?? null
+    if (!target) return null
+    return { target, source: 'shell', action: (data.command as string) ?? '' }
+  }
+  if (agentType === 'scanner' && data.subtype === 'http_request_start') {
+    const target = (data.host as string | undefined) ?? null
+    if (!target) return null
+    return {
+      target,
+      source: 'http',
+      action: `${(data.method as string) ?? 'GET'} ${(data.url as string) ?? ''}`.trim()
+    }
+  }
+  if (agentType === 'dns' && data.subtype === 'dns_query') {
+    const target = (data.query_name as string | undefined) ?? null
+    // Bare `.` shows up on some resolvers as a root-query artifact — skip.
+    if (!target || target === '.') return null
+    return {
+      target: target.replace(/\.$/, ''),  // strip trailing dot from FQDN form
+      source: 'dns',
+      action: `${(data.query_type as string) ?? 'A'} ${target}`
+    }
+  }
+  return null
+}
+
 /** v0.9.6 (T2): lets main wire terminal-manager's live cast position in
  *  without core importing main. Same shape as setPluginHost / the tailer
  *  contribution sink. */
@@ -533,19 +571,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       noteStartEvent(agentType, data, event.id)
 
       // v0.12.0: dispatch the scope check to the alert runtime. Runs AFTER the
-      // shell event insert so the resulting scope_violation carries the shell
-      // event id in `_causes`. `source` differentiates shell / http / dns /
-      // agent_tool lanes for the CombinedPolicy correlation.
-      if (isStart && alertRuntimeRef) {
-        const detectedForScope = (data.detectedTarget as string | undefined) ?? null
-        if (detectedForScope) {
-          alertRuntimeRef.dispatchTargetHit({
-            target: detectedForScope,
-            source: agentType === 'scanner' ? 'scanner' : 'shell',
-            action: (data.command as string) ?? '',
-            sourceEventId: event.id
-          })
-        }
+      // event insert so the resulting scope_violation carries the source event
+      // id in `_causes`. `source` differentiates shell / http / dns / scanner
+      // / agent_tool lanes for the CombinedPolicy correlation and for the
+      // adherence report breakdown.
+      if (alertRuntimeRef) {
+        const hit = scopeSignalFor(agentType, data)
+        if (hit) alertRuntimeRef.dispatchTargetHit({ ...hit, sourceEventId: event.id })
       }
       // v0.6.89 `_causes` for loot: emit the loot event NOW that we have the
       // shell command_end's id — so `_causes: [event.id]` points at the exact
