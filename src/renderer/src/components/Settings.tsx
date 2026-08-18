@@ -724,14 +724,16 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
         )}
         <div className="space-y-2">
           {hooks.map((hook) => {
-            const isManual = hook.available && hook.installMethod === 'manual'
+            const isManual = hook.installMethod === 'manual'
             const hasSteps = isManual && !!hook.manualSteps?.length
             const isOpen = expanded === hook.id
             return (
               <div
                 key={hook.id}
                 className={`rounded border ${
-                  hook.available ? 'border-zinc-700 bg-zinc-900/50' : 'border-zinc-800 bg-zinc-900/20 opacity-50'
+                  hook.available ? 'border-zinc-700 bg-zinc-900/50'
+                    : isManual ? 'border-zinc-800 bg-zinc-900/30 opacity-75'
+                    : 'border-zinc-800 bg-zinc-900/20 opacity-50'
                 }`}
               >
                 <div className="flex items-center justify-between p-3">
