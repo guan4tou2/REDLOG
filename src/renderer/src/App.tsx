@@ -7,7 +7,6 @@ import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
 import Settings from './components/Settings'
 import ProjectPicker from './components/ProjectPicker'
-import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
 import { SearchPanel } from './components/SearchPanel'
@@ -15,12 +14,15 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
-import { LoadingSpinner } from './components/Feedback'
+import { LoadingSpinner, EmptyState } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { computeCaptureReadiness } from './lib/captureReadiness'
+import { emptyStateFor } from './lib/emptyState'
+import { shortcutsForScope, MOD_TOKEN } from './lib/shortcuts'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
+import { ICON } from './lib/icons'
 import logoUrl from './assets/logo.svg'
 
 type View = SidebarViewId | 'settings' | 'search'
@@ -63,6 +65,31 @@ export default function App(): JSX.Element {
   const [showMarker, setShowMarker] = useState(false)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const { t } = useI18n()
+
+  // F4: turns an empty view's CTA target (from emptyStateFor) into an app-level
+  // action. Threaded to the empty views so their "nothing here" screens have a
+  // way forward instead of being dead ends. 'doc' has no in-app destination yet,
+  // so those CTAs are suppressed at the view rather than wired to a no-op.
+  const handleEmptyAction = (target: string): void => {
+    if (target === 'dashboard') setView('dashboard')
+    else if (target === 'marker') setShowMarker(true)
+    else if (target === 'screenshot') window.redlog.screenshot.capture().catch(() => {})
+  }
+
+  // Navigation. Phase C step 5 (O3): the standalone TargetView is gone — the
+  // timeline's target lane axis subsumes it — so the "Targets" entry deep-links
+  // into the Timeline with the target axis switched on (persisted + a live event
+  // in case the panel is already mounted).
+  const goTo = (v: View): void => {
+    setFocusEvent(null)
+    if (v === 'targets') {
+      try { localStorage.setItem('redlog-timeline-lane-axis', 'target') } catch { /* private mode */ }
+      window.dispatchEvent(new CustomEvent('redlog-timeline-set-axis', { detail: 'target' }))
+      setView('timeline')
+      return
+    }
+    setView(v)
+  }
 
   useEffect(() => {
     window.redlog.project.active().then((p) => {
@@ -123,6 +150,15 @@ export default function App(): JSX.Element {
         }).catch(() => {})
         return
       }
+      // ⌘/Ctrl+B toggles the sidebar collapse (VS Code convention). The Sidebar
+      // owns the state + persistence; we just fire the event it listens for.
+      if (cmd && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('redlog:toggle-sidebar'))
+        return
+      }
       // ⌘⇧⌥ + arrow snaps the HUD to a corner of the display it's currently
       // on (audit finding #53). Was ⌘⌥ initially but macOS Sequoia's built-in
       // window tiling grabs that combo before the app sees it, so add Shift
@@ -151,7 +187,7 @@ export default function App(): JSX.Element {
         const target = viewForShortcut(num)
         if (target) {
           e.preventDefault()
-          setView(target)
+          goTo(target)
         }
       }
     }
@@ -191,6 +227,22 @@ export default function App(): JSX.Element {
         </div>
         <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* F6: a persistent pointer entry to the Search view. It was only
+              reachable via ⌘/ (or ⌘K) before, so a newcomer couldn't find the
+              headline full-text search by looking. Kept out of the sidebar to
+              leave DEFAULT_ORDER length + the ⌘1..N numbering untouched. */}
+          <button
+            onClick={() => setView('search')}
+            className={`px-2 py-1 rounded-md border transition-colors ${
+              view === 'search'
+                ? 'text-red-400 bg-red-500/10 border-red-500/15'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05] border-transparent'
+            }`}
+            title={t('app.search')}
+            aria-label={t('app.search')}
+          >
+            <span aria-hidden className="text-[13px] leading-none">{ICON.search}</span>
+          </button>
           <LaunchBrowserButton />
           <button
             onClick={() => setShowMarker(true)}
@@ -204,7 +256,7 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
+        <Sidebar active={view} onNavigate={(v) => goTo(v as View)} />
 
         <div className="flex-1 min-w-0" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view}>
@@ -222,14 +274,16 @@ export default function App(): JSX.Element {
             {view === 'transcript' && (
               <TranscriptView
                 key={project?.id ?? 'no-project'}
-                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); onNavigate('timeline') }}
+                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
+                onEmptyAction={handleEmptyAction}
               />
             )}
-            {view === 'screenshots' && <ScreenshotsView />}
-            {view === 'targets' && <TargetView />}
+            {view === 'screenshots' && <ScreenshotsView onEmptyAction={handleEmptyAction} />}
+            {/* Phase C step 5 (O3): TargetView removed — the "Targets" sidebar
+                entry deep-links into the Timeline's target axis via goTo(). */}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
-            {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
+            {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} onEmptyAction={handleEmptyAction} />}
+            {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} onEmptyAction={handleEmptyAction} />}
             {view === 'settings' && <Settings />}
             {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
           </ErrorBoundary>
@@ -303,7 +357,7 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
               <span className={s.status === 'active' ? 'text-zinc-300' : 'text-zinc-400'}>
                 {STEP_LABEL[s.id] ?? s.id}
               </span>
-              <span className="text-[10px] font-mono text-zinc-600">{t(`capture.step.${s.status}`)}</span>
+              <span className="text-2xs font-mono text-zinc-600">{t(`capture.step.${s.status}`)}</span>
             </li>
           )
         })}
@@ -457,7 +511,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setManage((m) => !m)}
-              className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-2xs font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
               title={t('capture.manageHint')}
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
@@ -488,7 +542,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                   : s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {!manage && s.installed !== false && s.state !== 'off' && (
-                <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
+                <span className={`text-2xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
                   {fmtAge(s.lastEventAt, nowTick)}
                 </span>
               )}
@@ -502,7 +556,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                     <button
                       disabled={busy === s.id}
                       onClick={() => void setEnabled(s, s.enabled === false)}
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                      className={`text-2xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.enabled === false
                           ? 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
                           : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
@@ -515,7 +569,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                     <button
                       disabled={busy === s.id}
                       onClick={() => void setInstalled(s, s.installed !== true)}
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                      className={`text-2xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.installed === true
                           ? 'border-zinc-700 text-zinc-500 hover:text-red-400'
                           : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
@@ -529,7 +583,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
                   {!s.configPath && !s.hookId && (
-                    <span className="text-[10px] font-mono text-zinc-700">{t('capture.passive')}</span>
+                    <span className="text-2xs font-mono text-zinc-700">{t('capture.passive')}</span>
                   )}
                 </span>
               )}
@@ -805,7 +859,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
                 <p className="text-zinc-200 text-sm mt-0.5">
                   {t('dashboard.targets', {
                     count: (config.scope?.targets as string[])?.length || 0,
-                    mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
+                    mode: t(`dashboard.alertFloor.${(config.scope?.alertFloor as string | undefined) ?? 'adjacent'}`)
                   })}
                 </p>
               </div>
@@ -831,8 +885,14 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               // Settings is pinned to ⌘9 rather than carried by shortcutOrder,
               // so it has to be listed explicitly (v0.11.2).
               [`${modKey}9`, t('sidebar.settings')] as [string, string],
-              [isMac ? '⌘⇧M' : 'Ctrl+Shift+M', t('dashboard.addMarker')] as [string, string],
-              [`${modKey}/`, t('dashboard.search')] as [string, string]
+              // Non-view global shortcuts come from the single shortcut registry
+              // (lib/shortcuts.ts) so this card and the Timeline `?` cheatsheet
+              // stay in sync — adding a global shortcut there surfaces it here,
+              // and it picks up ones this card used to omit (e.g. ⌘. pause).
+              // switch-view is rendered dynamically above (per reorderable order).
+              ...shortcutsForScope('global')
+                .filter((s) => s.id !== 'switch-view')
+                .map((s) => [s.keys.replaceAll(MOD_TOKEN, isMac ? '⌘' : 'Ctrl+'), t(s.labelKey)] as [string, string])
             ].map(([key, label]) => (
               <div key={key} className="flex items-center gap-2.5">
                 <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{key}</kbd>
@@ -865,7 +925,7 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   )
 }
 
-function ScreenshotsView(): JSX.Element {
+function ScreenshotsView({ onEmptyAction }: { onEmptyAction?: (target: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -937,15 +997,21 @@ function ScreenshotsView(): JSX.Element {
           {t('screenshots.captureNow')}
         </button>
       </div>
-      {screenshots.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-            <span className="text-2xl text-zinc-700">◻</span>
-          </div>
-          <p className="text-zinc-500 text-sm">{t('screenshots.empty')}</p>
-          <p className="text-zinc-700 text-xs">{t('screenshots.emptyDesc')}</p>
-        </div>
-      ) : (() => {
+      {screenshots.length === 0 ? (() => {
+        // F4: the shared EmptyState with a working CTA, driven by the pure
+        // emptyStateFor map, instead of a hand-rolled dead end.
+        const es = emptyStateFor('screenshots', { captureDark: false })
+        return (
+          <EmptyState
+            icon={ICON.screenshots}
+            title={t(es.titleKey)}
+            subtitle={t(es.subtitleKey)}
+            action={es.action && es.action.target !== 'doc'
+              ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+              : undefined}
+          />
+        )
+      })() : (() => {
         // Trigger filter (audit #32) — all captures land in one grid mixing
         // periodic / manual / mark-triggered. Chip toggles narrow the view.
         const triggerCounts = new Map<string, number>()
@@ -1023,7 +1089,7 @@ function ScreenshotsView(): JSX.Element {
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity hit-target"
                     title={t('screenshots.deleteTitle')}
                     aria-label={t('screenshots.deleteTitle')}
                   >×</button>

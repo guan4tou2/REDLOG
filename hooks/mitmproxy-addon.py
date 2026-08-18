@@ -28,7 +28,7 @@ What gets logged:
     - DNS response:  response_code, answers, duration_ms, _causes ← query event
 
 Environment variables:
-    REDLOG_MAX_BODY    Max request/response body bytes to capture (default 2048)
+    REDLOG_MAX_BODY    Max request/response body bytes to capture (default 16384)
     REDLOG_SKIP_STATIC Skip static assets like .css/.js/.png/.woff (default true)
     REDLOG_VERBOSE     Log every request/DNS message to stderr (default false)
 """
@@ -51,7 +51,17 @@ from mitmproxy import http, ctx
 REDLOG_PORT_FILE = Path.home() / ".redlog" / "api-port"
 REDLOG_TOKEN_FILE = Path.home() / ".redlog" / "api-token"
 
-MAX_BODY = int(os.environ.get("REDLOG_MAX_BODY", "2048"))
+# 16 KB by default (was 2 KB) — enough to review a typical JSON/form request or
+# response body without truncation. Bodies still live inline on the event (no
+# sidecar yet), so this trades a little DB size for actually-reviewable payloads.
+MAX_BODY = int(os.environ.get("REDLOG_MAX_BODY", "16384"))
+# io_ref sidecar (docs/SPEC-IO-SIDECAR.md): when a body is larger than the
+# inline preview cap, also post the FULL body (up to this ceiling) on a
+# `*_body_full` field. The server hashes it, writes <projectDir>/io/<sha256>.bin
+# and keeps only the digest on the event — the full body stops being lost to
+# truncation without bloating the chain. Bodies above this ceiling are captured
+# up to it and flagged truncated.
+MAX_IO = int(os.environ.get("REDLOG_MAX_IO", str(2 * 1024 * 1024)))
 SKIP_STATIC = os.environ.get("REDLOG_SKIP_STATIC", "true").lower() in ("true", "1", "yes")
 VERBOSE = os.environ.get("REDLOG_VERBOSE", "false").lower() in ("true", "1", "yes")
 
@@ -185,6 +195,24 @@ def _truncate(s: str, max_len: int = MAX_BODY) -> str:
     if len(s) <= max_len:
         return s
     return s[:max_len] + f"...[truncated, {len(s)} total]"
+
+
+def _full_body_fields(text: str, content_type: str, prefix: str) -> dict:
+    """Fields to sidecar the full body — only when the inline preview truncated.
+
+    A body that fits within MAX_BODY is already complete in its `*_preview`, so
+    it never sidecars (keeps the migration purely additive). A larger body is
+    posted whole up to MAX_IO; beyond that we send the first MAX_IO bytes and
+    flag it truncated so the record stays honest.
+    """
+    if not text or len(text) <= MAX_BODY:
+        return {}
+    truncated = len(text) > MAX_IO
+    return {
+        f"{prefix}_body_full": text[:MAX_IO] if truncated else text,
+        f"{prefix}_body_ct": content_type or "",
+        f"{prefix}_body_full_truncated": truncated,
+    }
 
 
 def _extract_params(flow: http.HTTPFlow) -> dict:
@@ -344,10 +372,12 @@ class RedLogAddon:
         req_headers = _extract_interesting_headers(flow.request.headers, "request")
 
         request_body_preview = ""
+        req_body_fields = {}
         content_type = flow.request.headers.get("content-type", "")
         if flow.request.content and any(t in content_type for t in REQUEST_BODY_CONTENT_TYPES):
             req_text = flow.request.get_text(strict=False) or ""
             request_body_preview = _truncate(req_text, MAX_BODY)
+            req_body_fields = _full_body_fields(req_text, content_type, "request")
 
         event_data = {
             "subtype": "http_request_start",
@@ -366,6 +396,7 @@ class RedLogAddon:
             event_data["request_headers"] = req_headers
         if request_body_preview:
             event_data["request_body_preview"] = request_body_preview
+        event_data.update(req_body_fields)
 
         payload = {
             "agent_type": "scanner",
@@ -400,11 +431,13 @@ class RedLogAddon:
         resp_headers = _extract_interesting_headers(flow.response.headers, "response") if flow.response else {}
 
         response_body_preview = ""
+        resp_body_fields = {}
         if flow.response and flow.response.content:
             content_type = flow.response.headers.get("content-type", "")
             if any(t in content_type for t in ("json", "html", "text", "xml", "javascript")):
                 resp_text = flow.response.get_text(strict=False) or ""
                 response_body_preview = _truncate(resp_text, MAX_BODY)
+                resp_body_fields = _full_body_fields(resp_text, content_type, "response")
 
         content_length = 0
         if flow.response and flow.response.content:
@@ -427,6 +460,7 @@ class RedLogAddon:
             event_data["response_headers"] = resp_headers
         if response_body_preview:
             event_data["response_preview"] = response_body_preview
+        event_data.update(resp_body_fields)
         if duration_ms is not None:
             event_data["duration_ms"] = duration_ms
 

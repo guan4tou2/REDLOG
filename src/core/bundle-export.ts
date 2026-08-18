@@ -8,6 +8,9 @@ import { listQuickMarks } from './db/findings'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
+import { getSanitizedIo, runScopeSanitize } from './scope-sanitize'
+import { buildAdherenceReport, summariseAdherence, type ScopeConfigSnapshot } from './scope-adherence'
+import { classifyTarget } from './scope-monitor'
 
 interface ManifestFile {
   path: string
@@ -32,6 +35,17 @@ interface ManifestPayload {
    *  captured bytes (four-layer redaction, layer 4). Every one has a paired
    *  system.sanitized event in events.jsonl proving the swap was audited. */
   sanitized: { events: number; totalInDb: number }
+  /** G-D1: the POSITIVE proof, in the manifest so a reviewer reading only this
+   *  file sees the claim. The evidence for it is `scope-adherence.json`, which
+   *  is itself in `files` and therefore under the manifest hash + HMAC. Null
+   *  when no scope was configured — there is nothing to claim. */
+  scopeAdherence: {
+    summary: string
+    totals: Record<string, number>
+    scopeChanges: number
+    disagreements: number
+    provenance: { path: string; digest: string; entries: number } | null
+  } | null
   files: ManifestFile[]
 }
 
@@ -59,6 +73,22 @@ export interface ExportBundleOpts {
    *  is the safe default, and this flag is the opt-in for engagements that
    *  legitimately need the pre-redaction content. */
   includeAgentTranscripts?: boolean
+  /** Export profile (SPEC-SCOPE-AWARE-LIFECYCLE.md §9 progressive disclosure).
+   *  `internal` (default) exports full content. `client-deliverable` runs the
+   *  scope planner first — out-of-scope / excluded event bodies AND their io
+   *  sidecar bodies are sanitized (the scope_violation + touched host remain),
+   *  `unknown` targets are left for operator decision. Requires `scope` +
+   *  `operatorId` so the sanitize can attribute + classify. */
+  profile?: 'internal' | 'client-deliverable'
+  /** Scope config. Required by the `client-deliverable` profile's sanitize
+   *  pass; also drives the adherence report (G-D1) in EVERY profile when
+   *  present. The extra fields are optional so the sanitize caller is
+   *  unaffected — they only sharpen the classification. */
+  scope?: ScopeConfigSnapshot
+  /** Operator id that owns the sanitize pass (client-deliverable profile). */
+  operatorId?: string
+  /** Also sanitize `unknown`-target events (operator opt-in, default false). */
+  sanitizeUnknown?: boolean
 }
 
 export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
@@ -70,6 +100,21 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const bundleDir = path.join(outRoot ?? path.join(projectDir, 'exports'), `bundle-${ts}`)
   fs.mkdirSync(bundleDir, { recursive: true })
+
+  // client-deliverable profile: run the scope sanitize pass BEFORE packaging so
+  // the events.jsonl + io swaps below serve redacted out-of-scope content. The
+  // pass appends a chained system.sanitized (tamper-evident) and writes to the
+  // sanitized_events / sanitized_io side tables the export already reads.
+  if (opts.profile === 'client-deliverable' && opts.scope && opts.operatorId) {
+    const candidates = queryEvents({ limit: 1_000_000 }).map((e) => ({ id: e.id, targetId: e.targetId, data: e.data }))
+    runScopeSanitize({
+      events: candidates,
+      classify: (t) => classifyTarget(t, opts.scope!),
+      operatorId: opts.operatorId,
+      engagementId,
+      includeUnknown: opts.sanitizeUnknown === true
+    })
+  }
 
   const files: ManifestFile[] = []
 
@@ -90,6 +135,16 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // the original bytes; auditors verifying the chain need the source DB or
   // the paired system.sanitized event to reconcile.
   let sanitizedRowsWritten = 0
+  // G-D1: the adherence report is built from the rows AS WRITTEN TO THE BUNDLE,
+  // after the layer-4 swap — never from the raw DB. That is the invariant that
+  // keeps a `client-deliverable` bundle honest: the report's command samples
+  // can only ever contain what the bundle itself already contains, so it cannot
+  // become a side channel around the sanitize gate. Do not move this above the
+  // swap. (The scope planner leaves `detectedTarget` in place — the host stays,
+  // the exchange is what gets stripped — so the classification still works.)
+  const adherenceRows: Array<{
+    timestamp: number; agentType: string; targetId?: string | null; data?: Record<string, unknown> | null
+  }> = []
   for (const row of rowIter) {
     const eventId = row.id as string
     const replacements = getSanitizedFields(eventId)
@@ -102,6 +157,24 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       } catch { /* leave row as-is if data isn't parseable */ }
     }
     fs.writeSync(fd, JSON.stringify(row) + '\n')
+
+    // Cheap pre-filter: parsing every row of a 100k-event engagement to find
+    // the few that name a target is the wrong trade. A substring test on the
+    // raw JSON decides whether the parse is worth it; `target_id` is a column,
+    // so rows carrying only that are caught without any parse at all.
+    const rawData = String(row.data ?? '')
+    const mayMatter = rawData.includes('"detectedTarget"')
+      || rawData.includes('"scope_violation"')
+      || rawData.includes('"config_changed"')
+    if (!mayMatter && !row.target_id) continue
+    let parsed: Record<string, unknown> | null = null
+    if (mayMatter) { try { parsed = JSON.parse(rawData) } catch { parsed = null } }
+    adherenceRows.push({
+      timestamp: Number(row.timestamp),
+      agentType: String(row.agent_type),
+      targetId: (row.target_id as string | null) ?? null,
+      data: parsed
+    })
   }
   fs.closeSync(fd)
   files.push({ path: 'events.jsonl', ...sha256File(eventsPath) })
@@ -160,6 +233,45 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
         fs.copyFileSync(s, d)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
+      }
+    }
+  }
+
+  // 6a. io/ — copy every sidecar body (io_ref, SPEC-IO-SIDECAR.md). The events
+  // carry only the sha256; the full HTTP request/response bodies live here, so
+  // a bundle without them would verify but be unreadable. Each file is
+  // content-addressed (its name IS its sha256), and hashed into the manifest
+  // like casts/screenshots so an auditor can confirm the bytes match the digest
+  // the chain attests. A retention-pruned body simply isn't present — the
+  // manifest omission is the honest record, same as a pruned cast.
+  const srcIo = path.join(projectDir, 'io')
+  const dstIo = path.join(bundleDir, 'io')
+  if (fs.existsSync(srcIo)) {
+    // Layer-4 scope sanitize (SPEC-SCOPE-AWARE-LIFECYCLE.md Part B): a body with
+    // a sanitized replacement is served REDACTED under its original digest name;
+    // verify reads the system.sanitized io swap and confirms the bytes hash to
+    // the replacement digest → sanitized, not tampered. The source store is
+    // untouched. One replacement per digest (io bodies are deduped).
+    const sanitizedIo = getSanitizedIo()
+    const writtenSanitized = new Set<string>()
+    fs.mkdirSync(dstIo, { recursive: true })
+    for (const name of fs.readdirSync(srcIo)) {
+      const s = path.join(srcIo, name)
+      if (!(name.endsWith('.bin') || name.endsWith('.bin.gz')) || !fs.statSync(s).isFile()) continue
+      const stem = name.replace(/\.bin(\.gz)?$/, '')
+      const swap = sanitizedIo.get(stem)
+      if (swap) {
+        // Write the redacted replacement once, as an uncompressed `.bin`.
+        if (writtenSanitized.has(stem)) continue
+        writtenSanitized.add(stem)
+        const outName = `${stem}.bin`
+        const d = path.join(dstIo, outName)
+        fs.writeFileSync(d, Buffer.from(swap.value, 'utf8'))
+        files.push({ path: `io/${outName}`, ...sha256File(d) })
+      } else {
+        const d = path.join(dstIo, name)
+        fs.copyFileSync(s, d)
+        files.push({ path: `io/${name}`, ...sha256File(d) })
       }
     }
   }
@@ -268,6 +380,28 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',
       'from this directory and prints a summary: events walked, chain intact or',
       'broken at event X, signature verified counts.',
+      '',
+      '## Scope adherence',
+      '',
+      '`scope-adherence.json` is the POSITIVE record: every target touched during',
+      'this engagement and how each one classifies against the declared scope —',
+      'in scope, explicitly excluded, adjacent to something in scope, or off-list.',
+      'The violation list alone cannot tell you three near-misses out of 250',
+      'targets from three out of five; this file carries the denominator.',
+      '',
+      'Its `scope.provenance.digest` is the sha256 of the scope FILE the',
+      'engagement was judged against. Recompute it against the scope document you',
+      'issued to confirm they are the same list:',
+      '',
+      '```',
+      'shasum -a 256 /path/to/the/scope/file/you/issued',
+      '```',
+      '',
+      'Two fields deserve a read even when the counts look clean:',
+      '`scopeChanges` lists scope edits made during the engagement (the counts',
+      'judge the whole window by the FINAL scope), and `disagreements` lists any',
+      'target whose classification today differs from what was recorded at the',
+      'time. Both empty is the ordinary case.',
       ''
     ].join('\n')
     const readmeDest = path.join(bundleDir, 'README.md')
@@ -278,6 +412,36 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const head = computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
   const primary = getPrimaryOperator()
+  // G-D1 in the bundle. `data:exportAdherence` produces the same report as a
+  // loose file; here it is a hashed entry in `files`, so it inherits the
+  // manifest sha256 + HMAC and travels signed with everything else. Without a
+  // scope there is nothing to claim, so no file and a null manifest block —
+  // an empty report would read as "nothing was out of bounds".
+  let adherenceBlock: ManifestPayload['scopeAdherence'] = null
+  if (opts.scope && opts.scope.targets.length > 0) {
+    const report = buildAdherenceReport(adherenceRows, opts.scope, {
+      generatedAt: Date.now(),
+      engagementId
+    })
+    files.push(writeAndHash(
+      path.join(bundleDir, 'scope-adherence.json'),
+      JSON.stringify(report, null, 2)
+    ))
+    adherenceBlock = {
+      summary: summariseAdherence(report),
+      totals: report.totals as unknown as Record<string, number>,
+      scopeChanges: report.scopeChanges.length,
+      disagreements: report.disagreements.length,
+      provenance: report.scope.provenance
+        ? {
+            path: report.scope.provenance.path,
+            digest: report.scope.provenance.digest,
+            entries: report.scope.provenance.entries
+          }
+        : null
+    }
+  }
+
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
   const manifest: ManifestPayload = {
@@ -299,6 +463,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       createdAt: lastAnchor.createdAt
     } : null,
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
+    scopeAdherence: adherenceBlock,
     files
   }
 

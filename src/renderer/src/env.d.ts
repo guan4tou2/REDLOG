@@ -13,9 +13,21 @@ interface ProjectMeta {
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  ipSafety: 'safe' | 'exposed' | 'unknown'
+  ipSafety: 'safe' | 'presumed_safe' | 'off_profile' | 'exposed' | 'unknown'
+  /** G-A4: the internal address judged against `network.lanProfile`. Only
+   *  'safe' | 'off_profile' | 'unknown' are reachable — there is no LAN
+   *  blacklist. */
+  lanSafety?: 'safe' | 'off_profile' | 'unknown'
   lastCheck: number
   error: string | null
+  /** A new address is being confirmed; the displayed one is the last stable read. */
+  settling?: boolean
+  /** Consecutive failed reads. */
+  consecutiveFailures?: number
+  /** The verdict outlived its reading and has decayed to 'unknown'. */
+  stale?: boolean
+  /** A-6: the address matches both lists — a contradictory config. */
+  listConflict?: boolean
     link?: { type: 'wifi' | 'wired' | 'unknown'; name: string }
 }
 
@@ -77,6 +89,7 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    openExternal: (url: string) => Promise<void>
   }
   project: {
     list: () => Promise<ProjectMeta[]>
@@ -106,6 +119,9 @@ interface RedLogAPI {
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
+    // Layer 3 (four-layer redaction): logs a chained system.secret_revealed
+    // audit event whenever the reviewer reveals raw bytes of a redacted span.
+    logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean; id?: string; error?: string }>
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
@@ -115,9 +131,39 @@ interface RedLogAPI {
     capture: (causeEventId?: string) => Promise<string | null>
   }
   scope: {
-    getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>
+    getViolations: () => Promise<Array<{
+      target: string
+      command: string
+      timestamp: number
+      /** Which rung of the distance ladder fired (G-B4). */
+      reason: 'excluded_target' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+      /** §3 tier (K1) — `excluded_target` is observed, both `adjacent_*` inferred. */
+      authority: 'fact' | 'inferred'
+    }>>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
+    /** G-D1: the positive half — every target touched and how it classifies.
+     *  Optional like `exportViolations`: a panel must not crash when paired
+     *  with a bridge that predates the method. */
+    adherenceSummary?: () => Promise<{
+      totals: { targets: number; actions: number; in_scope: number; excluded: number; adjacent_subnet: number; adjacent_domain: number; unrelated: number }
+      summary: string
+      scopeChanges: number
+      /** G-D2: which document the scope came from. Null when the operator typed
+       *  the targets in directly rather than loading an authorisation file. */
+      provenance: {
+        path: string
+        digest: string
+        bytes: number
+        entries: number
+        modifiedAt: number
+        loadedAt: number
+        error?: string
+      } | null
+    } | null>
+  }
+  io: {
+    read: (ref: string, off?: number, len?: number) => Promise<{ ok: boolean; text?: string; bytes?: number; error?: string; maxBytes?: number }>
   }
   chain: {
     length: () => Promise<number>
@@ -156,13 +202,28 @@ interface RedLogAPI {
   }
   data: {
     exportJson: () => Promise<string | null>
-    exportBundle?: () => Promise<{ outDir: string; manifest: unknown } | null>
+    exportBundle?: (opts?: { profile?: 'internal' | 'client-deliverable'; sanitizeUnknown?: boolean }) => Promise<{ outDir: string; manifest: unknown } | null>
     exportScopeFiltered?: () => Promise<string | null>
     exportMarks?: () => Promise<string | null>
     exportLoot?: () => Promise<string | null>
     exportViolations?: () => Promise<string | null>
+    exportAdherence?: () => Promise<string | null>
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
+  }
+  hooks: {
+    detect: () => Promise<HookInfo[]>
+    install: (hookId: string) => Promise<{ success: boolean; message: string }>
+    uninstall: (hookId: string) => Promise<{ success: boolean; message: string }>
+  }
+  plugins: {
+    list: () => Promise<PluginInfo[]>
+    eventTypes: () => Promise<PluginEventType[]>
+    reload: () => Promise<unknown>
+    openFolder: () => Promise<void>
+    setEnabled: (id: string, enabled: boolean) => Promise<unknown>
+    grant: (id: string) => Promise<unknown>
+    revoke: (id: string) => Promise<unknown>
   }
   recording: {
     get: () => Promise<boolean>
@@ -188,6 +249,11 @@ interface RedLogAPI {
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
     moveToCorner?: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
+    // The HUD window is bridged by a separate preload (src/preload/overlay.ts)
+    // that shares this `window.redlog` type. These two are HUD-only: the main
+    // window never exposes them, hence optional.
+    quickMark?: () => void
+    instantMark?: () => Promise<{ ok: boolean; id?: string }>
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
@@ -210,6 +276,36 @@ interface RedLogAPI {
   }
 }
 
+interface HookInfo {
+  id: string
+  name: string
+  description: string
+  agentType: string
+  installed: boolean
+  available: boolean
+  installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  hookFile: string
+  manualSteps?: Array<{ label: string; command?: string }>
+}
+
+interface PluginInfo {
+  id: string
+  name: string
+  version?: string
+  enabled: boolean
+  trust?: string
+  granted?: boolean
+  eventTypes?: PluginEventType[]
+  error?: string
+}
+
+interface PluginEventType {
+  agentType: string
+  lane?: string
+  color?: string
+  label?: string
+}
+
 interface CaptureSourceInfo {
   id: string
   installed?: boolean
@@ -230,7 +326,9 @@ interface CaptureHealthInfo {
   lastEventAt: number | null
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
-  lastSampleBroken?: { at: number; eventId: string; reason: string }
+  // v0.7.6 H3: `eventTimestamp` carries the broken row's own creation time so
+  // the Dashboard can label a stale historical row apart from a fresh one.
+  lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
 }
 
@@ -294,12 +392,12 @@ interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null }
-  screenshot?: { quality?: number }
+  // `enforcement` is a legacy field kept for importing pre-migration profiles
+  // (config.ts migrates 'warn'|'log' → warnOnViolation:boolean on load).
+  scope?: { alertFloor?: 'excluded_only' | 'adjacent' | 'all'; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; warnOnViolation?: boolean; enforcement?: 'warn' | 'log' }
+  screenshot?: { quality?: number; intervalSec?: number }
 }
 
-declare global {
-  interface Window {
-    redlog: RedLogAPI
-  }
+interface Window {
+  redlog: RedLogAPI
 }

@@ -4,9 +4,9 @@ import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray, setTrayRecording } from './tray'
-import { IPMonitor, IPStatus } from '../core/ip-monitor'
+import { IPMonitor, IPStatus, verdictAuthority } from '../core/ip-monitor'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, loadScopeFile, readScopeFile, RedLogConfig, type ScopeProvenance } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
@@ -17,6 +17,7 @@ import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { ScopeMonitor } from '../core/scope-monitor'
+import { buildAdherenceReport, summariseAdherence, type ScopeConfigSnapshot } from '../core/scope-adherence'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
@@ -24,6 +25,8 @@ import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../c
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention } from '../core/retention'
+import { classifyTarget } from '../core/scope-monitor'
+import type { ScopeVerdict } from '../core/artifact-pin'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
@@ -51,9 +54,10 @@ import { setTailerContributionSink, type TailerLike } from '../core/plugins/tail
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
-import { detectLink } from './services/network-info'
+import { detectLink, applyWifiNamePolicy } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { readBody as readIoBody, resolveRef as resolveIoRef, MAX_IO_READ_BYTES } from '../core/io-store'
 
 // Windows text rendering: DirectComposition improves font clarity on low-DPI
 // screens; DirectWrite uses the native font rasterizer for crisper CJK glyphs.
@@ -278,11 +282,25 @@ function applyDock(): void {
   if (keepDockIcon) app.dock?.show()
   else app.dock?.hide()
 }
+// `network.showWifiName` — off by default; see applyWifiNamePolicy for why the
+// SSID is treated as a disclosure rather than a display preference.
+let showWifiName = false
 function startLinkMonitor(): void {
-  const refresh = (): void => { detectLink().then((l) => { currentLink = l }).catch(() => {}) }
+  const refresh = (): void => {
+    detectLink().then((l) => { currentLink = applyWifiNamePolicy(l, showWifiName) }).catch(() => {})
+  }
   refresh()
   if (linkTimer) clearInterval(linkTimer)
   linkTimer = setInterval(refresh, 20_000)
+}
+function setShowWifiName(on: boolean): void {
+  const was = showWifiName
+  showWifiName = on
+  // Turning it off must take the name off the HUD NOW, not at the next 20s
+  // poll — the operator flipping this switch is usually about to share a screen.
+  if (!on) currentLink = applyWifiNamePolicy(currentLink, false)
+  // Turning it on has to re-probe: the cached link no longer carries a name.
+  else if (!was) startLinkMonitor()
 }
 
 // Last broadcast state, kept module-level to detect transitions. A change in
@@ -291,6 +309,8 @@ function startLinkMonitor(): void {
 // current state was ever in the HUD; now every transition lands in the audit log.
 let lastBroadcastSafety: IPStatus['ipSafety'] | null = null
 let lastBroadcastIP: string | null = null
+let lastBroadcastLanSafety: IPStatus['lanSafety'] | null = null
+let lastBroadcastInternalIP: string | null = null
 function broadcastIPStatus(status: IPStatus): void {
   const s = { ...status, link: currentLink }
   send(mainWindow, 'ip:status', s)
@@ -300,22 +320,97 @@ function broadcastIPStatus(status: IPStatus): void {
   if (lastBroadcastSafety !== null && currentEngagementId && currentOperatorId) {
     const safetyChanged = status.ipSafety !== lastBroadcastSafety
     const ipChanged = status.externalIP != null && status.externalIP !== lastBroadcastIP
-    if (safetyChanged || ipChanged) {
+    // G-A4: moving between internal segments mid-engagement is the same class
+    // of drift signal as the egress changing — a reassociation to a guest SSID
+    // can leave the external IP untouched while putting you on the wrong network.
+    const lanSafetyChanged = status.lanSafety !== lastBroadcastLanSafety
+    const internalChanged = status.internalIP != null && status.internalIP !== lastBroadcastInternalIP
+    if (safetyChanged || ipChanged || lanSafetyChanged || internalChanged) {
       try {
+        // K1 split-authority, the same shape as `scope_violation`: a transition
+        // INTO `presumed_safe` records an inference ("not obviously you"),
+        // every other verdict records an observed rule match. No type-level
+        // default can be right for both, so the emitter stamps it per event.
+        const tier = verdictAuthority(status.ipSafety)
         const ev = insertEvent('system', {
           subtype: 'ip_transition',
           from_safety: lastBroadcastSafety, to_safety: status.ipSafety,
+          ...(lanSafetyChanged || internalChanged
+            ? {
+                from_lan_safety: lastBroadcastLanSafety, to_lan_safety: status.lanSafety,
+                from_internal_ip: lastBroadcastInternalIP, to_internal_ip: status.internalIP ?? null
+              }
+            : {}),
+          ...(tier ? { authority: tier } : {}),
           from_ip: lastBroadcastIP, to_ip: status.externalIP ?? null,
           description: safetyChanged
             ? `IP safety ${lastBroadcastSafety} → ${status.ipSafety}${ipChanged ? ` (${lastBroadcastIP ?? '?'} → ${status.externalIP})` : ''}`
-            : `External IP changed ${lastBroadcastIP} → ${status.externalIP}`
+            : ipChanged
+              ? `External IP changed ${lastBroadcastIP} → ${status.externalIP}`
+              : lanSafetyChanged
+                ? `LAN profile ${lastBroadcastLanSafety} → ${status.lanSafety} (${lastBroadcastInternalIP ?? '?'} → ${status.internalIP})`
+                : `Internal IP changed ${lastBroadcastInternalIP} → ${status.internalIP}`
         }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
         if (ev) eventBus.publish(ev)
       } catch { /* audit-additive; never block IP broadcasting */ }
     }
   }
   lastBroadcastSafety = status.ipSafety
+  lastBroadcastLanSafety = status.lanSafety
   if (status.externalIP != null) lastBroadcastIP = status.externalIP
+  if (status.internalIP != null) lastBroadcastInternalIP = status.internalIP
+}
+
+// G-D2: record WHICH document the scope came from, chained. `scopeFile` used to
+// hold a path and nothing else, so a reviewer reading an adherence report had no
+// way to check the scope it was judged against against the authorisation
+// document they were given. The digest is the join between the two.
+//
+// Emitted only at the two AUTHORITATIVE load points (project open, config save)
+// — the read-only re-reads for export must not manufacture history. Deduped on
+// digest so reopening a project does not fill the timeline with identical rows.
+let lastScopeDigest: string | null = null
+function recordScopeProvenance(p: ScopeProvenance): void {
+  if (!currentEngagementId || !currentOperatorId) return
+  if (p.digest && p.digest === lastScopeDigest) return
+  lastScopeDigest = p.digest || null
+  try {
+    const ev = insertEvent('system', {
+      subtype: 'scope_loaded',
+      path: p.path,
+      digest: p.digest,
+      bytes: p.bytes,
+      entries: p.entries,
+      modified_at: p.modifiedAt,
+      ...(p.error ? { error: p.error } : {}),
+      description: p.error
+        ? `Scope file could not be read: ${p.path} — ${p.error}`
+        : `Scope loaded from ${p.path}: ${p.entries} entr${p.entries === 1 ? 'y' : 'ies'}, sha256 ${p.digest.slice(0, 12)}…`
+    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    if (ev) eventBus.publish(ev)
+  } catch { /* additive — never block project open */ }
+}
+
+// The scope as the classifier sees it, plus where it came from (G-D2). Shared
+// so the live summary, the loose export and the signed bundle cannot disagree
+// about what scope an engagement was judged against. Read-only: it deliberately
+// does NOT call `recordScopeProvenance` — an export must not write history.
+function currentScopeSnapshot(cfg: RedLogConfig): ScopeConfigSnapshot {
+  let targets = cfg.scope.targets
+  let provenance: ScopeProvenance | null = null
+  if (cfg.scope.scopeFile) {
+    const read = readScopeFile(cfg.scope.scopeFile)
+    if (read.targets.length > 0) targets = [...targets, ...read.targets]
+    provenance = read.provenance
+  }
+  return {
+    targets,
+    excludeTargets: cfg.scope.excludeTargets,
+    proximityBits: cfg.scope.proximityBits,
+    publicSuffixes: cfg.scope.publicSuffixes,
+    alertFloor: cfg.scope.alertFloor,
+    provenance
+  }
 }
 
 // Log the security-relevant fields that changed on config:save. Cosmetic changes
@@ -327,12 +422,15 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   const check = (path: string, from: unknown, to: unknown): void => {
     if (JSON.stringify(from) !== JSON.stringify(to)) changed[path] = { from, to }
   }
-  check('scope.warnOnViolation', oldCfg.scope?.warnOnViolation, newCfg.scope?.warnOnViolation)
+  check('scope.alertFloor', oldCfg.scope?.alertFloor, newCfg.scope?.alertFloor)
   check('scope.targets', oldCfg.scope?.targets, newCfg.scope?.targets)
   check('scope.excludeTargets', oldCfg.scope?.excludeTargets, newCfg.scope?.excludeTargets)
+  check('scope.proximityBits', oldCfg.scope?.proximityBits, newCfg.scope?.proximityBits)
+  check('scope.publicSuffixes', oldCfg.scope?.publicSuffixes, newCfg.scope?.publicSuffixes)
   check('scope.scopeFile', oldCfg.scope?.scopeFile, newCfg.scope?.scopeFile)
   check('network.blacklist', oldCfg.network?.blacklist, newCfg.network?.blacklist)
   check('network.whitelist', oldCfg.network?.whitelist, newCfg.network?.whitelist)
+  check('network.lanProfile', oldCfg.network?.lanProfile, newCfg.network?.lanProfile)
   check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
   check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
   check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
@@ -391,9 +489,11 @@ function startProject(project: ProjectMeta): void {
   ipMonitor.configure({
     whitelist: config.network.whitelist,
     blacklist: config.network.blacklist,
+    lanProfile: config.network.lanProfile,
     checkInterval: config.network.checkInterval,
     providers: config.network.providers,
     confirmations: config.network.confirmations,
+    staleAfter: config.network.staleAfter,
     ipMode: config.network.ipMode
   })
   screenshotAgent.configure({
@@ -405,13 +505,16 @@ function startProject(project: ProjectMeta): void {
 
   let scopeTargets = config.scope.targets
   if (config.scope.scopeFile) {
-    const loaded = loadScopeFile(config.scope.scopeFile)
+    const { targets: loaded, provenance } = readScopeFile(config.scope.scopeFile)
     if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
+    recordScopeProvenance(provenance)
   }
   scopeMonitor.configure({
-    warnOnViolation: config.scope.warnOnViolation !== false,
+    alertFloor: config.scope.alertFloor,
     targets: scopeTargets,
     excludeTargets: config.scope.excludeTargets,
+    proximityBits: config.scope.proximityBits,
+    publicSuffixes: config.scope.publicSuffixes,
     engagementId,
     operatorId
   })
@@ -473,6 +576,7 @@ function startProject(project: ProjectMeta): void {
   } catch (e) { console.error('[plugins] init failed:', e) }
   configureDeconfliction(config.deconfliction)
   setVpnAdapters(config.network.vpnAdapters)
+  setShowWifiName(config.network.showWifiName === true)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
@@ -492,9 +596,14 @@ function startProject(project: ProjectMeta): void {
     // castKeepDays / screenshots.keepDays silently did nothing and the
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
-    const swept = sweepRetention(config, { engagementId, operatorId })
-    if (swept.cast > 0 || swept.screenshots > 0) {
-      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
+    // Feed a pure scope classifier so io lifecycle GC pins in-scope bodies and
+    // evicts out-of-scope ones first under size pressure (SPEC-SCOPE-AWARE-
+    // LIFECYCLE.md scope-as-pin). Pure — no violation side effects.
+    const resolveScope = (target: string): ScopeVerdict =>
+      classifyTarget(target, { targets: scopeTargets, excludeTargets: config.scope.excludeTargets })
+    const swept = sweepRetention(config, { engagementId, operatorId, resolveScope })
+    if (swept.cast > 0 || swept.screenshots > 0 || swept.io > 0 || swept.ioCompressed > 0) {
+      console.log(`[retention] pruned ${swept.cast} .cast + ${swept.screenshots} screenshot(s) + ${swept.io} io body(ies); compressed ${swept.ioCompressed} io body(ies)`)
     }
   } catch (e) { console.error('[retention] sweep failed:', e) }
 
@@ -942,20 +1051,25 @@ app.whenReady().then(() => {
     ipMonitor.configure({
       whitelist: newConfig.network.whitelist,
       blacklist: newConfig.network.blacklist,
+      lanProfile: newConfig.network.lanProfile,
       ipMode: newConfig.network.ipMode,
       checkInterval: newConfig.network.checkInterval,
       providers: newConfig.network.providers,
-      confirmations: newConfig.network.confirmations
+      confirmations: newConfig.network.confirmations,
+      staleAfter: newConfig.network.staleAfter
     })
     let targets = newConfig.scope.targets
     if (newConfig.scope.scopeFile) {
-      const loaded = loadScopeFile(newConfig.scope.scopeFile)
+      const { targets: loaded, provenance } = readScopeFile(newConfig.scope.scopeFile)
       if (loaded.length > 0) targets = [...targets, ...loaded]
+      recordScopeProvenance(provenance)
     }
     scopeMonitor.configure({
-      warnOnViolation: newConfig.scope.warnOnViolation !== false,
+      alertFloor: newConfig.scope.alertFloor,
       targets,
-      excludeTargets: newConfig.scope.excludeTargets
+      excludeTargets: newConfig.scope.excludeTargets,
+      proximityBits: newConfig.scope.proximityBits,
+      publicSuffixes: newConfig.scope.publicSuffixes
     })
     screenshotAgent.configure({
       quality: newConfig.screenshot.quality,
@@ -987,6 +1101,7 @@ app.whenReady().then(() => {
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     setVpnAdapters(newConfig.network.vpnAdapters)
+    setShowWifiName(newConfig.network.showWifiName === true)
     // The HUD reads its config once at mount — push overlay settings so toggling
     // "show Mark button" takes effect live instead of only after a restart.
     send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
@@ -1182,6 +1297,30 @@ app.whenReady().then(() => {
     }
   })
 
+  // --- io_ref sidecar (SPEC-IO-SIDECAR.md) ---
+  // Read a full HTTP body out of <projectDir>/io/<sha256>.bin on demand.
+  // Unlike the removed screenshot:read, this takes a `ref` (a sha256 stem),
+  // not an arbitrary filePath — `resolveRef` rejects anything that isn't a
+  // 64-hex digest resolving inside io/, so a compromised renderer cannot coax
+  // a read of any other file (A7). Returns text (bodies are text content-types)
+  // plus how many bytes were read and whether more remain past the cap.
+  ipcMain.handle('io:read', (_e, ref: string, off?: number, len?: number) => {
+    try {
+      const dir = getProjectDir()
+      // A well-formed ref whose file is missing reads as pruned, not tampered.
+      if (resolveIoRef(dir, ref) === null) return { ok: false, error: 'invalid ref' }
+      const buf = readIoBody(dir, ref, off, len)
+      if (buf === null) {
+        // Distinguish "too large to inline" from "gone": a valid ref with no
+        // range that returns null is either pruned or over the read cap.
+        return { ok: false, error: 'unavailable', maxBytes: MAX_IO_READ_BYTES }
+      }
+      return { ok: true, text: buf.toString('utf8'), bytes: buf.length }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
   // --- Scope ---
   ipcMain.handle('scope:getViolations', () => scopeMonitor.getViolations())
   ipcMain.handle('scope:getViolationCount', () => scopeMonitor.getViolationCount())
@@ -1324,11 +1463,26 @@ app.whenReady().then(() => {
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
 
   // --- Evidence bundle ---
-  ipcMain.handle('data:exportBundle', () => {
+  ipcMain.handle('data:exportBundle', (_e, opts?: { profile?: 'internal' | 'client-deliverable'; sanitizeUnknown?: boolean }) => {
     if (!activeProject) return { ok: false, error: 'no-active-project' }
     try {
       const cfg = loadConfig(getProjectPath(activeProject))
-      const bundle = exportBundle(cfg.engagement.id)
+      // client-deliverable profile scope-sanitizes out-of-scope bodies (incl. io
+      // sidecars) before packaging (SPEC-SCOPE-AWARE-LIFECYCLE.md Part B).
+      const deliverable = opts?.profile === 'client-deliverable'
+      // The scope now travels with EVERY profile, not just the sanitizing one:
+      // the client-deliverable pass needs it to classify, and the adherence
+      // report (G-D1) needs it in both. An internal bundle that cannot state
+      // what it stayed inside of is missing the same proof.
+      const scope = currentScopeSnapshot(cfg)
+      const bundle = exportBundle(cfg.engagement.id, deliverable
+        ? {
+            profile: 'client-deliverable',
+            scope,
+            operatorId: currentOperatorId ?? '',
+            sanitizeUnknown: opts?.sanitizeUnknown === true
+          }
+        : { scope })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
     } catch (e) {
       return { ok: false, error: (e as Error)?.message ?? String(e) }
@@ -1381,9 +1535,36 @@ app.whenReady().then(() => {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2))
     return filePath
   }
+  // Both adherence entry points build the SAME report — a summary the operator
+  // reads and an export a client reads must not be able to disagree. The
+  // re-read here is deliberately read-only: `recordScopeProvenance` is not
+  // called, because an export must not manufacture history.
+  const currentAdherenceReport = (): ReturnType<typeof buildAdherenceReport> =>
+    buildAdherenceReport(
+      queryEvents({ limit: 100000 }),
+      currentScopeSnapshot(loadConfig(getProjectPath(activeProject ?? ''))),
+      { generatedAt: Date.now(), engagementId: currentEngagementId }
+    )
   ipcMain.handle('data:exportMarks', () => sliceExport('marks', listQuickMarks()))
   ipcMain.handle('data:exportLoot', () => sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })))
   ipcMain.handle('data:exportViolations', () => sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 }).filter((e) => e.data?.subtype === 'scope_violation')))
+  // G-D1: the POSITIVE proof. exportViolations above is the accusation half —
+  // a client reading it cannot tell 3 near-misses out of 250 targets from 3 out
+  // of 5. RedLog does not prevent (ALERT-ROLES Part D), so "provably did not
+  // exceed scope" IS the deliverable, and it needs the denominator.
+  ipcMain.handle('data:exportAdherence', () => {
+    return sliceExport('scope-adherence', currentAdherenceReport())
+  })
+  ipcMain.handle('scope:adherenceSummary', () => {
+    if (!activeProject) return null
+    const report = currentAdherenceReport()
+    return {
+      totals: report.totals,
+      summary: summariseAdherence(report),
+      scopeChanges: report.scopeChanges.length,
+      provenance: report.scope.provenance ?? null
+    }
+  })
   // v0.6.87 C2: Timeline slice export. Renderer picks a time window (usually
   // the current visible viewport in Timeline) and gets a filtered JSON slice
   // that a bug-bounty writeup can attach as evidence for a specific attack

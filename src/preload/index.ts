@@ -79,7 +79,13 @@ contextBridge.exposeInMainWorld('redlog', {
   scope: {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
-    isConfigured: () => ipcRenderer.invoke('scope:isConfigured')
+    isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
+    adherenceSummary: () => ipcRenderer.invoke('scope:adherenceSummary')
+  },
+  // io_ref sidecar: pull a full HTTP body on demand by its digest (ref).
+  io: {
+    read: (ref: string, off?: number, len?: number): Promise<{ ok: boolean; text?: string; bytes?: number; error?: string; maxBytes?: number }> =>
+      ipcRenderer.invoke('io:read', ref, off, len)
   },
   chain: {
     length: () => ipcRenderer.invoke('chain:length'),
@@ -115,11 +121,12 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson'),
-    exportBundle: () => ipcRenderer.invoke('data:exportBundle'),
+    exportBundle: (opts?: { profile?: 'internal' | 'client-deliverable'; sanitizeUnknown?: boolean }) => ipcRenderer.invoke('data:exportBundle', opts),
     exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
     exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
     exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
+    exportAdherence: () => ipcRenderer.invoke('data:exportAdherence'),
     exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },

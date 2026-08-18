@@ -12,6 +12,9 @@ const soften = {
   emerald: { ...colors.emerald, 300: '#8fddb6', 400: '#5ecf9c', 500: '#4bbf8a' },
   green: { ...colors.green, 300: '#8fddb6', 400: '#5ecf9c', 500: '#4bbf8a' },
   amber: { ...colors.amber, 300: '#e2c886', 400: '#d4ac5a', 500: '#c69a45' },
+  // off_profile — sits between red (exposed) and amber (unknown), softened to
+  // the same degree so it doesn't vibrate next to them.
+  orange: { ...colors.orange, 300: '#e3ab84', 400: '#d78550', 500: '#c9773f' },
   yellow: { ...colors.yellow, 300: '#e2c886', 400: '#d4ac5a', 500: '#c69a45' },
   cyan: { ...colors.cyan, 300: '#7fe0ea', 400: '#3fc7d6', 500: '#2ba9b8' }
 }
@@ -37,11 +40,23 @@ module.exports = {
           'text-dim': '#a1a1aa'
         }
       },
+      // Two named micro tiers so the sub-`text-xs` labels stop being hardcoded
+      // `text-[10px]`/`text-[9px]`/`text-[8px]` px (which only scaled with
+      // --app-zoom, not the 17px base). String form = font-size only, matching
+      // the arbitrary-value behaviour these replace. See docs/DESIGN-SYSTEM.md §2.3.
+      fontSize: {
+        '2xs': '0.625rem', // ~10.6px @17px base — chip counts, freshness, minor meta
+        '3xs': '0.5rem'    // ~8.5px  @17px base — the densest badges/labels
+      },
       boxShadow: {
-        'glow-red': '0 0 12px 0 rgba(239, 68, 68, 0.15)',
-        'glow-red-sm': '0 0 6px 0 rgba(239, 68, 68, 0.1)',
-        'glow-cyan': '0 0 14px 0 rgba(34, 211, 238, 0.18)',
-        'glow-cyan-sm': '0 0 6px 0 rgba(34, 211, 238, 0.25)',
+        // Softened to match the `soften` accent map (red-400 #d75f63 = rgb(215,95,99),
+        // cyan-400 #3fc7d6 = rgb(63,199,214)) so glows no longer render the pre-soften
+        // bright #ef4444 / #22d3ee that "vibrates" against the dark surface. See
+        // docs/DESIGN-SYSTEM.md §1.5.
+        'glow-red': '0 0 12px 0 rgba(215, 95, 99, 0.15)',
+        'glow-red-sm': '0 0 6px 0 rgba(215, 95, 99, 0.1)',
+        'glow-cyan': '0 0 14px 0 rgba(63, 199, 214, 0.18)',
+        'glow-cyan-sm': '0 0 6px 0 rgba(63, 199, 214, 0.25)',
         'card': '0 1px 3px 0 rgba(0, 0, 0, 0.4)',
         'card-hover': '0 4px 12px 0 rgba(0, 0, 0, 0.5)'
       },

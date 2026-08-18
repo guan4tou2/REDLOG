@@ -32,11 +32,30 @@ deconfliction:
     # worth forwarding to the SOC — uncomment as needed:
     # - ip_transition          # external IP or safety state (safe/exposed/unknown) changed
     # - opsec_state_changed    # VPN interfaces / DNS resolvers / MAC / hostname changed
-    # - config_changed         # scope / blacklist / enforcement changed (with a from→to diff)
+    # - config_changed         # scope / blacklist / alertFloor changed (with a from→to diff)
+    # - scope_loaded           # which scope document was loaded, with its sha256
     # - recording_paused       # operator paused recording — explains any timeline gap
     # - recording_resumed
   includeData: false      # if true, include full event.data — mind PII
+  authorityFloor: inferred  # inferred (default) = forward both tiers, labelled
+                            # fact              = observed rule matches only
 ```
+
+### Authority tiers
+
+Every forwarded event carries an `authority` field so the receiver can tell an
+**observed rule match** from an **inference**:
+
+| `authority` | Meaning | Example |
+|---|---|---|
+| `fact` | a configured rule matched literally | `reason: excluded_target` — a host the engagement explicitly forbade |
+| `inferred` | RedLog judged it noteworthy by proximity | `reason: adjacent_subnet` / `adjacent_domain` — out of scope and near a scope entry |
+| absent | the event type makes no §3 claim | markers, credential use, C2 check-ins |
+
+Both tiers describe activity that really happened; the tier is about how confident
+RedLog is that it *matters*, not about whether it occurred. The default forwards
+both — narrowing what the blue team is told is a deliberate act. `authorityFloor:
+fact` holds inferences back; events with no `authority` are unaffected either way.
 
 ## Payload
 
@@ -53,9 +72,16 @@ deconfliction:
   "subtype": "successful_login",
   "description": "Reused leaked svc-backup credentials to establish VPN tunnel",
   "severity": "high",
+  "authority": "fact",
+  "reason": null,
   "mitre_ttp": "T1078"
 }
 ```
+
+`authority` and `reason` are bounded enums, so they are sent **outside** the
+`includeData` gate — a receiver can triage a `scope_violation` without being handed
+the command text. `reason` is `excluded_target` | `adjacent_subnet` |
+`adjacent_domain` for scope violations, and `null` for everything else.
 
 Header:
 

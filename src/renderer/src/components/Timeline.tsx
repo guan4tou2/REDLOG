@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { dotShape, isInferredEvent, type DotShape } from '../lib/dotShape'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -8,6 +9,13 @@ import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
+import { wheelMode } from '../lib/timelineWheel'
+import { activeModes, type TimelineModeState } from '../lib/timelineModes'
+import { populatedLanes as computePopulatedLanes, visibleLanes as computeVisibleLanes, soloLaneOf } from '../lib/laneVisibility'
+import { buildLaneModel } from '../lib/timelineAxis'
+import { phaseSegments, phaseMarkersFromEvents } from '../lib/phaseSegments'
+import { inferPhaseSuggestions } from '../lib/phaseInference'
+import { shortcutsForScope, modKey, MOD_TOKEN } from '../lib/shortcuts'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -60,6 +68,20 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 //   findings    amber → red           credential_use, c2, marker, loot,
 //                                     cleanup, scope
 //   plumbing    zinc                  system
+// Phase C step 4: colours for the phase ribbon. Keyed by the lowercase phase
+// ids the seams emit (operator markers + inferred). Unknown phases fall back to
+// a neutral slate so a custom operator phase still renders.
+const PHASE_COLORS: Record<string, string> = {
+  recon: '#38bdf8',
+  delivery: '#a78bfa',
+  exploit: '#f472b6',
+  'credential-access': '#fbbf24',
+  'lateral-movement': '#34d399',
+  exfil: '#fb7185',
+  'anti-forensics': '#f87171'
+}
+const phaseColor = (phase: string): string => PHASE_COLORS[phase] ?? '#94a3b8'
+
 const LANE_COLORS: Record<LaneId, string> = {
   // execution
   shell: '#5ecf9c',
@@ -278,6 +300,35 @@ function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventTy
   if (pluginDef?.lane && LANES.includes(pluginDef.lane as LaneId)) return pluginDef.lane as LaneId
   return 'system'
 }
+
+// A concurrent *instance* within a lane — the thing an operator needs to tell
+// apart when several of the same source run at once: two open terminals, two
+// agent sessions. Generalized so the axis distinction isn't hardcoded to
+// terminals; any source with a persistent per-session identity can join by
+// returning a stable key here. HTTP/scanner flows are deliberately excluded —
+// each request is its own flow_id, so they aren't a persistent instance and
+// would badge every dot. Returns null when the event has no such identity.
+function instanceOf(e: RedLogEvent): { lane: string; key: string; kind: string } | null {
+  const d = e.data ?? {}
+  if (e.agentType === 'shell') {
+    const tid = d.terminalId ?? d.terminal_id
+    if (typeof tid === 'string' && tid) return { lane: 'shell', key: `t:${tid}`, kind: 'term' }
+    // External (hook) shells carry no terminalId; the shell process pid is a
+    // stable per-window identity, so concurrent external shells still separate.
+    if (typeof d.pid === 'number' || (typeof d.pid === 'string' && d.pid)) return { lane: 'shell', key: `p:${d.pid}`, kind: 'sh' }
+    return null
+  }
+  if (e.agentType === 'agent') {
+    const sid = d.session_id
+    if (typeof sid === 'string' && sid) return { lane: 'agent', key: `s:${sid}`, kind: 'session' }
+    return null
+  }
+  return null
+}
+
+// Stable colours for instance ordinals (#1, #2, …). Chosen to read against the
+// dark track and to not collide with the lane hues they sit on top of.
+const INSTANCE_COLORS = ['#38bdf8', '#f472b6', '#a3e635', '#fbbf24', '#c084fc', '#fb7185', '#2dd4bf', '#f97316']
 
 interface PluginEventType {
   agentType: string
@@ -551,33 +602,21 @@ function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
  *
  *  Encoded as SHAPE rather than more colour: eighteen lane hues are already
  *  past reliable discrimination, and shape survives both a colour-blind
- *  operator and a glance at the far edge of the screen.
- *
- *    scope violation   diamond          out of bounds is categorical
- *    critical marker   ring (hollow)    reads as an outline, not a fill
- *    important marker  larger circle
- *    everything else   circle
+ *  operator and a glance at the far edge of the screen. The shape table itself
+ *  now lives in `lib/dotShape.ts` (moved there so the §3 solid-vs-dashed rule
+ *  it carries is testable); this function is the text half of the same glyph.
  */
-type DotShape = 'circle' | 'diamond' | 'ring'
-function dotShape(e: RedLogEvent): { shape: DotShape; scale: number } {
-  const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation') return { shape: 'diamond', scale: 1.25 }
-  if (e.agentType === 'marker') {
-    const sev = String(e.data?.severity ?? 'info')
-    if (sev === 'critical') return { shape: 'ring', scale: 1.5 }
-    if (sev === 'important') return { shape: 'circle', scale: 1.25 }
-  }
-  return { shape: 'circle', scale: 1 }
-}
-
 function shapeTitle(e: RedLogEvent, t: (k: string) => string): string {
   const sub = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}`
+  // The shape carries the §3 tier too — a glyph the operator has to decode from
+  // stroke style alone is not a label.
+  const tier = isInferredEvent(e) ? ` · ${t('timeline.authority.inferred')}` : ''
+  if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}${tier}`
   if (e.agentType === 'marker') {
     const sev = String(e.data?.severity ?? 'info')
-    if (sev === 'critical' || sev === 'important') return ` · ${t(`marker.severity.${sev}`)}`
+    if (sev === 'critical' || sev === 'important') return ` · ${t(`marker.severity.${sev}`)}${tier}`
   }
-  return ''
+  return tier
 }
 
 function ioTitle(m: { io: IoMark; fail: boolean }, t: (k: string) => string): string {
@@ -711,6 +750,35 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     if (!collapseAgentTurns) return 0
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
+  // Multi-instance distinction: assign each distinct instance (terminal / agent
+  // session) a stable 1-based ordinal within its lane, and remember which lanes
+  // have more than one active instance. Dots and the detail panel only surface
+  // the ordinal for those lanes, so a single terminal / session stays unadorned.
+  const instanceInfo = useMemo(() => {
+    const perLane = new Map<string, string[]>()
+    for (const e of events) {
+      const inst = instanceOf(e)
+      if (!inst) continue
+      const keys = perLane.get(inst.lane) ?? []
+      if (!keys.includes(inst.key)) { keys.push(inst.key); perLane.set(inst.lane, keys) }
+    }
+    const ordinal = new Map<string, number>()
+    const multiLanes = new Set<string>()
+    for (const [lane, keys] of perLane) {
+      if (keys.length > 1) multiLanes.add(lane)
+      keys.forEach((k, i) => ordinal.set(`${lane}::${k}`, i + 1))
+    }
+    return { ordinal, multiLanes }
+  }, [events])
+  // The instance ordinal + colour for one event, or null when its lane has no
+  // concurrency worth distinguishing (or the event has no instance identity).
+  const instanceMark = useCallback((e: RedLogEvent): { ord: number; kind: string; color: string } | null => {
+    const inst = instanceOf(e)
+    if (!inst || !instanceInfo.multiLanes.has(inst.lane)) return null
+    const ord = instanceInfo.ordinal.get(`${inst.lane}::${inst.key}`)
+    if (!ord) return null
+    return { ord, kind: inst.kind, color: INSTANCE_COLORS[(ord - 1) % INSTANCE_COLORS.length] }
+  }, [instanceInfo])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -755,6 +823,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // added since v0.6.90 was previously invisible unless a teammate told you.
   // `?` opens; Escape or click-outside closes.
   const [showHelp, setShowHelp] = useState(false)
+  // T2(b): the transient wheel-mode hint. While the lane stack overflows, a
+  // plain wheel scrolls lanes (the one surprising gesture wheelMode() resolves);
+  // this flashes an inline hint on the track's right edge whenever overflow is
+  // live, then fades after a beat of no wheel input. `wheelHintTimer` holds the
+  // pending fade so a fresh wheel event resets it instead of stacking timers.
+  const [wheelHintOn, setWheelHintOn] = useState(false)
+  const wheelHintTimer = useRef<number | null>(null)
+  // T1: the persistent interaction legend under the minimap is collapsible; the
+  // operator's choice is chrome, not engagement state, so it rides a plain
+  // global key like the session-dividers / collapse-agent prefs (not the
+  // per-project scoped keys, which carry review state). Default expanded.
+  const [legendCollapsed, setLegendCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-legend-collapsed') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-legend-collapsed', legendCollapsed ? '1' : '0') } catch { /* ignore */ }
+  }, [legendCollapsed])
   // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
   // hidden by default in the detail view. The reviewer opts into a per-event
   // reveal; each reveal appends a chained system.secret_revealed event so the
@@ -1125,20 +1210,98 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // A lane with no events is dead vertical space — most engagements only ever
   // touch three or four of them. Keep the filter chip so the operator can see
   // the lane exists, but don't give it a row until something lands in it.
-  const populatedLanes = useMemo(() => {
-    const seen = new Set<LaneId>()
-    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
-    return seen
-    // v0.6.95 P1-12: pluginTypes was missing from deps — a plugin-registered
-    // event lane wouldn't appear on the filter chip until an unrelated state
-    // change re-ran the memo. Same fix applied to `laneEvents` and
-    // `recentEvents` below.
-  }, [events, pluginTypes])
+  // Phase C: the lane model is axis-driven (lib/timelineAxis + laneVisibility,
+  // both unit-tested). 'source' reproduces the former inline behaviour exactly
+  // (lanes = LANES, grouped by toLane); 'target' groups events by target with an
+  // untargeted lane last (§9/§12). Default 'source', persisted, so upgrade is a
+  // no-op until the operator opts in.
+  const [laneAxis, setLaneAxis] = useState<'source' | 'target'>(() => {
+    try { return localStorage.getItem('redlog-timeline-lane-axis') === 'target' ? 'target' : 'source' } catch { return 'source' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-lane-axis', laneAxis) } catch { /* private mode */ }
+  }, [laneAxis])
+  // Phase C step 5: the "Targets" sidebar entry deep-links here by dispatching
+  // this event (TargetView was removed — the target axis subsumes it).
+  useEffect(() => {
+    const onSetAxis = (e: Event): void => {
+      const detail = (e as CustomEvent).detail
+      if (detail === 'source' || detail === 'target') setLaneAxis(detail)
+    }
+    window.addEventListener('redlog-timeline-set-axis', onSetAxis)
+    return () => window.removeEventListener('redlog-timeline-set-axis', onSetAxis)
+  }, [])
 
-  const visibleLanes = useMemo(
-    () => LANES.filter((l) => populatedLanes.has(l) && !hiddenLanes.has(l)),
-    [populatedLanes, hiddenLanes]
+  // Phase C step 4: the phase ribbon. Off by default until the operator wants it.
+  const [phaseRibbon, setPhaseRibbon] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-phase-ribbon') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('redlog-timeline-phase-ribbon', phaseRibbon ? '1' : '0') } catch { /* private mode */ }
+  }, [phaseRibbon])
+
+  // v0.6.95 P1-12: pluginTypes must stay in deps — a plugin-registered event
+  // lane wouldn't appear until an unrelated re-render.
+  const srcLaneOf = useCallback(
+    (e: RedLogEvent): LaneId => toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes),
+    [pluginTypes]
   )
+  const laneModel = useMemo(
+    () => buildLaneModel(
+      laneAxis,
+      events,
+      LANES.map((id) => ({ id, label: laneLabels[id] })),
+      srcLaneOf,
+      t('timeline.untargeted')
+    ),
+    [laneAxis, events, laneLabels, srcLaneOf, t]
+  )
+  const laneEvents = laneModel.laneEvents
+  const axisLanes = laneModel.lanes
+  // Label + row-marker colour for a lane id, axis-aware. Target lanes have no
+  // source-type colour, so the row marker falls back to neutral zinc; dots on
+  // the track stay coloured by source-type (see `dotColor`).
+  const laneLabelOf = useCallback(
+    (id: string): string => axisLanes.find((l) => l.id === id)?.label ?? (laneLabels as Record<string, string>)[id] ?? id,
+    [axisLanes, laneLabels]
+  )
+  const laneRowColor = (id: string): string => (LANE_COLORS as Record<string, string>)[id] ?? '#71717a'
+
+  // The laneVisibility seam is generic over `LaneId = string`; here every id
+  // originates from the LANES tuple, so narrow back to Timeline's LaneId union.
+  const populatedLanes = useMemo(
+    () => computePopulatedLanes(events, laneModel.laneOf) as Set<LaneId>,
+    [events, laneModel]
+  )
+  const visibleLanes = useMemo(
+    () => computeVisibleLanes(axisLanes.map((l) => l.id), populatedLanes, hiddenLanes) as LaneId[],
+    [axisLanes, populatedLanes, hiddenLanes]
+  )
+
+  // T3: the "Active:" row. activeModes() (lib/timelineModes.ts, unit-tested) is
+  // the single source of which non-default modes are hiding/transforming events;
+  // this just feeds it the current state and renders the returned chips. A "solo"
+  // is only claimed when exactly one lane survives AND something is actually
+  // hidden — a naturally single-lane engagement isn't a solo — so the chip's ✕
+  // (showAllLanes) is always a real action. The soloed lane's display label is
+  // carried as the chip value so the row reads "solo: shell", not the raw id.
+  const modeChips = useMemo(() => {
+    const solo = soloLaneOf(visibleLanes, hiddenLanes)
+    const state: TimelineModeState = {
+      focusActive: focusChain !== null,
+      anomalyOnly: anomalyFilter,
+      collapseAgentTurns,
+      soloLane: solo ? laneLabelOf(solo) : null,
+      hiddenLaneCount: hiddenLanes.size,
+      filterQuery
+    }
+    return activeModes(state)
+  }, [focusChain, anomalyFilter, collapseAgentTurns, visibleLanes, hiddenLanes, filterQuery, laneLabels])
+
+  // T1/F5: the modifier symbol (⌘ on macOS, Ctrl elsewhere) resolved once from
+  // the preload-exposed platform, shared by the interaction legend and the `?`
+  // cheatsheet so both agree with the SHORTCUTS registry's MOD_TOKEN.
+  const mod = modKey((window as { redlog?: { platform?: string } }).redlog?.platform ?? '')
 
   const laneH = useMemo(() => {
     if (visibleLanes.length === 0) return MIN_LANE_H
@@ -1298,6 +1461,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - LABEL_W)
   const TRACK_W = Math.min(MAX_TRACK_W, Math.round(baseTrackW * zoom))
   const timeSpan = timeEnd - timeStart
+
+  // Phase C step 4: phase ribbon bands. `solid` are AUTHORITATIVE — segments
+  // between operator phase-markers (§11 乙). `inferred` are SUGGESTIONS —
+  // segments between the heuristic phase boundaries (§11 甲 / §3), rendered
+  // dashed and promotable to a real marker on click. Both reuse phaseSegments so
+  // the seams stay the single source of truth; only computed when the ribbon is on.
+  const phaseBandsSolid = useMemo(
+    () => (phaseRibbon ? phaseSegments(phaseMarkersFromEvents(events), timeEnd) : []),
+    [phaseRibbon, events, timeEnd]
+  )
+  const phaseBandsInferred = useMemo(
+    () => (phaseRibbon
+      ? phaseSegments(
+          inferPhaseSuggestions(events).map((s) => ({ ts: s.ts, phase: s.phase, markerId: s.sourceEventId })),
+          timeEnd
+        )
+      : []),
+    [phaseRibbon, events, timeEnd]
+  )
+
   // v0.11.6 (AUDIT V7): optional idle-gap compression.
   //
   // Time on the track is strictly linear, which is honest but wastes the
@@ -1403,11 +1586,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
   const totalH = visibleLanes.length * laneH
 
-  const laneEvents = useMemo(() => {
-    const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
-    for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
-    return map
-  }, [events, pluginTypes])
+  // laneEvents now comes from `laneModel` above (axis-driven, seeded per lane).
 
   // Debounced so a held key or a fast typist does not run the scan per
   // character. 120 ms sits below the point where the filter feels laggy and
@@ -1589,8 +1768,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // DOM, which is what makes this affordable.
   const maxZoom = useMemo(() => {
     let tightest = Infinity
-    for (const lane of LANES) {
-      const evs = laneEvents[lane]
+    // Iterate the model's lane arrays directly — keyed by source lane or target
+    // depending on the axis, so a fixed `LANES` walk would miss target lanes and
+    // index undefined.
+    for (const evs of Object.values(laneEvents)) {
       for (let i = 1; i < evs.length; i++) {
         const d = displayTs(evs[i]) - displayTs(evs[i - 1])
         if (d > 0 && d < tightest) tightest = d
@@ -1854,7 +2035,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const el = scrollRef.current
     if (!el) return
     const onWheel = (e: WheelEvent): void => {
-      if (e.ctrlKey || e.metaKey) {
+      // T2: the once-invisible pan/scroll/zoom branch is now the pure wheelMode()
+      // resolver (lib/timelineWheel.ts, unit-tested). `overflow` reproduces the
+      // old `scrollHeight > clientHeight + 1` check on the shared vertical-scroll
+      // parent; the three booleans map 1:1 onto the previous inline conditions so
+      // behaviour is unchanged — zoom on the zoom modifier, scroll-y only while
+      // the stack overflows and no modifier escapes it, pan-x everywhere else.
+      const outer = containerRef.current
+      const overflow = !!outer && outer.scrollHeight > outer.clientHeight + 1
+      const mode = wheelMode({ overflow, shiftKey: e.shiftKey, zoomKey: e.ctrlKey || e.metaKey })
+
+      // T2(b): flash the inline hint whenever overflow is live so the surprising
+      // scroll-y gesture explains itself as it happens. Only while overflow — the
+      // common (fitting) case stays clean — and it fades after a beat of no wheel.
+      if (overflow) {
+        setWheelHintOn(true)
+        if (wheelHintTimer.current != null) window.clearTimeout(wheelHintTimer.current)
+        wheelHintTimer.current = window.setTimeout(() => setWheelHintOn(false), 2500)
+      }
+
+      if (mode === 'zoom') {
         e.preventDefault()
         setCluster(null)
         const cursorX = e.clientX - el.getBoundingClientRect().left
@@ -1864,15 +2064,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         // and felt like nothing happened. Scaling by deltaY makes pinch smooth and
         // still gives a mouse wheel a reasonable step.
         setZoom((prev) => Math.min(maxZoomRef.current, Math.max(0.25, prev * Math.exp(-e.deltaY * 0.002))))
+      } else if (mode === 'scroll-y') {
+        // v0.9.4 P0-2: while the lane stack overflows, let the native vertical
+        // scroll through (do NOT preventDefault) so the lanes clipped below the
+        // fold are reachable by wheel. Shift is the escape hatch back to pan-x.
+        return
       } else if (e.deltaY !== 0) {
-        // v0.9.4 P0-2: while the lane stack overflows its container, deltaY
-        // has to drive the vertical axis or the newly-scrollable lanes are
-        // unreachable by wheel; shift+wheel keeps the horizontal scroll that
-        // deltaY does otherwise (dragging and the minimap also still pan).
-        // With no vertical overflow — the common case — behaviour is
-        // unchanged.
-        const outer = containerRef.current
-        if (outer && !e.shiftKey && outer.scrollHeight > outer.clientHeight + 1) return
+        // pan-x: the common, unsurprising case — deltaY drives the time axis.
         e.preventDefault()
         el.scrollLeft += e.deltaY
       }
@@ -1997,6 +2195,22 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     })
   }, [])
   const showAllLanes = useCallback(() => setHiddenLanes(new Set()), [])
+
+  // T3: dispatch a mode chip's ✕ to the existing clear path for that mode. The
+  // clearAction ids come from activeModes(); each maps to the same setter the
+  // header/keyboard already uses, so a chip never invents new clearing logic.
+  // clear-solo and clear-hidden-lanes both just restore every lane (a solo is a
+  // set of hidden lanes), so both route through showAllLanes.
+  const clearMode = useCallback((action: string) => {
+    switch (action) {
+      case 'clear-focus': setFocusAnchorId(null); break
+      case 'clear-anomaly': setAnomalyFilter(false); break
+      case 'clear-collapse-agent': setCollapseAgentTurns(false); break
+      case 'clear-solo':
+      case 'clear-hidden-lanes': showAllLanes(); break
+      case 'clear-filter': setFilterQuery(''); break
+    }
+  }, [showAllLanes])
 
   // One keydown listener for the Timeline's global single-key surface. This
   // replaced four separate window listeners that each re-implemented the "am I
@@ -2133,11 +2347,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // Operator / host → drop the value into the filter query (feature 1 dim path
   // picks it up automatically).
   const activatePaletteItem = useCallback((item: PaletteItem) => {
-    if (item.kind === 'event' || item.kind === 'marker') {
+    if ('value' in item) {
+      setFilterQuery(item.value)
+    } else {
       setSelectedEvent(item.event)
       scrollToEvent(item.event)
-    } else {
-      setFilterQuery(item.value)
     }
     setPaletteOpen(false)
     setPaletteQuery('')
@@ -2291,21 +2505,21 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 const isSel = i === paletteIndex
                 return (
                   <button
-                    key={item.kind === 'event' || item.kind === 'marker' ? item.event.id : `${item.kind}-${item.value}`}
+                    key={'value' in item ? `${item.kind}-${item.value}` : item.event.id}
                     onMouseEnter={() => setPaletteIndex(i)}
                     onClick={() => activatePaletteItem(item)}
                     className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}
                   >
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-500 w-14 shrink-0">
+                    <span className="text-2xs font-mono uppercase tracking-wider text-zinc-500 w-14 shrink-0">
                       {t(groupKey)}
                     </span>
                     <span className="text-xs font-mono text-zinc-200 truncate flex-1">{item.label}</span>
-                    <span className="text-[10px] font-mono text-zinc-600 shrink-0">{item.sub}</span>
+                    <span className="text-2xs font-mono text-zinc-600 shrink-0">{item.sub}</span>
                   </button>
                 )
               })}
             </div>
-            <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
+            <div className="px-3 py-1.5 border-t border-zinc-800 text-2xs font-mono text-zinc-500 text-center">
               {t('timeline.palette.footer')}
             </div>
           </div>
@@ -2327,52 +2541,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400">{t('timeline.help.title')}</span>
               <button
                 onClick={() => setShowHelp(false)}
-                className="ml-auto text-xs text-zinc-500 hover:text-zinc-200 leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10"
+                className="ml-auto text-xs text-zinc-500 hover:text-zinc-200 leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 hit-target"
                 aria-label={t('timeline.help.close')}
                 title={t('timeline.help.close')}
               >×</button>
             </div>
-            <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
-              {([
-                ['timeline.help.group.filter', [
-                  ['/', 'timeline.help.slash'],
-                  ['⌘K', 'timeline.help.palette'],
-                  ['Alt-click', 'timeline.help.soloLane'],
-                  ['Esc', 'timeline.help.escFilter']
-                ]],
-                ['timeline.help.group.focus', [
-                  ['f', 'timeline.help.focusChain'],
-                  ['click', 'timeline.help.selectDot'],
-                  ['↑/↓', 'timeline.help.walk']
-                ]],
-                ['timeline.help.group.timeline', [
-                  ['Right-click', 'timeline.help.dropMarker'],
-                  ['drag minimap', 'timeline.help.zoom'],
-                  ['click cluster', 'timeline.help.expandCluster']
-                ]],
-                ['timeline.help.group.detail', [
-                  ['click ▶', 'timeline.help.expandBody'],
-                  ['click cause chip', 'timeline.help.jumpCause'],
-                  ['Copy full', 'timeline.help.copyFull']
-                ]],
-                ['timeline.help.group.misc', [
-                  ['?', 'timeline.help.thisMenu']
-                ]]
-              ] as Array<[string, Array<[string, string]>]>).map(([groupKey, rows]) => (
-                <div key={groupKey}>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">{t(groupKey)}</div>
-                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                    {rows.map(([key, descKey]) => (
-                      <div key={key} className="contents">
-                        <kbd className="font-mono text-[11px] text-zinc-200 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
-                        <span className="text-zinc-400">{t(descKey)}</span>
-                      </div>
-                    ))}
+            {/* F5: rendered from the shared SHORTCUTS registry (lib/shortcuts.ts)
+                so this cheatsheet and the Dashboard shortcuts card can no longer
+                drift. `shortcutsForScope('timeline')` returns the global keys plus
+                the timeline-only ones; the MOD_TOKEN placeholder in each combo is
+                swapped for the resolved modKey, and each labelKey maps to a
+                shortcut.* i18n string. */}
+            <div className="px-4 py-3 max-h-[70vh] overflow-y-auto">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                {shortcutsForScope('timeline').map((s) => (
+                  <div key={s.id} className="contents">
+                    <kbd className="font-mono text-[11px] text-zinc-200 bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 whitespace-nowrap">
+                      {s.keys.split(MOD_TOKEN).join(mod)}
+                    </kbd>
+                    <span className="text-zinc-400">{t(s.labelKey)}</span>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-            <div className="px-3 py-1.5 border-t border-zinc-800 text-[10px] font-mono text-zinc-500 text-center">
+            <div className="px-3 py-1.5 border-t border-zinc-800 text-2xs font-mono text-zinc-500 text-center">
               {t('timeline.help.footer')}
             </div>
           </div>
@@ -2392,7 +2584,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           </span>
           <button
             onClick={() => setFocusAnchorId(null)}
-            className="text-zinc-400 hover:text-zinc-100 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+            className="text-zinc-400 hover:text-zinc-100 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hit-target"
             title={t('timeline.focusChain.exit')}
             aria-label={t('timeline.focusChain.exit')}
           >×</button>
@@ -2417,7 +2609,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             makes the affordance visible; the modal itself lists everything. */}
         <button
           onClick={() => setShowHelp(true)}
-          className="ml-1 w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+          className="ml-1 w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
           title={t('timeline.help.hint')}
           aria-label={t('timeline.help.hint')}
         >?</button>
@@ -2426,7 +2618,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         <div className="flex items-center gap-1 ml-2">
           <button
             onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
             title={t('timeline.zoomOut')}
             aria-label={t('timeline.zoomOut')}
           >−</button>
@@ -2439,7 +2631,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           >{Math.round(zoom * 100)}% ↺</button>
           <button
             onClick={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="w-5 h-5 flex items-center justify-center text-[11px] text-zinc-500 hover:text-zinc-300 bg-zinc-800/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
             title={t('timeline.zoomIn')}
             aria-label={t('timeline.zoomIn')}
           >+</button>
@@ -2450,6 +2642,27 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             agent subtypes are dropped from the render pipeline — the
             hidden count is shown so the empty agent lane doesn't look
             like a bug. Same visual weight as the other filter chips. */}
+        {/* Phase C: lane axis — group rows by source type (recording view) or
+            by target (reconstruction view). Source is the default. */}
+        <button
+          onClick={() => setLaneAxis((a) => (a === 'source' ? 'target' : 'source'))}
+          title={t('timeline.axisHint')}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${laneAxis === 'target' ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          <span>⊞</span>
+          <span className="font-mono">{laneAxis === 'target' ? t('timeline.axisTarget') : t('timeline.axisSource')}</span>
+        </button>
+
+        {/* Phase C step 4: phase ribbon toggle. */}
+        <button
+          onClick={() => setPhaseRibbon((v) => !v)}
+          title={t('timeline.phaseRibbonHint')}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${phaseRibbon ? 'bg-violet-900/40 text-violet-300 hover:bg-violet-900/60' : 'bg-zinc-800/50 text-zinc-500 hover:text-zinc-300'}`}
+        >
+          <span>▤</span>
+          <span className="font-mono">{t('timeline.phaseRibbon')}</span>
+        </button>
+
         <button
           onClick={() => setCollapseAgentTurns((v) => !v)}
           title={collapseAgentTurns
@@ -2460,7 +2673,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
           <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
           {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-            <span className="font-mono tabular-nums text-[10px] text-lime-400/80">−{hiddenAgentTurnCount}</span>
+            <span className="font-mono tabular-nums text-2xs text-lime-400/80">−{hiddenAgentTurnCount}</span>
           )}
         </button>
 
@@ -2486,7 +2699,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             <span>⋯</span>
             <span className="font-mono">{t('timeline.compressGaps.label')}</span>
             {compressGaps && timeMap.gaps.length > 0 && (
-              <span className="font-mono tabular-nums text-[10px] text-cyan-400/80">{timeMap.gaps.length}</span>
+              <span className="font-mono tabular-nums text-2xs text-cyan-400/80">{timeMap.gaps.length}</span>
             )}
           </button>
         ) : null}
@@ -2542,7 +2755,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   setFollowMode(true)
                 }}
                 title={isLive ? t('timeline.follow.jumpToNow') : t('timeline.follow.jumpToNow')}
-                className={`whitespace-nowrap text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                className={`whitespace-nowrap text-2xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
                   isLive
                     ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
                     : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
@@ -2552,7 +2765,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 onClick={() => setFollowMode((v) => !v)}
                 title={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
                 aria-label={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                className="w-5 h-5 flex items-center justify-center text-[10px] text-zinc-500 hover:text-zinc-200 bg-zinc-800/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+                className="w-5 h-5 flex items-center justify-center text-2xs text-zinc-500 hover:text-zinc-200 bg-zinc-800/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 hit-target"
               >{followMode ? '⏸' : '▶'}</button>
             </div>
           )
@@ -2579,7 +2792,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             {viewsOpen && (
               <div className="absolute top-full right-0 mt-1 z-40 w-72 rounded border border-zinc-700 bg-zinc-900/95 shadow-xl">
                 <div className="px-2 py-1.5 border-b border-zinc-800">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">{t('timeline.views.saveNew')}</div>
+                  <div className="text-2xs font-mono uppercase tracking-wider text-zinc-500 mb-1">{t('timeline.views.saveNew')}</div>
                   <input
                     value={viewsName}
                     onChange={(e) => setViewsName(e.target.value)}
@@ -2606,14 +2819,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         className="flex-1 text-left text-xs font-mono text-zinc-200 truncate"
                         title={v.name}
                       >{v.name}</button>
-                      <span className="text-[10px] font-mono text-zinc-600 tabular-nums">
+                      <span className="text-2xs font-mono text-zinc-600 tabular-nums">
                         {formatTs(v.createdAt, tz, projectTz, 'time')}
                       </span>
                       <button
                         onClick={() => void deleteView(v.id)}
                         title={t('timeline.views.delete')}
                         aria-label={t('timeline.views.delete')}
-                        className="text-zinc-500 hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+                        className="text-zinc-500 hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hit-target"
                       >×</button>
                     </div>
                   ))}
@@ -2695,7 +2908,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               title={t('timeline.showAllLanes')}
             >{t('timeline.showAll')}</button>
           )}
-          {LANES.map((id) => {
+          {/* Lane filter chips are source-type specific (colour + label); on the
+              target axis they're hidden for now (v1 — target lanes are data-
+              derived and use no palette). */}
+          {laneAxis === 'source' && LANES.map((id) => {
             const empty = !populatedLanes.has(id)
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
@@ -2729,6 +2945,41 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         </div>
       </div>
 
+      {/* T3: active-modes row. Renders directly under the header, and ONLY when
+          at least one sticky mode is hiding/transforming events — activeModes()
+          returns [] at all-default, so a clean timeline shows no bar at all. It
+          answers "why is the track near-empty?" (DESIGN-PRINCIPLES §8) with one
+          dismissible chip per mode plus a clear-all. */}
+      {modeChips.length > 0 && (
+        <div
+          data-testid="timeline-active-modes"
+          className="flex items-center gap-1.5 px-4 py-1.5 border-b border-zinc-800/80 bg-zinc-900/40 shrink-0 overflow-x-auto"
+        >
+          <span className="text-2xs font-mono uppercase tracking-wider text-zinc-500 shrink-0">
+            {t('timeline.mode.active')}
+          </span>
+          {modeChips.map((chip) => (
+            <span
+              key={chip.id}
+              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800/70 text-zinc-200 border border-zinc-700"
+            >
+              {t(chip.labelKey, chip.value != null ? { value: chip.value } : undefined)}
+              <button
+                onClick={() => clearMode(chip.clearAction)}
+                className="text-zinc-500 hover:text-zinc-100 leading-none w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-white/10"
+                title={t('timeline.mode.clear')}
+                aria-label={t('timeline.mode.clear')}
+              >×</button>
+            </span>
+          ))}
+          <button
+            onClick={() => modeChips.forEach((c) => clearMode(c.clearAction))}
+            className="shrink-0 ml-1 text-2xs font-mono text-zinc-500 hover:text-zinc-200 px-1.5 py-0.5 rounded hover:bg-white/[0.05] transition-colors"
+            title={t('timeline.mode.clearAll')}
+          >{t('timeline.mode.clearAll')}</button>
+        </div>
+      )}
+
       {/* Density minimap — overview of the whole engagement. Drag to zoom to a
           window, click to jump. The bright frame marks the current viewport. */}
       <div
@@ -2753,8 +3004,58 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         )}
       </div>
 
+      {/* T1: persistent interaction legend. A low-weight strip under the minimap
+          carrying the three core gestures (pan / zoom / filter) plus a pointer to
+          the full ? cheatsheet — so pan, zoom and filter are never a secret. The
+          {mod} token resolves once via modKey(platform), shared with the F5
+          registry. Collapsible; the choice persists in legendCollapsed. */}
+      <div className="shrink-0 border-b border-zinc-800/80 bg-zinc-950/40 px-4 py-1 flex items-center gap-3 text-xs font-mono text-zinc-600 select-none">
+        {!legendCollapsed && (
+          <div className="flex items-center gap-3 min-w-0 overflow-x-auto">
+            <span className="whitespace-nowrap">{t('timeline.legend.pan')}</span>
+            <span className="whitespace-nowrap">{t('timeline.legend.zoom', { mod })}</span>
+            <button
+              onClick={() => searchInputRef.current?.focus()}
+              className="whitespace-nowrap hover:text-zinc-300 transition-colors"
+            >{t('timeline.legend.filter')}</button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="whitespace-nowrap hover:text-zinc-300 transition-colors"
+            >{t('timeline.legend.shortcuts')}</button>
+          </div>
+        )}
+        {legendCollapsed && (
+          <button
+            onClick={() => setShowHelp(true)}
+            className="whitespace-nowrap hover:text-zinc-300 transition-colors"
+            title={t('timeline.legend.shortcuts')}
+          >?</button>
+        )}
+        <button
+          onClick={() => setLegendCollapsed((v) => !v)}
+          className="ml-auto shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 hover:text-zinc-300 transition-colors hit-target"
+          title={legendCollapsed ? t('timeline.legend.expand') : t('timeline.legend.collapse')}
+          aria-label={legendCollapsed ? t('timeline.legend.expand') : t('timeline.legend.collapse')}
+          aria-expanded={!legendCollapsed}
+        >{legendCollapsed ? '⌃' : '⌄'}</button>
+      </div>
+
       {/* Timeline + event list split */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        {/* T2(b): the transient wheel-mode hint, pinned to the track's right edge.
+            Shown only while the lane stack overflows (wheelHintOn is set solely on
+            an overflow wheel), so the common fitting case stays clean. It names the
+            surprising gesture — plain wheel scrolls lanes — and the ⇧ escape hatch
+            back to horizontal pan. pointer-events-none so it never eats a wheel. */}
+        {wheelHintOn && (
+          <div
+            data-testid="timeline-wheel-hint"
+            className="absolute z-30 top-9 right-3 pointer-events-none rounded-md border border-zinc-700 bg-zinc-900/95 px-2 py-1 text-xs font-mono text-zinc-300 shadow-lg leading-tight"
+          >
+            <div>{t('timeline.wheelHint.scrolling')}</div>
+            <div className="text-zinc-500">{t('timeline.wheelHint.panWith')}</div>
+          </div>
+        )}
         {/* Swim lanes */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
@@ -2772,8 +3073,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 className="flex items-center gap-1.5 px-2 border-b border-zinc-800/30 font-mono text-[11px]"
                 style={{ height: laneH }}
               >
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
-                <span className="text-zinc-500 truncate">{laneLabels[id]}</span>
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: laneRowColor(id) }} />
+                <span className="text-zinc-500 truncate" title={laneLabelOf(id)}>{laneLabelOf(id)}</span>
               </div>
             ))}
           </div>
@@ -2817,6 +3118,35 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         lands on a new date carry the date too. */}
                     {axisLabel(ts, i, ticks, timeSpan, tz, projectTz)}
                   </span>
+                ))}
+                {/* Phase ribbon (step 4). Solid = authoritative operator phase
+                    segments; dashed = inferred suggestions, click to promote to a
+                    real marker (§3/§11). Sits at the bottom edge of the axis row. */}
+                {phaseRibbon && phaseBandsSolid.map((b) => (
+                  <div
+                    key={`ps-${b.markerId}`}
+                    className="absolute pointer-events-none"
+                    title={b.phase}
+                    style={{
+                      left: toX(b.start), width: Math.max(2, toX(b.end ?? timeEnd) - toX(b.start)),
+                      bottom: 0, height: 5, backgroundColor: phaseColor(b.phase), opacity: 0.9
+                    }}
+                  />
+                ))}
+                {phaseRibbon && phaseBandsInferred.map((b) => (
+                  <button
+                    key={`pi-${b.markerId}`}
+                    type="button"
+                    title={t('timeline.phasePromote', { phase: b.phase })}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => onDropMarker?.(Math.round(b.start))}
+                    className="absolute cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
+                    style={{
+                      left: toX(b.start), width: Math.max(2, toX(b.end ?? timeEnd) - toX(b.start)),
+                      bottom: 0, height: 5, opacity: 0.8,
+                      backgroundImage: `repeating-linear-gradient(90deg, ${phaseColor(b.phase)} 0 4px, transparent 4px 8px)`
+                    }}
+                  />
                 ))}
               </div>
 
@@ -2862,7 +3192,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           bleeding out of a 4px band is worse than none. */}
                       {w >= 34 && (
                         <span
-                          className="absolute text-[9px] font-mono px-1 rounded-b bg-zinc-900/80 whitespace-nowrap"
+                          className="absolute text-3xs font-mono px-1 rounded-b bg-zinc-900/80 whitespace-nowrap"
                           style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
                         >{b.label}</span>
                       )}
@@ -2884,7 +3214,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       }}
                       title={t('timeline.gapSkipped', { d: formatGap(g.to - g.from) })}
                     >
-                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] text-zinc-500 font-mono whitespace-nowrap">
+                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-3xs text-zinc-500 font-mono whitespace-nowrap">
                         ⋯{formatGap(g.to - g.from)}
                       </span>
                     </div>
@@ -2918,7 +3248,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   // the shape. Clusters keep their own sizing — the popup
                   // lists members individually, so per-event emphasis there
                   // would fight the count glyph.
-                  const marks = single ? dotShape(evt) : { shape: 'circle' as DotShape, scale: 1 }
+                  const marks = single ? dotShape(evt) : { shape: 'circle' as DotShape, scale: 1, inferred: false }
                   const dot = single
                     ? Math.round(9 * marks.scale)
                     : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
@@ -2974,6 +3304,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   // node, and ↑/↓ walks from there — the same model the
                   // existing keyboard handler already implements.
                   const isTabStop = single && (sel || (!selectedEvent && c === visibleClusters[0]))
+                  // Dot colour is always the SOURCE-type colour, even on the
+                  // target axis where c.lane is a target id (no palette entry).
+                  // Multi-event clusters take their first event's source type.
+                  const dotColor = LANE_COLORS[srcLaneOf(c.events[0])] ?? laneRowColor(c.lane)
                   return (
                     <button
                       key={c.key}
@@ -3014,15 +3348,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           // diamond = a square turned 45°; ring = hollow.
                           borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
                           transform: marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
-                          backgroundColor: marks.shape === 'ring' ? 'transparent' : LANE_COLORS[c.lane],
-                          border: marks.shape === 'ring'
-                            ? `2.5px solid ${LANE_COLORS[c.lane]}`
-                            : single ? undefined : '1px solid rgba(0,0,0,0.45)',
+                          // §3: inferred = dashed outline over an unfilled body,
+                          // the same statement the phase ribbon makes. A filled,
+                          // glowing dot asserts; this one suggests.
+                          backgroundColor: marks.inferred || marks.shape === 'ring' ? 'transparent' : dotColor,
+                          border: marks.inferred
+                            ? `1.5px dashed ${dotColor}`
+                            : marks.shape === 'ring'
+                              ? `2.5px solid ${dotColor}`
+                              : single ? undefined : '1px solid rgba(0,0,0,0.45)',
                           boxShadow: sel
-                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
+                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${dotColor}, 0 0 12px ${dotColor}60`
                             : inChain
                               ? `0 0 0 1.5px ${chainRingColor}, 0 0 8px ${chainRingColor}80`
-                              : `0 0 6px ${LANE_COLORS[c.lane]}40`
+                              : marks.inferred ? 'none' : `0 0 6px ${dotColor}40`
                         }}
                       >
                         {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
@@ -3060,12 +3399,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           </>
                         )
                       })()}
+                      {/* Multi-instance ordinal (top-left): only shows when the
+                          event's lane has more than one concurrent instance —
+                          two terminals, two agent sessions — so a single
+                          terminal keeps a clean dot. Colour + number match the
+                          chip in the detail panel. */}
+                      {single && (() => {
+                        const im = instanceMark(evt)
+                        if (!im) return null
+                        return (
+                          <span
+                            className="absolute -top-0.5 -left-0.5 rounded-full text-3xs leading-none font-bold flex items-center justify-center pointer-events-none"
+                            style={{ width: 11, height: 11, background: '#0a0a0a', color: im.color, border: `1px solid ${im.color}` }}
+                            title={`${im.kind} #${im.ord}`}
+                          >{im.ord}</span>
+                        )
+                      })()}
                       {/* Feature 3: single-badge bubble at top-right. Only the
                           first badge shows here to keep the dot readable; the
                           rest surface in the tooltip and in the detail panel. */}
                       {single && badges && badges.length > 0 && (
                         <span
-                          className="absolute -top-0.5 -right-0.5 rounded-full bg-zinc-950/95 border border-amber-500/60 text-[8px] leading-none flex items-center justify-center pointer-events-none"
+                          className="absolute -top-0.5 -right-0.5 rounded-full bg-zinc-950/95 border border-amber-500/60 text-3xs leading-none flex items-center justify-center pointer-events-none"
                           style={{ width: 12, height: 12 }}
                         >
                           {badges[0].icon}
@@ -3134,7 +3489,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
                           <span className="text-zinc-600 font-mono text-[11px] tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
-                          <span className="text-zinc-300 text-xs truncate">{eventTitle(evt)}</span>
+                          <span className="text-zinc-300 text-xs truncate flex-1 min-w-0">{eventTitle(evt)}</span>
+                          {(() => {
+                            const im = instanceMark(evt)
+                            if (!im) return null
+                            return (
+                              <span
+                                className="ml-auto shrink-0 text-3xs font-mono font-bold leading-none px-1 py-0.5 rounded"
+                                style={{ color: im.color, border: `1px solid ${im.color}55` }}
+                                title={`${im.kind} #${im.ord}`}
+                              >#{im.ord}</span>
+                            )
+                          })()}
                         </button>
                       ))}
                       {overflow > 0 && (
@@ -3196,7 +3562,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         <>
           {/* Drag handle — 4px hit strip along the top edge; visual accent on hover. */}
           <div
-            className="shrink-0 h-1 cursor-row-resize bg-zinc-800/50 hover:bg-red-500/40 transition-colors relative"
+            className="shrink-0 h-1 cursor-row-resize bg-zinc-800/50 hover:bg-red-500/40 transition-colors relative hit-target-v"
             title={t('timeline.resizeDetailPanel')}
             onMouseDown={(e) => {
               e.preventDefault()
@@ -3226,6 +3592,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
                 {operatorLabel(selectedEvent.operatorId)}
               </span>
+              {(() => {
+                const im = instanceMark(selectedEvent)
+                if (!im) return null
+                return (
+                  <span
+                    className="text-[11px] font-mono px-1.5 py-0.5 rounded"
+                    style={{ color: im.color, border: `1px solid ${im.color}55`, background: `${im.color}14` }}
+                  >{im.kind} #{im.ord}</span>
+                )
+              })()}
             </div>
             <div className="flex items-center gap-2">
               {(() => {
@@ -3403,7 +3779,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               Suppressed entirely once the operator is already in focus mode
               so it doesn't add noise. */}
           {!focusChain && (
-            <p className="mt-1 text-[10px] text-zinc-600 font-mono">
+            <p className="mt-1 text-2xs text-zinc-600 font-mono">
               {t('timeline.focusChain.enterHint')}
             </p>
           )}
@@ -3446,7 +3822,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             && selectedEvent.data?.subtype === 'command_end'
             && selectedEvent.data?.source === 'builtin-terminal'
             && (
-              <ReplayCommand eventId={selectedEvent.id} mode="command" />
+              <ReplayCommand
+                eventId={selectedEvent.id}
+                mode="command"
+                castBytes={castSpanBytes(selectedEvent.data as Record<string, unknown>)}
+              />
             )}
           {/* Session-level replay: for session_start / session_end, replays
               the ENTIRE pty session. Critical when the operator ssh'd into
@@ -3487,6 +3867,14 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// The size of the .cast span a builtin-terminal command produced, when the
+// command was bracketed (io.len present and not `unbracketed`). Used to decide
+// whether ReplayCommand can cheaply auto-load the output for an inline preview.
+function castSpanBytes(data: Record<string, unknown> | undefined): number | undefined {
+  const io = data?.io as { len?: number; unbracketed?: boolean } | undefined
+  return io && typeof io.len === 'number' && !io.unbracketed ? io.len : undefined
 }
 
 // Structured detail body for a shell command_end event. Renders separate
@@ -3671,6 +4059,73 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
   )
 }
 
+/** io_ref sidecar view model on a scanner event (SPEC-IO-SIDECAR.md). Present
+ *  only when the captured body exceeded the inline preview cap, so the full
+ *  bytes live on disk and the event carries just this digest. */
+interface IoRefView { ref: string; len: number; sha256?: string; truncated?: boolean; ct?: string }
+
+/** A body whose full bytes are in the io/ sidecar: show the truncated inline
+ *  preview immediately, with a "load full body" affordance that pulls the
+ *  complete bytes on demand via `io:read` (bounded by the read cap). An
+ *  over-cap or pruned body says so rather than dumping raw bytes (SPEC step 4). */
+function SidecarBody({ label, preview, io, accent }: {
+  label: string
+  preview: string
+  io: IoRefView
+  accent: 'emerald' | 'amber' | 'zinc'
+}): JSX.Element {
+  const { t } = useI18n()
+  const [full, setFull] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = async (): Promise<void> => {
+    setLoading(true); setError(null)
+    try {
+      const r = await window.redlog.io.read(io.ref)
+      if (r.ok && typeof r.text === 'string') setFull(r.text)
+      else setError(r.maxBytes
+        ? t('timeline.detail.ioTooLarge', { max: formatBytes(r.maxBytes) })
+        : t('timeline.detail.ioUnavailable'))
+    } catch {
+      setError(t('timeline.detail.ioUnavailable'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <CollapsibleStream
+        label={label}
+        content={full ?? preview}
+        bytes={io.len}
+        truncated={full === null}
+        accent={accent}
+        startOpen
+      />
+      {full === null && (
+        <div className="flex items-center gap-2 px-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="text-2xs font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+          >
+            {loading ? t('timeline.detail.ioLoading') : t('timeline.detail.ioLoadFull', { size: formatBytes(io.len) })}
+          </button>
+          {io.truncated && (
+            <span className="text-2xs font-mono text-amber-400" title={t('timeline.detail.ioCeilingHint')}>
+              {t('timeline.detail.ioCeiling')}
+            </span>
+          )}
+          {error && <span className="text-2xs font-mono text-amber-400">{error}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** v0.11.2 (T6): one HTTP exchange as the operator thinks about it — what went
  *  out, what came back. The request and response arrive as two separate chain
  *  events linked by `flow_id`, so each renders the half it holds and names the
@@ -3681,6 +4136,9 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
   const isResponse = subtype === 'http_response'
   const params = data.params as Record<string, unknown> | undefined
   const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
+  const io = data.io as { request?: IoRefView; response?: IoRefView } | undefined
+  const reqIo = io?.request
+  const rspIo = io?.response
   const contentType = String(data.content_type ?? '')
   const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
 
@@ -3699,15 +4157,31 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           startOpen
         />
       )}
+      {/* The request body the mitmproxy addon captures (request_body_preview) was
+          collected but never shown — only params were. Render it like the
+          response body so POST/PUT payloads are actually reviewable. */}
+      {!isResponse && typeof data.request_body_preview === 'string' && (data.request_body_preview as string).length > 0 && (
+        reqIo
+          ? <SidecarBody label={t('timeline.detail.httpRequestBody')} preview={data.request_body_preview as string} io={reqIo} accent="zinc" />
+          : <CollapsibleStream
+              label={t('timeline.detail.httpRequestBody')}
+              content={data.request_body_preview as string}
+              bytes={(data.request_body_preview as string).length}
+              accent="zinc"
+              startOpen
+            />
+      )}
       {isResponse && preview.length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpResponseBody')}
-          content={preview}
-          bytes={contentLength ?? preview.length}
-          truncated={contentLength !== null && contentLength > preview.length}
-          accent="emerald"
-          startOpen
-        />
+        rspIo
+          ? <SidecarBody label={t('timeline.detail.httpResponseBody')} preview={preview} io={rspIo} accent="emerald" />
+          : <CollapsibleStream
+              label={t('timeline.detail.httpResponseBody')}
+              content={preview}
+              bytes={contentLength ?? preview.length}
+              truncated={contentLength !== null && contentLength > preview.length}
+              accent="emerald"
+              startOpen
+            />
       )}
       {bodyless && (
         <p className="text-[11px] text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
@@ -3716,7 +4190,7 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           })}
         </p>
       )}
-      {(data.request_headers || data.response_headers) && (
+      {Boolean(data.request_headers || data.response_headers) && (
         <CollapsibleStream
           label={t('timeline.detail.httpHeaders')}
           content={safePretty(data.response_headers ?? data.request_headers)}
@@ -3820,13 +4294,13 @@ function CollapsibleStream({
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2 px-2 py-1 text-left"
       >
-        <span className="text-[10px] text-zinc-500 font-mono w-3">{open ? '▼' : '▶'}</span>
+        <span className="text-2xs text-zinc-500 font-mono w-3">{open ? '▼' : '▶'}</span>
         <span className={`text-[11px] font-mono font-semibold uppercase tracking-wider ${acc.label}`}>{label}</span>
-        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
+        <span className={`text-2xs font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
           {formatBytes(shownBytes)}
         </span>
         {truncated && (
-          <span className="text-[10px] font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
+          <span className="text-2xs font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
             {t('timeline.detail.truncated')}
           </span>
         )}
@@ -3836,7 +4310,7 @@ function CollapsibleStream({
             tabIndex={0}
             onClick={(e) => { e.stopPropagation(); void copyFull() }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void copyFull() } }}
-            className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 cursor-pointer"
+            className="ml-auto text-2xs font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 cursor-pointer"
           >
             {copied ? t('timeline.detail.copied') : t('timeline.detail.copyFull')}
           </span>
@@ -3846,7 +4320,7 @@ function CollapsibleStream({
         <pre className="mx-2 mb-2 p-2 bg-zinc-950 rounded border border-zinc-800/60 text-xs text-zinc-300 font-mono max-h-80 overflow-y-auto whitespace-pre-wrap break-all">
           {preview}
           {isLarge && (
-            <span className="block mt-2 text-[10px] text-zinc-500">
+            <span className="block mt-2 text-2xs text-zinc-500">
               {t('timeline.detail.previewCut', { shown: formatBytes(preview.length), total: formatBytes(shownBytes) })}
             </span>
           )}
@@ -3876,16 +4350,27 @@ function MetadataGrid({ entries }: { entries: Array<[string, unknown]> }): JSX.E
   )
 }
 
+// Command slices at or below this size auto-load so the operator sees the
+// output inline without a click — the "see I/O on the timeline" affordance.
+// Larger slices (and the heavy session player) stay behind the manual button,
+// so selecting an event never pulls a giant dump into the renderer by itself.
+const REPLAY_AUTOLOAD_LIMIT = 512 * 1024
+// Lines of stdout shown before the "show full output" expander.
+const REPLAY_PREVIEW_LINES = 8
+
 // Pulled from the session's asciinema .cast on disk — not from the event
 // row. Rendering here keeps the chain event clean (command + exit + duration
-// only) while still letting the operator see what actually printed.
-function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 'command' | 'session' }): JSX.Element {
+// only) while still letting the operator see what actually printed. For a
+// bracketed command whose slice is small, the output previews automatically;
+// large slices and whole-session replays stay one deliberate click away.
+function ReplayCommand({ eventId, mode = 'command', castBytes }: { eventId: string; mode?: 'command' | 'session'; castBytes?: number }): JSX.Element {
   const [text, setText] = useState<string | null>(null)
   const [events, setEvents] = useState<Array<[number, 'o', string]> | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [showFull, setShowFull] = useState(false)
   const { t } = useI18n()
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -3903,20 +4388,35 @@ function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 
       const evs = (r as { events?: Array<[number, 'o', string]> }).events
       if (evs && evs.length > 0) setEvents(evs)
       setTruncated(Boolean((r as { truncated?: boolean }).truncated))
-      setExpanded(true)
+      setLoaded(true)
     } finally {
       setLoading(false)
     }
   }
+
+  // A small, bracketed command slice is cheap to read, so auto-load it. The
+  // detail panel is not remounted per selection, so reset state when eventId
+  // changes (otherwise the previous command's output would leak into the new
+  // panel) and re-trigger the auto-load.
+  const autoEligible = mode === 'command' && typeof castBytes === 'number' && castBytes > 0 && castBytes <= REPLAY_AUTOLOAD_LIMIT
+  useEffect(() => {
+    setText(null); setEvents(null); setError(null); setTruncated(false); setShowFull(false); setLoaded(false)
+    if (autoEligible) void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId])
+
   const btnLabel = mode === 'session' ? 'timeline.replay.sessionButton' : 'timeline.replay.button'
-  if (!expanded) {
+  if (!loaded && !loading) {
     return (
       <button
-        onClick={load}
+        onClick={() => void load()}
         disabled={loading}
         className="mt-1.5 text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
-      >{loading ? t('timeline.replay.loading') : t(btnLabel)}</button>
+      >{t(btnLabel)}</button>
     )
+  }
+  if (!loaded && loading) {
+    return <p className="mt-1.5 text-xs text-zinc-500 font-mono">{t('timeline.replay.loading')}</p>
   }
   if (error) return <p className="mt-1.5 text-xs text-red-400">{t('timeline.replay.failed', { error })}</p>
   // Session replays get the full player (xterm + scrubber + speed). If the
@@ -3925,11 +4425,24 @@ function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; mode?: 
   if (mode === 'session' && events && events.length > 0) {
     return <SessionReplayPlayer events={events} truncated={truncated} />
   }
-  const heightCls = mode === 'session' ? 'max-h-[400px]' : 'max-h-[200px]'
+  const full = text ?? ''
+  const lines = full.split('\n')
+  const isLong = lines.length > REPLAY_PREVIEW_LINES + 1 || full.length > 800
+  const shown = showFull || !isLong ? full : lines.slice(0, REPLAY_PREVIEW_LINES).join('\n')
+  const heightCls = mode === 'session' || showFull ? 'max-h-[400px]' : 'max-h-[200px]'
   return (
-    <pre className={`mt-1.5 p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed ${heightCls} overflow-y-auto whitespace-pre-wrap`}>
-      {text || t('timeline.replay.empty')}
-    </pre>
+    <div className="mt-1.5">
+      <pre className={`p-2 bg-zinc-950 rounded border border-zinc-800 text-xs text-zinc-300 font-mono overflow-x-auto leading-relaxed ${heightCls} overflow-y-auto whitespace-pre-wrap`}>
+        {shown || t('timeline.replay.empty')}
+      </pre>
+      {isLong && (
+        <button
+          onClick={() => setShowFull((v) => !v)}
+          className="mt-1 text-2xs font-mono text-cyan-500 hover:text-cyan-400"
+        >{showFull ? t('timeline.replay.showLess') : t('timeline.replay.showFull', { size: formatBytes(full.length) })}</button>
+      )}
+      {truncated && <p className="mt-1 text-2xs font-mono text-amber-400">{t('timeline.replay.truncated')}</p>}
+    </div>
   )
 }
 

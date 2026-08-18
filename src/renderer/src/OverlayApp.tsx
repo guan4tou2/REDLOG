@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
+import { ipBadge } from './lib/ip-badge'
+import { SEVERITY_HUD } from './lib/alertSeverity'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
 import { usePivots } from './lib/usePivots'
@@ -104,11 +106,11 @@ export default function OverlayApp(): JSX.Element {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [expanded, interactive, pinned])
 
-  const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded(false) }
+  const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded?.(false) }
   const toggleExpand = (): void => {
     const next = !expanded
     setExpanded(next)
-    window.redlog.overlay?.setExpanded(next)
+    window.redlog.overlay?.setExpanded?.(next)
   }
 
   // fs = font-size scaler; ip = extra emphasis for the external IP.
@@ -131,19 +133,27 @@ export default function OverlayApp(): JSX.Element {
   // same factor. Without this the middle gap stays fixed while text shrinks —
   // small scale looks loose, large scale looks cramped.
   const px = (n: number): number => Math.round(n * s)
-  const hair = <span style={{ width: 1, height: px(13), background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
+  const hair = <span style={{ width: 1, height: px(13), background: hexA(CYAN, 0.25), flexShrink: 0 }} />
 
+  // G-A3: `badge.tone` is the verdict AFTER stale decay, so a green frame can
+  // never outlive the reading behind it. `qualified` dims the tick.
+  const badge = ipBadge(status)
   const safety = status?.ipSafety ?? 'unknown'
   const link = status?.link
   const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
     : link?.type === 'wired' ? t('overlay.wired') : ''
-  const STATE = { safe: HUD.green, exposed: HUD.red, unknown: HUD.amber }[safety]
-  const LABEL = { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
-  const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
+  // G-C1: the frame colour is the shared scale; only the words are per-verdict.
+  const STATE = SEVERITY_HUD[badge.severity]
+  const LABEL = badge.reason === 'stale'
+    ? t('overlay.ipStale')
+    : { safe: t('overlay.safeIp'), presumed_safe: t('overlay.presumedSafeIp'), off_profile: t('overlay.offProfileIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
+  const STATUS_TXT = badge.reason === 'stale'
+    ? t('overlay.staleIpStatus')
+    : { safe: t('overlay.safeIpStatus'), presumed_safe: t('overlay.presumedSafeIpStatus'), off_profile: t('overlay.offProfileIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
   // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
-  const FRAME = safety === 'exposed' ? HUD.red : CYAN
+  const FRAME = badge.severity === 'critical' ? HUD.red : CYAN
   // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
-  const alarm = safety === 'exposed' && flashExposed
+  const alarm = badge.severity === 'critical' && !badge.qualified && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
   const BTN_CLIP = 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)'
 
@@ -153,12 +163,14 @@ export default function OverlayApp(): JSX.Element {
   const iconBtn: React.CSSProperties = {
     color: CYAN, fontSize: fs(10), cursor: 'pointer', width: 18, height: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: interactive ? 'rgba(34,211,238,0.10)' : 'transparent',
-    border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
+    background: interactive ? hexA(CYAN, 0.10) : 'transparent',
+    border: `1px solid ${interactive ? hexA(CYAN, 0.35) : 'transparent'}`,
     transition: 'background 0.12s, border-color 0.12s'
   }
   const latestPivot = pivots[0]
-  const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
+  const tick = (c: string): React.CSSProperties => badge.qualified
+    ? { width: 6, height: 6, borderRadius: '50%', background: 'transparent', border: `1px solid ${c}`, boxShadow: 'none', flexShrink: 0 }
+    : { width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 }
 
   // Pass-through dimming — applied to individual "chrome" children instead
   // of the outer wrapper. CSS opacity on a parent forces every descendant
@@ -184,7 +196,7 @@ export default function OverlayApp(): JSX.Element {
           }}
         >
           {/* scanlines */}
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: `repeating-linear-gradient(0deg, ${hexA(CYAN, 0.035)} 0px, ${hexA(CYAN, 0.035)} 1px, transparent 1px, transparent 3px)`, opacity: 0.6 }} />
 
           {/* buttons (top-right): expand + hide only. The pin toggle used to
               live here too, but the operator asked to move it into the
@@ -326,7 +338,7 @@ export default function OverlayApp(): JSX.Element {
                       {justMarked ? `✓ ${t('overlay.marked').toUpperCase()}` : `⚡ ${t('overlay.markQuick').toUpperCase()}`}
                     </button>
                     <button
-                      onClick={() => window.redlog.overlay?.quickMark()}
+                      onClick={() => window.redlog.overlay?.quickMark?.()}
                       style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                       title={`${t('overlay.markDetailHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
                     >

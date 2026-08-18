@@ -1,4 +1,5 @@
 import fs from 'fs'
+import crypto from 'crypto'
 import path from 'path'
 import yaml from 'js-yaml'
 
@@ -37,9 +38,20 @@ export interface RedLogConfig {
     whitelist: string[]
     /** blacklist — your own fixed IPs; seeing one means identity leak → EXPOSED */
     blacklist: string[]
+    /** lanProfile — the internal segments you expect to be ON this engagement
+     *  (e.g. the client VLAN). Judged with the same classifier as `whitelist`,
+     *  so only three verdicts are reachable: on it, off it, or unconfigured.
+     *  Catches a laptop that silently reassociated to a guest SSID — the
+     *  external IP can look perfectly fine while you are on the wrong network.
+     *  See `ALERT-ROLES.md` A.4. */
+    lanProfile: string[]
     checkInterval: number
     providers: string[]
     confirmations: number
+    /** Consecutive failed reads before the safety verdict expires to 'unknown'.
+     *  Deliberately tighter than `confirmations`: being slow to promote a new
+     *  address is safe, being slow to expire an old verdict is not. Default: 2. */
+    staleAfter: number
     /** how to fetch the external IP: quiet DNS, HTTP echo, or DNS→HTTP fallback */
     ipMode: 'dns' | 'http' | 'auto'
     /** macOS gates the Wi-Fi SSID behind Location Services; opt in to request it
@@ -48,12 +60,29 @@ export interface RedLogConfig {
     vpnAdapters: VpnAdapter[]
   }
   scope: {
-    /** Whether to raise a violation event + red badge when a command's target
-     *  falls out of scope but shares a root domain with a scope target.
-     *  Excluded targets always raise a violation regardless. Default: true. */
-    warnOnViolation: boolean
+    /** How far down the distance ladder alerts fire (`ALERT-ROLES.md` B + C.3):
+     *  - `excluded_only` — D1 only: targets the engagement explicitly forbade.
+     *  - `adjacent` (default) — D1 + D2: also a target that is out of scope but
+     *    inside a scope entry's container (same subnet as a single-IP entry, or
+     *    same registrable domain). "Right subnet, wrong box."
+     *  - `all` — D1 + D2 + D3: strict authorisation; any target not on the list
+     *    goes on the record. This is what the pre-G-B3 IP path did by accident.
+     *  The ladder is ordered, so this is a floor rather than N booleans, and D1
+     *  fires from every position — a fact-tier verdict is not a preference. */
+    alertFloor: 'excluded_only' | 'adjacent' | 'all'
     targets: string[]
     excludeTargets: string[]
+    /** Container width for the D2 zone derived from a *single-IP* scope entry:
+     *  scope `192.168.1.10` makes `192.168.1.0/24` adjacent at the default 24.
+     *  Entries already written as CIDRs are not widened. There is deliberately
+     *  no domain-side counterpart — the domain container is the registrable
+     *  domain, which is not a tunable (`ALERT-ROLES.md` Part C.4). */
+    proximityBits: number
+    /** Extra multi-label public suffixes on top of the built-in table, used to
+     *  decide "same registrable domain" for D2. Additive; built-ins cannot be
+     *  removed. Add one when an engagement sits on a suffix RedLog does not
+     *  know (`public-suffix.ts` explains why the table is curated). */
+    publicSuffixes: string[]
     scopeFile: string | null
   }
   screenshot: {
@@ -100,6 +129,27 @@ export interface RedLogConfig {
      *  `system.screenshot_pruned` audit event is appended per deletion. */
     keepDays?: number
   }
+  io?: {
+    /** io_ref sidecar bodies (io/<sha256>.bin) auto-delete after N days on
+     *  project open. `0` (default) = keep forever, matching cast/screenshot
+     *  conventions. The chained digest stays; a `system.io_pruned` audit event
+     *  is appended per deletion, so a pruned body verifies as pruned, not
+     *  tampered (SPEC-IO-SIDECAR.md). This is the *prune* age of the three-stage
+     *  lifecycle (SPEC-SCOPE-AWARE-LIFECYCLE.md Part C). */
+    keepDays?: number
+    /** Warm stage: compress io bodies (gzip in place → `<sha>.bin.gz`) once they
+     *  are older than this many days. `0` (default) = never compress. The
+     *  ORIGINAL sha256 is kept, so `redlog-verify` decompresses and re-hashes;
+     *  reads decompress transparently. Compression is pure win before prune. */
+    warmDays?: number
+    /** Size cap for the whole `io/` store, in bytes. `0` (default) = no cap.
+     *  When exceeded, rotation compresses then prunes **unpinned**
+     *  (out-of-scope / unmarked) bodies first — in-scope + loot/marker-referenced
+     *  bodies are pinned and evicted last (SPEC-SCOPE-AWARE-LIFECYCLE.md scope-as-pin).
+     *  A body still referenced by any event inside its window is never deleted
+     *  (refcount-gated). */
+    maxBytes?: number
+  }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
     enabled: boolean
@@ -131,6 +181,10 @@ export interface RedLogConfig {
     events: string[]
     subtypes: string[]
     includeData: boolean
+    /** Lowest §3 authority tier to forward. 'inferred' (default) sends both
+     *  tiers, labelled; 'fact' holds proximity inferences back so the blue team
+     *  is only told about observed rule matches. See `ALERT-ROLES.md` G-C2. */
+    authorityFloor: 'inferred' | 'fact'
   }
   /** Cloud-share bundle backend (spec: docs/CLOUD_SHARE_BUNDLE.md).
    *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
@@ -203,17 +257,21 @@ const DEFAULT_CONFIG: RedLogConfig = {
   network: {
     whitelist: [],
     blacklist: [],
+    lanProfile: [],
     checkInterval: 60,
     providers: [],
     confirmations: 3,
+    staleAfter: 2,
     ipMode: 'auto',
     showWifiName: false,
     vpnAdapters: DEFAULT_VPN_ADAPTERS
   },
   scope: {
-    warnOnViolation: true,
+    alertFloor: 'adjacent',
     targets: [],
     excludeTargets: [],
+    proximityBits: 24,
+    publicSuffixes: [],
     scopeFile: null
   },
   screenshot: {
@@ -235,6 +293,11 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshots: {
     keepDays: 0
+  },
+  io: {
+    keepDays: 0,
+    warmDays: 0,
+    maxBytes: 0
   },
   clipboard: {
     enabled: false,
@@ -262,7 +325,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     secret: '',
     events: ['marker', 'system', 'credential_use', 'c2_checkin'],
     subtypes: ['scope_violation'],
-    includeData: false
+    includeData: false,
+    authorityFloor: 'inferred'
   },
   cloudShare: {
     endpoint: '',
@@ -311,14 +375,29 @@ function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown>
     if (network.dailyIPs && !network.blacklist && !network.exposedIPs) { network.blacklist = network.dailyIPs; delete network.dailyIPs }
     if (network.exposedIPs && !network.blacklist) { network.blacklist = network.exposedIPs; delete network.exposedIPs }
   }
-  // scope.enforcement: 'warn'|'log' → scope.warnOnViolation: boolean.
-  // The old 'log' mode was misleading — it didn't actually log, it silently did
-  // nothing. Treat both as "warnings on" so existing users get the safer default
-  // instead of silently losing the badge; they can turn it off in Settings.
+  // scope.enforcement: 'warn' | 'log' | 'block' → scope.warnOnViolation: boolean.
+  //
+  // Only 'log' meant "stay quiet" — and it was misleading even then, since it
+  // did not actually log anything, it silently did nothing. Every other value,
+  // including the removed 'block' and anything unrecognised, migrates to
+  // warnings ON. That direction matters: 'block' was the STRICTEST setting the
+  // old field offered, so mapping it to silence would answer a request for more
+  // protection with less, on a config the operator never revisits because they
+  // believe it is already handled. An operator who wants quiet can turn it off
+  // in Settings; one who is quiet without asking never finds out.
   const scope = parsed.scope as Record<string, unknown> | undefined
-  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope)) {
-    scope.warnOnViolation = scope.enforcement === 'warn' || scope.enforcement === undefined
+  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope) && !('alertFloor' in scope)) {
+    scope.warnOnViolation = scope.enforcement !== 'log'
     delete scope.enforcement
+  }
+  // scope.warnOnViolation: boolean → scope.alertFloor (G-C3). The boolean was
+  // the two-value version of the same floor, so this preserves behaviour
+  // exactly: `false` never silenced D1 (excluded targets always raised
+  // regardless), which is precisely what `excluded_only` means — it does NOT
+  // map to a "none", because there isn't one.
+  if (scope && 'warnOnViolation' in scope && !('alertFloor' in scope)) {
+    scope.alertFloor = scope.warnOnViolation === false ? 'excluded_only' : 'adjacent'
+    delete scope.warnOnViolation
   }
   return parsed
 }
@@ -340,16 +419,124 @@ export function saveConfig(projectDir: string, config: RedLogConfig): void {
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
 }
 
-export function loadScopeFile(scopeFilePath: string): string[] {
+/** Expand `\Q…\E` literal-quoting, at any position and however many times.
+ *  Text outside the quoted runs is returned as-is, escapes intact. */
+function expandQuoted(s: string): string {
+  let out = ''
+  let i = 0
+  while (i < s.length) {
+    const q = s.indexOf('\\Q', i)
+    if (q === -1) { out += s.slice(i); break }
+    out += s.slice(i, q)
+    const e = s.indexOf('\\E', q + 2)
+    out += e === -1 ? s.slice(q + 2) : s.slice(q + 2, e)
+    i = e === -1 ? s.length : e + 2
+  }
+  return out
+}
+
+// Anything still regex-shaped after decoding means the entry was not one of the
+// forms Burp emits from its own UI — an operator hand-wrote a pattern.
+const REGEX_META = /[\\^$*+?()[\]{}|]/
+
+/** Burp/ZAP hold a scope host as a **regex**, not a hostname. Decode the shapes
+ *  those tools actually write into RedLog target syntax:
+ *
+ *    ^example\.com$          → example.com          (exact host)
+ *    \Qexample.com\E         → example.com          (literal-quoted)
+ *    .*\.example\.com$       → *.example.com        ("and subdomains")
+ *    .*\Qcorp.example.com\E  → *.corp.example.com   (same, literal-quoted)
+ *
+ *  Anything that still looks like a regex afterwards is handed back UNTOUCHED
+ *  rather than dropped or half-converted. Such an entry matches nothing, but it
+ *  stays visible in the scope list — a scope target that silently disappears is
+ *  the failure with no symptom: the operator sees a scope loaded successfully
+ *  and never learns that the hosts they were told to test are missing from it.
+ *
+ *  Before this, only a `\Q` at position 0 was stripped, so Burp's own
+ *  "and subdomains" export (`.*\Qcorp.example.com\E`) landed in the scope list
+ *  as `*\Qcorp.example.com` and matched nothing (G-CFG2). */
+export function burpHostToTarget(host: string): string {
+  let s = host.trim().replace(/^\^/, '').replace(/\$$/, '')
+
+  // Leading `.*` is Burp's "and subdomains"; the `.` or `\.` joining it to the
+  // host belongs to the wildcard, not to the name.
+  let subdomains = false
+  if (s.startsWith('.*')) {
+    subdomains = true
+    s = s.slice(2).replace(/^\\?\./, '')
+  }
+
+  const decoded = expandQuoted(s).replace(/\\\./g, '.')
+  if (!decoded || REGEX_META.test(decoded)) return host
+  return subdomains ? `*.${decoded}` : decoded
+}
+
+/** Where the scope RedLog judged an engagement against actually came from
+ *  (G-D2). `ALERT-ROLES.md` D.3 lists "the scope is correct and legible, sourced
+ *  from the authorisation document rather than typed" as RedLog's *before*
+ *  contribution — but `scopeFile` recorded only a path, so nothing tied the
+ *  judgement to a document a reviewer could check. The adherence report (G-D1)
+ *  states "judged against this scope"; without this, that scope is unattributed
+ *  exactly where the claim needs backing. */
+export interface ScopeProvenance {
+  path: string
+  /** sha256 of the file BYTES — what a reviewer recomputes to prove the scope
+   *  document they are holding is the one the engagement was judged against. */
+  digest: string
+  bytes: number
+  /** Entries the parser actually extracted. A scope file that parses to ZERO is
+   *  the silent failure this catches: today it simply contributes no targets,
+   *  and an operator reading "scope active" has no way to notice. */
+  entries: number
+  /** Filesystem mtime, so a file edited in place is visible even when the
+   *  operator never told RedLog anything changed. */
+  modifiedAt: number
+  loadedAt: number
+  /** Set when the file could not be read or parsed at all. */
+  error?: string
+}
+
+/** Read a scope file and say where it came from. `loadScopeFile` is the
+ *  targets-only wrapper the existing call sites use. `now` is injectable so the
+ *  result is deterministic under test. */
+export function readScopeFile(
+  scopeFilePath: string,
+  now: number = Date.now()
+): { targets: string[]; provenance: ScopeProvenance } {
+  const base: ScopeProvenance = {
+    path: scopeFilePath, digest: '', bytes: 0, entries: 0, modifiedAt: 0, loadedAt: now
+  }
+  let bytes: Buffer
   try {
-    const raw = fs.readFileSync(scopeFilePath, 'utf-8')
+    bytes = fs.readFileSync(scopeFilePath)
+  } catch (err) {
+    return { targets: [], provenance: { ...base, error: (err as Error).message } }
+  }
+  const digest = crypto.createHash('sha256').update(bytes).digest('hex')
+  let modifiedAt = 0
+  try { modifiedAt = Math.floor(fs.statSync(scopeFilePath).mtimeMs) } catch { /* best effort */ }
+
+  const targets = parseScopeFile(scopeFilePath, bytes.toString('utf-8'))
+  return {
+    targets,
+    provenance: { ...base, digest, bytes: bytes.length, entries: targets.length, modifiedAt }
+  }
+}
+
+export function loadScopeFile(scopeFilePath: string): string[] {
+  return readScopeFile(scopeFilePath).targets
+}
+
+function parseScopeFile(scopeFilePath: string, raw: string): string[] {
+  try {
     const ext = path.extname(scopeFilePath).toLowerCase()
 
     if (ext === '.json') {
       const data = JSON.parse(raw)
       if (data.target?.scope) {
         return data.target.scope.flatMap((s: { host?: string }) => {
-          if (s.host) return [s.host.replace(/^\\Q|\\E$/g, '').replace(/^\.\*/g, '*')]
+          if (s.host) return [burpHostToTarget(s.host)]
           return []
         })
       }

@@ -11,15 +11,27 @@ export interface DeconflictionConfig {
   events: string[]     // agent_type values that should be forwarded
   subtypes: string[]   // optional subtype values (any match forwards)
   includeData: boolean // include full event.data, or just metadata + description
+  /** Lowest §3 authority tier to forward (G-C2). 'inferred' (default) forwards
+   *  everything, labelled; 'fact' forwards only observed rule matches, holding
+   *  proximity inferences back. Events that carry no `authority` are unaffected
+   *  — absence is not an inferred claim, and quietly cutting the blue team off
+   *  from real activity is the wrong direction to fail in. */
+  authorityFloor: 'inferred' | 'fact'
 }
 
 export const DEFAULT_DECONFLICTION: DeconflictionConfig = {
   enabled: false,
   url: '',
   secret: '',
+  // NOTE: 'system' here already forwards every system event, so the `subtypes`
+  // entry below is decorative for `scope_violation` — it matters only if an
+  // operator removes 'system' from this list.
   events: ['marker', 'system', 'credential_use', 'c2_checkin'],
   subtypes: ['scope_violation'],
-  includeData: false
+  includeData: false,
+  // Default forwards both tiers. Narrowing what an outward-facing feed tells
+  // the blue team is a deliberate act, not a default.
+  authorityFloor: 'inferred'
 }
 
 let active: DeconflictionConfig = { ...DEFAULT_DECONFLICTION }
@@ -34,8 +46,18 @@ export function getDeconflictionConfig(): DeconflictionConfig {
   return { ...active }
 }
 
+/** G-C2: the authority gate is applied AFTER the match, not inside one branch —
+ *  an event can arrive here via `events` or via `subtypes`, and the tier rule
+ *  must hold either way. */
+function passesAuthorityFloor(event: RedLogEvent, cfg: DeconflictionConfig): boolean {
+  if (cfg.authorityFloor !== 'fact') return true
+  const authority = event.data?.authority as string | undefined
+  return authority !== 'inferred'
+}
+
 function shouldForward(event: RedLogEvent, cfg: DeconflictionConfig): boolean {
   if (!cfg.enabled || !cfg.url) return false
+  if (!passesAuthorityFloor(event, cfg)) return false
   if (cfg.events.includes(event.agentType)) return true
   const subtype = (event.data?.subtype as string | undefined) ?? ''
   return subtype !== '' && cfg.subtypes.includes(subtype)
@@ -54,6 +76,13 @@ function canonicalise(event: RedLogEvent, cfg: DeconflictionConfig): Record<stri
     subtype: (event.data?.subtype as string | undefined) ?? null,
     description: (event.data?.description as string | undefined) ?? null,
     severity: (event.data?.severity as string | undefined) ?? null,
+    // G-C2: without these the blue team received a proximity INFERENCE in the
+    // same shape as an observed rule match — a `scope_violation` for a
+    // neighbouring host was indistinguishable from one for an explicitly
+    // forbidden target. Both are bounded enums, so they carry no PII and are
+    // safe outside the `includeData` gate.
+    authority: (event.data?.authority as string | undefined) ?? null,
+    reason: (event.data?.reason as string | undefined) ?? null,
     mitre_ttp: event.data?.mitre_ttp ?? null
   }
   if (cfg.includeData) return { ...base, data: event.data }

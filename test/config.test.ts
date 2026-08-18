@@ -21,7 +21,7 @@ describe('loadConfig', () => {
     expect(config.network.whitelist).toEqual([])
     expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
-    expect(config.scope.warnOnViolation).toBe(true)
+    expect(config.scope.alertFloor).toBe('adjacent')
   })
 
   it('merges partial config with defaults', () => {
@@ -51,18 +51,18 @@ describe('loadConfig', () => {
     expect(config.network.whitelist).toEqual(['10.0.0.0/8'])
   })
 
-  it('migrates scope.enforcement: warn → warnOnViolation: true', () => {
+  it('migrates scope.enforcement: warn → alertFloor: adjacent', () => {
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'scope:\n  enforcement: warn\n')
     const config = loadConfig(tmpDir)
-    expect(config.scope.warnOnViolation).toBe(true)
+    expect(config.scope.alertFloor).toBe('adjacent')
     expect((config.scope as unknown as { enforcement?: string }).enforcement).toBeUndefined()
   })
 
-  it('migrates scope.enforcement: log → warnOnViolation: false', () => {
+  it('migrates scope.enforcement: log → alertFloor: excluded_only', () => {
     // Old 'log' mode did nothing; the direct semantic equivalent is warnings off.
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'scope:\n  enforcement: log\n')
     const config = loadConfig(tmpDir)
-    expect(config.scope.warnOnViolation).toBe(false)
+    expect(config.scope.alertFloor).toBe('excluded_only')
   })
 })
 

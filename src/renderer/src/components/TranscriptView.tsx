@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
+import { EmptyState } from './Feedback'
+import { ICON } from '../lib/icons'
+import { emptyStateFor } from '../lib/emptyState'
 import { toast } from './Toast'
+import { SplitPane } from './SplitPane'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -192,7 +196,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     if (e.agentType === 'marker') {
       out.push({
         id: e.id, ts: e.timestamp, kind: 'marker', actor: actorOf(e),
-        input: `⚑ ${d.title ?? ''}`, output: typeof d.notes === 'string' && d.notes ? (d.notes as string) : undefined,
+        input: `${ICON.marks} ${d.title ?? ''}`, output: typeof d.notes === 'string' && d.notes ? (d.notes as string) : undefined,
         meta: String(d.severity ?? ''), events: [e]
       })
       continue
@@ -217,8 +221,9 @@ function safeJson(v: unknown): string {
   try { return JSON.stringify(v, null, 2) } catch { return String(v) }
 }
 
-export default function TranscriptView({ onOpenInTimeline }: {
+export default function TranscriptView({ onOpenInTimeline, onEmptyAction }: {
   onOpenInTimeline?: (id: string, ts: number) => void
+  onEmptyAction?: (target: string) => void
 }): JSX.Element {
   const { t } = useI18n()
   const [events, setEvents] = useState<Ev[]>([])
@@ -227,6 +232,8 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [kinds, setKinds] = useState<Set<Kind>>(new Set())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  // Selected exchange → shown in the detail pane (full input+output, copyable).
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -284,6 +291,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   }, [shown, t])
 
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
+  const selected = shown.find((b) => b.id === selectedId) ?? null
 
   return (
     <div className="h-full flex flex-col">
@@ -301,7 +309,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             <button
               key={k}
               onClick={() => toggleKind(k)}
-              className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+              className={`text-2xs font-mono px-1.5 py-0.5 rounded border transition-colors ${
                 kinds.size === 0 || kinds.has(k)
                   ? 'text-zinc-300 border-zinc-700 bg-zinc-800/60'
                   : 'text-zinc-600 border-zinc-800 hover:text-zinc-400'
@@ -320,28 +328,44 @@ export default function TranscriptView({ onOpenInTimeline }: {
         </button>
       </div>
 
-      <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
+      <div className="flex-1 min-h-0">
+      <SplitPane id="transcript-feed-detail" direction="horizontal" defaultSize={560} min={360} max={920} otherMin={340}>
+      <div ref={bodyRef} className="h-full overflow-y-auto px-4 py-3 space-y-2">
         {loading && <p className="text-xs text-zinc-600">{t('transcript.loading')}</p>}
-        {!loading && shown.length === 0 && (
-          <p className="text-xs text-zinc-600">{t('transcript.empty')}</p>
-        )}
+        {!loading && shown.length === 0 && (() => {
+          const es = emptyStateFor('transcript', { captureDark: false })
+          return (
+            <EmptyState
+              icon={ICON.transcript}
+              title={t(es.titleKey)}
+              subtitle={t(es.subtitleKey)}
+              action={es.action && es.action.target !== 'doc'
+                ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+                : undefined}
+            />
+          )
+        })()}
         {shown.map((b) => {
           const open = expanded.has(b.id)
           const big = (b.output?.length ?? 0) > MAX_INLINE
           const body = open || !big ? b.output : b.output?.slice(0, MAX_INLINE)
           return (
-            <div key={b.id} className="rounded border border-zinc-800/70 bg-zinc-950/40">
-              <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-zinc-800/50">
+            <div key={b.id} className={`rounded border bg-zinc-950/40 ${selectedId === b.id ? 'border-cyan-500/50' : 'border-zinc-800/70'}`}>
+              <div
+                onClick={() => setSelectedId(b.id)}
+                className="flex items-center gap-2 px-2.5 py-1.5 border-b border-zinc-800/50 cursor-pointer"
+                title={t('transcript.selectHint')}
+              >
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
                 <span className="text-[11px] text-zinc-500 font-mono tabular-nums shrink-0">
                   {new Date(b.ts).toLocaleTimeString()}
                 </span>
                 <span className="text-[11px] text-zinc-400 font-mono truncate flex-1">{b.actor}</span>
-                {b.meta && <span className="text-[10px] text-zinc-600 font-mono shrink-0">{b.meta}</span>}
+                {b.meta && <span className="text-2xs text-zinc-600 font-mono shrink-0">{b.meta}</span>}
                 {onOpenInTimeline && (
                   <button
-                    onClick={() => onOpenInTimeline(b.id, b.ts)}
-                    className="text-[10px] text-zinc-600 hover:text-cyan-400 font-mono shrink-0"
+                    onClick={(e) => { e.stopPropagation(); onOpenInTimeline(b.id, b.ts) }}
+                    className="text-2xs text-zinc-600 hover:text-cyan-400 font-mono shrink-0"
                     title={t('transcript.openInTimeline')}
                   >
                     ↗
@@ -357,7 +381,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   {big && !open && (
                     <button
                       onClick={() => setExpanded((p) => new Set(p).add(b.id))}
-                      className="block mt-2 text-[10px] text-cyan-500 hover:text-cyan-400"
+                      className="block mt-2 text-2xs text-cyan-500 hover:text-cyan-400"
                     >
                       {t('transcript.showAll', { size: fmtBytes(b.outputBytes ?? b.output?.length ?? 0) })}
                     </button>
@@ -379,6 +403,74 @@ export default function TranscriptView({ onOpenInTimeline }: {
           )
         })}
       </div>
+      <TranscriptDetail block={selected} onOpenInTimeline={onOpenInTimeline} />
+      </SplitPane>
+      </div>
+    </div>
+  )
+}
+
+// The detail pane: the selected exchange's FULL input and output, un-capped and
+// individually copyable — complements the feed (which caps output at MAX_INLINE
+// and has no copy affordance). SplitPane lets the operator trade feed-scan width
+// for detail-read width.
+function TranscriptDetail({ block, onOpenInTimeline }: {
+  block: Block | null
+  onOpenInTimeline?: (id: string, ts: number) => void
+}): JSX.Element {
+  const { t } = useI18n()
+  if (!block) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-zinc-600 text-sm gap-2 p-4">
+        <span aria-hidden className="text-2xl opacity-30">{ICON.transcript}</span>
+        <span>{t('transcript.selectPrompt')}</span>
+      </div>
+    )
+  }
+  const copy = (v: string): void => {
+    navigator.clipboard.writeText(v)
+      .then(() => toast(t('transcript.valueCopied'), 'success'))
+      .catch(() => toast(t('transcript.copyFailed'), 'error'))
+  }
+  const copyBtn = (v: string): JSX.Element => (
+    <button
+      onClick={() => copy(v)}
+      className="text-2xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+      title={t('transcript.copyHint')}
+    >{t('transcript.copy')}</button>
+  )
+  const label = (text: string): JSX.Element => (
+    <span className="text-2xs uppercase tracking-wider text-zinc-500 font-mono">{text}</span>
+  )
+  return (
+    <div className="h-full overflow-auto p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[block.kind] }} />
+        <span className="text-xs text-zinc-300 font-mono truncate flex-1">{block.actor}</span>
+        <span className="text-2xs text-zinc-600 font-mono tabular-nums shrink-0">{new Date(block.ts).toLocaleTimeString()}</span>
+        {onOpenInTimeline && (
+          <button
+            onClick={() => onOpenInTimeline(block.id, block.ts)}
+            className="shrink-0 text-xs text-cyan-400/90 hover:text-cyan-300 px-2 py-1 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40"
+            title={t('transcript.openInTimeline')}
+          >{ICON.openInTimeline}</button>
+        )}
+      </div>
+      <section className="space-y-1">
+        <div className="flex items-center justify-between">{label(t('transcript.input'))}{copyBtn(block.input)}</div>
+        <pre className="text-xs text-zinc-200 font-mono whitespace-pre-wrap break-all select-text bg-zinc-900/60 rounded border border-zinc-800/60 px-2 py-1.5">{block.input}</pre>
+      </section>
+      {block.output != null && (
+        <section className="space-y-1">
+          <div className="flex items-center justify-between">{label(t('transcript.output'))}{copyBtn(block.output)}</div>
+          <pre className="text-xs text-zinc-400 font-mono whitespace-pre-wrap break-all select-text bg-zinc-900/60 rounded border border-zinc-800/60 px-2 py-1.5">{block.output}</pre>
+        </section>
+      )}
+      {block.output == null && block.outputNote && (
+        <p className="text-[11px] text-zinc-500 font-mono">
+          {t(`transcript.note.${block.outputNote}`, { size: fmtBytes(block.outputBytes ?? 0) })}
+        </p>
+      )}
     </div>
   )
 }

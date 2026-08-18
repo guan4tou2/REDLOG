@@ -252,6 +252,51 @@ def _load_operators(bundle_dir: Path) -> Dict[str, Optional[str]]:
         return {}
 
 
+def _extract_io_refs(row: Dict[str, Any]) -> List[str]:
+    """io_ref sidecar digests (SPEC-IO-SIDECAR.md) carried by an event, if any.
+    The full HTTP bodies live in the bundle's io/ dir as <sha256>.bin; the event
+    holds only the digest, so verify re-hashes the file against it (A4)."""
+    data_field = row.get("data")
+    if isinstance(data_field, str):
+        try:
+            data_field = json.loads(data_field)
+        except Exception:
+            return []
+    if not isinstance(data_field, dict):
+        return []
+    io = data_field.get("io")
+    if not isinstance(io, dict):
+        return []
+    refs: List[str] = []
+    for slot in ("request", "response"):
+        ref = io.get(slot)
+        if isinstance(ref, dict) and isinstance(ref.get("ref"), str):
+            refs.append(ref["ref"])
+    return refs
+
+
+def _extract_io_swaps(row: Dict[str, Any]) -> Dict[str, str]:
+    """Scope-sanitize io digest swaps (SPEC-SCOPE-AWARE-LIFECYCLE.md Part B) from
+    a system.sanitized event: {orig_sha: replacement_sha}. The bundle serves the
+    redacted replacement under the ORIGINAL name, so verify must expect the
+    replacement digest for those bodies — a match is *sanitized*, not tampered."""
+    if row.get("agent_type") != "system":
+        return {}
+    data_field = row.get("data")
+    if isinstance(data_field, str):
+        try:
+            data_field = json.loads(data_field)
+        except Exception:
+            return {}
+    if not isinstance(data_field, dict) or data_field.get("subtype") != "sanitized":
+        return {}
+    swaps: Dict[str, str] = {}
+    for r in (data_field.get("io_replacements") or []):
+        if isinstance(r, dict) and isinstance(r.get("ref"), str) and isinstance(r.get("sha256"), str):
+            swaps[r["ref"]] = r["sha256"]
+    return swaps
+
+
 def _iter_events(events_path: Path):
     with events_path.open("r", encoding="utf-8") as fh:
         for lineno, line in enumerate(fh, start=1):
@@ -302,10 +347,16 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     bad_sig_at: Optional[str] = None
     last_hash: Optional[str] = None
     bundle_engagement = manifest.get("engagementId")
+    io_refs: Dict[str, str] = {}   # ref -> first event id that carries it
+    io_swaps: Dict[str, str] = {}  # orig sha -> replacement sha (scope sanitize)
 
     for lineno, row in _iter_events(events_path):
         walked += 1
         rid = row.get("id", f"<line {lineno}>")
+        for ref in _extract_io_refs(row):
+            io_refs.setdefault(ref, str(rid))
+        for orig, repl in _extract_io_swaps(row).items():
+            io_swaps[orig] = repl
 
         row_prev = row.get("prev_hash")
         if row_prev is not None:
@@ -403,6 +454,64 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         ).hexdigest()
         head_ok = recomputed == manifest_head_hash
 
+    # io_ref sidecar bodies (SPEC-IO-SIDECAR.md A4). The chain attests each
+    # body's sha256; the bytes live in io/<sha256>.bin. Re-hash every referenced
+    # file: a match confirms the bytes are the ones attested; a MISSING file is
+    # reported as *pruned* (retention removed it) not tampered; a mismatch is
+    # tampering and fails the bundle.
+    io_ok = 0
+    io_pruned = 0
+    io_sanitized = 0
+    io_bad_at: Optional[str] = None
+    io_dir = bundle_dir / "io"
+    for ref, ev_id in io_refs.items():
+        raw = io_dir / f"{ref}.bin"
+        gz = io_dir / f"{ref}.bin.gz"
+        # Warm (compressed) bodies keep the ORIGINAL sha256 as their stem, so we
+        # decompress before hashing (SPEC-SCOPE-AWARE-LIFECYCLE.md A4). A missing
+        # file (neither raw nor warm) is pruned, not tampered.
+        if raw.exists():
+            f, compressed = raw, False
+        elif gz.exists():
+            f, compressed = gz, True
+        else:
+            io_pruned += 1
+            continue
+        try:
+            data = f.read_bytes()
+            if compressed:
+                import gzip as _gzip
+                data = _gzip.decompress(data)
+            actual = hashlib.sha256(data).hexdigest()
+        except Exception:
+            io_pruned += 1
+            continue
+        # Scope-sanitized body: the bundle serves the redacted replacement under
+        # the original name, so its bytes must hash to the RECORDED replacement
+        # digest. Match = sanitized (expected), mismatch = tampered.
+        if ref in io_swaps:
+            if actual == io_swaps[ref]:
+                io_sanitized += 1
+            else:
+                io_bad_at = ev_id
+                print(
+                    f"IO SIDECAR TAMPERED: sanitized io/{ref}.bin does not match "
+                    f"its recorded replacement digest (event {ev_id}); computed {actual[:16]}...",
+                    file=sys.stderr,
+                )
+                break
+            continue
+        if actual == ref:
+            io_ok += 1
+        else:
+            io_bad_at = ev_id
+            print(
+                f"IO SIDECAR TAMPERED: io/{ref}.bin does not match its chained "
+                f"digest (event {ev_id}); computed {actual[:16]}...",
+                file=sys.stderr,
+            )
+            break
+
     # ---------------------------------------------------------------------
     # Report
     # ---------------------------------------------------------------------
@@ -432,8 +541,19 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"Unsigned events  : {unsigned}")
     if bad_sig_at:
         print(f"BAD SIGNATURE    : {bad_sig_at}")
+    if io_refs:
+        summary = f"{io_ok} verified"
+        if io_sanitized:
+            summary += f", {io_sanitized} sanitized (scope — not tampered)"
+        if io_pruned:
+            summary += f", {io_pruned} pruned (retention — not tampered)"
+        print(f"IO sidecars      : {summary}")
+        if io_bad_at:
+            print(f"IO SIDECAR BAD   : {io_bad_at}")
 
     if head_ok is False:
+        return 1
+    if io_bad_at:
         return 1
     return 0
 

@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { EmptyState } from './Feedback'
+import { ICON } from '../lib/icons'
+import { SplitPane } from './SplitPane'
+import { emptyStateFor } from '../lib/emptyState'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 
@@ -20,7 +24,10 @@ function getTagColor(title: string): typeof TAG_COLORS[0] {
   return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
 }
 
-export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
+export function QuickMarksView({ onOpenInTimeline, onEmptyAction }: {
+  onOpenInTimeline?: (ts: number) => void
+  onEmptyAction?: (target: string) => void
+} = {}): JSX.Element {
   const [marks, setMarks] = useState<QuickMark[]>([])
   const [selected, setSelected] = useState<QuickMark | null>(null)
   const [creating, setCreating] = useState(false)
@@ -89,8 +96,8 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
   }
 
   return (
-    <div className="flex h-full">
-      <div className="w-80 border-r border-redlog-border flex flex-col">
+    <SplitPane id="findings-list-detail" direction="horizontal" defaultSize={320} min={240} max={560} otherMin={320}>
+      <div className="flex flex-col h-full">
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex-1 truncate">
@@ -166,14 +173,30 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             )
           })}
           {filteredMarks.length === 0 && !creating && (
-            <div className="p-4 text-xs text-zinc-600 text-center">
-              {marks.length === 0 ? t('marks.empty') : t('marks.noSearchMatches', { query: search })}
-            </div>
+            marks.length === 0 ? (() => {
+              // True-empty (no marks at all) gets the shared EmptyState + CTA;
+              // the search-filtered-empty case keeps its plain "no matches" line.
+              const es = emptyStateFor('marks', { captureDark: false })
+              return (
+                <EmptyState
+                  icon={ICON.marks}
+                  title={t(es.titleKey)}
+                  subtitle={t(es.subtitleKey)}
+                  action={es.action && es.action.target !== 'doc'
+                    ? { label: t(es.action.labelKey), onClick: () => onEmptyAction?.(es.action!.target) }
+                    : undefined}
+                />
+              )
+            })() : (
+              <div className="p-4 text-xs text-zinc-600 text-center">
+                {t('marks.noSearchMatches', { query: search })}
+              </div>
+            )
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="h-full overflow-auto p-4">
         {creating && (
           <QuickMarkForm
             browserTab={browserTab}
@@ -198,7 +221,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
           </div>
         )}
       </div>
-    </div>
+    </SplitPane>
   )
 }
 
