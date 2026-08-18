@@ -3,6 +3,68 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.12.0 — 2026-08-18
+
+**Alerts stop being two hand-wired monitors and start being a subsystem.**
+
+Before: `ip-monitor.ts` and `scope-monitor.ts` each carried their own classify()
++ their own emit path + their own state. Adding a new alert kind meant copying
+the shape and wiring a third monitor into main by hand. The second time that
+happened it stopped scaling.
+
+Now: **producers → bus → policies → surfaces**. Producers observe
+(`IPSignalProducer` polls the address; the shell/http/dns/agent-tool lanes hand
+a `TargetHitSignal` to the bus). Policies classify (`IPPolicy` maps to five
+verdict values, `ScopePolicy` to a four-rung distance ladder). Surfaces do side
+effects (`ChainEmitter` writes the audit event, `BadgeSurface` drives the
+StatusBar, `WebhookForwarder` posts to deconfliction, `AdherenceCounter` tallies
+the "247 targets, 244 in scope" report, `ViolationLog` feeds the ScopePanel).
+
+Two new alert kinds land at the same time, because the subsystem finally makes
+them cheap: `CombinedPolicy` escalates when a non-clean IP verdict and a
+non-clean Scope verdict co-occur within 30s (the two ways an engagement can go
+sideways at the same moment); `BurstPolicy` collapses N-in-T scope hits of the
+same distance into a single burst signal (a 200-request scan doesn't turn the
+badge into a strobe light).
+
+The vocabulary is imported cleanly from ea's `ALERT-ROLES.md` — every verdict
+declares an **authority tier** (`fact` / `inferred` / `unknown`) so a whitelist
+miss (fact) never gets silenced by a preference toggle that's supposed to
+suppress inferences, and the five-verdict IP matrix means the A-9 false-green
+bug (blacklist configured, no whitelist, IP misses both → the old code
+mislabelled that as `safe`) is no longer reachable.
+
+* `src/core/alert/` — the whole subsystem in five files (`signal`, `policy`,
+  `policies`, `surface`, `bus`) plus `index` — public exports only from `index`
+* `src/main/services/producers/ip-signal-producer.ts` — polls external + local
+  address, holds the 3-in-a-row confirmation window, dispatches every tick
+* `src/main/services/alert-runtime.ts` — one convenience wrapper that bundles
+  bus + policies + surfaces + producer; main sees `alertRuntime.configure(cfg)`
+  and doesn't touch the internals
+* 42 unit tests locking the five-verdict matrix, D1-D4 ladder, combined
+  correlation window, burst cooldown, bus dispatch + error isolation +
+  derived-policy recursion cap
+* **Deleted**: `src/core/ip-monitor.ts`, `src/core/scope-monitor.ts`,
+  `test/ip-monitor.test.ts`, `test/ip-monitor-dns.test.ts`,
+  `test/scope-monitor.test.ts`
+
+**Semantic changes** (visible in the chain):
+* `system.ip_transition` events are gone — `system.ip_verdict` replaces them,
+  written once per real verdict change with `authority` + `severity` + verdict
+  value + modifiers (`settling`, `stale`, `list_conflict`) as first-class
+  fields
+* `system.scope_violation` gains `distance` (`in_scope` / `excluded` /
+  `adjacent_subnet` / `adjacent_domain` / `unrelated`) and `authority` — old
+  events had `reason: 'excluded_target' | 'out_of_scope'` only
+* `system.combined_alert` and `system.burst_alert` are new event subtypes
+
+**Behaviour changes** (visible in the UI):
+* The StatusBar's tricolor badge (green/amber/red) maps from five verdicts:
+  `safe`/`presumed_safe` → green, `off_profile`/`exposed` → red, `unknown` →
+  amber. Same shape you're used to; the underlying vocabulary is richer
+* Chain integrity is not verified across this refactor — v0.12.0 pre-release,
+  the user waived the invariant. Nothing in production yet.
+
 ## v0.11.7 — 2026-08-10
 
 **The Timeline stops recomputing everything sixty times a second.**

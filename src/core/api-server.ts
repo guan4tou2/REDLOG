@@ -60,12 +60,23 @@ let lootDetectorRef: {
   emit?: (matches: Array<{ type: string; value: string; line: string; confidence: string }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => void
 } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
-let ipMonitorRef: { status: unknown } | null = null
-let scopeMonitorRef: {
-  getViolations: () => unknown[]
-  getViolationCount: () => number
-  checkTarget: (target: string, command: string) => { inScope: boolean; violation: boolean }
-} | null = null
+
+/** Duck-typed slice of AlertRuntime the api-server needs. Kept minimal so
+ *  core doesn't have to import the runtime class (which would drag main
+ *  services into core). main/index.ts hands the real runtime in via
+ *  configureApi; from here it's just an object with these three methods. */
+interface AlertRuntimeSlice {
+  ipStatus(): unknown
+  scopeViolations(): unknown[]
+  scopeViolationCount(): number
+  dispatchTargetHit(input: {
+    target: string
+    source: 'shell' | 'dns' | 'http' | 'scanner' | 'agent_tool'
+    action: string
+    sourceEventId?: string | null
+  }): void
+}
+let alertRuntimeRef: AlertRuntimeSlice | null = null
 
 /** v0.9.6 (T2): lets main wire terminal-manager's live cast position in
  *  without core importing main. Same shape as setPluginHost / the tailer
@@ -86,8 +97,7 @@ export function configureApi(opts: {
   configLoader?: typeof configLoaderRef
   lootDetector?: typeof lootDetectorRef
   screenshotAgent?: typeof screenshotAgentRef
-  ipMonitor?: typeof ipMonitorRef
-  scopeMonitor?: typeof scopeMonitorRef
+  alertRuntime?: AlertRuntimeSlice
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
@@ -95,8 +105,7 @@ export function configureApi(opts: {
   if (opts.configLoader) configLoaderRef = opts.configLoader
   if (opts.lootDetector) lootDetectorRef = opts.lootDetector
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
-  if (opts.ipMonitor) ipMonitorRef = opts.ipMonitor
-  if (opts.scopeMonitor) scopeMonitorRef = opts.scopeMonitor
+  if (opts.alertRuntime) alertRuntimeRef = opts.alertRuntime
 }
 
 // Runs an MCP tool directly against the same internal functions the REST
@@ -110,9 +119,9 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
     switch (name) {
       case 'redlog_status':
         return {
-          ip: ipMonitorRef?.status ?? null,
+          ip: alertRuntimeRef?.ipStatus() ?? null,
           eventCount: getEventCount(),
-          scopeViolations: scopeMonitorRef?.getViolationCount() ?? 0,
+          scopeViolations: alertRuntimeRef?.scopeViolationCount() ?? 0,
           capture: getCaptureHealth()
         }
 
@@ -159,8 +168,8 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
       case 'redlog_scope':
         return {
           targets: configLoaderRef?.getTargets() ?? [],
-          violations: scopeMonitorRef?.getViolations() ?? [],
-          violationCount: scopeMonitorRef?.getViolationCount() ?? 0
+          violations: alertRuntimeRef?.scopeViolations() ?? [],
+          violationCount: alertRuntimeRef?.scopeViolationCount() ?? 0
         }
 
       case 'redlog_config':
@@ -454,9 +463,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           if (!targetId) targetId = detected
         }
 
-        if (isStart && detected && scopeMonitorRef) {
-          scopeMonitorRef.checkTarget(detected, cmd)
-        }
+        // Scope alarm dispatch moved to AFTER the shell event insert so
+        // the emitted scope_violation event's `_causes` can point at the
+        // shell command_start event id. See below, after `insertEvent(...)`.
 
         // Internal-network pivots (ligolo-ng, chisel, ssh -D/-L/-R, sshuttle,
         // proxychains, socat) get a first-class `pivot` event so the timeline
@@ -522,6 +531,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // cache its id in the in-memory resolver so the matching end event can
       // stamp `_causes: [thisId]` when it arrives.
       noteStartEvent(agentType, data, event.id)
+
+      // v0.12.0: dispatch the scope check to the alert runtime. Runs AFTER the
+      // shell event insert so the resulting scope_violation carries the shell
+      // event id in `_causes`. `source` differentiates shell / http / dns /
+      // agent_tool lanes for the CombinedPolicy correlation.
+      if (isStart && alertRuntimeRef) {
+        const detectedForScope = (data.detectedTarget as string | undefined) ?? null
+        if (detectedForScope) {
+          alertRuntimeRef.dispatchTargetHit({
+            target: detectedForScope,
+            source: agentType === 'scanner' ? 'scanner' : 'shell',
+            action: (data.command as string) ?? '',
+            sourceEventId: event.id
+          })
+        }
+      }
       // v0.6.89 `_causes` for loot: emit the loot event NOW that we have the
       // shell command_end's id — so `_causes: [event.id]` points at the exact
       // command whose stdout produced the match. See loot-detector.emit().
@@ -656,9 +681,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/status' && req.method === 'GET') {
       json(res, 200, {
-        ip: ipMonitorRef?.status || null,
+        ip: alertRuntimeRef?.ipStatus() || null,
         eventCount: getEventCount(),
-        scopeViolations: scopeMonitorRef?.getViolationCount() || 0,
+        scopeViolations: alertRuntimeRef?.scopeViolationCount() || 0,
         capture: getCaptureHealth()
       })
       return
@@ -676,10 +701,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/scope' && req.method === 'GET') {
       json(res, 200, {
-        configured: scopeMonitorRef ? true : false,
+        configured: !!alertRuntimeRef,
         targets: configLoaderRef?.getTargets() || [],
-        violations: scopeMonitorRef?.getViolations() || [],
-        violationCount: scopeMonitorRef?.getViolationCount() || 0
+        violations: alertRuntimeRef?.scopeViolations() || [],
+        violationCount: alertRuntimeRef?.scopeViolationCount() || 0
       })
       return
     }

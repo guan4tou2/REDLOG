@@ -289,3 +289,40 @@ export class AdherenceCounter implements Surface {
 
   reset(): void { this.byTarget.clear() }
 }
+
+// ─── ViolationLog — flat rolling list for the ScopePanel UI ─────────────────
+
+export interface ViolationRow {
+  target: string
+  command: string
+  timestamp: number
+  distance: ScopeVerdict['distance']
+}
+
+/** Records every non-in-scope scope verdict for the operator-visible
+ *  ScopePanel. Distinct from AdherenceCounter (which dedups by target
+ *  for the post-hoc summary) — this preserves every occurrence, capped
+ *  at `maxRows` so a long engagement doesn't leak memory. */
+export class ViolationLog implements Surface {
+  readonly name = 'violation-log'
+  private rows: ViolationRow[] = []
+  private maxRows: number
+
+  constructor(maxRows = 500) { this.maxRows = maxRows }
+
+  handle(verdict: Verdict): void {
+    if (verdict.kind !== 'scope') return
+    if (verdict.distance === 'in_scope') return
+    this.rows.push({
+      target: verdict.signal.target,
+      command: verdict.signal.action.slice(0, 200),
+      timestamp: verdict.signal.timestamp,
+      distance: verdict.distance
+    })
+    if (this.rows.length > this.maxRows) this.rows.shift()
+  }
+
+  list(): ViolationRow[] { return [...this.rows] }
+  count(): number { return this.rows.length }
+  reset(): void { this.rows = [] }
+}

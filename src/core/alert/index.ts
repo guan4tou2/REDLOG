@@ -25,10 +25,11 @@ export type {
   Surface,
   EmitContext,
   WebhookConfig,
-  AdherenceRow
+  AdherenceRow,
+  ViolationRow
 } from './surface'
 
-export { ChainEmitter, BadgeSurface, WebhookForwarder, AdherenceCounter } from './surface'
+export { ChainEmitter, BadgeSurface, WebhookForwarder, AdherenceCounter, ViolationLog } from './surface'
 export { AlertBus, type DerivedPolicy } from './bus'
 
 export {
