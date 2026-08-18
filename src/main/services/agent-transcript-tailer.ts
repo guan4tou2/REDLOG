@@ -99,10 +99,11 @@ export function readTranscriptCwd(sourcePath: string, maxScanLines = 50): string
       carry += buf.slice(0, n).toString('utf-8')
       const parts = carry.split('\n')
       carry = parts.pop() ?? ''
-      for (const line of parts) {
+      for (const raw of parts) {
         scanned++
         if (scanned > maxScanLines) break
-        if (!line.trim()) continue
+        const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+        if (!line) continue
         try {
           const obj = JSON.parse(line)
           if (typeof obj.cwd === 'string' && obj.cwd) return obj.cwd

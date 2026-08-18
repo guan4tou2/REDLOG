@@ -317,7 +317,7 @@ export function isSelfExcludedCwd(cwd: string, marker: string): boolean {
 }
 
 export function cwdPassesGate(cwd: string, excludedPaths?: string[], watchPaths?: string[]): boolean {
-  const normalize = (p: string): string => path.resolve(expandTilde(p)).replace(/\/$/, '')
+  const normalize = (p: string): string => path.resolve(expandTilde(p)).replace(/[\\/]$/, '')
   const cwdNorm = normalize(cwd)
   if (excludedPaths && excludedPaths.length) {
     for (const raw of excludedPaths) {
@@ -628,7 +628,8 @@ function catchUpJsonl(s: SessionState): void {
   const complete = lastNl === -1 ? '' : text.slice(0, lastNl)
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
-  for (const line of complete.split('\n')) {
+  for (const raw of complete.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
     if (!line.trim()) continue
     s.linesSeen++
     processUnit(s, line, s.sourcePath)
@@ -886,7 +887,8 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   if (adapter.perMessageDir) {
     try {
       const idx = fs.readFileSync(sidecarPath, 'utf-8')
-      for (const name of idx.split('\n')) {
+      for (const raw of idx.split('\n')) {
+        const name = raw.endsWith('\r') ? raw.slice(0, -1) : raw
         if (name && !s.redlogIdByUuid.has(name)) {
           s.redlogIdByUuid.set(name, '__seen__')  // sentinel, not a real id
         }

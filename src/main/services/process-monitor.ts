@@ -205,7 +205,7 @@ export function diffProcs(
       // substring match on the leading token (path/basename)
       const first = cmd.split(/\s+/)[0]
       if (first === ig) return true
-      if (first.endsWith('/' + ig)) return true
+      if (first.endsWith('/' + ig) || first.endsWith('\\' + ig)) return true
     }
     return false
   }
