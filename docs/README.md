@@ -68,6 +68,11 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 - **[redlog-pentest](skills/redlog-pentest.md)** — Claude Code skill: hooks record, MCP operates; session start (`whoami` / `status` / `scope`), real-time findings, loot scanning, end-of-session `chain_anchor_now`. Copy to `~/.claude/skills/`.
 
+## Windows
+
+- **[Windows & WSL setup](windows-setup.md)** — build environment, PowerShell hooks, WSL2 mirrored networking, NTFS security advisory, operational isolation.
+- **[Windows compatibility audit](WINDOWS_COMPAT_AUDIT.md)** — POSIX assumptions that break on Windows. 14 original issues (P0–P2), plus 5 additional issues found and fixed during integration testing (path separators, CRLF, deferred trap arming).
+
 ## Project ops
 
 - **[Releasing](releasing.md)** — two-phase cross-platform release via GitHub Actions (build matrix → single release job), plus the local `npm rebuild better-sqlite3` gotcha after packaging.

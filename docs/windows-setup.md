@@ -99,7 +99,9 @@ Pentest tooling often runs in WSL. Two things must line up for WSL → RedLog.
 ### 5.1 Token path
 
 RedLog writes `api-token` and `api-port` to `%USERPROFILE%\.redlog\`. The WSL
-hook scripts resolve this via `cmd.exe /c 'echo %USERPROFILE%'` + `wslpath`.
+hook scripts first check `$HOME/.redlog/api-token` (works when WSL2 mirrored
+networking shares the same filesystem view), then falls back to resolving the
+Windows path via `cmd.exe /c 'echo %USERPROFILE%'` + `wslpath`.
 
 ### 5.2 Networking — mirrored mode
 
@@ -127,25 +129,48 @@ hooks/redlog-send.sh "nmap -sV $TARGET" command_end "{\"exit_code\":$?}"
 ```
 
 The bash/zsh `shell-preexec-hook.sh` also works inside WSL — source it in your
-WSL distro's `~/.bashrc` or `~/.zshrc`.
+WSL distro's `~/.bashrc` or `~/.zshrc`. The hook uses deferred trap arming
+(`_REDLOG_TRAP_ARMED`) so shell init statements are never captured as user
+commands.
+
+> **Important:** When sourcing the hook from Git Bash on Windows, use a POSIX
+> path — `source /c/Users/<you>/.redlog/shell-preexec-hook.sh`, **not**
+> `source C:\Users\<you>\.redlog\shell-preexec-hook.sh` (backslashes are
+> interpreted as escape characters).
 
 ---
 
-## 6. Operational Privacy
+## 6. Security Notes
 
-### 6.1 Workspace isolation (primary control)
+### 6.1 File permissions on NTFS
+
+RedLog writes `api-token` and Ed25519 signing keys with `mode: 0o600`, which
+is enforced on Unix but **silently ignored on NTFS**. The files inherit the
+parent directory's ACL, which typically grants read access to all local users.
+On a shared workstation, restrict access manually:
+
+```powershell
+icacls "$env:USERPROFILE\.redlog\api-token" /inheritance:r /grant:r "$env:USERNAME:(R)"
+icacls "$env:USERPROFILE\.redlog\signing-key.pem" /inheritance:r /grant:r "$env:USERNAME:(R)"
+```
+
+---
+
+## 7. Operational Privacy
+
+### 7.1 Workspace isolation (primary control)
 
 Source hooks **only** in engagement shells. Commands in unhooked shells are never
 logged. A clean pattern: do engagement work in a dedicated WSL distro with the
 hook in `~/.bashrc`; keep personal work on the Windows host (unhooked).
 
-### 6.2 Pause limitation
+### 7.2 Pause limitation
 
 The status-bar recording toggle only hides events from the live timeline — it
 does **not** stop database writes. For genuine isolation, stop the producer
 (unsource the hook or close the engagement workspace).
 
-### 6.3 Per-engagement isolation
+### 7.3 Per-engagement isolation
 
 Each project is a separate SQLite DB (`~/.redlog/projects/<id>/`). Close /
 switch the project when you stop working an engagement.

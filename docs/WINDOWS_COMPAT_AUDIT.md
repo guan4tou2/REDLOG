@@ -5,10 +5,30 @@ Windows, ranked so the fix queue is obvious. Scope: `src/`, `cli/`, `hooks/`,
 `shell/`, `test/`, `e2e/`, `redlog-share-worker/`, `examples/plugins/`,
 top-level scripts, and CI.
 
+## Fixed since audit (2026-08-18)
+
+The following issues were discovered and fixed during a comprehensive Windows
+integration test session. Commits: `0a7f81e`, `6c30b00`.
+
+| Fix | Commit | Files |
+|---|---|---|
+| **Process-monitor ignore list** only checked `/` separator — Windows `\` paths never matched. Added `\\` matching. | `6c30b00` | `process-monitor.ts` |
+| **`cwdPassesGate` trailing separator** strip only handled `/`. Windows root paths with trailing `\` failed gate comparison. Fixed regex to `[\\/]`. | `6c30b00` | `tailer-host.ts` |
+| **CRLF in JSONL parsing** — `.split('\n')` left trailing `\r` on CRLF files, breaking `JSON.parse`. Added `\r` stripping. | `6c30b00` | `tailer-host.ts` (x2), `agent-transcript-tailer.ts` |
+| **Bash DEBUG trap** fired during `source`, producing ghost `command_start` events. Fixed with deferred arming (`_REDLOG_TRAP_ARMED` flag). | `0a7f81e`, `6c30b00` | `shell-preexec-hook.sh` |
+| **`.bashrc` hook path** written with Windows backslashes by pre-guard `installHook()`. Manual fix to POSIX path. Related to P0-3. | manual | `~/.bashrc` |
+
+**Security advisory (not fixed):** `mode: 0o600` for `api-token` and Ed25519
+signing keys is silently ignored on NTFS. Files inherit the parent directory's
+ACL, potentially exposing secrets on shared workstations. Recommendation: use
+`icacls` to set per-user ACLs on Windows.
+
+---
+
 ## Summary
 
 - **Total issues: 14** — **3 blocking (P0)**, **6 annoying (P1)**, **5 cosmetic
-  (P2)**.
+  (P2)**. Plus **5 additional issues found during integration testing** (see above).
 - The runtime code is in surprisingly good Windows shape: `os.homedir()`,
   `path.join`, `pathToFileURL`, `windowsHide: true`, a real PowerShell hook,
   and per-platform branches in `network-info.ts` / `opsec-state.ts` all check
