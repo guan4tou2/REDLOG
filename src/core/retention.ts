@@ -91,6 +91,99 @@ function sweepDir(
   return pruned
 }
 
+/** v0.13.0 (docs/DESIGN-logged-tier-retention.md): row-level sweep of the
+ *  events_logged table. Age-based delete keyed on `created_at`
+ *  (clock-drift-immune; see design §5.2). Fires one chained
+ *  `system.retention_pruned_logged` summary event when count > 0
+ *  (mirrors the cast_pruned non-empty convention). Respects
+ *  `eventBus.paused` for symmetry with insertEvent. */
+export interface LoggedTierRetentionResult {
+  deleted: number
+  bytesFreed: number
+  oldestPruned: number | null
+  newestPruned: number | null
+  durationMs: number
+}
+
+const BATCH_SIZE = 5000  // §5.3: large deletes are batched so a 40 GB
+                         // sweep doesn't stall WAL for minutes.
+
+export function sweepLoggedTier(
+  cfg: { keepDays?: number; maxSizeGb?: number; maxRowCount?: number } | undefined,
+  opts: { engagementId: string; operatorId: string }
+): LoggedTierRetentionResult {
+  const noop = { deleted: 0, bytesFreed: 0, oldestPruned: null, newestPruned: null, durationMs: 0 }
+  if (!opts.operatorId) return noop
+  // §5.4: sweep respects eventBus.paused for symmetry with insertEvent —
+  // a paused RedLog does NOT prune. Recording resumes → next timer tick
+  // catches up.
+  if (eventBus.paused) return noop
+  // Env var override for CI / air-gapped installs (design §4.3).
+  const envDays = Number(process.env.REDLOG_LOGGED_RETENTION_DAYS)
+  const keepDays = Number.isFinite(envDays) && envDays >= 0
+    ? envDays
+    : (cfg?.keepDays ?? 30)
+  if (keepDays <= 0) return noop  // 0 = keep forever (opt-out)
+
+  const cutoff = Date.now() - keepDays * DAY_MS
+  const started = Date.now()
+  let db
+  try { db = getDB() } catch { return noop }
+
+  // Bounds first — for the summary event.
+  const bounds = db.prepare(
+    'SELECT MIN(created_at) as oldest, MAX(created_at) as newest FROM events_logged WHERE created_at < ?'
+  ).get(cutoff) as { oldest: number | null; newest: number | null }
+  if (bounds.oldest === null) return noop  // nothing to prune
+
+  // Byte estimate before delete — pages freed is approximate but useful.
+  // The `data` blob is the dominant weight; sum its length.
+  const bytesRow = db.prepare(
+    'SELECT COALESCE(SUM(LENGTH(data)), 0) as bytes FROM events_logged WHERE created_at < ?'
+  ).get(cutoff) as { bytes: number }
+  const bytesFreed = bytesRow.bytes
+
+  // Batched delete. `changes()` gives us the per-statement count so we
+  // can loop until the affected set is empty (or bounded — no infinite
+  // loops on a stuck row).
+  let deleted = 0
+  const stmt = db.prepare(
+    `DELETE FROM events_logged WHERE rowid IN (
+       SELECT rowid FROM events_logged WHERE created_at < ? LIMIT ${BATCH_SIZE}
+     )`
+  )
+  for (let iterations = 0; iterations < 10_000; iterations++) {
+    const info = stmt.run(cutoff)
+    const batchDeleted = Number(info.changes ?? 0)
+    if (batchDeleted === 0) break
+    deleted += batchDeleted
+  }
+  if (deleted === 0) return noop
+
+  const durationMs = Date.now() - started
+  try {
+    const ev = insertEvent('system', {
+      subtype: 'retention_pruned_logged',
+      count: deleted,
+      bytes_freed: bytesFreed,
+      oldest_pruned_at: bounds.oldest,
+      newest_pruned_at: bounds.newest,
+      keep_days: keepDays,
+      sweep_duration_ms: durationMs,
+      description: `retention: pruned ${deleted} logged-tier row(s), freed ~${Math.round(bytesFreed / 1024 / 1024)} MB (${keepDays}d policy)`
+    }, opts)
+    if (ev) eventBus.publish(ev)
+  } catch (e) { noteDbError('retention-sweep-logged', e) }
+
+  return {
+    deleted,
+    bytesFreed,
+    oldestPruned: bounds.oldest,
+    newestPruned: bounds.newest,
+    durationMs
+  }
+}
+
 export function sweepRetention(config: {
   terminal?: { castKeepDays?: number }
   screenshots?: { keepDays?: number }

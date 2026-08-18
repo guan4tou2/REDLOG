@@ -189,6 +189,31 @@ export interface RedLogConfig {
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
     emitThinking?: boolean
   }
+  /** v0.13.0: retention policy for row-level and file-level pruning. Row-
+   *  level `loggedTier` is new; file-level `castKeepDays` /
+   *  `screenshots.keepDays` moved into this parent for consistency (still
+   *  read from their prior locations for backward-compat). See
+   *  docs/DESIGN-logged-tier-retention.md. */
+  retention?: {
+    /** Row-level retention on the events_logged table. Age is primary; size
+     *  and count are optional ceilings. See design doc §3.4. */
+    loggedTier?: {
+      /** Days to keep. `0` = keep forever (matches cast/screenshot
+       *  convention). Default `30` — the first RedLog retention default
+       *  that is *non-zero*, because logged-tier rows are the first
+       *  non-primary evidence artifact. */
+      keepDays?: number
+      /** Optional ceiling: prune oldest rows once the SQLite events.db
+       *  file size exceeds this many GB. Off by default. */
+      maxSizeGb?: number
+      /** Optional ceiling: prune oldest rows once the events_logged row
+       *  count exceeds this many. Off by default. */
+      maxRowCount?: number
+      /** Periodic sweep interval in hours. `0` disables the timer — the
+       *  project-open sweep still runs. Default `24`. */
+      sweepIntervalHours?: number
+    }
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -286,6 +311,17 @@ const DEFAULT_CONFIG: RedLogConfig = {
   agentTailer: {
     enabled: true,
     emitThinking: false
+  },
+  retention: {
+    // v0.13.0: 30d default. First non-zero retention default RedLog
+    // ships — see docs/DESIGN-logged-tier-retention.md §4.2 for the
+    // three-observation rationale (engagement duration + retrospective
+    // lag + client review lag). Size/count ceilings are undefined by
+    // default; operator opts in explicitly.
+    loggedTier: {
+      keepDays: 30,
+      sweepIntervalHours: 24
+    }
   }
 }
 
