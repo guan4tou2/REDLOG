@@ -32,6 +32,11 @@ interface ManifestPayload {
    *  captured bytes (four-layer redaction, layer 4). Every one has a paired
    *  system.sanitized event in events.jsonl proving the swap was audited. */
   sanitized: { events: number; totalInDb: number }
+  /** v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.7.2): row
+   *  counts per tier. `chained` matches chainHead.eventCount — that IS the
+   *  count the OTS anchor covers. `logged` is the events_logged row count
+   *  bundled in `events_logged.jsonl`. Only present on bundleVersion >= 2. */
+  tiers?: { chained: number; logged: number }
   files: ManifestFile[]
 }
 
@@ -105,6 +110,41 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   }
   fs.closeSync(fd)
   files.push({ path: 'events.jsonl', ...sha256File(eventsPath) })
+
+  // 1b. v0.13.0: events_logged.jsonl — the supporting-evidence tier
+  // (docs/DESIGN-two-tier-chain.md sec.7.1). Same insertion-order dump as
+  // events.jsonl, minus the chain columns (they are always NULL on
+  // logged rows). The bundled verifier IGNORES this file with a summary
+  // line; only the chained tier is part of the audit-verified chain.
+  //
+  // Sanitization: the four-layer swap runs against logged rows too, since
+  // a DNS query URL can carry a token. Because there's no per-row hash to
+  // reconcile against, the in-memory rewrite is enough — no separate
+  // sanitized_events_logged bookkeeping table.
+  const eventsLoggedPath = path.join(bundleDir, 'events_logged.jsonl')
+  const loggedFd = fs.openSync(eventsLoggedPath, 'w')
+  const loggedIter = db.prepare(
+    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+            hostname, source_ip, target_id, data, created_at
+     FROM events_logged ORDER BY created_at ASC, rowid ASC`
+  ).iterate() as IterableIterator<Record<string, unknown>>
+  let loggedRowCount = 0
+  for (const row of loggedIter) {
+    const eventId = row.id as string
+    const replacements = getSanitizedFields(eventId)
+    if (Object.keys(replacements).length > 0) {
+      try {
+        const data = JSON.parse(row.data as string) as Record<string, unknown>
+        for (const [field, value] of Object.entries(replacements)) data[field] = value
+        row.data = JSON.stringify(data)
+        sanitizedRowsWritten++
+      } catch { /* leave row as-is */ }
+    }
+    fs.writeSync(loggedFd, JSON.stringify(row) + '\n')
+    loggedRowCount++
+  }
+  fs.closeSync(loggedFd)
+  files.push({ path: 'events_logged.jsonl', ...sha256File(eventsLoggedPath) })
 
   // 2. quickmarks.json
   files.push(writeAndHash(
@@ -243,7 +283,20 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     const readme = [
       '# RedLog evidence bundle',
       '',
-      'Verify the audit chain is intact before trusting anything in this bundle.',
+      '## What is in this bundle',
+      '',
+      '- **events.jsonl** — the audit chain. Every row is SHA-256-linked to the',
+      '  previous row, Ed25519-signed by the operator key, and covered by the',
+      '  OpenTimestamps anchor in `chain_anchors.json`. Treat this as **primary',
+      '  evidence** — the rows a court or auditor should read for facts.',
+      '- **events_logged.jsonl** — supporting footprint (v0.13.0+). DNS lookups,',
+      '  HTTP flow bookkeeping, CDP console lines, agent thinking, alert-bus',
+      '  heartbeats. Linked back into `events.jsonl` via `_causes` where a causal',
+      '  relationship is known. **NOT hash-chained, NOT signed, NOT anchored.**',
+      '  Treat as investigative context, not primary evidence.',
+      '',
+      'The verifier below walks `events.jsonl` only; the logged tier is present',
+      'for completeness but is not part of the audit-verified chain.',
       '',
       '## Verify (macOS / Linux)',
       '',
@@ -267,7 +320,9 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       '',
       'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',
       'from this directory and prints a summary: events walked, chain intact or',
-      'broken at event X, signature verified counts.',
+      'broken at event X, signature verified counts. If `events_logged.jsonl` is',
+      'present, the verifier reports its row count with a "not verified —',
+      'supporting evidence" note.',
       ''
     ].join('\n')
     const readmeDest = path.join(bundleDir, 'README.md')
@@ -281,7 +336,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
   const manifest: ManifestPayload = {
-    bundleVersion: 1,
+    // v0.13.0: bump 1 → 2. The bundle layout gains `events_logged.jsonl`
+    // and the manifest gains `tiers`. External bundle consumers keying
+    // on `bundleVersion === 1` need to update; the bundled
+    // `redlog-verify.py` accepts both versions and ignores the logged
+    // tier when it's absent (v1 bundles have no events_logged.jsonl).
+    bundleVersion: 2,
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
     engagementId,
@@ -299,6 +359,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       createdAt: lastAnchor.createdAt
     } : null,
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
+    tiers: {
+      // chained = chainHead.eventCount when the head exists; both are
+      // definitionally the count the OTS anchor covers.
+      chained: head?.eventCount ?? 0,
+      logged: loggedRowCount
+    },
     files
   }
 
