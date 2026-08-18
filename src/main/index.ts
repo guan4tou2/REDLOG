@@ -1077,9 +1077,9 @@ app.whenReady().then(() => {
   ipMonitor.on('status', broadcastIPStatus)
 
   // --- Events ---
-  ipcMain.handle('events:query', (_e, opts) => queryEvents(opts))
-  ipcMain.handle('events:getCount', () => getEventCount())
-  ipcMain.handle('events:search', (_e, query: string, limit?: number) => searchEvents(query, limit))
+  ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
+  ipcMain.handle('events:getCount', () => activeProject ? getEventCount() : 0)
+  ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
   ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
@@ -1188,7 +1188,7 @@ app.whenReady().then(() => {
   ipcMain.handle('scope:isConfigured', () => scopeMonitor.isConfigured())
 
   // --- Evidence Chain ---
-  ipcMain.handle('chain:length', () => getChainLength())
+  ipcMain.handle('chain:length', () => activeProject ? getChainLength() : 0)
   ipcMain.handle('chain:anchors', () => activeProject ? listAnchors() : [])
   ipcMain.handle('chain:anchorNow', async () => activeProject ? await anchorNow() : null)
   ipcMain.handle('chain:verify', async (_e, opts?: { full?: boolean }) => {
@@ -1216,9 +1216,10 @@ app.whenReady().then(() => {
   ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
 
   // --- QuickMarks ---
-  ipcMain.handle('quickmarks:list', () => listQuickMarks())
-  ipcMain.handle('quickmarks:get', (_e, id: string) => getQuickMark(id))
+  ipcMain.handle('quickmarks:list', () => activeProject ? listQuickMarks() : [])
+  ipcMain.handle('quickmarks:get', (_e, id: string) => activeProject ? getQuickMark(id) : null)
   ipcMain.handle('quickmarks:create', async (_e, data: { title: string; url?: string; note?: string }) => {
+    if (!activeProject) return null
     const browser = await getActiveBrowserTab()
     const context = {
       browserUrl: browser.url || undefined,
@@ -1232,8 +1233,8 @@ app.whenReady().then(() => {
       context
     })
   })
-  ipcMain.handle('quickmarks:update', (_e, id: string, data) => updateQuickMark(id, data))
-  ipcMain.handle('quickmarks:delete', (_e, id: string) => deleteQuickMark(id))
+  ipcMain.handle('quickmarks:update', (_e, id: string, data) => activeProject ? updateQuickMark(id, data) : false)
+  ipcMain.handle('quickmarks:delete', (_e, id: string) => activeProject ? deleteQuickMark(id) : false)
 
   // --- Saved Timeline views ---
   // A "view" is a named snapshot of Timeline UI state — zoom, time window,
@@ -1381,9 +1382,9 @@ app.whenReady().then(() => {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2))
     return filePath
   }
-  ipcMain.handle('data:exportMarks', () => sliceExport('marks', listQuickMarks()))
-  ipcMain.handle('data:exportLoot', () => sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })))
-  ipcMain.handle('data:exportViolations', () => sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 }).filter((e) => e.data?.subtype === 'scope_violation')))
+  ipcMain.handle('data:exportMarks', () => activeProject ? sliceExport('marks', listQuickMarks()) : null)
+  ipcMain.handle('data:exportLoot', () => activeProject ? sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })) : null)
+  ipcMain.handle('data:exportViolations', () => activeProject ? sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 }).filter((e) => e.data?.subtype === 'scope_violation')) : null)
   // v0.6.87 C2: Timeline slice export. Renderer picks a time window (usually
   // the current visible viewport in Timeline) and gets a filtered JSON slice
   // that a bug-bounty writeup can attach as evidence for a specific attack
