@@ -231,6 +231,10 @@ export class ScopePolicy implements Policy {
   private scopeSubnets = new Set<string>()  // /24s covered by CIDR targets
   private scopeDomains = new Set<string>()  // registrable domains covered
 
+  /** Operator has drawn a boundary (targets configured). Excludes alone
+   *  don't count as configured — an exclude-only scope makes no sense. */
+  isConfigured(): boolean { return this.cfg.targets.length > 0 }
+
   configure(next: Partial<ScopePolicyConfig>): void {
     if (next.targets) this.cfg.targets = next.targets
     if (next.excludeTargets) this.cfg.excludeTargets = next.excludeTargets
