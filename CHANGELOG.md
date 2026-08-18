@@ -3,6 +3,78 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.12.1 — 2026-08-18
+
+**Three real perf wins that were hiding in the write path.**
+
+A performance audit (see `docs/PERF_AUDIT_v0.12.md` if it exists — otherwise
+the branch history) surfaced three concrete defects. All three ship together.
+
+### 1. `signEvent` re-reads the operator's key file on every insert (**biggest**)
+
+Every `insertEvent` was doing 2× `fs.existsSync` + 2× `fs.readFileSync` + JWK
+parse of both key halves — purely to re-load the operator's key file **that
+we ourselves had just written**. At a 200 evt/s mitmproxy burst that was
+~800 syscalls/s + 200 `crypto.createPrivateKey` calls, dominating the sign
+latency at ~50 µs when the raw Ed25519 sign itself is ~15 µs.
+
+Fix: per-operator `KeyObject` cache in `signing.ts`. Cache hit path is bare
+Ed25519. `generateOperatorKeyPair` invalidates any prior negative-cached
+entry for the same id. New `resetSigningCache(operatorId?)` export for
+callers that rotate keys or wipe the keys dir. **7 new tests** cover the
+positive path, negative caching, cache invalidation, and the
+generate-after-negative-cache case.
+
+Expected impact: **sign latency ~50 µs → ~15 µs**; reclaims ~7 ms/s of
+main-thread time at 200 evt/s and drops ~400 syscalls/s.
+
+### 2. `redact()` re-compiled every denylist regex per token
+
+`matchesAny` compiled `new RegExp(p.slice(1, -1))` inside its inner loop.
+With a 20-entry regex denylist × 100 tokens per shell command_end stdout
+(the size a real `redlog-run` output easily reaches) that was **2000 fresh
+`RegExp` constructions per event**. `effectiveRules` also allocated two
+arrays + two `Set`s per `getRules()` call.
+
+Fix: cached `CachedRules` in `redaction.ts` holds precompiled patterns for
+both allowlist and denylist. Cache invalidates on `configureRedaction` /
+`registerRedactionRules` / `unregisterRedactionRules`. Callers that pass a
+NEW rules object (api-server merges `lootValues` into the denylist per
+shell event) compile those local lists **once** at redact-time, not per
+token. **6 new tests** cover literal/regex denylist, allowlist precedence,
+cache invalidation on all three write paths, and the per-call rules-object
+path api-server actually uses.
+
+### 3. Timeline `recentEvents` walked the whole event array to look at the last 50
+
+`events.filter(...).reverse().slice(0, 50)` scans N events, filters M into
+a new array, reverses that whole M-element array, then throws away all but
+the last 50. On a 131k-event project that paid O(N) every render just for
+the tail. Because `view.left`/`view.width` are in the memo's dep list,
+this ran on every scroll frame while the operator dragged the timeline.
+
+Fix: walk from the tail and short-circuit at 50 matches. The
+scrolled-window path also short-circuits at `d < from` (events are
+time-sorted, so nothing older will be in-window). Empty-window fallback
+preserved.
+
+Expected impact: **~500 µs → sub-µs** per render at 131k events.
+
+### Deferred to later (mentioned in the audit, not urgent)
+
+- `mitmproxy-addon.py` thread-per-request → single queue + keep-alive
+  HTTPConnection. Real audit trap (slow RedLog stalls the proxy) but
+  needs Python addon work; separate PR.
+- Timeline `maxZoom` / `timeStart` full-array scans → maintain running
+  min during binary-insert; medium value.
+- `deepRedactStrings` whole-tree walk on every tool_call → per-tool
+  field allowlist; medium value.
+- **Two-tier chain** (`chained` vs `logged` events) — a design change,
+  not a defect fix. Worth a design doc for v0.13 or v1.0. Current write
+  path handles our real workload (200 evt/s peak) comfortably; the tier
+  system is about audit-story honesty (a DNS storm isn't sworn to; the
+  shell command that fetched it is) more than throughput.
+
 ## v0.12.0 — 2026-08-18
 
 **Alerts stop being two hand-wired monitors and start being a subsystem.**

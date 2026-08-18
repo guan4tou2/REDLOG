@@ -104,7 +104,52 @@ export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
   // ACLs. That's best-effort by design — the DB copy is what verify checks.
   fs.writeFileSync(privPath, privB64, { mode: 0o600 })
   fs.writeFileSync(pubPath, pubB64)
+  // v0.12.1: a prior loadKeyObject call may have negative-cached this
+  // operator's key as `null` (fresh operator, key not yet written) — drop
+  // that entry so the next signEvent picks up the new key without a stat.
+  resetSigningCache(operatorId)
   return { publicKey: pubB64, privateKeyPath: privPath }
+}
+
+// v0.12.1: cache the imported KeyObject per operator. Before this, every
+// insertEvent did 2× fs.existsSync + 2× fs.readFileSync + JWK parse of both
+// key halves — at a 200 evt/s mitmproxy burst that's ~800 syscalls/s plus
+// 200 crypto.createPrivateKey calls purely to re-read our own key file. The
+// key on disk is idempotent-on-create (see generateOperatorKeyPair), so the
+// derived KeyObject is safe to hold once per operator id. Callers that
+// rotate keys or wipe the keys dir call resetSigningCache(operatorId?) to
+// invalidate. Missing-key result (null) is cached negatively so we don't
+// re-stat on every write.
+type CacheEntry = { key: crypto.KeyObject } | { key: null }
+const keyCache = new Map<string, CacheEntry>()
+
+function loadKeyObject(operatorId: string): crypto.KeyObject | null {
+  const cached = keyCache.get(operatorId)
+  if (cached !== undefined) return cached.key
+  const privPath = privateKeyPath(operatorId)
+  const pubPath = publicKeyPath(operatorId)
+  if (!fs.existsSync(privPath) || !fs.existsSync(pubPath)) {
+    keyCache.set(operatorId, { key: null })
+    return null
+  }
+  try {
+    const privB64 = fs.readFileSync(privPath, 'utf-8').trim()
+    const pubB64 = fs.readFileSync(pubPath, 'utf-8').trim()
+    const key = privateKeyFromRaw(privB64, pubB64)
+    keyCache.set(operatorId, { key })
+    return key
+  } catch {
+    keyCache.set(operatorId, { key: null })
+    return null
+  }
+}
+
+/** Drop cached KeyObject(s). Called by generateOperatorKeyPair after write
+ *  (the cache would otherwise hold the pre-generation `null`), and available
+ *  to callers that manually rotate a key file. Pass no arg to clear all. */
+export function resetSigningCache(operatorId?: string): void {
+  if (operatorId === undefined) keyCache.clear()
+  else keyCache.delete(operatorId)
 }
 
 // Sign the pre-computed canonical JSON on behalf of `operatorId`. Returns
@@ -113,18 +158,16 @@ export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
 // unsigned row rather than crash. The chain hash still protects that row;
 // verifyChainFull surfaces it as "unsigned" (audit signal), not "broken".
 export function signEvent(canonicalJson: string, operatorId: string): string | null {
-  const privPath = privateKeyPath(operatorId)
-  const pubPath = publicKeyPath(operatorId)
-  if (!fs.existsSync(privPath) || !fs.existsSync(pubPath)) return null
+  const key = loadKeyObject(operatorId)
+  if (!key) return null
   try {
-    const privB64 = fs.readFileSync(privPath, 'utf-8').trim()
-    const pubB64 = fs.readFileSync(pubPath, 'utf-8').trim()
-    const key = privateKeyFromRaw(privB64, pubB64)
     // Ed25519 uses PureEdDSA — no digest algorithm; pass null.
     const sig = crypto.sign(null, Buffer.from(canonicalJson, 'utf-8'), key)
     return sig.toString('base64')
   } catch {
-    // Malformed key file, permissions error, etc. — don't crash the caller.
+    // Signing itself failed after the key loaded — invalidate the cache so
+    // a rotation lands on the next call, and return unsigned.
+    keyCache.delete(operatorId)
     return null
   }
 }
