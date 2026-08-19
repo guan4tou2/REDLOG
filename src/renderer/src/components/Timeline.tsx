@@ -3266,6 +3266,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
                 {operatorLabel(selectedEvent.operatorId)}
               </span>
+              {/* v0.13.0: tier badge. `⛓` = chained (audit chain, signed,
+               *  anchored). `⌇` = logged (supporting evidence, no hash,
+               *  no signature). Rendered subtly — most rows are chained
+               *  and the operator doesn't need to be reminded; the badge
+               *  matters when a reviewer is asking "why isn't this row
+               *  signed?" and needs to see it's by-design.
+               */}
+              {selectedEvent.tier === 'logged' ? (
+                <span
+                  className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60"
+                  title="Logged tier — supporting evidence. Not hash-chained, not signed, not covered by the OTS anchor. Retention policy deletes rows past keepDays. See docs/DESIGN-two-tier-chain.md."
+                >
+                  ⌇ logged
+                </span>
+              ) : (
+                <span
+                  className="text-xs font-mono text-zinc-600 px-1.5 py-0.5 rounded bg-zinc-800/40"
+                  title="Chained tier — audit chain. SHA-256-linked to the previous row, Ed25519-signed by the operator key, and covered by the OTS anchor."
+                >
+                  ⛓ chained
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {(() => {

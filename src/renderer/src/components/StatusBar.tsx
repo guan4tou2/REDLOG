@@ -5,6 +5,7 @@ import { toast } from './Toast'
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [eventCount, setEventCount] = useState(0)
+  const [loggedCount, setLoggedCount] = useState(0)
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const [uptime, setUptime] = useState(0)
@@ -26,13 +27,22 @@ export default function StatusBar(): JSX.Element {
     })
     window.redlog.ip.getStatus().then(setIpStatus)
     window.redlog.events.getCount().then(setEventCount)
+    // v0.13.0: also fetch the logged-tier count for the chained·logged
+    // split. Legacy .getCount() returns chained (audit) — every existing
+    // caller means that.
+    window.redlog.events.getCount('logged').then(setLoggedCount)
     window.redlog.loot.getCount().then(setLootCount)
     window.redlog.scope.getViolationCount().then(setScopeViolations)
     window.redlog.recording.get().then(setRecording)
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
-    const unsubEvent = window.redlog.events.onNew(() => {
-      setEventCount((c) => c + 1)
+    const unsubEvent = window.redlog.events.onNew((event) => {
+      // v0.13.0: the tier flag on the incoming event tells us which
+      // counter to bump; unknown-tier (legacy events) default to chained
+      // via rowToEvent's default. Loot / scope counts refetch either way.
+      const tier = (event as { tier?: import('../../../core/db/events').EventTier } | undefined)?.tier
+      if (tier === 'logged') setLoggedCount((c) => c + 1)
+      else setEventCount((c) => c + 1)
       window.redlog.loot.getCount().then(setLootCount)
       window.redlog.scope.getViolationCount().then(setScopeViolations)
     })
@@ -174,7 +184,28 @@ export default function StatusBar(): JSX.Element {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        <span className="text-zinc-600 tabular-nums">{t('statusBar.events', { count: eventCount })}</span>
+        {/* v0.13.0: chained · logged split. Chained (audit-tier) reads
+         *  brighter — that's the count anchors + verifier care about.
+         *  Logged renders muted (zinc-700) to signal "footprint, not
+         *  evidence". Hidden entirely when logged is zero, so pre-v0.13
+         *  projects still show the single-number shape they always had.
+         *  Title tooltip explains the two-tier story for auditors
+         *  hovering to figure out what the second number is.
+         */}
+        <span
+          className="text-zinc-600 tabular-nums"
+          title={loggedCount > 0
+            ? `${eventCount.toLocaleString()} chained (audit chain) · ${loggedCount.toLocaleString()} logged (supporting evidence)`
+            : undefined}
+        >
+          {t('statusBar.events', { count: eventCount })}
+          {loggedCount > 0 && (
+            <>
+              <span className="text-zinc-800 mx-1">·</span>
+              <span className="text-zinc-700">{loggedCount.toLocaleString()}</span>
+            </>
+          )}
+        </span>
         <button
           onClick={async () => {
             const ts = new Date().toLocaleTimeString()
