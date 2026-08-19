@@ -126,12 +126,16 @@ export class ChainEmitter implements Surface {
   }
 }
 
-function ipEventFields(v: IPVerdict & { kind: 'ip' }): Record<string, unknown> {
+/** Exported for regression coverage — earlier revisions wrote `v.kind`
+ *  (the outer discriminator, always `'ip'`) instead of `v.value` (the real
+ *  verdict), which silently broke v0.13's tier classifier. Direct-call
+ *  test in `test/alert/ip-event-fields.test.ts` locks the shape. */
+export function ipEventFields(v: IPVerdict & { kind: 'ip' }): Record<string, unknown> {
   // Kind + modifiers land as top-level fields so downstream filters
   // (StatusBar badge, scope-adherence, deconfliction) can key on them
   // without decoding a nested object.
   return {
-    ip_verdict_kind: v.kind,
+    ip_verdict_kind: v.value,
     ...(v.settling ? { settling: true } : {}),
     ...(v.stale ? { stale: true } : {}),
     ...(v.listConflict ? { list_conflict: true } : {}),
@@ -173,8 +177,6 @@ export interface WebhookConfig {
    *  G-C2 — inferences stay in-house; the blue team hears about facts. */
   authorityFloor: Authority[]
 }
-
-type Authority = 'fact' | 'inferred' | 'unknown'
 
 /** Forwards verdicts to a deconfliction webhook. Coalescing (burst
  *  collapse) is applied at the surface — the underlying signals still hit

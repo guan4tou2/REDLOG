@@ -22,7 +22,6 @@ import {
   WebhookForwarder,
   AdherenceCounter,
   type IPVerdict,
-  type ScopeDistance,
   type ViolationRow,
   type AdherenceRow,
   type TargetHitSignal
@@ -196,23 +195,6 @@ export class AlertRuntime {
    *  and per-tick health signals. */
   onIpTick(fn: () => void): () => void {
     return this.ipProducer.onCheck(fn)
-  }
-
-  /** Subscribe to ANY verdict emission — used by main to broadcast scope
-   *  violation counts to the renderer so StatusBar re-fetches. Filters
-   *  down to what the caller cares about. */
-  onScopeVerdict(fn: (distance: ScopeDistance) => void): () => void {
-    const surface = {
-      name: 'scope-verdict-listener',
-      handle: (v: Parameters<typeof this.chainEmitter.handle>[0]): void => {
-        if (v.kind === 'scope') fn(v.distance)
-      }
-    }
-    this.bus.registerSurface(surface)
-    // Bus doesn't expose deregister — surfaces live for the runtime's
-    // lifetime. Return no-op; callers that want tear-down should tear
-    // down the whole runtime.
-    return () => {}
   }
 
   /** Producer link state — used by main's active-link monitor. */

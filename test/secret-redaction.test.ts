@@ -80,10 +80,11 @@ describe('redactSecrets — TS unit tests', () => {
   // v0.12.2: prefilter fast path — strings that can't possibly contain any
   // of the 8 pattern-trigger markers must pass through unchanged and skip
   // the eight replace() calls. These fixtures document what the prefilter
-  // considers "definitely safe": no `=`/`:`/space AND no `AKIA`/`sk-`/`sk_`/
-  // `BEGIN`/`eyJ`/`ghp_`/`glpat` substring. If a new PATTERN entry lands
-  // whose trigger isn't in the union, this test will still pass — but the
-  // real body will silently stop redacting it. Keep in sync with PATTERNS.
+  // considers "definitely safe": no keyword from PATTERNS[0]'s name group,
+  // and no `bearer`/`AKIA`/`sk-`/`sk_`/`BEGIN`/`eyJ`/`ghp_`/`glpat`
+  // substring. If a new PATTERN entry lands whose trigger isn't in the
+  // union, this test will still pass — but the real body will silently
+  // stop redacting it. Keep in sync with PATTERNS.
   it('prefilter: token-free prose passes through untouched', () => {
     for (const s of [
       'nothingtoseehere',
@@ -91,7 +92,9 @@ describe('redactSecrets — TS unit tests', () => {
       'CamelCaseWordsOnly',
       'anIdWith1234numbers',
       '/some/path/to/file.txt',
-      'error:unexpected',  // colon triggers prefilter but no pattern matches — still exercises the through-path
+      'error:unexpected',  // colon alone no longer triggers the prefilter — still exercises the through-path
+      'the quick brown fox jumps over the lazy dog',  // regression: spaces alone must not trigger prefilter
+      'agent thinking: I should investigate the request handler and then decide next steps'
     ]) {
       expect(redactSecrets(s)).toBe(s)
     }
