@@ -101,6 +101,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     return t('time.dAgo', { d: days })
   }
 
+  // v0.14 picker layout: the pre-v0.14 fixed 480px column left huge empty
+  // gutters on wide displays and cramped-feeling recent-projects rows.
+  // Research (JetBrains + Cursor welcome screens, Win32 UX guidance) points
+  // at a two-column split above ~800px — brand + new project on the left,
+  // recent projects on the right — and a stacked single-column fallback
+  // below that so narrow windows behave like the old picker.
+  const hasRecent = projects.length > 0
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]" data-testid="project-picker">
       {/* Draggable title bar zone */}
@@ -108,9 +115,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         className="h-10 shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
-      <div className="flex-1 flex items-center justify-center">
-      <div className="w-[480px] space-y-6">
-        {/* Header */}
+      <div className="flex-1 flex items-center justify-center p-6">
+      <div className={`w-full ${hasRecent ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
+        {/* Header — spans both columns. Centered anchor for identity so the
+            wider layout still feels intentional and not empty. */}
         <div className="text-center space-y-2">
           <img src={logoUrl} alt="RedLog" className="w-14 h-14 mx-auto mb-2 rounded-xl" />
 
@@ -124,6 +132,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
+        {/* Two-column grid at ≥md (768px). Below that the grid collapses to
+            one column so the picker on a narrow window looks identical to
+            v0.13. When no recent projects exist, the wrapper container also
+            drops back to the single-column max-w-[480px] above, so the
+            first-launch look stays a centered card rather than a lonely
+            new-project card floating in a wide empty gutter. */}
+        <div className={`grid gap-6 ${hasRecent ? 'md:grid-cols-2' : 'grid-cols-1'}`}>
         {/* New project */}
         <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
           <h2 className="text-zinc-500 text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.new')}</h2>
@@ -305,6 +320,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             </div>
           </div>
         )}
+        </div>{/* end two-column grid */}
 
         <p className="text-zinc-700 text-xs text-center font-mono">
           {t('project.description')}
