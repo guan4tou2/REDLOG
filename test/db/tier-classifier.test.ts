@@ -82,16 +82,19 @@ describe('classifyTier — v0.13 two-tier assignment', () => {
     expect(classifyTier('system', { subtype: 'process_monitor_ps_unavailable' })).toBe('logged')
   })
 
-  // ─── ip_verdict special case: data-dependent tiering ───────────────────
+  // ─── ip_verdict tiering ────────────────────────────────────────────────
+  // The design doc §4.1 originally reserved a data-dependent special case
+  // for `ip_verdict_kind === 'unchanged'` → logged (heartbeat routing).
+  // That branch was removed after review: `IPPolicy.evaluate` dedups
+  // unchanged verdicts at src/core/alert/policies.ts:143 and never emits
+  // one, so the special case was unreachable. Every ip_verdict event
+  // that reaches insertEvent is a real state change and lands chained.
 
-  it('system.ip_verdict with ip_verdict_kind === "unchanged" → logged', () => {
-    expect(classifyTier('system', { subtype: 'ip_verdict', ip_verdict_kind: 'unchanged' })).toBe('logged')
-  })
-
-  it('system.ip_verdict with any other kind → chained (real state change)', () => {
-    expect(classifyTier('system', { subtype: 'ip_verdict', ip_verdict_kind: 'ip_changed' })).toBe('chained')
+  it('system.ip_verdict → chained (every emitted verdict is a real state change)', () => {
     expect(classifyTier('system', { subtype: 'ip_verdict', ip_verdict_kind: 'exposed' })).toBe('chained')
-    expect(classifyTier('system', { subtype: 'ip_verdict' })).toBe('chained')  // missing kind → real event
+    expect(classifyTier('system', { subtype: 'ip_verdict', ip_verdict_kind: 'safe' })).toBe('chained')
+    expect(classifyTier('system', { subtype: 'ip_verdict', ip_verdict_kind: 'off_profile' })).toBe('chained')
+    expect(classifyTier('system', { subtype: 'ip_verdict' })).toBe('chained')  // missing kind → chained too
   })
 
   // ─── fail-safe defaults ───────────────────────────────────────────────

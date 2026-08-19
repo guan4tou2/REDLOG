@@ -70,14 +70,15 @@ const LOGGED_TIER: ReadonlySet<string> = new Set([
   'system:process_monitor_ps_unavailable'
 ])
 
-/** Special case (design doc §4.1): `system.ip_verdict` tier depends on
- *  the `data.ip_verdict_kind` field — the unchanged-tick shape is
- *  heartbeat (logged), anything else is a real state change (chained). */
-function isLoggedTierIPVerdict(agentType: string, data: Record<string, unknown>): boolean {
-  return agentType === 'system'
-    && data.subtype === 'ip_verdict'
-    && data.ip_verdict_kind === 'unchanged'
-}
+// Design doc §4.1 hedged a `system.ip_verdict` special case that would route
+// heartbeat "unchanged" ticks to the logged tier. That branch is DEAD in
+// practice: `IPPolicy.evaluate` at src/core/alert/policies.ts:143 dedups
+// unchanged verdicts and returns `[]`, so no `ip_verdict` event with
+// `ip_verdict_kind === 'unchanged'` is ever emitted — the surface only
+// writes real state changes. Every emitted ip_verdict is chain-worthy;
+// the default fallback below routes it correctly. If a future policy
+// starts emitting explicit heartbeat ticks, re-add the special case
+// alongside the emitter change and cover it with an end-to-end test.
 
 /** Which table an insertEvent call should target. Every real (agentType,
  *  subtype) pair emitted by RedLog must resolve here to exactly one
@@ -91,7 +92,6 @@ export function classifyTier(
 ): 'chained' | 'logged' {
   const subtype = typeof data.subtype === 'string' ? data.subtype : ''
   if (LOGGED_TIER.has(`${agentType}:${subtype}`)) return 'logged'
-  if (isLoggedTierIPVerdict(agentType, data)) return 'logged'
   return 'chained'
 }
 
