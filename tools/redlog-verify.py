@@ -403,6 +403,22 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         ).hexdigest()
         head_ok = recomputed == manifest_head_hash
 
+    # v0.13.0: bundleVersion >= 2 ships `events_logged.jsonl` (supporting
+    # evidence tier — not hash-chained, not signed, not anchored). The
+    # verifier ignores it for chain purposes and reports the row count so
+    # the reader knows the bundle carries footprint context. v1 bundles
+    # have no such file; the check is best-effort so v1 verification is
+    # unchanged.
+    bundle_version = manifest.get("bundleVersion", 1)
+    logged_path = bundle_dir / "events_logged.jsonl"
+    logged_rows: Optional[int] = None
+    if logged_path.exists():
+        try:
+            with logged_path.open("r", encoding="utf-8") as f:
+                logged_rows = sum(1 for line in f if line.strip())
+        except Exception:
+            logged_rows = None
+
     # ---------------------------------------------------------------------
     # Report
     # ---------------------------------------------------------------------
@@ -410,6 +426,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     print("RedLog bundle verification report")
     print("=" * 40)
     print(f"Bundle dir       : {bundle_dir}")
+    print(f"Bundle version   : {bundle_version}")
     print(f"Engagement ID    : {bundle_engagement}")
     print(f"Events walked    : {walked}")
     print(f"Chain            : INTACT")
@@ -432,6 +449,13 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"Unsigned events  : {unsigned}")
     if bad_sig_at:
         print(f"BAD SIGNATURE    : {bad_sig_at}")
+    if logged_rows is not None:
+        # Supporting-evidence tier row count. The verifier deliberately does
+        # NOT walk these rows for chain integrity — they carry no hash.
+        # Report the count so the reader knows the bundle carries footprint
+        # context (DNS lookups, HTTP flow bookkeeping, agent thinking).
+        print(f"Logged tier      : {logged_rows} rows present in events_logged.jsonl")
+        print(f"                   (not verified — supporting evidence, see README)")
 
     if head_ok is False:
         return 1
