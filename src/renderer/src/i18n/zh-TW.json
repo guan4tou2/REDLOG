@@ -586,6 +586,8 @@
   "timeline.focusChain.enterHint": "按 f 聚焦這條鏈",
   "timeline.anomalies.chip": "⚠ 異常（{{count}}）",
   "timeline.anomalies.tooltip": "把沒有整合旗標的事件變暗（時鐘異常、孤兒回收、證據刪除、錨定失敗、鏈斷）",
+  "timeline.auditorView.chip": "⛓ 稽核（{{count}}）",
+  "timeline.auditorView.tooltip": "隱藏 logged-tier 事件（DNS/HTTP/瀏覽器 console/代理 thinking 這類心跳），只留下 chained 證據鏈供稽核者查看。預設關閉——請在稽核者走時間軸前打開。",
   "timeline.brokenChain.banner": "⛓️‍💥 證據鏈在事件 {{brokenAtId}}… 之後斷開（走完 {{walked}} 個）。之後的所有事件皆未驗證。",
   "timeline.brokenChain.dismiss": "關閉",
   "timeline.search.placeholder": "篩選事件（指令、URL、host、operator）…",
