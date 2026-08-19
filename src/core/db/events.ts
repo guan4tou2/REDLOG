@@ -31,8 +31,16 @@ export interface RedLogEvent {
   // no hash / signature / anchor. Rows constructed by legacy callers
   // without setting this default to `chained`. See
   // docs/DESIGN-two-tier-chain.md.
-  tier?: 'chained' | 'logged'
+  tier?: EventTier
 }
+
+/** v0.13.0 tier identifiers. `chained` and `logged` name the two DB tables;
+ *  `all` is the IPC / UI query filter that means "both". Exported so
+ *  main / preload / renderer share one source of truth for the string
+ *  union — otherwise the shape gets redeclared inline at every boundary
+ *  and drifts when a third tier lands. */
+export type EventTier = 'chained' | 'logged'
+export type EventTierFilter = EventTier | 'all'
 
 // ─── v0.13.0 two-tier classifier ────────────────────────────────────────────
 //

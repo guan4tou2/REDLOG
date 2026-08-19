@@ -1085,7 +1085,7 @@ app.whenReady().then(() => {
 
   // --- Events ---
   ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
-  ipcMain.handle('events:getCount', (_e, tier?: 'chained' | 'logged' | 'all') => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
+  ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.

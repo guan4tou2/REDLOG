@@ -40,7 +40,7 @@ export default function StatusBar(): JSX.Element {
       // v0.13.0: the tier flag on the incoming event tells us which
       // counter to bump; unknown-tier (legacy events) default to chained
       // via rowToEvent's default. Loot / scope counts refetch either way.
-      const tier = (event as { tier?: 'chained' | 'logged' } | undefined)?.tier
+      const tier = (event as { tier?: import('../../../core/db/events').EventTier } | undefined)?.tier
       if (tier === 'logged') setLoggedCount((c) => c + 1)
       else setEventCount((c) => c + 1)
       window.redlog.loot.getCount().then(setLootCount)
@@ -195,7 +195,7 @@ export default function StatusBar(): JSX.Element {
         <span
           className="text-zinc-600 tabular-nums"
           title={loggedCount > 0
-            ? `${eventCount} chained (audit chain) · ${loggedCount} logged (supporting evidence)`
+            ? `${eventCount.toLocaleString()} chained (audit chain) · ${loggedCount.toLocaleString()} logged (supporting evidence)`
             : undefined}
         >
           {t('statusBar.events', { count: eventCount })}
