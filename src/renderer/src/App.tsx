@@ -337,10 +337,14 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
   )
 }
 
-export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
+export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }: {
   capture: CaptureHealthInfo
   onNavigate: (v: string) => void
   onRefresh: () => void
+  // v0.14.3 §9.5: chained·logged split for the card footer. Optional so
+  // callers that don't care (tests, older Dashboard mounts) keep working;
+  // when omitted the tier line just doesn't render.
+  tierSplit?: { chained: number; logged: number; lastLoggedTs: number | null }
 }): JSX.Element {
   const { t } = useI18n()
 
@@ -554,6 +558,30 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh }: {
             </p>
           )}
         </div>
+        {/* v0.14.3 §9.5: two-tier chain-health footer. Renders only when
+         *  the logged tier has at least one row — mirrors the StatusBar
+         *  behaviour so pre-v0.13 projects and empty engagements stay
+         *  visually identical to before. Chained is the brighter number
+         *  (audit chain); logged renders muted (supporting evidence).
+         *  "Last fed" is the newest logged-row age — a slow tick is fine
+         *  because it uses the same 1s nowTick as the source-row ages. */}
+        {tierSplit && tierSplit.logged > 0 && (
+          <div className="mt-2 pt-2 border-t border-zinc-800/70 flex items-center justify-between text-[10px] font-mono">
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500 uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
+              <span className="text-zinc-300 tabular-nums">{tierSplit.chained.toLocaleString()}</span>
+              <span className="text-zinc-700">·</span>
+              <span className="text-zinc-500 uppercase tracking-[0.1em]">{t('capture.tierLogged')}</span>
+              <span className="text-zinc-500 tabular-nums">{tierSplit.logged.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-600">{t('capture.tierLastFed')}</span>
+              <span className={`tabular-nums ${ageColor(tierSplit.lastLoggedTs, nowTick)}`}>
+                {fmtAge(tierSplit.lastLoggedTs, nowTick)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   )
@@ -607,6 +635,11 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   const [lootCount, setLootCount] = useState(0)
   const [chainLen, setChainLen] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
+  // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
+  // start at 0 / null so the card doesn't flash a spurious "no logged
+  // rows" line while the initial fetch is in flight.
+  const [loggedCount, setLoggedCount] = useState(0)
+  const [latestLoggedTs, setLatestLoggedTs] = useState<number | null>(null)
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [capture, setCapture] = useState<CaptureHealthInfo | null>(null)
   const refreshCaptureRef = useRef<() => void>(() => {})
@@ -666,9 +699,15 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
     // match on-disk. Refreshing chainLen here closes the drift.
     const refreshCounts = (): void => {
       window.redlog.events.getCount().then(setEventCount).catch(() => {})
+      window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
+      window.redlog.events.getLatestLoggedTs?.().then(setLatestLoggedTs).catch(() => {})
       window.redlog.loot.getCount().then(setLootCount).catch(() => {})
       window.redlog.chain.length().then(setChainLen).catch(() => {})
     }
+    // Seed the tier split on first paint so the card doesn't wait for
+    // the first onNew tick to fill in.
+    window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
+    window.redlog.events.getLatestLoggedTs?.().then(setLatestLoggedTs).catch(() => {})
     const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor(); refreshCounts() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); clearInterval(anchorTimer) }
@@ -696,6 +735,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
           capture={capture}
           onNavigate={onNavigate}
           onRefresh={() => refreshCaptureRef.current()}
+          tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs }}
         />
       )}
 
