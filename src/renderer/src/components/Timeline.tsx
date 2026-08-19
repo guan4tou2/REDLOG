@@ -700,9 +700,28 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
+  // v0.14 §9.2: auditor-view state hoisted above the `events` useMemo so
+  // the filter can compose in one place. Persistence + per-project scoping
+  // lives further down alongside the other filter state (see below).
+  const [auditorView, setAuditorView] = useState<boolean>(() => {
+    try { return localStorage.getItem('redlog-timeline-auditor-view') === '1' } catch { return false }
+  })
   const events = useMemo(
-    () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
-    [rawEvents, collapseAgentTurns]
+    () => {
+      const base = filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns)
+      // When auditor view is on, drop logged-tier rows. Missing `tier`
+      // defaults to chained (matches the audit chain on disk and the
+      // v0.14.0 TierBadge fallback), so historical pre-v0.13 rows survive.
+      return auditorView ? base.filter((e) => e.tier !== 'logged') : base
+    },
+    [rawEvents, collapseAgentTurns, auditorView]
+  )
+  // Count of logged rows that WOULD be hidden by auditor view — surfaces on
+  // the chip so the operator can see how much the filter is doing. Uses
+  // rawEvents so the number is stable regardless of the agent-turn collapse.
+  const hiddenLoggedCount = useMemo(
+    () => rawEvents.reduce((n, e) => n + (e.tier === 'logged' ? 1 : 0), 0),
+    [rawEvents]
   )
   // Count of hidden agent turns to surface on the chip so the operator
   // knows the toggle is doing something (else the empty agent lane looks
@@ -854,6 +873,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       } catch { /* ignore */ }
     }
     migrate('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
+    migrate('redlog-timeline-auditor-view', (s) => s === '1', setAuditorView)
     migrate('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
     migrate('redlog-timeline-filter-query', (s) => s, setFilterQuery)
     migrate('redlog-timeline-hidden-lanes', (s) => {
@@ -892,6 +912,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       localStorage.setItem(`redlog-timeline-anomaly-filter:${projectIdForKeys}`, anomalyFilter ? '1' : '0')
     } catch { /* ignore */ }
   }, [anomalyFilter, projectIdForKeys])
+  useEffect(() => {
+    if (!projectIdForKeys) return
+    try {
+      localStorage.setItem(`redlog-timeline-auditor-view:${projectIdForKeys}`, auditorView ? '1' : '0')
+    } catch { /* ignore */ }
+  }, [auditorView, projectIdForKeys])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
@@ -2710,6 +2736,30 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             title={anomalyCount === 0 ? t('timeline.anomalies.tooltip') : t('timeline.anomalies.tooltip')}
           >
             {t('timeline.anomalies.chip', { count: anomalyCount })}
+          </button>
+          {/* v0.14 §9.2 auditor-view chip: hides logged-tier rows so the
+              chained (audit) chain is what the reviewer sees. Uses the
+              chain glyph `⛓` to visually tie it to the per-row tier badge
+              shipped in v0.14.0 (§9.1). Disabled at opacity 0.25 when
+              there are no logged rows to hide (matches the anomaly chip
+              pattern). */}
+          <button
+            data-testid="timeline-auditor-view-chip"
+            onClick={() => {
+              if (hiddenLoggedCount === 0 && !auditorView) return
+              setAuditorView((v) => !v)
+            }}
+            disabled={hiddenLoggedCount === 0 && !auditorView}
+            className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+              hiddenLoggedCount === 0 && !auditorView
+                ? 'opacity-25 cursor-default text-zinc-600'
+                : auditorView
+                  ? 'text-emerald-200 bg-emerald-500/25 ring-1 ring-emerald-500/40'
+                  : 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+            }`}
+            title={t('timeline.auditorView.tooltip')}
+          >
+            {t('timeline.auditorView.chip', { count: hiddenLoggedCount })}
           </button>
           {/* v0.6.87 C2: export the currently-visible time window as JSON.
               The window is derived from the minimap view (left..left+width in

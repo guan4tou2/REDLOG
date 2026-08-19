@@ -586,6 +586,8 @@
   "timeline.focusChain.enterHint": "Press f to focus this chain",
   "timeline.anomalies.chip": "⚠ Anomalies ({{count}})",
   "timeline.anomalies.tooltip": "Dim every event without a chain-integrity flag (clock anomaly, orphan recovery, evidence removal, anchor failure, chain break)",
+  "timeline.auditorView.chip": "⛓ Auditor ({{count}})",
+  "timeline.auditorView.tooltip": "Hide logged-tier rows (DNS/HTTP/browser-console/agent-thinking heartbeats) so the chained audit chain is what the reviewer sees. Off by default — flip on before an auditor walks the timeline.",
   "timeline.brokenChain.banner": "⛓️‍💥 Chain broken at event {{brokenAtId}}… (walked {{walked}}). All events after are unverified.",
   "timeline.brokenChain.dismiss": "Dismiss",
   "timeline.search.placeholder": "Filter events (command, URL, host, operator)…",
