@@ -49,6 +49,11 @@ describeDB('api-server', () => {
     loot.configure({ engagementId: 'eng-1', operatorId: 'op-primary' })
     api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', operatorName: 'Primary', lootDetector: loot })
     const port = await api.startApiServer(0) // mints the primary operator + token
+    // v0.14.3: since the "early API server start" change (main b3671d9), the
+    // server starts before a project is open and every non-/api/health route
+    // returns 503 until onApiProjectOpen() flips the gate. Production calls
+    // this from the project-open code path; tests have to do it explicitly.
+    api.onApiProjectOpen()
     base = `http://127.0.0.1:${port}`
     authHeaders = { Authorization: `Bearer ${api.getApiToken()}` }
   })
