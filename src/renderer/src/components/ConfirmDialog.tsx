@@ -58,7 +58,7 @@ function ConfirmDialogInner({ state, close, t }: {
   const confirmBtn = useRef<HTMLButtonElement | null>(null)
   useEffect(() => { confirmBtn.current?.focus() }, [])
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => close(false)}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm select-text" onClick={() => close(false)}>
       <div
         role="dialog"
         aria-modal="true"
