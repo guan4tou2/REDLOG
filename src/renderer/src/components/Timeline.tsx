@@ -918,6 +918,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       localStorage.setItem(`redlog-timeline-auditor-view:${projectIdForKeys}`, auditorView ? '1' : '0')
     } catch { /* ignore */ }
   }, [auditorView, projectIdForKeys])
+  useEffect(() => {
+    // v0.14 §9.4: the StatusBar's tier counter dispatches this event when
+    // clicked. Toggle here so the click "opens" the auditor view exactly
+    // like clicking the chip would. Only wired when Timeline is mounted;
+    // a click from Dashboard is a documented silent no-op (tooltip warns).
+    const onToggle = (): void => setAuditorView((v) => !v)
+    window.addEventListener('redlog:auditor-view:toggle', onToggle)
+    return () => window.removeEventListener('redlog:auditor-view:toggle', onToggle)
+  }, [])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
