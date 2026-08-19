@@ -215,6 +215,18 @@ const TOOLS = [
       },
       required: []
     }
+  },
+  {
+    name: 'redlog_session_register',
+    description: 'Register the current Claude Code session for capture. Call at session start so RedLog records this session\'s transcript. Without registration, all sessions are captured (backward compatible); once any session registers, only registered ones are recorded.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'Claude Code session ID' },
+        cwd: { type: 'string', description: 'Working directory of the session (optional)' }
+      },
+      required: ['session_id']
+    }
   }
 ]
 
@@ -296,6 +308,12 @@ async function handleTool(name, args) {
       return args.anchor_id
         ? await apiRequest('POST', `/api/anchors/${encodeURIComponent(args.anchor_id)}/upgrade`)
         : await apiRequest('POST', '/api/anchors/upgrade-all')
+
+    case 'redlog_session_register':
+      return await apiRequest('POST', '/api/session/register', {
+        session_id: args.session_id,
+        cwd: args.cwd
+      })
 
     default:
       throw new Error(`Unknown tool: ${name}`)

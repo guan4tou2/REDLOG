@@ -39,6 +39,7 @@ import {
   getCastPosition
 } from './terminal-manager'
 import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
+import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
@@ -47,7 +48,7 @@ import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapt
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
-import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, type TailerAdapter } from './services/tailer-host'
+import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
@@ -631,7 +632,11 @@ function startProject(project: ProjectMeta): void {
     },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
-    alertRuntime
+    alertRuntime,
+    sessionRegistry: {
+      register: registerSessionId,
+      list: getRegisteredSessions
+    }
   })
   startApiServer(6660).then((port) => {
     insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
@@ -907,8 +912,6 @@ app.whenReady().then(() => {
       const parsed = JSON.parse(raw)
       return {
         excludedPaths: Array.isArray(parsed.excludedPaths) ? parsed.excludedPaths : [],
-        // Legacy: older configs used watchPaths (whitelist). Kept readable so
-        // an existing config isn't lost, but no new UI writes it.
         watchPaths: Array.isArray(parsed.watchPaths) ? parsed.watchPaths : []
       }
     } catch { return { excludedPaths: [], watchPaths: [] } }
@@ -917,14 +920,12 @@ app.whenReady().then(() => {
     try {
       fs.mkdirSync(path.dirname(HOOK_CONFIG_PATH), { recursive: true })
       const clean: Record<string, string[]> = {
-        excludedPaths: (cfg.excludedPaths ?? []).map((s) => String(s).trim()).filter(Boolean)
-      }
-      // Preserve legacy watchPaths only if the caller sends it (so upgrading a
-      // v0.6.59 config through the new UI drops the old key on next save).
-      if (cfg.watchPaths !== undefined) {
-        clean.watchPaths = cfg.watchPaths.map((s) => String(s).trim()).filter(Boolean)
+        excludedPaths: (cfg.excludedPaths ?? []).map((s) => String(s).trim()).filter(Boolean),
+        watchPaths: (cfg.watchPaths ?? []).map((s) => String(s).trim()).filter(Boolean)
       }
       fs.writeFileSync(HOOK_CONFIG_PATH, JSON.stringify(clean, null, 2) + '\n')
+      // Live-reconfigure the tailer so the new gate takes effect immediately
+      configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
       return true
     } catch { return false }
   })
@@ -934,7 +935,7 @@ app.whenReady().then(() => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
-      title: 'Pick a folder to exclude from RedLog'
+      title: 'Pick a folder'
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
@@ -1592,6 +1593,16 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); return uninstallHook(hookId) })
+
+  // --- WSL ---
+  ipcMain.handle('wsl:listDistros', () => listWslDistros())
+  ipcMain.handle('wsl:getNetworkMode', () => getNetworkMode())
+  ipcMain.handle('wsl:installHook', (_e, distro: string, shell: string) =>
+    wslInstallHook(distro, shell as 'bash' | 'zsh'))
+  ipcMain.handle('wsl:uninstallHook', (_e, distro: string, shell: string) =>
+    wslUninstallHook(distro, shell as 'bash' | 'zsh'))
+  ipcMain.handle('wsl:runDiagnostics', (_e, distro: string) =>
+    wslRunDiagnostics(distro))
 
   // --- Plugins ---
   // Serialise LoadedPlugin to a UI-friendly shape (drop absolute dirs/hashes we

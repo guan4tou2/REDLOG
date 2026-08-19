@@ -30,6 +30,8 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@rolldown/binding-wasm32-wasi": "^1.2.4",
+    "@rollup/wasm-node": "^4.62.4",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^5.5.0",

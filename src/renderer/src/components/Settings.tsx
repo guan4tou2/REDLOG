@@ -3,11 +3,13 @@ import { useI18n, type Locale } from '../i18n'
 import { toast } from './Toast'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
+import WslPanel from './WslPanel'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
 // control is hidden there.
 const isMacOS = (window as { redlog?: { platform?: string } }).redlog?.platform === 'darwin'
+const isWindows = (window as { redlog?: { platform?: string } }).redlog?.platform === 'win32'
 
 interface ConfigState {
   engagement: { id: string; name: string }
@@ -396,6 +398,7 @@ export default function Settings(): JSX.Element {
         {tab === 'capture' && (
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
+            {isWindows && <WslPanel t={t} />}
             <AgentsPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.screenshotQuality')}>
               <Field
@@ -1940,63 +1943,50 @@ function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
 // can opt paths OUT here for personal/hobby folders they don't want on the
 // chain. Recording state gate (Settings ▸ ...) still applies globally.
 function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element {
-  const [excluded, setExcluded] = useState<string[]>([])
-  const [legacyWatch, setLegacyWatch] = useState<string[]>([])
+  const [watchPaths, setWatchPaths] = useState<string[]>([])
   const [draft, setDraft] = useState('')
   const [dirty, setDirty] = useState(false)
   useEffect(() => {
     window.redlog.hookConfig.get().then((c) => {
-      setExcluded(c.excludedPaths || [])
-      setLegacyWatch(c.watchPaths || [])
+      setWatchPaths(c.watchPaths || [])
     }).catch(() => {})
   }, [])
-  const commit = async (nextExcluded: string[], dropLegacy = false): Promise<void> => {
-    setExcluded(nextExcluded)
+  const commit = async (next: string[]): Promise<void> => {
+    setWatchPaths(next)
     setDirty(true)
-    await window.redlog.hookConfig.save({
-      excludedPaths: nextExcluded,
-      // Once the user touches the new UI, clear the v0.6.59 whitelist so it
-      // stops silently narrowing what's logged.
-      ...(dropLegacy || legacyWatch.length > 0 ? { watchPaths: [] } : {})
-    })
-    if (dropLegacy || legacyWatch.length > 0) setLegacyWatch([])
+    await window.redlog.hookConfig.save({ watchPaths: next })
     setDirty(false)
     toast(t('settings.hookWatchPaths.saved'), 'success')
   }
   const addPath = async (p: string): Promise<void> => {
     const clean = p.trim()
     if (!clean) return
-    if (excluded.includes(clean)) return
-    await commit([...excluded, clean])
+    if (watchPaths.includes(clean)) return
+    await commit([...watchPaths, clean])
   }
   const removePath = async (p: string): Promise<void> => {
-    await commit(excluded.filter((x) => x !== p))
+    await commit(watchPaths.filter((x) => x !== p))
   }
   const pickFolder = async (): Promise<void> => {
     const p = await window.redlog.hookConfig.pickPath()
     if (p) await addPath(p)
   }
   return (
-    <FieldGroup title={t('settings.hookExcludedPaths.title')}>
-      <p className="text-xs text-zinc-500 mb-3">{t('settings.hookExcludedPaths.hint')}</p>
-      {legacyWatch.length > 0 && (
-        <p className="text-xs text-amber-500 font-mono px-2 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded mb-2">
-          {t('settings.hookExcludedPaths.legacyWarning', { paths: legacyWatch.join(', ') })}
-        </p>
-      )}
+    <FieldGroup title={t('settings.hookWatchPaths.title')}>
+      <p className="text-xs text-zinc-500 mb-3">{t('settings.hookWatchPaths.hint')}</p>
       <div className="space-y-1 mb-2">
-        {excluded.length === 0 ? (
-          <p className="text-xs text-zinc-500 font-mono px-2 py-1.5 bg-zinc-900/50 border border-zinc-800 rounded">
-            {t('settings.hookExcludedPaths.empty')}
+        {watchPaths.length === 0 ? (
+          <p className="text-xs text-amber-500 font-mono px-2 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded">
+            {t('settings.hookWatchPaths.empty')}
           </p>
-        ) : excluded.map((p) => (
+        ) : watchPaths.map((p) => (
           <div key={p} className="flex items-center gap-2 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded">
             <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{p}</span>
             <button
               onClick={() => removePath(p)}
               className="text-xs text-red-400 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-              title={t('settings.hookExcludedPaths.remove')}
-              aria-label={t('settings.hookExcludedPaths.remove')}
+              title={t('settings.hookWatchPaths.remove')}
+              aria-label={t('settings.hookWatchPaths.remove')}
             >✕</button>
           </div>
         ))}
@@ -2006,14 +1996,14 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPath(draft); setDraft('') } }}
-          placeholder="~/Documents/personal"
+          placeholder="C:\\Users\\user\\Desktop\\engagement"
           className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
         />
         <button
           onClick={pickFolder}
           className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-          title={t('settings.hookExcludedPaths.pickFolder')}
-        >📁 {t('settings.hookExcludedPaths.pickFolder')}</button>
+          title={t('settings.hookWatchPaths.pickFolder')}
+        >📁 {t('settings.hookWatchPaths.pickFolder')}</button>
         <button onClick={() => { addPath(draft); setDraft('') }} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
       </div>
     </FieldGroup>

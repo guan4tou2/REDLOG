@@ -73,6 +73,23 @@ interface BrowserTabInfo {
   connected: boolean
 }
 
+interface WslDistro {
+  name: string
+  state: 'Running' | 'Stopped' | 'Installing' | 'Converting'
+  version: number
+  isDefault: boolean
+  shells: string[]
+  hookStatus: {
+    bash: 'installed' | 'not-installed' | 'no-shell'
+    zsh: 'installed' | 'not-installed' | 'no-shell'
+  }
+}
+
+interface WslDiagnosticResult {
+  distro: string
+  checks: Array<{ name: string; status: 'pass' | 'fail' | 'warn'; message: string }>
+}
+
 interface RedLogAPI {
   platform: string
   app: {
@@ -210,6 +227,13 @@ interface RedLogAPI {
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
+  }
+  wsl: {
+    listDistros: () => Promise<WslDistro[]>
+    getNetworkMode: () => Promise<'mirrored' | 'nat' | 'not-configured'>
+    installHook: (distro: string, shell: string) => Promise<{ success: boolean; message: string }>
+    uninstallHook: (distro: string, shell: string) => Promise<{ success: boolean; message: string }>
+    runDiagnostics: (distro: string) => Promise<WslDiagnosticResult>
   }
 }
 

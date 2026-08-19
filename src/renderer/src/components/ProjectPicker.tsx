@@ -102,7 +102,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   return (
-    <div className="h-full flex items-center justify-center bg-[#0a0a0a]" data-testid="project-picker">
+    <div className="h-full flex flex-col bg-[#0a0a0a]" data-testid="project-picker">
+      {/* Draggable title bar zone */}
+      <div
+        className="h-10 shrink-0"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      />
+      <div className="flex-1 flex items-center justify-center">
       <div className="w-[480px] space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
@@ -303,6 +309,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         <p className="text-zinc-700 text-xs text-center font-mono">
           {t('project.description')}
         </p>
+      </div>
       </div>
     </div>
   )
