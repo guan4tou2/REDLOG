@@ -3,6 +3,33 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.14.1 — 2026-08-19
+
+**§9.2 auditor-view filter chip** — new "⛓ Auditor (N)" chip in the
+Timeline toolbar. Toggle on → hides logged-tier rows (DNS/HTTP/browser
+console/agent-thinking heartbeats) so the chained (audit) chain is what
+the reviewer sees. Closes the §9.2 loop after v0.13.0 (two-tier chain),
+v0.13.1 (detail-panel badge), v0.14.0 (per-row badge).
+
+- Off by default per spec — operators want to see everything; auditors
+  flip it on before review.
+- Per-project scoped like the other filters (anomaly, focus-anchor,
+  hidden-lanes, filter-query). Legacy-key migration on first project
+  open, matching the v0.6.98/v0.6.99 pattern.
+- Disabled at 0.25 opacity when there are no logged rows to hide AND
+  it's off; stays clickable when active so operators can turn it off
+  after all logged rows scroll out.
+- Missing-tier fallback treats a row as chained (matches v0.14.0's
+  TierBadge convention + what the audit chain contains on disk), so
+  historical pre-v0.13 rows survive.
+- i18n keys in en.json + zh-TW.json.
+
+Still deferred to a follow-up (or v1.0.0):
+- §9.4 StatusBar click-through (row count opens the chip)
+- §9.5 Settings chain-health card (logged-count + last-fed timestamp)
+
+Dogfood-verified from both dev build + shipped DMG. PR #13.
+
 ## v0.14.0 — 2026-08-19
 
 **Timeline classifier now visible on every row.** Closes the §9.1 spec
