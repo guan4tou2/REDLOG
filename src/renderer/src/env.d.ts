@@ -102,7 +102,10 @@ interface RedLogAPI {
   }
   events: {
     query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
-    getCount: () => Promise<number>
+    /** v0.13.0: optional tier. Omitted (or 'chained') = the chained/audit
+     *  count — every existing caller means this. 'logged' returns the
+     *  supporting-evidence count. 'all' returns both summed. */
+    getCount: (tier?: import('../../core/db/events').EventTierFilter) => Promise<number>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void

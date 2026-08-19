@@ -35,7 +35,10 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
-    getCount: () => ipcRenderer.invoke('events:getCount'),
+    // v0.13.0: optional tier arg — StatusBar's chained·logged split reads
+    // both to show the two-tier row count. Undefined = 'chained' (audit
+    // count) preserved for legacy callers.
+    getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
