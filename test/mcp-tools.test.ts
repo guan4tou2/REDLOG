@@ -19,14 +19,15 @@ describe('MCP JSON-RPC handler', () => {
     })
   })
 
-  it('tools/list returns all 18 tools', async () => {
+  it('tools/list returns all 19 tools', async () => {
     const r = await handleMcpMessage({ id: 2, method: 'tools/list' }, opts)
     const tools = (r!.result as { tools: unknown[] }).tools
     expect(tools).toHaveLength(MCP_TOOLS.length)
-    expect(MCP_TOOLS.length).toBe(18)
+    expect(MCP_TOOLS.length).toBe(19)
     const names = MCP_TOOLS.map((t) => t.name)
     expect(names).toContain('redlog_whoami')
     expect(names).toContain('redlog_chain_upgrade')
+    expect(names).toContain('redlog_session_register')
   })
 
   it('every tool has a name, description, and object input schema', () => {
