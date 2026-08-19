@@ -109,7 +109,7 @@ const BATCH_SIZE = 5000  // §5.3: large deletes are batched so a 40 GB
                          // sweep doesn't stall WAL for minutes.
 
 export function sweepLoggedTier(
-  cfg: { keepDays?: number; maxSizeGb?: number; maxRowCount?: number } | undefined,
+  cfg: { keepDays?: number } | undefined,
   opts: { engagementId: string; operatorId: string }
 ): LoggedTierRetentionResult {
   const noop = { deleted: 0, bytesFreed: 0, oldestPruned: null, newestPruned: null, durationMs: 0 }
@@ -119,7 +119,11 @@ export function sweepLoggedTier(
   // catches up.
   if (eventBus.paused) return noop
   // Env var override for CI / air-gapped installs (design §4.3).
-  const envDays = Number(process.env.REDLOG_LOGGED_RETENTION_DAYS)
+  // Guard the empty-string case: `Number('') === 0` would otherwise pass
+  // Number.isFinite && >= 0 and silently switch to keep-forever, exactly
+  // the silent-typo-vaporises-tier failure §7.2 wanted to avoid.
+  const envRaw = process.env.REDLOG_LOGGED_RETENTION_DAYS
+  const envDays = envRaw && envRaw.length > 0 ? Number(envRaw) : NaN
   const keepDays = Number.isFinite(envDays) && envDays >= 0
     ? envDays
     : (cfg?.keepDays ?? 30)

@@ -195,20 +195,17 @@ export interface RedLogConfig {
    *  read from their prior locations for backward-compat). See
    *  docs/DESIGN-logged-tier-retention.md. */
   retention?: {
-    /** Row-level retention on the events_logged table. Age is primary; size
-     *  and count are optional ceilings. See design doc §3.4. */
+    /** Row-level retention on the events_logged table. Age-based sweep only
+     *  in v0.13.0. The design doc reserves `maxSizeGb` + `maxRowCount`
+     *  ceilings for a follow-up; they are intentionally NOT declared here
+     *  so an operator who sets them can't get a silent no-op. See design
+     *  doc §7.1 for the second-pass shape. */
     loggedTier?: {
       /** Days to keep. `0` = keep forever (matches cast/screenshot
        *  convention). Default `30` — the first RedLog retention default
        *  that is *non-zero*, because logged-tier rows are the first
        *  non-primary evidence artifact. */
       keepDays?: number
-      /** Optional ceiling: prune oldest rows once the SQLite events.db
-       *  file size exceeds this many GB. Off by default. */
-      maxSizeGb?: number
-      /** Optional ceiling: prune oldest rows once the events_logged row
-       *  count exceeds this many. Off by default. */
-      maxRowCount?: number
       /** Periodic sweep interval in hours. `0` disables the timer — the
        *  project-open sweep still runs. Default `24`. */
       sweepIntervalHours?: number
@@ -316,8 +313,8 @@ const DEFAULT_CONFIG: RedLogConfig = {
     // v0.13.0: 30d default. First non-zero retention default RedLog
     // ships — see docs/DESIGN-logged-tier-retention.md §4.2 for the
     // three-observation rationale (engagement duration + retrospective
-    // lag + client review lag). Size/count ceilings are undefined by
-    // default; operator opts in explicitly.
+    // lag + client review lag). Size/count ceilings deferred to a
+    // follow-up (§7.1); not surfaced in v0.13.0 to avoid silent no-op.
     loggedTier: {
       keepDays: 30,
       sweepIntervalHours: 24
