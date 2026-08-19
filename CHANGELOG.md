@@ -3,6 +3,82 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.13.2 — 2026-08-19
+
+**Six code-review fixes that landed across the three v0.13 PRs.** Two real
+bugs, two dead-code deletions, two API-surface honesty passes. Full
+review report on PRs #9 / #10 / #11.
+
+### PR #9 (alert subsystem, `70a43a9` + `f099a27`)
+
+- **`surface.ts` — `ip_verdict_kind` was writing the union discriminator
+  (`v.kind`, always `'ip'`) instead of the classified value (`v.value`).**
+  Every `ip_verdict` event silently landed with the same literal string.
+  Downstream filters that keyed on the field (StatusBar badge tooltip,
+  scope-adherence, v0.13 tier classifier) saw one bucket where there
+  should have been five. Regression covered by
+  `test/alert/ip-event-fields.test.ts`.
+- **`secret-redaction.ts PREFILTER_RE` — a literal space in the `[=: ]`
+  char class matched every prose sentence** and fell through to all
+  eight regex passes, defeating the 90%-skip claim on the common path.
+  Prefilter is now keyword-based (`api[_-]?key|token|password|bearer|
+  AKIA|sk[-_]|BEGIN|eyJ|ghp_|glpat`) — a strict superset of every
+  pattern, verified entry-by-entry.
+- Deleted dead `AlertRuntime.onScopeVerdict` (no callers, leaked a
+  no-op unsubscribe on a permanently-registered surface) and a shadowed
+  local `type Authority` in `surface.ts`.
+- Test tolerance: `test/hooks-manager.test.ts` unblocked from a pre-
+  existing main-branch failure (mitmproxy install-guidance step added
+  in commit `1645578`; asserted on `manualSteps[0]` where CI runners
+  now see install-first).
+
+### PR #10 (two-tier chain, `e9ac624`)
+
+- **Deleted the unreachable `isLoggedTierIPVerdict` classifier branch.**
+  Design doc §4.1 promised heartbeat routing (`ip_verdict_kind ===
+  'unchanged'` → logged), but `IPPolicy.evaluate` at `policies.ts:143`
+  dedups unchanged verdicts and never emits one — the branch was dead.
+  Every `ip_verdict` that reaches `insertEvent` is a real state change
+  and correctly falls through to the chained default.
+  `test/db/tier-classifier.test.ts` rewritten to lock the new truth.
+- **`REDLOG_LOGGED_RETENTION_DAYS=""` empty-string guard.** Prior code
+  did `Number('') === 0`, passed `Number.isFinite && >= 0`, and silently
+  switched to keep-forever — the exact silent-typo-vaporises-tier
+  failure §7.2 wanted to avoid. Empty string now falls through to
+  config default.
+- **Dropped `maxSizeGb` + `maxRowCount` from `retention.loggedTier`
+  config surface.** `sweepLoggedTier` reads only `keepDays`; an
+  operator who set the ceilings got a silent no-op. Design §7.1
+  reserves them for a follow-up; better to not surface a promise the
+  code doesn't keep.
+
+### PR #11 (two-tier UI polish, `752e6dd`)
+
+- **`EventTier` + `EventTierFilter` shared type alias.** The
+  `'chained' | 'logged' | 'all'` union was redeclared inline in five
+  places (main / preload / env.d.ts / StatusBar / IPC handler). Now
+  exported from `src/core/db/events.ts` and referenced via
+  `import(...)` types at each boundary.
+- **StatusBar tooltip formatter consistency.** Chained count uses i18n
+  and logged count uses `.toLocaleString()`; the `title` tooltip used
+  raw template literals without thousands separators. Tooltip now
+  reads `1,234 chained · 89,201 logged` uniformly with the on-screen
+  render.
+
+### Deferred (v0.14 or v1.0.0)
+
+- §9.1 per-row Timeline tier badge (currently detail-panel-only)
+- §9.5 Settings chain-health readout (logged count + last-fed
+  timestamp)
+- §10.4 retention first-run banner (silent-prune-on-upgrade concern
+  is muted because `events_logged` starts empty on migration, so the
+  first sweep is a no-op)
+- §8.3 bundle manifest fields (`pruneWatermark`, `retentionPolicy`)
+- `maxSizeGb` / `maxRowCount` ceiling wire-up + summary event fields
+- Extra spec tests: §11.3 verify-ignores-logged, §11.5 cross-tier
+  `_causes` links, §11.7 schema drop-and-recreate, §12.9 sweep-during-
+  export WAL isolation
+
 ## v0.13.1 — 2026-08-19
 
 **Two-tier UI polish** — the audit-story visibility promised by v0.13.0.
