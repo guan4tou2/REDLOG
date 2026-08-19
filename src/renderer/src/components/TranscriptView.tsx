@@ -326,9 +326,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
           <p className="text-xs text-zinc-600">{t('transcript.empty')}</p>
         )}
         {shown.map((b) => {
-          const open = expanded.has(b.id)
+          const revealed = expanded.has(b.id)
+          const hasOutput = !!b.output || !!b.outputNote
           const big = (b.output?.length ?? 0) > MAX_INLINE
-          const body = open || !big ? b.output : b.output?.slice(0, MAX_INLINE)
+          const body = revealed ? (big ? b.output?.slice(0, MAX_INLINE) : b.output) : undefined
+          const fullyExpanded = expanded.has(`${b.id}:full`)
+          const displayBody = fullyExpanded && b.output ? b.output : body
           return (
             <div key={b.id} className="rounded border border-zinc-800/70 bg-zinc-950/40">
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-zinc-800/50">
@@ -338,6 +341,19 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 </span>
                 <span className="text-[11px] text-zinc-400 font-mono truncate flex-1">{b.actor}</span>
                 {b.meta && <span className="text-[10px] text-zinc-600 font-mono shrink-0">{b.meta}</span>}
+                {hasOutput && (
+                  <button
+                    onClick={() => setExpanded((p) => {
+                      const next = new Set(p)
+                      if (next.has(b.id)) next.delete(b.id); else next.add(b.id)
+                      return next
+                    })}
+                    className="text-[10px] text-zinc-600 hover:text-zinc-300 font-mono shrink-0 transition-colors"
+                    title={revealed ? t('transcript.collapse') : t('transcript.expand')}
+                  >
+                    {revealed ? '▼' : '▶'}{b.outputBytes ? ` ${fmtBytes(b.outputBytes)}` : ''}
+                  </button>
+                )}
                 {onOpenInTimeline && (
                   <button
                     onClick={() => onOpenInTimeline(b.id, b.ts)}
@@ -348,15 +364,25 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   </button>
                 )}
               </div>
-              <pre className="px-2.5 py-1.5 text-xs text-zinc-200 font-mono whitespace-pre-wrap break-all">
-                {b.input}
+              <pre
+                className={`px-2.5 py-1.5 text-xs text-zinc-200 font-mono break-all ${
+                  !revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool')
+                    ? 'whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer'
+                    : 'whitespace-pre-wrap'
+                }`}
+                onClick={!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool') ? () => setExpanded((p) => new Set(p).add(b.id)) : undefined}
+                title={!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool') ? t('transcript.expand') : undefined}
+              >
+                {!revealed && (b.kind === 'agent-turn' || b.kind === 'agent-tool')
+                  ? b.input.split('\n')[0].slice(0, 200)
+                  : b.input}
               </pre>
-              {body && (
+              {revealed && displayBody && (
                 <pre className="mx-2.5 mb-2 px-2 py-1.5 bg-zinc-900/60 rounded border border-zinc-800/60 text-xs text-zinc-400 font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
-                  {body}
-                  {big && !open && (
+                  {displayBody}
+                  {big && !fullyExpanded && (
                     <button
-                      onClick={() => setExpanded((p) => new Set(p).add(b.id))}
+                      onClick={() => setExpanded((p) => new Set(p).add(`${b.id}:full`))}
                       className="block mt-2 text-[10px] text-cyan-500 hover:text-cyan-400"
                     >
                       {t('transcript.showAll', { size: fmtBytes(b.outputBytes ?? b.output?.length ?? 0) })}
@@ -364,7 +390,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   )}
                 </pre>
               )}
-              {!b.output && b.outputNote && (
+              {revealed && !b.output && b.outputNote && (
                 <p className={`mx-2.5 mb-2 px-2 py-1 text-[11px] font-mono rounded border ${
                   b.outputNote === 'recorded'
                     ? 'text-emerald-400/80 border-emerald-600/30 bg-emerald-900/10'

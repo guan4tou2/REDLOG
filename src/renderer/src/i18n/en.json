@@ -821,6 +821,8 @@
   "transcript.loading": "Loading…",
   "transcript.empty": "Nothing captured yet, or everything is filtered out.",
   "transcript.openInTimeline": "Show on the Timeline",
+  "transcript.expand": "Show output",
+  "transcript.collapse": "Hide output",
   "transcript.showAll": "Show all {{size}}",
   "transcript.kind.shell": "shell",
   "transcript.kind.agent-turn": "agent",

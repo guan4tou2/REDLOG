@@ -581,14 +581,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         }
       }
 
-      // Scope check: shell events already run checkTarget above (line ~459);
-      // for all other event types (scanner, dns, agent, pivot…) that carry a
-      // targetId, run the same check so mitmproxy HTTP/DNS traffic and
-      // agent-injected events also trigger scope-violation alerts.
-      if (agentType !== 'shell' && targetId && scopeMonitorRef) {
-        scopeMonitorRef.checkTarget(targetId, data.command as string ?? `${agentType}:${data.subtype ?? ''}`)
-      }
-
       const event = insertEvent(agentType, data, {
         engagementId,
         operatorId: operator.id,
