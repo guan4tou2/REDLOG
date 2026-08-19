@@ -719,6 +719,15 @@ export function getEventCount(opts?: { tier?: 'chained' | 'logged' | 'all' }): n
   return chained + logged
 }
 
+// v0.14.3 §9.5: timestamp of the newest logged-tier row, or null if none.
+// Powers the CaptureHealthCard "last fed …" freshness readout without pulling
+// row bodies — a single SELECT MAX() against events_logged's timestamp index.
+export function getLatestLoggedTs(): number | null {
+  const db = getDB()
+  const row = db.prepare('SELECT MAX(timestamp) as ts FROM events_logged').get() as { ts: number | null }
+  return row.ts ?? null
+}
+
 export function searchEvents(query: string, limit = 100): RedLogEvent[] {
   const db = getDB()
   const pattern = `%${query}%`

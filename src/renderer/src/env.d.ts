@@ -124,6 +124,10 @@ interface RedLogAPI {
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
     getCount: (tier?: import('../../core/db/events').EventTierFilter) => Promise<number>
+    /** v0.14.3 §9.5: timestamp of the newest logged-tier row, or null
+     *  if none have been written. Drives the CaptureHealthCard "last
+     *  fed" freshness readout without pulling row bodies. */
+    getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void

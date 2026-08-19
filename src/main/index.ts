@@ -8,7 +8,7 @@ import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
@@ -1091,6 +1091,7 @@ app.whenReady().then(() => {
   // --- Events ---
   ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
   ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
+  ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
