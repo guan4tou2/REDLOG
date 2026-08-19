@@ -118,6 +118,13 @@ let last: OpsecState | null = null
 let timer: ReturnType<typeof setInterval> | null = null
 let onChanged: OnStateChanged | null = null
 
+// DNS resolvers oscillate on DHCP renew / VPN reconnect / split-tunnel changes,
+// flooding the timeline with spurious opsec_state_changed events. We require DNS
+// to stay at the new value for DNS_STABLE_TICKS consecutive polls before emitting.
+// VPN / MAC / hostname changes fire immediately — they reflect real operator actions.
+const DNS_STABLE_TICKS = 3 // 3 × 30s = 90s stability window
+let dnsPending: { candidate: string[]; from: string[]; ticks: number } | null = null
+
 export function configureOpsecMonitor(cb: OnStateChanged): void { onChanged = cb }
 
 export function startOpsecMonitor(): void {
@@ -130,9 +137,33 @@ export function startOpsecMonitor(): void {
     if (!arrEq(last.vpnInterfaces, now.vpnInterfaces)) delta.vpn = { from: last.vpnInterfaces, to: now.vpnInterfaces }
     if (last.primaryMac !== now.primaryMac) delta.primaryMac = { from: last.primaryMac, to: now.primaryMac }
     if (last.hostname !== now.hostname) delta.hostname = { from: last.hostname, to: now.hostname }
-    if (!arrEq(last.dnsServers, now.dnsServers)) delta.dns = { from: last.dnsServers, to: now.dnsServers }
+
+    // DNS: debounced — only emit after the new value holds for DNS_STABLE_TICKS polls.
+    const dnsChanged = !arrEq(last.dnsServers, now.dnsServers)
+    if (dnsChanged && !dnsPending) {
+      dnsPending = { candidate: now.dnsServers, from: last.dnsServers, ticks: 1 }
+    } else if (dnsPending) {
+      if (arrEq(dnsPending.candidate, now.dnsServers)) {
+        dnsPending.ticks++
+        if (dnsPending.ticks >= DNS_STABLE_TICKS) {
+          delta.dns = { from: dnsPending.from, to: now.dnsServers }
+          dnsPending = null
+        }
+      } else if (arrEq(last.dnsServers, now.dnsServers)) {
+        // reverted to last confirmed state — cancel pending
+        dnsPending = null
+      } else {
+        // changed to a third value — restart the window
+        dnsPending = { candidate: now.dnsServers, from: dnsPending.from, ticks: 1 }
+      }
+    }
+
+    // Update last for non-DNS fields immediately; DNS only when confirmed.
+    const confirmedDns = last.dnsServers
     last = now
-    if (Object.keys(delta).length > 0) onChanged?.(delta, now)
+    if (!delta.dns) last.dnsServers = confirmedDns
+
+    if (Object.keys(delta).length > 0) onChanged?.(delta, last)
   }
   tick() // seed immediately, then poll
   timer = setInterval(tick, 30_000)
@@ -141,6 +172,7 @@ export function startOpsecMonitor(): void {
 export function stopOpsecMonitor(): void {
   if (timer) { clearInterval(timer); timer = null }
   last = null
+  dnsPending = null
 }
 
 function arrEq(a: string[], b: string[]): boolean {
