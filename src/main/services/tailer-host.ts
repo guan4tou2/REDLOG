@@ -208,8 +208,8 @@ export interface TailerHostConfig {
    *  `excludedPaths` — if a session's cwd matches any of these prefixes,
    *  tailing is skipped. */
   excludedPaths?: string[]
-  /** Legacy v0.6.59 whitelist. When non-empty, ONLY these cwds are
-   *  tailed. */
+  /** Whitelist mode. When non-empty, ONLY sessions whose cwd matches one
+   *  of these prefixes are tailed — everything else is dropped. */
   watchPaths?: string[]
   /** v0.12.0: called after every `agent.tool_call` event insert with the
    *  extracted target host (if any). Feeds the alert subsystem's Scope
@@ -256,6 +256,31 @@ const sessions = new Map<string, SessionState>()
 
 function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
+}
+
+// ─── Session ID registry (Hybrid D Phase 1) ────────────────────────────────
+//
+// When the registry is empty (no skill / MCP call has registered a session),
+// ALL sessions pass — backward compatible. Once any session registers, ONLY
+// registered session IDs are captured. This gives the operator session-level
+// precision without breaking existing workflows.
+
+const sessionRegistry = new Set<string>()
+
+export function registerSessionId(sessionId: string): void {
+  sessionRegistry.add(sessionId)
+}
+
+export function isSessionRegistered(sessionId: string): boolean {
+  return sessionRegistry.size === 0 || sessionRegistry.has(sessionId)
+}
+
+export function clearSessionRegistry(): void {
+  sessionRegistry.clear()
+}
+
+export function getRegisteredSessions(): string[] {
+  return [...sessionRegistry]
 }
 
 // ─── Adapter registry ───────────────────────────────────────────────────────
@@ -936,6 +961,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   if (!cwd) return
   if (isSelfExcludedCwd(cwd, cfg.selfExclusionMarker ?? '.redlog-app-root')) return
   if (!cwdPassesGate(cwd, cfg.excludedPaths, cfg.watchPaths)) return
+  if (!isSessionRegistered(sessionId)) return
 
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return }

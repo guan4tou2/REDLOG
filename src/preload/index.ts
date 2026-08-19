@@ -241,6 +241,13 @@ contextBridge.exposeInMainWorld('redlog', {
     replay: (eventId: string) => ipcRenderer.invoke('terminal:replay', eventId),
     replaySession: (eventId: string) => ipcRenderer.invoke('terminal:replaySession', eventId)
   },
+  wsl: {
+    listDistros: () => ipcRenderer.invoke('wsl:listDistros'),
+    getNetworkMode: () => ipcRenderer.invoke('wsl:getNetworkMode'),
+    installHook: (distro: string, shell: string) => ipcRenderer.invoke('wsl:installHook', distro, shell),
+    uninstallHook: (distro: string, shell: string) => ipcRenderer.invoke('wsl:uninstallHook', distro, shell),
+    runDiagnostics: (distro: string) => ipcRenderer.invoke('wsl:runDiagnostics', distro)
+  },
   overlay: {
     toggle: () => ipcRenderer.send('overlay:toggle'),
     hide: () => ipcRenderer.send('overlay:hide'),

@@ -1,6 +1,6 @@
 # RedLog Docs
 
-Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
+Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
 
 ## What RedLog is (and isn't)
 
@@ -10,7 +10,7 @@ Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links 
 
 ## Start here
 
-- **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing. If you're wiring an agent to RedLog, start here.
+- **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to MCP tool usage.
 
 ## Product & planning
 
@@ -27,6 +27,8 @@ Wiki-style index for **v0.9.4**. Every page is self-contained; follow the links 
 
 ## Integrations
 
+- **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
+- **[REST API reference](api-reference.md)** — complete per-endpoint docs for all 37 HTTP endpoints: auth, request/response schemas, auto-processing behavior.
 - **[MCP server](agent-integration.md#2-mcp-server-operate-the-app)** — RedLog hosts its own MCP endpoint over HTTP, live the moment the app opens (`http://127.0.0.1:<port>/mcp`); stdio bridge as a fallback. Set up in Settings ▸ Team & Integrations.
 - **[Proxied browser](agent-integration.md#proxied-browser)** — one-click Chromium through your mitmproxy, CDP enabled, project-local profile.
 - **[Deconfliction webhook](deconfliction.md)** — real-time signed feed to the blue team. When to enable, when not to, payload shape, threat model.

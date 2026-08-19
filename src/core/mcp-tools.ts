@@ -1,6 +1,6 @@
 // MCP tool definitions + a transport-agnostic JSON-RPC handler.
 //
-// These are the SAME 17 tools the standalone stdio server (mcp/redlog-mcp-server.js)
+// These are the SAME 19 tools the standalone stdio server (mcp/redlog-mcp-server.js)
 // exposes, but served directly from the app's own HTTP server so MCP is live the
 // moment RedLog is open — no subprocess to spawn, no node-on-PATH or asar-unpack
 // problems in a packaged build. Keep this list in sync with the stdio server.
@@ -114,6 +114,18 @@ export const MCP_TOOLS: McpTool[] = [
       type: 'object',
       properties: { anchor_id: { type: 'string', description: 'Specific anchor id. Omit to upgrade all pending.' } },
       required: []
+    }
+  },
+  {
+    name: 'redlog_session_register',
+    description: 'Register the current Claude Code session for capture. Call at session start so RedLog records this session\'s transcript. Without registration, all sessions are captured (backward compatible); once any session registers, only registered ones are recorded.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'Claude Code session ID' },
+        cwd: { type: 'string', description: 'Working directory of the session (optional)' }
+      },
+      required: ['session_id']
     }
   }
 ]

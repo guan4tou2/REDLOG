@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "redlog-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["electron-vite", "dev", "--", "--remote-debugging-port=9222"],
       "port": 5173
     }
   ]

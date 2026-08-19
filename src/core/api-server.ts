@@ -61,6 +61,13 @@ let lootDetectorRef: {
 } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 
+/** Hybrid D Phase 1: session registration callbacks from tailer-host.
+ *  Kept as a duck-typed ref so core doesn't import main/services. */
+let sessionRegistryRef: {
+  register: (sessionId: string) => void
+  list: () => string[]
+} | null = null
+
 /** Duck-typed slice of AlertRuntime the api-server needs. Kept minimal so
  *  core doesn't have to import the runtime class (which would drag main
  *  services into core). main/index.ts hands the real runtime in via
@@ -136,6 +143,7 @@ export function configureApi(opts: {
   lootDetector?: typeof lootDetectorRef
   screenshotAgent?: typeof screenshotAgentRef
   alertRuntime?: AlertRuntimeSlice
+  sessionRegistry?: typeof sessionRegistryRef
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
@@ -144,6 +152,7 @@ export function configureApi(opts: {
   if (opts.lootDetector) lootDetectorRef = opts.lootDetector
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.alertRuntime) alertRuntimeRef = opts.alertRuntime
+  if (opts.sessionRegistry) sessionRegistryRef = opts.sessionRegistry
 }
 
 // Runs an MCP tool directly against the same internal functions the REST
@@ -256,6 +265,13 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
         return args.anchor_id
           ? { anchor: await upgradeAnchor(String(args.anchor_id)) }
           : await upgradeAllPending()
+
+      case 'redlog_session_register': {
+        const sid = String(args.session_id ?? '')
+        if (!sid) throw new Error('session_id is required')
+        if (sessionRegistryRef) sessionRegistryRef.register(sid)
+        return { registered: true, session_id: sid }
+      }
 
       default: {
         // Route to a trusted 🔴 plugin tool if one owns this name.
@@ -557,6 +573,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
             data.redactions = [...redactions, ...result.redacted.map((r) => ({ ...r, field }))]
           }
         }
+      }
+
+      // Scope check: shell events already run checkTarget above (line ~459);
+      // for all other event types (scanner, dns, agent, pivot…) that carry a
+      // targetId, run the same check so mitmproxy HTTP/DNS traffic and
+      // agent-injected events also trigger scope-violation alerts.
+      if (agentType !== 'shell' && targetId && scopeMonitorRef) {
+        scopeMonitorRef.checkTarget(targetId, data.command as string ?? `${agentType}:${data.subtype ?? ''}`)
       }
 
       const event = insertEvent(agentType, data, {
@@ -1035,6 +1059,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, ok ? 200 : 400, { deleted: ok })
         return
       }
+    }
+
+    // ── Hybrid D Phase 1: session registration ──────────────────────────
+    if (route === '/api/session/register' && req.method === 'POST') {
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const sid = (body.session_id || '').toString().trim()
+      if (!sid) { json(res, 400, { error: 'session_id is required' }); return }
+      if (sessionRegistryRef) sessionRegistryRef.register(sid)
+      json(res, 200, { registered: true, session_id: sid })
+      return
+    }
+
+    if (route === '/api/session/registered' && req.method === 'GET') {
+      json(res, 200, { sessions: sessionRegistryRef ? sessionRegistryRef.list() : [] })
+      return
     }
 
     json(res, 404, { error: `Unknown route: ${req.method} ${route}` })

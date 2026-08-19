@@ -59,8 +59,9 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
+| **Agent transcript tailer** | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Automatic — watches `~/.claude/projects/` JSONL files. Filter with **Settings ▸ Integrations ▸ Watch Paths** (whitelist). | Yes |
 | **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…) | Settings ▸ Hooks ▸ Zsh/Bash → Enable, then `source ~/.zshrc` | Yes — it no-ops when RedLog is closed |
-| **Claude Code hook** | Only Claude Code's **Bash tool** calls — NOT your terminal | Settings ▸ Hooks ▸ Claude Code → Enable | Yes |
+| **Claude Code hook** | Only Claude Code's **Bash tool** calls (legacy — the transcript tailer above is now the primary capture) | Settings ▸ Hooks ▸ Claude Code → Enable | Yes |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
 | **RedLog terminal** | Commands run inside RedLog's own terminal pane | Built in, always on | — |
@@ -68,20 +69,72 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 | **File watcher** | File create/modify/delete in operator-defined paths | Settings ▸ Capture ▸ File watcher → Enable + add absolute paths. Off by default (noisy). | Yes |
 | **Process spawn tree** | Every process spawned/exited on the box (macOS + Linux) | Settings ▸ Capture ▸ Process monitor → Enable. RedLog and its subprocesses are auto-filtered. Windows: not yet supported. | Yes |
 
-**Two things that trip people up:**
+**Three things that trip people up:**
 
-1. **The Claude Code hook ≠ full capture.** It only records what Claude Code runs through its Bash tool. Anything you type in a normal terminal is invisible unless the **shell hook** is installed. Install both.
-2. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
+1. **The agent transcript tailer is the primary capture for Claude Code.** It watches `~/.claude/projects/` and captures the full session — tool calls, reasoning, user messages. The old PostToolUse hook (section 1a below) only captures Bash calls and is now a legacy fallback.
+2. **Use watch paths to scope capture.** Without a whitelist, the tailer ingests ALL Claude Code sessions into the current project. Set **Settings ▸ Integrations ▸ Watch Paths** to your engagement's working directory so only relevant sessions are recorded. See [Watch Paths](#watch-paths-whitelist) below.
+3. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
 
 **Verify capture is live:** run a command in your terminal, then check the Dashboard's Capture Health card (or `redlog-cli status` → `capture`) — the shell hook source should flip to *active*.
+
+### Watch Paths (whitelist)
+
+By default, the agent transcript tailer ingests ALL Claude Code sessions into the current project. On a machine with hundreds of sessions this creates thousands of irrelevant events. Use **watch paths** to scope capture to your engagement directory.
+
+**Config file:** `~/.redlog/hook-config.json` (global, applies to all projects)
+
+```json
+{
+  "excludedPaths": [],
+  "watchPaths": [
+    "C:\\Users\\user\\Desktop\\engagement-2026"
+  ]
+}
+```
+
+| Field | Type | Default | Behavior |
+|-------|------|---------|----------|
+| `watchPaths` | `string[]` | `[]` | **Whitelist.** When non-empty, only sessions whose cwd matches a listed prefix are tailed. Everything else is dropped. When empty, all sessions pass (backward-compatible). |
+| `excludedPaths` | `string[]` | `[]` | **Blacklist.** Sessions whose cwd matches are skipped. Checked before `watchPaths`. |
+
+**Path matching:** Paths are resolved to absolute with tilde expansion. A session passes if its cwd equals a listed path or starts with it followed by a path separator. Both `/` and `\` are normalized.
+
+**Additional self-exclusion:** A `.redlog-app-root` marker file in any ancestor directory causes the tailer to skip that session (RedLog's own repo uses this to prevent capturing its own dev sessions).
+
+**Settings UI:** **Settings ▸ Integrations ▸ Watch Paths** — add/remove paths with a folder picker. Changes take effect immediately (the tailer is live-reconfigured).
+
+**Recommendation:** At the start of every engagement, set `watchPaths` to your engagement directory. This prevents noise from personal or unrelated Claude Code sessions.
 
 ## 1. Terminal Hooks (Passive Capture)
 
 Terminal hooks intercept commands at the shell level. The agent doesn't need to be RedLog-aware — every command it runs is automatically logged with timestamps, exit codes, and duration.
 
-### 1a. Claude Code — PostToolUse Hook
+### 1a. Claude Code — Agent Transcript Tailer (primary)
 
-Claude Code's hook system fires a script after every tool call. Our hook captures Bash tool calls specifically.
+The agent transcript tailer watches `~/.claude/projects/**/*.jsonl` and captures the **full** Claude Code session: every tool call (Bash, Read, Write, Edit, Grep, Task, MCP, etc.), user messages, assistant responses, and thinking blocks. It also covers Codex (`~/.codex/sessions/`) and OpenCode (`storage/message/`).
+
+**Setup:** Automatic — the tailer starts when RedLog opens a project. No hook wiring needed.
+
+**What it captures:**
+
+| Event type | Description |
+|-----------|-------------|
+| `agent.user_message` | User prompt text |
+| `agent.assistant_message` | Assistant response text |
+| `agent.tool_call` | Tool name + input (up to 100 KB) |
+| `agent.tool_result` | Tool output (up to 100 KB) |
+| `transcript_snapshot` | Cumulative SHA-256 of the sidecar file (emitted on 15 s idle or session close) |
+| `transcript_compacted` | Emitted when Claude Code `/compact` runs |
+
+**Sidecar files:** The tailer writes a copy of each session's events to `<projectDir>/agent-transcripts/<kind>-<session>.jsonl`. The sidecar size is the read offset, so crash recovery is idempotent.
+
+**Redaction:** `deepRedactStrings()` walks every string value; paths matching `.ssh/`, `.env`, `.aws/` suppress the output field entirely.
+
+> **Note:** The old `PostToolUse` hook (`hooks/claude-code-hook.sh`) is now a no-op stub (`exit 0`). It's kept so existing `~/.claude/settings.json` entries don't break, but the tailer is a strict superset.
+
+### 1a-legacy. Claude Code — PostToolUse Hook (deprecated)
+
+The `claude-code-hook.sh` fires on Bash tool calls only. It was the primary capture before v0.7.2 and is now a stub — the transcript tailer above captures everything it did and more.
 
 **Setup:**
 
@@ -484,36 +537,41 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
-| GET | `/api/health` | no | Health check |
-| GET | `/api/whoami` | yes | Resolve token → operator |
-| GET | `/api/status` | yes | System status (IP, events, violations) |
+| GET | `/api/health` | no | Health check (`{ ok, version }`) |
+| POST | `/mcp` | yes | MCP over Streamable HTTP (JSON-RPC) — also available at `/api/mcp` |
+| GET | `/api/whoami` | yes | Resolve token → operator + engagement ID |
+| GET | `/api/status` | yes | System status (IP, events, violations, capture health) |
+| GET | `/api/capture` | yes | Detailed capture subsystem health |
 | GET | `/api/config` | yes | Project configuration |
-| GET | `/api/scope` | yes | Scope targets + violations |
+| GET | `/api/scope` | yes | Scope targets + exclusions + violations |
 | GET | `/api/recording` | yes | Recording state |
 | POST | `/api/recording` | yes | Control recording (`{"action":"pause\|resume\|toggle"}`) |
-| POST | `/api/events` | yes | Insert event (operator_id set from token) |
-| GET | `/api/events` | yes | Query events (`?agent_type=&limit=&target_id=&since=`) |
-| GET | `/api/events/search` | yes | Search events (`?q=&limit=`) |
+| POST | `/api/events` | yes | Insert event (operator_id set from token; auto-detects targets, pivots, cleanup, file transfers, loot) |
+| GET | `/api/events` | yes | Query events (`?agent_type=&limit=&target_id=&since=&before=`) |
+| GET | `/api/events/search` | yes | Full-text search (`?q=&limit=`) |
 | GET | `/api/events/count` | yes | Event count |
-| POST | `/api/marker` | yes | Create marker |
+| POST | `/api/marker` | yes | Create marker (`{ title, notes?, severity?, target_id? }`) |
 | GET | `/api/quickmarks` | yes | List bookmarks |
 | POST | `/api/quickmarks` | yes | Create bookmark |
-| POST | `/api/loot/scan` | yes | Scan for secrets |
+| POST | `/api/loot/scan` | yes | Scan text for secrets/credentials |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
-| GET | `/api/operators` | yes | List operators (any valid token) |
+| GET | `/api/operators` | yes | List operators (sensitive fields stripped) |
 | POST | `/api/operators` | primary | Create operator, returns token **once** |
 | PATCH | `/api/operators/:id` | primary | Rename |
 | POST | `/api/operators/:id/rotate` | self or primary | Rotate token |
 | POST | `/api/operators/:id/revoke` | primary | Revoke token |
 | DELETE | `/api/operators/:id` | primary | Delete operator |
+| POST | `/api/terminal/replay` | yes | Replay terminal command output from `.cast` file |
 | GET | `/api/chain` | yes | Chain length + latest anchor |
 | GET | `/api/anchors` | yes | List OTS anchors (`?limit=`) |
 | POST | `/api/anchors` | yes | Anchor current chain head now |
 | GET | `/api/anchors/verify` | yes | Fast prefix check (add `?full=1` for full re-walk) |
-| GET | `/api/anchors/:id/ots` | yes | Download standard `.ots` bundle (`?calendar=<url>` optional) |
+| POST | `/api/anchors/upgrade-all` | yes | Upgrade all pending anchors (fetch OTS proofs) |
+| POST | `/api/anchors/:id/upgrade` | yes | Upgrade a specific anchor |
+| GET | `/api/anchors/:id/ots` | yes | Download `.ots` proof file (`?calendar=<url>` optional) |
 | GET | `/api/clock` | yes | NTP offset + last query time + host wall clock |
-| POST | `/api/export/bundle` | yes | Produce signed evidence bundle in project's `exports/` dir. Events with sanitized copies (see below) are served with the masked bytes in `events.jsonl` |
-| POST | `/api/sanitize` | yes | Layer 4 of four-layer redaction: `{ event_ids, fields?, reason?, dry_run? }` → writes masked bytes to `sanitized_events` table + appends chained `system.sanitized` event. Default fields: `output`, `output_preview`, `command`. Same as `redlog-cli sanitize <id> [--fields …] --confirm` |
+| POST | `/api/export/bundle` | yes | Produce signed evidence bundle in `exports/` dir |
+| POST | `/api/sanitize` | yes | Layer 4 redaction: `{ event_ids, fields?, reason?, dry_run? }` → masked bytes + chained `system.sanitized` event |
 | GET | `/api/deconfliction` | yes | Current deconfliction config (secret redacted) |
 | POST | `/api/deconfliction/test` | yes | Send a test payload to the configured webhook |
 
