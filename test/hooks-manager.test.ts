@@ -33,8 +33,13 @@ describe('hooks-manager guided setup', () => {
     const m = byId('mitmproxy')
     expect(m.installMethod).toBe('manual')
     expect(m.manualSteps?.length).toBeGreaterThan(0)
-    const cmd = m.manualSteps![0].command!
-    expect(cmd).toContain('mitmdump -s')
+    // Under one branch the first step is the runnable mitmdump command;
+    // under the "binary not on PATH" branch (commit 1645578) it's prefixed
+    // by an install-guidance step and the mitmdump command appears later.
+    // Assert on the presence of the runnable command anywhere in the list.
+    const mitmdumpStep = m.manualSteps!.find((s) => s.command?.includes('mitmdump -s'))
+    expect(mitmdumpStep).toBeDefined()
+    const cmd = mitmdumpStep!.command!
     // the absolute addon path is baked into the copy-paste command
     expect(cmd).toContain(m.hookFile)
     expect(cmd).toContain('mitmproxy-addon.py')
