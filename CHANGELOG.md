@@ -3,6 +3,34 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.14.0 — 2026-08-19
+
+**Timeline classifier now visible on every row.** Closes the §9.1 spec
+deviation flagged during the v0.13 code review — v0.13.1 shipped the
+tier badge in the detail panel only, so reviewers scrolling the timeline
+had to click each row to check whether it was `chained` (audit chain,
+signed, anchored) or `logged` (supporting evidence).
+
+Now every event row carries a hair-thin `⛓` (chained) or `⌇` (logged)
+glyph right after the timestamp, matching the design doc placement.
+Chained rows render zinc-700 (very subtle — 99%+ of rows are chained
+and shouldn't fight for attention); logged rows get zinc-400 so the
+exception stands out at a glance.
+
+The detail-panel chip (icon + label) is unchanged; both variants now
+share one `TierBadge` component so the classes and tooltip can't drift
+apart. Missing-tier fallback: pre-v0.13.0 rows are rendered as chained,
+matching what the audit chain actually contains.
+
+No behaviour change to the DB, IPC contract, or existing events —
+purely a Timeline UI polish. PR #12.
+
+Still deferred to a later v0.14 point release (or v1.0.0):
+- §9.2 auditor-view filter chip
+- §9.5 Settings chain-health card (logged count + last-fed timestamp)
+- §8.3 bundle manifest fields (`pruneWatermark`, `retentionPolicy`)
+- `retention.loggedTier.maxSizeGb` / `maxRowCount` ceiling wire-up
+
 ## v0.13.2 — 2026-08-19
 
 **Six code-review fixes that landed across the three v0.13 PRs.** Two real
