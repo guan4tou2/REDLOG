@@ -3,6 +3,33 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.13.1 — 2026-08-19
+
+**Two-tier UI polish** — the audit-story visibility promised by v0.13.0.
+
+- **StatusBar chained · logged split.** Row-count tick shows both tiers
+  when logged is non-zero (`8,142 · 190,341`) with a hover tooltip that
+  spells out "chained (audit chain) · logged (supporting evidence)".
+  Pre-v0.13 projects with an empty logged tier still show the
+  single-number shape they always had — no visual change until the
+  first mitmproxy scan writes to `events_logged`.
+- **Timeline detail-panel tier badge.** Selecting an event surfaces
+  `⛓ chained` or `⌇ logged` next to the operator label. Tooltip
+  explains the semantic ("hash-chained, signed, anchored" vs
+  "supporting evidence — not hash-chained, not signed, not covered
+  by the OTS anchor"). Answers the reviewer question "why isn't this
+  row signed?" without them needing to read the docs.
+- **`events:getCount` IPC extended** with optional `tier`
+  (`'chained' | 'logged' | 'all'`). Preload + env.d.ts contract
+  updated; legacy no-arg callers unchanged (still returns the chained
+  count — every existing StatusBar / API / MCP call means that).
+- **Live count updates**: `events.onNew` handler now inspects the
+  incoming event's `tier` field to bump the correct counter.
+
+Deferred to v0.14: auditor-view filter chip (Timeline shows chained
+only when active), `redlog-cli --tier` flag. Both are additive on top
+of the shipped v0.13 backend.
+
 ## v0.13.0 — 2026-08-19
 
 **Two-tier evidence chain.** The audit chain now has a clearer story.
