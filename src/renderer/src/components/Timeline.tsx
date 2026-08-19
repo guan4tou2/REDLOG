@@ -3216,6 +3216,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   <span className="text-zinc-600 font-mono tabular-nums shrink-0 w-16">
                     {formatTs(evt.timestamp, tz, projectTz, 'timeSec')}
                   </span>
+                  {/* v0.14 §9.1: per-row tier badge. Icon-only in the row so
+                   *  the visual density stays low — the full labeled version
+                   *  lives in the detail panel. Reviewer scanning the
+                   *  timeline can now spot chained-vs-logged at a glance
+                   *  instead of clicking each row to check. */}
+                  <TierBadge tier={evt.tier} variant="row" />
                   {showOperator && (
                     <span className="text-zinc-500 font-mono shrink-0 max-w-[80px] truncate" title={evt.operatorId}>
                       {operatorLabel(evt.operatorId)}
@@ -3266,28 +3272,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60" title={selectedEvent.operatorId}>
                 {operatorLabel(selectedEvent.operatorId)}
               </span>
-              {/* v0.13.0: tier badge. `⛓` = chained (audit chain, signed,
-               *  anchored). `⌇` = logged (supporting evidence, no hash,
-               *  no signature). Rendered subtly — most rows are chained
-               *  and the operator doesn't need to be reminded; the badge
-               *  matters when a reviewer is asking "why isn't this row
-               *  signed?" and needs to see it's by-design.
-               */}
-              {selectedEvent.tier === 'logged' ? (
-                <span
-                  className="text-xs font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/60"
-                  title="Logged tier — supporting evidence. Not hash-chained, not signed, not covered by the OTS anchor. Retention policy deletes rows past keepDays. See docs/DESIGN-two-tier-chain.md."
-                >
-                  ⌇ logged
-                </span>
-              ) : (
-                <span
-                  className="text-xs font-mono text-zinc-600 px-1.5 py-0.5 rounded bg-zinc-800/40"
-                  title="Chained tier — audit chain. SHA-256-linked to the previous row, Ed25519-signed by the operator key, and covered by the OTS anchor."
-                >
-                  ⛓ chained
-                </span>
-              )}
+              <TierBadge tier={selectedEvent.tier} variant="detail" />
             </div>
             <div className="flex items-center gap-2">
               {(() => {
@@ -3935,6 +3920,51 @@ function MetadataGrid({ entries }: { entries: Array<[string, unknown]> }): JSX.E
         ))}
       </div>
     </div>
+  )
+}
+
+// Tier classifier — v0.13.0 introduced the split; v0.13.1 shipped it in the
+// detail panel only; v0.14 §9.1 promotes it to per-row so reviewers scanning
+// the timeline can see the classifier at a glance. Two variants share the
+// same semantics and tooltip; `row` is icon-only for visual density, `detail`
+// is the full chip. Rendered for BOTH tiers by design — a reviewer needs to
+// see "this row is chained" as much as "this row is logged"; the design doc
+// (docs/DESIGN-two-tier-chain.md §9.1) calls out that dropping the chained
+// glyph would hide the classifier from most of the timeline.
+const TIER_TOOLTIPS = {
+  chained: 'Chained tier — audit chain. SHA-256-linked to the previous row, Ed25519-signed by the operator key, and covered by the OTS anchor.',
+  logged: 'Logged tier — supporting evidence. Not hash-chained, not signed, not covered by the OTS anchor. Retention policy deletes rows past keepDays. See docs/DESIGN-two-tier-chain.md.'
+} as const
+
+function TierBadge({ tier, variant }: { tier?: 'chained' | 'logged'; variant: 'row' | 'detail' }): JSX.Element {
+  // Rows written before v0.13.0 have no tier field; treat them as chained
+  // (the historical default) so the migration doesn't paint them a different
+  // colour than what the audit chain actually contains.
+  const t: 'chained' | 'logged' = tier === 'logged' ? 'logged' : 'chained'
+  const glyph = t === 'logged' ? '⌇' : '⛓'
+  if (variant === 'row') {
+    // Icon-only. Muted colour so 100k chained rows don't fight for attention;
+    // logged rows get a hair more contrast because they are the exception.
+    return (
+      <span
+        className={`font-mono text-[11px] shrink-0 ${t === 'logged' ? 'text-zinc-400' : 'text-zinc-700'}`}
+        title={TIER_TOOLTIPS[t]}
+        aria-label={`tier: ${t}`}
+      >
+        {glyph}
+      </span>
+    )
+  }
+  // Detail-panel chip: icon + label, matches the surrounding badge stack.
+  return (
+    <span
+      className={`text-xs font-mono px-1.5 py-0.5 rounded ${
+        t === 'logged' ? 'text-zinc-500 bg-zinc-800/60' : 'text-zinc-600 bg-zinc-800/40'
+      }`}
+      title={TIER_TOOLTIPS[t]}
+    >
+      {glyph} {t}
+    </span>
   )
 }
 
