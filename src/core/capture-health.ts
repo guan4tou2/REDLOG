@@ -129,10 +129,25 @@ function lastEventFor(where: string, params: unknown[] = []): number | null {
   // Ordered + limited, the (agent_type, timestamp DESC) index walks newest
   // first and stops at the first row that satisfies the json filter, which in
   // practice is one of the first few. Same answer, bounded work.
-  const row = db.prepare(
+  //
+  // v0.13.0: DNS + scanner + browser.console + agent.thinking + a few system
+  // rows now land in `events_logged`. Capture-health measures "is this source
+  // feeding events", which needs to see BOTH tiers — otherwise mitmproxy
+  // running full-tilt on the logged tier would show as `idle`. Take the max
+  // of both tables. The chained table stays authoritative for tie-break
+  // (its row indexes are the smaller data set); the second query is a bounded
+  // walk of `idx_events_logged_type_ts`.
+  const chainedRow = db.prepare(
     `SELECT timestamp AS t FROM events WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
   ).get(...params) as { t: number | null } | undefined
-  return row?.t ?? null
+  const loggedRow = db.prepare(
+    `SELECT timestamp AS t FROM events_logged WHERE ${where} ORDER BY timestamp DESC LIMIT 1`
+  ).get(...params) as { t: number | null } | undefined
+  const chained = chainedRow?.t ?? null
+  const logged = loggedRow?.t ?? null
+  if (chained === null) return logged
+  if (logged === null) return chained
+  return chained > logged ? chained : logged
 }
 
 // getCaptureHealth runs eleven of those probes plus a hooks check. It is hit by

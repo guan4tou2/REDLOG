@@ -189,6 +189,28 @@ export interface RedLogConfig {
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
     emitThinking?: boolean
   }
+  /** v0.13.0: retention policy for row-level and file-level pruning. Row-
+   *  level `loggedTier` is new; file-level `castKeepDays` /
+   *  `screenshots.keepDays` moved into this parent for consistency (still
+   *  read from their prior locations for backward-compat). See
+   *  docs/DESIGN-logged-tier-retention.md. */
+  retention?: {
+    /** Row-level retention on the events_logged table. Age-based sweep only
+     *  in v0.13.0. The design doc reserves `maxSizeGb` + `maxRowCount`
+     *  ceilings for a follow-up; they are intentionally NOT declared here
+     *  so an operator who sets them can't get a silent no-op. See design
+     *  doc §7.1 for the second-pass shape. */
+    loggedTier?: {
+      /** Days to keep. `0` = keep forever (matches cast/screenshot
+       *  convention). Default `30` — the first RedLog retention default
+       *  that is *non-zero*, because logged-tier rows are the first
+       *  non-primary evidence artifact. */
+      keepDays?: number
+      /** Periodic sweep interval in hours. `0` disables the timer — the
+       *  project-open sweep still runs. Default `24`. */
+      sweepIntervalHours?: number
+    }
+  }
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -286,6 +308,17 @@ const DEFAULT_CONFIG: RedLogConfig = {
   agentTailer: {
     enabled: true,
     emitThinking: false
+  },
+  retention: {
+    // v0.13.0: 30d default. First non-zero retention default RedLog
+    // ships — see docs/DESIGN-logged-tier-retention.md §4.2 for the
+    // three-observation rationale (engagement duration + retrospective
+    // lag + client review lag). Size/count ceilings deferred to a
+    // follow-up (§7.1); not surfaced in v0.13.0 to avoid silent no-op.
+    loggedTier: {
+      keepDays: 30,
+      sweepIntervalHours: 24
+    }
   }
 }
 

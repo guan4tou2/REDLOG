@@ -3,6 +3,105 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.13.0 — 2026-08-19
+
+**Two-tier evidence chain.** The audit chain now has a clearer story.
+
+Shell commands, agent turns, markers, loot, cleanup, pivots, and scope
+violations continue to be hash-chained, Ed25519-signed, and OTS-anchored —
+the **chained** tier, primary evidence. DNS lookups, HTTP flow bookkeeping,
+CDP console messages, agent thinking, and alert-bus heartbeats now write to
+a separate `events_logged` table — the **logged** tier, supporting footprint.
+
+Bundles carry both as separate files (`events.jsonl` + `events_logged.jsonl`);
+the verifier walks the chained tier only. The audit story stops asking the
+reader to take every DNS heartbeat as seriously as every shell command.
+
+Design docs (already committed on PR #9): [`DESIGN-two-tier-chain.md`](docs/DESIGN-two-tier-chain.md) + [`DESIGN-logged-tier-retention.md`](docs/DESIGN-logged-tier-retention.md).
+
+### Phase 1 — core (`794873d`)
+
+* Schema: additive `CREATE TABLE events_logged` + 5 indexes. No append-only
+  trigger by design — retention is a first-class DELETE.
+* Classifier: `classifyTier(agentType, data)` — 12 logged tuples + the
+  `system.ip_verdict` data-dependent special case (`unchanged` tick → logged;
+  any other kind → chained real state change).
+* Dispatch: `insertEvent` splits into `insertChainedEvent` (unchanged
+  historical body — every existing invariant preserved) + `insertLoggedEvent`
+  (short path, no hash / sign / dedup / clock-check).
+* Read: `queryEvents({ tier })` UNION ALL; `queryEventById` checks both
+  tables (chained-first on collision); `getEventCount({ tier })` (default
+  `chained` for anchor callers).
+* Row shape: `RedLogEvent.tier?: 'chained' | 'logged'`; `rowToEvent`
+  stamps from SELECT hint.
+* Capture-health: `lastEventFor` takes max of both tables (mitmproxy on
+  logged tier would otherwise show as `idle`).
+
+### Phase 2a — bundle export (`4f6ab6c`)
+
+* `bundle-export.ts` writes a new `events_logged.jsonl` in insertion order,
+  sanitization swaps apply, sha256 lands in `manifest.files`.
+* `bundleVersion` bumped 1 → 2. `manifest.tiers = { chained, logged }`
+  populated from head + logged count.
+* Bundled README explains the primary/supporting split.
+* `tools/redlog-verify.py` recognises `bundleVersion`, detects
+  `events_logged.jsonl`, reports its row count with the "not verified —
+  supporting evidence" note. v1 bundles verify unchanged.
+
+### Phase 2b — retention (this commit)
+
+* `sweepLoggedTier(cfg, ids)` in `retention.ts` — age-based DELETE keyed
+  on `created_at` (clock-drift-immune). Batched (5000-row) so a 40 GB
+  sweep doesn't stall WAL. Respects `eventBus.paused` for symmetry with
+  insertEvent. Fires one chained `system.retention_pruned_logged` summary
+  on `count > 0` (mirrors `cast_pruned` non-empty convention).
+* Config: `retention.loggedTier.{ keepDays, maxSizeGb?, maxRowCount?,
+  sweepIntervalHours }`. Default `keepDays: 30` — the first non-zero
+  retention default RedLog ships (design §4.2: logged is the first
+  non-primary artifact, so 30d is not policy inconsistency).
+* Env override: `REDLOG_LOGGED_RETENTION_DAYS` for CI / air-gapped.
+* main/index.ts runs the sweep on project open AND on a periodic 24h
+  timer (design §5.1: cast/screenshot sweep runs only on open, but
+  logged-tier can grow 20-40 GB DURING a nine-hour day).
+* `stopProject` clears the timer.
+
+### Behavioural invariants preserved
+
+- **Chain integrity across interleaved tiers** — locked in
+  `logged-insert.test.ts`: chained row B's `prevHash` still equals chained
+  row A's `hash` after 3 logged rows in between.
+- **Anchor count semantics** — `getEventCount()` still defaults to
+  chained-only. The chain-anchor code path is untouched. `verifyChainFull`
+  still walks `events` only.
+- **Legacy rows** — every pre-v0.13 row stays chained, verifies under the
+  same shape ladder. Zero data migration.
+
+### Test coverage (+39 tests, 630/630 green)
+
+* `test/db/tier-classifier.test.ts` — 12 cases: chained defaults, every
+  logged tuple, ip_verdict data-dependence, fail-safe unknown
+* `test/db/logged-insert.test.ts` — 7 cases: dispatch to correct table,
+  logged row shape, chain event count stays chained-only, chain
+  integrity survives interleaved logged inserts, queryEvents union,
+  queryEventById tier-first, operator required
+* `test/bundle-two-tier.test.ts` — 6 cases: both files present,
+  bundleVersion + tiers, logged rows have no chain columns, empty
+  tiers bundle, README explains split, manifest.files entry
+* `test/retention-logged-tier.test.ts` — 11 cases: empty no-op, keepDays=0
+  no-op, age-based delete, summary event fires on count > 0, does NOT fire
+  on count = 0, chain table untouched, respects pause, env override,
+  batched delete over 100 rows, no operator = no-op, summary has no
+  `_causes`
+
+### What ships (Phase 2c / UI) deferred to v0.13.1
+
+- Timeline tier badge (⛓ / ⌇), auditor-view filter chip, StatusBar
+  row-count split. These are UI-only follow-ups; the core audit story
+  is complete at v0.13.0.
+- `redlog-cli` `--tier` flag on query / export commands.
+
+
+
 ## v0.12.2 — 2026-08-18
 
 **Four more wins from the audit + a design doc for v0.13's two-tier chain.**

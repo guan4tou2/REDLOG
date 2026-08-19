@@ -22,7 +22,7 @@ import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAn
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
-import { sweepRetention } from '../core/retention'
+import { sweepRetention, sweepLoggedTier } from '../core/retention'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
@@ -82,6 +82,10 @@ let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 // is open to catch chain tampering silently — the on-demand verify button is
 // too easy to skip. Cleared in stopProject so a project switch stops the loop.
 let chainSampleTimer: ReturnType<typeof setInterval> | null = null
+/** v0.13.0: periodic logged-tier retention sweep. See DESIGN-logged-tier-
+ *  retention.md §5.1 — 24h default cadence. `stopProject` clears on
+ *  project close so the timer doesn't fire against a closed DB. */
+let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 
 // While `overlayPassThrough` is on, mouse tracking is disabled entirely —
 // the HUD stays ignore-mouse regardless of cursor position. Users who want
@@ -476,6 +480,31 @@ function startProject(project: ProjectMeta): void {
     if (swept.cast > 0 || swept.screenshots > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
     }
+    // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
+    // Runs on project open AND periodically — see loggedTierTimer below.
+    const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, { engagementId, operatorId })
+    if (loggedSwept.deleted > 0) {
+      console.log(`[retention] pruned ${loggedSwept.deleted} logged-tier row(s), freed ~${(loggedSwept.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
+    }
+    // Periodic timer — the design doc's §5.1 rationale: cast/screenshot
+    // sweep runs only on project open because operators close/reopen
+    // during a long engagement, but logged-tier can grow 20-40 GB DURING
+    // a nine-hour engagement day. Every N hours we re-sweep in-process.
+    const sweepIntervalHours = config.retention?.loggedTier?.sweepIntervalHours ?? 24
+    if (sweepIntervalHours > 0) {
+      if (loggedTierTimer) clearInterval(loggedTierTimer)
+      loggedTierTimer = setInterval(() => {
+        if (!currentEngagementId || !currentOperatorId) return
+        try {
+          const tick = sweepLoggedTier(config.retention?.loggedTier, {
+            engagementId: currentEngagementId, operatorId: currentOperatorId
+          })
+          if (tick.deleted > 0) {
+            console.log(`[retention] periodic sweep: ${tick.deleted} logged-tier row(s) pruned, freed ~${(tick.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
+          }
+        } catch (e) { console.error('[retention] periodic sweep failed:', e) }
+      }, sweepIntervalHours * 3600 * 1000)
+    }
   } catch (e) { console.error('[retention] sweep failed:', e) }
 
   // Recover any terminal sessions from a prior app run whose session_end never
@@ -717,6 +746,7 @@ function stopProject(): void {
   stopAnchorLoop()
   stopNtpLoop()
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
+  if (loggedTierTimer) { clearInterval(loggedTierTimer); loggedTierTimer = null }
   stopApiServer()
   alertRuntime.stop()
   stopClipboardMonitor()
