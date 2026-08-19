@@ -48,6 +48,7 @@ let server: http.Server | null = null
 let primaryToken = ''
 let listeningPort = 6660
 let engagementId = 'default'
+let projectOpen = false
 
 let primaryOperatorId = ''
 let primaryOperatorName = ''
@@ -372,7 +373,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   if (route === '/api/health' && req.method === 'GET') {
-    json(res, 200, { ok: true, version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev' })
+    json(res, 200, { ok: true, version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev', projectOpen })
+    return
+  }
+
+  if (!projectOpen) {
+    json(res, 503, { error: 'No project open. Open a project in the RedLog UI first.' })
     return
   }
 
@@ -1085,8 +1091,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
 export function startApiServer(port = 6660): Promise<number> {
   return new Promise((resolve, reject) => {
-    const token = writePrimaryToken()
-    ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, token)
+    writePrimaryToken()
 
     server = http.createServer((req, res) => {
       handleRequest(req, res).catch((err) => {
@@ -1112,9 +1117,19 @@ export function startApiServer(port = 6660): Promise<number> {
   })
 }
 
+export function onApiProjectOpen(): void {
+  ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, primaryToken)
+  projectOpen = true
+}
+
+export function onApiProjectClose(): void {
+  projectOpen = false
+}
+
 export function stopApiServer(): void {
   server?.close()
   server = null
+  projectOpen = false
   // Deliberately NOT deleting TOKEN_PATH / PORT_PATH here anymore. Rationale:
   // the previous behaviour caused a class of hard-to-diagnose CLI failures
   // where the operator saw a live API on 6660 (via `lsof` / curl `/api/health`)

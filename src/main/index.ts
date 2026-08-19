@@ -28,7 +28,7 @@ import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
-import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe } from '../core/api-server'
+import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
   listOperators, createOperator, updateOperatorToken, revokeOperator,
   deleteOperator, renameOperator, generateToken, slugifyOperatorId
@@ -638,9 +638,7 @@ function startProject(project: ProjectMeta): void {
       list: getRegisteredSessions
     }
   })
-  startApiServer(6660).then((port) => {
-    insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
-  })
+  onApiProjectOpen()
 
   // Silently repair any pre-v0.6.47 shell hook still sitting in ~/.redlog/.
   // If nothing needs upgrading this is a no-op. Emits a system event when
@@ -752,7 +750,7 @@ function stopProject(): void {
   stopNtpLoop()
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
   if (loggedTierTimer) { clearInterval(loggedTierTimer); loggedTierTimer = null }
-  stopApiServer()
+  onApiProjectClose()
   alertRuntime.stop()
   stopClipboardMonitor()
   stopFileWatcher()
@@ -794,6 +792,8 @@ app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return
   electronApp.setAppUserModelId('com.redlog')
   setAppVersion(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev')
+
+  startApiServer(6660).catch((err) => console.error('[api] failed to start:', err))
 
   // v0.6.97 B: serve screenshots via a custom protocol instead of piping
   // 33%-inflated base64 data URIs through IPC. Renderer uses
@@ -892,6 +892,10 @@ app.whenReady().then(() => {
   ipcMain.handle('project:active', () => activeProject
     ? { id: activeProject.id, name: activeProject.name, createdAt: activeProject.createdAt }
     : null)
+  ipcMain.handle('project:close', () => {
+    if (activeProject) stopProject()
+    return true
+  })
 
   // --- IP ---
   ipcMain.handle('ip:getStatus', () => alertRuntime.ipStatus())
@@ -1981,5 +1985,6 @@ app.on('will-quit', () => {
   stopOverlayMouseTracking()
   killAllTerminals()
   stopProject()
+  stopApiServer()
   tray?.destroy()
 })

@@ -189,7 +189,18 @@ export default function App(): JSX.Element {
             title={t('app.copyVersionHint')}
           >v{__APP_VERSION__}</span>
         </div>
-        <span className="text-zinc-600 text-[11px] ml-4 font-mono">{project.name}</span>
+        <button
+          className="ml-4 text-zinc-600 hover:text-zinc-300 text-[11px] font-mono transition-colors flex items-center gap-1"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          onClick={async () => {
+            await window.redlog.project.close()
+            setProject(null)
+          }}
+          title={t('app.closeProject')}
+        >
+          <span className="text-[10px]">&#9664;</span>
+          {project.name}
+        </button>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <LaunchBrowserButton />
           <button
