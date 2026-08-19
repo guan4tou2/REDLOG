@@ -3,6 +3,33 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.14.2 — 2026-08-19
+
+**§9.4 StatusBar tier counter opens the auditor view.** The chained ·
+logged row counter is now clickable — one click toggles the Timeline's
+auditor-view chip. Third landing across the two-tier UI surface:
+v0.14.0 (per-row badge) → v0.14.1 (auditor chip) → v0.14.2 (StatusBar
+click-through).
+
+- Counter becomes a `<button>` when the logged tier is non-zero.
+  Dispatches `redlog:auditor-view:toggle`; Timeline's listener flips
+  its own state, persisting via the existing scoped-localStorage
+  writer.
+- Zero-logged projects stay as a plain span — no click affordance
+  (matches the chip's disabled-state design; nothing to hide → clicking
+  would be a no-op).
+- Tooltip warns "Timeline must be open for the click to take effect" —
+  the listener only registers while Timeline is mounted. Clicking from
+  Dashboard is a documented silent no-op rather than a cross-cutting
+  state-lift refactor.
+- Zero-config change to the visible label, format, or layout.
+
+Still deferred to a follow-up (or v1.0.0):
+- §9.5 Settings chain-health card — logged-count + last-fed timestamp
+  under the existing chain-integrity readout.
+
+PR #14.
+
 ## v0.14.1 — 2026-08-19
 
 **§9.2 auditor-view filter chip** — new "⛓ Auditor (N)" chip in the
