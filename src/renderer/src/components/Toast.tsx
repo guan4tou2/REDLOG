@@ -59,7 +59,7 @@ export function ToastContainer(): JSX.Element | null {
   const dismiss = (id: number): void => setToasts((prev) => prev.filter((t) => t.id !== id))
 
   return (
-    <div className="fixed bottom-12 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-12 right-4 z-[100] flex flex-col gap-2 pointer-events-none select-text">
       {toasts.map((t) => (
         <div
           key={t.id}

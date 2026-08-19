@@ -42,8 +42,10 @@ body {
  * a tab strip and watching the labels highlight is one of the loudest tells
  * that an Electron app is a web page in a window. Same split VS Code uses:
  * `none` on the shell, text re-enabled on the surfaces that hold content —
- * the view root carries `select-text` (App.tsx), so an operator can still
- * select and copy an IP, a hash or a command out of any view. */
+ * the view root carries `select-text` (App.tsx), as does each overlay rooted
+ * outside it (ConfirmDialog, EventMarker, Toast, the picker's modal), so an
+ * operator can still select and copy an IP, a hash, a command or an error
+ * message wherever it appears. */
 body {
   -webkit-user-select: none;
   user-select: none;
