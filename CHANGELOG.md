@@ -3,6 +3,220 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.12.2 — 2026-08-18
+
+**Four more wins from the audit + a design doc for v0.13's two-tier chain.**
+
+### 1. `eventBus.publish` fanout deferred via `queueMicrotask`
+
+Before: publish synchronously called every listener on the writer's stack —
+renderer IPC broadcast + deconfliction webhook + AlertBus surface fan-out
+(4 policies × 5 surfaces in the v0.12.0 shape). Any listener that did real
+work (webhook fetch queue, IPC serialize) charged the caller for it.
+
+After: publish schedules the fanout via `queueMicrotask`. Caller returns
+immediately after the DB insert; listeners drain on the next microtask
+tick (still same event loop turn, before I/O). Ordering between two
+`publish()` calls is preserved (microtasks are FIFO). Pause check stays
+synchronous — a listener joining mid-microtask must still see the same
+"paused" state the writer saw.
+
+Zero visible change; removes a latent stacking hazard as more subscribers
+land.
+
+### 2. `secret-redaction` prefilter
+
+Before: `redactSecrets` ran 8 regex `.replace()` calls on every string —
+including plain-prose agent turn bodies. At 100 tool_result turns per
+minute that's 800 wasted regex passes.
+
+After: one anchored regex tests for any pattern-trigger substring
+(`=`/`:`/space/`AKIA`/`sk-`/`sk_`/`BEGIN`/`eyJ`/`ghp_`/`glpat`); if none
+present, skip the 8 passes entirely. Golden-input parity preserved (17
+existing fixtures still pass); +2 tests: prefilter fast path + regression
+guard that every real secret still redacts (catches a future prefilter
+tightening that silently drops a pattern).
+
+### 3. `deepRedactStrings` per-tool allowlist (`redactToolInput`)
+
+Before: `tool_call` events ran `deepRedactStrings` over the ENTIRE
+`tool_input` tree on every turn — including `Read`'s numeric `offset`/`limit`
+and `file_path` (path strings never contain the secrets we scan for).
+
+After: `TOOL_INPUT_SCAN_FIELDS` maps `toolName → Set<field>` of which
+top-level fields need scanning. `Read`/`Glob` scan nothing (all metadata);
+`Bash` scans only `command`; `Edit` scans `old_string`+`new_string`;
+`WebFetch` scans `prompt`. Unknown tools fall back to full-tree scan (safe
+default). New `redactToolInput(toolName, input)` helper. +9 tests.
+
+### 4. Timeline `maxZoom` + `timeStart/timeEnd` sorted-array fast path
+
+- `timeStart`/`timeEnd`: `events` is already sorted by `eventCompare`, so
+  min = `events[0].timestamp`, max = `events[last].timestamp`. Only markers
+  with `atTimestamp` can point outside that window — scan only those
+  (typically <20 rows) to widen the bounds. On a 131k-event project this
+  drops from O(N) with a per-event `displayTs()` call to O(N) with just
+  an `agentType` check + O(markers) work.
+- `maxZoom`: inline `displayTs` (99%+ of events are non-marker so the
+  function call was pure overhead), and short-circuit once the running
+  tightest gap crosses the `MAX_TRACK_W` ceiling — no denser gap can
+  raise the zoom ceiling.
+
+### Design doc: `docs/DESIGN-two-tier-chain.md` (v0.13 preview)
+
+831-line doc for the two-tier evidence chain landing in v0.13. Recommends
+a separate `events_logged` table (over a `chained BOOLEAN` column) so the
+append-only triggers on `events` stay inviolate. Includes tier
+classification for every real `(agent_type, subtype)` in the codebase, the
+`_causes` cross-tier rule (allowed — soft pointer), verifier / export
+bundle / renderer changes, migration story, and open questions
+(plugin-contributed default tier, logged-tier retention, webhook forwarding).
+Not implementation — decision point before v0.13.
+
+## v0.12.1 — 2026-08-18
+
+**Three real perf wins that were hiding in the write path.**
+
+A performance audit (see `docs/PERF_AUDIT_v0.12.md` if it exists — otherwise
+the branch history) surfaced three concrete defects. All three ship together.
+
+### 1. `signEvent` re-reads the operator's key file on every insert (**biggest**)
+
+Every `insertEvent` was doing 2× `fs.existsSync` + 2× `fs.readFileSync` + JWK
+parse of both key halves — purely to re-load the operator's key file **that
+we ourselves had just written**. At a 200 evt/s mitmproxy burst that was
+~800 syscalls/s + 200 `crypto.createPrivateKey` calls, dominating the sign
+latency at ~50 µs when the raw Ed25519 sign itself is ~15 µs.
+
+Fix: per-operator `KeyObject` cache in `signing.ts`. Cache hit path is bare
+Ed25519. `generateOperatorKeyPair` invalidates any prior negative-cached
+entry for the same id. New `resetSigningCache(operatorId?)` export for
+callers that rotate keys or wipe the keys dir. **7 new tests** cover the
+positive path, negative caching, cache invalidation, and the
+generate-after-negative-cache case.
+
+Expected impact: **sign latency ~50 µs → ~15 µs**; reclaims ~7 ms/s of
+main-thread time at 200 evt/s and drops ~400 syscalls/s.
+
+### 2. `redact()` re-compiled every denylist regex per token
+
+`matchesAny` compiled `new RegExp(p.slice(1, -1))` inside its inner loop.
+With a 20-entry regex denylist × 100 tokens per shell command_end stdout
+(the size a real `redlog-run` output easily reaches) that was **2000 fresh
+`RegExp` constructions per event**. `effectiveRules` also allocated two
+arrays + two `Set`s per `getRules()` call.
+
+Fix: cached `CachedRules` in `redaction.ts` holds precompiled patterns for
+both allowlist and denylist. Cache invalidates on `configureRedaction` /
+`registerRedactionRules` / `unregisterRedactionRules`. Callers that pass a
+NEW rules object (api-server merges `lootValues` into the denylist per
+shell event) compile those local lists **once** at redact-time, not per
+token. **6 new tests** cover literal/regex denylist, allowlist precedence,
+cache invalidation on all three write paths, and the per-call rules-object
+path api-server actually uses.
+
+### 3. Timeline `recentEvents` walked the whole event array to look at the last 50
+
+`events.filter(...).reverse().slice(0, 50)` scans N events, filters M into
+a new array, reverses that whole M-element array, then throws away all but
+the last 50. On a 131k-event project that paid O(N) every render just for
+the tail. Because `view.left`/`view.width` are in the memo's dep list,
+this ran on every scroll frame while the operator dragged the timeline.
+
+Fix: walk from the tail and short-circuit at 50 matches. The
+scrolled-window path also short-circuits at `d < from` (events are
+time-sorted, so nothing older will be in-window). Empty-window fallback
+preserved.
+
+Expected impact: **~500 µs → sub-µs** per render at 131k events.
+
+### Deferred to later (mentioned in the audit, not urgent)
+
+- `mitmproxy-addon.py` thread-per-request → single queue + keep-alive
+  HTTPConnection. Real audit trap (slow RedLog stalls the proxy) but
+  needs Python addon work; separate PR.
+- Timeline `maxZoom` / `timeStart` full-array scans → maintain running
+  min during binary-insert; medium value.
+- `deepRedactStrings` whole-tree walk on every tool_call → per-tool
+  field allowlist; medium value.
+- **Two-tier chain** (`chained` vs `logged` events) — a design change,
+  not a defect fix. Worth a design doc for v0.13 or v1.0. Current write
+  path handles our real workload (200 evt/s peak) comfortably; the tier
+  system is about audit-story honesty (a DNS storm isn't sworn to; the
+  shell command that fetched it is) more than throughput.
+
+## v0.12.0 — 2026-08-18
+
+**Alerts stop being two hand-wired monitors and start being a subsystem.**
+
+Before: `ip-monitor.ts` and `scope-monitor.ts` each carried their own classify()
++ their own emit path + their own state. Adding a new alert kind meant copying
+the shape and wiring a third monitor into main by hand. The second time that
+happened it stopped scaling.
+
+Now: **producers → bus → policies → surfaces**. Producers observe
+(`IPSignalProducer` polls the address; the shell/http/dns/agent-tool lanes hand
+a `TargetHitSignal` to the bus). Policies classify (`IPPolicy` maps to five
+verdict values, `ScopePolicy` to a four-rung distance ladder). Surfaces do side
+effects (`ChainEmitter` writes the audit event, `BadgeSurface` drives the
+StatusBar, `WebhookForwarder` posts to deconfliction, `AdherenceCounter` tallies
+the "247 targets, 244 in scope" report, `ViolationLog` feeds the ScopePanel).
+
+Two new alert kinds land at the same time, because the subsystem finally makes
+them cheap: `CombinedPolicy` escalates when a non-clean IP verdict and a
+non-clean Scope verdict co-occur within 30s (the two ways an engagement can go
+sideways at the same moment); `BurstPolicy` collapses N-in-T scope hits of the
+same distance into a single burst signal (a 200-request scan doesn't turn the
+badge into a strobe light).
+
+The vocabulary is imported cleanly from ea's `ALERT-ROLES.md` — every verdict
+declares an **authority tier** (`fact` / `inferred` / `unknown`) so a whitelist
+miss (fact) never gets silenced by a preference toggle that's supposed to
+suppress inferences, and the five-verdict IP matrix means the A-9 false-green
+bug (blacklist configured, no whitelist, IP misses both → the old code
+mislabelled that as `safe`) is no longer reachable.
+
+* `src/core/alert/` — the whole subsystem in five files (`signal`, `policy`,
+  `policies`, `surface`, `bus`) plus `index` — public exports only from `index`
+* `src/main/services/producers/ip-signal-producer.ts` — polls external + local
+  address, holds the 3-in-a-row confirmation window, dispatches every tick
+* `scopeSignalFor(agentType, data)` in `api-server.ts` routes every incoming
+  event to a `TargetHitSignal` when it carries a checkable host — shell
+  `command_start` (source=shell), scanner `http_request_start` (source=http),
+  dns `dns_query` (source=dns). Everything else no-ops.
+* `configureAgentTailer({ scopeDispatch })` hook — the tailer extracts a
+  target from every `agent.tool_call`'s `tool_input` (URL parsed for
+  hostname, shell-shaped strings through the target-extractor, absolute
+  paths + free text skipped) and hands it to the alert bus with
+  source=agent_tool. This closes the last silent lane: a Claude session
+  hitting an out-of-scope host now shows up in the scope report
+* `src/main/services/alert-runtime.ts` — one convenience wrapper that bundles
+  bus + policies + surfaces + producer; main sees `alertRuntime.configure(cfg)`
+  and doesn't touch the internals
+* 42 unit tests locking the five-verdict matrix, D1-D4 ladder, combined
+  correlation window, burst cooldown, bus dispatch + error isolation +
+  derived-policy recursion cap
+* **Deleted**: `src/core/ip-monitor.ts`, `src/core/scope-monitor.ts`,
+  `test/ip-monitor.test.ts`, `test/ip-monitor-dns.test.ts`,
+  `test/scope-monitor.test.ts`
+
+**Semantic changes** (visible in the chain):
+* `system.ip_transition` events are gone — `system.ip_verdict` replaces them,
+  written once per real verdict change with `authority` + `severity` + verdict
+  value + modifiers (`settling`, `stale`, `list_conflict`) as first-class
+  fields
+* `system.scope_violation` gains `distance` (`in_scope` / `excluded` /
+  `adjacent_subnet` / `adjacent_domain` / `unrelated`) and `authority` — old
+  events had `reason: 'excluded_target' | 'out_of_scope'` only
+* `system.combined_alert` and `system.burst_alert` are new event subtypes
+
+**Behaviour changes** (visible in the UI):
+* The StatusBar's tricolor badge (green/amber/red) maps from five verdicts:
+  `safe`/`presumed_safe` → green, `off_profile`/`exposed` → red, `unknown` →
+  amber. Same shape you're used to; the underlying vocabulary is richer
+* Chain integrity is not verified across this refactor — v0.12.0 pre-release,
+  the user waived the invariant. Nothing in production yet.
+
 ## v0.11.7 — 2026-08-10
 
 **The Timeline stops recomputing everything sixty times a second.**

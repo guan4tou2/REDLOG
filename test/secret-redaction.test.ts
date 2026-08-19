@@ -76,6 +76,46 @@ describe('redactSecrets — TS unit tests', () => {
     expect(redactSecrets(undefined)).toBe('')
     expect(redactSecrets(42)).toBe('42')
   })
+
+  // v0.12.2: prefilter fast path — strings that can't possibly contain any
+  // of the 8 pattern-trigger markers must pass through unchanged and skip
+  // the eight replace() calls. These fixtures document what the prefilter
+  // considers "definitely safe": no keyword from PATTERNS[0]'s name group,
+  // and no `bearer`/`AKIA`/`sk-`/`sk_`/`BEGIN`/`eyJ`/`ghp_`/`glpat`
+  // substring. If a new PATTERN entry lands whose trigger isn't in the
+  // union, this test will still pass — but the real body will silently
+  // stop redacting it. Keep in sync with PATTERNS.
+  it('prefilter: token-free prose passes through untouched', () => {
+    for (const s of [
+      'nothingtoseehere',
+      'plainprosewithoutseparators',
+      'CamelCaseWordsOnly',
+      'anIdWith1234numbers',
+      '/some/path/to/file.txt',
+      'error:unexpected',  // colon alone no longer triggers the prefilter — still exercises the through-path
+      'the quick brown fox jumps over the lazy dog',  // regression: spaces alone must not trigger prefilter
+      'agent thinking: I should investigate the request handler and then decide next steps'
+    ]) {
+      expect(redactSecrets(s)).toBe(s)
+    }
+  })
+
+  it('prefilter: every real secret still redacts (regression guard)', () => {
+    // Explicit: this is what the prefilter MUST let through to the full
+    // pass. If someone tightens the prefilter and breaks any of these,
+    // secrets stop being redacted — this test catches the regression
+    // before it ships.
+    expect(redactSecrets('AKIAIOSFODNN7EXAMPLE')).toContain('[AWS_KEY_REDACTED]')
+    expect(redactSecrets('sk-proj-NOT_A_REAL_KEY_ZZZZZZZZZZZZZZZZ')).toContain('[API_KEY_REDACTED]')
+    expect(redactSecrets('ghp_1234567890abcdefghij1234567890abcdef')).toContain('[GITHUB_TOKEN_REDACTED]')
+    expect(redactSecrets('glpat-abcdefghij1234567890')).toContain('[GITLAB_TOKEN_REDACTED]')
+    expect(redactSecrets('eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NX0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'))
+      .toContain('[JWT_REDACTED]')
+    expect(redactSecrets('-----BEGIN RSA PRIVATE KEY-----\nabc\n-----END RSA PRIVATE KEY-----'))
+      .toContain('[PRIVATE_KEY_REDACTED]')
+    expect(redactSecrets('password=hunter2xxx')).toContain('[REDACTED]')
+    expect(redactSecrets('Bearer abc.def-ghi_jkl123')).toContain('[REDACTED]')
+  })
 })
 
 describe('outputIfPathHiddenByCommand', () => {
