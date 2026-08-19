@@ -295,6 +295,38 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
+  const { t } = useI18n()
+
+  // Right-click menu. xterm keeps its selection in its own model rather than the
+  // DOM, so Chromium's context-menu event fires with an empty selection here and
+  // the main-process handler deliberately shows nothing — this pane asks for its
+  // own menu instead. Same four actions the ⌘/Ctrl keybindings already expose,
+  // now discoverable for operators who reach for the mouse.
+  const showContextMenu = useCallback(async (e: React.MouseEvent): Promise<void> => {
+    e.preventDefault()
+    const term = termRef.current
+    if (!term) return
+    const hasSelection = term.hasSelection()
+    const picked = await window.redlog.ui.contextMenu([
+      { id: 'copy', label: t('terminal.ctxCopy'), enabled: hasSelection },
+      { id: 'paste', label: t('terminal.ctxPaste') },
+      { type: 'separator' },
+      { id: 'selectAll', label: t('terminal.ctxSelectAll') },
+      { id: 'clear', label: t('terminal.ctxClear') }
+    ])
+    if (picked === 'copy') {
+      if (hasSelection) navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+    } else if (picked === 'paste') {
+      navigator.clipboard.readText().then((txt) => window.redlog.terminal.write(id, txt)).catch(() => {})
+    } else if (picked === 'selectAll') {
+      term.selectAll()
+    } else if (picked === 'clear') {
+      // Drops the scrollback and keeps the current prompt line, matching
+      // Terminal.app's ⌘K rather than sending `clear` down the pty (which would
+      // land in the log as a command the operator never ran).
+      term.clear()
+    }
+  }, [id, t])
 
   useEffect(() => {
     const el = containerRef.current
@@ -438,5 +470,5 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
     }
   }, [active])
 
-  return <div ref={containerRef} className="w-full h-full" />
+  return <div ref={containerRef} className="w-full h-full" onContextMenu={showContextMenu} />
 }

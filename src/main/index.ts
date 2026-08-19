@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, globalShortcut, dialog, screen, session, shell, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol } from 'electron'
 import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
@@ -54,6 +54,14 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { registerContextMenuIpc } from './context-menu'
+
+// macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
+// to stay there. Windows and Linux don't — and RedLog draws its own title bar
+// (titleBarStyle 'hidden'), so Electron's default File/Edit/View menu bar would
+// sit inside the client area under it. Dropping it also skips building that
+// menu at startup (Electron performance checklist item 8).
+if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
 
 // Windows text rendering: DirectComposition improves font clarity on low-DPI
 // screens; DirectWrite uses the native font rasterizer for crisper CJK glyphs.
@@ -854,6 +862,10 @@ app.whenReady().then(() => {
   })
 
   tray = createTray(mainWindow, null, toggleRecording, triggerQuickMark)
+
+  // Renderer-requested native menus (the terminal's right-click — xterm owns
+  // its own selection, so Chromium's context-menu event sees nothing there).
+  registerContextMenuIpc(ipcMain)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())

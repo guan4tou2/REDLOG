@@ -95,6 +95,11 @@ interface RedLogAPI {
   app: {
     checkForUpdates: () => Promise<void>
   }
+  ui: {
+    contextMenu: (
+      items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>
+    ) => Promise<string | null>
+  }
   project: {
     list: () => Promise<ProjectMeta[]>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>

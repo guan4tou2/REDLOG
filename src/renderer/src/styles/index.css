@@ -38,6 +38,33 @@ body {
   height: calc(100vh / var(--app-zoom, 1.1));
 }
 
+/* Desktop chrome doesn't select. Dragging across the sidebar, the status bar or
+ * a tab strip and watching the labels highlight is one of the loudest tells
+ * that an Electron app is a web page in a window. Same split VS Code uses:
+ * `none` on the shell, text re-enabled on the surfaces that hold content —
+ * the view root carries `select-text` (App.tsx), so an operator can still
+ * select and copy an IP, a hash or a command out of any view. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* Controls opt back out. A direct rule beats the value inherited from the
+ * `select-text` container, so buttons and tabs inside a content view stay
+ * unselectable without every call site needing `select-none`. */
+button,
+[role='button'],
+[role='tab'],
+select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
