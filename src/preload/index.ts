@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('redlog', {
     // both to show the two-tier row count. Undefined = 'chained' (audit
     // count) preserved for legacy callers.
     getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
+    getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
