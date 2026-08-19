@@ -3,6 +3,39 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.14.3 — 2026-08-19
+
+**§9.5 chain-health tier split in CaptureHealthCard.** Closes the last
+v0.14 spec deviation. The Dashboard's capture card grows a small footer
+showing the chained · logged tier split plus the "last fed" age of the
+newest logged-tier row, so operators can spot at a glance whether
+mitmproxy / DNS / other logged-tier producers are actually feeding
+data vs silently idle.
+
+- New `getLatestLoggedTs()` helper in `db/events.ts` — single
+  `SELECT MAX(timestamp) FROM events_logged`, no row bodies pulled.
+- New IPC `events:getLatestLoggedTs` + preload binding.
+- CaptureHealthCard gains an optional `tierSplit` prop. Footer renders
+  only when the logged tier has ≥1 row — pre-v0.13 projects and
+  empty engagements keep the exact pre-v0.14.3 look. Uses the same 1s
+  `nowTick` as source-row ages, so freshness ticks smoothly. Age
+  colour scales green <60s → amber <5min → zinc otherwise (mirrors
+  source-row age colour ladder).
+- +1 unit test in `test/db/logged-insert.test.ts` — asserts null on
+  empty, tracks newest write, ignores chained-tier writes.
+
+Bug fixes that landed on main between v0.14.2 and v0.14.3 (all authored
+elsewhere, surfaced by PR #15's CI run):
+- `db/events.ts queryEvents` now sorts by `(timestamp DESC, rowid DESC)`
+  — same-millisecond inserts previously came back in indeterminate
+  order, flaking `test/pause-gate.test.ts` on faster CI runners.
+- `test/api-server.test.ts` now calls `onApiProjectOpen()` after
+  configuring — since the "early API server start" refactor the server
+  boots before a project is open and returns 503 until the gate flips.
+- `test/mcp-tools.test.ts` count bumped 18 → 19 (new
+  `redlog_session_register` tool from the session-registration-gate
+  work).
+
 ## v0.14.2 — 2026-08-19
 
 **§9.4 StatusBar tier counter opens the auditor view.** The chained ·

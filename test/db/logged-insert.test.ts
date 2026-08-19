@@ -157,4 +157,24 @@ describeDB('insertEvent — two-tier dispatch (v0.13.0)', () => {
     expect(() => events.insertEvent('dns', { subtype: 'dns_query', query_name: 'x' }, {}))
       .toThrow(/operatorId is required/)
   })
+
+  // v0.14.3 §9.5: powers the CaptureHealthCard "last fed" freshness readout.
+  it('getLatestLoggedTs returns null on empty logged tier, tracks the newest write', () => {
+    expect(events.getLatestLoggedTs()).toBeNull()
+
+    const t0 = Date.now()
+    events.insertEvent('dns', { subtype: 'dns_query', query_name: 'a.test' }, { operatorId })
+    const t1 = events.getLatestLoggedTs()
+    expect(t1).not.toBeNull()
+    expect(t1!).toBeGreaterThanOrEqual(t0)
+
+    events.insertEvent('dns', { subtype: 'dns_query', query_name: 'b.test' }, { operatorId })
+    const t2 = events.getLatestLoggedTs()
+    expect(t2!).toBeGreaterThanOrEqual(t1!)
+
+    // Chained inserts must NOT affect the logged-tier freshness reading —
+    // that's the whole point of a per-tier "last fed" number.
+    events.insertEvent('shell', { subtype: 'command_start', command: 'noise' }, { operatorId })
+    expect(events.getLatestLoggedTs()).toBe(t2)
+  })
 })
