@@ -821,6 +821,8 @@
   "transcript.loading": "載入中…",
   "transcript.empty": "尚未捕獲任何內容，或全部被篩選掉了。",
   "transcript.openInTimeline": "在時間軸上顯示",
+  "transcript.expand": "顯示輸出",
+  "transcript.collapse": "隱藏輸出",
   "transcript.showAll": "顯示全部 {{size}}",
   "transcript.kind.shell": "shell",
   "transcript.kind.agent-turn": "代理",

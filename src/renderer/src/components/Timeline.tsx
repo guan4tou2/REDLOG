@@ -3613,7 +3613,7 @@ function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Elem
           bytes={typeof data.stdout_bytes === 'number' ? data.stdout_bytes : undefined}
           truncated={data.stdout_truncated === true}
           accent="emerald"
-          startOpen
+          startOpen={false}
         />
       )}
       {hasStderr && (
@@ -3623,7 +3623,7 @@ function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Elem
           bytes={typeof data.stderr_bytes === 'number' ? data.stderr_bytes : undefined}
           truncated={data.stderr_truncated === true}
           accent="amber"
-          startOpen={((data.stderr as string).length ?? 0) > 0}
+          startOpen={false}
         />
       )}
       {hasLegacyOutput && (
@@ -3631,7 +3631,7 @@ function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Elem
           label={t('timeline.detail.stdoutMixed')}
           content={data.output as string}
           accent="zinc"
-          startOpen
+          startOpen={false}
         />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. Before
@@ -3739,7 +3739,7 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
           bytes={bodyBytes}
           truncated={bodyTruncated}
           accent={subtype === 'user_message' ? 'emerald' : isThinking ? 'zinc' : 'amber'}
-          startOpen
+          startOpen={subtype === 'user_message'}
         />
       )}
       {isToolCall && (
@@ -3747,7 +3747,7 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
           label={t('timeline.detail.agentToolInput', { name: String(data.tool_name ?? 'tool') })}
           content={toolInputStr}
           accent="zinc"
-          startOpen
+          startOpen={false}
         />
       )}
       {isToolResult && outputText.length > 0 && (
@@ -3757,7 +3757,7 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
           bytes={outputBytes}
           truncated={data.truncated === true}
           accent="emerald"
-          startOpen
+          startOpen={false}
         />
       )}
       <MetadataGrid
