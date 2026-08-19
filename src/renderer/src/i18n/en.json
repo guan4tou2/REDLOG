@@ -3,6 +3,7 @@
   "app.subtitle": "Red Team Operation Log",
   "app.mark": "+ Mark",
   "app.copyVersionHint": "Double-click to select for copying",
+  "app.closeProject": "Back to project list",
   "project.new": "New Project",
   "project.create": "Create",
   "project.recent": "Recent Projects",

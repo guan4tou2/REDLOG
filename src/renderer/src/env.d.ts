@@ -101,6 +101,7 @@ interface RedLogAPI {
     open: (id: string) => Promise<ProjectMeta | null>
     delete: (id: string) => Promise<boolean>
     active: () => Promise<{ id: string; name: string; createdAt: number } | null>
+    close: () => Promise<boolean>
   }
   ip: {
     getStatus: () => Promise<IPStatus>

@@ -26,6 +26,7 @@ let VERSION = 'dev'
 try { VERSION = require('../package.json').version } catch { /* dev mode outside repo */ }
 
 function readToken() {
+  if (process.env.REDLOG_TOKEN) return process.env.REDLOG_TOKEN
   try { return fs.readFileSync(TOKEN_PATH, 'utf-8').trim() } catch { return null }
 }
 function readPort() {

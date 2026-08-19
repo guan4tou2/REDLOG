@@ -12,7 +12,8 @@ contextBridge.exposeInMainWorld('redlog', {
     open: (id: string) => ipcRenderer.invoke('project:open', id),
     delete: (id: string) => ipcRenderer.invoke('project:delete', id),
     rename: (id: string, name: string) => ipcRenderer.invoke('project:rename', id, name),
-    active: () => ipcRenderer.invoke('project:active')
+    active: () => ipcRenderer.invoke('project:active'),
+    close: () => ipcRenderer.invoke('project:close')
   },
   ip: {
     getStatus: () => ipcRenderer.invoke('ip:getStatus'),
