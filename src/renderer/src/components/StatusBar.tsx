@@ -191,21 +191,32 @@ export default function StatusBar(): JSX.Element {
          *  projects still show the single-number shape they always had.
          *  Title tooltip explains the two-tier story for auditors
          *  hovering to figure out what the second number is.
+         *
+         *  v0.14 §9.4: when the logged tier is non-zero, the counter is
+         *  clickable and dispatches `redlog:auditor-view:toggle` — the
+         *  Timeline picks it up and flips its auditor-view chip. When
+         *  the logged tier is empty there is nothing to hide, so the
+         *  counter stays a plain span. If the user is not on the
+         *  Timeline the event is a no-op; the tooltip warns of that so
+         *  a click from Dashboard isn't a silent surprise.
          */}
-        <span
-          className="text-zinc-600 tabular-nums"
-          title={loggedCount > 0
-            ? `${eventCount.toLocaleString()} chained (audit chain) · ${loggedCount.toLocaleString()} logged (supporting evidence)`
-            : undefined}
-        >
-          {t('statusBar.events', { count: eventCount })}
-          {loggedCount > 0 && (
-            <>
-              <span className="text-zinc-800 mx-1">·</span>
-              <span className="text-zinc-700">{loggedCount.toLocaleString()}</span>
-            </>
-          )}
-        </span>
+        {loggedCount > 0 ? (
+          <button
+            type="button"
+            data-testid="statusbar-tier-count"
+            onClick={() => window.dispatchEvent(new CustomEvent('redlog:auditor-view:toggle'))}
+            className="text-zinc-600 tabular-nums cursor-pointer hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 rounded"
+            title={`${eventCount.toLocaleString()} chained (audit chain) · ${loggedCount.toLocaleString()} logged (supporting evidence). Click to toggle the Timeline's auditor view (hides logged rows). Timeline must be open for the click to take effect.`}
+          >
+            {t('statusBar.events', { count: eventCount })}
+            <span className="text-zinc-800 mx-1">·</span>
+            <span className="text-zinc-700">{loggedCount.toLocaleString()}</span>
+          </button>
+        ) : (
+          <span className="text-zinc-600 tabular-nums">
+            {t('statusBar.events', { count: eventCount })}
+          </span>
+        )}
         <button
           onClick={async () => {
             const ts = new Date().toLocaleTimeString()
