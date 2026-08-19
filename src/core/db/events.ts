@@ -635,14 +635,20 @@ export function queryEvents(opts: {
   // logged rows and typed on chained rows). Both `idx_events_ts` and
   // `idx_events_logged_ts` deliver rows already-ordered, so the outer
   // sort is a k-way merge over two sorted inputs.
+  // `_row` (SQLite rowid) is a stable insertion-order tie-breaker for rows
+  // sharing the same wall-clock `timestamp`. Without it, two inserts landing
+  // in the same millisecond come back in indeterminate order — a real flake
+  // hit by test/pause-gate.test.ts on faster CI runners.
   const chainedSelect = `
-    SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+    SELECT rowid AS _row,
+           id, timestamp, engagement_id, session_id, operator_id, agent_type,
            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
            monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
     FROM events ${where}
   `
   const loggedSelect = `
-    SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+    SELECT rowid AS _row,
+           id, timestamp, engagement_id, session_id, operator_id, agent_type,
            hostname, source_ip, target_id, data,
            NULL AS hash, NULL AS prev_hash, created_at,
            NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
@@ -653,14 +659,14 @@ export function queryEvents(opts: {
   let sql: string
   let bind: unknown[]
   if (tier === 'chained') {
-    sql = `${chainedSelect} ORDER BY timestamp DESC LIMIT ?`
+    sql = `${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
     bind = [...params, limit]
   } else if (tier === 'logged') {
-    sql = `${loggedSelect} ORDER BY timestamp DESC LIMIT ?`
+    sql = `${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
     bind = [...params, limit]
   } else {
     sql = `SELECT * FROM (${chainedSelect} UNION ALL ${loggedSelect})
-           ORDER BY timestamp DESC LIMIT ?`
+           ORDER BY timestamp DESC, _row DESC LIMIT ?`
     bind = [...params, ...params, limit]
   }
 
