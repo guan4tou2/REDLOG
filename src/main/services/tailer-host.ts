@@ -47,6 +47,7 @@ import * as os from 'os'
 import * as crypto from 'crypto'
 import chokidar, { FSWatcher } from 'chokidar'
 import { insertEvent } from '../../core/db/events'
+import { extractTarget } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError } from '../../core/capture-health'
@@ -210,6 +211,17 @@ export interface TailerHostConfig {
   /** Legacy v0.6.59 whitelist. When non-empty, ONLY these cwds are
    *  tailed. */
   watchPaths?: string[]
+  /** v0.12.0: called after every `agent.tool_call` event insert with the
+   *  extracted target host (if any). Feeds the alert subsystem's Scope
+   *  policy so agent-driven scope violations register the same way shell
+   *  and http ones do. Optional — if unset, agent tool calls skip the
+   *  scope check (the event still lands in the chain). */
+  scopeDispatch?: (input: {
+    target: string
+    source: 'agent_tool'
+    action: string
+    sourceEventId: string | null
+  }) => void
 }
 
 // ─── Session state ──────────────────────────────────────────────────────────
@@ -355,6 +367,59 @@ export function deepRedactStrings(value: unknown, seen: WeakSet<object> = new We
   return out
 }
 
+// v0.12.2: per-tool "which top-level fields need scanning" allowlist. Before
+// this, tool_call events ran deepRedactStrings over the ENTIRE tool_input
+// tree — including `Read`'s numeric `offset`/`limit` and `file_path` (path
+// strings never contain the secrets redactSecrets matches). The map below
+// covers the Claude Code + OpenCode + Codex tool names we ingest today; a
+// tool not in the map falls back to scanning EVERY string field (safe
+// default). This is the "known-safe fields" shape from the audit — the tree
+// walk still happens for arrays / nested objects on the listed fields, so a
+// `content` field that's an object gets recursed as before.
+const TOOL_INPUT_SCAN_FIELDS: Record<string, Set<string>> = {
+  // Claude Code tools
+  Bash: new Set(['command']),
+  Read: new Set([]),                // file_path + offset + limit — all metadata
+  Write: new Set(['content']),
+  Edit: new Set(['old_string', 'new_string']),
+  Grep: new Set(['pattern']),
+  Glob: new Set([]),                // pattern is a glob, not free-text
+  WebFetch: new Set(['prompt']),    // URL is not user-secret; prompt is
+  WebSearch: new Set(['query']),
+  Task: new Set(['prompt', 'description']),
+  // OpenCode / Codex tools (best-effort; unknown tools scan-all so we're
+  // fine here — this list is an optimisation, not a correctness gate)
+  bash: new Set(['command']),
+  read: new Set([]),
+  write: new Set(['content']),
+  edit: new Set(['old_string', 'new_string'])
+}
+
+/** Redact tool_input using the per-tool allowlist when known; fall back to
+ *  full-tree scan for unknown tools. Called from the tool_call emit path. */
+export function redactToolInput(
+  toolName: string | undefined,
+  input: Record<string, unknown>
+): Record<string, unknown> {
+  const fields = toolName ? TOOL_INPUT_SCAN_FIELDS[toolName] : undefined
+  if (fields === undefined) {
+    // Unknown tool — safe default is full-tree scan.
+    return deepRedactStrings(input) as Record<string, unknown>
+  }
+  if (fields.size === 0) {
+    // Known-clean tool (Read, Glob): every field is metadata. Return
+    // shallow copy so downstream mutations don't touch the adapter's
+    // parsed turn.
+    return { ...input }
+  }
+  // Scan only the listed fields; carry everything else through.
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(input)) {
+    out[k] = fields.has(k) ? deepRedactStrings(v) : v
+  }
+  return out
+}
+
 function defaultPickCommandForCache(_toolName: string | undefined, input: Record<string, unknown>): string | null {
   const priority = ['command', 'file_path', 'path', 'url', 'query']
   for (const k of priority) {
@@ -362,6 +427,28 @@ function defaultPickCommandForCache(_toolName: string | undefined, input: Record
     if (typeof v === 'string' && v) return v
   }
   return null
+}
+
+/** v0.12.0: pull a host out of a tool_input's picked string. URLs get their
+ *  hostname; anything shell-command-shaped goes through the same target
+ *  extractor the shell lane uses (`curl example.com`, `nmap 10.0.0.5`, …).
+ *  Returns null when nothing plausibly host-shaped shows up — file paths
+ *  and free-text prompts should NOT trigger a scope check. */
+function extractTargetFromToolInput(raw: string): string | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  // A picked `url` field is already a URL; parse rather than shell-lex it.
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const u = new URL(trimmed)
+      return u.hostname || null
+    } catch { return null }
+  }
+  // File paths shouldn't route through the shell extractor either — an
+  // absolute path just happens to start with a slash that extractTarget's
+  // heuristics don't want.
+  if (trimmed.startsWith('/') || trimmed.startsWith('~')) return null
+  return extractTarget(trimmed)
 }
 
 // ─── Emit ───────────────────────────────────────────────────────────────────
@@ -461,7 +548,11 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     if (t.toolName) data.tool_name = t.toolName
     if (t.toolUseId) data.tool_use_id = t.toolUseId
     if (t.toolInput) {
-      const redInput = deepRedactStrings(t.toolInput) as Record<string, unknown>
+      // v0.12.2: per-tool scan allowlist skips the full-tree walk for
+      // tools whose input is all metadata (Read, Glob) or has a small
+      // known-freetext field set (Bash → command only). Unknown tools
+      // fall back to the full-tree walk.
+      const redInput = redactToolInput(t.toolName, t.toolInput)
       const inputJson = JSON.stringify(redInput)
       if (Buffer.byteLength(inputJson, 'utf-8') > MAX_FULL_BYTES) {
         data.tool_input_truncated = true
@@ -521,6 +612,25 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       s.redlogIdByUuid.set(t.uuid, ev.id)
       s.turnsEmitted++
       eventBus.publish(ev)
+      // v0.12.0: hand tool_call events to the alert subsystem so agent-
+      // driven activity registers in the Scope report the same way shell
+      // and http do. Extraction uses the same picker as the sensitive-
+      // path cache — command/url/file_path/path/query, first hit wins.
+      if (subtype === 'tool_call' && cfg.scopeDispatch && t.toolInput) {
+        const picker = s.adapter.pickCommandForCache ?? defaultPickCommandForCache
+        const raw = picker(t.toolName, t.toolInput)
+        if (raw) {
+          const target = extractTargetFromToolInput(raw)
+          if (target) {
+            cfg.scopeDispatch({
+              target,
+              source: 'agent_tool',
+              action: `${t.toolName ?? 'tool'} ${raw}`.slice(0, 200),
+              sourceEventId: ev.id
+            })
+          }
+        }
+      }
       const waiting = s.pendingByParentUuid.get(t.uuid)
       if (waiting) {
         s.pendingByParentUuid.delete(t.uuid)

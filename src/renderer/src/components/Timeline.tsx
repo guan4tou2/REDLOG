@@ -1269,19 +1269,21 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       return { timeStart: now - 3600000, timeEnd: now, ticks: [] as number[] }
     }
     // v0.9.4 P0-3: the domain comes from `displayTs`, not `timestamp`.
-    // `events` is sorted by wall-clock, but a marker carrying an
-    // `atTimestamp` override renders somewhere else entirely — and when the
-    // operator dropped one outside the current event range (right-click on
-    // the padded edge of the track), first/last bounds pushed its `toX()`
-    // below 0 or past TRACK_W and the dot silently vanished. One O(n) scan,
-    // same order as the `bins` / `laneEvents` memos that already re-run on
-    // every event change.
-    let first = displayTs(events[0])
-    let last = first
+    // v0.12.2: `events` is sorted by `eventCompare` (wall-clock first), so
+    // for non-marker rows `events[0].timestamp` is the min and last is the
+    // max — no full scan needed. Marker rows with `atTimestamp` can point
+    // outside that window; scan ONLY those to widen the bounds. On a 131k-
+    // event project with ~20 markers this is O(20) instead of O(131k).
+    let first = events[0].timestamp
+    let last = events[events.length - 1].timestamp
     for (const e of events) {
-      const d = displayTs(e)
-      if (d < first) first = d
-      if (d > last) last = d
+      // Fast path: only markers can have a displayTs different from timestamp.
+      if (e.agentType !== 'marker') continue
+      const at = e.data?.atTimestamp
+      if (typeof at === 'number' && at > 0) {
+        if (at < first) first = at
+        if (at > last) last = at
+      }
     }
     const pad = Math.max((last - first) * 0.05, 60000)
     const s = first - pad
@@ -1589,11 +1591,26 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // DOM, which is what makes this affordable.
   const maxZoom = useMemo(() => {
     let tightest = Infinity
-    for (const lane of LANES) {
+    // v0.12.2: inline displayTs and short-circuit once we hit the ceiling.
+    // 99%+ of events are non-marker (their displayTs === timestamp); the
+    // function call was O(N) overhead across every lane's gap loop. Once
+    // tightest × neededTrackW would exceed MAX_TRACK_W we've already found
+    // the ceiling — no tighter gap can raise it.
+    const CEILING_GAP = timeSpan > 0 ? (timeSpan * CLUSTER_PX) / MAX_TRACK_W : 0
+    outer: for (const lane of LANES) {
       const evs = laneEvents[lane]
       for (let i = 1; i < evs.length; i++) {
-        const d = displayTs(evs[i]) - displayTs(evs[i - 1])
-        if (d > 0 && d < tightest) tightest = d
+        const a = evs[i - 1]
+        const b = evs[i]
+        const at = (a.agentType === 'marker' && typeof a.data?.atTimestamp === 'number' && a.data.atTimestamp > 0)
+          ? a.data.atTimestamp as number : a.timestamp
+        const bt = (b.agentType === 'marker' && typeof b.data?.atTimestamp === 'number' && b.data.atTimestamp > 0)
+          ? b.data.atTimestamp as number : b.timestamp
+        const d = bt - at
+        if (d > 0 && d < tightest) {
+          tightest = d
+          if (CEILING_GAP > 0 && tightest <= CEILING_GAP) break outer
+        }
       }
     }
     if (!Number.isFinite(tightest) || timeSpan <= 0) return 6
@@ -1830,24 +1847,47 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // has not been measured yet, which is also what the operator wants while
   // following live.
   const recentEvents = useMemo(() => {
-    const visible = events.filter((e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)))
+    // v0.12.1: walk from the tail and short-circuit at 50 matches instead of
+    // filtering the whole array + reversing the full filtered result. On a
+    // 131k-event project the old shape was `events.filter(...).reverse().slice(0, 50)`
+    // which paid O(N) every render just to look at the last 50. Panning the
+    // timeline mutates `view.left`/`view.width` many times a second and both
+    // are in this memo's dep list, so this ran on every scroll frame.
     const widthPx = (view.width / 100) * TRACK_W
     const wholeTrackVisible = widthPx <= 0 || (view.left <= 0.01 && view.width >= 99.99)
-    if (wholeTrackVisible || timeSpan <= 0) return [...visible].reverse().slice(0, 50)
+    const isVisible = (e: typeof events[number]): boolean =>
+      !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
 
-    // Map the scrolled window back to wall-clock and take what falls inside.
+    if (wholeTrackVisible || timeSpan <= 0) {
+      const out: typeof events = []
+      for (let i = events.length - 1; i >= 0 && out.length < 50; i--) {
+        if (isVisible(events[i])) out.push(events[i])
+      }
+      return out
+    }
+
+    // Scrolled window path — collect the in-view visible events walking
+    // backward. An empty window would look broken; fall back to the nearest
+    // events at or before the window's end so the panel still says something
+    // about where you are.
     const from = fromX((view.left / 100) * TRACK_W)
     const to = fromX(((view.left + view.width) / 100) * TRACK_W)
-    const inView = visible.filter((e) => {
+    const inView: typeof events = []
+    for (let i = events.length - 1; i >= 0 && inView.length < 50; i--) {
+      const e = events[i]
+      if (!isVisible(e)) continue
       const d = displayTs(e)
-      return d >= from && d <= to
-    })
-    // An empty window would look broken; show the nearest events before it so
-    // the panel still says something about where you are.
-    if (inView.length === 0) {
-      return [...visible].filter((e) => displayTs(e) <= to).reverse().slice(0, 50)
+      if (d > to) continue
+      if (d < from) break  // events are time-sorted; nothing older will be in-window
+      inView.push(e)
     }
-    return inView.reverse().slice(0, 50)
+    if (inView.length > 0) return inView
+    const nearest: typeof events = []
+    for (let i = events.length - 1; i >= 0 && nearest.length < 50; i--) {
+      const e = events[i]
+      if (isVisible(e) && displayTs(e) <= to) nearest.push(e)
+    }
+    return nearest
   }, [events, hiddenLanes, pluginTypes, view.left, view.width, TRACK_W, timeStart, timeSpan])
 
   useEffect(() => {

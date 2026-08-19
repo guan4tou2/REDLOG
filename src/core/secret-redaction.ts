@@ -33,10 +33,30 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/glpat-[A-Za-z0-9_-]{20}/g, '[GITLAB_TOKEN_REDACTED]']
 ]
 
+// v0.12.2: cheap prefilter. redactSecrets ran 8 regex replace() calls on
+// every string, including agent turn bodies that are ~always plain prose.
+// Union all pattern-triggering substrings into one anchored regex; if that
+// misses, none of the 8 patterns can match either. Any character run that
+// doesn't contain at least one of these keyword/prefix markers is safe:
+//   - key/value keywords — the `(?<name>…)` group of PATTERNS[0]
+//     (api_key/api-key/apisecret/api_secret/token/password/passwd/secret/authorization)
+//   - `bearer` — for `Bearer <token>`
+//   - `AKIA` — AWS access key literal prefix
+//   - `sk-` / `sk_` — OpenAI/Stripe API key prefix
+//   - `BEGIN` — PEM private key envelope
+//   - `eyJ` — base64url `{"...` — every JWT's leading three bytes
+//   - `ghp_` / `glpat` — GitHub / GitLab PAT prefix
+// The union is one linear scan; 90%+ of tool_result bodies exit here.
+// (v0.12.2 originally included `[=: ]` in the union, but a literal space
+// matched every prose sentence and defeated the short-circuit; the fix is
+// to prefilter on the identifying keyword itself, not the separator.)
+const PREFILTER_RE = /api[_-]?key|api[_-]?secret|token|password|passwd|secret|authorization|bearer|AKIA|sk[-_]|BEGIN|eyJ|ghp_|glpat/i
+
 export function redactSecrets(input: unknown): string {
   if (typeof input !== 'string' || input.length === 0) {
     return typeof input === 'string' ? input : String(input ?? '')
   }
+  if (!PREFILTER_RE.test(input)) return input
   let out = input
   for (const [pat, repl] of PATTERNS) out = out.replace(pat, repl)
   return out

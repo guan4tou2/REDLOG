@@ -4,7 +4,7 @@ import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { createTray, setTrayRecording } from './tray'
-import { IPMonitor, IPStatus } from '../core/ip-monitor'
+import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -16,7 +16,6 @@ import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } 
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
-import { ScopeMonitor } from '../core/scope-monitor'
 import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
@@ -210,9 +209,11 @@ function debouncedSaveWindowState(win: BrowserWindow): void {
   saveTimer = setTimeout(() => saveWindowState(win), 500)
 }
 
-const ipMonitor = new IPMonitor()
+// v0.12.0: single alert runtime replaces the paired IPMonitor + ScopeMonitor.
+// Constructed with placeholder ids; real engagement/operator ids land on the
+// first `openProjectHandler` call via `alertRuntime.configure(...)`.
+const alertRuntime = new AlertRuntime({ engagementId: '', operatorId: '' })
 const screenshotAgent = new ScreenshotAgent()
-const scopeMonitor = new ScopeMonitor()
 const lootDetector = new LootDetector()
 
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,
@@ -279,43 +280,31 @@ function applyDock(): void {
   else app.dock?.hide()
 }
 function startLinkMonitor(): void {
-  const refresh = (): void => { detectLink().then((l) => { currentLink = l }).catch(() => {}) }
+  const refresh = (): void => {
+    detectLink()
+      .then((l) => {
+        currentLink = l
+        // Push the fresh link into the IP producer so the next IPChangeSignal
+        // carries it — IPPolicy's `lanSafety` verdict pathway (ea G-A4)
+        // reads from the signal's link.
+        alertRuntime.setLink(l)
+      })
+      .catch(() => {})
+  }
   refresh()
   if (linkTimer) clearInterval(linkTimer)
   linkTimer = setInterval(refresh, 20_000)
 }
 
-// Last broadcast state, kept module-level to detect transitions. A change in
-// ipSafety (safe/exposed/unknown) or in the externalIP itself is an OPSEC signal
-// worth preserving — VPN dropped mid-op, egress switched pools, etc. Only the
-// current state was ever in the HUD; now every transition lands in the audit log.
-let lastBroadcastSafety: IPStatus['ipSafety'] | null = null
-let lastBroadcastIP: string | null = null
-function broadcastIPStatus(status: IPStatus): void {
+// Broadcast the composed IPStatusShape to renderer + overlay on every producer
+// tick. The audit event for a verdict change is written by the ChainEmitter
+// surface — the old `system.ip_transition` write here was duplicative and
+// caused two rows per real change, so it's gone. `ip:status` stays as an IPC
+// name for compat with existing preload code.
+function broadcastIPStatus(status: IPStatusShape): void {
   const s = { ...status, link: currentLink }
   send(mainWindow, 'ip:status', s)
   send(overlayWindow, 'ip:status', s)
-  // Record safety/IP transitions (skip the very first broadcast — it's the seed
-  // state, not a change; and skip if no project is open yet).
-  if (lastBroadcastSafety !== null && currentEngagementId && currentOperatorId) {
-    const safetyChanged = status.ipSafety !== lastBroadcastSafety
-    const ipChanged = status.externalIP != null && status.externalIP !== lastBroadcastIP
-    if (safetyChanged || ipChanged) {
-      try {
-        const ev = insertEvent('system', {
-          subtype: 'ip_transition',
-          from_safety: lastBroadcastSafety, to_safety: status.ipSafety,
-          from_ip: lastBroadcastIP, to_ip: status.externalIP ?? null,
-          description: safetyChanged
-            ? `IP safety ${lastBroadcastSafety} → ${status.ipSafety}${ipChanged ? ` (${lastBroadcastIP ?? '?'} → ${status.externalIP})` : ''}`
-            : `External IP changed ${lastBroadcastIP} → ${status.externalIP}`
-        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-        if (ev) eventBus.publish(ev)
-      } catch { /* audit-additive; never block IP broadcasting */ }
-    }
-  }
-  lastBroadcastSafety = status.ipSafety
-  if (status.externalIP != null) lastBroadcastIP = status.externalIP
 }
 
 // Log the security-relevant fields that changed on config:save. Cosmetic changes
@@ -388,14 +377,6 @@ function startProject(project: ProjectMeta): void {
 
   initDB(projectDir)
 
-  ipMonitor.configure({
-    whitelist: config.network.whitelist,
-    blacklist: config.network.blacklist,
-    checkInterval: config.network.checkInterval,
-    providers: config.network.providers,
-    confirmations: config.network.confirmations,
-    ipMode: config.network.ipMode
-  })
   screenshotAgent.configure({
     engagementId,
     operatorId,
@@ -408,13 +389,12 @@ function startProject(project: ProjectMeta): void {
     const loaded = loadScopeFile(config.scope.scopeFile)
     if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
   }
-  scopeMonitor.configure({
-    warnOnViolation: config.scope.warnOnViolation !== false,
-    targets: scopeTargets,
-    excludeTargets: config.scope.excludeTargets,
-    engagementId,
-    operatorId
-  })
+  // v0.12.0: one configure call for the whole alert subsystem. Drops correlation/
+  // burst history on every project open (resetOnProjectSwitch) so a stale
+  // Combined verdict from the previous engagement can't fire when the new
+  // one's first IP tick lands.
+  alertRuntime.resetOnProjectSwitch()
+  alertRuntime.configure(config, { engagementId, operatorId }, scopeTargets)
   lootDetector.configure({ engagementId, operatorId })
   configureCaptureHealth(config as unknown as Record<string, unknown>)
   configureRedaction(config.redaction)
@@ -537,7 +517,7 @@ function startProject(project: ProjectMeta): void {
     }
   } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
-  ipMonitor.start()
+  alertRuntime.start()
   startLinkMonitor()
   configureOpsecMonitor((delta, current) => {
     if (!currentEngagementId || !currentOperatorId) return
@@ -604,7 +584,11 @@ function startProject(project: ProjectMeta): void {
       enabled: config.agentTailer?.enabled ?? true,
       engagementId, operatorId,
       excludedPaths, watchPaths,
-      emitThinking: config.agentTailer?.emitThinking ?? false
+      emitThinking: config.agentTailer?.emitThinking ?? false,
+      // v0.12.0: route agent tool_call events through the alert subsystem
+      // so a Claude / Codex / OpenCode session hitting an out-of-scope host
+      // registers a scope_violation the same way a shell command would.
+      scopeDispatch: (input) => alertRuntime.dispatchTargetHit(input)
     })
   }
 
@@ -618,8 +602,7 @@ function startProject(project: ProjectMeta): void {
     },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
-    ipMonitor: ipMonitor,
-    scopeMonitor: scopeMonitor
+    alertRuntime
   })
   startApiServer(6660).then((port) => {
     insertEvent('system', { subtype: 'api_started', port, token: getApiToken().slice(0, 8) + '...' }, { engagementId, operatorId })
@@ -735,7 +718,7 @@ function stopProject(): void {
   stopNtpLoop()
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
   stopApiServer()
-  ipMonitor.stop()
+  alertRuntime.stop()
   stopClipboardMonitor()
   stopFileWatcher()
   stopProcessMonitor()
@@ -876,7 +859,7 @@ app.whenReady().then(() => {
     : null)
 
   // --- IP ---
-  ipcMain.handle('ip:getStatus', () => ipMonitor.status)
+  ipcMain.handle('ip:getStatus', () => alertRuntime.ipStatus())
   ipcMain.handle('config:get', () => {
     if (!activeProject) return null
     return loadConfig(getProjectPath(activeProject))
@@ -939,24 +922,15 @@ app.whenReady().then(() => {
     logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
     applyDock()
-    ipMonitor.configure({
-      whitelist: newConfig.network.whitelist,
-      blacklist: newConfig.network.blacklist,
-      ipMode: newConfig.network.ipMode,
-      checkInterval: newConfig.network.checkInterval,
-      providers: newConfig.network.providers,
-      confirmations: newConfig.network.confirmations
-    })
     let targets = newConfig.scope.targets
     if (newConfig.scope.scopeFile) {
       const loaded = loadScopeFile(newConfig.scope.scopeFile)
       if (loaded.length > 0) targets = [...targets, ...loaded]
     }
-    scopeMonitor.configure({
-      warnOnViolation: newConfig.scope.warnOnViolation !== false,
-      targets,
-      excludeTargets: newConfig.scope.excludeTargets
-    })
+    alertRuntime.configure(newConfig, {
+      engagementId: newConfig.engagement.id,
+      operatorId: newConfig.operator.id
+    }, targets)
     screenshotAgent.configure({
       quality: newConfig.screenshot.quality,
       intervalSec: newConfig.screenshot.intervalSec ?? 0
@@ -1074,7 +1048,10 @@ app.whenReady().then(() => {
       overlayWindow.webContents.send('overlay:interactive', false)
     }
   })
-  ipMonitor.on('status', broadcastIPStatus)
+  // Per-tick push — fires every IP check so `lastCheck`/link updates reach the
+  // UI even when the verdict doesn't flip. IPPolicy dedup ensures the CHAIN
+  // only sees actual verdict changes; this listener is UI-only.
+  alertRuntime.onIpTick(() => broadcastIPStatus(alertRuntime.ipStatus()))
 
   // --- Events ---
   ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
@@ -1183,9 +1160,9 @@ app.whenReady().then(() => {
   })
 
   // --- Scope ---
-  ipcMain.handle('scope:getViolations', () => scopeMonitor.getViolations())
-  ipcMain.handle('scope:getViolationCount', () => scopeMonitor.getViolationCount())
-  ipcMain.handle('scope:isConfigured', () => scopeMonitor.isConfigured())
+  ipcMain.handle('scope:getViolations', () => alertRuntime.scopeViolations())
+  ipcMain.handle('scope:getViolationCount', () => alertRuntime.scopeViolationCount())
+  ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
 
   // --- Evidence Chain ---
   ipcMain.handle('chain:length', () => activeProject ? getChainLength() : 0)
@@ -1224,7 +1201,7 @@ app.whenReady().then(() => {
     const context = {
       browserUrl: browser.url || undefined,
       browserTitle: browser.title || undefined,
-      externalIP: ipMonitor.status.externalIP || undefined
+      externalIP: alertRuntime.ipStatus().externalIP || undefined
     }
     return createQuickMark({
       title: data.title || browser.title || 'Untitled',
