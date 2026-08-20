@@ -143,7 +143,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               } ${
                 isActive
                   ? 'text-red-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                  : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
               }`}
             >
               {isActive && (
@@ -155,20 +155,20 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               <span className={`text-[11px] leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
                 {item.label}
               </span>
-              {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-zinc-500')}
+              {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-text-dim')}
             </button>
           )
         })}
       </div>
 
-      <div className="mt-auto pt-3 border-t border-zinc-800/40">
+      <div className="mt-auto pt-3 border-t border-redlog-border/40">
         <button
           data-view-btn="settings"
           onClick={() => onNavigate('settings')}
           className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
             active === 'settings'
               ? 'text-red-400'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+              : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
           }`}
         >
           {active === 'settings' && (

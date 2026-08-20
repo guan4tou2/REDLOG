@@ -130,14 +130,14 @@ export default function TerminalView(): JSX.Element {
             onClick={() => setActiveTab(tab.id)}
             className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-[11px] cursor-pointer transition-colors ${
               activeTab === tab.id
-                ? 'bg-[#1a1a1a] text-zinc-200'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                ? 'bg-[#1a1a1a] text-redlog-text'
+                : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
-            <span className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-zinc-600'}`}>{tab.label}</span>
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
+            <span className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
             {tab.cwd && tab.alive && (
-              <span className="text-xs font-mono text-zinc-500 truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
+              <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
             )}
             {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
               <span
@@ -146,7 +146,7 @@ export default function TerminalView(): JSX.Element {
               >✕{tab.lastExit}</span>
             )}
             {tab.pid > 0 && tab.alive && (
-              <span className="text-[11px] text-zinc-600 font-mono">{tab.pid}</span>
+              <span className="text-[11px] text-redlog-text-faint font-mono">{tab.pid}</span>
             )}
             {!tab.alive && (
               <button
@@ -169,7 +169,7 @@ export default function TerminalView(): JSX.Element {
             )}
             <button
               onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
-              className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 transition-opacity"
+              className="ml-0.5 w-4 h-4 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-redlog-elevated-hover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim transition-opacity"
               title={t('terminal.closeTitle')}
               aria-label={t('terminal.closeTitle')}
             >
@@ -179,7 +179,7 @@ export default function TerminalView(): JSX.Element {
         ))}
         <button
           onClick={addTab}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] transition-colors text-sm"
+          className="w-7 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm"
           title={t('terminal.newTab')}
           aria-label={t('terminal.newTab')}
         >
@@ -191,20 +191,20 @@ export default function TerminalView(): JSX.Element {
         <div className="ml-auto flex items-center gap-1 pr-1">
           <button
             onClick={() => setFontSize((s) => Math.max(8, s - 1))}
-            className="w-6 h-6 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('terminal.fontSmaller')}
             aria-label={t('terminal.fontSmaller')}
           >A−</button>
-          <span className="text-xs text-zinc-600 font-mono tabular-nums w-6 text-center">{fontSize}</span>
+          <span className="text-xs text-redlog-text-faint font-mono tabular-nums w-6 text-center">{fontSize}</span>
           <button
             onClick={() => setFontSize((s) => Math.min(32, s + 1))}
-            className="w-6 h-6 rounded flex items-center justify-center text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('terminal.fontLarger')}
             aria-label={t('terminal.fontLarger')}
           >A+</button>
           <button
             onClick={() => setSearchOpen((s) => !s)}
-            className={`w-6 h-6 rounded flex items-center justify-center hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 ${searchOpen ? 'text-zinc-200 bg-white/[0.05]' : 'text-zinc-600 hover:text-zinc-300'}`}
+            className={`w-6 h-6 rounded flex items-center justify-center hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${searchOpen ? 'text-redlog-text bg-white/[0.05]' : 'text-redlog-text-faint hover:text-redlog-text'}`}
             title={t('terminal.searchToggle')}
             aria-label={t('terminal.searchToggle')}
           >⌕</button>
@@ -225,23 +225,23 @@ export default function TerminalView(): JSX.Element {
               if (e.key === 'Escape') { e.preventDefault(); setSearchOpen(false); setSearchQuery('') }
             }}
             placeholder={t('terminal.searchPlaceholder')}
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500/40"
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40"
           />
           <button
             onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findPrevious(searchQuery) }}
-            className="w-6 h-6 rounded text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+            className="w-6 h-6 rounded text-[11px] text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchPrev')}
             aria-label={t('terminal.searchPrev')}
           >↑</button>
           <button
             onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findNext(searchQuery) }}
-            className="w-6 h-6 rounded text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+            className="w-6 h-6 rounded text-[11px] text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchNext')}
             aria-label={t('terminal.searchNext')}
           >↓</button>
           <button
             onClick={() => { setSearchOpen(false); setSearchQuery('') }}
-            className="w-6 h-6 rounded text-[11px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+            className="w-6 h-6 rounded text-[11px] text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchClose')}
             aria-label={t('terminal.searchClose')}
           >×</button>
@@ -271,7 +271,7 @@ export default function TerminalView(): JSX.Element {
           <div className="flex items-center justify-center h-full">
             <button
               onClick={addTab}
-              className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-400 text-sm hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+              className="px-4 py-2 rounded-lg bg-redlog-elevated text-redlog-text-dim text-sm hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
             >
               {t('terminal.newTab')}
             </button>

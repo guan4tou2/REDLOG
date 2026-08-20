@@ -10,8 +10,8 @@
 
 export function LoadingSpinner({ label }: { label?: string } = {}): JSX.Element {
   return (
-    <div className="flex-1 flex items-center justify-center gap-3 text-zinc-500 text-xs" role="status" aria-live="polite">
-      <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin-slow" aria-hidden="true" />
+    <div className="flex-1 flex items-center justify-center gap-3 text-redlog-text-dim text-xs" role="status" aria-live="polite">
+      <div className="w-6 h-6 border-2 border-redlog-border border-t-red-500 rounded-full animate-spin-slow" aria-hidden="true" />
       {label && <span>{label}</span>}
     </div>
   )
@@ -26,12 +26,12 @@ export function EmptyState({ icon, title, subtitle, action }: {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-6 py-10">
       {icon && <div className="text-3xl opacity-30 mb-1" aria-hidden="true">{icon}</div>}
-      <p className="text-zinc-400 text-sm font-medium">{title}</p>
-      {subtitle && <p className="text-zinc-600 text-xs max-w-md leading-relaxed">{subtitle}</p>}
+      <p className="text-redlog-text-dim text-sm font-medium">{title}</p>
+      {subtitle && <p className="text-redlog-text-faint text-xs max-w-md leading-relaxed">{subtitle}</p>}
       {action && (
         <button
           onClick={action.onClick}
-          className="mt-3 px-3 py-1.5 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
+          className="mt-3 px-3 py-1.5 text-xs rounded bg-redlog-elevated hover:bg-redlog-elevated-hover text-redlog-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
         >
           {action.label}
         </button>

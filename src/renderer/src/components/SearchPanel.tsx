@@ -8,7 +8,7 @@ const TYPE_COLORS: Record<string, string> = {
   file_transfer: 'text-purple-400',
   marker: 'text-red-400',
   loot: 'text-orange-400',
-  system: 'text-zinc-400'
+  system: 'text-redlog-text-dim'
 }
 
 function eventSummary(e: RedLogEvent): string {
@@ -69,21 +69,21 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           onChange={(e) => onChange(e.target.value)}
           placeholder={t('search.placeholder')}
           autoFocus
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-zinc-200 font-mono focus:outline-none focus:border-red-500 placeholder-zinc-600"
+          className="w-full bg-redlog-elevated border border-redlog-border rounded-lg px-4 py-2.5 text-sm text-redlog-text font-mono focus:outline-none focus:border-red-500 placeholder-redlog-text-faint"
         />
         {searching && (
-          <span className="absolute right-3 top-3 text-zinc-500 text-xs animate-pulse">...</span>
+          <span className="absolute right-3 top-3 text-redlog-text-dim text-xs animate-pulse">...</span>
         )}
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
         {!searched && !searching && (
-          <div className="text-zinc-600 text-sm text-center mt-8">
+          <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.hint')}
           </div>
         )}
         {searched && results.length === 0 && (
-          <div className="text-zinc-600 text-sm text-center mt-8">
+          <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.noResults', { query })}
           </div>
         )}
@@ -95,9 +95,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           const types = [...byType.entries()].sort((a, b) => b[1] - a[1])
           return (
           <>
-            <div className="text-zinc-500 text-xs mb-2">
+            <div className="text-redlog-text-dim text-xs mb-2">
               {t('search.results', { count: filtered.length })}
-              {typeFilter && <> · <button onClick={() => setTypeFilter(null)} className="text-zinc-400 hover:text-zinc-200 underline">{t('search.clearFilter')}</button></>}
+              {typeFilter && <> · <button onClick={() => setTypeFilter(null)} className="text-redlog-text-dim hover:text-redlog-text underline">{t('search.clearFilter')}</button></>}
             </div>
             {types.length > 1 && (
               <div className="flex flex-wrap gap-1 mb-2">
@@ -106,10 +106,10 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                     key={type}
                     onClick={() => setTypeFilter(typeFilter === type ? null : type)}
                     className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
-                      typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                      typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
                     }`}
                   >
-                    <span className={TYPE_COLORS[type] || ''}>{type}</span> <span className="text-zinc-600">·{count}</span>
+                    <span className={TYPE_COLORS[type] || ''}>{type}</span> <span className="text-redlog-text-faint">·{count}</span>
                   </button>
                 ))}
               </div>
@@ -120,20 +120,20 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                   key={e.id}
                   onClick={() => onOpenInTimeline?.(e.id, e.timestamp)}
                   disabled={!onOpenInTimeline}
-                  className="w-full text-left flex items-start gap-2 px-3 py-2 rounded hover:bg-zinc-800/50 text-xs disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+                  className="w-full text-left flex items-start gap-2 px-3 py-2 rounded hover:bg-redlog-elevated/50 text-xs disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                   title={onOpenInTimeline ? t('search.openInTimeline') : undefined}
                 >
-                  <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-zinc-400'}`}>
+                  <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-redlog-text-dim'}`}>
                     {e.agentType.slice(0, 6)}
                   </span>
-                  <span className="text-zinc-300 font-mono flex-1 min-w-0 truncate">
+                  <span className="text-redlog-text font-mono flex-1 min-w-0 truncate">
                     {eventSummary(e)}
                   </span>
-                  <span className="text-zinc-600 shrink-0 ml-2">
+                  <span className="text-redlog-text-faint shrink-0 ml-2">
                     {new Date(e.timestamp).toLocaleTimeString()}
                   </span>
                   {e.targetId && (
-                    <span className="text-zinc-500 shrink-0 ml-1">→ {e.targetId}</span>
+                    <span className="text-redlog-text-dim shrink-0 ml-1">→ {e.targetId}</span>
                   )}
                 </button>
               ))}

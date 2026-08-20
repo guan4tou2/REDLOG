@@ -17,7 +17,7 @@ export function toast(message: string, type: ToastData['type'] = 'info'): void {
 const TYPE_STYLES: Record<string, string> = {
   success: 'border-emerald-500/30 bg-emerald-950/80 text-emerald-300',
   error: 'border-red-500/30 bg-red-950/80 text-red-300',
-  info: 'border-zinc-600/30 bg-zinc-900/90 text-zinc-300',
+  info: 'border-redlog-border/30 bg-redlog-surface/90 text-redlog-text',
   warning: 'border-amber-500/30 bg-amber-950/80 text-amber-300'
 }
 
