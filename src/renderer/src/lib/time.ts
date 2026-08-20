@@ -13,9 +13,13 @@
 //
 //   Exports are ISO 8601. Whatever reads them next is not a person.
 //
-// Deliberately not wired to the Timeline's `formatTs`: that one also resolves
-// the operator's Local/UTC/Project zone choice, which is a Timeline concept.
-// It applies the same 24-hour rule.
+// The Timeline's timezone-aware formatter lives here too. It used to be a
+// private function inside Timeline.tsx, and the two implementations happened
+// to agree — which is the dangerous state, not the safe one, because nothing
+// would have said so when they stopped. It is the same structure that let the
+// shortcut table drift once already. Worse, the zone branch (audit mode pins
+// UTC) existed only in the Timeline, so this module did not know that
+// timestamps could have a zone at all.
 
 const pad = (n: number): string => String(n).padStart(2, '0')
 
@@ -61,4 +65,46 @@ export function formatFreshness(
   const hours = Math.floor(mins / 60)
   if (hours < 24) return t('time.hAgo', { h: hours })
   return t('time.dAgo', { d: Math.floor(hours / 24) })
+}
+
+// ── Timezone-aware formatting ────────────────────────────────────────────────
+//
+// The Timeline lets an operator read every timestamp in Local, UTC, or the
+// project's configured zone; audit mode pins UTC, because a report read by
+// someone in another country must not depend on where it was written.
+
+export type TzMode = 'local' | 'utc' | 'project'
+export type TsStyle = 'time' | 'timeSec' | 'full'
+
+/**
+ * A timestamp in the operator's chosen zone. Still 24-hour — the zone changes
+ * which wall clock is used, never how it is written.
+ *
+ * An unrecognised IANA name falls back to Local rather than throwing: a typo
+ * in `project.timezone` must not wipe every label on the panel.
+ */
+export function formatTs(
+  ms: number,
+  tz: TzMode,
+  projectTz: string | null,
+  style: TsStyle = 'time'
+): string {
+  if (!Number.isFinite(ms)) return ''
+  const d = new Date(ms)
+  if (tz === 'utc') {
+    // Suffixed `Z`, because a UTC time that does not say so is a time you have
+    // to ask someone about.
+    if (style === 'time') return `${d.toISOString().slice(11, 16)}Z`
+    if (style === 'timeSec') return `${d.toISOString().slice(11, 19)}Z`
+    return d.toISOString().replace('T', ' ')
+  }
+  const timeZone = tz === 'project' && projectTz ? projectTz : undefined
+  const base: Intl.DateTimeFormatOptions = { hour12: false }
+  const withZone = timeZone ? { ...base, timeZone } : base
+  const render = (opts: Intl.DateTimeFormatOptions): string => {
+    if (style === 'time') return d.toLocaleTimeString([], { ...opts, hour: '2-digit', minute: '2-digit' })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { ...opts, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return d.toLocaleString([], opts)
+  }
+  try { return render(withZone) } catch { return render(base) }
 }
