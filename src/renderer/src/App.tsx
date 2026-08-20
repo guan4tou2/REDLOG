@@ -184,13 +184,13 @@ export default function App(): JSX.Element {
           {/* Take the version out of the drag zone so users reporting bugs can
               actually copy it — audit finding P2 #36. */}
           <span
-            className="text-zinc-800 text-xs font-mono select-text cursor-text"
+            className="text-redlog-text-dim text-xs font-mono select-text cursor-text"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title={t('app.copyVersionHint')}
           >v{__APP_VERSION__}</span>
         </div>
         <button
-          className="ml-4 text-zinc-600 hover:text-zinc-300 text-[11px] font-mono transition-colors flex items-center gap-1"
+          className="ml-4 text-redlog-text-faint hover:text-redlog-text text-[11px] font-mono transition-colors flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={async () => {
             await window.redlog.project.close()
@@ -278,7 +278,7 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
   const glyph = (status: string): { mark: string; cls: string } =>
     status === 'active' ? { mark: '●', cls: 'text-emerald-500' }
       : status === 'wired' ? { mark: '◐', cls: 'text-amber-500' }
-        : { mark: '○', cls: 'text-zinc-600' }
+        : { mark: '○', cls: 'text-redlog-text-faint' }
 
   const next = readiness.nextStep
   const nextSource = next ? sources.find((s) => s.id === next.id) : undefined
@@ -301,7 +301,7 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
 
   return (
     <div className="mb-3">
-      <p className="text-[11px] text-zinc-400 mb-2">
+      <p className="text-[11px] text-redlog-text-dim mb-2">
         {readiness.level === 'dark' ? t('capture.setupIntro') : t('capture.setupAlmost')}
       </p>
       <ol className="space-y-1 mb-2.5">
@@ -310,11 +310,11 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
           return (
             <li key={s.id} className="flex items-center gap-2 text-[11px]">
               <span className={`shrink-0 ${g.cls}`}>{g.mark}</span>
-              <span className="text-zinc-500 tabular-nums">{i + 1}.</span>
-              <span className={s.status === 'active' ? 'text-zinc-300' : 'text-zinc-400'}>
+              <span className="text-redlog-text-dim tabular-nums">{i + 1}.</span>
+              <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
                 {STEP_LABEL[s.id] ?? s.id}
               </span>
-              <span className="text-[10px] font-mono text-zinc-600">{t(`capture.step.${s.status}`)}</span>
+              <span className="text-[10px] font-mono text-redlog-text-faint">{t(`capture.step.${s.status}`)}</span>
             </li>
           )
         })}
@@ -329,7 +329,7 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
             {cta.label}
           </button>
         )}
-        <button onClick={() => onNavigate('settings')} className="text-[11px] text-zinc-500 hover:text-zinc-300 underline">
+        <button onClick={() => onNavigate('settings')} className="text-[11px] text-redlog-text-dim hover:text-redlog-text underline">
           {t('capture.openHooks')}
         </button>
       </div>
@@ -361,7 +361,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     'file-watcher': t('capture.fileWatcher')
   }
   const dot = (s: string): string =>
-    s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-zinc-700'
+    s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
 
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
@@ -444,11 +444,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     return `${hr}h ${t('capture.ago')}`
   }
   const ageColor = (ts: number | null, now: number): string => {
-    if (!ts) return 'text-zinc-600'
+    if (!ts) return 'text-redlog-text-faint'
     const sec = (now - ts) / 1000
     if (sec < 60) return 'text-emerald-500/80'
     if (sec < 300) return 'text-amber-500/80'
-    return 'text-zinc-600'
+    return 'text-redlog-text-faint'
   }
 
   const dark = capture.verdict === 'dark'
@@ -468,11 +468,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
       }`}>
         <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[11px] font-semibold text-zinc-400 uppercase tracking-[0.15em]">{t('capture.title')}</h2>
+          <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setManage((m) => !m)}
-              className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-[10px] font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
               title={t('capture.manageHint')}
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
@@ -494,10 +494,10 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span className={`flex-1 truncate ${s.state === 'off' ? 'text-zinc-500' : 'text-zinc-300'}`}>
+              <span className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
                 {SOURCE_LABEL[s.id] ?? s.id}
               </span>
-              <span className="text-zinc-600 text-xs">
+              <span className="text-redlog-text-faint text-xs">
                 {s.state === 'off'
                   ? t('capture.state.off')
                   : s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
@@ -519,7 +519,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       onClick={() => void setEnabled(s, s.enabled === false)}
                       className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.enabled === false
-                          ? 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                          ? 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
                           : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
                       }`}
                     >
@@ -532,7 +532,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       onClick={() => void setInstalled(s, s.installed !== true)}
                       className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.installed === true
-                          ? 'border-zinc-700 text-zinc-500 hover:text-red-400'
+                          ? 'border-redlog-border text-redlog-text-dim hover:text-red-400'
                           : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
                       }`}
                     >
@@ -544,14 +544,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
                   {!s.configPath && !s.hookId && (
-                    <span className="text-[10px] font-mono text-zinc-700">{t('capture.passive')}</span>
+                    <span className="text-[10px] font-mono text-redlog-muted">{t('capture.passive')}</span>
                   )}
                 </span>
               )}
             </div>
           ))}
           {!manage && shown.length === 0 && (
-            <p className="text-[11px] text-zinc-500 col-span-2">
+            <p className="text-[11px] text-redlog-text-dim col-span-2">
               {healthy.length > 0
                 ? t('capture.allGood', { active: healthy.length })
                 : t('capture.noneEnabled')}
@@ -566,16 +566,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
          *  "Last fed" is the newest logged-row age — a slow tick is fine
          *  because it uses the same 1s nowTick as the source-row ages. */}
         {tierSplit && tierSplit.logged > 0 && (
-          <div className="mt-2 pt-2 border-t border-zinc-800/70 flex items-center justify-between text-[10px] font-mono">
+          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center justify-between text-[10px] font-mono">
             <div className="flex items-center gap-2">
-              <span className="text-zinc-500 uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
-              <span className="text-zinc-300 tabular-nums">{tierSplit.chained.toLocaleString()}</span>
-              <span className="text-zinc-700">·</span>
-              <span className="text-zinc-500 uppercase tracking-[0.1em]">{t('capture.tierLogged')}</span>
-              <span className="text-zinc-500 tabular-nums">{tierSplit.logged.toLocaleString()}</span>
+              <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
+              <span className="text-redlog-text tabular-nums">{tierSplit.chained.toLocaleString()}</span>
+              <span className="text-redlog-muted">·</span>
+              <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierLogged')}</span>
+              <span className="text-redlog-text-dim tabular-nums">{tierSplit.logged.toLocaleString()}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-600">{t('capture.tierLastFed')}</span>
+              <span className="text-redlog-text-faint">{t('capture.tierLastFed')}</span>
               <span className={`tabular-nums ${ageColor(tierSplit.lastLoggedTs, nowTick)}`}>
                 {fmtAge(tierSplit.lastLoggedTs, nowTick)}
               </span>
@@ -622,7 +622,7 @@ function LaunchBrowserButton(): JSX.Element {
       className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 ${
         running
           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-          : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/50 hover:bg-zinc-700/60 hover:text-zinc-200'
+          : 'bg-redlog-elevated/60 text-redlog-text-dim border-redlog-border/50 hover:bg-redlog-elevated-hover/60 hover:text-redlog-text'
       }`}
     >
       {busy ? '…' : running ? t('browser.stop') : t('browser.launch')}
@@ -719,8 +719,8 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         <div className="grid grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="rounded-lg bg-redlog-surface border border-redlog-border p-4 h-20 animate-pulse">
-              <div className="h-3 w-12 bg-zinc-800 rounded mb-3" />
-              <div className="h-5 w-8 bg-zinc-800 rounded" />
+              <div className="h-3 w-12 bg-redlog-elevated rounded mb-3" />
+              <div className="h-5 w-8 bg-redlog-elevated rounded" />
             </div>
           ))}
         </div>
@@ -740,7 +740,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       )}
 
       <section>
-        <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
+        <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
           {t('dashboard.networkStatus')}
         </h2>
         <IPStatusCard />
@@ -748,7 +748,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em]">
+          <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">
             {t('dashboard.sessionStats')}
           </h2>
           <button
@@ -757,7 +757,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
               if (path) toast(t('toast.exported'), 'success')
               else toast(t('toast.exportFailed'), 'error')
             }}
-            className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
+            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
           >
             {t('dashboard.exportData')}
           </button>
@@ -834,26 +834,26 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 
       {config && (
         <section>
-          <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
+          <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </h2>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
             <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
               <div>
-                <span className="text-zinc-500 text-xs">{t('dashboard.id')}</span>
-                <p className="text-zinc-200 font-mono text-sm mt-0.5">{config.engagement?.id as string}</p>
+                <span className="text-redlog-text-dim text-xs">{t('dashboard.id')}</span>
+                <p className="text-redlog-text font-mono text-sm mt-0.5">{config.engagement?.id as string}</p>
               </div>
               <div>
-                <span className="text-zinc-500 text-xs">{t('dashboard.name')}</span>
-                <p className="text-zinc-200 text-sm mt-0.5">{config.engagement?.name as string}</p>
+                <span className="text-redlog-text-dim text-xs">{t('dashboard.name')}</span>
+                <p className="text-redlog-text text-sm mt-0.5">{config.engagement?.name as string}</p>
               </div>
               <div>
-                <span className="text-zinc-500 text-xs">{t('dashboard.operator')}</span>
-                <p className="text-zinc-200 text-sm mt-0.5">{config.operator?.name as string}</p>
+                <span className="text-redlog-text-dim text-xs">{t('dashboard.operator')}</span>
+                <p className="text-redlog-text text-sm mt-0.5">{config.operator?.name as string}</p>
               </div>
               <div>
-                <span className="text-zinc-500 text-xs">{t('dashboard.scopeLabel')}</span>
-                <p className="text-zinc-200 text-sm mt-0.5">
+                <span className="text-redlog-text-dim text-xs">{t('dashboard.scopeLabel')}</span>
+                <p className="text-redlog-text text-sm mt-0.5">
                   {t('dashboard.targets', {
                     count: (config.scope?.targets as string[])?.length || 0,
                     mode: (config.scope?.warnOnViolation as boolean | undefined) !== false ? t('dashboard.warningsOn') : t('dashboard.warningsOff')
@@ -872,15 +872,15 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       )}
 
       <section>
-        <h2 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-[0.15em] mb-3">
+        <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
           {t('dashboard.shortcuts')}
         </h2>
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
             {appShortcuts(shortcutOrder, isMac).map((row) => (
               <div key={row.keys} className="flex items-center gap-2.5">
-                <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{row.keys}</kbd>
-                <span className="text-zinc-500 text-xs">{t(row.label)}</span>
+                <kbd className="bg-redlog-elevated/80 text-redlog-text-dim px-2 py-0.5 rounded text-xs font-mono border border-redlog-border/50">{row.keys}</kbd>
+                <span className="text-redlog-text-dim text-xs">{t(row.label)}</span>
               </div>
             ))}
           </div>
@@ -896,15 +896,15 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   label: string; value: string; sub?: string; tone?: HudTone
 }): JSX.Element {
   const bar = tone === 'red' ? 'bg-red-500' : tone === 'green' ? 'bg-emerald-500'
-    : tone === 'amber' ? 'bg-amber-500' : tone === 'cyan' ? 'bg-cyan-500' : 'bg-zinc-700'
+    : tone === 'amber' ? 'bg-amber-500' : tone === 'cyan' ? 'bg-cyan-500' : 'bg-redlog-elevated-hover'
   const valueColor = tone === 'red' ? 'text-red-400' : tone === 'green' ? 'text-emerald-400'
-    : tone === 'amber' ? 'text-amber-400' : tone === 'cyan' ? 'text-cyan-400' : 'text-zinc-200'
+    : tone === 'amber' ? 'text-amber-400' : tone === 'cyan' ? 'text-cyan-400' : 'text-redlog-text'
   return (
     <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
       <span className={`absolute top-0 left-0 right-0 h-[2px] ${bar}`} />
-      <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-xs text-redlog-text-dim uppercase tracking-wider font-medium">{label}</p>
       <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
-      {sub && <p className="text-xs text-zinc-600 mt-0.5">{sub}</p>}
+      {sub && <p className="text-xs text-redlog-text-faint mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -971,23 +971,23 @@ function ScreenshotsView(): JSX.Element {
   return (
     <div className="p-4 overflow-auto h-full">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-semibold text-neutral-400 uppercase tracking-wider">
+        <h2 className="text-base font-semibold text-redlog-text-dim uppercase tracking-wider">
           {t('screenshots.title', { count: screenshots.length })}
         </h2>
         <button
           onClick={() => window.redlog.screenshot.capture()}
-          className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+          className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
         >
           {t('screenshots.captureNow')}
         </button>
       </div>
       {screenshots.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
-            <span className="text-2xl text-zinc-700">◻</span>
+          <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
+            <span className="text-2xl text-redlog-muted">◻</span>
           </div>
-          <p className="text-zinc-500 text-sm">{t('screenshots.empty')}</p>
-          <p className="text-zinc-700 text-xs">{t('screenshots.emptyDesc')}</p>
+          <p className="text-redlog-text-dim text-sm">{t('screenshots.empty')}</p>
+          <p className="text-redlog-muted text-xs">{t('screenshots.emptyDesc')}</p>
         </div>
       ) : (() => {
         // Trigger filter (audit #32) — all captures land in one grid mixing
@@ -1005,9 +1005,9 @@ function ScreenshotsView(): JSX.Element {
                 key={trigger}
                 onClick={() => setTriggerFilter(triggerFilter === trigger ? null : trigger)}
                 className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
-                  triggerFilter === trigger ? 'bg-red-500/20 text-red-300' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700'
+                  triggerFilter === trigger ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
                 }`}
-              >{trigger} <span className="text-zinc-600">·{count}</span></button>
+              >{trigger} <span className="text-redlog-text-faint">·{count}</span></button>
             ))}
           </div>
         )}
@@ -1018,13 +1018,13 @@ function ScreenshotsView(): JSX.Element {
               role="button"
               tabIndex={0}
               aria-label={`Screenshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
-              className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
+              className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-redlog-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
               onClick={() => !deletedIds.has(s.id) && setExpanded(expanded === s.id ? null : s.id)}
               onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !deletedIds.has(s.id)) { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
             >
-              <div className="aspect-video bg-neutral-900 flex items-center justify-center overflow-hidden">
+              <div className="aspect-video bg-redlog-surface flex items-center justify-center overflow-hidden">
                 {deletedIds.has(s.id) ? (
-                  <span className="text-zinc-700 text-xs italic">{t('screenshots.deleted')}</span>
+                  <span className="text-redlog-muted text-xs italic">{t('screenshots.deleted')}</span>
                 ) : thumbs[s.id] ? (
                   // v0.6.98 A: `loading="lazy"` defers the JPEG fetch/decode
                   // until the tile nears the viewport (Chromium native, works
@@ -1040,14 +1040,14 @@ function ScreenshotsView(): JSX.Element {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-neutral-700 text-xs">{(s.data.filename as string) ?? '...'}</span>
+                  <span className="text-redlog-muted text-xs">{(s.data.filename as string) ?? '...'}</span>
                 )}
               </div>
               <div className="px-2 py-1 flex items-center justify-between gap-1">
-                <p className="text-xs text-neutral-500 flex-1 min-w-0 truncate">
+                <p className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
                   {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
-                    <span className="ml-1 text-zinc-600">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
+                    <span className="ml-1 text-redlog-text-faint">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
                   )}
                 </p>
                 {!deletedIds.has(s.id) && (
@@ -1067,7 +1067,7 @@ function ScreenshotsView(): JSX.Element {
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
-                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-zinc-600 hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 text-xs text-redlog-text-faint hover:text-red-400 focus-visible:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 rounded transition-opacity"
                     title={t('screenshots.deleteTitle')}
                     aria-label={t('screenshots.deleteTitle')}
                   >×</button>
