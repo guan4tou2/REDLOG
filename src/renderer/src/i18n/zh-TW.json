@@ -463,7 +463,7 @@
   "settings.mcpStdio": "想用 stdio 傳輸?",
   "settings.mcpStdioHint": "以子程序執行 MCP bridge,需要 node 在 PATH。HTTP 較單純,打包後也能用。",
   "settings.operators": "Operator Tokens",
-  "settings.operatorsHint": "每一組 token 都是 audit log 中獨立的身分。主 operator 的 token 每次啟動會自動輪替，寫入 ~/.redlog/api-token；額外的 token 請手動複製給隊友或指定的 agent（Codex、mitmproxy 等），他們產生的事件就能被獨立歸屬。",
+  "settings.operatorsHint": "每個 token 在稽核紀錄裡都是一個獨立身分。主 operator 的 token 每個 session 自動輪替，存在 ~/.redlog/api-token。建立或輪替次要 operator 時，token 會寫入 ~/.redlog/tokens/——把那個檔案交給隊友或代理（Codex、mitmproxy 等），他們的事件就能獨立歸屬。",
   "settings.operatorAddName": "新 operator 名稱",
   "settings.operatorAdd": "新增 operator",
   "settings.operatorPrimary": "主要",
@@ -950,5 +950,6 @@
   "timeline.help.zoomHere": "縮放到此處前後五分鐘",
   "timeline.help.zoomKeys": "放大／縮小／重設，以選取為錨",
   "settings.operatorTokenWritten": "已寫入專案之外的檔案，只有你能讀取。不會出現在任何匯出或證據包裡。",
-  "settings.operatorTokenWriteFailed": "token 無法寫入，也沒有顯示出來。請輪替這個 operator 以重新產生。"
+  "settings.operatorTokenWriteFailed": "token 無法寫入，也沒有顯示出來。請輪替這個 operator 以重新產生。",
+  "dashboard.hudPassThrough": "結束 HUD 滑鼠穿透"
 }

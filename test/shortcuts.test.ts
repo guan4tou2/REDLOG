@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import * as fs from 'fs'
 import * as path from 'path'
-import { QUICK_MARK_ACCELERATOR as MAIN_ACCEL } from '../src/core/shortcuts'
+import {
+  QUICK_MARK_ACCELERATOR as MAIN_ACCEL,
+  HUD_PASSTHROUGH_ACCELERATOR as MAIN_HUD_ACCEL
+} from '../src/core/shortcuts'
 import {
   QUICK_MARK_ACCELERATOR as RENDERER_ACCEL,
+  HUD_PASSTHROUGH_ACCELERATOR as RENDERER_HUD_ACCEL,
   appShortcuts,
   formatAccelerator,
   timelineShortcuts
@@ -20,6 +24,17 @@ const SIDEBAR_ORDER = [
 describe('shortcut accelerators', () => {
   it('main and renderer agree on the quick-mark accelerator', () => {
     expect(RENDERER_ACCEL).toBe(MAIN_ACCEL)
+  })
+
+  it('main and renderer agree on the HUD click-through escape', () => {
+    // This one matters more than most: while pass-through is on the HUD cannot
+    // be clicked, so a wrong chord in the cheatsheet leaves the operator with
+    // no way out that they can find.
+    expect(RENDERER_HUD_ACCEL).toBe(MAIN_HUD_ACCEL)
+  })
+
+  it('does not let the two global chords collide', () => {
+    expect(MAIN_ACCEL).not.toBe(MAIN_HUD_ACCEL)
   })
 
   it('draws accelerators the way each platform writes them', () => {
@@ -66,7 +81,7 @@ describe('the cheatsheet table', () => {
   it('documents the app- and terminal-scoped bindings', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true).filter((r) => r.scope !== 'nav')
     expect(rows.map((r) => r.keys)).toEqual([
-      '⌘/', '⌘K', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘T', '⌘W', '⌘⇧[ ]'
+      '⌘/', '⌘K', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
     ])
   })
 })

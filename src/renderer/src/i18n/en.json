@@ -463,7 +463,7 @@
   "settings.mcpStdio": "Prefer stdio transport?",
   "settings.mcpStdioHint": "Runs the MCP bridge as a subprocess. Requires node on PATH; HTTP is simpler and works in the packaged app.",
   "settings.operators": "Operator Tokens",
-  "settings.operatorsHint": "Each token is a distinct identity in the audit log. The primary operator's token is rotated automatically each session and stored at ~/.redlog/api-token — hand-copy a secondary token to a teammate or a specific agent (Codex, mitmproxy, etc.) so their events can be attributed independently.",
+  "settings.operatorsHint": "Each token is a distinct identity in the audit log. The primary operator's token is rotated automatically each session and stored at ~/.redlog/api-token. Creating or rotating a secondary operator writes its token to ~/.redlog/tokens/ — hand that file to the teammate or agent (Codex, mitmproxy, etc.) so their events are attributed independently.",
   "settings.operatorAddName": "New operator name",
   "settings.operatorAdd": "Add operator",
   "settings.operatorPrimary": "PRIMARY",
@@ -950,5 +950,6 @@
   "timeline.help.zoomHere": "Zoom to five minutes either side of here",
   "timeline.help.zoomKeys": "Zoom in / out / reset, anchored on the selection",
   "settings.operatorTokenWritten": "Written to a file outside the project, readable only by you. It is not in any export or evidence bundle.",
-  "settings.operatorTokenWriteFailed": "The token could not be written and has not been shown. Rotate this operator to issue a new one."
+  "settings.operatorTokenWriteFailed": "The token could not be written and has not been shown. Rotate this operator to issue a new one.",
+  "dashboard.hudPassThrough": "Leave HUD click-through"
 }

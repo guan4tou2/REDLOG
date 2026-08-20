@@ -20,6 +20,10 @@
  *  fails if they drift apart. */
 export const QUICK_MARK_ACCELERATOR = 'CommandOrControl+Shift+M'
 
+/** Mirrors `HUD_PASSTHROUGH_ACCELERATOR` in `src/core/shortcuts.ts`, checked
+ *  by `test/shortcuts.test.ts` for the same reason as the marker chord. */
+export const HUD_PASSTHROUGH_ACCELERATOR = 'CommandOrControl+Shift+P'
+
 export type ShortcutScope = 'nav' | 'app' | 'terminal' | 'timeline'
 
 export interface ShortcutRow {
@@ -132,6 +136,13 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
       scope: 'app',
       guardTyping: true,
       match: (e) => mod(e) && e.altKey && e.shiftKey && HUD_ARROWS.includes(e.key)
+    },
+    {
+      id: 'app:hudPassThrough',
+      keys: formatAccelerator(HUD_PASSTHROUGH_ACCELERATOR, isMac),
+      label: 'dashboard.hudPassThrough',
+      scope: 'app'
+      // Global accelerator, like the marker chord — deliberately no matcher.
     },
     { id: 'term:new', keys: `${m}T`, label: 'dashboard.terminalNewTab', scope: 'terminal' },
     { id: 'term:close', keys: `${m}W`, label: 'dashboard.terminalCloseTab', scope: 'terminal' },

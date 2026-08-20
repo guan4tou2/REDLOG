@@ -3,6 +3,7 @@ import { electronApp } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
+import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-position'
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
@@ -13,7 +14,7 @@ import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
-import { QUICK_MARK_ACCELERATOR } from '../core/shortcuts'
+import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -103,14 +104,30 @@ let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 // this in Settings ▸ HUD; the opacity drops so it's clearly ghost-mode.
 let overlayPassThrough = false
 let overlayPassThroughOpacity = 0.4
+/** Set while the external IP is exposed. §8's single sanctioned override of
+ *  the operator's own HUD preferences: pass-through off, fully opaque. */
+let overlayIpExposed = false
+
+/** §8: 0.85 at rest so the HUD sits over a terminal without hiding it; 1.0
+ *  once the cursor is on it, which is also why click-through defaults to off —
+ *  the hover response is the affordance that says the thing is interactive. */
+const OVERLAY_REST_OPACITY = 0.85
+
+function overlayOpacity(): number {
+  // An exposed IP overrides the operator's preference — the one case §8 allows
+  // that — so it is never the thing that faded into a screenshot.
+  if (overlayIpExposed) return 1
+  return overlayMouseInside ? 1 : OVERLAY_REST_OPACITY
+}
+
+function applyOverlayOpacity(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  overlayWindow.setOpacity(overlayOpacity())
+}
 
 function applyOverlayPassThrough(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
-  // Window opacity stays at 1 in both modes now — the renderer dims the
-  // non-critical HUD chrome via CSS while the external IP row keeps full
-  // opacity. If we lowered window opacity here, IP would fade too and defeat
-  // the whole "IP always readable" ask.
-  overlayWindow.setOpacity(1)
+  applyOverlayOpacity()
   if (overlayPassThrough) {
     stopOverlayMouseTracking()
     overlayWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -135,10 +152,12 @@ function startOverlayMouseTracking(): void {
       overlayMouseInside = true
       overlayWindow.setIgnoreMouseEvents(false)
       overlayWindow.webContents.send('overlay:interactive', true)
+      applyOverlayOpacity()
     } else if (!inside && overlayMouseInside) {
       overlayMouseInside = false
       overlayWindow.setIgnoreMouseEvents(true, { forward: true })
       overlayWindow.webContents.send('overlay:interactive', false)
+      applyOverlayOpacity()
     }
   }, 50)
 }
@@ -319,6 +338,21 @@ function broadcastIPStatus(status: IPStatusShape): void {
   const s = { ...status, link: currentLink }
   send(mainWindow, 'ip:status', s)
   send(overlayWindow, 'ip:status', s)
+
+  // §8: an exposed IP is the one condition allowed to override the operator's
+  // own HUD preferences. Pass-through comes off and the window goes fully
+  // opaque, because the failure being prevented is an operator working through
+  // a HUD they had ghosted and never seeing that their real address is out.
+  const exposed = status.ipSafety === 'exposed'
+  if (exposed !== overlayIpExposed) {
+    overlayIpExposed = exposed
+    if (exposed && overlayPassThrough) {
+      overlayPassThrough = false
+      applyOverlayPassThrough()
+    } else {
+      applyOverlayOpacity()
+    }
+  }
 }
 
 // Log the security-relevant fields that changed on config:save. Cosmetic changes
@@ -772,7 +806,14 @@ function startProject(project: ProjectMeta): void {
   }, 5 * 60 * 1000)
 
   if (!overlayWindow) {
-    overlayWindow = createOverlayWindow()
+    overlayWindow = createOverlayWindow(loadOverlayPosition())
+    // §8: remember where the operator put it, per display. `moved` fires
+    // throughout a drag, so debounce to the end of it.
+    let moveTimer: ReturnType<typeof setTimeout> | null = null
+    overlayWindow.on('moved', () => {
+      if (moveTimer) clearTimeout(moveTimer)
+      moveTimer = setTimeout(() => { if (overlayWindow) saveOverlayPosition(overlayWindow) }, 400)
+    })
     // The overlay joins all Spaces / floats over fullscreen, which flips the app
     // to an accessory on macOS and drops the Dock icon. Re-apply the operator's
     // Dock preference whenever the overlay appears so it isn't silently changed.
@@ -1099,6 +1140,7 @@ app.whenReady().then(() => {
       const x = corner === 'tl' || corner === 'bl' ? disp.x + pad : disp.x + disp.width - b.width - pad
       const y = corner === 'tl' || corner === 'tr' ? disp.y + pad : disp.y + disp.height - b.height - pad
       overlayWindow.setBounds({ x, y, width: b.width, height: b.height })
+      saveOverlayPosition(overlayWindow)
     } catch { /* no display — bail */ }
   })
   ipcMain.on('overlay:hide', () => {
@@ -2021,6 +2063,16 @@ app.whenReady().then(() => {
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerQuickMark)
+  // §8: the way back out of click-through. Without it, turning pass-through on
+  // makes the control that turns it off unclickable — the HUD is ghosted, so
+  // the button is behind it — and the only escape is Settings, which the
+  // operator has to know exists.
+  globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => {
+    if (!overlayPassThrough) return
+    overlayPassThrough = false
+    applyOverlayPassThrough()
+    send(mainWindow, 'overlay:passThroughChanged', false)
+  })
   ipcMain.on('overlay:quickMark', triggerQuickMark)
   ipcMain.handle('overlay:instantMark', () => triggerInstantMark())
 
