@@ -896,5 +896,7 @@
   "capture.actionFailedWhy": "The hook was not changed. The shell profile may be read-only, or the path no longer exists.",
   "transcript.copyFailedWhy": "The clipboard refused the write. Another application may be holding it.",
   "project.openMissingWhy": "The folder is gone or on a volume that is not mounted.",
-  "common.openFolder": "Open folder"
+  "common.openFolder": "Open folder",
+  "confirm.ackDefault": "I understand this cannot be undone.",
+  "confirm.typeToConfirm": "Type {{value}} to confirm"
 }

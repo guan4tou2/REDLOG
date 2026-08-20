@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
+import { useFocusTrap } from '../lib/useFocusTrap'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 import logoUrl from '../assets/logo.svg'
@@ -9,10 +10,21 @@ interface ProjectPickerProps {
 }
 
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
+  // Advanced-setup dialog. It focused itself once and let Tab walk out into
+  // the picker behind it; Escape only worked while focus happened to be on the
+  // backdrop, which is the case that was already broken (§4).
+  const advancedRef = useRef<HTMLDivElement | null>(null)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  useFocusTrap(advancedRef, showAdvanced)
+  useEffect(() => {
+    if (!showAdvanced) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') { e.preventDefault(); setShowAdvanced(false) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showAdvanced])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
@@ -186,11 +198,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 select-text"
             onClick={() => setShowAdvanced(false)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setShowAdvanced(false) }}
             role="presentation"
           >
             <div
-              ref={(el) => el?.focus()}
+              ref={advancedRef}
               role="dialog"
               aria-modal="true"
               aria-label={t('project.advancedSetup')}
