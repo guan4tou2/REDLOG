@@ -289,7 +289,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-redlog-border/60 shrink-0">
         <h1 className="text-sm font-semibold text-redlog-text">{t('transcript.title')}</h1>
-        <span className="text-[11px] text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
+        <span className="text-xs text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -301,7 +301,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
             <button
               key={k}
               onClick={() => toggleKind(k)}
-              className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+              className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors ${
                 kinds.size === 0 || kinds.has(k)
                   ? 'text-redlog-text border-redlog-border bg-redlog-elevated/60'
                   : 'text-redlog-text-faint border-redlog-border hover:text-redlog-text-dim'
@@ -336,11 +336,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
             <div key={b.id} className="rounded border border-redlog-border/70 bg-redlog-bg/40">
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-redlog-border/50">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
-                <span className="text-[11px] text-redlog-text-dim font-mono tabular-nums shrink-0">
+                <span className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
                   {new Date(b.ts).toLocaleTimeString()}
                 </span>
-                <span className="text-[11px] text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
-                {b.meta && <span className="text-[10px] text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}
+                <span className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
+                {b.meta && <span className="text-xs text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}
                 {hasOutput && (
                   <button
                     // Stable hook: the e2e reached this by matching the ▶ glyph
@@ -354,7 +354,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                       if (next.has(b.id)) next.delete(b.id); else next.add(b.id)
                       return next
                     })}
-                    className="text-[10px] text-redlog-text-faint hover:text-redlog-text font-mono shrink-0 transition-colors"
+                    className="text-xs text-redlog-text-faint hover:text-redlog-text font-mono shrink-0 transition-colors"
                     title={revealed ? t('transcript.collapse') : t('transcript.expand')}
                   >
                     {revealed ? '▼' : '▶'}{b.outputBytes ? ` ${fmtBytes(b.outputBytes)}` : ''}
@@ -363,7 +363,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 {onOpenInTimeline && (
                   <button
                     onClick={() => onOpenInTimeline(b.id, b.ts)}
-                    className="text-[10px] text-redlog-text-faint hover:text-cyan-400 font-mono shrink-0"
+                    className="text-xs text-redlog-text-faint hover:text-cyan-400 font-mono shrink-0"
                     title={t('transcript.openInTimeline')}
                   >
                     ↗
@@ -389,7 +389,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   {big && !fullyExpanded && (
                     <button
                       onClick={() => setExpanded((p) => new Set(p).add(`${b.id}:full`))}
-                      className="block mt-2 text-[10px] text-cyan-500 hover:text-cyan-400"
+                      className="block mt-2 text-xs text-cyan-500 hover:text-cyan-400"
                     >
                       {t('transcript.showAll', { size: fmtBytes(b.outputBytes ?? b.output?.length ?? 0) })}
                     </button>
@@ -397,7 +397,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 </pre>
               )}
               {revealed && !b.output && b.outputNote && (
-                <p className={`mx-2.5 mb-2 px-2 py-1 text-[11px] font-mono rounded border ${
+                <p className={`mx-2.5 mb-2 px-2 py-1 text-xs font-mono rounded border ${
                   b.outputNote === 'recorded'
                     ? 'text-emerald-400/80 border-emerald-600/30 bg-emerald-900/10'
                     : b.outputNote === 'pending'

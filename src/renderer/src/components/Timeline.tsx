@@ -2302,7 +2302,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           </span>
           <button
             onClick={() => setVerifyDismissed(true)}
-            className="ml-auto text-[11px] text-red-300 hover:text-red-100 px-1.5 py-0.5 rounded bg-red-900/40 hover:bg-red-900/60 transition-colors"
+            className="ml-auto text-xs text-red-300 hover:text-red-100 px-1.5 py-0.5 rounded bg-red-900/40 hover:bg-red-900/60 transition-colors"
           >
             {t('timeline.brokenChain.dismiss')}
           </button>
@@ -2351,16 +2351,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     onClick={() => activatePaletteItem(item)}
                     className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}
                   >
-                    <span className="text-[9px] font-mono uppercase tracking-wider text-redlog-text-dim w-14 shrink-0">
+                    <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim w-14 shrink-0">
                       {t(groupKey)}
                     </span>
                     <span className="text-xs font-mono text-redlog-text truncate flex-1">{item.label}</span>
-                    <span className="text-[10px] font-mono text-redlog-text-faint shrink-0">{item.sub}</span>
+                    <span className="text-xs font-mono text-redlog-text-faint shrink-0">{item.sub}</span>
                   </button>
                 )
               })}
             </div>
-            <div className="px-3 py-1.5 border-t border-redlog-border text-[10px] font-mono text-redlog-text-dim text-center">
+            <div className="px-3 py-1.5 border-t border-redlog-border text-xs font-mono text-redlog-text-dim text-center">
               {t('timeline.palette.footer')}
             </div>
           </div>
@@ -2379,7 +2379,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         >
           <div className="w-[560px] max-w-[92vw] rounded-lg border border-redlog-border bg-redlog-bg shadow-2xl overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-redlog-text-dim">{t('timeline.help.title')}</span>
+              <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim">{t('timeline.help.title')}</span>
               <button
                 onClick={() => setShowHelp(false)}
                 className="ml-auto text-xs text-redlog-text-dim hover:text-redlog-text leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10"
@@ -2415,11 +2415,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 ]]
               ] as Array<[string, Array<[string, string]>]>).map(([groupKey, rows]) => (
                 <div key={groupKey}>
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(groupKey)}</div>
+                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(groupKey)}</div>
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
                     {rows.map(([key, descKey]) => (
                       <div key={key} className="contents">
-                        <kbd className="font-mono text-[11px] text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
+                        <kbd className="font-mono text-xs text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
                         <span className="text-redlog-text-dim">{t(descKey)}</span>
                       </div>
                     ))}
@@ -2427,7 +2427,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 </div>
               ))}
             </div>
-            <div className="px-3 py-1.5 border-t border-redlog-border text-[10px] font-mono text-redlog-text-dim text-center">
+            <div className="px-3 py-1.5 border-t border-redlog-border text-xs font-mono text-redlog-text-dim text-center">
               {t('timeline.help.footer')}
             </div>
           </div>
@@ -2455,8 +2455,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       )}
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-redlog-border/80 shrink-0">
-        <span className="text-[13px] font-semibold text-redlog-text tracking-wide">{t('timeline.title')}</span>
-        <span className="text-[11px] text-redlog-text-faint font-mono tabular-nums">
+        <span className="text-xs font-semibold text-redlog-text tracking-wide">{t('timeline.title')}</span>
+        <span className="text-xs text-redlog-text-faint font-mono tabular-nums">
           {t('timeline.events', { count: events.length })}
         </span>
         {!allLoaded && (
@@ -2472,7 +2472,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             makes the affordance visible; the modal itself lists everything. */}
         <button
           onClick={() => setShowHelp(true)}
-          className="ml-1 w-5 h-5 flex items-center justify-center text-[11px] text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+          className="ml-1 w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
           title={t('timeline.help.hint')}
           aria-label={t('timeline.help.hint')}
         >?</button>
@@ -2481,7 +2481,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
         <div className="flex items-center gap-1 ml-2">
           <button
             onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('timeline.zoomOut')}
             aria-label={t('timeline.zoomOut')}
           >−</button>
@@ -2494,7 +2494,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           >{Math.round(zoom * 100)}% ↺</button>
           <button
             onClick={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
-            className="w-5 h-5 flex items-center justify-center text-[11px] text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('timeline.zoomIn')}
             aria-label={t('timeline.zoomIn')}
           >+</button>
@@ -2510,12 +2510,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           title={collapseAgentTurns
             ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
             : t('timeline.collapseAgent.hint')}
-          className={`ml-2 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
         >
           <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
           <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
           {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-            <span className="font-mono tabular-nums text-[10px] text-lime-400/80">−{hiddenAgentTurnCount}</span>
+            <span className="font-mono tabular-nums text-xs text-lime-400/80">−{hiddenAgentTurnCount}</span>
           )}
         </button>
 
@@ -2536,12 +2536,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               setCompressGaps((v) => !v)
             }}
             title={t('timeline.compressGaps.hint')}
-            className={`ml-1 px-2 h-5 flex items-center gap-1 text-[11px] rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`ml-1 px-2 h-5 flex items-center gap-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
           >
             <span>⋯</span>
             <span className="font-mono">{t('timeline.compressGaps.label')}</span>
             {compressGaps && timeMap.gaps.length > 0 && (
-              <span className="font-mono tabular-nums text-[10px] text-cyan-400/80">{timeMap.gaps.length}</span>
+              <span className="font-mono tabular-nums text-xs text-cyan-400/80">{timeMap.gaps.length}</span>
             )}
           </button>
         ) : null}
@@ -2550,7 +2550,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             operators can see there's a text filter (previously discoverable
             only by shortcut). Icon prefix + clear button on the right. */}
         <div className="relative flex items-center ml-2">
-          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[11px] text-redlog-text-faint pointer-events-none font-mono">/</span>
+          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-xs text-redlog-text-faint pointer-events-none font-mono">/</span>
           <input
             ref={searchInputRef}
             data-testid="timeline-search-input"
@@ -2597,7 +2597,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   setFollowMode(true)
                 }}
                 title={isLive ? t('timeline.follow.jumpToNow') : t('timeline.follow.jumpToNow')}
-                className={`whitespace-nowrap text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
                   isLive
                     ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
                     : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
@@ -2607,7 +2607,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 onClick={() => setFollowMode((v) => !v)}
                 title={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
                 aria-label={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                className="w-5 h-5 flex items-center justify-center text-[10px] text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+                className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
               >{followMode ? '⏸' : '▶'}</button>
             </div>
           )
@@ -2634,7 +2634,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             {viewsOpen && (
               <div className="absolute top-full right-0 mt-1 z-40 w-72 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl">
                 <div className="px-2 py-1.5 border-b border-redlog-border">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t('timeline.views.saveNew')}</div>
+                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t('timeline.views.saveNew')}</div>
                   <input
                     value={viewsName}
                     onChange={(e) => setViewsName(e.target.value)}
@@ -2649,10 +2649,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   {savedViews === null && (
-                    <div className="px-2 py-2 text-[11px] text-redlog-text-dim font-mono">…</div>
+                    <div className="px-2 py-2 text-xs text-redlog-text-dim font-mono">…</div>
                   )}
                   {savedViews && savedViews.length === 0 && (
-                    <div className="px-2 py-2 text-[11px] text-redlog-text-dim font-mono">{t('timeline.views.empty')}</div>
+                    <div className="px-2 py-2 text-xs text-redlog-text-dim font-mono">{t('timeline.views.empty')}</div>
                   )}
                   {savedViews && savedViews.map((v) => (
                     <div key={v.id} className="flex items-center gap-1 px-2 py-1 hover:bg-white/5">
@@ -2661,7 +2661,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         className="flex-1 text-left text-xs font-mono text-redlog-text truncate"
                         title={v.name}
                       >{v.name}</button>
-                      <span className="text-[10px] font-mono text-redlog-text-faint tabular-nums">
+                      <span className="text-xs font-mono text-redlog-text-faint tabular-nums">
                         {formatTs(v.createdAt, tz, projectTz, 'time')}
                       </span>
                       <button
@@ -2848,7 +2848,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             {visibleLanes.map((id) => (
               <div
                 key={id}
-                className="flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-[11px]"
+                className="flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs"
                 style={{ height: laneH }}
               >
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
@@ -2941,7 +2941,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           bleeding out of a 4px band is worse than none. */}
                       {w >= 34 && (
                         <span
-                          className="absolute text-[9px] font-mono px-1 rounded-b bg-redlog-surface/80 whitespace-nowrap"
+                          className="absolute text-xs font-mono px-1 rounded-b bg-redlog-surface/80 whitespace-nowrap"
                           style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? '#cbd5e1' : '#a5b4fc' }}
                         >{b.label}</span>
                       )}
@@ -2963,7 +2963,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       }}
                       title={t('timeline.gapSkipped', { d: formatGap(g.to - g.from) })}
                     >
-                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] text-redlog-text-dim font-mono whitespace-nowrap">
+                      <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-xs text-redlog-text-dim font-mono whitespace-nowrap">
                         ⋯{formatGap(g.to - g.from)}
                       </span>
                     </div>
@@ -3144,7 +3144,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           rest surface in the tooltip and in the detail panel. */}
                       {single && badges && badges.length > 0 && (
                         <span
-                          className="absolute -top-0.5 -right-0.5 rounded-full bg-redlog-bg/95 border border-amber-500/60 text-[8px] leading-none flex items-center justify-center pointer-events-none"
+                          className="absolute -top-0.5 -right-0.5 rounded-full bg-redlog-bg/95 border border-amber-500/60 text-xs leading-none flex items-center justify-center pointer-events-none"
                           style={{ width: 12, height: 12 }}
                         >
                           {badges[0].icon}
@@ -3212,12 +3212,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
-                          <span className="text-redlog-text-faint font-mono text-[11px] tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
+                          <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
                           <span className="text-redlog-text text-xs truncate">{eventTitle(evt)}</span>
                         </button>
                       ))}
                       {overflow > 0 && (
-                        <div className="px-2 py-1 text-[11px] text-redlog-text-dim border-t border-redlog-border sticky bottom-0 bg-redlog-surface/95">
+                        <div className="px-2 py-1 text-xs text-redlog-text-dim border-t border-redlog-border sticky bottom-0 bg-redlog-surface/95">
                           {t('timeline.clusterMoreItems', { count: overflow })}
                         </div>
                       )}
@@ -3246,7 +3246,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               return (
                 <div
                   key={evt.id}
-                  className={`flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors text-[11px] border-b border-redlog-border-subtle/30 ${
+                  className={`flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
                     isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
                   }`}
                   onClick={() => setSelectedEvent(isSel ? null : evt)}
@@ -3305,7 +3305,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }} />
-              <span className="text-[11px] font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }}>
+              <span className="text-xs font-mono font-semibold uppercase tracking-wider" style={{ color: LANE_COLORS[toLane(selectedEvent.agentType, selectedEvent.data?.subtype as string | undefined, pluginTypes)] }}>
                 {selectedEvent.agentType}
               </span>
               <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60" title={selectedEvent.operatorId}>
@@ -3381,7 +3381,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{formatTs(selectedEvent.timestamp, tz, projectTz, 'full')}</span>
             </div>
           </div>
-          <p className="text-[12px] text-redlog-text mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
+          <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
           {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
               to the title so the operator sees every flag at once (the dot
               overlay only shows the first). Empty when the event has none. */}
@@ -3393,7 +3393,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 {badges.map((b) => (
                   <span
                     key={b.key}
-                    className="text-[11px] px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 font-mono"
+                    className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 font-mono"
                     title={b.reason}
                   >
                     {b.icon} {b.reason}
@@ -3413,7 +3413,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             if (!Array.isArray(causes) || causes.length === 0) return null
             return (
               <div className="mt-1 flex flex-wrap items-center gap-1">
-                <span className="text-[11px] text-redlog-text-dim font-mono">
+                <span className="text-xs text-redlog-text-dim font-mono">
                   {t('timeline.detail.causedBy')}
                 </span>
                 {(causes as unknown[]).filter((c): c is string => typeof c === 'string').map((cid) => {
@@ -3422,7 +3422,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     return (
                       <span
                         key={cid}
-                        className="text-[11px] px-1.5 py-0.5 rounded border border-red-500/50 bg-red-500/15 text-red-300 font-mono"
+                        className="text-xs px-1.5 py-0.5 rounded border border-red-500/50 bg-red-500/15 text-red-300 font-mono"
                         title={cid}
                       >
                         {t('timeline.detail.causeNotFound', { id: cid.slice(0, 8) })}
@@ -3435,7 +3435,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     <button
                       key={cid}
                       onClick={() => { setSelectedEvent(cev); scrollToEvent(cev) }}
-                      className="text-[11px] px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+                      className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: cc, backgroundColor: `${cc}18`, border: `1px solid ${cc}40` }}
                       title={eventTitle(cev)}
                     >
@@ -3456,7 +3456,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             const more = eff.length - shown.length
             return (
               <div className="mt-1 flex flex-wrap items-center gap-1">
-                <span className="text-[11px] text-redlog-text-dim font-mono">
+                <span className="text-xs text-redlog-text-dim font-mono">
                   {t('timeline.detail.effects', { count: eff.length })}
                 </span>
                 {shown.map((eid) => {
@@ -3468,7 +3468,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     <button
                       key={eid}
                       onClick={() => { setSelectedEvent(ev); scrollToEvent(ev) }}
-                      className="text-[11px] px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+                      className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: ec, backgroundColor: `${ec}18`, border: `1px solid ${ec}40` }}
                       title={eventTitle(ev)}
                     >
@@ -3477,7 +3477,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   )
                 })}
                 {more > 0 && (
-                  <span className="text-[11px] text-redlog-text-dim font-mono">
+                  <span className="text-xs text-redlog-text-dim font-mono">
                     {t('timeline.detail.effectsMore', { count: more })}
                   </span>
                 )}
@@ -3489,7 +3489,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               Suppressed entirely once the operator is already in focus mode
               so it doesn't add noise. */}
           {!focusChain && (
-            <p className="mt-1 text-[10px] text-redlog-text-faint font-mono">
+            <p className="mt-1 text-xs text-redlog-text-faint font-mono">
               {t('timeline.focusChain.enterHint')}
             </p>
           )}
@@ -3659,20 +3659,20 @@ function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, 
     // as what it is; the real output byte count appears once the replay
     // below is expanded and the range has actually been read.
     return (
-      <p className="text-[11px] text-emerald-400/80 font-mono px-2 py-1 rounded border border-emerald-600/30 bg-emerald-900/10">
+      <p className="text-xs text-emerald-400/80 font-mono px-2 py-1 rounded border border-emerald-600/30 bg-emerald-900/10">
         {t('timeline.detail.ioOnDisk', { size: formatBytes(len) })}
       </p>
     )
   }
   if (bracketed && len === 0) {
     return (
-      <p className="text-[11px] text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
+      <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
         {t('timeline.detail.ioNone')}
       </p>
     )
   }
   return (
-    <p className="text-[11px] text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+    <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
       {t(builtin ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
     </p>
   )
@@ -3796,7 +3796,7 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
         />
       )}
       {bodyless && (
-        <p className="text-[11px] text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+        <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
           {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
             type: contentType || '—', size: formatBytes(contentLength ?? 0)
           })}
@@ -3906,13 +3906,13 @@ function CollapsibleStream({
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-2 px-2 py-1 text-left"
       >
-        <span className="text-[10px] text-redlog-text-dim font-mono w-3">{open ? '▼' : '▶'}</span>
-        <span className={`text-[11px] font-mono font-semibold uppercase tracking-wider ${acc.label}`}>{label}</span>
-        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
+        <span className="text-xs text-redlog-text-dim font-mono w-3">{open ? '▼' : '▶'}</span>
+        <span className={`text-xs font-mono font-semibold uppercase tracking-wider ${acc.label}`}>{label}</span>
+        <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
           {formatBytes(shownBytes)}
         </span>
         {truncated && (
-          <span className="text-[10px] font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
+          <span className="text-xs font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
             {t('timeline.detail.truncated')}
           </span>
         )}
@@ -3922,7 +3922,7 @@ function CollapsibleStream({
             tabIndex={0}
             onClick={(e) => { e.stopPropagation(); void copyFull() }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void copyFull() } }}
-            className="ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover hover:text-redlog-text cursor-pointer"
+            className="ml-auto text-xs font-mono px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover hover:text-redlog-text cursor-pointer"
           >
             {copied ? t('timeline.detail.copied') : t('timeline.detail.copyFull')}
           </span>
@@ -3932,14 +3932,14 @@ function CollapsibleStream({
         <pre className="mx-2 mb-2 p-2 bg-redlog-bg rounded border border-redlog-border/60 text-xs text-redlog-text font-mono max-h-80 overflow-y-auto whitespace-pre-wrap break-all">
           {preview}
           {isLarge && (
-            <span className="block mt-2 text-[10px] text-redlog-text-dim">
+            <span className="block mt-2 text-xs text-redlog-text-dim">
               {t('timeline.detail.previewCut', { shown: formatBytes(preview.length), total: formatBytes(shownBytes) })}
             </span>
           )}
         </pre>
       )}
       {open && content.length === 0 && (
-        <p className="mx-2 mb-2 px-2 py-1 text-[11px] text-redlog-text-faint font-mono italic">{t('timeline.detail.empty')}</p>
+        <p className="mx-2 mb-2 px-2 py-1 text-xs text-redlog-text-faint font-mono italic">{t('timeline.detail.empty')}</p>
       )}
     </div>
   )
@@ -3950,7 +3950,7 @@ function MetadataGrid({ entries }: { entries: Array<[string, unknown]> }): JSX.E
   if (rows.length === 0) return <></>
   return (
     <div className="rounded border border-redlog-border/60 bg-redlog-bg/40 px-2 py-1.5">
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] font-mono">
+      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <span className="text-redlog-text-dim">{k}</span>
@@ -4275,7 +4275,7 @@ function SessionReplayPlayer({ events, truncated }: { events: Array<[number, 'o'
         </label>
       </div>
       {truncated && (
-        <p className="px-2 py-1 text-[11px] text-amber-400 border-t border-redlog-border bg-redlog-surface/40">{t('timeline.replay.truncated')}</p>
+        <p className="px-2 py-1 text-xs text-amber-400 border-t border-redlog-border bg-redlog-surface/40">{t('timeline.replay.truncated')}</p>
       )}
     </div>
   )

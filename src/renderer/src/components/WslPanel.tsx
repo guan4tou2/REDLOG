@@ -131,13 +131,13 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
       {networkMode === 'nat' && (
         <div className="px-3 py-2 rounded border border-amber-900/50 bg-amber-950/30 space-y-1">
           <p className="text-xs text-amber-400">{t('settings.wsl.networkNat')}</p>
-          <p className="text-[11px] text-amber-500/80">{t('settings.wsl.natFix')}</p>
+          <p className="text-xs text-amber-500/80">{t('settings.wsl.natFix')}</p>
         </div>
       )}
       {networkMode === 'not-configured' && (
         <div className="px-3 py-2 rounded border border-amber-900/50 bg-amber-950/20 space-y-1">
           <p className="text-xs text-amber-400/80">{t('settings.wsl.networkNotConfigured')}</p>
-          <p className="text-[11px] text-amber-500/70">{t('settings.wsl.natFix')}</p>
+          <p className="text-xs text-amber-500/70">{t('settings.wsl.natFix')}</p>
         </div>
       )}
 
@@ -158,7 +158,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                 {/* Header: name, state badge, default badge */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-medium text-redlog-text">{distro.name}</span>
-                  <span className={`text-[11px] px-1.5 py-0.5 rounded ${
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${
                     distro.state === 'Running'
                       ? 'bg-green-900/50 text-green-400'
                       : 'bg-redlog-elevated text-redlog-text-dim'
@@ -166,11 +166,11 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                     {distro.state === 'Running' ? t('settings.wsl.running') : t('settings.wsl.stoppedBadge')}
                   </span>
                   {distro.isDefault && (
-                    <span className="text-[11px] bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
+                    <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                       {t('settings.wsl.default')}
                     </span>
                   )}
-                  <span className="text-[11px] text-redlog-text-faint">WSL {distro.version}</span>
+                  <span className="text-xs text-redlog-text-faint">WSL {distro.version}</span>
                 </div>
 
                 {/* Stopped message */}
@@ -183,7 +183,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                   <div className="mt-2 space-y-1.5">
                     {/* Detected shells */}
                     {distro.shells.length > 0 && (
-                      <p className="text-[11px] text-redlog-text-dim">
+                      <p className="text-xs text-redlog-text-dim">
                         Shells: {distro.shells.join(', ')}
                       </p>
                     )}
@@ -197,14 +197,14 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                       return (
                         <div key={shell} className="flex items-center gap-2">
                           <span className="text-xs text-redlog-text-dim w-10">{shell}</span>
-                          <span className={`text-[11px] px-1.5 py-0.5 rounded ${hookStatusColor(status)}`}>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${hookStatusColor(status)}`}>
                             {hookStatusLabel(status)}
                           </span>
                           {status === 'not-installed' && (
                             <button
                               disabled={actionBusy === installKey}
                               onClick={() => handleInstall(distro.name, shell)}
-                              className="px-2.5 py-0.5 text-[11px] rounded bg-red-600/80 text-white hover:bg-red-600 disabled:opacity-50"
+                              className="px-2.5 py-0.5 text-xs rounded bg-red-600/80 text-white hover:bg-red-600 disabled:opacity-50"
                             >
                               {actionBusy === installKey ? t('settings.wsl.installing') : t('settings.wsl.install')}
                             </button>
@@ -213,7 +213,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                             <button
                               disabled={actionBusy === uninstallKey}
                               onClick={() => handleUninstall(distro.name, shell)}
-                              className="px-2.5 py-0.5 text-[11px] rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                              className="px-2.5 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
                             >
                               {actionBusy === uninstallKey ? '...' : t('settings.wsl.uninstall')}
                             </button>
@@ -227,7 +227,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                       <button
                         disabled={actionBusy === `${distro.name}-diag`}
                         onClick={() => handleDiagnose(distro.name)}
-                        className="px-2.5 py-1 text-[11px] rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover disabled:opacity-50"
+                        className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover disabled:opacity-50"
                       >
                         {actionBusy === `${distro.name}-diag` ? '...' : t('settings.wsl.diagnose')}
                       </button>

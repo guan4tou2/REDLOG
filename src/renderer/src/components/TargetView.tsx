@@ -140,7 +140,7 @@ export function TargetView(): JSX.Element {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">{t('targets.title', { count: targets.length })}</h2>
-          <p className="text-[11px] text-redlog-text-dim mt-0.5 max-w-xl">{t('targets.subtitle')}</p>
+          <p className="text-xs text-redlog-text-dim mt-0.5 max-w-xl">{t('targets.subtitle')}</p>
         </div>
         <div className="flex gap-1">
           {(['all', 'in_scope', 'out_scope'] as const).map((f) => (
