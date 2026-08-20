@@ -513,7 +513,7 @@
   "confirm.confirm": "確認",
   "confirm.delete": "刪除",
   "confirm.deleteProject": "刪除專案？",
-  "confirm.deleteProjectDesc": "此專案的所有資料將被永久刪除，此操作無法復原。",
+  "confirm.deleteProjectDesc": "刪除 {{name}} 是永久的。沒有復原，也沒有救回來的路徑。",
   "confirm.deleteMark": "刪除標記？",
   "confirm.deleteMarkDesc": "此標記將被永久移除。",
   "toast.recordingPaused": "錄製已暫停",
@@ -919,7 +919,7 @@
   "cloudShare.uploadFailedWhy": "證據包已建立，但從未離開這台機器。沒有分享出去任何東西。",
   "terminal.tabClosed": "已關閉 {{label}}",
   "terminal.tabClosedWhy": "shell 程序已結束。復原會開一個新的——捲動歷史不會回來。",
-  "toast.recordingPausedWhy": "在你恢復之前不會擷取任何東西。",
+  "toast.recordingPausedWhy": "擷取來源停止供給時間軸。你的標記與 RedLog 自己的稽核事件仍會記錄。",
   "plugins.disabled": "已停用 {{name}}",
   "plugins.disabledWhy": "尚未寫入——8 秒內復原，稽核紀錄不會有任何痕跡。",
   "targets.addedToScope": "已將 {{target}} 加入範圍",
@@ -951,5 +951,10 @@
   "timeline.help.zoomKeys": "放大／縮小／重設，以選取為錨",
   "settings.operatorTokenWritten": "已寫入專案之外的檔案，只有你能讀取。不會出現在任何匯出或證據包裡。",
   "settings.operatorTokenWriteFailed": "token 無法寫入，也沒有顯示出來。請輪替這個 operator 以重新產生。",
-  "dashboard.hudPassThrough": "結束 HUD 滑鼠穿透"
+  "dashboard.hudPassThrough": "結束 HUD 滑鼠穿透",
+  "statusBar.resumeRecording": "恢復錄製",
+  "confirm.deleteProjectConfirm": "永久刪除",
+  "confirm.deleteProjectChain": "全部事件與整條 SHA-256 證據鏈",
+  "confirm.deleteProjectMedia": "所有截圖與終端機工作階段錄影",
+  "confirm.deleteProjectAnchors": "OpenTimestamps 錨點收據——這些無法重新產生，因為它們見證的是一個已經過去的時刻"
 }

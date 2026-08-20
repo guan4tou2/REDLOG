@@ -513,7 +513,7 @@
   "confirm.confirm": "Confirm",
   "confirm.delete": "Delete",
   "confirm.deleteProject": "Delete Project?",
-  "confirm.deleteProjectDesc": "All data for this project will be permanently deleted. This cannot be undone.",
+  "confirm.deleteProjectDesc": "Deleting {{name}} is permanent. There is no undo and no recovery path.",
   "confirm.deleteMark": "Delete Mark?",
   "confirm.deleteMarkDesc": "This mark will be permanently removed.",
   "toast.recordingPaused": "Recording paused",
@@ -919,7 +919,7 @@
   "cloudShare.uploadFailedWhy": "The bundle was built but never left this machine. Nothing was shared.",
   "terminal.tabClosed": "Closed {{label}}",
   "terminal.tabClosedWhy": "The shell process ended. Undo opens a new one — scrollback does not come back.",
-  "toast.recordingPausedWhy": "Nothing is being captured until you resume.",
+  "toast.recordingPausedWhy": "Capture sources stop feeding the timeline. Your markers and RedLog’s own audit events keep recording.",
   "plugins.disabled": "Disabled {{name}}",
   "plugins.disabledWhy": "Not written yet — undo within 8 seconds and nothing reaches the audit log.",
   "targets.addedToScope": "{{target}} added to scope",
@@ -951,5 +951,10 @@
   "timeline.help.zoomKeys": "Zoom in / out / reset, anchored on the selection",
   "settings.operatorTokenWritten": "Written to a file outside the project, readable only by you. It is not in any export or evidence bundle.",
   "settings.operatorTokenWriteFailed": "The token could not be written and has not been shown. Rotate this operator to issue a new one.",
-  "dashboard.hudPassThrough": "Leave HUD click-through"
+  "dashboard.hudPassThrough": "Leave HUD click-through",
+  "statusBar.resumeRecording": "Resume recording",
+  "confirm.deleteProjectConfirm": "Delete permanently",
+  "confirm.deleteProjectChain": "Every event and the whole SHA-256 evidence chain",
+  "confirm.deleteProjectMedia": "All screenshots and terminal session recordings",
+  "confirm.deleteProjectAnchors": "The OpenTimestamps receipts — these cannot be regenerated, because they attest to a moment that has passed"
 }

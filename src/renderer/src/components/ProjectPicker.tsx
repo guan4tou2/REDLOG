@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatFreshness } from '../lib/time'
-import { confirm } from './ConfirmDialog'
+import { confirmChainImpact } from './ConfirmDialog'
 import { toast } from './Toast'
 import logoUrl from '../assets/logo.svg'
 
@@ -92,7 +92,24 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   }
 
   async function handleDelete(id: string): Promise<void> {
-    const ok = await confirm(t('confirm.deleteProject'), t('confirm.deleteProjectDesc'), true)
+    const project = projects.find((p) => p.id === id)
+    if (!project) return
+    // §5.5 level 3. This is the single most consequential action in the app —
+    // it destroys the SHA-256 chain, the screenshots, the session recordings
+    // and the OpenTimestamps receipts, and the receipts in particular cannot
+    // be regenerated at any price, because they attest to a moment that has
+    // passed. It was running on the same checkbox as removing a shell hook.
+    const ok = await confirmChainImpact({
+      title: t('confirm.deleteProject'),
+      message: t('confirm.deleteProjectDesc', { name: project.name }),
+      confirmLabel: t('confirm.deleteProjectConfirm'),
+      consequences: [
+        t('confirm.deleteProjectChain'),
+        t('confirm.deleteProjectMedia'),
+        t('confirm.deleteProjectAnchors')
+      ],
+      requireTyped: project.name
+    })
     if (!ok) return
     await window.redlog.project.delete(id)
     setProjects((prev) => prev.filter((p) => p.id !== id))

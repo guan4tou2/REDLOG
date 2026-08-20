@@ -4,6 +4,13 @@ import { toast, toastUndo } from './Toast'
 import { Gem } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
+import { appShortcuts } from '../lib/shortcuts'
+
+// The ⌘. chord, drawn the way this platform writes it. Read from the one
+// shortcut table so the toast cannot drift from the binding (§11).
+const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+const recordingChord =
+  appShortcuts([], isMacPlatform).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -114,7 +121,20 @@ export default function StatusBar(): JSX.Element {
     toastUndo(
       newState ? t('toast.recordingResumed') : t('toast.recordingPaused'),
       () => { void window.redlog.recording.toggle() },
-      { type: newState ? 'success' : 'warning', why: newState ? undefined : t('toast.recordingPausedWhy') }
+      {
+        type: newState ? 'success' : 'warning',
+        why: newState ? undefined : t('toast.recordingPausedWhy'),
+        // Name the action rather than saying "undo", and carry the chord —
+        // pausing is the one toast an operator wants to reverse without
+        // reaching for the mouse. The chord comes from the shortcut table so
+        // it stays right on both platforms.
+        ...(newState ? {} : {
+          action: {
+            label: `${t('statusBar.resumeRecording')}  ${recordingChord}`,
+            onClick: () => { void window.redlog.recording.toggle() }
+          }
+        })
+      }
     )
   }
 
