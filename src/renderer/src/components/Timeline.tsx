@@ -2223,7 +2223,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       setViewsName('')
       await refreshViews()
       toast('Saved', 'success')
-    } catch { toast('Save failed', 'error') }
+    } catch (e) {
+      toast(t('timeline.saveFailed'), {
+        type: 'error',
+        why: t('timeline.saveFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
+    }
   }, [viewsApi, timeStart, timeEnd, view, zoom, hiddenLanes, filterQuery, refreshViews, t])
 
   const applyView = useCallback((v: SavedTimelineView) => {
@@ -2764,7 +2770,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
               const path = await window.redlog.data.exportTimelineSlice(from, to)
               if (path) toast(t('timeline.exportSliceOk', { path }), 'success')
-              else toast(t('timeline.exportSliceFail'), 'error')
+              else toast(t('timeline.exportSliceFail'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-emerald-400 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
             title={t('timeline.exportSliceHint')}
@@ -3354,7 +3360,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   onClick={async () => {
                     const p = selectedEvent.data?.snapshot_path as string
                     const ok = await window.redlog.data?.revealPath?.(p)
-                    if (!ok) toast(t('timeline.openSidecarFailed'), 'error')
+                    if (!ok) toast(t('timeline.openSidecarFailed'), { type: 'error', why: t('timeline.openSidecarFailedWhy') })
                   }}
                   className="text-xs px-2 py-0.5 rounded bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60 transition-colors"
                   title={t('timeline.openSidecarHint')}

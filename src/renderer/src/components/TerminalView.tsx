@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
-import { confirm } from './ConfirmDialog'
+import { toast, UNDO_MS } from './Toast'
 
 interface Tab {
   id: string
@@ -53,13 +53,12 @@ export default function TerminalView(): JSX.Element {
 
   const closeTab = useCallback(async (id: string) => {
     // Terminal panes host live PTY sessions (with shell hook capturing every
-    // command); closing kills the child process and loses the interactive
-    // state. Confirm so a stray middle-click doesn't drop work (audit P1 #17).
+    // command), so closing one kills a child process and loses interactive
+    // state. That used to raise a confirm dialog on every close (audit P1
+    // #17), which is the wrong grade for it: §5.5 puts a dialog on the
+    // irreversible and this is not — the tab reopens in the same cwd. Close
+    // it, say so, and offer the way back for eight seconds.
     const tab = tabs.find((t) => t.id === id)
-    if (tab?.alive) {
-      const ok = await confirm(t('terminal.closeTitle'), t('terminal.closeConfirm', { label: tab.label }), true)
-      if (!ok) return
-    }
     window.redlog.terminal.kill(id)
     setTabs((prev) => {
       const next = prev.filter((t) => t.id !== id)
@@ -68,7 +67,16 @@ export default function TerminalView(): JSX.Element {
       }
       return next
     })
-  }, [activeTab, tabs, t])
+    // The PTY is gone either way; undo opens a fresh shell in its place,
+    // which is what "undo" can honestly mean here. Scrollback does not come
+    // back, and the second line of the toast says so rather than letting the
+    // operator find out.
+    toast(t('terminal.tabClosed', { label: tab?.label ?? '' }), {
+      why: t('terminal.tabClosedWhy'),
+      action: { label: t('toast.undo'), onClick: () => addTab() },
+      duration: UNDO_MS
+    })
+  }, [activeTab, tabs, t, addTab])
 
   const didInit = useRef(false)
   useEffect(() => {
