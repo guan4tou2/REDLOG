@@ -128,7 +128,7 @@ export default function TerminalView(): JSX.Element {
           <div
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-[11px] cursor-pointer transition-colors ${
+            className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-xs cursor-pointer transition-colors ${
               activeTab === tab.id
                 ? 'bg-[#1a1a1a] text-redlog-text'
                 : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -141,12 +141,12 @@ export default function TerminalView(): JSX.Element {
             )}
             {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
               <span
-                className="text-[11px] font-mono text-red-400 bg-red-500/10 px-1 rounded"
+                className="text-xs font-mono text-red-400 bg-red-500/10 px-1 rounded"
                 title={t('terminal.lastExit', { code: tab.lastExit })}
               >✕{tab.lastExit}</span>
             )}
             {tab.pid > 0 && tab.alive && (
-              <span className="text-[11px] text-redlog-text-faint font-mono">{tab.pid}</span>
+              <span className="text-xs text-redlog-text-faint font-mono">{tab.pid}</span>
             )}
             {!tab.alive && (
               <button
@@ -229,19 +229,19 @@ export default function TerminalView(): JSX.Element {
           />
           <button
             onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findPrevious(searchQuery) }}
-            className="w-6 h-6 rounded text-[11px] text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
+            className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchPrev')}
             aria-label={t('terminal.searchPrev')}
           >↑</button>
           <button
             onClick={() => { const a = activeTab ? paneSearchRefs.current.get(activeTab) : null; a?.findNext(searchQuery) }}
-            className="w-6 h-6 rounded text-[11px] text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
+            className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchNext')}
             aria-label={t('terminal.searchNext')}
           >↓</button>
           <button
             onClick={() => { setSearchOpen(false); setSearchQuery('') }}
-            className="w-6 h-6 rounded text-[11px] text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
+            className="w-6 h-6 rounded text-xs text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]"
             title={t('terminal.searchClose')}
             aria-label={t('terminal.searchClose')}
           >×</button>

@@ -75,7 +75,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         <h3 className="text-sm font-semibold text-redlog-text">
           {t('marker.title')}
           {atTimestamp && (
-            <span className="ml-2 text-[11px] text-amber-400/80 font-mono font-normal">
+            <span className="ml-2 text-xs text-amber-400/80 font-mono font-normal">
               {t('marker.atTimestamp', { time: new Date(atTimestamp).toLocaleTimeString() })}
             </span>
           )}

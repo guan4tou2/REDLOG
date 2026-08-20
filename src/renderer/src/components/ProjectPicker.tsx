@@ -123,7 +123,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <img src={logoUrl} alt="RedLog" className="w-14 h-14 mx-auto mb-2 rounded-xl" />
 
           <h1 className="text-redlog-text font-bold text-xl tracking-[0.15em]">{t('app.title')}</h1>
-          <p className="text-redlog-text-faint text-[11px] font-mono">{t('app.subtitle')}</p>
+          <p className="text-redlog-text-faint text-xs font-mono">{t('app.subtitle')}</p>
         </div>
 
         {bridgeMissing && (
@@ -199,7 +199,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-redlog-text text-[11px] font-semibold uppercase tracking-[0.15em]">
+                <h2 className="text-redlog-text text-xs font-semibold uppercase tracking-[0.15em]">
                   {t('project.advancedSetup')}
                 </h2>
                 <button
@@ -292,10 +292,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                           if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
                         }}
                         onBlur={() => handleRenameCommit(p.id)}
-                        className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-[13px] font-medium font-mono focus:outline-none focus:border-red-500/50"
+                        className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-xs font-medium font-mono focus:outline-none focus:border-red-500/50"
                       />
                     ) : (
-                      <div className="text-redlog-text text-[13px] font-medium truncate">{p.name}</div>
+                      <div className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
                     )}
                     <div className="text-redlog-text-faint text-xs font-mono">{timeAgo(p.lastOpened)}</div>
                   </div>
@@ -353,7 +353,7 @@ function MiniListField({ label, items, onChange, placeholder }: {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); addItem() } }}
           placeholder={placeholder}
-          className="flex-1 bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-[11px] text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
+          className="flex-1 bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
         />
         <button onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
       </div>

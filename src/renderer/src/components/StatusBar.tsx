@@ -105,7 +105,7 @@ export default function StatusBar(): JSX.Element {
   const Sep = (): JSX.Element => <span className="text-redlog-text-faint select-none">|</span>
 
   return (
-    <div className="h-7 bg-redlog-bg border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
+    <div className="h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 gap-3 text-xs font-mono shrink-0 select-none">
       {(() => {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (some sources active, some idle).

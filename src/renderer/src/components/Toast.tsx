@@ -66,7 +66,7 @@ export function ToastContainer(): JSX.Element | null {
           role="status"
           className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border backdrop-blur-md text-xs font-medium shadow-lg animate-toast-in pointer-events-auto ${TYPE_STYLES[t.type]}`}
         >
-          <span className="text-[11px] opacity-70">{TYPE_ICONS[t.type]}</span>
+          <span className="text-xs opacity-70">{TYPE_ICONS[t.type]}</span>
           <span>{t.message}</span>
           <button
             onClick={() => dismiss(t.id)}

@@ -180,7 +180,7 @@ export default function App(): JSX.Element {
       >
         <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
           <img src={logoUrl} alt="" className="w-4 h-4 rounded" />
-          <span className="text-red-500 font-bold text-[13px] tracking-[0.2em]">{t('app.title')}</span>
+          <span className="text-red-500 font-bold text-xs tracking-[0.2em]">{t('app.title')}</span>
           {/* Take the version out of the drag zone so users reporting bugs can
               actually copy it — audit finding P2 #36. */}
           <span
@@ -190,7 +190,7 @@ export default function App(): JSX.Element {
           >v{__APP_VERSION__}</span>
         </div>
         <button
-          className="ml-4 text-redlog-text-faint hover:text-redlog-text text-[11px] font-mono transition-colors flex items-center gap-1"
+          className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={async () => {
             await window.redlog.project.close()
@@ -198,7 +198,7 @@ export default function App(): JSX.Element {
           }}
           title={t('app.closeProject')}
         >
-          <span className="text-[10px]">&#9664;</span>
+          <span className="text-xs">&#9664;</span>
           {project.name}
         </button>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -301,20 +301,20 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
 
   return (
     <div className="mb-3">
-      <p className="text-[11px] text-redlog-text-dim mb-2">
+      <p className="text-xs text-redlog-text-dim mb-2">
         {readiness.level === 'dark' ? t('capture.setupIntro') : t('capture.setupAlmost')}
       </p>
       <ol className="space-y-1 mb-2.5">
         {readiness.steps.map((s, i) => {
           const g = glyph(s.status)
           return (
-            <li key={s.id} className="flex items-center gap-2 text-[11px]">
+            <li key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`shrink-0 ${g.cls}`}>{g.mark}</span>
               <span className="text-redlog-text-dim tabular-nums">{i + 1}.</span>
               <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
                 {STEP_LABEL[s.id] ?? s.id}
               </span>
-              <span className="text-[10px] font-mono text-redlog-text-faint">{t(`capture.step.${s.status}`)}</span>
+              <span className="text-xs font-mono text-redlog-text-faint">{t(`capture.step.${s.status}`)}</span>
             </li>
           )
         })}
@@ -324,12 +324,12 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
           <button
             disabled={busy !== null}
             onClick={cta.run}
-            className="text-[11px] font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
+            className="text-xs font-medium px-2.5 py-1 rounded border border-red-800/60 text-red-300 hover:bg-red-900/30 transition-colors disabled:opacity-40"
           >
             {cta.label}
           </button>
         )}
-        <button onClick={() => onNavigate('settings')} className="text-[11px] text-redlog-text-dim hover:text-redlog-text underline">
+        <button onClick={() => onNavigate('settings')} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
           {t('capture.openHooks')}
         </button>
       </div>
@@ -468,16 +468,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
       }`}>
         <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
+          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setManage((m) => !m)}
-              className="text-[10px] font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
+              className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
               title={t('capture.manageHint')}
             >
               {manage ? t('capture.done') : t('capture.manageWithHidden', { count: capture.sources.length })}
             </button>
-            <span className={`text-[11px] font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
+            <span className={`text-xs font-medium ${dark ? 'text-red-300' : partial ? 'text-amber-300' : 'text-emerald-400'}`}>{headline}</span>
           </div>
         </div>
         {readiness.level !== 'recording' && (
@@ -503,7 +503,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                   : s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {!manage && s.installed !== false && s.state !== 'off' && (
-                <span className={`text-[10px] font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
+                <span className={`text-xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
                   {fmtAge(s.lastEventAt, nowTick)}
                 </span>
               )}
@@ -517,7 +517,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                     <button
                       disabled={busy === s.id}
                       onClick={() => void setEnabled(s, s.enabled === false)}
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                      className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.enabled === false
                           ? 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
                           : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
@@ -530,7 +530,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                     <button
                       disabled={busy === s.id}
                       onClick={() => void setInstalled(s, s.installed !== true)}
-                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
+                      className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
                         s.installed === true
                           ? 'border-redlog-border text-redlog-text-dim hover:text-red-400'
                           : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
@@ -544,14 +544,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       browser, a terminal pane). Claiming "always on" would
                       overstate it, so the state column speaks for itself. */}
                   {!s.configPath && !s.hookId && (
-                    <span className="text-[10px] font-mono text-redlog-muted">{t('capture.passive')}</span>
+                    <span className="text-xs font-mono text-redlog-muted">{t('capture.passive')}</span>
                   )}
                 </span>
               )}
             </div>
           ))}
           {!manage && shown.length === 0 && (
-            <p className="text-[11px] text-redlog-text-dim col-span-2">
+            <p className="text-xs text-redlog-text-dim col-span-2">
               {healthy.length > 0
                 ? t('capture.allGood', { active: healthy.length })
                 : t('capture.noneEnabled')}
@@ -566,7 +566,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
          *  "Last fed" is the newest logged-row age — a slow tick is fine
          *  because it uses the same 1s nowTick as the source-row ages. */}
         {tierSplit && tierSplit.logged > 0 && (
-          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center justify-between text-[10px] font-mono">
+          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center justify-between text-xs font-mono">
             <div className="flex items-center gap-2">
               <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.tierChain')}</span>
               <span className="text-redlog-text tabular-nums">{tierSplit.chained.toLocaleString()}</span>
@@ -740,7 +740,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       )}
 
       <section>
-        <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
           {t('dashboard.networkStatus')}
         </h2>
         <IPStatusCard />
@@ -748,7 +748,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">
+          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">
             {t('dashboard.sessionStats')}
           </h2>
           <button
@@ -834,7 +834,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
 
       {config && (
         <section>
-          <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </h2>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
@@ -872,7 +872,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       )}
 
       <section>
-        <h2 className="text-[11px] font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
           {t('dashboard.shortcuts')}
         </h2>
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">

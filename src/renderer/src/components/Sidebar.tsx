@@ -55,7 +55,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const badge = (count: number, color: string): JSX.Element | null =>
     count > 0 ? (
-      <span className={`ml-auto min-w-[18px] h-[18px] rounded-full ${color} text-[11px] text-white font-bold flex items-center justify-center px-1`}>
+      <span className={`ml-auto min-w-[18px] h-[18px] rounded-full ${color} text-xs text-white font-bold flex items-center justify-center px-1`}>
         {count > 99 ? '99+' : count}
       </span>
     ) : null
@@ -138,7 +138,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               title={`${item.label} · ${isMac ? '⌘' : 'Ctrl+'}${index + 1}${index === 0 ? '  (' + t('sidebar.reorderHint') + ')' : ''}`}
               aria-label={`${item.label} — ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
+              className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
                 draggingId === item.id ? 'bg-white/[0.07] cursor-grabbing' : ''
               } ${
                 isActive
@@ -149,10 +149,10 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               {isActive && (
                 <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
               )}
-              <span className={`text-[13px] leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
+              <span className={`text-xs leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
                 {item.icon}
               </span>
-              <span className={`text-[11px] leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
+              <span className={`text-xs leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
                 {item.label}
               </span>
               {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-text-dim')}
@@ -174,8 +174,8 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           {active === 'settings' && (
             <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
           )}
-          <span className={`text-[13px] leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>⚙</span>
-          <span className={`text-[11px] leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
+          <span className={`text-xs leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>⚙</span>
+          <span className={`text-xs leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
         </button>
       </div>
     </nav>

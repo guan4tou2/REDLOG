@@ -135,7 +135,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('marks.searchPlaceholder')}
-              className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-[11px] text-redlog-text font-mono focus:outline-none focus:border-red-500/40 placeholder-redlog-muted"
+              className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40 placeholder-redlog-muted"
             />
           </div>
         )}

@@ -231,7 +231,7 @@ export default function Settings(): JSX.Element {
             </FieldGroup>
             <FieldGroup title={t('settings.polling')}>
               <div>
-                <label className="block text-[11px] text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
+                <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
                 <div className="flex gap-1">
                   {(['auto', 'dns', 'http'] as const).map((m) => (
                     <button
@@ -264,7 +264,7 @@ export default function Settings(): JSX.Element {
                       }}
                       className="accent-red-600"
                     />
-                    <span className="text-[11px] text-redlog-text">{t('settings.showWifiName')}</span>
+                    <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
                   </label>
                   <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>
                 </div>
@@ -362,7 +362,7 @@ export default function Settings(): JSX.Element {
                         {stops.map((s) => (
                           <span
                             key={s.v}
-                            className={`text-[9px] cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
+                            className={`text-xs cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
                             onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: s.v } })}
                           >{t(s.k)}</span>
                         ))}
@@ -552,7 +552,7 @@ export default function Settings(): JSX.Element {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => window.redlog.app.checkForUpdates()}
-                  className="px-3 py-1 text-[11px] rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors"
+                  className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors"
                 >
                   {t('settings.checkUpdate')}
                 </button>
@@ -708,7 +708,7 @@ function Field({ label, value, onChange, type = 'text' }: {
 }): JSX.Element {
   return (
     <div>
-      <label className="text-[11px] text-redlog-text-dim block mb-1">{label}</label>
+      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <input
         type={type}
         value={value}
@@ -777,17 +777,17 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
                       {hook.installed && (
-                        <span className="text-[11px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
                           {t('settings.hookActive')}
                         </span>
                       )}
                       {isManual && (
-                        <span className="text-[11px] bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                           {t('settings.hookManual')}
                         </span>
                       )}
                       {!hook.available && (
-                        <span className="text-[11px] bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                           {t('settings.hookNotFound')}
                         </span>
                       )}
@@ -838,7 +838,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                         )}
                       </div>
                     ))}
-                    <p className="text-[11px] text-redlog-text-faint pt-0.5">{t('settings.hookManualNote')}</p>
+                    <p className="text-xs text-redlog-text-faint pt-0.5">{t('settings.hookManualNote')}</p>
                   </div>
                 )}
               </div>
@@ -955,23 +955,23 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-medium text-redlog-text">{p.name}</span>
-                    <span className="text-[11px] text-redlog-text-dim">v{p.version}</span>
-                    <span className={`text-[11px] px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
+                    <span className="text-xs text-redlog-text-dim">v{p.version}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
                       {t(`plugins.status.${p.status}`)}
                     </span>
-                    <span className={`text-[11px] px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
                       {privileged ? t('plugins.tier.privileged') : t('plugins.tier.declarative')}
                     </span>
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{p.source}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{p.source}</span>
                   </div>
                   {p.description && <p className="text-xs text-redlog-text-dim mt-0.5">{p.description}</p>}
                   {p.contributes.length > 0 && (
-                    <p className="text-[11px] text-redlog-text-faint mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
+                    <p className="text-xs text-redlog-text-faint mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
                   )}
                   {privileged && p.capabilities.length > 0 && (
-                    <p className="text-[11px] text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
+                    <p className="text-xs text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
                   )}
-                  {p.status === 'error' && p.error && <p className="text-[11px] text-red-400 mt-0.5">{p.error}</p>}
+                  {p.status === 'error' && p.error && <p className="text-xs text-red-400 mt-0.5">{p.error}</p>}
                 </div>
 
                 <div className="ml-3 shrink-0 flex flex-col gap-1 items-end">
@@ -1011,14 +1011,14 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
         })}
       </div>
 
-      <p className="text-[11px] text-redlog-text-faint mt-3">{t('plugins.dir')}</p>
+      <p className="text-xs text-redlog-text-faint mt-3">{t('plugins.dir')}</p>
 
       {/* trust consent dialog for 🔴 code plugins */}
       {confirmGrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setConfirmGrant(null)}>
           <div className="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-red-400 mb-1">{t('plugins.consentTitle')}</h3>
-            <p className="text-[11px] text-redlog-text-dim mb-2">
+            <p className="text-xs text-redlog-text-dim mb-2">
               {t('plugins.consentBody', { name: confirmGrant.name })}
             </p>
             <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
@@ -1087,7 +1087,7 @@ function BrowserPanel({
           onChange={(e) => patch({ isolateProfile: e.target.checked })}
           className="accent-red-600"
         />
-        <span className="text-[11px] text-redlog-text-dim">{t('settings.browserIsolate')}</span>
+        <span className="text-xs text-redlog-text-dim">{t('settings.browserIsolate')}</span>
       </label>
       <label className="flex items-center gap-2 cursor-pointer">
         <input
@@ -1096,7 +1096,7 @@ function BrowserPanel({
           onChange={(e) => patch({ ignoreCertErrors: e.target.checked })}
           className="accent-red-600"
         />
-        <span className="text-[11px] text-redlog-text-dim">{t('settings.browserIgnoreCert')}</span>
+        <span className="text-xs text-redlog-text-dim">{t('settings.browserIgnoreCert')}</span>
       </label>
       <button
         onClick={async () => {
@@ -1361,7 +1361,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
           {anchors.map((a) => (
             <div key={a.id} className="p-2 rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-center gap-2 text-xs">
-                <span className={`text-[11px] px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
                   {statusLabel(a.status)}
                 </span>
                 <span className="text-redlog-text-dim font-mono tabular-nums text-xs">
@@ -1381,7 +1381,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                     title={r.ok
                       ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}`
                       : `${r.calendar} — ${r.error}`}
-                    className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-xs px-1.5 py-0.5 rounded font-mono ${
                       r.upgraded ? 'bg-blue-900/50 text-blue-300' :
                       r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
                     }`}
@@ -1464,14 +1464,14 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
       </div>
 
       {info?.operators && info.operators.length > 0 && (
-        <div className="text-[11px] text-redlog-text-dim">
+        <div className="text-xs text-redlog-text-dim">
           {t('settings.mcpRegisteredAgents')}: {info.operators.map((o) => o.name).join(' · ')}
         </div>
       )}
 
       {creds && httpCmd && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
-          <p className="text-[11px] text-red-300">{t('settings.mcpCreated')}</p>
+          <p className="text-xs text-red-300">{t('settings.mcpCreated')}</p>
           <div className="flex items-start gap-1">
             <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
             <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover shrink-0">{t('settings.mcpCopy')}</button>
@@ -1522,7 +1522,7 @@ function AgentsPanel({
           />
           <span className="text-xs text-redlog-text">{t('settings.agents.enable')}</span>
         </label>
-        <p className="text-[11px] text-redlog-text-faint pl-6">{t('settings.agents.enableHint')}</p>
+        <p className="text-xs text-redlog-text-faint pl-6">{t('settings.agents.enableHint')}</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -1535,8 +1535,8 @@ function AgentsPanel({
             {t('settings.agents.emitThinking')}
           </span>
         </label>
-        <p className="text-[11px] text-redlog-text-faint pl-6">{t('settings.agents.emitThinkingHint')}</p>
-        <p className="text-[11px] text-redlog-text-faint mt-3 border-t border-redlog-border pt-2">
+        <p className="text-xs text-redlog-text-faint pl-6">{t('settings.agents.emitThinkingHint')}</p>
+        <p className="text-xs text-redlog-text-faint mt-3 border-t border-redlog-border pt-2">
           {t('settings.agents.selfExclusionHint')}
         </p>
       </div>
@@ -1593,7 +1593,7 @@ function DeconflictionPanel({
             onChange={(v) => patch({ url: v })}
           />
           <div>
-            <label className="text-[11px] text-redlog-text-dim block mb-1">{t('settings.deconflictionSecret')}</label>
+            <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.deconflictionSecret')}</label>
             <div className="flex gap-1">
               <input
                 type={secretVisible ? 'text' : 'password'}
@@ -1628,7 +1628,7 @@ function DeconflictionPanel({
               onChange={(e) => patch({ includeData: e.target.checked })}
               className="accent-red-600"
             />
-            <span className="text-[11px] text-redlog-text-dim">{t('settings.deconflictionIncludeData')}</span>
+            <span className="text-xs text-redlog-text-dim">{t('settings.deconflictionIncludeData')}</span>
           </label>
           <button
             onClick={handleTest}
@@ -1714,12 +1714,12 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
               <div className="flex items-center gap-2">
                 <span className="text-redlog-text font-medium truncate">{op.name}</span>
                 {op.isPrimary && (
-                  <span className="text-[11px] bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
+                  <span className="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
                     {t('settings.operatorPrimary')}
                   </span>
                 )}
                 {op.revokedAt && (
-                  <span className="text-[11px] bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
+                  <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                     {t('settings.operatorRevoked')}
                   </span>
                 )}
@@ -1776,7 +1776,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
 
       {pendingToken && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
-          <p className="text-[11px] text-red-300">{pendingToken.note}</p>
+          <p className="text-xs text-red-300">{pendingToken.note}</p>
           <div className="flex items-center gap-1">
             <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded truncate">
               {pendingToken.token}
@@ -1818,7 +1818,7 @@ function ListField({ label, items, onChange, placeholder }: {
 
   return (
     <div>
-      <label className="text-[11px] text-redlog-text-dim block mb-1">{label}</label>
+      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <div className="flex gap-1 mb-1">
         <input
           value={input}
@@ -1901,9 +1901,9 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
                 onChange={() => toggle(i)}
                 className="accent-red-600"
               />
-              <span className="text-[11px] text-redlog-text">{a.name}</span>
+              <span className="text-xs text-redlog-text">{a.name}</span>
             </label>
-            <span className="text-[11px] text-redlog-text-faint font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
+            <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
               <button onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">×</button>
             )}
@@ -2199,7 +2199,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
 
       {preview && (
         <div className="rounded border border-redlog-border bg-redlog-surface/50 p-3 mb-3">
-          <p className="text-[11px] text-redlog-text-dim mb-2">{t('cloudShare.reviewTitle')}</p>
+          <p className="text-xs text-redlog-text-dim mb-2">{t('cloudShare.reviewTitle')}</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-redlog-text">
             <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.events')}</span><span className="font-mono">{preview.eventCount}</span></div>
             <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
@@ -2211,7 +2211,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
               const capMb = parseInt(maxMbInput, 10) || 100
               const capBytes = capMb * 1024 * 1024
               return preview.approxCompressedBytes > capBytes ? (
-                <p className="col-span-2 text-[11px] text-red-400 mt-1">
+                <p className="col-span-2 text-xs text-red-400 mt-1">
                   {t('cloudShare.capExceedWarning', { cap: capMb })}
                 </p>
               ) : null
@@ -2222,7 +2222,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             )}
           </div>
           <button onClick={refreshPreview} disabled={busy === 'preview'}
-            className="mt-3 px-2 py-0.5 text-[11px] rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
+            className="mt-3 px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
             {busy === 'preview' ? '…' : t('cloudShare.refresh')}
           </button>
         </div>
@@ -2250,21 +2250,21 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
 
       <div className="mb-3 rounded border border-redlog-border bg-redlog-bg/40">
         <button data-testid="cloud-share-advanced-toggle" type="button" onClick={() => setAdvancedOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-redlog-text-dim hover:bg-redlog-surface/60">
+          className="w-full flex items-center justify-between px-3 py-2 text-xs text-redlog-text-dim hover:bg-redlog-surface/60">
           <span>{t('cloudShare.advancedTitle')}</span>
           <span className="text-redlog-text-faint">{advancedOpen ? '▾' : '▸'}</span>
         </button>
         {advancedOpen && (
           <div className="px-3 pb-3 pt-1 space-y-2">
-            <p className="text-[11px] text-redlog-text-faint">{t('cloudShare.advancedHint')}</p>
-            <label className="block text-[11px] text-redlog-text-dim">
+            <p className="text-xs text-redlog-text-faint">{t('cloudShare.advancedHint')}</p>
+            <label className="block text-xs text-redlog-text-dim">
               {t('cloudShare.endpoint')}
               <input data-testid="cloud-share-endpoint" type="text" value={endpoint}
                 onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken, maxMbInput) }}
                 placeholder="https://redlog-share.<acct>.workers.dev"
                 className="mt-1 w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
             </label>
-            <label className="block text-[11px] text-redlog-text-dim">
+            <label className="block text-xs text-redlog-text-dim">
               {t('cloudShare.authToken')}
               <div className="mt-1 flex gap-2">
                 <input data-testid="cloud-share-authtoken" type={tokenVisible ? 'text' : 'password'} value={authToken}
@@ -2272,12 +2272,12 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
                   placeholder={t('cloudShare.authTokenPlaceholder')}
                   className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
                 <button type="button" onClick={() => setTokenVisible((v) => !v)}
-                  className="px-2 text-[11px] rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
+                  className="px-2 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
                   {tokenVisible ? t('cloudShare.hide') : t('cloudShare.show')}
                 </button>
               </div>
             </label>
-            <div className="flex items-center gap-4 text-[11px] pt-1">
+            <div className="flex items-center gap-4 text-xs pt-1">
               <label className="flex items-center gap-1 cursor-pointer">
                 <input data-testid="cloud-share-mode-stub" type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
                   className="accent-redlog-text-dim" />
@@ -2292,7 +2292,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
                 <span className="text-amber-400/80">{t('cloudShare.httpsNeedsFields')}</span>
               )}
             </div>
-            <label className="block text-[11px] text-redlog-text-dim pt-1">
+            <label className="block text-xs text-redlog-text-dim pt-1">
               {t('cloudShare.maxBundleMb')}
               <input type="number" min="1" max="10000" value={maxMbInput}
                 onChange={(e) => { setMaxMbInput(e.target.value); persistBackend(endpoint, authToken, e.target.value) }}
@@ -2307,8 +2307,8 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       {lastError && (
         <div data-testid="cloud-share-inline-error" className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
           <span className="text-red-400 shrink-0">⚠</span>
-          <p className="text-[11px] text-red-300 font-mono break-all flex-1">{lastError}</p>
-          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+          <p className="text-xs text-red-300 font-mono break-all flex-1">{lastError}</p>
+          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
         </div>
       )}
 
@@ -2319,22 +2319,22 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
             : busy === 'upload' ? t('cloudShare.uploading')
               : mode === 'https' ? t('cloudShare.shareHttps') : t('cloudShare.shareStub')}
         </button>
-        <span className="text-[11px] text-redlog-text-faint">
+        <span className="text-xs text-redlog-text-faint">
           {mode === 'https' ? t('cloudShare.httpsNote') : t('cloudShare.stubNote')}
         </span>
       </div>
 
       {shareUrl && (
         <div data-testid="cloud-share-result" className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
-          <p className="text-[11px] text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
+          <p className="text-xs text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
           <p data-testid="cloud-share-url" className="text-xs text-redlog-text font-mono break-all">{shareUrl}</p>
           <div className="flex gap-2 mt-2">
             <button onClick={() => navigator.clipboard.writeText(shareUrl)}
-              className="px-2 py-0.5 text-[11px] rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
+              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
               {t('cloudShare.copyUrl')}
             </button>
             <button onClick={() => window.redlog.app.openExternal(shareUrl).catch(() => {})}
-              className="px-2 py-0.5 text-[11px] rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
+              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
               {t('cloudShare.openUrl')}
             </button>
           </div>
@@ -2521,20 +2521,20 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
 
           {suggestedUntrusted.length > 0 && (
             <div data-testid="marketplace-suggested-banner" className="mb-3 rounded border border-amber-800/50 bg-amber-950/20 p-3">
-              <p className="text-[11px] text-amber-300 mb-1">
+              <p className="text-xs text-amber-300 mb-1">
                 {t('marketplace.suggestedPublishersTitle', { n: suggestedUntrusted.length })}
               </p>
-              <p className="text-[11px] text-redlog-text-dim mb-2">{t('marketplace.suggestedPublishersHint')}</p>
+              <p className="text-xs text-redlog-text-dim mb-2">{t('marketplace.suggestedPublishersHint')}</p>
               <ul className="space-y-1.5">
                 {suggestedUntrusted.map((p) => (
                   <li key={p.id} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[11px] text-redlog-text font-mono truncate">{p.id}</p>
+                      <p className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
                       {/* The fingerprint is the point of this row: the operator
                           is meant to compare it against the publisher's own
                           site before pinning, not take the registry's word. */}
                       {p.keys.map((k) => (
-                        <p key={k.publicKey} className="text-[10px] text-redlog-text-dim font-mono truncate" title={k.publicKey}>
+                        <p key={k.publicKey} className="text-xs text-redlog-text-dim font-mono truncate" title={k.publicKey}>
                           {(k as { fingerprint?: string }).fingerprint ?? k.publicKey.slice(0, 16)}{k.label ? ` · ${k.label}` : ''}
                         </p>
                       ))}
@@ -2563,16 +2563,16 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-medium text-redlog-text">{e.name || e.id}</span>
-                        <span className="text-[11px] text-redlog-text-dim">v{e.version}</span>
-                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{e.publisher}</span>
-                        {signed && <span className="text-[11px] px-1.5 py-0.5 rounded bg-green-950/60 text-green-300">{t('marketplace.signatureVerified')}</span>}
+                        <span className="text-xs text-redlog-text-dim">v{e.version}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{e.publisher}</span>
+                        {signed && <span className="text-xs px-1.5 py-0.5 rounded bg-green-950/60 text-green-300">{t('marketplace.signatureVerified')}</span>}
                         {e.sizeKb !== undefined && (
-                          <span className="text-[11px] text-redlog-text-faint">{t('marketplace.sizeKb', { size: e.sizeKb })}</span>
+                          <span className="text-xs text-redlog-text-faint">{t('marketplace.sizeKb', { size: e.sizeKb })}</span>
                         )}
                       </div>
                       {e.description && <p className="text-xs text-redlog-text-dim mt-0.5">{e.description}</p>}
                       {!trusted && (
-                        <p className="text-[11px] text-amber-500/80 mt-1">{t('marketplace.publisherUntrusted')}</p>
+                        <p className="text-xs text-amber-500/80 mt-1">{t('marketplace.publisherUntrusted')}</p>
                       )}
                     </div>
                     <button onClick={() => doInstall(e)} disabled={installBusy === e.id}
@@ -2583,10 +2583,10 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                   {installError[e.id] && (
                     <div className="mt-2 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
                       <span className="text-red-400 shrink-0">⚠</span>
-                      <p className="text-[11px] text-red-300 font-mono break-all flex-1">
+                      <p className="text-xs text-red-300 font-mono break-all flex-1">
                         {t('marketplace.installFailed')}: {installError[e.id]}
                       </p>
-                      <button onClick={() => dismissInstallError(e.id)} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+                      <button onClick={() => dismissInstallError(e.id)} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
                     </div>
                   )}
                 </div>
@@ -2608,17 +2608,17 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
           )}
           {revocations && (revocations.plugins?.length ?? 0) > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] text-redlog-text-dim mb-1">{t('marketplace.revokedPlugins')}</p>
+              <p className="text-xs text-redlog-text-dim mb-1">{t('marketplace.revokedPlugins')}</p>
               <div className="flex flex-wrap gap-1">
-                {revocations.plugins!.map((p) => <span key={p} className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
+                {revocations.plugins!.map((p) => <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
               </div>
             </div>
           )}
           {revocations && (revocations.publishers?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[11px] text-redlog-text-dim mb-1">{t('marketplace.revokedPublishers')}</p>
+              <p className="text-xs text-redlog-text-dim mb-1">{t('marketplace.revokedPublishers')}</p>
               <div className="flex flex-wrap gap-1">
-                {revocations.publishers!.map((p) => <span key={p} className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
+                {revocations.publishers!.map((p) => <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
               </div>
             </div>
           )}
@@ -2660,7 +2660,7 @@ function PublisherEditor({ t, publishers, api, onReload }: {
     <div>
       <div className="rounded border border-redlog-border bg-redlog-surface/40 p-3 mb-3">
         <p className="text-xs text-redlog-text-dim mb-2">{t('marketplace.addPublisher')}</p>
-        <p className="text-[11px] text-redlog-text-faint mb-2">{t('marketplace.addPublisherHint')}</p>
+        <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.addPublisherHint')}</p>
         <div className="grid grid-cols-2 gap-2 mb-2">
           <input value={draftId} onChange={(e) => setDraftId(e.target.value)} placeholder={t('marketplace.publisherId')}
             className="bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
@@ -2687,13 +2687,13 @@ function PublisherEditor({ t, publishers, api, onReload }: {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium text-redlog-text font-mono">{p.id}</span>
-                  <span className="text-[11px] text-redlog-text-dim">{p.keys.length} {t('marketplace.publisherKeys')}</span>
+                  <span className="text-xs text-redlog-text-dim">{p.keys.length} {t('marketplace.publisherKeys')}</span>
                 </div>
                 {p.homepage && <a href={p.homepage} onClick={(e) => { e.preventDefault(); window.redlog.app.openExternal(p.homepage!) }}
-                  className="text-[11px] text-blue-400 hover:text-blue-300 underline">{p.homepage}</a>}
+                  className="text-xs text-blue-400 hover:text-blue-300 underline">{p.homepage}</a>}
                 <ul className="mt-2 space-y-1">
                   {p.keys.map((k) => (
-                    <li key={k.publicKey} className="text-[11px] text-redlog-text-dim font-mono truncate" title={k.publicKey}>
+                    <li key={k.publicKey} className="text-xs text-redlog-text-dim font-mono truncate" title={k.publicKey}>
                       {k.label ? `[${k.label}] ` : ''}{k.publicKey.slice(0, 32)}…
                     </li>
                   ))}
