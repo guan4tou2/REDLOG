@@ -11,6 +11,7 @@ import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
+import { nextSelection } from '../lib/timelineSelection'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -718,6 +719,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
+  // §6: the Inspector is a separate layer from the selection. They used to be
+  // the same state, so an operator could not walk the timeline by keyboard
+  // without a panel covering a third of it — and closing the panel lost their
+  // place entirely. Clicking a dot still opens both; arrows move the ring
+  // alone, and Enter opens the panel on whatever the ring is on.
+  const [detailOpen, setDetailOpen] = useState(false)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   // v0.11.6 (V7). Off by default: a compressed axis is not proportional, and
@@ -1589,7 +1596,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       const id = localStorage.getItem('redlog-timeline-focus-event')
       if (!id) return
       const evt = eventsMapRef.current.get(id)
-      if (evt) setSelectedEvent(evt)
+      if (evt) { setSelectedEvent(evt); setDetailOpen(true) }
     } catch { /* ignore */ }
   }, [loading, events, focusEventId, focusTs, selectedEvent])
 
@@ -1992,6 +1999,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const focused = focusEventId ? events.find((e) => e.id === focusEventId) : null
     if (focused) {
       setSelectedEvent(focused)
+      setDetailOpen(true)
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else if (focusTs) {
       // no matching event (e.g. jumped from a quickmark) — centre on its time
@@ -2076,9 +2084,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       const inField = tag === 'input' || tag === 'textarea' || !!el?.isContentEditable
       const action = resolveTimelineKey(e, {
         inField,
-        hasDetail: !!selectedEvent,
+        hasDetail: detailOpen && !!selectedEvent,
         helpOpen: showHelp,
-        focusActive: focusChain !== null
+        focusActive: focusChain !== null,
+        hasSelection: !!selectedEvent
       })
       if (action === 'none') return
       switch (action) {
@@ -2099,16 +2108,56 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           setFocusAnchorId(null)
           break
         case 'close-detail':
-          setSelectedEvent(null)
+          setDetailOpen(false)
           setShowJson(false)
           break
+        case 'clear-selection':
+          setSelectedEvent(null)
+          break
+        case 'toggle-detail':
+          e.preventDefault()
+          setDetailOpen((v) => !v)
+          break
         case 'nav-prev':
-        case 'nav-next': {
-          const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)))
-          const i = visible.findIndex((ev) => ev.id === selectedEvent?.id)
-          if (i < 0) return
-          const next = visible[i + (action === 'nav-prev' ? -1 : 1)]
-          if (next) { e.preventDefault(); setSelectedEvent(next) }
+        case 'nav-next':
+        case 'nav-lane-up':
+        case 'nav-lane-down':
+        case 'nav-state-prev':
+        case 'nav-state-next':
+        case 'nav-first':
+        case 'nav-last': {
+          e.preventDefault()
+          const next = nextSelection<LaneId>(action, selectedEvent, {
+            events,
+            hiddenLanes,
+            pluginTypes,
+            laneOrder: LANES as readonly LaneId[],
+            laneOf: (ev) => toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes),
+            tsOf: displayTs
+          })
+          if (next) setSelectedEvent(next)
+          break
+        }
+        case 'zoom-in':
+        case 'zoom-out':
+        case 'zoom-reset': {
+          e.preventDefault()
+          // Anchored on the selected event, not the viewport centre (§6): the
+          // thing the operator is looking at is the thing that should hold
+          // still. With nothing selected, fall back to the centre.
+          const el = scrollRef.current
+          if (el) {
+            const anchorX = selectedEvent
+              ? toX(displayTs(selectedEvent)) - el.scrollLeft
+              : el.clientWidth / 2
+            pendingZoomAnchor.current = {
+              frac: (el.scrollLeft + anchorX) / TRACK_W,
+              cursorX: anchorX
+            }
+          }
+          setZoom((prev) => action === 'zoom-reset'
+            ? 1
+            : Math.min(maxZoomRef.current, Math.max(0.25, prev * (action === 'zoom-in' ? 1.4 : 1 / 1.4))))
           break
         }
         case 'toggle-focus': {
@@ -2123,7 +2172,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, showHelp, focusChain, events, hiddenLanes, pluginTypes])
+  }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W])
 
   // v0.6.91 W3: palette result set — fuzzy match query against events, marker
   // titles, distinct operator names, and distinct hosts. Capped at 20 items.
@@ -2197,6 +2246,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const activatePaletteItem = useCallback((item: PaletteItem) => {
     if (item.kind === 'event' || item.kind === 'marker') {
       setSelectedEvent(item.event)
+      setDetailOpen(true)
       scrollToEvent(item.event)
     } else {
       setFilterQuery(item.value)
@@ -2855,6 +2905,24 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
             onMouseDown={handleMouseDown}
             onScroll={updateView}
+            onDoubleClick={(e) => {
+              // §6: double-clicking empty track frames the five minutes either
+              // side of that instant — the question "what happened around
+              // here" asked with the bluntest possible gesture.
+              const target = e.target as HTMLElement | null
+              if (target?.closest('[data-timeline-popup]')) return
+              if (target?.closest('[data-timeline-event]')) return
+              const el = scrollRef.current
+              if (!el || timeSpan <= 0) return
+              const rect = el.getBoundingClientRect()
+              const cursorX = e.clientX - rect.left
+              const ts = fromX(el.scrollLeft + cursorX)
+              const targetSpan = 10 * 60_000
+              const next = Math.min(maxZoomRef.current, Math.max(0.25, (timeSpan / targetSpan)))
+              pendingZoomAnchor.current = { frac: (el.scrollLeft + cursorX) / TRACK_W, cursorX }
+              setZoom(next)
+              void ts
+            }}
             onContextMenu={(e) => {
               // v0.6.87 C1 dropped a marker on the bare right-click. Two
               // problems, both from §10. The renderer's `preventDefault` does
@@ -3084,7 +3152,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
-                      onClick={() => single ? setSelectedEvent(sel ? null : evt) : setCluster({ x: c.x, y: c.y, events: c.events })}
+                      onClick={() => single ? (sel ? (setSelectedEvent(null), setDetailOpen(false)) : (setSelectedEvent(evt), setDetailOpen(true))) : setCluster({ x: c.x, y: c.y, events: c.events })}
                     >
                       <div
                         className={dimmed ? 'flex items-center justify-center' : 'flex items-center justify-center transition-transform hover:scale-125'}
@@ -3092,13 +3160,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           width: dot, height: dot,
                           // diamond = a square turned 45°; ring = hollow.
                           borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
-                          transform: marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
                           backgroundColor: marks.shape === 'ring' ? 'transparent' : LANE_COLORS[c.lane],
                           border: marks.shape === 'ring'
                             ? `2.5px solid ${LANE_COLORS[c.lane]}`
                             : single ? undefined : '1px solid rgba(0,0,0,0.45)',
+                          // §6: 2px brand-red outer ring, dot at 1.3×. The ring
+                          // used to take the lane's colour, which since the
+                          // lanes went neutral would have made a keyboard move
+                          // almost invisible — the one thing it must not be.
+                          transform: sel
+                            ? `${marks.shape === 'diamond' ? 'rotate(45deg) ' : ''}scale(1.3)`
+                            : marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
                           boxShadow: sel
-                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
+                            ? `0 0 0 2px #121214, 0 0 0 4px #d75f63, 0 0 12px #d75f6360`
                             : inChain
                               ? `0 0 0 1.5px ${chainRingColor}, 0 0 8px ${chainRingColor}80`
                               : `0 0 6px ${LANE_COLORS[c.lane]}40`
@@ -3189,6 +3263,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
                           onClick={() => {
                             setSelectedEvent(evt)
+                            setDetailOpen(true)
                             setCluster(null)
                             // Zoom based on cluster time span rather than a hardcoded 8×
                             // so a 500-event burst in 1s and a 5-event burst in 30min
@@ -3239,7 +3314,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
             <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{recentEvents.length}</span>
           </div>
-          <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent ? '18vh' : '22vh'} - 32px)` }}>
+          <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent && detailOpen ? '18vh' : '22vh'} - 32px)` }}>
             {recentEvents.map((evt) => {
               const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
               const isSel = selectedEvent?.id === evt.id
@@ -3249,7 +3324,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   className={`flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
                     isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
                   }`}
-                  onClick={() => setSelectedEvent(isSel ? null : evt)}
+                  onClick={() => { if (isSel) { setSelectedEvent(null); setDetailOpen(false) } else { setSelectedEvent(evt); setDetailOpen(true) } }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
                   <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
@@ -3277,7 +3352,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       {/* Enhanced detail panel — height is drag-resizable; the handle at the
           top edge sets height in px (persisted to localStorage). Falling back
           to the CSS `max-h-[45vh]` when the operator hasn't dragged. */}
-      {selectedEvent && (
+      {selectedEvent && detailOpen && (
         <>
           {/* Drag handle — 4px hit strip along the top edge; visual accent on hover. */}
           <div
@@ -3373,7 +3448,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 {t('timeline.copyJson')}
               </button>
               <button
-                onClick={() => { setSelectedEvent(null); setShowJson(false) }}
+                onClick={() => { setDetailOpen(false); setShowJson(false) }}
                 className="text-xs text-redlog-text-faint hover:text-redlog-text transition-colors ml-1"
               >
                 ✕
@@ -3434,7 +3509,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   return (
                     <button
                       key={cid}
-                      onClick={() => { setSelectedEvent(cev); scrollToEvent(cev) }}
+                      onClick={() => { setSelectedEvent(cev); setDetailOpen(true); scrollToEvent(cev) }}
                       className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: cc, backgroundColor: `${cc}18`, border: `1px solid ${cc}40` }}
                       title={eventTitle(cev)}
@@ -3467,7 +3542,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   return (
                     <button
                       key={eid}
-                      onClick={() => { setSelectedEvent(ev); scrollToEvent(ev) }}
+                      onClick={() => { setSelectedEvent(ev); setDetailOpen(true); scrollToEvent(ev) }}
                       className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: ec, backgroundColor: `${ec}18`, border: `1px solid ${ec}40` }}
                       title={eventTitle(ev)}
