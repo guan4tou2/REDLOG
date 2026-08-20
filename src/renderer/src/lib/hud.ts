@@ -16,7 +16,11 @@ export const HUD = {
   green: '#5ecf9c',    // safe
   amber: '#d4ac5a',    // unknown / idle / partial
   // neutrals
-  muted: '#5f7a82',    // labels
+  // Labels. Was #5f7a82 — 4.3:1 on the HUD panel, and HUD labels are the
+  // smallest text in the product, so it read as a smudge at arm's length.
+  // #8fa8b2 is 7.9:1 and keeps the cyan cast that separates HUD chrome from
+  // app chrome (UIUX-STANDARD §1, §8).
+  muted: '#8fa8b2',    // labels
   value: '#cfe8ee',    // primary values (cyan-tinted, not pure white)
   valueDim: '#9fc4ce'
 } as const

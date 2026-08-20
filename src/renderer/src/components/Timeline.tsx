@@ -54,38 +54,17 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 // a family the values differ enough to separate side by side, without
 // pretending eighteen of them are individually memorable.
 //
-//   execution   green / lime          shell, agent, process
-//   network     indigo → teal         http, scanner, browser, dns, pivot
-//   evidence    blue / violet         screenshot, clipboard, file_transfer
-//   findings    amber → red           credential_use, c2, marker, loot,
-//                                     cleanup, scope
-//   plumbing    zinc                  system
-const LANE_COLORS: Record<LaneId, string> = {
-  // execution
-  shell: '#5ecf9c',
-  agent: '#8fc45e',
-  process: '#c98fb8',
-  // network
-  http_navigation: '#7b7fd4',
-  scanner: '#9a7fd0',
-  browser: '#3fc7d6',
-  dns: '#4bbf9e',
-  pivot: '#4fa8d8',
-  // evidence
-  screenshot: '#6b9bd8',
-  clipboard: '#c39ad8',
-  file_transfer: '#7d93c4',
-  // findings — the red family is deliberately spread so the two lanes an
-  // operator most needs to separate at a glance are not the same colour.
-  credential_use: '#d4ac5a',
-  loot: '#d68a4f',
-  c2_checkin: '#cf6f7e',
-  marker: '#d75f63',
-  scope: '#b8434f',
-  cleanup: '#8f3a45',
-  // plumbing
-  system: '#5c5c63'
-}
+// v0.14.4 (UIUX-STANDARD §1): they are not, and the attempt cost more than it
+// paid. Eighteen hues on one screen left nothing for status to say — the red
+// family in particular had `marker`, `scope` and `cleanup` competing with the
+// red that means "this violated scope". Hue is now reserved for status
+// (safe / unknown / danger); lanes separate by label and vertical position,
+// which is what an operator actually reads them by. Every lane is `lane`
+// (#6e6e78) and the palette is a function, not a table.
+const LANE_COLOR = '#6e6e78'
+const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
+  LANES.map((id) => [id, LANE_COLOR])
+) as Record<LaneId, string>
 
 // v0.6.87 C1: markers created by right-clicking Timeline background carry
 // a `data.atTimestamp` that overrides their chain wall-clock for rendering
@@ -2815,7 +2794,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
-                  color: off ? '#525252' : LANE_COLORS[id],
+                  color: off ? '#6a6a74' : LANE_COLORS[id],
                   backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
                 }}
                 title={empty
@@ -4003,13 +3982,19 @@ function TierBadge({ tier, variant }: { tier?: 'chained' | 'logged'; variant: 'r
   const t: 'chained' | 'logged' = tier === 'logged' ? 'logged' : 'chained'
   const glyph = t === 'logged' ? '⌇' : '⛓'
   if (variant === 'row') {
-    // Icon-only. Muted colour so 100k chained rows don't fight for attention;
-    // logged rows get a hair more contrast because they are the exception.
+    // Exception reporting (UIUX-STANDARD §5.2). Chained is what 99%+ of rows
+    // are, so it is the default and draws nothing: the previous rendering put
+    // a glyph on every row at 1.7:1 against the background, which paid the
+    // layout cost of a column without being visible enough to convey anything.
+    // Only the exception is marked, and it is marked legibly.
+    if (t === 'chained') {
+      return <span className="w-3 shrink-0" title={TIER_TOOLTIPS.chained} aria-label="tier: chained" />
+    }
     return (
       <span
-        className={`font-mono text-[11px] shrink-0 ${t === 'logged' ? 'text-redlog-text-dim' : 'text-redlog-muted'}`}
-        title={TIER_TOOLTIPS[t]}
-        aria-label={`tier: ${t}`}
+        className="font-mono text-xs shrink-0 text-redlog-text-dim"
+        title={TIER_TOOLTIPS.logged}
+        aria-label="tier: logged"
       >
         {glyph}
       </span>

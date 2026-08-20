@@ -125,7 +125,14 @@ export default function OverlayApp(): JSX.Element {
   }
 
   const s = Math.max(0.75, Math.min(1.75, scale))
-  const fs = (n: number): number => Math.round(n * s * 10) / 10
+  // 11px is the HUD's text floor (UIUX-STANDARD §2 — the HUD is the one
+  // exception to the app's 13px floor, because it has its own scale setting
+  // and sits at arm's length). The ladder used to run down to 8px, which is
+  // below the size at which a label is legible at any distance. Sizes under
+  // the floor collapse onto it; the hierarchy they used to carry is carried by
+  // weight and colour instead, which is how §2 says it should have worked.
+  const HUD_MIN_PX = 11
+  const fs = (n: number): number => Math.round(Math.max(n, HUD_MIN_PX) * s * 10) / 10
   const fsIp = (n: number): number => Math.round(n * s * (emphasizeIp ? 1.4 : 1) * 10) / 10
   // px() scales layout dimensions (padding, gap, separator sizes) with the
   // same factor. Without this the middle gap stays fixed while text shrinks —
