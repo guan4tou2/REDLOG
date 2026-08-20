@@ -21,6 +21,7 @@ import { toast } from './components/Toast'
 import { computeCaptureReadiness } from './lib/captureReadiness'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
+import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 
 type View = SidebarViewId | 'settings' | 'search'
@@ -52,7 +53,6 @@ function viewForShortcut(num: number): View | null {
 // Read defensively — this runs at module load, before the preload bridge is
 // guaranteed present (e.g. in tests). Default to mac styling.
 const isMac = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
-const modKey = isMac ? '⌘' : 'Ctrl+'
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
@@ -877,17 +877,10 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
         </h2>
         <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card">
           <div className="grid grid-cols-2 gap-2.5 text-sm">
-            {[
-              ...shortcutOrder.map((v, i) => [`${modKey}${i + 1}`, t(`sidebar.${v === 'screenshots' ? 'screens' : v}`)] as [string, string]),
-              // Settings is pinned to ⌘9 rather than carried by shortcutOrder,
-              // so it has to be listed explicitly (v0.11.2).
-              [`${modKey}9`, t('sidebar.settings')] as [string, string],
-              [isMac ? '⌘⇧M' : 'Ctrl+Shift+M', t('dashboard.addMarker')] as [string, string],
-              [`${modKey}/`, t('dashboard.search')] as [string, string]
-            ].map(([key, label]) => (
-              <div key={key} className="flex items-center gap-2.5">
-                <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{key}</kbd>
-                <span className="text-zinc-500 text-xs">{label}</span>
+            {appShortcuts(shortcutOrder, isMac).map((row) => (
+              <div key={row.keys} className="flex items-center gap-2.5">
+                <kbd className="bg-zinc-800/80 text-zinc-400 px-2 py-0.5 rounded text-xs font-mono border border-zinc-700/50">{row.keys}</kbd>
+                <span className="text-zinc-500 text-xs">{t(row.label)}</span>
               </div>
             ))}
           </div>
