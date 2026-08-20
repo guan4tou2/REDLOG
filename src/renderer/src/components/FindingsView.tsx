@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
+import { formatDateTime } from '../lib/time'
 
 const TAG_COLORS = [
   { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
@@ -161,7 +162,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                 </div>
                 {m.url && <div className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
                 <div className="text-xs text-redlog-text-faint mt-0.5 pl-4">
-                  {new Date(m.createdAt).toLocaleString()}
+                  {formatDateTime(m.createdAt)}
                 </div>
               </button>
             )
@@ -308,7 +309,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
             </button>
           )}
           <div className="text-xs text-redlog-text-dim mt-1">
-            {new Date(mark.createdAt).toLocaleString()}
+            {formatDateTime(mark.createdAt, { seconds: true })}
           </div>
         </div>
         <div className="flex gap-1">

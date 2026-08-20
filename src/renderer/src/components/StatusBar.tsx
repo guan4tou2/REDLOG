@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { Gem } from 'lucide-react'
+import { formatTime } from '../lib/time'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -223,7 +224,7 @@ export default function StatusBar(): JSX.Element {
         )}
         <button
           onClick={async () => {
-            const ts = new Date().toLocaleTimeString()
+            const ts = formatTime(Date.now(), { seconds: true })
             await window.redlog.quickmarks.create({ title: `Timestamp ${ts}` })
             setStamped(true)
             setTimeout(() => setStamped(false), 1500)

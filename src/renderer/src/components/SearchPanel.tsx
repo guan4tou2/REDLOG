@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
+import { formatTime } from '../lib/time'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -130,7 +131,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                     {eventSummary(e)}
                   </span>
                   <span className="text-redlog-text-faint shrink-0 ml-2">
-                    {new Date(e.timestamp).toLocaleTimeString()}
+                    {formatTime(e.timestamp, { seconds: true })}
                   </span>
                   {e.targetId && (
                     <span className="text-redlog-text-dim shrink-0 ml-1">→ {e.targetId}</span>

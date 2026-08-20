@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
 import { Ban } from 'lucide-react'
+import { formatTime } from '../lib/time'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -99,7 +100,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
             >
               <div className="text-red-300 text-xs font-mono">{v.target}</div>
               <div className="text-redlog-text-dim text-xs truncate">{v.command}</div>
-              <div className="text-redlog-text-faint text-xs">{new Date(v.timestamp).toLocaleTimeString()}</div>
+              <div className="text-redlog-text-faint text-xs">{formatTime(v.timestamp, { seconds: true })}</div>
             </button>
           ))}
         </div>

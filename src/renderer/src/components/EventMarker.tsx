@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { formatTime } from '../lib/time'
 
 const SEVERITIES = ['info', 'important', 'critical'] as const
 const CATEGORIES = [
@@ -43,7 +44,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
 
   const handleSave = async () => {
     setSaving(true)
-    const ts = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const ts = formatTime(Date.now(), { seconds: true })
     const markerEvent = await window.redlog.marker.create({
       title: title.trim() || t('marker.defaultTitle', { time: ts }),
       notes, severity, category,
@@ -84,7 +85,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           {t('marker.title')}
           {atTimestamp && (
             <span className="ml-2 text-xs text-amber-400/80 font-mono font-normal">
-              {t('marker.atTimestamp', { time: new Date(atTimestamp).toLocaleTimeString() })}
+              {t('marker.atTimestamp', { time: formatTime(atTimestamp, { seconds: true }) })}
             </span>
           )}
         </h3>
