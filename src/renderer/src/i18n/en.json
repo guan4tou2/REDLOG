@@ -931,5 +931,10 @@
   "targets.addedToScope": "{{target}} added to scope",
   "targets.addedToScopeWhy": "Not written yet — undo within 8 seconds and nothing reaches the audit log.",
   "settings.hookRemoved": "Removed the {{name}} hook",
-  "settings.hookRemovedWhy": "Not written yet — undo within 8 seconds and the profile is never touched."
+  "settings.hookRemovedWhy": "Not written yet — undo within 8 seconds and the profile is never touched.",
+  "issues.attention": "Needs attention {{count}}",
+  "issues.pending": "Pending {{count}}",
+  "issues.captureDetail": "Events are still being written, but at least one source has stopped producing — the gap will be in the timeline, not in an error.",
+  "issues.chainBroken": "The evidence chain does not verify",
+  "issues.chainBrokenDetail": "A row between the anchor and now does not hash to its successor. Export a bundle before doing anything else."
 }

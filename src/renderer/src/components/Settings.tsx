@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
 import { toast, toastDeferred } from './Toast'
+import { raiseIssue, clearIssue } from '../lib/issues'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
 import WslPanel from './WslPanel'
@@ -1295,8 +1296,13 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
       const ok = result.calendarReceipts.filter((r) => r.ok).length
       const total = result.calendarReceipts.length
       if (ok > 0) {
+        clearIssue('anchor')
         toast(t('settings.anchored', { ok, total }), 'success')
       } else {
+        raiseIssue({
+          id: 'anchor', tier: 'attention',
+          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: 'settings'
+        })
         toast(t('settings.anchorFailed'), {
           type: 'error',
           why: t('settings.anchorFailedWhy'),
@@ -1324,6 +1330,16 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         ? t('settings.integrityVerifiedOk').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(Math.max(currentRow, anchorCount)))
         : t('settings.integrityVerifiedBad').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(currentRow))
       setVerifyMsg(msg)
+      // A chain that will not verify is the most consequential condition the
+      // app can be in, and the old inline message cleared itself after eight
+      // seconds — so an operator who looked away lost it entirely (§9).
+      if (result.ok) clearIssue('chain')
+      else {
+        raiseIssue({
+          id: 'chain', tier: 'attention',
+          title: t('issues.chainBroken'), detail: t('issues.chainBrokenDetail'), view: 'settings'
+        })
+      }
     }
     setTimeout(() => setVerifyMsg(null), 8000)
   }

@@ -157,8 +157,19 @@ export default function App(): JSX.Element {
         }
       }
     }
+    // The status bar's fault counters live below the view switcher and cannot
+    // reach `setView` directly, so they ask by event (§9 — an issue names the
+    // view where it can be dealt with).
+    const onNavigate = (e: Event): void => {
+      const target = (e as CustomEvent<string>).detail
+      if (target) setView(target as View)
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('redlog:navigate', onNavigate)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('redlog:navigate', onNavigate)
+    }
     // `view` is read inside the handler to route ⌘K in Timeline to the local
     // palette rather than the Search sidebar (v0.6.91 W3).
   }, [project, t, view])
