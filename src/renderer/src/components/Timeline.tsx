@@ -248,6 +248,7 @@ function eventTitle(event: RedLogEvent): string {
       if (sub === 'transcript_compacted') return `⇉ transcript reset`
       if (sub === 'transcript_schema_drift') return `⚠ schema drift: ${d.unknown_type ?? '?'}`
       if (sub === 'transcript_parent_missing') return `⚠ parent-missing buffer full`
+      if (sub === 'transcript_tool_gap') return `⚠ tool gap: ${d.tool_calls_seen ?? '?'} seen, ${d.tool_calls_emitted ?? 0} emitted`
       return `agent: ${sub}`
     }
     case 'system':
