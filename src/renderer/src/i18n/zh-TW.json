@@ -473,7 +473,6 @@
   "settings.operatorDelete": "刪除",
   "settings.operatorRotated": "已重新產生。請立刻複製 token — 不會再顯示。",
   "settings.operatorCreated": "已建立。請立刻複製 token — 不會再顯示。",
-  "settings.operatorTokenCopy": "複製 token",
   "settings.operatorTokenClose": "我已複製",
   "settings.operatorDeleteTitle": "刪除 operator",
   "settings.operatorDeleteConfirm": "刪除此 operator？過去的事件仍會留在紀錄裡，但這組 token 會失效。",
@@ -949,5 +948,7 @@
   "timeline.help.walkEnds": "第一個／最後一個事件",
   "timeline.help.toggleInspector": "對選中的事件開關 Inspector",
   "timeline.help.zoomHere": "縮放到此處前後五分鐘",
-  "timeline.help.zoomKeys": "放大／縮小／重設，以選取為錨"
+  "timeline.help.zoomKeys": "放大／縮小／重設，以選取為錨",
+  "settings.operatorTokenWritten": "已寫入專案之外的檔案，只有你能讀取。不會出現在任何匯出或證據包裡。",
+  "settings.operatorTokenWriteFailed": "token 無法寫入，也沒有顯示出來。請輪替這個 operator 以重新產生。"
 }

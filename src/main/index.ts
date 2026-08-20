@@ -1403,6 +1403,37 @@ app.whenReady().then(() => {
   // without exposing the whole Electron shell module to preload. This handler
   // opens the containing directory of an exported bundle/file. Rejects any
   // path that isn't a string — belt+braces against renderer bugs.
+  // Operator tokens are written to a file rather than handed to the operator
+  // as text to copy (UIUX-STANDARD §10). Two reasons, and the second is the
+  // one that matters: a token on the clipboard is a token in every clipboard
+  // manager on the machine, and a token the operator pastes into a note is a
+  // token in whatever that note gets backed up to. Writing it means there is
+  // exactly one copy and the app knows where it is.
+  //
+  // `~/.redlog/tokens/` sits deliberately outside the project directory, so
+  // no bundle export, evidence package or cloud share can ever sweep it up —
+  // those walk the project tree, and a credential is not evidence.
+  ipcMain.handle('operators:writeToken', async (_e, id: string, token: string) => {
+    if (typeof id !== 'string' || !id || typeof token !== 'string' || !token) return null
+    // The id becomes a filename, so it may not be allowed to escape the
+    // directory or collide with something outside it.
+    const safeId = id.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
+    if (!safeId || safeId === '.' || safeId === '..') return null
+    try {
+      const dir = path.join(homedir(), '.redlog', 'tokens')
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+      const file = path.join(dir, `${safeId}.token`)
+      // 0600 from the moment it exists — writing then chmod-ing leaves a
+      // window where the file is world-readable.
+      fs.writeFileSync(file, `${token}\n`, { mode: 0o600 })
+      // An existing file keeps its old mode, so set it explicitly too.
+      fs.chmodSync(file, 0o600)
+      return file
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle('data:revealPath', async (_e, target: string) => {
     if (typeof target !== 'string' || !target) return false
     try {

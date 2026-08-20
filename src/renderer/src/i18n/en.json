@@ -473,7 +473,6 @@
   "settings.operatorDelete": "Delete",
   "settings.operatorRotated": "Rotated. Copy the new token — it will not be shown again.",
   "settings.operatorCreated": "Created. Copy the token — it will not be shown again.",
-  "settings.operatorTokenCopy": "Copy token",
   "settings.operatorTokenClose": "I have copied it",
   "settings.operatorDeleteTitle": "Delete operator",
   "settings.operatorDeleteConfirm": "Delete this operator? Their past events remain in the log but the token becomes invalid.",
@@ -949,5 +948,7 @@
   "timeline.help.walkEnds": "First / last event",
   "timeline.help.toggleInspector": "Open or close the Inspector on the selection",
   "timeline.help.zoomHere": "Zoom to five minutes either side of here",
-  "timeline.help.zoomKeys": "Zoom in / out / reset, anchored on the selection"
+  "timeline.help.zoomKeys": "Zoom in / out / reset, anchored on the selection",
+  "settings.operatorTokenWritten": "Written to a file outside the project, readable only by you. It is not in any export or evidence bundle.",
+  "settings.operatorTokenWriteFailed": "The token could not be written and has not been shown. Rotate this operator to issue a new one."
 }
