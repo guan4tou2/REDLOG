@@ -317,26 +317,55 @@ export default function Settings(): JSX.Element {
 
               <div className="mt-3">
                 <label className="text-xs text-zinc-500 block mb-1">{t('settings.overlayScale')}</label>
-                <div className="flex gap-1.5">
-                  {[
-                    { v: 0.85, k: 'small' },
-                    { v: 1.0, k: 'normal' },
-                    { v: 1.25, k: 'large' },
-                    { v: 1.5, k: 'xlarge' }
-                  ].map(({ v, k }) => {
-                    const cur = config.overlay?.scale ?? 1.0
-                    const active = Math.abs(cur - v) < 0.01
-                    return (
-                      <button
-                        key={k}
-                        onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: v } })}
-                        className={`px-3 py-1 text-xs rounded ${active ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}
-                      >
-                        {t(`settings.overlayScale.${k}`)}
-                      </button>
-                    )
-                  })}
-                </div>
+                {(() => {
+                  const stops = [
+                    { v: 0.75, k: 'settings.overlayScale.xs' },
+                    { v: 0.85, k: 'settings.overlayScale.small' },
+                    { v: 1.0, k: 'settings.overlayScale.normal' },
+                    { v: 1.25, k: 'settings.overlayScale.large' },
+                    { v: 1.5, k: 'settings.overlayScale.xlarge' },
+                    { v: 1.75, k: 'settings.overlayScale.xxl' }
+                  ]
+                  const cur = config.overlay?.scale ?? 1.0
+                  const snap = (raw: number): number => {
+                    let best = stops[0].v
+                    for (const s of stops) { if (Math.abs(raw - s.v) < Math.abs(raw - best)) best = s.v }
+                    return best
+                  }
+                  const nearest = stops.reduce((a, b) => Math.abs(cur - a.v) < Math.abs(cur - b.v) ? a : b)
+                  return (
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={stops[0].v}
+                          max={stops[stops.length - 1].v}
+                          step="0.05"
+                          value={cur}
+                          onChange={(e) => {
+                            const v = snap(parseFloat(e.target.value))
+                            setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
+                          }}
+                          className="accent-red-600 flex-1"
+                          list="hud-scale-stops"
+                        />
+                        <span className="text-xs text-zinc-400 font-mono tabular-nums w-14 text-right">{t(nearest.k)}</span>
+                      </div>
+                      <datalist id="hud-scale-stops">
+                        {stops.map((s) => <option key={s.v} value={s.v} />)}
+                      </datalist>
+                      <div className="flex justify-between px-0.5 mt-0.5">
+                        {stops.map((s) => (
+                          <span
+                            key={s.v}
+                            className={`text-[9px] cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: s.v } })}
+                          >{t(s.k)}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
                 <p className="text-xs text-zinc-600 mt-1">{t('settings.overlayScaleHint')}</p>
               </div>
 

@@ -1011,26 +1011,25 @@ app.whenReady().then(() => {
   // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
   // big empty gap. Clamp to sane bounds.
   ipcMain.on('overlay:autosize', (_e, height: number, width?: number) => {
-    const maxH = screen.getPrimaryDisplay().workAreaSize.height - 40
+    if (!overlayWindow || overlayWindow.isDestroyed()) return
+    const cur = overlayWindow.getBounds()
+    let disp: Electron.Rectangle
+    try { disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea }
+    catch { disp = screen.getPrimaryDisplay().workArea }
+    const maxH = disp.height - 20
     const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      const cur = overlayWindow.getBounds()
-      // Width scales with content (larger HUD scale + emphasize IP need more
-      // horizontal room). Clamp to a sane range and keep the HUD on-screen —
-      // if growing wider would push it off the right edge, slide it back.
-      const w = width != null
-        ? Math.max(380, Math.min(720, Math.round(Number(width))))
-        : cur.width
-      let x = cur.x
-      try {
-        const disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea
-        if (x + w > disp.x + disp.width) x = Math.max(disp.x, disp.x + disp.width - w)
-      } catch { /* no display info — leave x alone */ }
-      overlayWindow.setBounds({ x, y: cur.y, width: w, height: h })
-      if (process.platform === 'win32') {
-        overlayWindow.setOpacity(0.99)
-        setImmediate(() => { if (!overlayWindow!.isDestroyed()) overlayWindow!.setOpacity(1) })
-      }
+    const w = width != null
+      ? Math.max(380, Math.min(720, Math.round(Number(width))))
+      : cur.width
+    let x = cur.x
+    let y = cur.y
+    if (x + w > disp.x + disp.width) x = Math.max(disp.x, disp.x + disp.width - w)
+    if (y + h > disp.y + disp.height) y = Math.max(disp.y, disp.y + disp.height - h)
+    if (y < disp.y) y = disp.y
+    overlayWindow.setBounds({ x, y, width: w, height: h })
+    if (process.platform === 'win32') {
+      overlayWindow.setOpacity(0.99)
+      setImmediate(() => { if (!overlayWindow!.isDestroyed()) overlayWindow!.setOpacity(1) })
     }
   })
   // setExpanded only toggles state now; the height comes from autosize.

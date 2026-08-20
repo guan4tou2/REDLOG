@@ -52,13 +52,13 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
 }
 
 export function createOverlayWindow(): BrowserWindow {
-  const { width: screenW } = screen.getPrimaryDisplay().workAreaSize
+  const workArea = screen.getPrimaryDisplay().workArea
 
   const win = new BrowserWindow({
     width: 440,
     height: 52,
-    x: screenW - 440,
-    y: 20,
+    x: workArea.x + workArea.width - 440,
+    y: workArea.y + 8,
     frame: false,
     transparent: true,
     alwaysOnTop: true,

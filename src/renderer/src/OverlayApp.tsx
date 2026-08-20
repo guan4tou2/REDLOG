@@ -124,7 +124,7 @@ export default function OverlayApp(): JSX.Element {
     markedTimerRef.current = setTimeout(() => setJustMarked(false), 1400)
   }
 
-  const s = Math.max(0.75, Math.min(2, scale))
+  const s = Math.max(0.75, Math.min(1.75, scale))
   const fs = (n: number): number => Math.round(n * s * 10) / 10
   const fsIp = (n: number): number => Math.round(n * s * (emphasizeIp ? 1.4 : 1) * 10) / 10
   // px() scales layout dimensions (padding, gap, separator sizes) with the
@@ -177,7 +177,7 @@ export default function OverlayApp(): JSX.Element {
         <div
           style={{
             position: 'absolute', inset: 1, borderRadius: 4,
-            background: 'rgba(7,12,17,0.80)',
+            background: 'rgba(7,12,17,0.65)',
             backdropFilter: 'blur(16px) saturate(1.5)',
             overflow: 'hidden',
             fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Code", Consolas, "Microsoft JhengHei UI", monospace'
@@ -202,8 +202,8 @@ export default function OverlayApp(): JSX.Element {
               stacked beneath it, and internal IP (right) with the Wi-Fi/wired name
               beneath it. Keeping the pivot in the external column stops it crowding
               the internal IP. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: px(10), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(14)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, ...dimStyle }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: px(8), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(12)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, ...dimStyle }}>
               <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
               <span style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
@@ -211,10 +211,10 @@ export default function OverlayApp(): JSX.Element {
             <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined, ...dimStyle }} />
             <span style={{ color: STATE, fontWeight: 700, fontSize: fs(10.5), letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0, ...dimStyle }}>{status ? LABEL : '···'}</span>
             {/* external IP + pivot (left column) */}
-            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, flexShrink: 0, minWidth: 0, lineHeight: 1.15 }}>
-              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, flexShrink: 1, minWidth: 0, lineHeight: 1.15, overflow: 'hidden' }}>
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%' }}>
                 <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
-                <span style={{ color: VALUE, fontWeight: 600, whiteSpace: 'nowrap', fontSize: fsIp(12) }}>{status?.externalIP ?? '—'}</span>
+                <span style={{ color: VALUE, fontWeight: 600, whiteSpace: 'nowrap', fontSize: fsIp(12), overflow: 'hidden', textOverflow: 'ellipsis' }}>{status?.externalIP ?? '—'}</span>
               </span>
               {latestPivot && (
                 <span
@@ -228,10 +228,10 @@ export default function OverlayApp(): JSX.Element {
               )}
             </span>
             {/* internal IP + network name (right column) */}
-            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15, ...dimStyle }}>
-              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, flexShrink: 0 }}>
+            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15, flexShrink: 1, overflow: 'hidden', ...dimStyle }}>
+              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%' }}>
                 <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
-                <span style={{ color: '#9fd8e6', fontWeight: 500, whiteSpace: 'nowrap' }}>{status?.internalIP ?? '—'}</span>
+                <span style={{ color: '#9fd8e6', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status?.internalIP ?? '—'}</span>
               </span>
               {linkText && (
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%', minWidth: 0 }}>
