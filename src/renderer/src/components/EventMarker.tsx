@@ -58,7 +58,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 select-text"
       onClick={onClose}
       onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
       role="presentation"

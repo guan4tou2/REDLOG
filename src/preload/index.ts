@@ -6,6 +6,14 @@ contextBridge.exposeInMainWorld('redlog', {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
   },
+  ui: {
+    // Pops a native menu at the cursor and resolves with the clicked item's id
+    // (null if dismissed). Only the renderer knows what a right-click means
+    // inside xterm, so it names the entries; the main process owns the actual
+    // menu and validates the payload.
+    contextMenu: (items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>) =>
+      ipcRenderer.invoke('ui:contextMenu', items) as Promise<string | null>
+  },
   project: {
     list: () => ipcRenderer.invoke('project:list'),
     create: (name: string, initialConfig?: unknown) => ipcRenderer.invoke('project:create', name, initialConfig),
