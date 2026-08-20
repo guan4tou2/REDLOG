@@ -2,7 +2,7 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
 
 // Timeline geometry + startup-gate regressions. These drive the real app
 // because none of them are reachable from unit tests: the hook-config read
@@ -113,7 +113,7 @@ test.describe.serial('timeline geometry + startup gates', () => {
     await app.evaluate(async ({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setSize(1280, 620)
     })
-    await page.click('[data-view-btn="timeline"], button:has-text("Timeline")').catch(() => {})
+    await openView(page, 'timeline')
     await page.waitForTimeout(1500)
   })
 

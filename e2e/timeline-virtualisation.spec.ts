@@ -2,7 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
 
 // v0.11.1: the track renders only the clusters near the viewport.
 //
@@ -38,7 +38,7 @@ test('the track renders only the clusters near the viewport', async () => {
   }
   await page.waitForTimeout(2500)
   await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1400, 950) })
-  await page.click('button:has-text("Timeline")').catch(() => {})
+  await openView(page, 'timeline')
   await page.waitForTimeout(1500)
   // Zoom in hard so the track is far wider than the window.
   // Zoom is persisted; set it and reload rather than synthesising 40 wheel
@@ -46,7 +46,7 @@ test('the track renders only the clusters near the viewport', async () => {
   await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '6'))
   await page.reload()
   await page.waitForTimeout(2500)
-  await page.click('button:has-text("Timeline")').catch(() => {})
+  await openView(page, 'timeline')
   await page.waitForTimeout(1800)
 
   const m = await page.evaluate(() => {
