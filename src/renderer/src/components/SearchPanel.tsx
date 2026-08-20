@@ -127,7 +127,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                   <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-redlog-text-dim'}`}>
                     {e.agentType.slice(0, 6)}
                   </span>
-                  <span className="text-redlog-text font-mono flex-1 min-w-0 truncate">
+                  <span title={eventSummary(e)} className="text-redlog-text font-mono flex-1 min-w-0 truncate">
                     {eventSummary(e)}
                   </span>
                   <span className="text-redlog-text-faint shrink-0 ml-2">

@@ -123,7 +123,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${browserTab?.connected ? 'bg-green-400' : 'bg-redlog-elevated-hover'}`} />
             {browserTab?.connected
-              ? <span className="truncate">{browserTab.url || t('marks.connected')}</span>
+              ? <span title={browserTab.url ?? undefined} className="truncate">{browserTab.url || t('marks.connected')}</span>
               : <span>{t('marks.cdpDisconnected')}</span>
             }
           </div>
@@ -154,13 +154,13 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
               >
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
-                  <span className="text-xs text-redlog-text truncate flex-1">{m.title}</span>
+                  <span title={m.title} className="text-xs text-redlog-text truncate flex-1">{m.title}</span>
                   {/* Pinned marks get a small star indicator; pin/unpin action
                       lives in the detail panel (low-frequency action, keep
                       the list clean). */}
                   {isPinned && <span className="text-xs text-amber-400 shrink-0" aria-hidden="true">★</span>}
                 </div>
-                {m.url && <div className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                {m.url && <div title={m.url} className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
                 <div className="text-xs text-redlog-text-faint mt-0.5 pl-4">
                   {formatDateTime(m.createdAt)}
                 </div>

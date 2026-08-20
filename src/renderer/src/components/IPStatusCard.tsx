@@ -65,7 +65,7 @@ export default function IPStatusCard(): JSX.Element {
               : 'bg-green-500/10 border-green-400/30 text-green-300'
           return (
             <span className={`inline-flex flex-col items-start px-2 py-1 rounded border ${c} shrink-0 max-w-[140px]`}>
-              <span className="text-xs font-mono font-medium truncate max-w-[124px]">{top}</span>
+              <span title={top} className="text-xs font-mono font-medium truncate max-w-[124px]">{top}</span>
               <span className="text-xs text-redlog-text-dim uppercase tracking-wide">{sub}</span>
             </span>
           )

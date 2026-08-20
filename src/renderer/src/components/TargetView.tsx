@@ -248,7 +248,7 @@ export function TargetView(): JSX.Element {
                           <span className="text-redlog-text-faint w-16 shrink-0">
                             {formatTime(e.timestamp, { seconds: true })}
                           </span>
-                          <span className="text-redlog-text truncate">
+                          <span title={String(e.data.command ?? e.data.path ?? e.data.url ?? '')} className="text-redlog-text truncate">
                             {e.agentType === 'shell' && (e.data.command as string)}
                             {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
