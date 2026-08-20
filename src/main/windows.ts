@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { attachContextMenu } from './context-menu'
 
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
@@ -33,6 +34,11 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
       nodeIntegration: false
     }
   })
+
+  // Right-click gets a native menu (copy/paste in fields, copy for a plain
+  // selection). Without this the app has no context menu at all, which is one
+  // of the loudest "this is a web page" tells on the desktop.
+  attachContextMenu(win.webContents, { dev: is.dev })
 
   win.on('ready-to-show', () => {
     if (isWin) {
