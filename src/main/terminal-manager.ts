@@ -224,6 +224,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   })
 
   let castPath: string | null = null
+
+  let castHeaderBytes = 0
   let castStream: fs.WriteStream | null = null
   const castStart = Date.now()
   try {
@@ -240,7 +242,14 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
       env: { SHELL: shell, TERM: 'xterm-256color' },
       title: `redlog terminal ${id}`
     }
-    castStream.write(JSON.stringify(header) + '\n')
+    const headerLine = JSON.stringify(header) + '\n'
+    castStream.write(headerLine)
+    // Counted, because `castBytes` is a file offset, not an output total.
+    // v0.9.6's byte-range bracket (`io: {off, len}` on command_end) reads the
+    // cast with `fs.createReadStream({start: off})`, so an offset that omits
+    // the header is short by its length and every range lands mid-line —
+    // yielding zero parseable events and a replay that reports 0 bytes.
+    castHeaderBytes = Buffer.byteLength(headerLine)
   } catch {
     castPath = null
     castStream = null
@@ -254,7 +263,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castPath,
     castStream,
     castStart,
-    castBytes: 0,
+    castBytes: castHeaderBytes,
     castTruncated: false,
     finalised: false
   }
