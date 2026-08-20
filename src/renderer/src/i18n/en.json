@@ -586,7 +586,7 @@
   "timeline.help.focusChain": "Toggle focus-chain mode on selected event",
   "timeline.help.selectDot": "Select event / open detail panel",
   "timeline.help.walk": "Walk selection up/down the visible list",
-  "timeline.help.dropMarker": "Drop a marker at this timestamp",
+  "timeline.help.dropMarker": "Right-click → drop a marker here",
   "timeline.help.zoom": "Zoom a time range (drag on the minimap)",
   "timeline.help.expandCluster": "Expand a cluster of overlapping events",
   "timeline.help.expandBody": "Expand/collapse a body section",
@@ -937,5 +937,15 @@
   "issues.captureDetail": "Events are still being written, but at least one source has stopped producing — the gap will be in the timeline, not in an error.",
   "issues.chainBroken": "The evidence chain does not verify",
   "issues.chainBrokenDetail": "A row between the anchor and now does not hash to its successor. Export a bundle before doing anything else.",
-  "search.resultsLabel": "Search results, {{count}} events"
+  "search.resultsLabel": "Search results, {{count}} events",
+  "timeline.dropMarkerHere": "Drop a marker at {{time}}",
+  "fatal.title": "{{view}} stopped working",
+  "fatal.thisView": "This view",
+  "fatal.why": "Nothing has been lost — events already recorded are on disk and the chain is intact. Only this view stopped rendering.",
+  "fatal.retry": "Retry",
+  "fatal.goHome": "Back to dashboard",
+  "fatal.diagnostics": "Diagnostics",
+  "fatal.copy": "Copy",
+  "fatal.openIssue": "Open a GitHub issue",
+  "fatal.scrubbed": "Paths are reduced to the app bundle, and your username and project name are replaced. Read it before sending — this is exactly what gets shared."
 }

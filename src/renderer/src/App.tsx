@@ -226,7 +226,7 @@ export default function App(): JSX.Element {
         <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
-          <ErrorBoundary label={view}>
+          <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
             {view === 'terminal' && <TerminalView />}
             {/* key on project.id: a project switch (e.g. project:open) must
