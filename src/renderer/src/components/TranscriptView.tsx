@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
+import { formatTime } from '../lib/time'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -280,7 +281,13 @@ export default function TranscriptView({ onOpenInTimeline }: {
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
       toast(t('transcript.copied'), 'success')
-    } catch { toast(t('transcript.copyFailed'), 'error') }
+    } catch (e) {
+      toast(t('transcript.copyFailed'), {
+        type: 'error',
+        why: t('transcript.copyFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
+    }
   }, [shown, t])
 
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
@@ -337,9 +344,9 @@ export default function TranscriptView({ onOpenInTimeline }: {
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-redlog-border/50">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
                 <span className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
-                  {new Date(b.ts).toLocaleTimeString()}
+                  {formatTime(b.ts, { seconds: true })}
                 </span>
-                <span className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
+                <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
                 {b.meta && <span className="text-xs text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}
                 {hasOutput && (
                   <button

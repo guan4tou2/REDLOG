@@ -3,6 +3,8 @@ import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
+import { useListKeyboard } from '../lib/useListKeyboard'
+import { formatDateTime } from '../lib/time'
 
 const TAG_COLORS = [
   { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
@@ -60,6 +62,16 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
     })
   })()
 
+  // Every list in the app answers to the same keys (§9). Enter opens the
+  // mark's detail panel; ⌘↩ takes it to the Timeline, which is the question
+  // an operator asks of a finding more often than any other.
+  const listNav = useListKeyboard({
+    count: filteredMarks.length,
+    onActivate: (i) => { const m = filteredMarks[i]; if (m) { setSelected(m); setCreating(false) } },
+    onJumpToTimeline: (i) => { const m = filteredMarks[i]; if (m) onOpenInTimeline?.(m.createdAt) },
+    onEscape: () => setSelected(null)
+  })
+
   const refresh = useCallback(() => {
     window.redlog.quickmarks.list().then(setMarks)
   }, [])
@@ -102,7 +114,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                 onClick={async () => {
                   const p = await (window.redlog.data as { exportMarks?: () => Promise<string | null> }).exportMarks?.()
                   if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-                  else toast(t('toast.exportFailed'), 'error')
+                  else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
                 }}
                 className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                 title={t('marks.exportHint')}
@@ -122,7 +134,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${browserTab?.connected ? 'bg-green-400' : 'bg-redlog-elevated-hover'}`} />
             {browserTab?.connected
-              ? <span className="truncate">{browserTab.url || t('marks.connected')}</span>
+              ? <span title={browserTab.url ?? undefined} className="truncate">{browserTab.url || t('marks.connected')}</span>
               : <span>{t('marks.cdpDisconnected')}</span>
             }
           </div>
@@ -139,29 +151,32 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             />
           </div>
         )}
-        <div className="flex-1 overflow-auto">
-          {filteredMarks.map((m) => {
+        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('marks.title', { count: filteredMarks.length })}>
+          {filteredMarks.map((m, i) => {
             const tagColor = getTagColor(m.title)
             const isPinned = pinned.has(m.id)
+            const rowProps = listNav.itemProps(i)
             return (
               <button
                 key={m.id}
-                onClick={() => { setSelected(m); setCreating(false) }}
-                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 ${
+                {...rowProps}
+                ref={(el) => rowProps.ref(el)}
+                onClick={() => { rowProps.onClick(); setSelected(m); setCreating(false) }}
+                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-redlog-accent/50 ${
                   selected?.id === m.id ? 'bg-redlog-elevated' : ''
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
-                  <span className="text-xs text-redlog-text truncate flex-1">{m.title}</span>
+                  <span title={m.title} className="text-xs text-redlog-text truncate flex-1">{m.title}</span>
                   {/* Pinned marks get a small star indicator; pin/unpin action
                       lives in the detail panel (low-frequency action, keep
                       the list clean). */}
                   {isPinned && <span className="text-xs text-amber-400 shrink-0" aria-hidden="true">★</span>}
                 </div>
-                {m.url && <div className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                {m.url && <div title={m.url} className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
                 <div className="text-xs text-redlog-text-faint mt-0.5 pl-4">
-                  {new Date(m.createdAt).toLocaleString()}
+                  {formatDateTime(m.createdAt)}
                 </div>
               </button>
             )
@@ -308,7 +323,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
             </button>
           )}
           <div className="text-xs text-redlog-text-dim mt-1">
-            {new Date(mark.createdAt).toLocaleString()}
+            {formatDateTime(mark.createdAt, { seconds: true })}
           </div>
         </div>
         <div className="flex gap-1">

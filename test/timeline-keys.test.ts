@@ -16,8 +16,10 @@ const CTX = (over: Partial<TimelineKeyContext> = {}): TimelineKeyContext => ({
   focusActive: false,
   ...over
 })
-const key = (k: string, mods: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) =>
-  ({ key: k, metaKey: false, ctrlKey: false, altKey: false, ...mods })
+const key = (
+  k: string,
+  mods: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean } = {}
+) => ({ key: k, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...mods })
 
 describe('resolveTimelineKey', () => {
   it('does nothing while the operator is typing in a field', () => {
@@ -68,19 +70,65 @@ describe('resolveTimelineKey', () => {
     })
   })
 
-  describe('arrow navigation only when a detail panel is open', () => {
-    it('walks the selected event up/down when detail is open', () => {
-      expect(resolveTimelineKey(key('ArrowUp'), CTX({ hasDetail: true }))).toBe('nav-prev')
-      expect(resolveTimelineKey(key('ArrowDown'), CTX({ hasDetail: true }))).toBe('nav-next')
+  // Arrows used to require an open detail panel and walked a flat list. §6
+  // separates the two: the selection is its own thing, so an operator can walk
+  // the timeline without a panel covering a third of it, and the axes mean
+  // different questions — ← → reads one producer's story, ↑ ↓ asks what else
+  // was happening at that moment.
+  describe('§6 movement', () => {
+    it('walks within the lane on ← →, with no panel needed', () => {
+      expect(resolveTimelineKey(key('ArrowLeft'), CTX())).toBe('nav-prev')
+      expect(resolveTimelineKey(key('ArrowRight'), CTX())).toBe('nav-next')
     })
-    it('does nothing on arrows with no detail panel (normal scroll is left intact)', () => {
-      expect(resolveTimelineKey(key('ArrowUp'), CTX())).toBe('none')
-      expect(resolveTimelineKey(key('ArrowDown'), CTX())).toBe('none')
+    it('changes lane on ↑ ↓', () => {
+      expect(resolveTimelineKey(key('ArrowUp'), CTX())).toBe('nav-lane-up')
+      expect(resolveTimelineKey(key('ArrowDown'), CTX())).toBe('nav-lane-down')
+    })
+    it('skips to events carrying state with shift held', () => {
+      expect(resolveTimelineKey(key('ArrowLeft', { shiftKey: true }), CTX())).toBe('nav-state-prev')
+      expect(resolveTimelineKey(key('ArrowRight', { shiftKey: true }), CTX())).toBe('nav-state-next')
+    })
+    it('goes to the ends on Home and End', () => {
+      expect(resolveTimelineKey(key('Home'), CTX())).toBe('nav-first')
+      expect(resolveTimelineKey(key('End'), CTX())).toBe('nav-last')
+    })
+    it('zooms on + − 0, accepting the unshifted forms', () => {
+      // `+` is shift-equals on most layouts; demanding the shift makes a
+      // frequent key awkward.
+      for (const k of ['+', '=']) expect(resolveTimelineKey(key(k), CTX())).toBe('zoom-in')
+      for (const k of ['-', '_']) expect(resolveTimelineKey(key(k), CTX())).toBe('zoom-out')
+      expect(resolveTimelineKey(key('0'), CTX())).toBe('zoom-reset')
+    })
+    it('gives Enter to the Inspector, but only with something selected', () => {
+      expect(resolveTimelineKey(key('Enter'), CTX({ hasSelection: true }))).toBe('toggle-detail')
+      expect(resolveTimelineKey(key('Enter'), CTX())).toBe('none')
+    })
+    it('still yields every movement key to a text field', () => {
+      for (const k of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End', '+', '0', 'Enter']) {
+        expect(resolveTimelineKey(key(k), CTX({ inField: true })), k).toBe('none')
+      }
+    })
+    it('yields to ⌘/Ctrl/Alt so it cannot shadow a system or app chord', () => {
+      for (const mod of ['metaKey', 'ctrlKey', 'altKey'] as const) {
+        expect(resolveTimelineKey(key('ArrowLeft', { [mod]: true }), CTX())).toBe('none')
+        expect(resolveTimelineKey(key('0', { [mod]: true }), CTX())).toBe('none')
+      }
+    })
+  })
+
+  describe('Escape peels one layer per press', () => {
+    it('drops the selection only after the panel is closed', () => {
+      // The ring outlives the Inspector, so the operator does not lose their
+      // place just by closing the panel.
+      expect(resolveTimelineKey(key('Escape'), CTX({ hasDetail: true, hasSelection: true })))
+        .toBe('close-detail')
+      expect(resolveTimelineKey(key('Escape'), CTX({ hasSelection: true })))
+        .toBe('clear-selection')
+      expect(resolveTimelineKey(key('Escape'), CTX())).toBe('none')
     })
   })
 
   it('ignores unrelated keys', () => {
     expect(resolveTimelineKey(key('a'), CTX({ hasDetail: true }))).toBe('none')
-    expect(resolveTimelineKey(key('Enter'), CTX({ hasDetail: true }))).toBe('none')
   })
 })

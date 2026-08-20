@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
 import { usePivots } from './lib/usePivots'
+import { formatTime } from './lib/time'
 
 // HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
 // cyan frame identity, calmer state accents, angular corner brackets that frame
@@ -269,7 +270,7 @@ export default function OverlayApp(): JSX.Element {
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.network')}</span>
                 <span style={{ color: VALUE }}>{link?.type === 'wifi' ? `⌁ ${linkText}` : linkText || '—'}</span>
                 <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.lastCheck')}</span>
-                <span style={{ color: '#9fd8e6' }}>{status?.lastCheck ? new Date(status.lastCheck).toLocaleTimeString() : '—'}</span>
+                <span style={{ color: '#9fd8e6' }}>{status?.lastCheck ? formatTime(status.lastCheck, { seconds: true }) : '—'}</span>
               </div>
 
               {safety === 'unknown' && (

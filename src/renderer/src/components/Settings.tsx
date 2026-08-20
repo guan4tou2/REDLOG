@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
-import { toast } from './Toast'
+import { toast, toastDeferred } from './Toast'
+import { raiseIssue, clearIssue } from '../lib/issues'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
 import WslPanel from './WslPanel'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
 import { applyDensity, resolveDensity, storedDensity } from '../lib/density'
+import { formatDateTime } from '../lib/time'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -203,7 +205,13 @@ export default function Settings(): JSX.Element {
                   await window.redlog.cdp.setPort(port)
                   const cdpTab = await window.redlog.cdp.getTab()
                   if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
-                  else toast(t('settings.cdpNotConnected', { port: String(port) }), 'error')
+                  else {
+                    toast(t('settings.cdpNotConnectedTitle'), {
+                      type: 'error',
+                      why: t('settings.cdpNotConnected', { port: String(port) }),
+                      action: { label: t('common.retry'), onClick: () => { void window.redlog.cdp.getTab() } }
+                    })
+                  }
                 }}
                 className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
               >
@@ -738,12 +746,44 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   }
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
-    setHookLoading(hook.id)
     const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }>; uninstall: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
-    const result = hook.installed
-      ? await hooksApi.uninstall(hook.id)
-      : await hooksApi.install(hook.id)
-    toast(result.message, result.success ? 'success' : 'error')
+    // Removing a hook blinds a capture source, and a blind source is only
+    // discovered later, in the gap it left in the timeline. §10 defers it:
+    // the row reads as uninstalled at once, the profile is not touched until
+    // the undo window closes, and an undo inside it leaves no audit entry.
+    if (hook.installed) {
+      setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed: false } : h)))
+      toastDeferred(
+        t('settings.hookRemoved', { name: hook.id }),
+        () => {
+          void hooksApi.uninstall(hook.id).then(async (r) => {
+            if (!r.success) {
+              toast(t('settings.hookUninstallFailed', { name: hook.id }), {
+                type: 'error', why: t('settings.hookFailedWhy'), detail: r.message
+              })
+            }
+            setHooks(await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect())
+          })
+        },
+        {
+          type: 'warning',
+          why: t('settings.hookRemovedWhy'),
+          revert: () => setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed: true } : h)))
+        }
+      )
+      return
+    }
+    setHookLoading(hook.id)
+    const result = await hooksApi.install(hook.id)
+    if (result.success) toast(result.message, 'success')
+    else {
+      toast(t('settings.hookInstallFailed', { name: hook.id }), {
+        type: 'error',
+        why: t('settings.hookFailedWhy'),
+        detail: result.message,
+        action: { label: t('common.retry'), onClick: () => { void handleToggle(hook) } }
+      })
+    }
     const updated = await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect()
     setHooks(updated)
     setHookLoading(null)
@@ -825,7 +865,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                         </p>
                         {step.command && (
                           <div className="flex items-center gap-2 mt-1">
-                            <code className="flex-1 min-w-0 truncate bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono">
+                            <code title={step.command} className="flex-1 min-w-0 truncate bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono">
                               {step.command}
                             </code>
                             <button
@@ -908,13 +948,40 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
 
   const doReload = async (): Promise<void> => { setBusy('*'); setPlugins(await api.reload()); setBusy(null) }
   const toggle = async (p: PluginView, enabled: boolean): Promise<void> => {
-    setBusy(p.id); setPlugins(await api.setEnabled(p.id, enabled)); setBusy(null)
+    // Enabling is the recoverable direction and takes effect at once.
+    if (enabled) {
+      setBusy(p.id); setPlugins(await api.setEnabled(p.id, true)); setBusy(null)
+      return
+    }
+    // Disabling stops a capture source and writes `system.config_changed`, so
+    // §10 gives it a window and defers the *write*, not just the undo: the
+    // list shows the plugin as disabled immediately, but nothing is persisted
+    // until the eight seconds are up. An operator who catches their own
+    // mistake inside the window leaves no trace of it in the audit log —
+    // which is the point, since that log is evidence.
+    setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'disabled' } : x)))
+    toastDeferred(
+      t('plugins.disabled', { name: p.name }),
+      () => { void api.setEnabled(p.id, false).then(setPlugins) },
+      {
+        type: 'warning',
+        why: t('plugins.disabledWhy'),
+        revert: () => setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: p.status } : x)))
+      }
+    )
   }
   const grant = async (p: PluginView): Promise<void> => {
     setBusy(p.id); setConfirmGrant(null)
     const r = await api.grant(p.id)
     setPlugins(r.plugins); setBusy(null)
-    toast(r.ok ? t('plugins.granted') : (r.error ?? 'Failed'), r.ok ? 'success' : 'error')
+    if (r.ok) toast(t('plugins.granted'), 'success')
+    else {
+      toast(t('plugins.grantFailed', { name: p.id }), {
+        type: 'error',
+        why: t('plugins.grantFailedWhy'),
+        detail: r.error
+      })
+    }
   }
   const revoke = async (p: PluginView): Promise<void> => { setBusy(p.id); setPlugins(await api.revoke(p.id)); setBusy(null) }
 
@@ -1227,10 +1294,28 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
     setBusy(false)
     if (result) {
       const ok = result.calendarReceipts.filter((r) => r.ok).length
-      toast(`Anchored (${ok}/${result.calendarReceipts.length} calendars)`, ok > 0 ? 'success' : 'error')
+      const total = result.calendarReceipts.length
+      if (ok > 0) {
+        clearIssue('anchor')
+        toast(t('settings.anchored', { ok, total }), 'success')
+      } else {
+        raiseIssue({
+          id: 'anchor', tier: 'attention',
+          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: 'settings'
+        })
+        toast(t('settings.anchorFailed'), {
+          type: 'error',
+          why: t('settings.anchorFailedWhy'),
+          detail: result.calendarReceipts.map((r) => `${r.url ?? '?'}: ${r.error ?? 'no receipt'}`).join('\n'),
+          action: { label: t('common.retry'), onClick: () => { void handleAnchor() } }
+        })
+      }
       await reload()
     } else {
-      toast(t('settings.integrityNoAnchors'), 'error')
+      toast(t('settings.integrityNoAnchors'), {
+        type: 'error',
+        why: t('settings.integrityNoAnchorsWhy')
+      })
     }
   }
 
@@ -1245,6 +1330,16 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         ? t('settings.integrityVerifiedOk').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(Math.max(currentRow, anchorCount)))
         : t('settings.integrityVerifiedBad').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(currentRow))
       setVerifyMsg(msg)
+      // A chain that will not verify is the most consequential condition the
+      // app can be in, and the old inline message cleared itself after eight
+      // seconds — so an operator who looked away lost it entirely (§9).
+      if (result.ok) clearIssue('chain')
+      else {
+        raiseIssue({
+          id: 'chain', tier: 'attention',
+          title: t('issues.chainBroken'), detail: t('issues.chainBrokenDetail'), view: 'settings'
+        })
+      }
     }
     setTimeout(() => setVerifyMsg(null), 8000)
   }
@@ -1365,7 +1460,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                   {statusLabel(a.status)}
                 </span>
                 <span className="text-redlog-text-dim font-mono tabular-nums text-xs">
-                  {new Date(a.createdAt).toLocaleString()}
+                  {formatDateTime(a.createdAt, { seconds: true })}
                 </span>
                 <span className="text-redlog-text-dim text-xs">
                   {t('settings.integrityEvents').replace('{{n}}', String(a.eventCount))}
@@ -1646,7 +1741,7 @@ function DeconflictionPanel({
 function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
   const [operators, setOperators] = useState<OperatorInfo[]>([])
   const [newName, setNewName] = useState('')
-  const [pendingToken, setPendingToken] = useState<{ id: string; token: string; note: string } | null>(null)
+  const [pendingToken, setPendingToken] = useState<{ id: string; note: string; path: string | null } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   const reload = async (): Promise<void> => {
@@ -1664,10 +1759,14 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
     setBusy(null)
     if (result) {
       setNewName('')
-      setPendingToken({ id: result.operator.id, token: result.token, note: t('settings.operatorCreated') })
+      const written = await window.redlog.operators.writeToken(result.operator.id, result.token)
+      setPendingToken({ id: result.operator.id, note: t('settings.operatorCreated'), path: written })
       await reload()
     } else {
-      toast(t('settings.exportFailed'), 'error')
+      toast(t('settings.operatorCreateFailed'), {
+        type: 'error',
+        why: t('settings.operatorCreateFailedWhy')
+      })
     }
   }
 
@@ -1676,7 +1775,8 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
     const result = await window.redlog.operators.rotate(id)
     setBusy(null)
     if (result) {
-      setPendingToken({ id, token: result.token, note: t('settings.operatorRotated') })
+      const written = await window.redlog.operators.writeToken(id, result.token)
+      setPendingToken({ id, note: t('settings.operatorRotated'), path: written })
       await reload()
     }
   }
@@ -1712,7 +1812,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-redlog-text font-medium truncate">{op.name}</span>
+                <span title={op.name} className="text-redlog-text font-medium truncate">{op.name}</span>
                 {op.isPrimary && (
                   <span className="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
                     {t('settings.operatorPrimary')}
@@ -1724,7 +1824,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-redlog-text-dim font-mono truncate">{op.id}</p>
+              <p title={op.id} className="text-xs text-redlog-text-dim font-mono truncate">{op.id}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -1774,29 +1874,50 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         </button>
       </div>
 
+      {/* §10: the token is written to a file, not handed over as text to
+          copy. A token on the clipboard is a token in every clipboard manager
+          on the machine, and one pasted into a note is a token in whatever
+          that note syncs to. `~/.redlog/tokens/` sits outside the project
+          directory on purpose — bundle export and cloud share walk the project
+          tree, and a credential is not evidence. */}
       {pendingToken && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
           <p className="text-xs text-red-300">{pendingToken.note}</p>
-          <div className="flex items-center gap-1">
-            <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded truncate">
-              {pendingToken.token}
-            </code>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(pendingToken.token)
-                toast(t('toast.copied'), 'success')
-              }}
-              className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
-            >
-              {t('settings.operatorTokenCopy')}
-            </button>
-            <button
-              onClick={() => setPendingToken(null)}
-              className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
-            >
-              {t('settings.operatorTokenClose')}
-            </button>
-          </div>
+          {pendingToken.path ? (
+            <>
+              <p className="text-xs text-redlog-text-dim">{t('settings.operatorTokenWritten')}</p>
+              <div className="flex items-center gap-1">
+                <code title={pendingToken.path} className="flex-1 bg-black/40 text-redlog-text-dim text-xs font-mono px-2 py-1.5 rounded truncate">
+                  {pendingToken.path}
+                </code>
+                <button
+                  onClick={() => { void window.redlog.data.revealPath?.(pendingToken.path as string) }}
+                  className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover whitespace-nowrap"
+                >
+                  {t('settings.exportBundleReveal')}
+                </button>
+                <button
+                  onClick={() => setPendingToken(null)}
+                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
+                >
+                  {t('settings.operatorTokenClose')}
+                </button>
+              </div>
+            </>
+          ) : (
+            // The write failed. Falling back to showing the token is worse
+            // than losing it — an operator can always rotate — so say what
+            // happened and let them retry rather than putting it on screen.
+            <div className="flex items-center gap-1">
+              <p className="flex-1 text-xs text-redlog-text-dim">{t('settings.operatorTokenWriteFailed')}</p>
+              <button
+                onClick={() => setPendingToken(null)}
+                className="px-2 py-1.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover"
+              >
+                {t('settings.operatorTokenClose')}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </FieldGroup>
@@ -2020,7 +2141,7 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
           </p>
         ) : watchPaths.map((p) => (
           <div key={p} className="flex items-center gap-2 px-2 py-1 bg-redlog-surface border border-redlog-border rounded">
-            <span className="text-xs font-mono text-redlog-text flex-1 truncate">{p}</span>
+            <span title={p} className="text-xs font-mono text-redlog-text flex-1 truncate">{p}</span>
             <button
               onClick={() => removePath(p)}
               className="text-xs text-red-400 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
@@ -2168,7 +2289,12 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
     if (!p.ok || !p.zipPath || !p.manifest) {
       setBusy(null)
       const msg = `${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`
-      setLastError(msg); toast(msg, 'error')
+      setLastError(msg)
+      toast(t('cloudShare.prepareFailed'), {
+        type: 'error',
+        why: t('cloudShare.prepareFailedWhy'),
+        detail: p.error
+      })
       return
     }
     setBusy('upload')
@@ -2181,7 +2307,13 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       toast(t('cloudShare.uploaded'), 'success')
     } else {
       const msg = `${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`
-      setLastError(msg); toast(msg, 'error')
+      setLastError(msg)
+      toast(t('cloudShare.uploadFailed'), {
+        type: 'error',
+        why: t('cloudShare.uploadFailedWhy'),
+        detail: u.error,
+        action: { label: t('common.retry'), onClick: () => { void upload() } }
+      })
     }
   }
 
@@ -2444,7 +2576,12 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
     } else {
       const msg = r.error ?? 'unknown'
       setInstallError((prev) => ({ ...prev, [entry.id]: msg }))
-      toast(`${t('marketplace.installFailed')}: ${msg}`, 'error')
+      toast(t('marketplace.installFailed'), {
+        type: 'error',
+        why: t('marketplace.installFailedWhy'),
+        detail: msg,
+        action: { label: t('common.retry'), onClick: () => { void install(entry) } }
+      })
     }
   }
   const dismissInstallError = (id: string): void => {
@@ -2480,7 +2617,11 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
       toast(t('marketplace.publisherTrusted', { id: pub.id }), 'success')
       reloadPublishers()
     } catch (e) {
-      toast(String((e as Error)?.message ?? e), 'error')
+      toast(t('marketplace.trustFailed', { id: pub.id }), {
+        type: 'error',
+        why: t('marketplace.trustFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
     } finally { setTrustingId(null) }
   }
 
@@ -2529,7 +2670,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                 {suggestedUntrusted.map((p) => (
                   <li key={p.id} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
+                      <p title={p.id} className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
                       {/* The fingerprint is the point of this row: the operator
                           is meant to compare it against the publisher's own
                           site before pinning, not take the registry's word. */}
@@ -2651,7 +2792,13 @@ function PublisherEditor({ t, publishers, api, onReload }: {
       toast(`${t('marketplace.publisherAdded')} · fp ${r.fingerprint ?? ''}`, 'success')
       setDraftId(''); setDraftKey(''); setDraftLabel('')
       onReload()
-    } else toast(r.error ?? 'error', 'error')
+    } else {
+      toast(t('marketplace.addPublisherFailed'), {
+        type: 'error',
+        why: t('marketplace.addPublisherFailedWhy'),
+        detail: r.error
+      })
+    }
   }
 
   const untrust = async (id: string): Promise<void> => { await api.untrustPublisher(id); onReload() }

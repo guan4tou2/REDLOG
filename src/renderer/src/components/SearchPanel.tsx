@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
+import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
+import { formatTime } from '../lib/time'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -38,6 +40,17 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { t } = useI18n()
+
+  // Hoisted out of the render IIFE it used to live in so the keyboard hook can
+  // count it. Same keys as every other list (§9); a result row's only action
+  // is "show me this on the Timeline", so Enter and ⌘↩ agree.
+  const filtered = typeFilter ? results.filter((e) => e.agentType === typeFilter) : results
+  const listNav = useListKeyboard({
+    count: filtered.length,
+    onActivate: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },
+    onJumpToTimeline: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },
+    onEscape: () => setTypeFilter(null)
+  })
 
   const doSearch = useCallback((q: string) => {
     // Single-char search intents are real (IP octet, short tag) — down from
@@ -91,7 +104,6 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           // Bucket by agentType so the filter chips can show counts inline.
           const byType = new Map<string, number>()
           for (const e of results) byType.set(e.agentType, (byType.get(e.agentType) ?? 0) + 1)
-          const filtered = typeFilter ? results.filter((e) => e.agentType === typeFilter) : results
           const types = [...byType.entries()].sort((a, b) => b[1] - a[1])
           return (
           <>
@@ -114,11 +126,15 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                 ))}
               </div>
             )}
-            <div className="space-y-1">
-              {filtered.map((e) => (
+            <div className="space-y-1" {...listNav.containerProps} aria-label={t('search.resultsLabel', { count: filtered.length })}>
+              {filtered.map((e, i) => {
+                const rowProps = listNav.itemProps(i)
+                return (
                 <button
                   key={e.id}
-                  onClick={() => onOpenInTimeline?.(e.id, e.timestamp)}
+                  {...rowProps}
+                  ref={(el) => rowProps.ref(el)}
+                  onClick={() => { rowProps.onClick(); onOpenInTimeline?.(e.id, e.timestamp) }}
                   disabled={!onOpenInTimeline}
                   className="w-full text-left flex items-start gap-2 px-3 py-2 rounded hover:bg-redlog-elevated/50 text-xs disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                   title={onOpenInTimeline ? t('search.openInTimeline') : undefined}
@@ -126,17 +142,18 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                   <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-redlog-text-dim'}`}>
                     {e.agentType.slice(0, 6)}
                   </span>
-                  <span className="text-redlog-text font-mono flex-1 min-w-0 truncate">
+                  <span title={eventSummary(e)} className="text-redlog-text font-mono flex-1 min-w-0 truncate">
                     {eventSummary(e)}
                   </span>
                   <span className="text-redlog-text-faint shrink-0 ml-2">
-                    {new Date(e.timestamp).toLocaleTimeString()}
+                    {formatTime(e.timestamp, { seconds: true })}
                   </span>
                   {e.targetId && (
                     <span className="text-redlog-text-dim shrink-0 ml-1">→ {e.targetId}</span>
                   )}
                 </button>
-              ))}
+                )
+              })}
             </div>
           </>
         )})()}

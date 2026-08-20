@@ -21,6 +21,20 @@ async function bounds(a: ElectronApplication): Promise<{ x: number; width: numbe
   })
 }
 
+/** Park the HUD hard against the right edge of its display. The x-correction
+ *  rule below only does anything when widening would push the window off
+ *  screen, so the test has to establish that precondition itself — it used to
+ *  come for free from the HUD's default position, which §8 moved off the right
+ *  edge and next to the notch instead. */
+async function parkAtRightEdge(a: ElectronApplication): Promise<void> {
+  await a.evaluate(async ({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows().find((b) => b.webContents.getURL().includes('overlay'))!
+    const b = w.getBounds()
+    const area = screen.getDisplayNearestPoint({ x: b.x, y: b.y }).workArea
+    w.setBounds({ ...b, x: area.x + area.width - b.width })
+  })
+}
+
 async function autosize(page: Page, h: number, w: number): Promise<void> {
   await page.evaluate(([hh, ww]) => {
     ;(window as unknown as { redlog: { overlay: { autosize: (h: number, w?: number) => void } } })
@@ -53,6 +67,7 @@ test.describe.serial('HUD overlay geometry', () => {
   // any future change to it is a deliberate one. The leftward drift it pins
   // down is tracked in docs/AUDIT-2026-08-08.md rather than patched blind.
   test('v0.9.3 behaviour: widening slides x left and narrowing does not restore it', async () => {
+    await parkAtRightEdge(app)
     const start = await bounds(app)
 
     await autosize(hud, 58, 720)

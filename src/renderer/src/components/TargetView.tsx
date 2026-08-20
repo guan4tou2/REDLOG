@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { formatTime } from '../lib/time'
+import { toastDeferred } from './Toast'
 
 interface TargetEntry {
   target: string
@@ -187,9 +189,24 @@ export function TargetView(): JSX.Element {
                             const cfg = await window.redlog.config.get() as { scope?: { targets?: string[] } } | null
                             const cur = cfg?.scope?.targets ?? []
                             if (cur.includes(tgt.target)) return
-                            const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
-                            await window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
+                            // Widening scope is the one direction that can turn
+                            // an out-of-scope finding into an in-scope one after
+                            // the fact, so §10 defers the write: the chip shows
+                            // the target as in-scope at once, but nothing is
+                            // saved — and no `system.config_changed` is written
+                            // — until the undo window closes.
                             setScopeTargets((prev) => prev.includes(tgt.target) ? prev : [...prev, tgt.target])
+                            toastDeferred(
+                              t('targets.addedToScope', { target: tgt.target }),
+                              () => {
+                                const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
+                                void window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
+                              },
+                              {
+                                why: t('targets.addedToScopeWhy'),
+                                revert: () => setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
+                              }
+                            )
                           }}
                           className="text-xs text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
                           title={t('targets.addToScope')}
@@ -201,7 +218,7 @@ export function TargetView(): JSX.Element {
                   </div>
                 </div>
                 <div className="mt-1 text-redlog-text-dim text-xs">
-                  {t('targets.first', { time: new Date(tgt.firstSeen).toLocaleTimeString() })} · {t('targets.last', { time: new Date(tgt.lastSeen).toLocaleTimeString() })}
+                  {t('targets.first', { time: formatTime(tgt.firstSeen, { seconds: true }) })} · {t('targets.last', { time: formatTime(tgt.lastSeen, { seconds: true }) })}
                 </div>
               </div>
 
@@ -229,9 +246,9 @@ export function TargetView(): JSX.Element {
                             {agentIcon[e.agentType] || '?'}
                           </span>
                           <span className="text-redlog-text-faint w-16 shrink-0">
-                            {new Date(e.timestamp).toLocaleTimeString()}
+                            {formatTime(e.timestamp, { seconds: true })}
                           </span>
-                          <span className="text-redlog-text truncate">
+                          <span title={String(e.data.command ?? e.data.path ?? e.data.url ?? '')} className="text-redlog-text truncate">
                             {e.agentType === 'shell' && (e.data.command as string)}
                             {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}

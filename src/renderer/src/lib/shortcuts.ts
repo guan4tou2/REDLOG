@@ -20,15 +20,48 @@
  *  fails if they drift apart. */
 export const QUICK_MARK_ACCELERATOR = 'CommandOrControl+Shift+M'
 
-export type ShortcutScope = 'nav' | 'app' | 'terminal'
+/** Mirrors `HUD_PASSTHROUGH_ACCELERATOR` in `src/core/shortcuts.ts`, checked
+ *  by `test/shortcuts.test.ts` for the same reason as the marker chord. */
+export const HUD_PASSTHROUGH_ACCELERATOR = 'CommandOrControl+Shift+P'
+
+export type ShortcutScope = 'nav' | 'app' | 'terminal' | 'timeline'
 
 export interface ShortcutRow {
+  /** Stable identity. The handler dispatches on it; the table describes it. */
+  id: string
   /** Keys drawn the way the current platform writes them. */
   keys: string
   /** i18n key of the description. */
   label: string
   scope: ShortcutScope
+  /**
+   * True when this keyboard event is this shortcut. Present on rows the app
+   * binds itself; absent on mouse gestures and on rows whose handler lives
+   * somewhere this module cannot see (the Terminal's tab keys are scoped to a
+   * mounted view). A row without a matcher is documentation only — which is
+   * still the point, since an undocumented binding is the failure this table
+   * exists to prevent.
+   */
+  match?: (e: KeyboardEvent) => boolean
+  /**
+   * Whether a focused text field should swallow this shortcut.
+   *
+   * Not a blanket rule, and getting it wrong is invisible until someone is in
+   * the Terminal: xterm keeps a hidden textarea focused at all times, so a
+   * global "am I typing?" guard silently disables every shortcut for as long
+   * as that view is open — which is how ⌘1..9 stopped working, caught by
+   * `e2e/project-flow.spec.ts`.
+   *
+   * A ⌘ chord over a digit cannot be mistaken for typing, so navigation is
+   * never guarded. ⌘K and ⌘/ are, because a text field may reasonably want
+   * them; arrow chords are, because arrows still have to move a caret.
+   */
+  guardTyping?: boolean
 }
+
+const mod = (e: KeyboardEvent): boolean => e.metaKey || e.ctrlKey
+/** Plain ⌘/Ctrl — no Shift, no Alt. Keeps ⌘K from also firing on ⌘⇧K. */
+const plainMod = (e: KeyboardEvent): boolean => mod(e) && !e.shiftKey && !e.altKey
 
 const MAC_GLYPH: Record<string, string> = {
   CommandOrControl: '⌘',
@@ -52,25 +85,129 @@ export function formatAccelerator(accelerator: string, isMac: boolean): string {
  *  `order` is the live sidebar order so the ⌘1..8 rows follow a drag-reorder;
  *  Settings is pinned to ⌘9 and is not part of that order. */
 export function appShortcuts(order: readonly string[], isMac: boolean): ShortcutRow[] {
-  const mod = isMac ? '⌘' : 'Ctrl+'
+  const m = isMac ? '⌘' : 'Ctrl+'
   const nav: ShortcutRow[] = order.map((view, i) => ({
-    keys: `${mod}${i + 1}`,
+    id: `nav:${view}`,
+    keys: `${m}${i + 1}`,
     // The sidebar calls the screenshots view "screens"; the i18n keys follow
     // the sidebar, not the view id.
     label: `sidebar.${view === 'screenshots' ? 'screens' : view}`,
-    scope: 'nav'
+    scope: 'nav',
+    match: (e) => plainMod(e) && e.key === String(i + 1)
   }))
-  nav.push({ keys: `${mod}9`, label: 'sidebar.settings', scope: 'nav' })
+  nav.push({
+    id: 'nav:settings',
+    keys: `${m}9`,
+    label: 'sidebar.settings',
+    scope: 'nav',
+    match: (e) => plainMod(e) && e.key === '9'
+  })
 
   return [
     ...nav,
-    { keys: `${mod}/`, label: 'dashboard.search', scope: 'app' },
-    { keys: `${mod}K`, label: 'dashboard.palette', scope: 'app' },
-    { keys: `${mod}.`, label: 'dashboard.toggleRecording', scope: 'app' },
-    { keys: formatAccelerator(QUICK_MARK_ACCELERATOR, isMac), label: 'dashboard.addMarker', scope: 'app' },
-    { keys: isMac ? '⌘⇧⌥↑↓←→' : 'Ctrl+Shift+Alt+↑↓←→', label: 'dashboard.hudCorner', scope: 'app' },
-    { keys: `${mod}T`, label: 'dashboard.terminalNewTab', scope: 'terminal' },
-    { keys: `${mod}W`, label: 'dashboard.terminalCloseTab', scope: 'terminal' },
-    { keys: isMac ? '⌘⇧[ ]' : 'Ctrl+Shift+[ ]', label: 'dashboard.terminalCycleTab', scope: 'terminal' }
+    {
+      id: 'app:search', keys: `${m}/`, label: 'dashboard.search', scope: 'app',
+      guardTyping: true,
+      // ⌘/ was the original chord, but macOS sends `Unidentified` as `key` for
+      // it (the system Help-menu grab), so `code` is what actually matches.
+      match: (e) => mod(e) && (e.key === '/' || e.code === 'Slash')
+    },
+    {
+      id: 'app:palette', keys: `${m}K`, label: 'dashboard.palette', scope: 'app',
+      guardTyping: true,
+      match: (e) => mod(e) && (e.key === 'k' || e.key === 'K')
+    },
+    {
+      id: 'app:toggleRecording', keys: `${m}.`, label: 'dashboard.toggleRecording', scope: 'app',
+      match: (e) => mod(e) && e.key === '.'
+    },
+    {
+      id: 'app:addMarker',
+      keys: formatAccelerator(QUICK_MARK_ACCELERATOR, isMac),
+      label: 'dashboard.addMarker',
+      scope: 'app'
+      // Registered by the main process as a global accelerator, so the
+      // renderer never sees the key — documentation only, deliberately.
+    },
+    {
+      id: 'app:hudCorner',
+      keys: isMac ? '⌘⇧⌥↑↓←→' : 'Ctrl+Shift+Alt+↑↓←→',
+      label: 'dashboard.hudCorner',
+      scope: 'app',
+      guardTyping: true,
+      match: (e) => mod(e) && e.altKey && e.shiftKey && HUD_ARROWS.includes(e.key)
+    },
+    {
+      id: 'app:hudPassThrough',
+      keys: formatAccelerator(HUD_PASSTHROUGH_ACCELERATOR, isMac),
+      label: 'dashboard.hudPassThrough',
+      scope: 'app'
+      // Global accelerator, like the marker chord — deliberately no matcher.
+    },
+    { id: 'term:new', keys: `${m}T`, label: 'dashboard.terminalNewTab', scope: 'terminal' },
+    { id: 'term:close', keys: `${m}W`, label: 'dashboard.terminalCloseTab', scope: 'terminal' },
+    { id: 'term:cycle', keys: isMac ? '⌘⇧[ ]' : 'Ctrl+Shift+[ ]', label: 'dashboard.terminalCycleTab', scope: 'terminal' }
+  ]
+}
+
+export const HUD_ARROWS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
+
+/**
+ * Timeline-scoped keys and gestures, for the `?` panel. Grouped the way the
+ * panel renders them. These live here rather than inline in Timeline.tsx for
+ * the same reason the app-level ones do: a binding and its documentation
+ * drift the moment they are written in two places.
+ */
+export interface ShortcutGroup {
+  label: string
+  rows: Array<{ keys: string; label: string }>
+}
+
+export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
+  const m = isMac ? '⌘' : 'Ctrl+'
+  return [
+    {
+      label: 'timeline.help.group.filter',
+      rows: [
+        { keys: '/', label: 'timeline.help.slash' },
+        { keys: `${m}K`, label: 'timeline.help.palette' },
+        { keys: 'Alt-click', label: 'timeline.help.soloLane' },
+        { keys: 'Esc', label: 'timeline.help.escFilter' }
+      ]
+    },
+    {
+      label: 'timeline.help.group.focus',
+      rows: [
+        { keys: 'f', label: 'timeline.help.focusChain' },
+        { keys: 'click', label: 'timeline.help.selectDot' },
+        { keys: '← →', label: 'timeline.help.walkLane' },
+        { keys: '↑ ↓', label: 'timeline.help.walkCrossLane' },
+        { keys: '⇧← ⇧→', label: 'timeline.help.walkState' },
+        { keys: 'Home / End', label: 'timeline.help.walkEnds' },
+        { keys: 'Enter', label: 'timeline.help.toggleInspector' }
+      ]
+    },
+    {
+      label: 'timeline.help.group.timeline',
+      rows: [
+        { keys: 'Right-click', label: 'timeline.help.dropMarker' },
+        { keys: 'drag minimap', label: 'timeline.help.zoom' },
+        { keys: 'click cluster', label: 'timeline.help.expandCluster' },
+        { keys: 'double-click', label: 'timeline.help.zoomHere' },
+        { keys: '+ − 0', label: 'timeline.help.zoomKeys' }
+      ]
+    },
+    {
+      label: 'timeline.help.group.detail',
+      rows: [
+        { keys: 'click ▶', label: 'timeline.help.expandBody' },
+        { keys: 'click cause chip', label: 'timeline.help.jumpCause' },
+        { keys: 'Copy full', label: 'timeline.help.copyFull' }
+      ]
+    },
+    {
+      label: 'timeline.help.group.misc',
+      rows: [{ keys: '?', label: 'timeline.help.thisMenu' }]
+    }
   ]
 }
