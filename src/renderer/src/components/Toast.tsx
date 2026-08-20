@@ -73,14 +73,27 @@ export function toastUndo(message: string, onUndo: () => void, opts: ToastOption
  *  not at all if the operator takes it back. Use this where the side effect is
  *  the expensive part — §10 wants three config changes deferred this way so an
  *  undo inside the window never reaches the audit log at all. */
-export function toastDeferred(message: string, commit: () => void, opts: ToastOptions = {}): void {
+export function toastDeferred(
+  message: string,
+  commit: () => void,
+  opts: ToastOptions & { revert?: () => void } = {}
+): void {
   const ms = opts.duration ?? UNDO_MS
   let cancelled = false
   const timer = setTimeout(() => { if (!cancelled) commit() }, ms)
   _push(message, {
     ...opts,
     duration: ms,
-    action: { label: '__undo__', onClick: () => { cancelled = true; clearTimeout(timer) } }
+    action: {
+      label: '__undo__',
+      onClick: () => {
+        cancelled = true
+        clearTimeout(timer)
+        // The caller usually showed the change optimistically so the UI would
+        // not sit still for eight seconds. `revert` puts that back.
+        opts.revert?.()
+      }
+    }
   })
 }
 

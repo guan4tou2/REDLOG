@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
+import { toastDeferred } from './Toast'
 
 interface TargetEntry {
   target: string
@@ -188,9 +189,24 @@ export function TargetView(): JSX.Element {
                             const cfg = await window.redlog.config.get() as { scope?: { targets?: string[] } } | null
                             const cur = cfg?.scope?.targets ?? []
                             if (cur.includes(tgt.target)) return
-                            const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
-                            await window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
+                            // Widening scope is the one direction that can turn
+                            // an out-of-scope finding into an in-scope one after
+                            // the fact, so §10 defers the write: the chip shows
+                            // the target as in-scope at once, but nothing is
+                            // saved — and no `system.config_changed` is written
+                            // — until the undo window closes.
                             setScopeTargets((prev) => prev.includes(tgt.target) ? prev : [...prev, tgt.target])
+                            toastDeferred(
+                              t('targets.addedToScope', { target: tgt.target }),
+                              () => {
+                                const next = { ...(cfg ?? {}), scope: { ...(cfg?.scope ?? {}), targets: [...cur, tgt.target] } }
+                                void window.redlog.config.save(next as unknown as Parameters<typeof window.redlog.config.save>[0])
+                              },
+                              {
+                                why: t('targets.addedToScopeWhy'),
+                                revert: () => setScopeTargets((prev) => prev.filter((x) => x !== tgt.target))
+                              }
+                            )
                           }}
                           className="text-xs text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
                           title={t('targets.addToScope')}

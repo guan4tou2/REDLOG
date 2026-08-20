@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
-import { toast } from './Toast'
+import { toast, toastUndo } from './Toast'
 import { Gem } from 'lucide-react'
 import { formatTime } from '../lib/time'
 
@@ -90,7 +90,15 @@ export default function StatusBar(): JSX.Element {
 
   const handleToggleRecording = async (): Promise<void> => {
     const newState = await window.redlog.recording.toggle()
-    toast(newState ? t('toast.recordingResumed') : t('toast.recordingPaused'), newState ? 'success' : 'warning')
+    // Takes effect now — a pause that waited eight seconds would keep
+    // recording exactly the thing the operator paused for. The undo is a
+    // second toggle, which is why this is `toastUndo` and not
+    // `toastDeferred` (§10).
+    toastUndo(
+      newState ? t('toast.recordingResumed') : t('toast.recordingPaused'),
+      () => { void window.redlog.recording.toggle() },
+      { type: newState ? 'success' : 'warning', why: newState ? undefined : t('toast.recordingPausedWhy') }
+    )
   }
 
   const safety = ipStatus?.ipSafety ?? 'unknown'

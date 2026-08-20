@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
-import { toast } from './Toast'
+import { toast, toastDeferred } from './Toast'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
 import WslPanel from './WslPanel'
@@ -204,7 +204,13 @@ export default function Settings(): JSX.Element {
                   await window.redlog.cdp.setPort(port)
                   const cdpTab = await window.redlog.cdp.getTab()
                   if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
-                  else toast(t('settings.cdpNotConnected', { port: String(port) }), 'error')
+                  else {
+                    toast(t('settings.cdpNotConnectedTitle'), {
+                      type: 'error',
+                      why: t('settings.cdpNotConnected', { port: String(port) }),
+                      action: { label: t('common.retry'), onClick: () => { void window.redlog.cdp.getTab() } }
+                    })
+                  }
                 }}
                 className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
               >
@@ -739,12 +745,44 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   }
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
-    setHookLoading(hook.id)
     const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }>; uninstall: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
-    const result = hook.installed
-      ? await hooksApi.uninstall(hook.id)
-      : await hooksApi.install(hook.id)
-    toast(result.message, result.success ? 'success' : 'error')
+    // Removing a hook blinds a capture source, and a blind source is only
+    // discovered later, in the gap it left in the timeline. §10 defers it:
+    // the row reads as uninstalled at once, the profile is not touched until
+    // the undo window closes, and an undo inside it leaves no audit entry.
+    if (hook.installed) {
+      setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed: false } : h)))
+      toastDeferred(
+        t('settings.hookRemoved', { name: hook.id }),
+        () => {
+          void hooksApi.uninstall(hook.id).then(async (r) => {
+            if (!r.success) {
+              toast(t('settings.hookUninstallFailed', { name: hook.id }), {
+                type: 'error', why: t('settings.hookFailedWhy'), detail: r.message
+              })
+            }
+            setHooks(await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect())
+          })
+        },
+        {
+          type: 'warning',
+          why: t('settings.hookRemovedWhy'),
+          revert: () => setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed: true } : h)))
+        }
+      )
+      return
+    }
+    setHookLoading(hook.id)
+    const result = await hooksApi.install(hook.id)
+    if (result.success) toast(result.message, 'success')
+    else {
+      toast(t('settings.hookInstallFailed', { name: hook.id }), {
+        type: 'error',
+        why: t('settings.hookFailedWhy'),
+        detail: result.message,
+        action: { label: t('common.retry'), onClick: () => { void handleToggle(hook) } }
+      })
+    }
     const updated = await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect()
     setHooks(updated)
     setHookLoading(null)
@@ -909,13 +947,40 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
 
   const doReload = async (): Promise<void> => { setBusy('*'); setPlugins(await api.reload()); setBusy(null) }
   const toggle = async (p: PluginView, enabled: boolean): Promise<void> => {
-    setBusy(p.id); setPlugins(await api.setEnabled(p.id, enabled)); setBusy(null)
+    // Enabling is the recoverable direction and takes effect at once.
+    if (enabled) {
+      setBusy(p.id); setPlugins(await api.setEnabled(p.id, true)); setBusy(null)
+      return
+    }
+    // Disabling stops a capture source and writes `system.config_changed`, so
+    // §10 gives it a window and defers the *write*, not just the undo: the
+    // list shows the plugin as disabled immediately, but nothing is persisted
+    // until the eight seconds are up. An operator who catches their own
+    // mistake inside the window leaves no trace of it in the audit log —
+    // which is the point, since that log is evidence.
+    setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: 'disabled' } : x)))
+    toastDeferred(
+      t('plugins.disabled', { name: p.name }),
+      () => { void api.setEnabled(p.id, false).then(setPlugins) },
+      {
+        type: 'warning',
+        why: t('plugins.disabledWhy'),
+        revert: () => setPlugins((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: p.status } : x)))
+      }
+    )
   }
   const grant = async (p: PluginView): Promise<void> => {
     setBusy(p.id); setConfirmGrant(null)
     const r = await api.grant(p.id)
     setPlugins(r.plugins); setBusy(null)
-    toast(r.ok ? t('plugins.granted') : (r.error ?? 'Failed'), r.ok ? 'success' : 'error')
+    if (r.ok) toast(t('plugins.granted'), 'success')
+    else {
+      toast(t('plugins.grantFailed', { name: p.id }), {
+        type: 'error',
+        why: t('plugins.grantFailedWhy'),
+        detail: r.error
+      })
+    }
   }
   const revoke = async (p: PluginView): Promise<void> => { setBusy(p.id); setPlugins(await api.revoke(p.id)); setBusy(null) }
 
@@ -1228,10 +1293,23 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
     setBusy(false)
     if (result) {
       const ok = result.calendarReceipts.filter((r) => r.ok).length
-      toast(`Anchored (${ok}/${result.calendarReceipts.length} calendars)`, ok > 0 ? 'success' : 'error')
+      const total = result.calendarReceipts.length
+      if (ok > 0) {
+        toast(t('settings.anchored', { ok, total }), 'success')
+      } else {
+        toast(t('settings.anchorFailed'), {
+          type: 'error',
+          why: t('settings.anchorFailedWhy'),
+          detail: result.calendarReceipts.map((r) => `${r.url ?? '?'}: ${r.error ?? 'no receipt'}`).join('\n'),
+          action: { label: t('common.retry'), onClick: () => { void handleAnchor() } }
+        })
+      }
       await reload()
     } else {
-      toast(t('settings.integrityNoAnchors'), 'error')
+      toast(t('settings.integrityNoAnchors'), {
+        type: 'error',
+        why: t('settings.integrityNoAnchorsWhy')
+      })
     }
   }
 
@@ -1668,7 +1746,10 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
       setPendingToken({ id: result.operator.id, token: result.token, note: t('settings.operatorCreated') })
       await reload()
     } else {
-      toast(t('settings.exportFailed'), 'error')
+      toast(t('settings.operatorCreateFailed'), {
+        type: 'error',
+        why: t('settings.operatorCreateFailedWhy')
+      })
     }
   }
 
@@ -2169,7 +2250,12 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
     if (!p.ok || !p.zipPath || !p.manifest) {
       setBusy(null)
       const msg = `${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`
-      setLastError(msg); toast(msg, 'error')
+      setLastError(msg)
+      toast(t('cloudShare.prepareFailed'), {
+        type: 'error',
+        why: t('cloudShare.prepareFailedWhy'),
+        detail: p.error
+      })
       return
     }
     setBusy('upload')
@@ -2182,7 +2268,13 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       toast(t('cloudShare.uploaded'), 'success')
     } else {
       const msg = `${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`
-      setLastError(msg); toast(msg, 'error')
+      setLastError(msg)
+      toast(t('cloudShare.uploadFailed'), {
+        type: 'error',
+        why: t('cloudShare.uploadFailedWhy'),
+        detail: u.error,
+        action: { label: t('common.retry'), onClick: () => { void upload() } }
+      })
     }
   }
 
@@ -2445,7 +2537,12 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
     } else {
       const msg = r.error ?? 'unknown'
       setInstallError((prev) => ({ ...prev, [entry.id]: msg }))
-      toast(`${t('marketplace.installFailed')}: ${msg}`, 'error')
+      toast(t('marketplace.installFailed'), {
+        type: 'error',
+        why: t('marketplace.installFailedWhy'),
+        detail: msg,
+        action: { label: t('common.retry'), onClick: () => { void install(entry) } }
+      })
     }
   }
   const dismissInstallError = (id: string): void => {
@@ -2481,7 +2578,11 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
       toast(t('marketplace.publisherTrusted', { id: pub.id }), 'success')
       reloadPublishers()
     } catch (e) {
-      toast(String((e as Error)?.message ?? e), 'error')
+      toast(t('marketplace.trustFailed', { id: pub.id }), {
+        type: 'error',
+        why: t('marketplace.trustFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
     } finally { setTrustingId(null) }
   }
 
@@ -2652,7 +2753,13 @@ function PublisherEditor({ t, publishers, api, onReload }: {
       toast(`${t('marketplace.publisherAdded')} · fp ${r.fingerprint ?? ''}`, 'success')
       setDraftId(''); setDraftKey(''); setDraftLabel('')
       onReload()
-    } else toast(r.error ?? 'error', 'error')
+    } else {
+      toast(t('marketplace.addPublisherFailed'), {
+        type: 'error',
+        why: t('marketplace.addPublisherFailedWhy'),
+        detail: r.error
+      })
+    }
   }
 
   const untrust = async (id: string): Promise<void> => { await api.untrustPublisher(id); onReload() }

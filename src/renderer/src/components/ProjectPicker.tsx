@@ -69,7 +69,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
       setCreating(false)
-      toast(t('project.openFailed', { error: (e as Error).message }), 'error')
+      toast(t('project.openFailedTitle'), {
+        type: 'error',
+        why: t('project.openFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
     }
   }
 
@@ -79,7 +83,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       if (project) onProjectOpen({ id: project.id, name: project.name })
       else toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') })
     } catch (e) {
-      toast(t('project.openFailed', { error: (e as Error).message }), 'error')
+      toast(t('project.openFailedTitle'), {
+        type: 'error',
+        why: t('project.openFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
     }
   }
 
