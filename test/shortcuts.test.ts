@@ -5,7 +5,8 @@ import { QUICK_MARK_ACCELERATOR as MAIN_ACCEL } from '../src/core/shortcuts'
 import {
   QUICK_MARK_ACCELERATOR as RENDERER_ACCEL,
   appShortcuts,
-  formatAccelerator
+  formatAccelerator,
+  timelineShortcuts
 } from '../src/renderer/src/lib/shortcuts'
 
 const SIDEBAR_ORDER = [
@@ -67,5 +68,60 @@ describe('the cheatsheet table', () => {
     expect(rows.map((r) => r.keys)).toEqual([
       '⌘/', '⌘K', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘T', '⌘W', '⌘⇧[ ]'
     ])
+  })
+})
+
+
+describe('the table drives the handler, not just the cheatsheet', () => {
+  const rows = appShortcuts(SIDEBAR_ORDER, true)
+  const ev = (init: Partial<KeyboardEvent>): KeyboardEvent => init as KeyboardEvent
+  const fire = (init: Partial<KeyboardEvent>): string[] =>
+    rows.filter((r) => r.match?.(ev(init))).map((r) => r.id)
+
+  it('matches exactly one shortcut per keystroke', () => {
+    // Two rows claiming the same chord is how a shortcut becomes
+    // order-dependent and then mysteriously stops working.
+    for (const e of [
+      { key: '1', metaKey: true },
+      { key: '9', metaKey: true },
+      { key: 'k', metaKey: true },
+      { key: '/', metaKey: true },
+      { key: '.', metaKey: true },
+      { key: 'ArrowUp', metaKey: true, altKey: true, shiftKey: true }
+    ]) {
+      expect(fire(e), JSON.stringify(e)).toHaveLength(1)
+    }
+  })
+
+  it('does not fire a bare number, or a number with extra modifiers', () => {
+    expect(fire({ key: '1' })).toEqual([])
+    expect(fire({ key: '1', metaKey: true, shiftKey: true })).toEqual([])
+    expect(fire({ key: '1', metaKey: true, altKey: true })).toEqual([])
+  })
+
+  it('routes the numbers through the live sidebar order', () => {
+    const reordered = appShortcuts(['timeline', 'dashboard'], true)
+    expect(reordered.find((r) => r.match?.(ev({ key: '1', metaKey: true })))?.id)
+      .toBe('nav:timeline')
+  })
+
+  it('leaves the globally-registered marker chord unmatched', () => {
+    // The main process owns ⌘⇧M, so the renderer never sees it. The row is
+    // documentation, and the absent matcher says so.
+    expect(rows.find((r) => r.id === 'app:addMarker')?.match).toBeUndefined()
+  })
+
+  it('gives the timeline panel every group with at least one row', () => {
+    const groups = timelineShortcuts(true)
+    expect(groups.length).toBeGreaterThanOrEqual(5)
+    for (const g of groups) {
+      expect(g.rows.length, g.label).toBeGreaterThan(0)
+      expect(g.label).toMatch(/^timeline\.help\.group\./)
+    }
+  })
+
+  it('writes the modifier the platform uses, in both tables', () => {
+    expect(appShortcuts(SIDEBAR_ORDER, false).find((r) => r.id === 'app:palette')?.keys).toBe('Ctrl+K')
+    expect(timelineShortcuts(false)[0].rows[1].keys).toBe('Ctrl+K')
   })
 })

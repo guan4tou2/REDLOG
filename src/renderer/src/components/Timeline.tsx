@@ -10,6 +10,7 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
+import { timelineShortcuts } from '../lib/shortcuts'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -63,6 +64,10 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 // (safe / unknown / danger); lanes separate by label and vertical position,
 // which is what an operator actually reads them by. Every lane is `lane`
 // (#6e6e78) and the palette is a function, not a table.
+// Read defensively — this runs at module load, before the preload bridge
+// is guaranteed present (e.g. in tests). Default to mac styling, as App does.
+const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+
 const LANE_COLOR = '#6e6e78'
 const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
   LANES.map((id) => [id, LANE_COLOR])
@@ -2396,39 +2401,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               >×</button>
             </div>
             <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
-              {([
-                ['timeline.help.group.filter', [
-                  ['/', 'timeline.help.slash'],
-                  ['⌘K', 'timeline.help.palette'],
-                  ['Alt-click', 'timeline.help.soloLane'],
-                  ['Esc', 'timeline.help.escFilter']
-                ]],
-                ['timeline.help.group.focus', [
-                  ['f', 'timeline.help.focusChain'],
-                  ['click', 'timeline.help.selectDot'],
-                  ['↑/↓', 'timeline.help.walk']
-                ]],
-                ['timeline.help.group.timeline', [
-                  ['Right-click', 'timeline.help.dropMarker'],
-                  ['drag minimap', 'timeline.help.zoom'],
-                  ['click cluster', 'timeline.help.expandCluster']
-                ]],
-                ['timeline.help.group.detail', [
-                  ['click ▶', 'timeline.help.expandBody'],
-                  ['click cause chip', 'timeline.help.jumpCause'],
-                  ['Copy full', 'timeline.help.copyFull']
-                ]],
-                ['timeline.help.group.misc', [
-                  ['?', 'timeline.help.thisMenu']
-                ]]
-              ] as Array<[string, Array<[string, string]>]>).map(([groupKey, rows]) => (
-                <div key={groupKey}>
-                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(groupKey)}</div>
+              {/* Rendered from lib/shortcuts.ts, not restated here. The
+                  app-level cheatsheet on the Dashboard had already drifted
+                  four bindings behind by being written twice; this panel was
+                  the second copy waiting to do the same. */}
+              {timelineShortcuts(isMacPlatform).map((group) => (
+                <div key={group.label}>
+                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(group.label)}</div>
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                    {rows.map(([key, descKey]) => (
-                      <div key={key} className="contents">
-                        <kbd className="font-mono text-xs text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
-                        <span className="text-redlog-text-dim">{t(descKey)}</span>
+                    {group.rows.map((row) => (
+                      <div key={row.keys} className="contents">
+                        <kbd className="font-mono text-xs text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{row.keys}</kbd>
+                        <span className="text-redlog-text-dim">{t(row.label)}</span>
                       </div>
                     ))}
                   </div>
