@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { toast, toastUndo } from './Toast'
 import { Gem } from 'lucide-react'
 import { formatTime } from '../lib/time'
+import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -16,6 +17,7 @@ export default function StatusBar(): JSX.Element {
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
   const { t } = useI18n()
+  const issues = useIssues()
 
   useEffect(() => {
     // Uptime is engagement-scoped: how long since the project was created,
@@ -71,11 +73,26 @@ export default function StatusBar(): JSX.Element {
           const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
           const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
           setCaptureVerdict(verdict)
+          // A dark or partial pipeline is a *condition*, not an event, so it
+          // goes to the issue store rather than firing a toast every poll
+          // (§9). The one-shot toast on the healthy → not-healthy transition
+          // stays: that transition is an event, and it is the moment the
+          // operator needs to look up.
+          if (verdict === 'healthy') {
+            clearIssue('capture')
+          } else {
+            raiseIssue({
+              id: 'capture',
+              tier: 'attention',
+              title: verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
+              detail: dbErr ? `${dbErr.source}: ${dbErr.message.slice(0, 120)}` : t('issues.captureDetail'),
+              view: 'dashboard'
+            })
+          }
           if (prevVerdict === 'healthy' && verdict !== 'healthy') {
-            const detail = dbErr ? `${dbErr.source}: ${dbErr.message.slice(0, 80)}` : ''
             toast(
-              verdict === 'dark' ? `${t('statusBar.captureDark')}${detail ? ` — ${detail}` : ''}` : t('statusBar.capturePartial'),
-              'warning'
+              verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
+              { type: 'warning', why: t('issues.captureDetail'), detail: dbErr ? `${dbErr.source}: ${dbErr.message}` : undefined }
             )
           }
           prevVerdict = verdict
@@ -114,8 +131,37 @@ export default function StatusBar(): JSX.Element {
 
   const Sep = (): JSX.Element => <span className="text-redlog-text-faint select-none">|</span>
 
+  const attention = issues.filter((i) => i.tier === 'attention')
+  const pending = issues.filter((i) => i.tier === 'pending')
+
   return (
     <div className="h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 gap-3 text-xs font-mono shrink-0 select-none">
+      {/* §9: persistent faults pinned to the left, split by whether they
+          affect the evidence. Attention cannot be dismissed — it clears when
+          the condition clears and not before. */}
+      {attention.length > 0 && (
+        <button
+          data-testid="status-bar-attention"
+          onClick={() => { const v = attention[0]?.view; if (v) window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: v })) }}
+          title={attention.map((i) => `${i.title}${i.detail ? ` — ${i.detail}` : ''}`).join('\n')}
+          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-redlog-danger hover:bg-redlog-danger/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-danger/40"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-redlog-danger animate-pulse-slow shrink-0" aria-hidden />
+          {t('issues.attention', { count: attention.length })}
+        </button>
+      )}
+      {pending.length > 0 && (
+        <button
+          data-testid="status-bar-pending"
+          onClick={() => { const v = pending[0]?.view; if (v) window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: v })) }}
+          title={pending.map((i) => `${i.title}${i.detail ? ` — ${i.detail}` : ''}`).join('\n')}
+          className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-redlog-text-dim hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim/40"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-redlog-text-faint shrink-0" aria-hidden />
+          {t('issues.pending', { count: pending.length })}
+        </button>
+      )}
+      {issues.length > 0 && <Sep />}
       {(() => {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (some sources active, some idle).

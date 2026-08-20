@@ -931,5 +931,10 @@
   "targets.addedToScope": "已將 {{target}} 加入範圍",
   "targets.addedToScopeWhy": "尚未寫入——8 秒內復原，稽核紀錄不會有任何痕跡。",
   "settings.hookRemoved": "已移除 {{name}} hook",
-  "settings.hookRemovedWhy": "尚未寫入——8 秒內復原，設定檔完全不會被動到。"
+  "settings.hookRemovedWhy": "尚未寫入——8 秒內復原，設定檔完全不會被動到。",
+  "issues.attention": "需要注意 {{count}}",
+  "issues.pending": "待處理 {{count}}",
+  "issues.captureDetail": "事件仍在寫入，但至少有一個來源已停止產出——缺口會出現在時間軸上，不會出現在錯誤訊息裡。",
+  "issues.chainBroken": "證據鏈驗證失敗",
+  "issues.chainBrokenDetail": "錨定點與現在之間有一列的雜湊接不上下一列。做任何其他事之前先匯出證據包。"
 }
