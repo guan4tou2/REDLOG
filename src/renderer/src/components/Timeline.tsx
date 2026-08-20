@@ -4,7 +4,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
-import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/mask'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -768,11 +767,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // added since v0.6.90 was previously invisible unless a teammate told you.
   // `?` opens; Escape or click-outside closes.
   const [showHelp, setShowHelp] = useState(false)
-  // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
-  // hidden by default in the detail view. The reviewer opts into a per-event
-  // reveal; each reveal appends a chained system.secret_revealed event so the
-  // audit trail shows raw bytes were viewed.
-  const [revealedEvents, setRevealedEvents] = useState<Set<string>>(new Set())
   // Detail-panel height, in px. Persisted to localStorage so operator's chosen
   // size survives reloads. Default `null` = use CSS max-h-[45vh] fallback.
   const [detailPanelPx, setDetailPanelPx] = useState<number | null>(() => {
@@ -1058,7 +1052,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // applies to the actively-focused event.
   useEffect(() => {
     setShowJson(false)
-    setRevealedEvents(new Set())
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
   }, [selectedEvent?.id])
 
@@ -2313,16 +2306,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // Respect the current mask/reveal state (audit finding #2). If the panel
     // shows a masked view, the clipboard gets the masked view too — a
     // reviewer copying an event to paste into chat / a report shouldn't have
-    // to remember to hit Reveal first to know what they're leaking. Click
-    // Reveal → then Copy → gets raw. Default (mask) → Copy → gets masked.
-    const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
-    const revealed = revealedEvents.has(selectedEvent.id)
-    const shown = revealed || !spans?.length
-      ? selectedEvent
-      : { ...selectedEvent, data: maskEventData(selectedEvent.data ?? {}, spans) }
-    navigator.clipboard.writeText(JSON.stringify(shown, null, 2))
-    toast(t(revealed || !spans?.length ? 'toast.copied' : 'toast.copiedMasked'), 'success')
-  }, [selectedEvent, revealedEvents, t])
+    // §10: no masked variant. The data is already on the operator's own
+    // machine — masking it here protected nothing and cost a step, and the
+    // "did I remember to hit Reveal?" question meant a copied JSON could be
+    // silently incomplete. The redaction boundary that matters is layer 4, on
+    // the way *out*: bundle export, cloud share and the blue-team webhook all
+    // redact in src/core, independently of anything the renderer shows.
+    navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
+    toast(t('toast.copied'), 'success')
+  }, [selectedEvent, t])
 
   if (loading && events.length === 0) {
     return (
@@ -3389,71 +3381,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <TierBadge tier={selectedEvent.tier} variant="detail" />
             </div>
             <div className="flex items-center gap-2">
-              {(() => {
-                const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
-                const fields = fieldsWithRedactions(spans)
-                if (fields.length === 0) return null
-                const revealed = revealedEvents.has(selectedEvent.id)
-                return (
-                  <button
-                    onClick={async () => {
-                      const next = new Set(revealedEvents)
-                      if (revealed) {
-                        next.delete(selectedEvent.id)
-                      } else {
-                        next.add(selectedEvent.id)
-                        // Log the reveal — additive event, never blocks the UI.
-                        try { await window.redlog.events.logSecretRevealed(selectedEvent.id, fields) } catch { /* ignore */ }
-                      }
-                      setRevealedEvents(next)
-                    }}
-                    title={revealed ? t('timeline.reveal.hideHint') : t('timeline.reveal.showHint', { fields: fields.join(', ') })}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${revealed ? 'bg-amber-700/60 text-amber-100' : 'bg-amber-900/40 text-amber-400 hover:bg-amber-900/60'}`}
-                  >
-                    {revealed ? t('timeline.reveal.hide') : t('timeline.reveal.show', { n: spans?.length ?? 0 })}
-                  </button>
-                )
-              })()}
-              {/* v0.7.7 U3: "Open sidecar" for agent.transcript_snapshot
-                  events. `snapshot_path` is inside the project's
-                  agent-transcripts/ dir; data.revealPath opens it via the
-                  OS file browser (`shell.openPath` in main). Pre-v0.7.7
-                  the sidecar was only reachable if the operator dug it out
-                  of the raw JSON view — one click now. */}
-              {selectedEvent.agentType === 'agent'
-                && (selectedEvent.data?.subtype as string | undefined) === 'transcript_snapshot'
-                && typeof selectedEvent.data?.snapshot_path === 'string' && (
-                <button
-                  onClick={async () => {
-                    const p = selectedEvent.data?.snapshot_path as string
-                    const ok = await window.redlog.data?.revealPath?.(p)
-                    if (!ok) toast(t('timeline.openSidecarFailed'), { type: 'error', why: t('timeline.openSidecarFailedWhy') })
-                  }}
-                  className="text-xs px-2 py-0.5 rounded bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60 transition-colors"
-                  title={t('timeline.openSidecarHint')}
-                >
-                  {t('timeline.openSidecar')}
-                </button>
-              )}
-              <button
-                onClick={() => setShowJson(!showJson)}
-                className={`text-xs px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-redlog-elevated-hover text-redlog-text' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text'}`}
-              >
-                {t('timeline.fullData')}
-              </button>
-              <button
-                onClick={copyEventJson}
-                className="text-xs px-2 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text transition-colors"
-              >
-                {t('timeline.copyJson')}
-              </button>
-              <button
-                onClick={() => { setDetailOpen(false); setShowJson(false) }}
-                className="text-xs text-redlog-text-faint hover:text-redlog-text transition-colors ml-1"
-              >
-                ✕
-              </button>
-              <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{formatTs(selectedEvent.timestamp, tz, projectTz, 'full')}</span>
             </div>
           </div>
           <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
@@ -3619,20 +3546,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             && (
               <ReplayCommand eventId={selectedEvent.id} mode="session" />
             )}
-          {showJson && (() => {
-            const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
-            const revealed = revealedEvents.has(selectedEvent.id)
-            // Mask string fields that have redaction spans unless the reviewer
-            // opted into reveal. copyJson still copies the RAW event by design —
-            // an operator investigating on their own machine needs the raw
-            // bytes; the mask is UX, not the security boundary (that's Layer 4).
-            const shown = revealed ? selectedEvent.data : maskEventData(selectedEvent.data ?? {}, spans)
-            return (
-              <pre className="mt-2 p-3 bg-redlog-bg rounded border border-redlog-border text-xs text-redlog-text-dim font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
-                {JSON.stringify(shown, null, 2)}
-              </pre>
-            )
-          })()}
+          {/* Shown as recorded. See copyJson above — layer 3 display masking
+              is gone; layer 4 still redacts everything that leaves. */}
+          {showJson && (
+            <pre className="mt-2 p-3 bg-redlog-bg rounded border border-redlog-border text-xs text-redlog-text-dim font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
+              {JSON.stringify(selectedEvent.data, null, 2)}
+            </pre>
+          )}
         </div>
         </>
       )}
