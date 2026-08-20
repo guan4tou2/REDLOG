@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
+import { Ban } from 'lucide-react'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -43,19 +44,19 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               if (p) toast(t('toast.exportedTo', { path: p }), 'success')
               else toast(t('toast.exportFailed'), 'error')
             }}
-            className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
             title={t('scope.exportHint')}
           >{t('scope.export')}</button>
         )}
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
+      <div className="bg-redlog-surface border border-redlog-border rounded-lg p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-zinc-300 text-sm font-medium">{t('scope.monitor')}</span>
+          <span className="text-redlog-text text-sm font-medium">{t('scope.monitor')}</span>
           {configured ? (
             <span className="text-green-400 text-xs bg-green-400/10 px-2 py-0.5 rounded">{t('scope.active')}</span>
           ) : (
-            <span className="text-zinc-500 text-xs bg-zinc-800 px-2 py-0.5 rounded">{t('scope.notSet')}</span>
+            <span className="text-redlog-text-dim text-xs bg-redlog-elevated px-2 py-0.5 rounded">{t('scope.notSet')}</span>
           )}
         </div>
         {configured && violations.length === 0 && (
@@ -68,26 +69,26 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
         )}
         {!configured && (
           <div className="flex flex-col items-center py-6 gap-2">
-            <div className="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
-              <span className="text-xl text-zinc-600">⊘</span>
+            <div className="w-12 h-12 rounded-full bg-redlog-elevated border border-redlog-border flex items-center justify-center">
+              <Ban size={20} strokeWidth={1.5} aria-hidden className="text-redlog-text-faint" />
             </div>
-            <p className="text-zinc-500 text-xs">
+            <p className="text-redlog-text-dim text-xs">
               {t('scope.hint')}
             </p>
           </div>
         )}
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+      <div className="bg-redlog-surface border border-redlog-border rounded-lg p-3">
         <div className="flex items-center justify-between">
-          <span className="text-zinc-300 text-sm font-medium">{t('scope.evidenceLog')}</span>
-          <span className="text-zinc-500 text-xs">{t('scope.entries', { count: chainLen })}</span>
+          <span className="text-redlog-text text-sm font-medium">{t('scope.evidenceLog')}</span>
+          <span className="text-redlog-text-dim text-xs">{t('scope.entries', { count: chainLen })}</span>
         </div>
       </div>
 
       {violations.length > 0 && (
         <div className="space-y-1">
-          <h3 className="text-sm text-zinc-400">{t('scope.recentViolations')}</h3>
+          <h3 className="text-sm text-redlog-text-dim">{t('scope.recentViolations')}</h3>
           {violations.slice(0, 10).map((v, i) => (
             <button
               key={i}
@@ -97,8 +98,8 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               title={onOpenInTimeline ? t('scope.openInTimeline') : undefined}
             >
               <div className="text-red-300 text-xs font-mono">{v.target}</div>
-              <div className="text-zinc-500 text-xs truncate">{v.command}</div>
-              <div className="text-zinc-600 text-xs">{new Date(v.timestamp).toLocaleTimeString()}</div>
+              <div className="text-redlog-text-dim text-xs truncate">{v.command}</div>
+              <div className="text-redlog-text-faint text-xs">{new Date(v.timestamp).toLocaleTimeString()}</div>
             </button>
           ))}
         </div>

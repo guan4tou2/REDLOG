@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { Gem } from 'lucide-react'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -92,7 +93,7 @@ export default function StatusBar(): JSX.Element {
   }
 
   const safety = ipStatus?.ipSafety ?? 'unknown'
-  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-red-500' : 'bg-amber-500'
+  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'
   const safetyLabel = safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
 
   const hours = Math.floor(uptime / 3600)
@@ -102,23 +103,23 @@ export default function StatusBar(): JSX.Element {
     ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
     : `${mins}:${String(secs).padStart(2, '0')}`
 
-  const Sep = (): JSX.Element => <span className="text-zinc-800 select-none">|</span>
+  const Sep = (): JSX.Element => <span className="text-redlog-text-faint select-none">|</span>
 
   return (
-    <div className="h-7 bg-zinc-950 border-t border-redlog-border flex items-center px-3 gap-3 text-[11px] font-mono shrink-0 select-none">
+    <div className="h-8 bg-redlog-bg border-t border-redlog-border flex items-center px-3 gap-3 text-xs font-mono shrink-0 select-none">
       {(() => {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (some sources active, some idle).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
         const dotColor = !recording
-          ? 'bg-zinc-500'
+          ? 'bg-redlog-text-dim'
           : captureVerdict === 'dark'
             ? 'bg-amber-500'
             : captureVerdict === 'partial'
               ? 'bg-amber-500 animate-pulse-slow'
               : 'bg-red-500 animate-pulse-slow'
         const labelColor = !recording
-          ? 'text-zinc-500'
+          ? 'text-redlog-text-dim'
           : captureVerdict === 'dark' || captureVerdict === 'partial'
             ? 'text-amber-400/80'
             : 'text-red-400/80'
@@ -141,7 +142,7 @@ export default function StatusBar(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
             <span className={labelColor}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
-            <span className="text-zinc-600 tabular-nums">{uptimeStr}</span>
+            <span className="text-redlog-text-dim tabular-nums">{uptimeStr}</span>
           </button>
         )
       })()}
@@ -154,7 +155,7 @@ export default function StatusBar(): JSX.Element {
           {safetyLabel}
         </span>
         {ipStatus?.externalIP && (
-          <span className="text-zinc-600 tabular-nums">{ipStatus.externalIP}</span>
+          <span className="text-redlog-text-dim tabular-nums">{ipStatus.externalIP}</span>
         )}
       </div>
 
@@ -177,8 +178,8 @@ export default function StatusBar(): JSX.Element {
       <Sep />
 
       <div className="flex items-center gap-1.5">
-        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-zinc-600'}>◆</span>
-        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-zinc-600'}>
+        <Gem size={13} strokeWidth={1.5} aria-hidden className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'} />
+        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'}>
           {t('statusBar.loot', { count: lootCount })}
         </span>
       </div>
@@ -186,8 +187,11 @@ export default function StatusBar(): JSX.Element {
       <div className="ml-auto flex items-center gap-3">
         {/* v0.13.0: chained · logged split. Chained (audit-tier) reads
          *  brighter — that's the count anchors + verifier care about.
-         *  Logged renders muted (zinc-700) to signal "footprint, not
-         *  evidence". Hidden entirely when logged is zero, so pre-v0.13
+         *  Logged renders one tier dimmer (redlog-text-dim against the chained
+         *  count's redlog-text-dim) to signal "footprint, not evidence".
+         *  Both tiers clear 4.5:1 on the bar's surface — these are numbers
+         *  an auditor reads, so neither may sink into decoration. They used
+         *  to render at 2.6:1 and 1.9:1. Hidden entirely when logged is zero, so pre-v0.13
          *  projects still show the single-number shape they always had.
          *  Title tooltip explains the two-tier story for auditors
          *  hovering to figure out what the second number is.
@@ -205,15 +209,15 @@ export default function StatusBar(): JSX.Element {
             type="button"
             data-testid="statusbar-tier-count"
             onClick={() => window.dispatchEvent(new CustomEvent('redlog:auditor-view:toggle'))}
-            className="text-zinc-600 tabular-nums cursor-pointer hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 rounded"
+            className="text-redlog-text-dim tabular-nums cursor-pointer hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 rounded"
             title={`${eventCount.toLocaleString()} chained (audit chain) · ${loggedCount.toLocaleString()} logged (supporting evidence). Click to toggle the Timeline's auditor view (hides logged rows). Timeline must be open for the click to take effect.`}
           >
             {t('statusBar.events', { count: eventCount })}
-            <span className="text-zinc-800 mx-1">·</span>
-            <span className="text-zinc-700">{loggedCount.toLocaleString()}</span>
+            <span className="text-redlog-text-faint mx-1">·</span>
+            <span className="text-redlog-text-dim">{loggedCount.toLocaleString()}</span>
           </button>
         ) : (
-          <span className="text-zinc-600 tabular-nums">
+          <span className="text-redlog-text-dim tabular-nums">
             {t('statusBar.events', { count: eventCount })}
           </span>
         )}
@@ -224,7 +228,7 @@ export default function StatusBar(): JSX.Element {
             setStamped(true)
             setTimeout(() => setStamped(false), 1500)
           }}
-          className={`flex items-center gap-1 transition-colors ${stamped ? 'text-emerald-400' : 'text-zinc-500 hover:text-red-400'}`}
+          className={`flex items-center gap-1 transition-colors ${stamped ? 'text-emerald-400' : 'text-redlog-text-dim hover:text-red-400'}`}
           title={t('statusBar.timestampTitle')}
         >
           <span>{stamped ? '✓' : '⏱'}</span>
@@ -232,11 +236,11 @@ export default function StatusBar(): JSX.Element {
         </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}
-          className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+          className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           title={t('statusBar.toggleOverlay')}
           aria-label={t('statusBar.toggleOverlay')}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-zinc-600'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${overlayVisible ? 'bg-emerald-500' : 'border border-redlog-border'}`} />
           <span>{t('statusBar.overlay')}</span>
         </button>
       </div>

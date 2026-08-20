@@ -33,7 +33,7 @@ export default function IPStatusCard(): JSX.Element {
   if (!status) {
     return (
       <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4">
-        <p className="text-neutral-500">{t('ip.checking')}</p>
+        <p className="text-redlog-text-dim">{t('ip.checking')}</p>
       </div>
     )
   }
@@ -41,7 +41,7 @@ export default function IPStatusCard(): JSX.Element {
   const safety = status.ipSafety
   const STATUS_CONFIG = {
     safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400' },
-    exposed: { indicator: 'bg-red-500', label: t('ip.exposedIp'), color: 'text-red-400' },
+    exposed: { indicator: 'bg-redlog-danger', label: t('ip.exposedIp'), color: 'text-red-400' },
     unknown: { indicator: 'bg-yellow-500', label: t('ip.unknownIp'), color: 'text-yellow-400' }
   }
   const cfg = STATUS_CONFIG[safety]
@@ -51,17 +51,17 @@ export default function IPStatusCard(): JSX.Element {
       <div className="flex items-center gap-3">
         <span className={`w-3 h-3 rounded-full ${cfg.indicator} ${safety === 'exposed' ? 'animate-pulse' : ''}`} />
         <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
-        <span className="ml-auto text-xs text-neutral-500">{timeAgo(status.lastCheck)}</span>
+        <span className="ml-auto text-xs text-redlog-text-dim">{timeAgo(status.lastCheck)}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="text-xs text-neutral-500 mb-1">{t('ip.externalIp')}</p>
-          <p className="text-lg font-mono text-neutral-200">{status.externalIP ?? '—'}</p>
+          <p className="text-xs text-redlog-text-dim mb-1">{t('ip.externalIp')}</p>
+          <p className="text-lg font-mono text-redlog-text">{status.externalIP ?? '—'}</p>
         </div>
         <div>
-          <p className="text-xs text-neutral-500 mb-1">{t('ip.internalIp')}</p>
-          <p className="text-lg font-mono text-neutral-200">{status.internalIP ?? '—'}</p>
+          <p className="text-xs text-redlog-text-dim mb-1">{t('ip.internalIp')}</p>
+          <p className="text-lg font-mono text-redlog-text">{status.internalIP ?? '—'}</p>
         </div>
       </div>
 
@@ -70,14 +70,14 @@ export default function IPStatusCard(): JSX.Element {
         const Arrow = (): JSX.Element => <span className="text-cyan-500/50 text-sm shrink-0">→</span>
         const Pill = ({ top, sub, tone }: { top: string; sub: string; tone: 'ext' | 'pivot' | 'int' }): JSX.Element => {
           const c = tone === 'ext'
-            ? 'bg-neutral-800/60 border-neutral-600/50 text-neutral-200'
+            ? 'bg-redlog-elevated/60 border-redlog-border/50 text-redlog-text'
             : tone === 'pivot'
               ? 'bg-cyan-500/10 border-cyan-400/30 text-cyan-200'
               : 'bg-green-500/10 border-green-400/30 text-green-300'
           return (
             <span className={`inline-flex flex-col items-start px-2 py-1 rounded border ${c} shrink-0 max-w-[140px]`}>
               <span className="text-xs font-mono font-medium truncate max-w-[124px]">{top}</span>
-              <span className="text-[11px] text-neutral-500 uppercase tracking-wide">{sub}</span>
+              <span className="text-xs text-redlog-text-dim uppercase tracking-wide">{sub}</span>
             </span>
           )
         }

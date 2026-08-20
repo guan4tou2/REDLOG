@@ -2,19 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-/* App-wide text scale (user-facing feedback: default text is too small).
- * Two mechanisms combined:
- *   1. html font-size 17px → every `text-xs`/`text-sm`/`text-base`/rem-based
- *      utility scales up ~6% since Tailwind's `rem` bases derive from this.
- *   2. `--app-zoom` CSS var applied via Chromium's non-standard `zoom` at the
- *      body level → the ~155 hardcoded `text-[10px]` / `text-[11px]` / SVG /
- *      images / layout scale too. Users can override in Settings ▸ 一般
- *      (persisted to localStorage as `redlog-app-zoom`).
- * HUD overlay window is a separate BrowserWindow and unaffected — it has its
- * own scale setting already. */
+/* App-wide text scale. The type scale is stated in tailwind.config.js with a
+ * 13px floor, so the root goes back to the browser default — it used to be
+ * 17px, which scaled the text but also inflated every rem-based spacing,
+ * radius and sizing utility by ~6% and pulled the layout off its 4px grid.
+ * Stacking a raised scale on a raised root would make body text too large on a
+ * big display (docs/UIUX-STANDARD.md §2).
+ *
+ * `--app-zoom` stays the user's knob for scaling everything at once, including
+ * SVG, images and layout. It is applied via Chromium's non-standard `zoom` at
+ * the body level and persisted to localStorage as `redlog-app-zoom`; the
+ * default drops to 1 now that the floor carries the legibility the 1.1 was
+ * compensating for. The HUD overlay is a separate BrowserWindow with its own
+ * scale setting and is unaffected. */
 html {
-  font-size: 17px;
+  font-size: 16px;
 }
+
+/* Density is a second axis, orthogonal to `--app-zoom`: zoom scales everything,
+ * density changes only row heights and padding (§3). Everything goes through
+ * var() rather than a Tailwind variant so a component opts in by using the
+ * variable, and the two axes compose without a matrix of class names.
+ * Whatever `--row-h` is set to, the real hit area stays at or above 32px. */
+:root {
+  --row-h: 40px;
+  --pad: 16px;
+  --gap: 12px;
+  --section-gap: 24px;
+}
+:root[data-density='tight'] {
+  --row-h: 32px;
+  --pad: 10px;
+  --gap: 8px;
+  --section-gap: 14px;
+}
+
 /* Full-height chain so descendants can use `h-full` (100%) instead of the
  * naive `h-screen` (100vh). vh is measured against the un-zoomed viewport,
  * so `h-screen` inside a zoomed body overflows by (zoom-1)×100vh — the
@@ -24,9 +46,9 @@ html {
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: #0a0a0a;
-  color: #e5e5e5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei UI', system-ui, sans-serif;
+  background: #121214;
+  color: #ececf0;
+  font-family: 'Noto Sans TC', system-ui, sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -34,8 +56,16 @@ body {
    * inverse zoom so the on-screen render lines up with the viewport. Any
    * descendant using `h-full` (not `h-screen`) then fills exactly one visual
    * screen after the zoom multiplies things back. */
-  zoom: var(--app-zoom, 1.1);
-  height: calc(100vh / var(--app-zoom, 1.1));
+  zoom: var(--app-zoom, 1);
+  height: calc(100vh / var(--app-zoom, 1));
+}
+
+/* Noto Sans TC's hinting renders thin at small sizes on low-DPI Windows
+ * displays, where greyscale antialiasing has no subpixels to lean on. */
+@media (-webkit-min-device-pixel-ratio: 1) and (max-resolution: 143dpi) {
+  body {
+    -webkit-font-smoothing: subpixel-antialiased;
+  }
 }
 
 /* Desktop chrome doesn't select. Dragging across the sidebar, the status bar or
@@ -67,23 +97,25 @@ select {
   user-select: none;
 }
 
+/* 10px, up from 6px: a 6px-wide target is a precision task with a mouse and
+ * impossible with a trackpad flick. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
-  border-radius: 3px;
+  background: #33333a;
+  border-radius: 5px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #4a4a54;
 }
 
 .drag-over {
-  border-top: 2px solid #ef4444 !important;
+  border-top: 2px solid #d75f63 !important;
 }
 
 .timeline-grabbing {

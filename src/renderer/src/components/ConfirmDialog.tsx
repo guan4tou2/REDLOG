@@ -66,12 +66,12 @@ function ConfirmDialogInner({ state, close, t }: {
         className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-2xl max-w-sm w-full mx-4 animate-toast-in outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-zinc-200">{state.title}</h3>
-        <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{state.message}</p>
+        <h3 className="text-sm font-semibold text-redlog-text">{state.title}</h3>
+        <p className="text-xs text-redlog-text-dim mt-2 leading-relaxed">{state.message}</p>
         <div className="flex justify-end gap-2 mt-5">
           <button
             onClick={() => close(false)}
-            className="px-3 py-1.5 text-xs rounded-md bg-zinc-800 text-zinc-400 hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-500 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-md bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover focus:outline-none focus:ring-2 focus:ring-redlog-text-dim transition-colors"
           >
             {t('confirm.cancel')}
           </button>
@@ -80,8 +80,8 @@ function ConfirmDialogInner({ state, close, t }: {
             onClick={() => close(true)}
             className={`px-3 py-1.5 text-xs rounded-md font-medium focus:outline-none focus:ring-2 transition-colors ${
               state.destructive
-                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-400'
-                : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:ring-zinc-400'
+                ? 'bg-redlog-danger text-white hover:bg-redlog-danger-hover focus:ring-redlog-danger'
+                : 'bg-redlog-elevated-hover text-redlog-text hover:bg-redlog-elevated-hover focus:ring-redlog-text-dim'
             }`}
           >
             {state.confirmLabel || (state.destructive ? t('confirm.delete') : t('confirm.confirm'))}

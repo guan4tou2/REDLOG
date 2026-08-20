@@ -20,21 +20,75 @@ module.exports = {
   content: ['./src/renderer/src/**/*.{tsx,ts,html}'],
   theme: {
     extend: {
+      // Type scale from docs/UIUX-STANDARD.md §2. 13px is a hard floor — the
+      // ~180 `text-[10px]` / `text-[11px]` call sites are being removed, and
+      // the HUD is the single exception (11px, it has its own scale setting).
+      //
+      // The sizes used to come from Tailwind's rem defaults times a 17px root
+      // font-size. That one knob also inflated every rem-based spacing, radius
+      // and sizing utility by ~6%. The scale is stated here instead and the
+      // root goes back to 16px (styles/index.css); stacking both would make
+      // body text too large on a big display.
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.25rem' }], // 13px
+        sm: ['0.9375rem', { lineHeight: '1.6rem' }], // 15px
+        base: ['1.0625rem', { lineHeight: '1.7rem' }], // 17px
+        lg: ['1.1875rem', { lineHeight: '1.75rem' }], // 19px
+        xl: ['1.375rem', { lineHeight: '1.9rem' }], // 22px — the value size
+        '2xl': ['1.625rem', { lineHeight: '2.125rem' }],
+        '3xl': ['2rem', { lineHeight: '2.375rem' }],
+        '4xl': ['2.375rem', { lineHeight: '2.625rem' }]
+      },
+      // Bundled so all three platforms render the same. Noto Sans TC carries
+      // the Traditional Chinese the interface is written in; the previous
+      // stack fell through to Microsoft JhengHei on Windows and a different
+      // metric on every machine.
+      fontFamily: {
+        sans: ['"Noto Sans TC"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+      },
       colors: {
         ...soften,
+        // The neutral palette from docs/UIUX-STANDARD.md §1. These are not the
+        // greys the UI grew up on: the whole surface stack was lifted and given
+        // a slight cool cast (#0a0a0a → #121214, #262626 → #33333a) so that
+        // borders read as borders on an OLED-black panel and text tiers have
+        // room to separate above the 4.5:1 floor.
+        //
+        // Red carries two meanings and they are now different colours. `accent`
+        // is the brand — navigation selection, section titles, primary buttons —
+        // and only ever draws text or a hairline. `danger` only ever fills, with
+        // white on top, and the standard allows one of them on screen at a time.
         redlog: {
-          bg: '#0a0a0a',
-          surface: '#141414',
-          elevated: '#1a1a1a',
-          border: '#262626',
-          'border-subtle': '#1e1e1e',
+          // Surfaces, recessed → raised.
+          bg: '#121214', // window, sidebar, title bar, status bar
+          surface: '#1a1a1d', // cards, panels
+          elevated: '#212126', // inputs, chips, hover
+          // Not in the standard's table: `elevated` is listed as serving both
+          // the rest and hover state of a control, which leaves a chip that is
+          // already `elevated` with no perceptible hover. One step up, used
+          // only for that.
+          'elevated-hover': '#2a2a30',
+          // Hairlines.
+          'border-subtle': '#26262c', // between rows
+          border: '#33333a', // cards, dividers
+          // Text, brightest → dimmest. `text-dim` is the floor for anything a
+          // person reads (7.1:1 on `bg`); `muted` is placeholder and disabled.
+          text: '#ececf0',
+          'text-dim': '#9a9aa4',
+          'text-faint': '#7a7a84',
+          muted: '#6a6a74',
+          // Brand red — text and hairlines only.
           accent: '#d75f63',
           'accent-dim': '#b84d51',
+          // Danger red — solid fills only, white on top.
+          danger: '#ff4d4f',
+          'danger-hover': '#ff6a6c',
           cyan: '#3fc7d6',
           'cyan-dim': '#0e7490',
-          muted: '#71717a',
-          text: '#e5e5e5',
-          'text-dim': '#a1a1aa'
+          // Every timeline lane. Hue is reserved for status, so eighteen lanes
+          // share one neutral and separate by label and position instead.
+          lane: '#6e6e78'
         }
       },
       boxShadow: {

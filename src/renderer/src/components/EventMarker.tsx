@@ -72,10 +72,10 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         className="bg-redlog-surface border border-redlog-border rounded-lg w-[420px] p-4 space-y-3 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-neutral-300">
+        <h3 className="text-sm font-semibold text-redlog-text">
           {t('marker.title')}
           {atTimestamp && (
-            <span className="ml-2 text-[11px] text-amber-400/80 font-mono font-normal">
+            <span className="ml-2 text-xs text-amber-400/80 font-mono font-normal">
               {t('marker.atTimestamp', { time: new Date(atTimestamp).toLocaleTimeString() })}
             </span>
           )}
@@ -88,7 +88,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-          className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-redlog-accent"
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-sm text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
         />
 
         <div className="flex gap-1">
@@ -97,7 +97,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
               key={s}
               onClick={() => setSeverity(s)}
               className={`px-3 py-1 text-xs rounded border transition-colors
-                ${severity === s ? severityColor[s] : 'border-neutral-700 text-neutral-500'}`}
+                ${severity === s ? severityColor[s] : 'border-redlog-border text-redlog-text-dim'}`}
             >
               {t(`marker.severity.${s}`)}
             </button>
@@ -107,7 +107,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-1.5 text-xs text-neutral-300 focus:outline-none"
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-1.5 text-xs text-redlog-text focus:outline-none"
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{t(`marker.category.${c}`)}</option>
@@ -119,10 +119,10 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
-          className="w-full bg-neutral-900 border border-neutral-700 rounded px-3 py-2 text-xs text-neutral-300 placeholder-neutral-600 focus:outline-none resize-none"
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none resize-none"
         />
 
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-neutral-400">
+        <label className="flex items-center gap-2 cursor-pointer text-xs text-redlog-text-dim">
           <input
             type="checkbox"
             checked={withScreenshot}
@@ -133,13 +133,13 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         </label>
 
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs text-neutral-500 hover:text-neutral-300">
+          <button onClick={onClose} className="px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text">
             {t('marker.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 text-xs bg-redlog-accent text-white rounded hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 text-xs bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? t('marker.saving') : t('marker.submit')}
           </button>

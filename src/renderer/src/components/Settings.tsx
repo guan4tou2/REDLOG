@@ -4,6 +4,8 @@ import { toast } from './Toast'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
 import WslPanel from './WslPanel'
+import { DEFAULT_CDP_PORT } from '../lib/defaults'
+import { applyDensity, resolveDensity, storedDensity } from '../lib/density'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -103,7 +105,7 @@ export default function Settings(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config])
 
-  if (!config) return <div className="p-4 text-zinc-500">{t('settings.loading')}</div>
+  if (!config) return <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
 
   // v0.9.10: ten tabs down to eight, ordered by the question the operator is
   // actually asking rather than by when each feature was added.
@@ -137,7 +139,7 @@ export default function Settings(): JSX.Element {
             key={tb.id}
             onClick={() => setTab(tb.id)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
-              tab === tb.id ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+              tab === tb.id ? 'bg-redlog-elevated text-white' : 'text-redlog-text-dim hover:text-redlog-text'
             }`}
           >
             {tb.label}
@@ -165,8 +167,8 @@ export default function Settings(): JSX.Element {
                     onClick={() => setLocale(l)}
                     className={`px-3 py-1.5 text-xs rounded ${
                       locale === l
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                        : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
                     }`}
                   >
                     {LOCALE_LABELS[l]}
@@ -188,20 +190,22 @@ export default function Settings(): JSX.Element {
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
-              <p className="text-xs text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
+              <p className="text-xs text-redlog-text-faint mb-2">
+                {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
+              </p>
               <button
                 onClick={async () => {
                   // Uses the CDP port from BrowserPanel above (config.browser.
                   // cdpPort) — the previous separate field silently didn't
                   // auto-save so users often set two different ports without
                   // knowing (audit finding P0 #43).
-                  const port = config.browser?.cdpPort ?? 9222
+                  const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
                   await window.redlog.cdp.setPort(port)
                   const cdpTab = await window.redlog.cdp.getTab()
                   if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
                   else toast(t('settings.cdpNotConnected', { port: String(port) }), 'error')
                 }}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
               >
                 {t('settings.testConnection')}
               </button>
@@ -227,21 +231,21 @@ export default function Settings(): JSX.Element {
             </FieldGroup>
             <FieldGroup title={t('settings.polling')}>
               <div>
-                <label className="block text-[11px] text-zinc-400 mb-1">{t('settings.ipMode')}</label>
+                <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
                 <div className="flex gap-1">
                   {(['auto', 'dns', 'http'] as const).map((m) => (
                     <button
                       key={m}
                       onClick={() => setConfig({ ...config, network: { ...config.network, ipMode: m } })}
                       className={`px-3 py-1 text-xs rounded transition-colors ${
-                        (config.network.ipMode ?? 'auto') === m ? 'bg-red-600/80 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        (config.network.ipMode ?? 'auto') === m ? 'bg-redlog-elevated text-redlog-text border border-redlog-border' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
                       }`}
                     >
                       {t(`settings.ipMode.${m}`)}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-zinc-600 mt-1">{t('settings.ipModeHint')}</p>
+                <p className="text-xs text-redlog-text-faint mt-1">{t('settings.ipModeHint')}</p>
               </div>
               {isMacOS && (
                 <div>
@@ -260,9 +264,9 @@ export default function Settings(): JSX.Element {
                       }}
                       className="accent-red-600"
                     />
-                    <span className="text-[11px] text-zinc-300">{t('settings.showWifiName')}</span>
+                    <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
                   </label>
-                  <p className="text-xs text-zinc-600 mt-1">{t('settings.showWifiNameHint')}</p>
+                  <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>
                 </div>
               )}
               <Field
@@ -278,14 +282,14 @@ export default function Settings(): JSX.Element {
                 onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
                 type="number"
               />
-              <p className="text-xs text-zinc-600">{t('settings.confirmationsHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.confirmationsHint')}</p>
               <ListField
                 label={t('settings.ipProviders')}
                 items={config.network.providers ?? []}
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, providers: items } })}
                 placeholder="https://ip.internal.example/json"
               />
-              <p className="text-xs text-zinc-600">{t('settings.ipProvidersHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.ipProvidersHint')}</p>
             </FieldGroup>
             <VpnAdaptersField config={config} setConfig={setConfig} />
           </>
@@ -301,9 +305,9 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.overlayShowMark')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.overlayShowMark')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.overlayShowMarkHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowMarkHint')}</p>
               <label className="flex items-center gap-2 cursor-pointer mt-2">
                 <input
                   type="checkbox"
@@ -311,12 +315,12 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.overlayFlashExposed')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.overlayFlashExposed')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.overlayFlashExposedHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.overlayFlashExposedHint')}</p>
 
               <div className="mt-3">
-                <label className="text-xs text-zinc-500 block mb-1">{t('settings.overlayScale')}</label>
+                <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.overlayScale')}</label>
                 {(() => {
                   const stops = [
                     { v: 0.75, k: 'settings.overlayScale.xs' },
@@ -349,7 +353,7 @@ export default function Settings(): JSX.Element {
                           className="accent-red-600 flex-1"
                           list="hud-scale-stops"
                         />
-                        <span className="text-xs text-zinc-400 font-mono tabular-nums w-14 text-right">{t(nearest.k)}</span>
+                        <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-14 text-right">{t(nearest.k)}</span>
                       </div>
                       <datalist id="hud-scale-stops">
                         {stops.map((s) => <option key={s.v} value={s.v} />)}
@@ -358,7 +362,7 @@ export default function Settings(): JSX.Element {
                         {stops.map((s) => (
                           <span
                             key={s.v}
-                            className={`text-[9px] cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            className={`text-xs cursor-pointer ${Math.abs(cur - s.v) < 0.01 ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
                             onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: s.v } })}
                           >{t(s.k)}</span>
                         ))}
@@ -366,7 +370,7 @@ export default function Settings(): JSX.Element {
                     </div>
                   )
                 })()}
-                <p className="text-xs text-zinc-600 mt-1">{t('settings.overlayScaleHint')}</p>
+                <p className="text-xs text-redlog-text-faint mt-1">{t('settings.overlayScaleHint')}</p>
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer mt-3">
@@ -376,9 +380,9 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.overlayEmphasizeIp')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.overlayEmphasizeIp')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.overlayEmphasizeIpHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.overlayEmphasizeIpHint')}</p>
 
               <label className="flex items-center gap-2 cursor-pointer mt-3">
                 <input
@@ -387,12 +391,12 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThrough: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.overlayPassThrough')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.overlayPassThrough')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.overlayPassThroughHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.overlayPassThroughHint')}</p>
               {config.overlay?.passThrough === true && (
                 <div className="mt-2 flex items-center gap-3 pl-6">
-                  <span className="text-xs text-zinc-500">{t('settings.overlayPassThroughOpacity')}</span>
+                  <span className="text-xs text-redlog-text-dim">{t('settings.overlayPassThroughOpacity')}</span>
                   <input
                     type="range"
                     min="0.1"
@@ -402,7 +406,7 @@ export default function Settings(): JSX.Element {
                     onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThroughOpacity: parseFloat(e.target.value) } })}
                     className="accent-red-600 w-40"
                   />
-                  <span className="text-xs text-zinc-400 font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
+                  <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
                 </div>
               )}
 
@@ -415,9 +419,9 @@ export default function Settings(): JSX.Element {
                       onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: e.target.checked } })}
                       className="accent-red-600"
                     />
-                    <span className="text-xs text-zinc-300">{t('settings.overlayShowInDock')}</span>
+                    <span className="text-xs text-redlog-text">{t('settings.overlayShowInDock')}</span>
                   </label>
-                  <p className="text-xs text-zinc-600">{t('settings.overlayShowInDockHint')}</p>
+                  <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowInDockHint')}</p>
                 </>
               )}
             </FieldGroup>
@@ -436,7 +440,7 @@ export default function Settings(): JSX.Element {
                 onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
                 type="number"
               />
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-redlog-text-faint">
                 {t('settings.qualityHint')}
               </p>
             </FieldGroup>
@@ -448,9 +452,9 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.clipboardEnable')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.clipboardEnable')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.clipboardEnableHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.clipboardEnableHint')}</p>
               {config.clipboard?.enabled && (
                 <label className="flex items-center gap-2 cursor-pointer mt-2">
                   <input
@@ -459,11 +463,11 @@ export default function Settings(): JSX.Element {
                     onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: true, storePreview: e.target.checked } })}
                     className="accent-red-600"
                   />
-                  <span className="text-xs text-zinc-300">{t('settings.clipboardStorePreview')}</span>
+                  <span className="text-xs text-redlog-text">{t('settings.clipboardStorePreview')}</span>
                 </label>
               )}
               {config.clipboard?.enabled && (
-                <p className="text-xs text-zinc-600">{t('settings.clipboardStorePreviewHint')}</p>
+                <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
               )}
             </FieldGroup>
             <FieldGroup title={t('settings.fileWatcherGroup')}>
@@ -474,9 +478,9 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.fileWatcherEnable')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.fileWatcherEnable')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.fileWatcherEnableHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherEnableHint')}</p>
               {config.fileWatcher?.enabled && (
                 <>
                   <ListField
@@ -491,7 +495,7 @@ export default function Settings(): JSX.Element {
                     onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, ignorePatterns: items } })}
                     placeholder={t('settings.fileWatcherIgnorePlaceholder')}
                   />
-                  <p className="text-xs text-zinc-600">{t('settings.fileWatcherIgnoreHint')}</p>
+                  <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
                 </>
               )}
             </FieldGroup>
@@ -503,9 +507,9 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.processMonitorEnable')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.processMonitorEnable')}</span>
               </label>
-              <p className="text-xs text-zinc-600">{t('settings.processMonitorEnableHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorEnableHint')}</p>
               {config.processMonitor?.enabled && (
                 <>
                   <ListField
@@ -514,7 +518,7 @@ export default function Settings(): JSX.Element {
                     onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: true, ignoreCommands: items } })}
                     placeholder={t('settings.processMonitorIgnorePlaceholder')}
                   />
-                  <p className="text-xs text-zinc-600">{t('settings.processMonitorIgnoreHint')}</p>
+                  <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
                 </>
               )}
             </FieldGroup>
@@ -536,25 +540,25 @@ export default function Settings(): JSX.Element {
                     onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
                     className={`px-3 py-1 text-xs rounded ${
                       (config.screenshot.intervalSec ?? 0) === opt.v
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                        : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
                     }`}
                   >{t(opt.k)}</button>
                 ))}
               </div>
-              <p className="text-xs text-zinc-600 mt-2">{t('settings.screenshot.intervalHint')}</p>
+              <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.intervalHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.updateGroup')}>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => window.redlog.app.checkForUpdates()}
-                  className="px-3 py-1 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                  className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors"
                 >
                   {t('settings.checkUpdate')}
                 </button>
-                <span className="text-xs text-zinc-600 font-mono">v{__APP_VERSION__}</span>
+                <span className="text-xs text-redlog-text-faint font-mono">v{__APP_VERSION__}</span>
               </div>
-              <p className="text-xs text-zinc-600">{t('settings.checkUpdateHint')}</p>
+              <p className="text-xs text-redlog-text-faint">{t('settings.checkUpdateHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.exportAll')}>
               <button
@@ -563,12 +567,12 @@ export default function Settings(): JSX.Element {
                   setExportResult(path ? t('settings.savedTo', { path }) : t('settings.exportFailed'))
                   setTimeout(() => setExportResult(null), 5000)
                 }}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
               >
                 {t('settings.exportJson')}
               </button>
-              {exportResult && <p className="text-xs text-zinc-400 font-mono mt-1 break-all">{exportResult}</p>}
-              <p className="text-xs text-zinc-600">
+              {exportResult && <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">{exportResult}</p>}
+              <p className="text-xs text-redlog-text-faint">
                 {t('settings.exportHint')}
               </p>
             </FieldGroup>
@@ -581,11 +585,11 @@ export default function Settings(): JSX.Element {
                   if (p) toast(t('toast.scopeExported'), 'success')
                   setTimeout(() => setExportResult(null), 5000)
                 }}
-                className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
               >
                 {t('settings.exportScopeJson')}
               </button>
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-redlog-text-faint">
                 {t('settings.scopeExportHint')}
               </p>
             </FieldGroup>
@@ -598,7 +602,7 @@ export default function Settings(): JSX.Element {
                     const path = await window.redlog.config.exportProfile()
                     if (path) toast(t('toast.profileExported'), 'success')
                   }}
-                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                  className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
                 >
                   {t('settings.exportProfile')}
                 </button>
@@ -610,12 +614,12 @@ export default function Settings(): JSX.Element {
                       toast(t('toast.profileImported'), 'success')
                     }
                   }}
-                  className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+                  className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
                 >
                   {t('settings.importProfile')}
                 </button>
               </div>
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-redlog-text-faint">
                 {t('settings.profileHint')}
               </p>
             </FieldGroup>
@@ -632,9 +636,9 @@ export default function Settings(): JSX.Element {
                   onChange={(e) => setConfig({ ...config, scope: { ...config.scope, warnOnViolation: e.target.checked } })}
                   className="accent-red-600"
                 />
-                <span className="text-xs text-zinc-300">{t('settings.warnOnViolation')}</span>
+                <span className="text-xs text-redlog-text">{t('settings.warnOnViolation')}</span>
               </label>
-              <p className="text-xs text-zinc-600 mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
+              <p className="text-xs text-redlog-text-faint mt-1 leading-relaxed">{t('settings.warnOnViolationHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.inScopeTargets')}>
               <ListField
@@ -658,7 +662,7 @@ export default function Settings(): JSX.Element {
                 value={config.scope.scopeFile || ''}
                 onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
               />
-              <p className="text-xs text-zinc-600">
+              <p className="text-xs text-redlog-text-faint">
                 {t('settings.scopeFileHint')}
               </p>
             </FieldGroup>
@@ -679,11 +683,11 @@ export default function Settings(): JSX.Element {
               setSaved(true)
               setTimeout(() => setSaved(false), 1500)
             }}
-            className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
+            className="px-4 py-1.5 bg-redlog-danger text-white hover:bg-redlog-danger-hover text-xs rounded transition-colors"
           >
             {t('settings.save')}
           </button>
-          <span className="text-zinc-600 text-xs">{t('settings.autoSaveHint')}</span>
+          <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
         </div>
       </div>
     </div>
@@ -693,7 +697,7 @@ export default function Settings(): JSX.Element {
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{title}</h3>
+      <h3 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider">{title}</h3>
       <div className="space-y-2">{children}</div>
     </div>
   )
@@ -704,12 +708,12 @@ function Field({ label, value, onChange, type = 'text' }: {
 }): JSX.Element {
   return (
     <div>
-      <label className="text-[11px] text-zinc-500 block mb-1">{label}</label>
+      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+        className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
       />
     </div>
   )
@@ -748,11 +752,11 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   return (
     <>
       <FieldGroup title={t('settings.hooksDetected')}>
-        <p className="text-xs text-zinc-600 mb-2">
+        <p className="text-xs text-redlog-text-faint mb-2">
           {t('settings.hooksHint')}
         </p>
         {hooks.length === 0 && (
-          <p className="text-zinc-500 text-xs">{t('common.loading')}</p>
+          <p className="text-redlog-text-dim text-xs">{t('common.loading')}</p>
         )}
         <div className="space-y-2">
           {hooks.map((hook) => {
@@ -763,32 +767,32 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
               <div
                 key={hook.id}
                 className={`rounded border ${
-                  hook.available ? 'border-zinc-700 bg-zinc-900/50'
-                    : isManual ? 'border-zinc-800 bg-zinc-900/30 opacity-75'
-                    : 'border-zinc-800 bg-zinc-900/20 opacity-50'
+                  hook.available ? 'border-redlog-border bg-redlog-surface/50'
+                    : isManual ? 'border-redlog-border bg-redlog-surface/30 opacity-75'
+                    : 'border-redlog-border bg-redlog-surface/20 opacity-50'
                 }`}
               >
                 <div className="flex items-center justify-between p-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-zinc-200">{hook.name}</span>
+                      <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
                       {hook.installed && (
-                        <span className="text-[11px] bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">
                           {t('settings.hookActive')}
                         </span>
                       )}
                       {isManual && (
-                        <span className="text-[11px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                           {t('settings.hookManual')}
                         </span>
                       )}
                       {!hook.available && (
-                        <span className="text-[11px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
+                        <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                           {t('settings.hookNotFound')}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-zinc-500 mt-0.5">{hook.description}</p>
+                    <p className="text-xs text-redlog-text-dim mt-0.5">{hook.description}</p>
                   </div>
                   {hook.available && hook.installMethod !== 'manual' && (
                     <button
@@ -796,8 +800,8 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                       onClick={() => handleToggle(hook)}
                       className={`px-3 py-1 text-xs rounded ml-3 transition-colors ${
                         hook.installed
-                          ? 'bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400'
-                          : 'bg-red-600/80 text-white hover:bg-red-600'
+                          ? 'bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400'
+                          : 'bg-redlog-danger text-white hover:bg-redlog-danger-hover'
                       } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
                     >
                       {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
@@ -806,27 +810,27 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                   {hasSteps && (
                     <button
                       onClick={() => setExpanded(isOpen ? null : hook.id)}
-                      className="px-3 py-1 text-xs rounded ml-3 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
+                      className="px-3 py-1 text-xs rounded ml-3 bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
                     >
                       {isOpen ? t('settings.hookHideSetup') : t('settings.hookShowSetup')}
                     </button>
                   )}
                 </div>
                 {hasSteps && isOpen && (
-                  <div className="border-t border-zinc-800 px-3 py-2.5 space-y-2.5">
+                  <div className="border-t border-redlog-border px-3 py-2.5 space-y-2.5">
                     {hook.manualSteps!.map((step, i) => (
                       <div key={i}>
-                        <p className="text-xs text-zinc-400 leading-relaxed">
-                          <span className="text-zinc-500">{i + 1}.</span> {step.label}
+                        <p className="text-xs text-redlog-text-dim leading-relaxed">
+                          <span className="text-redlog-text-dim">{i + 1}.</span> {step.label}
                         </p>
                         {step.command && (
                           <div className="flex items-center gap-2 mt-1">
-                            <code className="flex-1 min-w-0 truncate bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-300 font-mono">
+                            <code className="flex-1 min-w-0 truncate bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono">
                               {step.command}
                             </code>
                             <button
                               onClick={() => copy(step.command!)}
-                              className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors shrink-0"
+                              className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
                             >
                               {t('settings.hookCopy')}
                             </button>
@@ -834,7 +838,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                         )}
                       </div>
                     ))}
-                    <p className="text-[11px] text-zinc-600 pt-0.5">{t('settings.hookManualNote')}</p>
+                    <p className="text-xs text-redlog-text-faint pt-0.5">{t('settings.hookManualNote')}</p>
                   </div>
                 )}
               </div>
@@ -874,7 +878,7 @@ function PluginsTab({ t }: { t: (key: string, vars?: Record<string, string | num
             key={id}
             onClick={() => setSub(id)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
-              sub === id ? 'bg-zinc-700 text-zinc-100' : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+              sub === id ? 'bg-redlog-elevated-hover text-redlog-text' : 'bg-redlog-surface text-redlog-text-dim hover:text-redlog-text'
             }`}
           >
             {label}
@@ -918,27 +922,27 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
     active: 'bg-green-900/50 text-green-400',
     'needs-consent': 'bg-amber-900/50 text-amber-400',
     'hash-changed': 'bg-amber-900/50 text-amber-400',
-    disabled: 'bg-zinc-800 text-zinc-500',
+    disabled: 'bg-redlog-elevated text-redlog-text-dim',
     error: 'bg-red-900/50 text-red-400'
   }
 
   return (
     <FieldGroup title={t('settings.plugins')}>
       <div className="flex items-center justify-between mb-2 gap-2">
-        <p className="text-xs text-zinc-600 flex-1 pr-3">{t('plugins.hint')}</p>
+        <p className="text-xs text-redlog-text-faint flex-1 pr-3">{t('plugins.hint')}</p>
         <button onClick={() => api.openFolder()}
-          className="px-2.5 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0"
+          className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0"
           title={t('plugins.openFolderHint')}>
           {t('plugins.openFolder')}
         </button>
         <button onClick={doReload} disabled={busy === '*'}
-          className="px-2.5 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700 shrink-0">
+          className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0">
           {busy === '*' ? '…' : t('plugins.reload')}
         </button>
       </div>
 
       {plugins.length === 0 && (
-        <p className="text-xs text-zinc-600 py-3">{t('plugins.empty')}</p>
+        <p className="text-xs text-redlog-text-faint py-3">{t('plugins.empty')}</p>
       )}
 
       <div className="space-y-2">
@@ -946,28 +950,28 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
           const privileged = p.tier === 'privileged'
           const needsConsent = p.status === 'needs-consent' || p.status === 'hash-changed'
           return (
-            <div key={p.id} className="rounded border border-zinc-700 bg-zinc-900/50">
+            <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-start justify-between p-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium text-zinc-200">{p.name}</span>
-                    <span className="text-[11px] text-zinc-500">v{p.version}</span>
-                    <span className={`text-[11px] px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
+                    <span className="text-xs font-medium text-redlog-text">{p.name}</span>
+                    <span className="text-xs text-redlog-text-dim">v{p.version}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>
                       {t(`plugins.status.${p.status}`)}
                     </span>
-                    <span className={`text-[11px] px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${privileged ? 'bg-red-950/60 text-red-300' : 'bg-green-950/60 text-green-300'}`}>
                       {privileged ? t('plugins.tier.privileged') : t('plugins.tier.declarative')}
                     </span>
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">{p.source}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{p.source}</span>
                   </div>
-                  {p.description && <p className="text-xs text-zinc-500 mt-0.5">{p.description}</p>}
+                  {p.description && <p className="text-xs text-redlog-text-dim mt-0.5">{p.description}</p>}
                   {p.contributes.length > 0 && (
-                    <p className="text-[11px] text-zinc-600 mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
+                    <p className="text-xs text-redlog-text-faint mt-1">{t('plugins.contributes')}: {p.contributes.join(', ')}</p>
                   )}
                   {privileged && p.capabilities.length > 0 && (
-                    <p className="text-[11px] text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
+                    <p className="text-xs text-amber-500/80 mt-0.5">{t('plugins.capabilities')}: {p.capabilities.join(', ')}</p>
                   )}
-                  {p.status === 'error' && p.error && <p className="text-[11px] text-red-400 mt-0.5">{p.error}</p>}
+                  {p.status === 'error' && p.error && <p className="text-xs text-red-400 mt-0.5">{p.error}</p>}
                 </div>
 
                 <div className="ml-3 shrink-0 flex flex-col gap-1 items-end">
@@ -977,7 +981,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                       disabled={busy === p.id}
                       onClick={() => toggle(p, p.status === 'disabled')}
                       className={`px-3 py-1 text-xs rounded ${
-                        p.status === 'disabled' ? 'bg-red-600/80 text-white hover:bg-red-600' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        p.status === 'disabled' ? 'bg-redlog-danger text-white hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
                       }`}
                     >
                       {busy === p.id ? '…' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
@@ -996,7 +1000,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                   {/* trusted privileged: allow revoke */}
                   {privileged && p.status === 'active' && (
                     <button onClick={() => revoke(p)} disabled={busy === p.id}
-                      className="px-3 py-1 text-xs rounded bg-zinc-800 text-zinc-400 hover:bg-red-900/30 hover:text-red-400">
+                      className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400">
                       {t('plugins.revoke')}
                     </button>
                   )}
@@ -1007,29 +1011,29 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
         })}
       </div>
 
-      <p className="text-[11px] text-zinc-600 mt-3">{t('plugins.dir')}</p>
+      <p className="text-xs text-redlog-text-faint mt-3">{t('plugins.dir')}</p>
 
       {/* trust consent dialog for 🔴 code plugins */}
       {confirmGrant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setConfirmGrant(null)}>
-          <div className="bg-zinc-900 border border-red-900/50 rounded-lg p-4 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-red-400 mb-1">{t('plugins.consentTitle')}</h3>
-            <p className="text-[11px] text-zinc-400 mb-2">
+            <p className="text-xs text-redlog-text-dim mb-2">
               {t('plugins.consentBody', { name: confirmGrant.name })}
             </p>
-            <div className="bg-zinc-950 border border-zinc-800 rounded p-2 mb-2">
-              <p className="text-xs text-zinc-500 mb-1">{t('plugins.capabilities')}:</p>
+            <div className="bg-redlog-bg border border-redlog-border rounded p-2 mb-2">
+              <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.capabilities')}:</p>
               <ul className="text-xs text-amber-400 space-y-0.5">
-                {confirmGrant.capabilities.length === 0 && <li className="text-zinc-500">—</li>}
+                {confirmGrant.capabilities.length === 0 && <li className="text-redlog-text-dim">—</li>}
                 {confirmGrant.capabilities.map((c) => <li key={c}>• {c}</li>)}
               </ul>
             </div>
-            <p className="text-xs text-zinc-500 mb-3">{t('plugins.consentWarn')}</p>
+            <p className="text-xs text-redlog-text-dim mb-3">{t('plugins.consentWarn')}</p>
             <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+              <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
                 {t('common.cancel')}
               </button>
-              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-500">
+              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover">
                 {t('plugins.grantRun')}
               </button>
             </div>
@@ -1048,7 +1052,7 @@ function BrowserPanel({
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
   const b = config.browser ?? {
-    binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: 9222,
+    binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: DEFAULT_CDP_PORT,
     isolateProfile: true, ignoreCertErrors: true, startUrl: '', extraArgs: []
   }
   const [detected, setDetected] = useState<string | null>(null)
@@ -1063,16 +1067,16 @@ function BrowserPanel({
 
   return (
     <FieldGroup title={t('settings.browser')}>
-      <p className="text-xs text-zinc-600">{t('settings.browserHint')}</p>
+      <p className="text-xs text-redlog-text-faint">{t('settings.browserHint')}</p>
       <Field label={t('settings.browserBinary')} value={b.binary} onChange={(v) => patch({ binary: v })} />
-      <p className="text-xs text-zinc-600 font-mono break-all">
+      <p className="text-xs text-redlog-text-faint font-mono break-all">
         {detected ? t('settings.browserDetected', { path: detected }) : t('settings.browserNotFound')}
       </p>
       <Field label={t('settings.browserProxy')} value={b.proxy} onChange={(v) => patch({ proxy: v })} />
       <Field
         label={t('settings.cdpPort')}
         value={String(b.cdpPort)}
-        onChange={(v) => patch({ cdpPort: parseInt(v) || 9222 })}
+        onChange={(v) => patch({ cdpPort: parseInt(v) || DEFAULT_CDP_PORT })}
         type="number"
       />
       <Field label={t('settings.browserStartUrl')} value={b.startUrl} onChange={(v) => patch({ startUrl: v })} />
@@ -1083,7 +1087,7 @@ function BrowserPanel({
           onChange={(e) => patch({ isolateProfile: e.target.checked })}
           className="accent-red-600"
         />
-        <span className="text-[11px] text-zinc-400">{t('settings.browserIsolate')}</span>
+        <span className="text-xs text-redlog-text-dim">{t('settings.browserIsolate')}</span>
       </label>
       <label className="flex items-center gap-2 cursor-pointer">
         <input
@@ -1092,14 +1096,14 @@ function BrowserPanel({
           onChange={(e) => patch({ ignoreCertErrors: e.target.checked })}
           className="accent-red-600"
         />
-        <span className="text-[11px] text-zinc-400">{t('settings.browserIgnoreCert')}</span>
+        <span className="text-xs text-redlog-text-dim">{t('settings.browserIgnoreCert')}</span>
       </label>
       <button
         onClick={async () => {
           const r = await window.redlog.browser.launch()
           toast(r.ok ? t('browser.launched') : (r.error || t('browser.failed')), r.ok ? 'success' : 'error')
         }}
-        className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+        className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
       >
         {t('browser.launch')}
       </button>
@@ -1172,21 +1176,21 @@ function ExportBundlePanel({ t }: { t: (key: string, vars?: Record<string, strin
           data-testid="settings-export-bundle"
           onClick={handleExport}
           disabled={busy}
-          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {busy ? t('settings.exportBundleBuilding') : t('settings.exportBundle')}
         </button>
         {result && (
           <button
             onClick={handleReveal}
-            className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+            className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
           >
             {t('settings.exportBundleReveal')}
           </button>
         )}
       </div>
       {result && (
-        <p className="text-xs text-zinc-400 font-mono mt-1 break-all">
+        <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">
           {t('settings.savedTo', { path: result.path })}
         </p>
       )}
@@ -1195,7 +1199,7 @@ function ExportBundlePanel({ t }: { t: (key: string, vars?: Record<string, strin
           {error}
         </div>
       )}
-      <p className="text-xs text-zinc-600 mt-1">
+      <p className="text-xs text-redlog-text-faint mt-1">
         {t('settings.exportBundleHint')}
       </p>
     </FieldGroup>
@@ -1250,25 +1254,25 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
       case 'complete': return 'bg-green-900/60 text-green-300'
       case 'partial': return 'bg-yellow-900/60 text-yellow-300'
       case 'failed': return 'bg-red-900/60 text-red-300'
-      default: return 'bg-zinc-800 text-zinc-400'
+      default: return 'bg-redlog-elevated text-redlog-text-dim'
     }
   }
   const statusLabel = (s: string): string => t(`settings.integrityStatus${s.charAt(0).toUpperCase() + s.slice(1)}`)
 
   return (
     <FieldGroup title={t('settings.integrity')}>
-      <p className="text-xs text-zinc-600">{t('settings.integrityHint')}</p>
+      <p className="text-xs text-redlog-text-faint">{t('settings.integrityHint')}</p>
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={handleAnchor}
           disabled={busy}
-          className="px-3 py-1.5 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
+          className="px-3 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
         </button>
         <button
           onClick={handleVerify}
-          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
         >
           {t('settings.integrityVerify')}
         </button>
@@ -1291,7 +1295,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
             setLastVerifyResult(r as CachedFullVerifyResult | null)
           }}
           disabled={verifying}
-          className="px-3 py-1.5 bg-zinc-800 text-emerald-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-50"
+          className="px-3 py-1.5 bg-redlog-elevated text-emerald-300 text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
         >
           {verifying ? t('settings.integrityVerifying') : t('settings.integrityVerifyFull')}
         </button>
@@ -1301,12 +1305,12 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
             if (r) toast(`Upgraded ${r.upgraded}/${r.scanned} anchors`, r.upgraded > 0 ? 'success' : 'info')
             await reload()
           }}
-          className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700"
+          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
         >
           {t('settings.integrityUpgradeAll')}
         </button>
       </div>
-      {verifyMsg && <p className="text-xs text-zinc-300 font-mono">{verifyMsg}</p>}
+      {verifyMsg && <p className="text-xs text-redlog-text font-mono">{verifyMsg}</p>}
       {fullVerify && (
         <div className={`p-3 rounded border text-xs space-y-1 font-mono ${
           fullVerify.ok ? 'border-emerald-800 bg-emerald-950/30' : 'border-red-800 bg-red-950/30'
@@ -1316,7 +1320,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
               {fullVerify.ok ? '✓' : '✗'} {t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}
             </span>
           </div>
-          <div className="text-zinc-400">
+          <div className="text-redlog-text-dim">
             {t('settings.integrityFullWalked', { n: String(fullVerify.walked ?? 0) })}
           </div>
           {!fullVerify.ok && fullVerify.brokenAtEventId && (
@@ -1325,14 +1329,14 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 {t('settings.integrityFullBrokenAt')}: {fullVerify.brokenAtEventId}
               </div>
               {fullVerify.brokenReason && (
-                <div className="text-zinc-500 break-all">
+                <div className="text-redlog-text-dim break-all">
                   {t('settings.integrityFullReason')}: {fullVerify.brokenReason}
                 </div>
               )}
             </>
           )}
           {fullVerify.currentHead && (
-            <div className="text-zinc-500 break-all">
+            <div className="text-redlog-text-dim break-all">
               {t('settings.integrityHeadHash')}: {fullVerify.currentHead.slice(0, 32)}...
             </div>
           )}
@@ -1351,24 +1355,24 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         </div>
       )}
       {anchors.length === 0 ? (
-        <p className="text-xs text-zinc-500">{t('settings.integrityNoAnchors')}</p>
+        <p className="text-xs text-redlog-text-dim">{t('settings.integrityNoAnchors')}</p>
       ) : (
         <div className="space-y-1 max-h-[240px] overflow-y-auto">
           {anchors.map((a) => (
-            <div key={a.id} className="p-2 rounded border border-zinc-700 bg-zinc-900/50">
+            <div key={a.id} className="p-2 rounded border border-redlog-border bg-redlog-surface/50">
               <div className="flex items-center gap-2 text-xs">
-                <span className={`text-[11px] px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${statusColor(a.status)}`}>
                   {statusLabel(a.status)}
                 </span>
-                <span className="text-zinc-500 font-mono tabular-nums text-xs">
+                <span className="text-redlog-text-dim font-mono tabular-nums text-xs">
                   {new Date(a.createdAt).toLocaleString()}
                 </span>
-                <span className="text-zinc-500 text-xs">
+                <span className="text-redlog-text-dim text-xs">
                   {t('settings.integrityEvents').replace('{{n}}', String(a.eventCount))}
                 </span>
               </div>
-              <p className="text-xs text-zinc-500 font-mono mt-1 break-all">
-                <span className="text-zinc-600">{t('settings.integrityHeadHash')}: </span>{a.headHash.slice(0, 32)}...
+              <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">
+                <span className="text-redlog-text-faint">{t('settings.integrityHeadHash')}: </span>{a.headHash.slice(0, 32)}...
               </p>
               <div className="flex flex-wrap gap-1 mt-1">
                 {a.calendarReceipts.map((r, i) => (
@@ -1377,7 +1381,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                     title={r.ok
                       ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}`
                       : `${r.calendar} — ${r.error}`}
-                    className={`text-[11px] px-1.5 py-0.5 rounded font-mono ${
+                    className={`text-xs px-1.5 py-0.5 rounded font-mono ${
                       r.upgraded ? 'bg-blue-900/50 text-blue-300' :
                       r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'
                     }`}
@@ -1427,14 +1431,14 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
 
   return (
     <FieldGroup title={t('settings.mcp')}>
-      <p className="text-xs text-zinc-600">{t('settings.mcpHint')}</p>
+      <p className="text-xs text-redlog-text-faint">{t('settings.mcpHint')}</p>
 
       {info ? (
         <p className="text-xs text-emerald-400 font-mono">
           ● {t('settings.mcpLive', { endpoint: info.endpoint })}
         </p>
       ) : (
-        <p className="text-xs text-zinc-500">{t('settings.mcpOffline')}</p>
+        <p className="text-xs text-redlog-text-dim">{t('settings.mcpOffline')}</p>
       )}
 
       {/* v0.6.87 A3: named MCP operators. Leave blank → single `MCP agent`
@@ -1448,41 +1452,41 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
           onChange={(e) => setAgentName(e.target.value)}
           placeholder={t('settings.mcpAgentNamePlaceholder')}
           maxLength={40}
-          className="flex-1 px-2 py-1 text-xs font-mono bg-zinc-900 border border-zinc-800 rounded focus:outline-none focus:ring-1 focus:ring-red-500/40"
+          className="flex-1 px-2 py-1 text-xs font-mono bg-redlog-surface border border-redlog-border rounded focus:outline-none focus:ring-1 focus:ring-red-500/40"
         />
         <button
           onClick={setup}
           disabled={busy || !info}
-          className="shrink-0 px-3 py-1.5 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
+          className="shrink-0 px-3 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy ? '…' : t('settings.mcpSetup')}
         </button>
       </div>
 
       {info?.operators && info.operators.length > 0 && (
-        <div className="text-[11px] text-zinc-500">
+        <div className="text-xs text-redlog-text-dim">
           {t('settings.mcpRegisteredAgents')}: {info.operators.map((o) => o.name).join(' · ')}
         </div>
       )}
 
       {creds && httpCmd && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
-          <p className="text-[11px] text-red-300">{t('settings.mcpCreated')}</p>
+          <p className="text-xs text-red-300">{t('settings.mcpCreated')}</p>
           <div className="flex items-start gap-1">
-            <code className="flex-1 bg-black/40 text-zinc-200 text-xs font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
-            <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
+            <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
+            <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover shrink-0">{t('settings.mcpCopy')}</button>
           </div>
         </div>
       )}
 
       {stdioCmd && (
         <details className="mt-1">
-          <summary className="text-xs text-zinc-600 cursor-pointer">{t('settings.mcpStdio')}</summary>
+          <summary className="text-xs text-redlog-text-faint cursor-pointer">{t('settings.mcpStdio')}</summary>
           <div className="flex items-start gap-1 mt-1">
-            <code className="flex-1 bg-black/40 text-zinc-400 text-xs font-mono px-2 py-1.5 rounded break-all">{stdioCmd}</code>
-            <button onClick={() => copy(stdioCmd)} className="px-2 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 shrink-0">{t('settings.mcpCopy')}</button>
+            <code className="flex-1 bg-black/40 text-redlog-text-dim text-xs font-mono px-2 py-1.5 rounded break-all">{stdioCmd}</code>
+            <button onClick={() => copy(stdioCmd)} className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover shrink-0">{t('settings.mcpCopy')}</button>
           </div>
-          <p className="text-xs text-zinc-600 mt-1">{t('settings.mcpStdioHint')}</p>
+          <p className="text-xs text-redlog-text-faint mt-1">{t('settings.mcpStdioHint')}</p>
         </details>
       )}
     </FieldGroup>
@@ -1507,7 +1511,7 @@ function AgentsPanel({
   }
   return (
     <FieldGroup title={t('settings.agents')}>
-      <p className="text-xs text-zinc-600">{t('settings.agents.hint')}</p>
+      <p className="text-xs text-redlog-text-faint">{t('settings.agents.hint')}</p>
       <div className="space-y-2">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -1516,9 +1520,9 @@ function AgentsPanel({
             onChange={(e) => patch({ enabled: e.target.checked })}
             className="accent-red-600"
           />
-          <span className="text-xs text-zinc-300">{t('settings.agents.enable')}</span>
+          <span className="text-xs text-redlog-text">{t('settings.agents.enable')}</span>
         </label>
-        <p className="text-[11px] text-zinc-600 pl-6">{t('settings.agents.enableHint')}</p>
+        <p className="text-xs text-redlog-text-faint pl-6">{t('settings.agents.enableHint')}</p>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -1527,12 +1531,12 @@ function AgentsPanel({
             className="accent-red-600"
             disabled={!at.enabled}
           />
-          <span className={`text-xs ${at.enabled ? 'text-zinc-300' : 'text-zinc-600'}`}>
+          <span className={`text-xs ${at.enabled ? 'text-redlog-text' : 'text-redlog-text-faint'}`}>
             {t('settings.agents.emitThinking')}
           </span>
         </label>
-        <p className="text-[11px] text-zinc-600 pl-6">{t('settings.agents.emitThinkingHint')}</p>
-        <p className="text-[11px] text-zinc-600 mt-3 border-t border-zinc-800 pt-2">
+        <p className="text-xs text-redlog-text-faint pl-6">{t('settings.agents.emitThinkingHint')}</p>
+        <p className="text-xs text-redlog-text-faint mt-3 border-t border-redlog-border pt-2">
           {t('settings.agents.selfExclusionHint')}
         </p>
       </div>
@@ -1571,7 +1575,7 @@ function DeconflictionPanel({
 
   return (
     <FieldGroup title={t('settings.deconfliction')}>
-      <p className="text-xs text-zinc-600">{t('settings.deconflictionHint')}</p>
+      <p className="text-xs text-redlog-text-faint">{t('settings.deconflictionHint')}</p>
       <label className="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
@@ -1579,27 +1583,27 @@ function DeconflictionPanel({
           onChange={(e) => { patch({ enabled: e.target.checked }); setExpanded(e.target.checked) }}
           className="accent-red-600"
         />
-        <span className="text-xs text-zinc-300">{t('settings.deconflictionEnable')}</span>
+        <span className="text-xs text-redlog-text">{t('settings.deconflictionEnable')}</span>
       </label>
       {(expanded || dc.enabled) && (
-        <div className="space-y-2 pl-4 border-l border-zinc-800">
+        <div className="space-y-2 pl-4 border-l border-redlog-border">
           <Field
             label={t('settings.deconflictionUrl')}
             value={dc.url}
             onChange={(v) => patch({ url: v })}
           />
           <div>
-            <label className="text-[11px] text-zinc-500 block mb-1">{t('settings.deconflictionSecret')}</label>
+            <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.deconflictionSecret')}</label>
             <div className="flex gap-1">
               <input
                 type={secretVisible ? 'text' : 'password'}
                 value={dc.secret}
                 onChange={(e) => patch({ secret: e.target.value })}
-                className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+                className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
               />
               <button
                 onClick={() => setSecretVisible(!secretVisible)}
-                className="px-2 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700"
+                className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover"
               >
                 {secretVisible ? t('settings.deconflictionHide') : t('settings.deconflictionShow')}
               </button>
@@ -1624,12 +1628,12 @@ function DeconflictionPanel({
               onChange={(e) => patch({ includeData: e.target.checked })}
               className="accent-red-600"
             />
-            <span className="text-[11px] text-zinc-400">{t('settings.deconflictionIncludeData')}</span>
+            <span className="text-xs text-redlog-text-dim">{t('settings.deconflictionIncludeData')}</span>
           </label>
           <button
             onClick={handleTest}
             disabled={!dc.url || testing}
-            className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-50"
+            className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
           >
             {testing ? '...' : t('settings.deconflictionTest')}
           </button>
@@ -1696,37 +1700,37 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
 
   return (
     <FieldGroup title={t('settings.operators')}>
-      <p className="text-xs text-zinc-600">{t('settings.operatorsHint')}</p>
+      <p className="text-xs text-redlog-text-faint">{t('settings.operatorsHint')}</p>
 
       <div className="space-y-1">
         {operators.map((op) => (
           <div
             key={op.id}
             className={`flex items-center gap-2 p-2 rounded border text-xs ${
-              op.revokedAt ? 'border-zinc-800 bg-zinc-900/20 opacity-60' : 'border-zinc-700 bg-zinc-900/50'
+              op.revokedAt ? 'border-redlog-border bg-redlog-surface/20 opacity-60' : 'border-redlog-border bg-redlog-surface/50'
             }`}
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-zinc-200 font-medium truncate">{op.name}</span>
+                <span className="text-redlog-text font-medium truncate">{op.name}</span>
                 {op.isPrimary && (
-                  <span className="text-[11px] bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
+                  <span className="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
                     {t('settings.operatorPrimary')}
                   </span>
                 )}
                 {op.revokedAt && (
-                  <span className="text-[11px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded">
+                  <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
                     {t('settings.operatorRevoked')}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-zinc-500 font-mono truncate">{op.id}</p>
+              <p className="text-xs text-redlog-text-dim font-mono truncate">{op.id}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
                 disabled={busy === op.id + ':rotate'}
                 onClick={() => handleRotate(op.id)}
-                className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50"
+                className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
               >
                 {busy === op.id + ':rotate' ? '...' : t('settings.operatorRotate')}
               </button>
@@ -1734,7 +1738,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 <button
                   disabled={busy === op.id + ':revoke'}
                   onClick={() => handleRevoke(op.id)}
-                  className="px-2 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                  className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
                 >
                   {busy === op.id + ':revoke' ? '...' : t('settings.operatorRevoke')}
                 </button>
@@ -1743,7 +1747,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 <button
                   disabled={busy === op.id + ':delete'}
                   onClick={() => handleDelete(op.id)}
-                  className="px-2 py-1 text-xs bg-zinc-800 text-zinc-500 rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
+                  className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
                 >
                   {busy === op.id + ':delete' ? '...' : t('settings.operatorDelete')}
                 </button>
@@ -1759,12 +1763,12 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           placeholder={t('settings.operatorAddName')}
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+          className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
         />
         <button
           onClick={handleAdd}
           disabled={busy === 'add' || !newName.trim()}
-          className="px-3 py-1 bg-red-600/80 text-white text-xs rounded hover:bg-red-600 disabled:opacity-50"
+          className="px-3 py-1 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy === 'add' ? '...' : t('settings.operatorAdd')}
         </button>
@@ -1772,9 +1776,9 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
 
       {pendingToken && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
-          <p className="text-[11px] text-red-300">{pendingToken.note}</p>
+          <p className="text-xs text-red-300">{pendingToken.note}</p>
           <div className="flex items-center gap-1">
-            <code className="flex-1 bg-black/40 text-zinc-200 text-xs font-mono px-2 py-1.5 rounded truncate">
+            <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded truncate">
               {pendingToken.token}
             </code>
             <button
@@ -1782,13 +1786,13 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 navigator.clipboard.writeText(pendingToken.token)
                 toast(t('toast.copied'), 'success')
               }}
-              className="px-2 py-1.5 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+              className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
             >
               {t('settings.operatorTokenCopy')}
             </button>
             <button
               onClick={() => setPendingToken(null)}
-              className="px-2 py-1.5 text-xs bg-red-600/80 text-white rounded hover:bg-red-600"
+              className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
             >
               {t('settings.operatorTokenClose')}
             </button>
@@ -1814,23 +1818,23 @@ function ListField({ label, items, onChange, placeholder }: {
 
   return (
     <div>
-      <label className="text-[11px] text-zinc-500 block mb-1">{label}</label>
+      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <div className="flex gap-1 mb-1">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && addItem()}
           placeholder={placeholder}
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+          className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
         />
-        <button onClick={addItem} className="px-2 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700">+</button>
+        <button onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
       </div>
       {items.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {items.map((item, i) => (
-            <span key={i} className="inline-flex items-center gap-1 bg-zinc-800 text-zinc-300 text-xs font-mono px-2 py-0.5 rounded">
+            <span key={i} className="inline-flex items-center gap-1 bg-redlog-elevated text-redlog-text text-xs font-mono px-2 py-0.5 rounded">
               {item}
-              <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-zinc-500 hover:text-red-400">×</button>
+              <button onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-redlog-text-dim hover:text-red-400">×</button>
             </span>
           ))}
         </div>
@@ -1886,7 +1890,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
 
   return (
     <FieldGroup title={t('settings.vpnAdapters')}>
-      <p className="text-xs text-zinc-600 -mt-1 mb-2">{t('settings.vpnAdaptersHint')}</p>
+      <p className="text-xs text-redlog-text-faint -mt-1 mb-2">{t('settings.vpnAdaptersHint')}</p>
       <div className="space-y-1">
         {adapters.map((a, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -1897,32 +1901,32 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
                 onChange={() => toggle(i)}
                 className="accent-red-600"
               />
-              <span className="text-[11px] text-zinc-300">{a.name}</span>
+              <span className="text-xs text-redlog-text">{a.name}</span>
             </label>
-            <span className="text-[11px] text-zinc-600 font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
+            <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[140px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
-              <button onClick={() => remove(i)} className="text-zinc-600 hover:text-red-400 text-xs">×</button>
+              <button onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">×</button>
             )}
           </div>
         ))}
       </div>
-      <div className="mt-3 pt-2 border-t border-zinc-800">
-        <p className="text-xs text-zinc-500 mb-1">{t('settings.vpnAddCustom')}</p>
+      <div className="mt-3 pt-2 border-t border-redlog-border">
+        <p className="text-xs text-redlog-text-dim mb-1">{t('settings.vpnAddCustom')}</p>
         <div className="flex gap-1">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t('settings.vpnNamePlaceholder')}
-            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-red-500"
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
           />
           <input
             value={newPattern}
             onChange={(e) => setNewPattern(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addCustom()}
             placeholder={t('settings.vpnPatternPlaceholder')}
-            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />
-          <button onClick={addCustom} className="px-2 py-1 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700">+</button>
+          <button onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
         </div>
       </div>
     </FieldGroup>
@@ -1934,20 +1938,26 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
 // Not part of engagement config: it's a personal viewing preference and
 // shouldn't sync across teammates on the same project.
 const UI_SCALE_KEY = 'redlog-app-zoom'
+// Shifted down one step when the type scale gained its 13px floor: 1.1 used to
+// be "normal" because 1.0 rendered text too small to read comfortably. It no
+// longer does, so 1.0 is normal again and the ladder has room at the top.
 const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
-  { value: 1.0, labelKey: 'settings.uiScale.small' },
-  { value: 1.1, labelKey: 'settings.uiScale.normal' },
-  { value: 1.2, labelKey: 'settings.uiScale.large' },
-  { value: 1.35, labelKey: 'settings.uiScale.xlarge' }
+  { value: 0.9, labelKey: 'settings.uiScale.small' },
+  { value: 1.0, labelKey: 'settings.uiScale.normal' },
+  { value: 1.15, labelKey: 'settings.uiScale.large' },
+  { value: 1.3, labelKey: 'settings.uiScale.xlarge' }
 ]
 function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
   const [scale, setScale] = useState<number>(() => {
     const raw = parseFloat(localStorage.getItem(UI_SCALE_KEY) || '')
-    return Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1.1
+    return Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1
   })
   useEffect(() => {
     document.body.style.setProperty('--app-zoom', String(scale))
     localStorage.setItem(UI_SCALE_KEY, String(scale))
+    // A bigger zoom means fewer rows on screen, so it implies tight density —
+    // unless the operator has picked a density themselves (§3).
+    applyDensity(resolveDensity(scale, storedDensity()))
   }, [scale])
   return (
     <div className="flex gap-2 items-center">
@@ -1957,12 +1967,12 @@ function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
           onClick={() => setScale(opt.value)}
           className={`px-3 py-1.5 text-xs rounded ${
             Math.abs(scale - opt.value) < 0.01
-              ? 'bg-red-600 text-white'
-              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+              : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
           }`}
         >{t(opt.labelKey)}</button>
       ))}
-      <span className="text-xs text-zinc-600 ml-2 font-mono">{Math.round(scale * 100)}%</span>
+      <span className="text-xs text-redlog-text-faint ml-2 font-mono">{Math.round(scale * 100)}%</span>
     </div>
   )
 }
@@ -2002,15 +2012,15 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
   }
   return (
     <FieldGroup title={t('settings.hookWatchPaths.title')}>
-      <p className="text-xs text-zinc-500 mb-3">{t('settings.hookWatchPaths.hint')}</p>
+      <p className="text-xs text-redlog-text-dim mb-3">{t('settings.hookWatchPaths.hint')}</p>
       <div className="space-y-1 mb-2">
         {watchPaths.length === 0 ? (
           <p className="text-xs text-amber-500 font-mono px-2 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded">
             {t('settings.hookWatchPaths.empty')}
           </p>
         ) : watchPaths.map((p) => (
-          <div key={p} className="flex items-center gap-2 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded">
-            <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{p}</span>
+          <div key={p} className="flex items-center gap-2 px-2 py-1 bg-redlog-surface border border-redlog-border rounded">
+            <span className="text-xs font-mono text-redlog-text flex-1 truncate">{p}</span>
             <button
               onClick={() => removePath(p)}
               className="text-xs text-red-400 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
@@ -2026,14 +2036,14 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPath(draft); setDraft('') } }}
           placeholder="C:\\Users\\user\\Desktop\\engagement"
-          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono focus:outline-none focus:border-red-500"
+          className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
         />
         <button
           onClick={pickFolder}
-          className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+          className="px-3 py-1 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
           title={t('settings.hookWatchPaths.pickFolder')}
         >📁 {t('settings.hookWatchPaths.pickFolder')}</button>
-        <button onClick={() => { addPath(draft); setDraft('') }} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 disabled:opacity-40">+</button>
+        <button onClick={() => { addPath(draft); setDraft('') }} disabled={!draft.trim() || dirty} className="px-3 py-1 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-40">+</button>
       </div>
     </FieldGroup>
   )
@@ -2183,46 +2193,46 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
 
   return (
     <FieldGroup title={t('cloudShare.title')}>
-      <p className="text-xs text-zinc-600 mb-3">{t('cloudShare.hint')}</p>
+      <p className="text-xs text-redlog-text-faint mb-3">{t('cloudShare.hint')}</p>
 
       {previewError && <p className="text-xs text-red-400 mb-2">{previewError}</p>}
 
       {preview && (
-        <div className="rounded border border-zinc-700 bg-zinc-900/50 p-3 mb-3">
-          <p className="text-[11px] text-zinc-500 mb-2">{t('cloudShare.reviewTitle')}</p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-zinc-300">
-            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.events')}</span><span className="font-mono">{preview.eventCount}</span></div>
-            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
-            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.screenshots')}</span><span className="font-mono">{preview.screenshotCount}</span></div>
-            <div className="flex justify-between"><span className="text-zinc-500">{t('cloudShare.casts')}</span><span className="font-mono">{preview.castCount}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.rawBytes')}</span><span className="font-mono">{humanBytes(preview.rawBytes ?? preview.approxSizeBytes)}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.approxCompressed')}</span><span className="font-mono">{preview.approxCompressedBytes !== undefined ? humanBytes(preview.approxCompressedBytes) : '—'}</span></div>
+        <div className="rounded border border-redlog-border bg-redlog-surface/50 p-3 mb-3">
+          <p className="text-xs text-redlog-text-dim mb-2">{t('cloudShare.reviewTitle')}</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-redlog-text">
+            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.events')}</span><span className="font-mono">{preview.eventCount}</span></div>
+            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
+            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.screenshots')}</span><span className="font-mono">{preview.screenshotCount}</span></div>
+            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.casts')}</span><span className="font-mono">{preview.castCount}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.rawBytes')}</span><span className="font-mono">{humanBytes(preview.rawBytes ?? preview.approxSizeBytes)}</span></div>
+            <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.approxCompressed')}</span><span className="font-mono">{preview.approxCompressedBytes !== undefined ? humanBytes(preview.approxCompressedBytes) : '—'}</span></div>
             {preview.approxCompressedBytes !== undefined && (() => {
               const capMb = parseInt(maxMbInput, 10) || 100
               const capBytes = capMb * 1024 * 1024
               return preview.approxCompressedBytes > capBytes ? (
-                <p className="col-span-2 text-[11px] text-red-400 mt-1">
+                <p className="col-span-2 text-xs text-red-400 mt-1">
                   {t('cloudShare.capExceedWarning', { cap: capMb })}
                 </p>
               ) : null
             })()}
             {preview.chainHead && (
-              <div className="flex justify-between col-span-2"><span className="text-zinc-500">{t('cloudShare.chainHead')}</span>
+              <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.chainHead')}</span>
                 <span className="font-mono truncate max-w-[280px]" title={preview.chainHead.hash}>{preview.chainHead.hash.slice(0, 24)}… ({preview.chainHead.eventCount})</span></div>
             )}
           </div>
           <button onClick={refreshPreview} disabled={busy === 'preview'}
-            className="mt-3 px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700">
+            className="mt-3 px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
             {busy === 'preview' ? '…' : t('cloudShare.refresh')}
           </button>
         </div>
       )}
 
       <div className="mb-3">
-        <label className="text-xs text-zinc-500 flex items-center gap-2 mb-2">
+        <label className="text-xs text-redlog-text-dim flex items-center gap-2 mb-2">
           {t('cloudShare.expiresIn')}
           <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as typeof expiresIn)}
-            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-xs text-zinc-200">
+            className="bg-redlog-surface border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text">
             <option value="24h">24h</option>
             <option value="7d">7 days</option>
             <option value="30d">30 days</option>
@@ -2238,57 +2248,57 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
         </label>
       </div>
 
-      <div className="mb-3 rounded border border-zinc-800 bg-zinc-950/40">
+      <div className="mb-3 rounded border border-redlog-border bg-redlog-bg/40">
         <button data-testid="cloud-share-advanced-toggle" type="button" onClick={() => setAdvancedOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-zinc-400 hover:bg-zinc-900/60">
+          className="w-full flex items-center justify-between px-3 py-2 text-xs text-redlog-text-dim hover:bg-redlog-surface/60">
           <span>{t('cloudShare.advancedTitle')}</span>
-          <span className="text-zinc-600">{advancedOpen ? '▾' : '▸'}</span>
+          <span className="text-redlog-text-faint">{advancedOpen ? '▾' : '▸'}</span>
         </button>
         {advancedOpen && (
           <div className="px-3 pb-3 pt-1 space-y-2">
-            <p className="text-[11px] text-zinc-600">{t('cloudShare.advancedHint')}</p>
-            <label className="block text-[11px] text-zinc-500">
+            <p className="text-xs text-redlog-text-faint">{t('cloudShare.advancedHint')}</p>
+            <label className="block text-xs text-redlog-text-dim">
               {t('cloudShare.endpoint')}
               <input data-testid="cloud-share-endpoint" type="text" value={endpoint}
                 onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken, maxMbInput) }}
                 placeholder="https://redlog-share.<acct>.workers.dev"
-                className="mt-1 w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+                className="mt-1 w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
             </label>
-            <label className="block text-[11px] text-zinc-500">
+            <label className="block text-xs text-redlog-text-dim">
               {t('cloudShare.authToken')}
               <div className="mt-1 flex gap-2">
                 <input data-testid="cloud-share-authtoken" type={tokenVisible ? 'text' : 'password'} value={authToken}
                   onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value, maxMbInput) }}
                   placeholder={t('cloudShare.authTokenPlaceholder')}
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+                  className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
                 <button type="button" onClick={() => setTokenVisible((v) => !v)}
-                  className="px-2 text-[11px] rounded bg-zinc-800 text-zinc-400 hover:bg-zinc-700">
+                  className="px-2 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
                   {tokenVisible ? t('cloudShare.hide') : t('cloudShare.show')}
                 </button>
               </div>
             </label>
-            <div className="flex items-center gap-4 text-[11px] pt-1">
+            <div className="flex items-center gap-4 text-xs pt-1">
               <label className="flex items-center gap-1 cursor-pointer">
                 <input data-testid="cloud-share-mode-stub" type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
-                  className="accent-zinc-500" />
-                <span className={mode === 'stub' ? 'text-zinc-300' : 'text-zinc-500'}>{t('cloudShare.modeStub')}</span>
+                  className="accent-redlog-text-dim" />
+                <span className={mode === 'stub' ? 'text-redlog-text' : 'text-redlog-text-dim'}>{t('cloudShare.modeStub')}</span>
               </label>
               <label className="flex items-center gap-1 cursor-pointer">
                 <input data-testid="cloud-share-mode-https" type="radio" name="cloudshare-mode" checked={mode === 'https'} onChange={() => setMode('https')}
                   className="accent-red-500" />
-                <span className={mode === 'https' ? 'text-zinc-300' : 'text-zinc-500'}>{t('cloudShare.modeHttps')}</span>
+                <span className={mode === 'https' ? 'text-redlog-text' : 'text-redlog-text-dim'}>{t('cloudShare.modeHttps')}</span>
               </label>
               {mode === 'https' && !httpsReady && (
                 <span className="text-amber-400/80">{t('cloudShare.httpsNeedsFields')}</span>
               )}
             </div>
-            <label className="block text-[11px] text-zinc-500 pt-1">
+            <label className="block text-xs text-redlog-text-dim pt-1">
               {t('cloudShare.maxBundleMb')}
               <input type="number" min="1" max="10000" value={maxMbInput}
                 onChange={(e) => { setMaxMbInput(e.target.value); persistBackend(endpoint, authToken, e.target.value) }}
                 placeholder="100"
-                className="mt-1 w-32 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
-              <span className="ml-2 text-zinc-600">{t('cloudShare.maxBundleMbHint')}</span>
+                className="mt-1 w-32 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
+              <span className="ml-2 text-redlog-text-faint">{t('cloudShare.maxBundleMbHint')}</span>
             </label>
           </div>
         )}
@@ -2297,34 +2307,34 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
       {lastError && (
         <div data-testid="cloud-share-inline-error" className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
           <span className="text-red-400 shrink-0">⚠</span>
-          <p className="text-[11px] text-red-300 font-mono break-all flex-1">{lastError}</p>
-          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+          <p className="text-xs text-red-300 font-mono break-all flex-1">{lastError}</p>
+          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
         </div>
       )}
 
       <div className="flex items-center gap-2">
         <button data-testid="cloud-share-button" onClick={upload} disabled={!canUpload}
-          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs rounded disabled:opacity-40">
+          className="px-3 py-1.5 bg-redlog-danger text-white hover:bg-redlog-danger-hover text-xs rounded disabled:opacity-40">
           {busy === 'prepare' ? t('cloudShare.preparing')
             : busy === 'upload' ? t('cloudShare.uploading')
               : mode === 'https' ? t('cloudShare.shareHttps') : t('cloudShare.shareStub')}
         </button>
-        <span className="text-[11px] text-zinc-600">
+        <span className="text-xs text-redlog-text-faint">
           {mode === 'https' ? t('cloudShare.httpsNote') : t('cloudShare.stubNote')}
         </span>
       </div>
 
       {shareUrl && (
         <div data-testid="cloud-share-result" className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
-          <p className="text-[11px] text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
-          <p data-testid="cloud-share-url" className="text-xs text-zinc-300 font-mono break-all">{shareUrl}</p>
+          <p className="text-xs text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
+          <p data-testid="cloud-share-url" className="text-xs text-redlog-text font-mono break-all">{shareUrl}</p>
           <div className="flex gap-2 mt-2">
             <button onClick={() => navigator.clipboard.writeText(shareUrl)}
-              className="px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
               {t('cloudShare.copyUrl')}
             </button>
             <button onClick={() => window.redlog.app.openExternal(shareUrl).catch(() => {})}
-              className="px-2 py-0.5 text-[11px] rounded bg-zinc-800 text-zinc-300 hover:bg-zinc-700">
+              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
               {t('cloudShare.openUrl')}
             </button>
           </div>
@@ -2476,12 +2486,12 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
 
   return (
     <FieldGroup title={t('settings.marketplace')}>
-      <p className="text-xs text-zinc-600 mb-2">{t('marketplace.hint')}</p>
+      <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.hint')}</p>
 
       <div className="flex items-center gap-1 mb-3">
         {(['plugins', 'publishers', 'revocations'] as const).map((k) => (
           <button key={k} onClick={() => setSub(k)}
-            className={`px-2.5 py-1 text-xs rounded ${sub === k ? 'bg-red-950/60 text-red-300' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>
+            className={`px-2.5 py-1 text-xs rounded ${sub === k ? 'bg-red-950/60 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'}`}>
             {t(`marketplace.tab${k[0].toUpperCase()}${k.slice(1)}`)}
           </button>
         ))}
@@ -2492,9 +2502,9 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
           <div className="flex items-center gap-2 mb-3">
             <input type="text" value={registryUrl} onChange={(e) => setRegistryUrl(e.target.value)}
               placeholder={defaultRegistryUrl}
-              className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200" />
+              className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text" />
             <button onClick={doFetch} disabled={fetchState === 'loading'}
-              className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">
+              className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50">
               {fetchState === 'loading' ? t('marketplace.fetching') : t('marketplace.fetch')}
             </button>
           </div>
@@ -2503,28 +2513,28 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
             <p className="text-xs text-red-400 mb-2">{t('marketplace.fetchFailed')}: {fetchError}</p>
           )}
           {!index && fetchState !== 'error' && (
-            <p className="text-xs text-zinc-600">{t('marketplace.indexEmpty')}</p>
+            <p className="text-xs text-redlog-text-faint">{t('marketplace.indexEmpty')}</p>
           )}
           {index && index.entries.length === 0 && (
-            <p className="text-xs text-zinc-600">{t('marketplace.noEntries')}</p>
+            <p className="text-xs text-redlog-text-faint">{t('marketplace.noEntries')}</p>
           )}
 
           {suggestedUntrusted.length > 0 && (
             <div data-testid="marketplace-suggested-banner" className="mb-3 rounded border border-amber-800/50 bg-amber-950/20 p-3">
-              <p className="text-[11px] text-amber-300 mb-1">
+              <p className="text-xs text-amber-300 mb-1">
                 {t('marketplace.suggestedPublishersTitle', { n: suggestedUntrusted.length })}
               </p>
-              <p className="text-[11px] text-zinc-500 mb-2">{t('marketplace.suggestedPublishersHint')}</p>
+              <p className="text-xs text-redlog-text-dim mb-2">{t('marketplace.suggestedPublishersHint')}</p>
               <ul className="space-y-1.5">
                 {suggestedUntrusted.map((p) => (
                   <li key={p.id} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[11px] text-zinc-300 font-mono truncate">{p.id}</p>
+                      <p className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
                       {/* The fingerprint is the point of this row: the operator
                           is meant to compare it against the publisher's own
                           site before pinning, not take the registry's word. */}
                       {p.keys.map((k) => (
-                        <p key={k.publicKey} className="text-[10px] text-zinc-500 font-mono truncate" title={k.publicKey}>
+                        <p key={k.publicKey} className="text-xs text-redlog-text-dim font-mono truncate" title={k.publicKey}>
                           {(k as { fingerprint?: string }).fingerprint ?? k.publicKey.slice(0, 16)}{k.label ? ` · ${k.label}` : ''}
                         </p>
                       ))}
@@ -2548,35 +2558,35 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
               const trusted = publisherTrusted(e.publisher)
               const signed = !!e.signature
               return (
-                <div key={`${e.id}@${e.version}`} className="rounded border border-zinc-700 bg-zinc-900/50 p-3">
+                <div key={`${e.id}@${e.version}`} className="rounded border border-redlog-border bg-redlog-surface/50 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-medium text-zinc-200">{e.name || e.id}</span>
-                        <span className="text-[11px] text-zinc-500">v{e.version}</span>
-                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">{e.publisher}</span>
-                        {signed && <span className="text-[11px] px-1.5 py-0.5 rounded bg-green-950/60 text-green-300">{t('marketplace.signatureVerified')}</span>}
+                        <span className="text-xs font-medium text-redlog-text">{e.name || e.id}</span>
+                        <span className="text-xs text-redlog-text-dim">v{e.version}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{e.publisher}</span>
+                        {signed && <span className="text-xs px-1.5 py-0.5 rounded bg-green-950/60 text-green-300">{t('marketplace.signatureVerified')}</span>}
                         {e.sizeKb !== undefined && (
-                          <span className="text-[11px] text-zinc-600">{t('marketplace.sizeKb', { size: e.sizeKb })}</span>
+                          <span className="text-xs text-redlog-text-faint">{t('marketplace.sizeKb', { size: e.sizeKb })}</span>
                         )}
                       </div>
-                      {e.description && <p className="text-xs text-zinc-500 mt-0.5">{e.description}</p>}
+                      {e.description && <p className="text-xs text-redlog-text-dim mt-0.5">{e.description}</p>}
                       {!trusted && (
-                        <p className="text-[11px] text-amber-500/80 mt-1">{t('marketplace.publisherUntrusted')}</p>
+                        <p className="text-xs text-amber-500/80 mt-1">{t('marketplace.publisherUntrusted')}</p>
                       )}
                     </div>
                     <button onClick={() => doInstall(e)} disabled={installBusy === e.id}
-                      className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 shrink-0">
+                      className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50 shrink-0">
                       {installBusy === e.id ? t('marketplace.installing') : t('marketplace.install')}
                     </button>
                   </div>
                   {installError[e.id] && (
                     <div className="mt-2 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
                       <span className="text-red-400 shrink-0">⚠</span>
-                      <p className="text-[11px] text-red-300 font-mono break-all flex-1">
+                      <p className="text-xs text-red-300 font-mono break-all flex-1">
                         {t('marketplace.installFailed')}: {installError[e.id]}
                       </p>
-                      <button onClick={() => dismissInstallError(e.id)} className="text-[11px] text-red-400 hover:text-red-300 shrink-0">✕</button>
+                      <button onClick={() => dismissInstallError(e.id)} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
                     </div>
                   )}
                 </div>
@@ -2592,23 +2602,23 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
 
       {sub === 'revocations' && (
         <div>
-          <p className="text-xs text-zinc-600 mb-2">{t('marketplace.revocationsHint')}</p>
+          <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.revocationsHint')}</p>
           {(!revocations || ((revocations.plugins?.length ?? 0) === 0 && (revocations.publishers?.length ?? 0) === 0)) && (
-            <p className="text-xs text-zinc-600">{t('marketplace.revocationsEmpty')}</p>
+            <p className="text-xs text-redlog-text-faint">{t('marketplace.revocationsEmpty')}</p>
           )}
           {revocations && (revocations.plugins?.length ?? 0) > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] text-zinc-500 mb-1">{t('marketplace.revokedPlugins')}</p>
+              <p className="text-xs text-redlog-text-dim mb-1">{t('marketplace.revokedPlugins')}</p>
               <div className="flex flex-wrap gap-1">
-                {revocations.plugins!.map((p) => <span key={p} className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
+                {revocations.plugins!.map((p) => <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
               </div>
             </div>
           )}
           {revocations && (revocations.publishers?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[11px] text-zinc-500 mb-1">{t('marketplace.revokedPublishers')}</p>
+              <p className="text-xs text-redlog-text-dim mb-1">{t('marketplace.revokedPublishers')}</p>
               <div className="flex flex-wrap gap-1">
-                {revocations.publishers!.map((p) => <span key={p} className="text-[11px] px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
+                {revocations.publishers!.map((p) => <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
               </div>
             </div>
           )}
@@ -2648,49 +2658,49 @@ function PublisherEditor({ t, publishers, api, onReload }: {
 
   return (
     <div>
-      <div className="rounded border border-zinc-700 bg-zinc-900/40 p-3 mb-3">
-        <p className="text-xs text-zinc-400 mb-2">{t('marketplace.addPublisher')}</p>
-        <p className="text-[11px] text-zinc-600 mb-2">{t('marketplace.addPublisherHint')}</p>
+      <div className="rounded border border-redlog-border bg-redlog-surface/40 p-3 mb-3">
+        <p className="text-xs text-redlog-text-dim mb-2">{t('marketplace.addPublisher')}</p>
+        <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.addPublisherHint')}</p>
         <div className="grid grid-cols-2 gap-2 mb-2">
           <input value={draftId} onChange={(e) => setDraftId(e.target.value)} placeholder={t('marketplace.publisherId')}
-            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono" />
+            className="bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
           <input value={draftLabel} onChange={(e) => setDraftLabel(e.target.value)} placeholder={t('marketplace.publisherLabel')}
-            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200" />
+            className="bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text" />
         </div>
         <textarea value={draftKey} onChange={(e) => setDraftKey(e.target.value)}
           placeholder={t('marketplace.publisherPubKey')}
           rows={3}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 font-mono resize-y" />
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y" />
         <div className="flex justify-end mt-2">
           <button onClick={add} disabled={busy || !draftId.trim() || !draftKey.trim()}
-            className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50">
+            className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50">
             {t('marketplace.trustPublisher')}
           </button>
         </div>
       </div>
 
-      {publishers.length === 0 && <p className="text-xs text-zinc-600">{t('marketplace.publisherEmpty')}</p>}
+      {publishers.length === 0 && <p className="text-xs text-redlog-text-faint">{t('marketplace.publisherEmpty')}</p>}
       <div className="space-y-2">
         {publishers.map((p) => (
-          <div key={p.id} className="rounded border border-zinc-700 bg-zinc-900/50 p-3">
+          <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50 p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-zinc-200 font-mono">{p.id}</span>
-                  <span className="text-[11px] text-zinc-500">{p.keys.length} {t('marketplace.publisherKeys')}</span>
+                  <span className="text-xs font-medium text-redlog-text font-mono">{p.id}</span>
+                  <span className="text-xs text-redlog-text-dim">{p.keys.length} {t('marketplace.publisherKeys')}</span>
                 </div>
                 {p.homepage && <a href={p.homepage} onClick={(e) => { e.preventDefault(); window.redlog.app.openExternal(p.homepage!) }}
-                  className="text-[11px] text-blue-400 hover:text-blue-300 underline">{p.homepage}</a>}
+                  className="text-xs text-blue-400 hover:text-blue-300 underline">{p.homepage}</a>}
                 <ul className="mt-2 space-y-1">
                   {p.keys.map((k) => (
-                    <li key={k.publicKey} className="text-[11px] text-zinc-500 font-mono truncate" title={k.publicKey}>
+                    <li key={k.publicKey} className="text-xs text-redlog-text-dim font-mono truncate" title={k.publicKey}>
                       {k.label ? `[${k.label}] ` : ''}{k.publicKey.slice(0, 32)}…
                     </li>
                   ))}
                 </ul>
               </div>
               <button onClick={() => untrust(p.id)}
-                className="px-2.5 py-1 text-xs bg-zinc-800 text-zinc-400 hover:bg-red-900/60 hover:text-red-300 rounded shrink-0">
+                className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/60 hover:text-red-300 rounded shrink-0">
                 {t('marketplace.untrustPublisher')}
               </button>
             </div>
