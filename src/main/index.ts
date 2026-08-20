@@ -25,6 +25,7 @@ import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../c
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier } from '../core/retention'
+import { readBody as readHttpBody, type BodyRef } from '../core/http-body-store'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
@@ -521,8 +522,8 @@ function startProject(project: ProjectMeta): void {
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
-    if (swept.cast > 0 || swept.screenshots > 0) {
-      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
+    if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
+      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see loggedTierTimer below.
@@ -1202,6 +1203,11 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+  ipcMain.handle('httpBody:read', (_e, ref: BodyRef) => {
+    if (!activeProject) return null
+    return readHttpBody(ref)
+  })
+
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
   // still fires `events:new` per-event (deconfliction webhook + overlay
   // pivot HUD subscribe to it), but the renderer's Timeline drains

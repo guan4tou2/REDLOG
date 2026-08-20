@@ -37,6 +37,7 @@ import { getCaptureHealth } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
+import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -575,6 +576,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         }
       }
 
+      if (agentType === 'scanner') {
+        extractBodyToSidecar(data, 'request_body')
+        extractBodyToSidecar(data, 'response_body')
+      }
+
       const baseRules = getRules()
       const perEventRules = lootValues.length > 0
         ? { ...baseRules, denylist: [...baseRules.denylist, ...lootValues] }
@@ -713,6 +719,16 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/events/count' && req.method === 'GET') {
       json(res, 200, { count: getEventCount() })
+      return
+    }
+
+    const bodyMatch = route.match(/^\/api\/http-body\/([a-f0-9]{32})$/)
+    if (bodyMatch && req.method === 'GET') {
+      const file = `${bodyMatch[1]}.body`
+      const encoding = (url.searchParams.get('encoding') || 'text') as 'text' | 'base64'
+      const content = readHttpBody({ sha256: '', size: 0, file, encoding })
+      if (content === null) { json(res, 404, { error: 'body not found' }); return }
+      json(res, 200, { data: content, encoding, file })
       return
     }
 

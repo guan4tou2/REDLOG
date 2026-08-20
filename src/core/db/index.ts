@@ -16,6 +16,7 @@ export function initDB(projectDir: string): Database.Database {
 
   fs.mkdirSync(projectDir, { recursive: true })
   fs.mkdirSync(path.join(projectDir, 'screenshots'), { recursive: true })
+  fs.mkdirSync(path.join(projectDir, 'http-bodies'), { recursive: true })
 
   const dbPath = path.join(projectDir, 'timeline.db')
   currentDbPath = dbPath
