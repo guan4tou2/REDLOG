@@ -93,67 +93,62 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!project) return
-      const cmd = e.ctrlKey || e.metaKey
-      // Search: ⌘/ was the original shortcut but macOS sends `Unidentified`
-      // as e.key for that combo (system-level Help-menu grab), so it never
-      // matched. Fall back to `e.code === 'Slash'` which stays 'Slash'
-      // regardless of layout/system grab, and also accept ⌘K (common command-
-      // palette pattern in Slack/Notion/Linear so muscle memory works).
-      if (cmd && (e.key === '/' || e.code === 'Slash' || e.key === 'k' || e.key === 'K')) {
-        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+      // Dispatch off the one table (lib/shortcuts.ts) rather than a ladder of
+      // hand-written conditions. The table is what the Dashboard cheatsheet
+      // and the Timeline's `?` panel render, so a binding that works and a
+      // binding that is documented are now the same fact — the cheatsheet had
+      // drifted four bindings behind before this.
+      const rows = appShortcuts(currentShortcutOrder(), isMac)
+      const hit = rows.find((r) => r.match?.(e))
+      if (!hit) return
+
+      // Typing beats every shortcut: a text field owns its keystrokes.
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+      const typing = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
+      if (typing) return
+
+      if (hit.scope === 'nav') {
+        const target = hit.id === 'nav:settings' ? ('settings' as View) : viewForShortcut(parseInt(hit.keys.slice(-1)))
+        if (!target) return
         e.preventDefault()
-        // v0.6.91 W3: ⌘K inside the Timeline view opens the local fuzzy
-        // palette instead of jumping to the Search sidebar — palette scopes
-        // to the currently-loaded events, which is where operators want to
-        // muscle-memory ⌘K. ⌘/ still routes to Search everywhere. Anywhere
-        // outside Timeline both shortcuts keep the old Search behaviour.
-        const isPalette = view === 'timeline' && (e.key === 'k' || e.key === 'K')
-        if (isPalette) {
-          window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
+        setView(target)
+        return
+      }
+
+      switch (hit.id) {
+        case 'app:search':
+        case 'app:palette': {
+          e.preventDefault()
+          // v0.6.91 W3: ⌘K inside the Timeline opens the local fuzzy palette
+          // instead of jumping to the Search sidebar — it scopes to the
+          // currently-loaded events, which is where the muscle memory points.
+          // ⌘/ still routes to Search everywhere.
+          if (hit.id === 'app:palette' && view === 'timeline') {
+            window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
+          } else {
+            setView('search')
+          }
           return
         }
-        setView('search')
-        return
-      }
-      // ⌘/Ctrl+. pause/resume recording — matches the "period = pause"
-      // convention macOS uses for stop-download / stop-loading.
-      if (cmd && e.key === '.') {
-        e.preventDefault()
-        window.redlog.recording.toggle().then((on) => {
-          toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
-        }).catch(() => {})
-        return
-      }
-      // ⌘⇧⌥ + arrow snaps the HUD to a corner of the display it's currently
-      // on (audit finding #53). Was ⌘⌥ initially but macOS Sequoia's built-in
-      // window tiling grabs that combo before the app sees it, so add Shift
-      // as a third modifier — nothing on stock macOS uses ⌘⇧⌥ + Arrow. Skip
-      // when a text field has focus so arrow keys still move the caret.
-      // Mapping is symmetric: Up/Left → top-left, Up+Right → top-right,
-      // Down/Left → bottom-left, Down+Right → bottom-right — but with a
-      // single arrow we pick ↑=tl, ↓=bl, ←=tl, →=br so every combo maps.
-      if (cmd && e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
-        // Clockwise around the four corners: ↑ = TL, → = TR, ↓ = BR, ← = BL.
-        // Reads as "pick the corner in that direction on a compass rose."
-        const corner: 'tl' | 'tr' | 'bl' | 'br' =
-          e.key === 'ArrowUp' ? 'tl'
-          : e.key === 'ArrowRight' ? 'tr'
-          : e.key === 'ArrowDown' ? 'br'
-          : 'bl'
-        e.preventDefault()
-        window.redlog.overlay.moveToCorner?.(corner)
-        return
-      }
-      if (cmd && !e.shiftKey && !e.altKey) {
-        const num = parseInt(e.key)
-        if (Number.isNaN(num)) return
-        const target = viewForShortcut(num)
-        if (target) {
+        case 'app:toggleRecording': {
           e.preventDefault()
-          setView(target)
+          window.redlog.recording.toggle().then((on) => {
+            toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
+          }).catch(() => {})
+          return
+        }
+        case 'app:hudCorner': {
+          // Clockwise around the four corners: ↑ = TL, → = TR, ↓ = BR, ← = BL.
+          // Reads as "pick the corner in that direction on a compass rose."
+          // ⌘⇧⌥ rather than ⌘⌥ because macOS Sequoia's window tiling grabs
+          // the latter before the app sees it (audit finding #53).
+          const corner: 'tl' | 'tr' | 'bl' | 'br' =
+            e.key === 'ArrowUp' ? 'tl'
+              : e.key === 'ArrowRight' ? 'tr'
+                : e.key === 'ArrowDown' ? 'br'
+                  : 'bl'
+          e.preventDefault()
+          window.redlog.overlay.moveToCorner?.(corner)
         }
       }
     }
