@@ -6,6 +6,7 @@ import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } 
 import WslPanel from './WslPanel'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
 import { applyDensity, resolveDensity, storedDensity } from '../lib/density'
+import { formatDateTime } from '../lib/time'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -1365,7 +1366,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
                   {statusLabel(a.status)}
                 </span>
                 <span className="text-redlog-text-dim font-mono tabular-nums text-xs">
-                  {new Date(a.createdAt).toLocaleString()}
+                  {formatDateTime(a.createdAt, { seconds: true })}
                 </span>
                 <span className="text-redlog-text-dim text-xs">
                   {t('settings.integrityEvents').replace('{{n}}', String(a.eventCount))}

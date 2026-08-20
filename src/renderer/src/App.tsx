@@ -24,6 +24,7 @@ import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './l
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
+import { formatTime } from './lib/time'
 
 type View = SidebarViewId | 'settings' | 'search'
 
@@ -1030,7 +1031,7 @@ function ScreenshotsView(): JSX.Element {
               key={s.id}
               role="button"
               tabIndex={0}
-              aria-label={`Screenshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+              aria-label={`Screenshot at ${formatTime(s.timestamp, { seconds: true })}`}
               className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-redlog-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
               onClick={() => !deletedIds.has(s.id) && setExpanded(expanded === s.id ? null : s.id)}
               onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !deletedIds.has(s.id)) { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
@@ -1058,7 +1059,7 @@ function ScreenshotsView(): JSX.Element {
               </div>
               <div className="px-2 py-1 flex items-center justify-between gap-1">
                 <p className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
-                  {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
+                  {formatTime(s.timestamp, { seconds: true })} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
                     <span className="ml-1 text-redlog-text-faint">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
                   )}

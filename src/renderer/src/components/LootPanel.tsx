@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
 import { Gem } from 'lucide-react'
+import { formatDateTime } from '../lib/time'
 
 export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -168,7 +169,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="text-redlog-text-dim text-xs">
-                  <span className="text-redlog-text-dim tabular-nums">{new Date(le.timestamp).toLocaleString()}</span>
+                  <span className="text-redlog-text-dim tabular-nums">{formatDateTime(le.timestamp, { seconds: true })}</span>
                   {le.source && (
                     <span> · {t('loot.from')} <span className="text-redlog-text font-mono">{le.source}</span></span>
                   )}

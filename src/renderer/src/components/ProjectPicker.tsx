@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { formatFreshness } from '../lib/time'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 import logoUrl from '../assets/logo.svg'
@@ -100,17 +101,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     else if (profile.scope?.enforcement) setWarnOnViolation(profile.scope.enforcement !== 'log')
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
-  }
-
-  function timeAgo(ts: number): string {
-    const diff = Date.now() - ts
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return t('time.justNow')
-    if (mins < 60) return t('time.mAgo', { m: mins })
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return t('time.hAgo', { h: hrs })
-    const days = Math.floor(hrs / 24)
-    return t('time.dAgo', { d: days })
   }
 
   // v0.14 picker layout: the pre-v0.14 fixed 480px column left huge empty
@@ -308,7 +298,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                     ) : (
                       <div className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
                     )}
-                    <div className="text-redlog-text-faint text-xs font-mono">{timeAgo(p.lastOpened)}</div>
+                    <div className="text-redlog-text-faint text-xs font-mono">{formatFreshness(p.lastOpened, t)}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }}

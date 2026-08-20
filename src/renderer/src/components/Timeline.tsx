@@ -9,6 +9,7 @@ import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
+import { formatTime } from '../lib/time'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -382,7 +383,7 @@ function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
 }
 
 function formatTimeLabel(date: Date): string {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatTime(date.getTime())
 }
 
 // v0.6.91 S7: timezone-aware formatter. Every timestamp shown in the Timeline
@@ -425,15 +426,15 @@ function formatTs(ms: number, tz: TzMode, projectTz: string | null, style: TsSty
   const opts: Intl.DateTimeFormatOptions = {}
   if (timeZone) opts.timeZone = timeZone
   try {
-    if (style === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...opts })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', ...opts })
-    return d.toLocaleString([], opts)
+    if (style === 'time') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', ...opts })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', ...opts })
+    return d.toLocaleString([], { hour12: false, ...opts })
   } catch {
     // Bad IANA name → fall back to Local so a mistyped project.timezone can't
     // wipe every time label on the panel.
-    if (style === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    return d.toLocaleString()
+    if (style === 'time') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return d.toLocaleString([], { hour12: false })
   }
 }
 

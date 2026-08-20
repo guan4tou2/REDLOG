@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { formatTime } from '../lib/time'
 
 interface TargetEntry {
   target: string
@@ -201,7 +202,7 @@ export function TargetView(): JSX.Element {
                   </div>
                 </div>
                 <div className="mt-1 text-redlog-text-dim text-xs">
-                  {t('targets.first', { time: new Date(tgt.firstSeen).toLocaleTimeString() })} · {t('targets.last', { time: new Date(tgt.lastSeen).toLocaleTimeString() })}
+                  {t('targets.first', { time: formatTime(tgt.firstSeen, { seconds: true }) })} · {t('targets.last', { time: formatTime(tgt.lastSeen, { seconds: true }) })}
                 </div>
               </div>
 
@@ -229,7 +230,7 @@ export function TargetView(): JSX.Element {
                             {agentIcon[e.agentType] || '?'}
                           </span>
                           <span className="text-redlog-text-faint w-16 shrink-0">
-                            {new Date(e.timestamp).toLocaleTimeString()}
+                            {formatTime(e.timestamp, { seconds: true })}
                           </span>
                           <span className="text-redlog-text truncate">
                             {e.agentType === 'shell' && (e.data.command as string)}
