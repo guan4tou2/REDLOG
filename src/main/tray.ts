@@ -1,6 +1,7 @@
 import { Tray, Menu, nativeImage, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import { QUICK_MARK_ACCELERATOR } from '../core/shortcuts'
 
 const basePath = join(__dirname, '../../resources')
 
@@ -99,7 +100,7 @@ export function createTray(
     if (onQuickMark) {
       items.push({
         label: '⚑ Quick Mark',
-        accelerator: 'CommandOrControl+Shift+M',
+        accelerator: QUICK_MARK_ACCELERATOR,
         click: () => onQuickMark()
       })
     }
