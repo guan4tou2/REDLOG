@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { toastDeferred } from './Toast'
+import { useListKeyboard } from '../lib/useListKeyboard'
 
 interface TargetEntry {
   target: string
@@ -32,7 +33,13 @@ function matchesScope(target: string, pattern: string): boolean {
   return target === pattern
 }
 
-export function TargetView(): JSX.Element {
+interface TargetViewProps {
+  /** §7: a target row leads to the Timeline. Optional so the view still
+   *  renders standalone in tests. */
+  onOpenInTimeline?: (ts: number) => void
+}
+
+export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Element {
   const [targets, setTargets] = useState<TargetEntry[]>([])
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
@@ -122,6 +129,19 @@ export function TargetView(): JSX.Element {
   }, [selected])
 
   const filtered = targets.filter((tgt) => {
+
+  // §7's main path starts here: target → expand its commands → ⌘↩ to the
+  // Timeline. It was the list most in need of arrow keys and the one that did
+  // not have them.
+  const listNav = useListKeyboard({
+    count: filtered.length,
+    onActivate: (i) => { const tgt = filtered[i]; if (tgt) void loadEvidence(tgt.target) },
+    onJumpToTimeline: (i) => {
+      const tgt = filtered[i]
+      if (tgt) onOpenInTimeline?.(tgt.lastSeen)
+    },
+    onEscape: () => setSelected(null)
+  })
     if (filter === 'in_scope') return tgt.inScope === true
     if (filter === 'out_scope') return tgt.inScope === false
     return true
@@ -164,11 +184,15 @@ export function TargetView(): JSX.Element {
       {filtered.length === 0 ? (
         <p className="text-redlog-text-dim text-sm">{t('targets.empty')}</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((tgt) => (
+        <div className="space-y-2" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
+          {filtered.map((tgt, i) => {
+            const rowProps = listNav.itemProps(i)
+            return (
             <div key={tgt.target}>
               <div
-                onClick={() => loadEvidence(tgt.target)}
+                {...rowProps}
+                ref={(el) => rowProps.ref(el)}
+                onClick={() => { rowProps.onClick(); loadEvidence(tgt.target) }}
                 className={`bg-redlog-surface border rounded-lg p-3 cursor-pointer transition-colors ${
                   selected === tgt.target ? 'border-red-600' : 'border-redlog-border hover:border-redlog-border'
                 }`}
@@ -267,7 +291,8 @@ export function TargetView(): JSX.Element {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

@@ -285,10 +285,21 @@ export default function StatusBar(): JSX.Element {
             data-testid="statusbar-tier-count"
             onClick={() => window.dispatchEvent(new CustomEvent('redlog:auditor-view:toggle'))}
             className="text-redlog-text-dim tabular-nums cursor-pointer hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 rounded"
-            title={`${eventCount.toLocaleString()} chained (audit chain) · ${loggedCount.toLocaleString()} logged (supporting evidence). Click to toggle the Timeline's auditor view (hides logged rows). Timeline must be open for the click to take effect.`}
+            title={t('statusBar.tierCountTitle', {
+              chained: eventCount.toLocaleString(),
+              logged: loggedCount.toLocaleString()
+            })}
+            // §5.7: the tooltip must not be the only place this is said. The
+            // two numbers are already visible and the accessible name spells
+            // out which is which, so a screen reader and a keyboard user get
+            // the split without hovering.
+            aria-label={t('statusBar.tierCountLabel', {
+              chained: eventCount.toLocaleString(),
+              logged: loggedCount.toLocaleString()
+            })}
           >
             {t('statusBar.events', { count: eventCount })}
-            <span className="text-redlog-text-faint mx-1">·</span>
+            <span className="text-redlog-text-faint mx-1" aria-hidden>·</span>
             <span className="text-redlog-text-dim">{loggedCount.toLocaleString()}</span>
           </button>
         ) : (
