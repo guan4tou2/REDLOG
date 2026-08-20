@@ -947,5 +947,12 @@
   "fatal.diagnostics": "Diagnostics",
   "fatal.copy": "Copy",
   "fatal.openIssue": "Open a GitHub issue",
-  "fatal.scrubbed": "Paths are reduced to the app bundle, and your username and project name are replaced. Read it before sending — this is exactly what gets shared."
+  "fatal.scrubbed": "Paths are reduced to the app bundle, and your username and project name are replaced. Read it before sending — this is exactly what gets shared.",
+  "timeline.help.walkLane": "Walk this lane, in order",
+  "timeline.help.walkCrossLane": "Change lane — lands on the nearest event in time",
+  "timeline.help.walkState": "Skip to the next event carrying state",
+  "timeline.help.walkEnds": "First / last event",
+  "timeline.help.toggleInspector": "Open or close the Inspector on the selection",
+  "timeline.help.zoomHere": "Zoom to five minutes either side of here",
+  "timeline.help.zoomKeys": "Zoom in / out / reset, anchored on the selection"
 }

@@ -105,6 +105,19 @@ describe('the table drives the handler, not just the cheatsheet', () => {
       .toBe('nav:timeline')
   })
 
+  it('never lets a focused text field swallow view navigation', () => {
+    // xterm keeps a hidden textarea focused for as long as the Terminal view
+    // is mounted, so a blanket typing guard disables every shortcut there.
+    // e2e/project-flow.spec.ts caught exactly this.
+    for (const r of rows.filter((x) => x.scope === 'nav')) {
+      expect(r.guardTyping, r.id).toBeFalsy()
+    }
+    // The ones a field may reasonably want do yield.
+    for (const id of ['app:search', 'app:palette', 'app:hudCorner']) {
+      expect(rows.find((r) => r.id === id)?.guardTyping, id).toBe(true)
+    }
+  })
+
   it('leaves the globally-registered marker chord unmatched', () => {
     // The main process owns ⌘⇧M, so the renderer never sees it. The row is
     // documentation, and the absent matcher says so.

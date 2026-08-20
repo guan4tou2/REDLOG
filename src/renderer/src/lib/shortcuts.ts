@@ -39,6 +39,20 @@ export interface ShortcutRow {
    * exists to prevent.
    */
   match?: (e: KeyboardEvent) => boolean
+  /**
+   * Whether a focused text field should swallow this shortcut.
+   *
+   * Not a blanket rule, and getting it wrong is invisible until someone is in
+   * the Terminal: xterm keeps a hidden textarea focused at all times, so a
+   * global "am I typing?" guard silently disables every shortcut for as long
+   * as that view is open — which is how ⌘1..9 stopped working, caught by
+   * `e2e/project-flow.spec.ts`.
+   *
+   * A ⌘ chord over a digit cannot be mistaken for typing, so navigation is
+   * never guarded. ⌘K and ⌘/ are, because a text field may reasonably want
+   * them; arrow chords are, because arrows still have to move a caret.
+   */
+  guardTyping?: boolean
 }
 
 const mod = (e: KeyboardEvent): boolean => e.metaKey || e.ctrlKey
@@ -89,10 +103,14 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
     ...nav,
     {
       id: 'app:search', keys: `${m}/`, label: 'dashboard.search', scope: 'app',
+      guardTyping: true,
+      // ⌘/ was the original chord, but macOS sends `Unidentified` as `key` for
+      // it (the system Help-menu grab), so `code` is what actually matches.
       match: (e) => mod(e) && (e.key === '/' || e.code === 'Slash')
     },
     {
       id: 'app:palette', keys: `${m}K`, label: 'dashboard.palette', scope: 'app',
+      guardTyping: true,
       match: (e) => mod(e) && (e.key === 'k' || e.key === 'K')
     },
     {
@@ -112,6 +130,7 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
       keys: isMac ? '⌘⇧⌥↑↓←→' : 'Ctrl+Shift+Alt+↑↓←→',
       label: 'dashboard.hudCorner',
       scope: 'app',
+      guardTyping: true,
       match: (e) => mod(e) && e.altKey && e.shiftKey && HUD_ARROWS.includes(e.key)
     },
     { id: 'term:new', keys: `${m}T`, label: 'dashboard.terminalNewTab', scope: 'terminal' },
@@ -150,7 +169,11 @@ export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
       rows: [
         { keys: 'f', label: 'timeline.help.focusChain' },
         { keys: 'click', label: 'timeline.help.selectDot' },
-        { keys: '↑/↓', label: 'timeline.help.walk' }
+        { keys: '← →', label: 'timeline.help.walkLane' },
+        { keys: '↑ ↓', label: 'timeline.help.walkCrossLane' },
+        { keys: '⇧← ⇧→', label: 'timeline.help.walkState' },
+        { keys: 'Home / End', label: 'timeline.help.walkEnds' },
+        { keys: 'Enter', label: 'timeline.help.toggleInspector' }
       ]
     },
     {
@@ -158,7 +181,9 @@ export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
       rows: [
         { keys: 'Right-click', label: 'timeline.help.dropMarker' },
         { keys: 'drag minimap', label: 'timeline.help.zoom' },
-        { keys: 'click cluster', label: 'timeline.help.expandCluster' }
+        { keys: 'click cluster', label: 'timeline.help.expandCluster' },
+        { keys: 'double-click', label: 'timeline.help.zoomHere' },
+        { keys: '+ − 0', label: 'timeline.help.zoomKeys' }
       ]
     },
     {

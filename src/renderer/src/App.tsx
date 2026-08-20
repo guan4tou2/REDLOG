@@ -102,10 +102,14 @@ export default function App(): JSX.Element {
       const hit = rows.find((r) => r.match?.(e))
       if (!hit) return
 
-      // Typing beats every shortcut: a text field owns its keystrokes.
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-      const typing = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
-      if (typing) return
+      // Only the rows that ask for it yield to a focused text field. A blanket
+      // guard here is what broke ⌘1..9 while the Terminal was open — xterm
+      // keeps a hidden textarea focused for as long as that view is mounted.
+      if (hit.guardTyping) {
+        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
+        const typing = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
+        if (typing) return
+      }
 
       if (hit.scope === 'nav') {
         const target = hit.id === 'nav:settings' ? ('settings' as View) : viewForShortcut(parseInt(hit.keys.slice(-1)))

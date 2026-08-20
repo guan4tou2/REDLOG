@@ -947,5 +947,12 @@
   "fatal.diagnostics": "診斷資訊",
   "fatal.copy": "複製",
   "fatal.openIssue": "開一個 GitHub issue",
-  "fatal.scrubbed": "路徑已收斂到 app 套件內，使用者名稱與專案名稱已替換。送出前請先讀過——分享出去的就是這段文字。"
+  "fatal.scrubbed": "路徑已收斂到 app 套件內，使用者名稱與專案名稱已替換。送出前請先讀過——分享出去的就是這段文字。",
+  "timeline.help.walkLane": "依序走這條泳道",
+  "timeline.help.walkCrossLane": "換泳道——落在時間最接近的事件",
+  "timeline.help.walkState": "跳到下一個帶狀態的事件",
+  "timeline.help.walkEnds": "第一個／最後一個事件",
+  "timeline.help.toggleInspector": "對選中的事件開關 Inspector",
+  "timeline.help.zoomHere": "縮放到此處前後五分鐘",
+  "timeline.help.zoomKeys": "放大／縮小／重設，以選取為錨"
 }
