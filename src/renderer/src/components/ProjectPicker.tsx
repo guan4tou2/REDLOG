@@ -64,7 +64,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     try {
       const project = await window.redlog.project.open(id)
       if (project) onProjectOpen({ id: project.id, name: project.name })
-      else toast(t('project.openMissing'), 'error')
+      else toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') })
     } catch (e) {
       toast(t('project.openFailed', { error: (e as Error).message }), 'error')
     }

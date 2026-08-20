@@ -203,7 +203,7 @@ export default function App(): JSX.Element {
           {project.name}
         </button>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <LaunchBrowserButton />
+          <LaunchBrowserButton onNavigate={(v) => setView(v as View)} />
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
@@ -411,7 +411,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     try {
       const api = window.redlog.hooks
       const r = install ? await api?.install(s.hookId) : await api?.uninstall(s.hookId)
-      if (r && r.success === false) toast(r.message || t('capture.actionFailed'), 'error')
+      if (r && r.success === false) {
+        toast(t('capture.actionFailed'), {
+          type: 'error',
+          why: t('capture.actionFailedWhy'),
+          detail: r.message,
+          action: { label: t('common.retry'), onClick: () => { void setInstalled(s, install) } }
+        })
+      }
       onRefresh()
     } finally { setBusy(null) }
   }
@@ -588,7 +595,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   )
 }
 
-function LaunchBrowserButton(): JSX.Element {
+function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
   const { t } = useI18n()
@@ -609,7 +616,12 @@ function LaunchBrowserButton(): JSX.Element {
         setRunning(true)
         toast(t('browser.launched'), 'success')
       } else {
-        toast(r.error || t('browser.failed'), 'error')
+        toast(t('browser.failed'), {
+          type: 'error',
+          why: t('browser.failedWhy'),
+          detail: r.error,
+          action: { label: t('browser.openSettings'), onClick: () => onNavigate('settings') }
+        })
       }
     }
     setBusy(false)
@@ -756,7 +768,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             onClick={async () => {
               const path = await window.redlog.data.exportJson()
               if (path) toast(t('toast.exported'), 'success')
-              else toast(t('toast.exportFailed'), 'error')
+              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
           >
@@ -1064,7 +1076,11 @@ function ScreenshotsView(): JSX.Element {
                         setDeletedIds((prev) => { const n = new Set(prev); n.add(s.id); return n })
                         toast(t('screenshots.deletedToast'), 'success')
                       } else {
-                        toast(res.error || 'Delete failed', 'error')
+                        toast(t('screenshots.deleteFailed'), {
+                          type: 'error',
+                          why: t('screenshots.deleteFailedWhy'),
+                          detail: res.error
+                        })
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}

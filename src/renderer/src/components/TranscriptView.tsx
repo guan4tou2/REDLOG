@@ -280,7 +280,13 @@ export default function TranscriptView({ onOpenInTimeline }: {
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
       toast(t('transcript.copied'), 'success')
-    } catch { toast(t('transcript.copyFailed'), 'error') }
+    } catch (e) {
+      toast(t('transcript.copyFailed'), {
+        type: 'error',
+        why: t('transcript.copyFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
+    }
   }, [shown, t])
 
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
