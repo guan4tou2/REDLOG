@@ -644,6 +644,45 @@ function startProject(project: ProjectMeta): void {
     sessionRegistry: {
       register: registerSessionId,
       list: getRegisteredSessions
+    },
+    watchPathManager: {
+      addPath: (cwd: string): boolean => {
+        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
+        try {
+          let raw: { excludedPaths?: string[]; watchPaths?: string[] } = { excludedPaths: [], watchPaths: [] }
+          try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) } catch { /* new file */ }
+          const current = (raw.watchPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean)
+          const norm = path.resolve(cwd)
+          if (current.some((p: string) => path.resolve(p) === norm)) return false
+          current.push(cwd)
+          const clean = { excludedPaths: (raw.excludedPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean), watchPaths: current }
+          fs.mkdirSync(path.dirname(cfgPath), { recursive: true })
+          fs.writeFileSync(cfgPath, JSON.stringify(clean, null, 2) + '\n')
+          configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+          return true
+        } catch { return false }
+      },
+      removePath: (cwd: string): boolean => {
+        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
+        try {
+          let raw: { excludedPaths?: string[]; watchPaths?: string[] } = { excludedPaths: [], watchPaths: [] }
+          try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) } catch { return false }
+          const norm = path.resolve(cwd)
+          const filtered = (raw.watchPaths ?? []).filter((p: string) => path.resolve(p.trim()) !== norm)
+          if (filtered.length === (raw.watchPaths ?? []).length) return false
+          const clean = { excludedPaths: (raw.excludedPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean), watchPaths: filtered }
+          fs.writeFileSync(cfgPath, JSON.stringify(clean, null, 2) + '\n')
+          configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+          return true
+        } catch { return false }
+      },
+      listPaths: (): string[] => {
+        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
+        try {
+          const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
+          return (raw.watchPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean)
+        } catch { return [] }
+      }
     }
   })
   onApiProjectOpen()

@@ -69,6 +69,16 @@ let sessionRegistryRef: {
   list: () => string[]
 } | null = null
 
+/** watchPath manager: lets MCP/API callers add a cwd to the watchPaths
+ *  whitelist so their session passes the tailer's cwdPassesGate(). Wired
+ *  by main/index.ts to read/write ~/.redlog/hook-config.json and live-
+ *  reconfigure the tailer. */
+let watchPathManagerRef: {
+  addPath: (cwd: string) => boolean
+  removePath: (cwd: string) => boolean
+  listPaths: () => string[]
+} | null = null
+
 /** Duck-typed slice of AlertRuntime the api-server needs. Kept minimal so
  *  core doesn't have to import the runtime class (which would drag main
  *  services into core). main/index.ts hands the real runtime in via
@@ -145,6 +155,7 @@ export function configureApi(opts: {
   screenshotAgent?: typeof screenshotAgentRef
   alertRuntime?: AlertRuntimeSlice
   sessionRegistry?: typeof sessionRegistryRef
+  watchPathManager?: typeof watchPathManagerRef
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
@@ -154,6 +165,7 @@ export function configureApi(opts: {
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.alertRuntime) alertRuntimeRef = opts.alertRuntime
   if (opts.sessionRegistry) sessionRegistryRef = opts.sessionRegistry
+  if (opts.watchPathManager) watchPathManagerRef = opts.watchPathManager
 }
 
 // Runs an MCP tool directly against the same internal functions the REST
@@ -271,7 +283,10 @@ function makeMcpDispatch(operator: Operator): ToolDispatch {
         const sid = String(args.session_id ?? '')
         if (!sid) throw new Error('session_id is required')
         if (sessionRegistryRef) sessionRegistryRef.register(sid)
-        return { registered: true, session_id: sid }
+        const cwd = typeof args.cwd === 'string' ? args.cwd.trim() : ''
+        let watchPathAdded = false
+        if (cwd && watchPathManagerRef) watchPathAdded = watchPathManagerRef.addPath(cwd)
+        return { registered: true, session_id: sid, ...(cwd ? { cwd, watchpath_added: watchPathAdded } : {}) }
       }
 
       default: {
@@ -1066,12 +1081,43 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const sid = (body.session_id || '').toString().trim()
       if (!sid) { json(res, 400, { error: 'session_id is required' }); return }
       if (sessionRegistryRef) sessionRegistryRef.register(sid)
-      json(res, 200, { registered: true, session_id: sid })
+      const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
+      let watchPathAdded = false
+      if (cwd && watchPathManagerRef) watchPathAdded = watchPathManagerRef.addPath(cwd)
+      json(res, 200, { registered: true, session_id: sid, ...(cwd ? { cwd, watchpath_added: watchPathAdded } : {}) })
       return
     }
 
     if (route === '/api/session/registered' && req.method === 'GET') {
       json(res, 200, { sessions: sessionRegistryRef ? sessionRegistryRef.list() : [] })
+      return
+    }
+
+    // ── watchPath management (add/remove/list via API) ────────────────
+    if (route === '/api/watchpath' && req.method === 'GET') {
+      json(res, 200, { watchPaths: watchPathManagerRef ? watchPathManagerRef.listPaths() : [] })
+      return
+    }
+
+    if (route === '/api/watchpath' && req.method === 'POST') {
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const cwd = typeof body.path === 'string' ? body.path.trim() : ''
+      if (!cwd) { json(res, 400, { error: 'path is required' }); return }
+      if (!watchPathManagerRef) { json(res, 503, { error: 'watchPath manager not available' }); return }
+      const added = watchPathManagerRef.addPath(cwd)
+      json(res, 200, { path: cwd, added, watchPaths: watchPathManagerRef.listPaths() })
+      return
+    }
+
+    if (route === '/api/watchpath' && req.method === 'DELETE') {
+      let body: Record<string, unknown>
+      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const cwd = typeof body.path === 'string' ? body.path.trim() : ''
+      if (!cwd) { json(res, 400, { error: 'path is required' }); return }
+      if (!watchPathManagerRef) { json(res, 503, { error: 'watchPath manager not available' }); return }
+      const removed = watchPathManagerRef.removePath(cwd)
+      json(res, 200, { path: cwd, removed, watchPaths: watchPathManagerRef.listPaths() })
       return
     }
 

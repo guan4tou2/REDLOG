@@ -118,12 +118,12 @@ export const MCP_TOOLS: McpTool[] = [
   },
   {
     name: 'redlog_session_register',
-    description: 'Register the current Claude Code session for capture. Call at session start so RedLog records this session\'s transcript. Without registration, all sessions are captured (backward compatible); once any session registers, only registered ones are recorded.',
+    description: 'Register the current Claude Code session for capture and auto-add its working directory to the watchPaths whitelist. Call at session start so RedLog records this session\'s transcript. The cwd parameter adds the directory to ~/.redlog/hook-config.json watchPaths so the tailer\'s directory gate passes — essential when watchPaths is non-empty. Without registration, all sessions are captured (backward compatible); once any session registers, only registered ones are recorded.',
     inputSchema: {
       type: 'object',
       properties: {
         session_id: { type: 'string', description: 'Claude Code session ID' },
-        cwd: { type: 'string', description: 'Working directory of the session (optional)' }
+        cwd: { type: 'string', description: 'Working directory of the session. When provided, auto-added to the watchPaths whitelist so the tailer captures this session.' }
       },
       required: ['session_id']
     }
