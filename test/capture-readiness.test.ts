@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeCaptureReadiness } from '../src/renderer/src/lib/captureReadiness'
+import { computeCaptureReadiness, primaryCaptureAction } from '../src/renderer/src/lib/captureReadiness'
 import type { ReadinessHealth, ReadinessSource } from '../src/renderer/src/lib/captureReadiness'
 
 // capture-readiness turns the diagnostic CaptureHealth (which source is feeding,
@@ -138,5 +138,36 @@ describe('computeCaptureReadiness', () => {
     const r = computeCaptureReadiness(h)
     expect(r.level).toBe('recording')
     expect(r.steps.map((s) => s.id)).toContain('shell-hook')
+  })
+})
+
+// §17: two axes, one primary. The manage row correctly exposes install and
+// enable separately — collapsing them hides which half is missing — but two
+// equally-weighted buttons leave the operator to work out which one moves them
+// forward, when the state already determines it.
+describe('primaryCaptureAction', () => {
+  const src = (o: Partial<Parameters<typeof primaryCaptureAction>[0]>): Parameters<typeof primaryCaptureAction>[0] =>
+    ({ state: 'absent', hookId: 'shell', ...o })
+
+  it('says install first — an uninstalled source cannot be helped by a switch', () => {
+    expect(primaryCaptureAction(src({ installed: false, enabled: false }))).toBe('install')
+    expect(primaryCaptureAction(src({ installed: false, enabled: true }))).toBe('install')
+  })
+
+  it('says enable once it exists but is switched off', () => {
+    expect(primaryCaptureAction(src({ installed: true, enabled: false }))).toBe('enable')
+  })
+
+  it('asks for nothing when the source is set up and running', () => {
+    // Its buttons are for undoing at that point, and undo is never the thing
+    // to emphasise.
+    expect(primaryCaptureAction(src({ installed: true, enabled: true, state: 'active' }))).toBe('none')
+    expect(primaryCaptureAction(src({ installed: true, enabled: true, state: 'idle' }))).toBe('none')
+  })
+
+  it('never says install for a source with nothing to install', () => {
+    // The built-in terminal has no hook — it is either on or off.
+    expect(primaryCaptureAction({ state: 'absent', hookId: undefined, enabled: false })).toBe('enable')
+    expect(primaryCaptureAction({ state: 'active', hookId: undefined, enabled: true })).toBe('none')
   })
 })

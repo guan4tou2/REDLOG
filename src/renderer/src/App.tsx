@@ -18,7 +18,7 @@ import { ToastContainer } from './components/Toast'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
-import { computeCaptureReadiness } from './lib/captureReadiness'
+import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
 import { appShortcuts } from './lib/shortcuts'
@@ -532,32 +532,39 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       installed but switched off, or switched on but not yet
                       installed — collapsing them into one button would hide
                       which half is missing. */}
-                  {s.configPath && (
-                    <button
-                      disabled={busy === s.id}
-                      onClick={() => void setEnabled(s, s.enabled === false)}
-                      className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
-                        s.enabled === false
-                          ? 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
-                          : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
-                      }`}
-                    >
-                      {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
-                    </button>
-                  )}
-                  {s.hookId && (
-                    <button
-                      disabled={busy === s.id}
-                      onClick={() => void setInstalled(s, s.installed !== true)}
-                      className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
-                        s.installed === true
-                          ? 'border-redlog-border text-redlog-text-dim hover:text-red-400'
-                          : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
-                      }`}
-                    >
-                      {s.installed === true ? t('capture.uninstall') : t('capture.install')}
-                    </button>
-                  )}
+                  {(() => {
+                    // §17: both axes stay visible, but exactly one control is
+                    // drawn as the primary — the operator should not have to
+                    // work out which button moves them forward when the state
+                    // already determines it.
+                    const primary = primaryCaptureAction(s)
+                    const emphasis = (mine: CaptureAction): string =>
+                      primary === mine
+                        ? 'border-redlog-accent/60 text-redlog-accent hover:bg-redlog-accent/10'
+                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
+                    return (
+                      <>
+                        {s.configPath && (
+                          <button
+                            disabled={busy === s.id}
+                            onClick={() => void setEnabled(s, s.enabled === false)}
+                            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('enable')}`}
+                          >
+                            {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
+                          </button>
+                        )}
+                        {s.hookId && (
+                          <button
+                            disabled={busy === s.id}
+                            onClick={() => void setInstalled(s, s.installed !== true)}
+                            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('install')}`}
+                          >
+                            {s.installed === true ? t('capture.uninstall') : t('capture.install')}
+                          </button>
+                        )}
+                      </>
+                    )
+                  })()}
                   {/* No switch and nothing to install: these turn on when
                       their upstream does (mitmproxy in DNS mode, the launched
                       browser, a terminal pane). Claiming "always on" would

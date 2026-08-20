@@ -115,3 +115,32 @@ export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadine
 
   return { level, steps, nextStep, activeCount }
 }
+
+
+// §17: one primary action per state combination.
+//
+// A capture source has two independent axes — installed or not, switched on or
+// not — and the manage row exposes both, correctly: collapsing them into one
+// control hides which half is missing. But showing two equally-weighted buttons
+// leaves the operator to work out which one moves them forward, and the answer
+// is always determined by the state. So the axes stay, and exactly one of the
+// controls is drawn as primary.
+//
+// The order is "make it exist, then make it run, then leave it alone": a source
+// that is off cannot be helped by installing it again, and a source that is
+// working needs no primary action at all — its buttons are for undoing, and
+// undo is never the thing to emphasise.
+export type CaptureAction = 'install' | 'enable' | 'none'
+
+export function primaryCaptureAction(source: {
+  state: ReadinessSource['state']
+  installed?: boolean
+  enabled?: boolean
+  hookId?: string
+}): CaptureAction {
+  // Only a source with something to install can be installed; the built-in
+  // terminal, for instance, has no hook.
+  if (source.hookId && source.installed !== true) return 'install'
+  if (source.enabled === false) return 'enable'
+  return 'none'
+}
