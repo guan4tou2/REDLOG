@@ -80,3 +80,21 @@ export async function openTestProject(
   })
   return project
 }
+
+/**
+ * Switch to a sidebar view and wait for it to actually mount.
+ *
+ * Every caller used to do `page.click('button:has-text("Timeline")')` with a
+ * `.catch(() => {})`, which hid two problems at once. `:has-text()` is a
+ * case-insensitive *substring* match, so with a project named
+ * `timeline-geometry` open, that selector also matched the title bar's
+ * close-project button (`◀ timeline-geometry`) — and clicking that closed the
+ * project. The swallow then turned "we are on the project picker" into a
+ * failure four tests later, reported as a missing DOM node.
+ *
+ * So: click the stable hook, and assert the view arrived rather than hoping.
+ */
+export async function openView(page: Page, view: string): Promise<void> {
+  await page.click(`[data-view-btn="${view}"]`)
+  await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 10_000 })
+}

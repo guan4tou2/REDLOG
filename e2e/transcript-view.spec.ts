@@ -2,7 +2,7 @@ import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
 interface T { spawn: (i: string, c: number, r: number) => Promise<unknown>; write: (i: string, d: string) => void; kill: (i: string) => void }
 
 // v0.11.2 (design note T5). The Timeline answers "when did this happen and
@@ -41,17 +41,33 @@ test('folds request/response pairs into single exchanges', async () => {
   await page.waitForTimeout(1500)
 
   await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
-  await page.click('button:has-text("Transcript")')
+  await openView(page, 'transcript')
   await page.waitForTimeout(1500)
 
-  const txt = await page.evaluate(() => document.body.innerText)
   // Six events in, four exchanges out: the two pairs each collapse to one.
   const blocks = await page.evaluate(() =>
     document.querySelectorAll('div.rounded.border.border-zinc-800\\/70').length)
   expect(blocks, 'a call and its result must render as one exchange').toBe(4)
 
-  expect(txt, 'the command itself').toMatch(/nmap -sV 10\.0\.0\.5/)
-  expect(txt, 'the request line').toMatch(/GET https:\/\/t\.example/)
+  // Collapsed is the default as of fc30071 — a transcript of a real engagement
+  // is unreadable if every command dumps its full output inline. The inputs
+  // are what you scan; the outputs are what you open.
+  const collapsed = await page.evaluate(() => document.body.innerText)
+  expect(collapsed, 'the command itself').toMatch(/nmap -sV 10\.0\.0\.5/)
+  expect(collapsed, 'the request line').toMatch(/GET https:\/\/t\.example/)
+  expect(collapsed, 'output stays folded until asked for').not.toMatch(/"name":"admin"/)
+
+  // Expand every exchange that has something to show. This assertion used to
+  // pass without the click, because output rendered unconditionally; fc30071
+  // changed that deliberately and this spec was not updated with it, so it has
+  // been failing on main ever since.
+  const collapsedToggles = page.locator('[data-testid="transcript-toggle"][data-expanded="false"]')
+  const n = await collapsedToggles.count()
+  expect(n, 'three of the four exchanges carry output').toBe(3)
+  for (let i = 0; i < n; i++) await collapsedToggles.first().click()
+  await expect(page.locator('[data-testid="transcript-toggle"][data-expanded="false"]')).toHaveCount(0)
+
+  const txt = await page.evaluate(() => document.body.innerText)
   expect(txt, 'the response body, which had no UI at all before this').toMatch(/"name":"admin"/)
   expect(txt, 'a tool result shown under the call that produced it').toMatch(/uid=0\(root\)/)
   // Absence stated, not implied — an external shell records the command only,
