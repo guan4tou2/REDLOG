@@ -46,6 +46,7 @@ import * as path from 'path'
 import * as os from 'os'
 import * as crypto from 'crypto'
 import chokidar, { FSWatcher } from 'chokidar'
+
 import { insertEvent } from '../../core/db/events'
 import { extractTarget } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
@@ -245,6 +246,9 @@ interface SessionState {
   bytesAppendedSinceSnapshot: number
   driftAdvisoryFired: boolean
   parentMissingAdvisoryFired: boolean
+  toolCallsSeen: number
+  toolCallsEmitted: number
+  toolGapAdvisoryFired: boolean
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
@@ -636,6 +640,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     if (ev) {
       s.redlogIdByUuid.set(t.uuid, ev.id)
       s.turnsEmitted++
+      if (subtype === 'tool_call') s.toolCallsEmitted++
       eventBus.publish(ev)
       // v0.12.0: hand tool_call events to the alert subsystem so agent-
       // driven activity registers in the Scope report the same way shell
@@ -843,6 +848,7 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
   for (const turn of turns) {
     // Schema-drift check: parseUnit returned a turn whose type isn't in the
     // adapter's whitelist. Fire the advisory once per session and skip.
+    if (turn.type === 'tool_use') s.toolCallsSeen++
     if (!s.adapter.knownIngestTypes.has(turn.type)) {
       if (!s.driftAdvisoryFired) {
         s.driftAdvisoryFired = true
@@ -887,10 +893,28 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
       cumulative_sha256: sha,
       line_count: s.linesSeen,
       turns_emitted: s.turnsEmitted,
+      tool_calls_seen: s.toolCallsSeen,
+      tool_calls_emitted: s.toolCallsEmitted,
       reason
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
     if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('tailer-host', e) }
+
+  if (!s.toolGapAdvisoryFired && s.toolCallsSeen >= 10 && s.toolCallsEmitted === 0) {
+    s.toolGapAdvisoryFired = true
+    try {
+      const ev = insertEvent('agent', {
+        subtype: 'transcript_tool_gap',
+        session_id: s.sessionId,
+        agent: s.agentKind,
+        tool_calls_seen: s.toolCallsSeen,
+        tool_calls_emitted: s.toolCallsEmitted,
+        description: `Parser saw ${s.toolCallsSeen} tool_use turns in source but emitted 0 tool_call events. The transcript format may have changed — tool activity is not being recorded.`
+      }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+      if (ev) eventBus.publish(ev)
+    } catch (e) { noteDbError('tailer-host', e) }
+  }
+
   s.lastSnapshotBytes = sidecarSize
   s.bytesAppendedSinceSnapshot = 0
 }
@@ -988,7 +1012,10 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     lastSnapshotBytes: 0,
     bytesAppendedSinceSnapshot: 0,
     driftAdvisoryFired: false,
-    parentMissingAdvisoryFired: false
+    parentMissingAdvisoryFired: false,
+    toolCallsSeen: 0,
+    toolCallsEmitted: 0,
+    toolGapAdvisoryFired: false
   }
   sessions.set(key, s)
 
@@ -1094,7 +1121,9 @@ export function stopHost(): void {
 
 function restartAll(): void {
   stopHost()
-  if (!cfg.enabled || !cfg.engagementId || !cfg.operatorId) return
+  if (!cfg.enabled || !cfg.engagementId || !cfg.operatorId) {
+    return
+  }
   for (const adapter of registeredAdapters.values()) restartAdapter(adapter)
 }
 
@@ -1125,7 +1154,9 @@ function restartAdapter(adapter: TailerAdapter): void {
   })
   watcher.on('add', (p) => {
     if (isJsonl) {
-      if (p.endsWith('.jsonl')) registerSession(adapter.agentKind, p)
+      if (p.endsWith('.jsonl')) {
+        registerSession(adapter.agentKind, p)
+      }
       return
     }
     // v0.8.0.1: per-message layout. A msg file landed inside a session dir.

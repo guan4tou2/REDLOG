@@ -189,6 +189,29 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
       const cAny = c as Record<string, unknown>
       if (cAny.type === 'text' && typeof cAny.text === 'string') parts.push(cAny.text)
       else if (cAny.type === 'thinking') hasThink = true
+      else if (cAny.type === 'tool_use' && type === 'assistant') {
+        t.type = 'tool_use'
+        t.toolName = typeof cAny.name === 'string' ? cAny.name : undefined
+        t.toolUseId = typeof cAny.id === 'string' ? cAny.id : undefined
+        t.toolInput = (cAny.input && typeof cAny.input === 'object')
+          ? (cAny.input as Record<string, unknown>) : undefined
+      } else if (cAny.type === 'tool_result' && type === 'user') {
+        t.type = 'tool_result'
+        t.toolUseId = typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined
+        const rc = cAny.content
+        if (typeof rc === 'string') {
+          t.toolOutput = rc
+        } else if (Array.isArray(rc)) {
+          const rParts: string[] = []
+          for (const rr of rc) {
+            if (rr && typeof rr === 'object' && (rr as Record<string, unknown>).type === 'text') {
+              const txt = (rr as Record<string, unknown>).text
+              if (typeof txt === 'string') rParts.push(txt)
+            }
+          }
+          t.toolOutput = rParts.join('\n')
+        }
+      }
     }
     t.textContent = parts.join('\n')
     if (hasThink) t.hasThinking = true
