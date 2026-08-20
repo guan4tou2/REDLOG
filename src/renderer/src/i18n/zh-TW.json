@@ -936,5 +936,6 @@
   "issues.pending": "待處理 {{count}}",
   "issues.captureDetail": "事件仍在寫入，但至少有一個來源已停止產出——缺口會出現在時間軸上，不會出現在錯誤訊息裡。",
   "issues.chainBroken": "證據鏈驗證失敗",
-  "issues.chainBrokenDetail": "錨定點與現在之間有一列的雜湊接不上下一列。做任何其他事之前先匯出證據包。"
+  "issues.chainBrokenDetail": "錨定點與現在之間有一列的雜湊接不上下一列。做任何其他事之前先匯出證據包。",
+  "search.resultsLabel": "搜尋結果，{{count}} 筆事件"
 }

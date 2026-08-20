@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
+import { useListKeyboard } from '../lib/useListKeyboard'
 import { formatDateTime } from '../lib/time'
 
 const TAG_COLORS = [
@@ -60,6 +61,16 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
       return b.createdAt - a.createdAt
     })
   })()
+
+  // Every list in the app answers to the same keys (§9). Enter opens the
+  // mark's detail panel; ⌘↩ takes it to the Timeline, which is the question
+  // an operator asks of a finding more often than any other.
+  const listNav = useListKeyboard({
+    count: filteredMarks.length,
+    onActivate: (i) => { const m = filteredMarks[i]; if (m) { setSelected(m); setCreating(false) } },
+    onJumpToTimeline: (i) => { const m = filteredMarks[i]; if (m) onOpenInTimeline?.(m.createdAt) },
+    onEscape: () => setSelected(null)
+  })
 
   const refresh = useCallback(() => {
     window.redlog.quickmarks.list().then(setMarks)
@@ -140,15 +151,18 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             />
           </div>
         )}
-        <div className="flex-1 overflow-auto">
-          {filteredMarks.map((m) => {
+        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('marks.title', { count: filteredMarks.length })}>
+          {filteredMarks.map((m, i) => {
             const tagColor = getTagColor(m.title)
             const isPinned = pinned.has(m.id)
+            const rowProps = listNav.itemProps(i)
             return (
               <button
                 key={m.id}
-                onClick={() => { setSelected(m); setCreating(false) }}
-                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 ${
+                {...rowProps}
+                ref={(el) => rowProps.ref(el)}
+                onClick={() => { rowProps.onClick(); setSelected(m); setCreating(false) }}
+                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-redlog-accent/50 ${
                   selected?.id === m.id ? 'bg-redlog-elevated' : ''
                 }`}
               >
