@@ -187,7 +187,7 @@ export default function OverlayApp(): JSX.Element {
             background: 'rgba(7,12,17,0.65)',
             backdropFilter: 'blur(16px) saturate(1.5)',
             overflow: 'hidden',
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, "Cascadia Code", Consolas, "Microsoft JhengHei UI", monospace'
+            fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
           }}
         >
           {/* scanlines */}

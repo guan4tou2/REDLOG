@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { I18nProvider } from './i18n'
+import './styles/fonts'
 import './styles/index.css'
 import { applyDensity, resolveDensity, storedDensity } from './lib/density'
 

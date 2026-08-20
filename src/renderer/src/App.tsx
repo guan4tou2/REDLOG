@@ -23,6 +23,7 @@ import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
+import { Image } from 'lucide-react'
 
 type View = SidebarViewId | 'settings' | 'search'
 
@@ -984,7 +985,7 @@ function ScreenshotsView(): JSX.Element {
       {screenshots.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
-            <span className="text-2xl text-redlog-muted">◻</span>
+            <Image size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
           </div>
           <p className="text-redlog-text-dim text-sm">{t('screenshots.empty')}</p>
           <p className="text-redlog-muted text-xs">{t('screenshots.emptyDesc')}</p>

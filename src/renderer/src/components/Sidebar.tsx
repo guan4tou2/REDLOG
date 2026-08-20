@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
+  Ban, Gem, Flag, Settings as SettingsIcon, type LucideIcon
+} from 'lucide-react'
 import { useI18n } from '../i18n'
 
 interface SidebarProps {
@@ -9,10 +13,18 @@ interface SidebarProps {
 interface NavItem {
   id: string
   label: string
-  icon: string
+  icon: LucideIcon
   badge?: number
   badgeColor?: string
 }
+
+// Lucide, 1.5px stroke, 16px (UIUX-STANDARD §4). These used to be the Unicode
+// geometry `◉ ▸ ═ ☰ ◻ ⊕ ⊘ ◆ ⚑`, which is a glyph lookup rather than an icon:
+// each one lands in a different fallback font per platform, so the row heights
+// and optical weights disagreed between macOS and Windows, and a screen reader
+// announced them by their Unicode names.
+const NAV_ICON_SIZE = 16
+const NAV_ICON_STROKE = 1.5
 
 // Shared with App.tsx's ⌘1..9 shortcut handler so the two orders can't
 // drift. See src/renderer/src/lib/sidebarOrder.ts.
@@ -61,15 +73,15 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     ) : null
 
   const itemMap: Record<string, NavItem> = {
-    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: '◉' },
-    terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: '▸' },
-    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
-    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: '☰' },
-    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' },
-    targets: { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
-    scope: { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-    loot: { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-amber-500' },
-    marks: { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
+    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: Gauge },
+    terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ChevronRight },
+    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
+    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: AlignLeft },
+    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: Image },
+    targets: { id: 'targets', label: t('sidebar.targets'), icon: Crosshair },
+    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-red-500' },
+    loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500' },
+    marks: { id: 'marks', label: t('sidebar.marks'), icon: Flag }
   }
 
   const items = order.map((id) => itemMap[id]).filter(Boolean)
@@ -149,9 +161,12 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               {isActive && (
                 <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
               )}
-              <span className={`text-xs leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
-                {item.icon}
-              </span>
+              <item.icon
+                size={NAV_ICON_SIZE}
+                strokeWidth={NAV_ICON_STROKE}
+                aria-hidden
+                className={`shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}
+              />
               <span className={`text-xs leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
                 {item.label}
               </span>
@@ -165,7 +180,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
         <button
           data-view-btn="settings"
           onClick={() => onNavigate('settings')}
-          className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
+          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative ${
             active === 'settings'
               ? 'text-red-400'
               : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -174,7 +189,12 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           {active === 'settings' && (
             <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
           )}
-          <span className={`text-xs leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>⚙</span>
+          <SettingsIcon
+            size={NAV_ICON_SIZE}
+            strokeWidth={NAV_ICON_STROKE}
+            aria-hidden
+            className={`shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}
+          />
           <span className={`text-xs leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
         </button>
       </div>
