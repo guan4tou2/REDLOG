@@ -102,7 +102,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                 onClick={async () => {
                   const p = await (window.redlog.data as { exportMarks?: () => Promise<string | null> }).exportMarks?.()
                   if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-                  else toast(t('toast.exportFailed'), 'error')
+                  else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
                 }}
                 className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                 title={t('marks.exportHint')}

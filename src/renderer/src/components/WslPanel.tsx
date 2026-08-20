@@ -34,10 +34,24 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
     setActionBusy(key)
     try {
       const result = await window.redlog.wsl.installHook(distro, shell)
-      toast(result.message, result.success ? 'success' : 'error')
-      if (result.success) await refresh()
+      if (result.success) {
+        toast(t('settings.wsl.hookInstalled', { distro, shell }), 'success')
+        await refresh()
+      } else {
+        toast(t('settings.wsl.hookInstallFailed', { distro }), {
+          type: 'error',
+          why: t('settings.wsl.hookInstallFailedWhy'),
+          detail: result.message,
+          action: { label: t('common.retry'), onClick: () => { void handleInstall(distro, shell) } }
+        })
+      }
     } catch (e) {
-      toast(`Install failed: ${(e as Error).message}`, 'error')
+      toast(t('settings.wsl.hookInstallFailed', { distro }), {
+        type: 'error',
+        why: t('settings.wsl.distroUnreachableWhy'),
+        detail: String((e as Error)?.message ?? e),
+        action: { label: t('common.retry'), onClick: () => { void handleInstall(distro, shell) } }
+      })
     }
     setActionBusy(null)
   }
@@ -47,10 +61,24 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
     setActionBusy(key)
     try {
       const result = await window.redlog.wsl.uninstallHook(distro, shell)
-      toast(result.message, result.success ? 'success' : 'error')
-      if (result.success) await refresh()
+      if (result.success) {
+        toast(t('settings.wsl.hookUninstalled', { distro, shell }), 'success')
+        await refresh()
+      } else {
+        toast(t('settings.wsl.hookUninstallFailed', { distro }), {
+          type: 'error',
+          why: t('settings.wsl.hookUninstallFailedWhy'),
+          detail: result.message,
+          action: { label: t('common.retry'), onClick: () => { void handleUninstall(distro, shell) } }
+        })
+      }
     } catch (e) {
-      toast(`Uninstall failed: ${(e as Error).message}`, 'error')
+      toast(t('settings.wsl.hookUninstallFailed', { distro }), {
+        type: 'error',
+        why: t('settings.wsl.distroUnreachableWhy'),
+        detail: String((e as Error)?.message ?? e),
+        action: { label: t('common.retry'), onClick: () => { void handleUninstall(distro, shell) } }
+      })
     }
     setActionBusy(null)
   }
@@ -62,7 +90,12 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
       const result = await window.redlog.wsl.runDiagnostics(distro)
       setDiagnostics(result)
     } catch (e) {
-      toast(`Diagnostics failed: ${(e as Error).message}`, 'error')
+      toast(t('settings.wsl.diagnosticsFailed', { distro }), {
+        type: 'error',
+        why: t('settings.wsl.distroUnreachableWhy'),
+        detail: String((e as Error)?.message ?? e),
+        action: { label: t('common.retry'), onClick: () => { void handleDiagnose(distro) } }
+      })
     }
     setActionBusy(null)
   }

@@ -102,7 +102,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             onClick={async () => {
               const p = await (window.redlog.data as { exportLoot?: () => Promise<string | null> }).exportLoot?.()
               if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-              else toast(t('toast.exportFailed'), 'error')
+              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
             title={t('loot.exportHint')}
