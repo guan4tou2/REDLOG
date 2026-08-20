@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { Gem } from 'lucide-react'
 
 export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -177,7 +178,7 @@ export default function StatusBar(): JSX.Element {
       <Sep />
 
       <div className="flex items-center gap-1.5">
-        <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'}>◆</span>
+        <Gem size={13} strokeWidth={1.5} aria-hidden className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'} />
         <span className={lootCount > 0 ? 'text-amber-400/80' : 'text-redlog-text-dim'}>
           {t('statusBar.loot', { count: lootCount })}
         </span>

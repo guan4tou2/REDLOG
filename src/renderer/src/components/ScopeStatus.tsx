@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
+import { Ban } from 'lucide-react'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -69,7 +70,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
         {!configured && (
           <div className="flex flex-col items-center py-6 gap-2">
             <div className="w-12 h-12 rounded-full bg-redlog-elevated border border-redlog-border flex items-center justify-center">
-              <span className="text-xl text-redlog-text-faint">⊘</span>
+              <Ban size={20} strokeWidth={1.5} aria-hidden className="text-redlog-text-faint" />
             </div>
             <p className="text-redlog-text-dim text-xs">
               {t('scope.hint')}

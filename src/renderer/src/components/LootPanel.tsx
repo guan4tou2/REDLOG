@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
+import { Gem } from 'lucide-react'
 
 export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -141,7 +142,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
       {lootEvents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
-            <span className="text-2xl text-redlog-muted">◆</span>
+            <Gem size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
           </div>
           <p className="text-sm text-redlog-text-dim">{t('loot.empty')}</p>
           <p className="text-xs text-redlog-muted text-center max-w-xs">{t('loot.emptyDesc')}</p>

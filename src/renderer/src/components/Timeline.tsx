@@ -8,6 +8,7 @@ import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
+import { Rows3 } from 'lucide-react'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -2274,7 +2275,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3 text-center px-8">
           <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
-            <span className="text-2xl text-redlog-muted">═</span>
+            <Rows3 size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
           </div>
           <p className="text-sm text-redlog-text-dim">{t('timeline.noEvents')}</p>
           <p className="text-xs text-redlog-muted">{t('timeline.noEventsDesc')}</p>
