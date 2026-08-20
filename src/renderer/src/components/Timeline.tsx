@@ -4,11 +4,13 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
-import { maskEventData, fieldsWithRedactions, type RedactionSpan } from '../lib/mask'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
+import { formatTime } from '../lib/time'
+import { timelineShortcuts } from '../lib/shortcuts'
+import { nextSelection } from '../lib/timelineSelection'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -62,6 +64,10 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 // (safe / unknown / danger); lanes separate by label and vertical position,
 // which is what an operator actually reads them by. Every lane is `lane`
 // (#6e6e78) and the palette is a function, not a table.
+// Read defensively — this runs at module load, before the preload bridge
+// is guaranteed present (e.g. in tests). Default to mac styling, as App does.
+const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+
 const LANE_COLOR = '#6e6e78'
 const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
   LANES.map((id) => [id, LANE_COLOR])
@@ -382,7 +388,7 @@ function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
 }
 
 function formatTimeLabel(date: Date): string {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatTime(date.getTime())
 }
 
 // v0.6.91 S7: timezone-aware formatter. Every timestamp shown in the Timeline
@@ -425,15 +431,15 @@ function formatTs(ms: number, tz: TzMode, projectTz: string | null, style: TsSty
   const opts: Intl.DateTimeFormatOptions = {}
   if (timeZone) opts.timeZone = timeZone
   try {
-    if (style === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...opts })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', ...opts })
-    return d.toLocaleString([], opts)
+    if (style === 'time') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', ...opts })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', ...opts })
+    return d.toLocaleString([], { hour12: false, ...opts })
   } catch {
     // Bad IANA name → fall back to Local so a mistyped project.timezone can't
     // wipe every time label on the panel.
-    if (style === 'time') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    return d.toLocaleString()
+    if (style === 'time') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
+    if (style === 'timeSec') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return d.toLocaleString([], { hour12: false })
   }
 }
 
@@ -712,6 +718,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
+  // §6: the Inspector is a separate layer from the selection. They used to be
+  // the same state, so an operator could not walk the timeline by keyboard
+  // without a panel covering a third of it — and closing the panel lost their
+  // place entirely. Clicking a dot still opens both; arrows move the ring
+  // alone, and Enter opens the panel on whatever the ring is on.
+  const [detailOpen, setDetailOpen] = useState(false)
   const [allLoaded, setAllLoaded] = useState(false)
   const [loading, setLoading] = useState(true)
   // v0.11.6 (V7). Off by default: a compressed axis is not proportional, and
@@ -755,11 +767,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // added since v0.6.90 was previously invisible unless a teammate told you.
   // `?` opens; Escape or click-outside closes.
   const [showHelp, setShowHelp] = useState(false)
-  // Layer 3 (four-layer redaction): raw text of an event's redacted spans is
-  // hidden by default in the detail view. The reviewer opts into a per-event
-  // reveal; each reveal appends a chained system.secret_revealed event so the
-  // audit trail shows raw bytes were viewed.
-  const [revealedEvents, setRevealedEvents] = useState<Set<string>>(new Set())
   // Detail-panel height, in px. Persisted to localStorage so operator's chosen
   // size survives reloads. Default `null` = use CSS max-h-[45vh] fallback.
   const [detailPanelPx, setDetailPanelPx] = useState<number | null>(() => {
@@ -1045,7 +1052,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // applies to the actively-focused event.
   useEffect(() => {
     setShowJson(false)
-    setRevealedEvents(new Set())
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
   }, [selectedEvent?.id])
 
@@ -1583,7 +1589,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       const id = localStorage.getItem('redlog-timeline-focus-event')
       if (!id) return
       const evt = eventsMapRef.current.get(id)
-      if (evt) setSelectedEvent(evt)
+      if (evt) { setSelectedEvent(evt); setDetailOpen(true) }
     } catch { /* ignore */ }
   }, [loading, events, focusEventId, focusTs, selectedEvent])
 
@@ -1986,6 +1992,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const focused = focusEventId ? events.find((e) => e.id === focusEventId) : null
     if (focused) {
       setSelectedEvent(focused)
+      setDetailOpen(true)
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else if (focusTs) {
       // no matching event (e.g. jumped from a quickmark) — centre on its time
@@ -2070,9 +2077,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       const inField = tag === 'input' || tag === 'textarea' || !!el?.isContentEditable
       const action = resolveTimelineKey(e, {
         inField,
-        hasDetail: !!selectedEvent,
+        hasDetail: detailOpen && !!selectedEvent,
         helpOpen: showHelp,
-        focusActive: focusChain !== null
+        focusActive: focusChain !== null,
+        hasSelection: !!selectedEvent
       })
       if (action === 'none') return
       switch (action) {
@@ -2093,16 +2101,56 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           setFocusAnchorId(null)
           break
         case 'close-detail':
-          setSelectedEvent(null)
+          setDetailOpen(false)
           setShowJson(false)
           break
+        case 'clear-selection':
+          setSelectedEvent(null)
+          break
+        case 'toggle-detail':
+          e.preventDefault()
+          setDetailOpen((v) => !v)
+          break
         case 'nav-prev':
-        case 'nav-next': {
-          const visible = events.filter((ev) => !hiddenLanes.has(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)))
-          const i = visible.findIndex((ev) => ev.id === selectedEvent?.id)
-          if (i < 0) return
-          const next = visible[i + (action === 'nav-prev' ? -1 : 1)]
-          if (next) { e.preventDefault(); setSelectedEvent(next) }
+        case 'nav-next':
+        case 'nav-lane-up':
+        case 'nav-lane-down':
+        case 'nav-state-prev':
+        case 'nav-state-next':
+        case 'nav-first':
+        case 'nav-last': {
+          e.preventDefault()
+          const next = nextSelection<LaneId>(action, selectedEvent, {
+            events,
+            hiddenLanes,
+            pluginTypes,
+            laneOrder: LANES as readonly LaneId[],
+            laneOf: (ev) => toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes),
+            tsOf: displayTs
+          })
+          if (next) setSelectedEvent(next)
+          break
+        }
+        case 'zoom-in':
+        case 'zoom-out':
+        case 'zoom-reset': {
+          e.preventDefault()
+          // Anchored on the selected event, not the viewport centre (§6): the
+          // thing the operator is looking at is the thing that should hold
+          // still. With nothing selected, fall back to the centre.
+          const el = scrollRef.current
+          if (el) {
+            const anchorX = selectedEvent
+              ? toX(displayTs(selectedEvent)) - el.scrollLeft
+              : el.clientWidth / 2
+            pendingZoomAnchor.current = {
+              frac: (el.scrollLeft + anchorX) / TRACK_W,
+              cursorX: anchorX
+            }
+          }
+          setZoom((prev) => action === 'zoom-reset'
+            ? 1
+            : Math.min(maxZoomRef.current, Math.max(0.25, prev * (action === 'zoom-in' ? 1.4 : 1 / 1.4))))
           break
         }
         case 'toggle-focus': {
@@ -2117,7 +2165,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, showHelp, focusChain, events, hiddenLanes, pluginTypes])
+  }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W])
 
   // v0.6.91 W3: palette result set — fuzzy match query against events, marker
   // titles, distinct operator names, and distinct hosts. Capped at 20 items.
@@ -2191,6 +2239,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   const activatePaletteItem = useCallback((item: PaletteItem) => {
     if (item.kind === 'event' || item.kind === 'marker') {
       setSelectedEvent(item.event)
+      setDetailOpen(true)
       scrollToEvent(item.event)
     } else {
       setFilterQuery(item.value)
@@ -2222,7 +2271,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       setViewsName('')
       await refreshViews()
       toast('Saved', 'success')
-    } catch { toast('Save failed', 'error') }
+    } catch (e) {
+      toast(t('timeline.saveFailed'), {
+        type: 'error',
+        why: t('timeline.saveFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
+    }
   }, [viewsApi, timeStart, timeEnd, view, zoom, hiddenLanes, filterQuery, refreshViews, t])
 
   const applyView = useCallback((v: SavedTimelineView) => {
@@ -2251,16 +2306,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // Respect the current mask/reveal state (audit finding #2). If the panel
     // shows a masked view, the clipboard gets the masked view too — a
     // reviewer copying an event to paste into chat / a report shouldn't have
-    // to remember to hit Reveal first to know what they're leaking. Click
-    // Reveal → then Copy → gets raw. Default (mask) → Copy → gets masked.
-    const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
-    const revealed = revealedEvents.has(selectedEvent.id)
-    const shown = revealed || !spans?.length
-      ? selectedEvent
-      : { ...selectedEvent, data: maskEventData(selectedEvent.data ?? {}, spans) }
-    navigator.clipboard.writeText(JSON.stringify(shown, null, 2))
-    toast(t(revealed || !spans?.length ? 'toast.copied' : 'toast.copiedMasked'), 'success')
-  }, [selectedEvent, revealedEvents, t])
+    // §10: no masked variant. The data is already on the operator's own
+    // machine — masking it here protected nothing and cost a step, and the
+    // "did I remember to hit Reveal?" question meant a copied JSON could be
+    // silently incomplete. The redaction boundary that matters is layer 4, on
+    // the way *out*: bundle export, cloud share and the blue-team webhook all
+    // redact in src/core, independently of anything the renderer shows.
+    navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
+    toast(t('toast.copied'), 'success')
+  }, [selectedEvent, t])
 
   if (loading && events.length === 0) {
     return (
@@ -2355,7 +2409,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim w-14 shrink-0">
                       {t(groupKey)}
                     </span>
-                    <span className="text-xs font-mono text-redlog-text truncate flex-1">{item.label}</span>
+                    <span title={item.label} className="text-xs font-mono text-redlog-text truncate flex-1">{item.label}</span>
                     <span className="text-xs font-mono text-redlog-text-faint shrink-0">{item.sub}</span>
                   </button>
                 )
@@ -2389,39 +2443,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               >×</button>
             </div>
             <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
-              {([
-                ['timeline.help.group.filter', [
-                  ['/', 'timeline.help.slash'],
-                  ['⌘K', 'timeline.help.palette'],
-                  ['Alt-click', 'timeline.help.soloLane'],
-                  ['Esc', 'timeline.help.escFilter']
-                ]],
-                ['timeline.help.group.focus', [
-                  ['f', 'timeline.help.focusChain'],
-                  ['click', 'timeline.help.selectDot'],
-                  ['↑/↓', 'timeline.help.walk']
-                ]],
-                ['timeline.help.group.timeline', [
-                  ['Right-click', 'timeline.help.dropMarker'],
-                  ['drag minimap', 'timeline.help.zoom'],
-                  ['click cluster', 'timeline.help.expandCluster']
-                ]],
-                ['timeline.help.group.detail', [
-                  ['click ▶', 'timeline.help.expandBody'],
-                  ['click cause chip', 'timeline.help.jumpCause'],
-                  ['Copy full', 'timeline.help.copyFull']
-                ]],
-                ['timeline.help.group.misc', [
-                  ['?', 'timeline.help.thisMenu']
-                ]]
-              ] as Array<[string, Array<[string, string]>]>).map(([groupKey, rows]) => (
-                <div key={groupKey}>
-                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(groupKey)}</div>
+              {/* Rendered from lib/shortcuts.ts, not restated here. The
+                  app-level cheatsheet on the Dashboard had already drifted
+                  four bindings behind by being written twice; this panel was
+                  the second copy waiting to do the same. */}
+              {timelineShortcuts(isMacPlatform).map((group) => (
+                <div key={group.label}>
+                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(group.label)}</div>
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                    {rows.map(([key, descKey]) => (
-                      <div key={key} className="contents">
-                        <kbd className="font-mono text-xs text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{key}</kbd>
-                        <span className="text-redlog-text-dim">{t(descKey)}</span>
+                    {group.rows.map((row) => (
+                      <div key={row.keys} className="contents">
+                        <kbd className="font-mono text-xs text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{row.keys}</kbd>
+                        <span className="text-redlog-text-dim">{t(row.label)}</span>
                       </div>
                     ))}
                   </div>
@@ -2763,7 +2796,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
               const path = await window.redlog.data.exportTimelineSlice(from, to)
               if (path) toast(t('timeline.exportSliceOk', { path }), 'success')
-              else toast(t('timeline.exportSliceFail'), 'error')
+              else toast(t('timeline.exportSliceFail'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-emerald-400 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
             title={t('timeline.exportSliceHint')}
@@ -2853,7 +2886,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 style={{ height: laneH }}
               >
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
-                <span className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
+                <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
               </div>
             ))}
           </div>
@@ -2864,11 +2897,33 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
             onMouseDown={handleMouseDown}
             onScroll={updateView}
+            onDoubleClick={(e) => {
+              // §6: double-clicking empty track frames the five minutes either
+              // side of that instant — the question "what happened around
+              // here" asked with the bluntest possible gesture.
+              const target = e.target as HTMLElement | null
+              if (target?.closest('[data-timeline-popup]')) return
+              if (target?.closest('[data-timeline-event]')) return
+              const el = scrollRef.current
+              if (!el || timeSpan <= 0) return
+              const rect = el.getBoundingClientRect()
+              const cursorX = e.clientX - rect.left
+              const ts = fromX(el.scrollLeft + cursorX)
+              const targetSpan = 10 * 60_000
+              const next = Math.min(maxZoomRef.current, Math.max(0.25, (timeSpan / targetSpan)))
+              pendingZoomAnchor.current = { frac: (el.scrollLeft + cursorX) / TRACK_W, cursorX }
+              setZoom(next)
+              void ts
+            }}
             onContextMenu={(e) => {
-              // v0.6.87 C1: right-click on the timeline background drops a
-              // marker at the clicked timestamp. Skips when the click landed
-              // on an event dot (they have their own click handler) or on
-              // the cluster popup.
+              // v0.6.87 C1 dropped a marker on the bare right-click. Two
+              // problems, both from §10. The renderer's `preventDefault` does
+              // not reach the main process's own `context-menu` event, so a
+              // right-click over selected text both dropped a marker and
+              // opened the copy menu — and that marker was already hashed into
+              // the chain by the time the menu appeared. And a chained event
+              // is not something a stray right-click should be able to write.
+              // It is a menu item now: right-click offers it, a click takes it.
               if (!onDropMarker) return
               const target = e.target as HTMLElement | null
               if (target?.closest('[data-timeline-popup]')) return
@@ -2878,8 +2933,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               if (!el || timeSpan <= 0) return
               const rect = el.getBoundingClientRect()
               const trackX = (e.clientX - rect.left) + el.scrollLeft
-              const ts = fromX(trackX)
-              onDropMarker(Math.round(ts))
+              const ts = Math.round(fromX(trackX))
+              void window.redlog.ui?.contextMenu?.([
+                { id: 'drop-marker', label: t('timeline.dropMarkerHere', { time: formatTime(ts, { seconds: true }) }) }
+              ]).then((picked) => {
+                if (picked === 'drop-marker') onDropMarker(ts)
+              })
             }}
           >
             <div style={{ width: TRACK_W, position: 'relative' }}>
@@ -3085,7 +3144,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
-                      onClick={() => single ? setSelectedEvent(sel ? null : evt) : setCluster({ x: c.x, y: c.y, events: c.events })}
+                      onClick={() => single ? (sel ? (setSelectedEvent(null), setDetailOpen(false)) : (setSelectedEvent(evt), setDetailOpen(true))) : setCluster({ x: c.x, y: c.y, events: c.events })}
                     >
                       <div
                         className={dimmed ? 'flex items-center justify-center' : 'flex items-center justify-center transition-transform hover:scale-125'}
@@ -3093,13 +3152,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           width: dot, height: dot,
                           // diamond = a square turned 45°; ring = hollow.
                           borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
-                          transform: marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
                           backgroundColor: marks.shape === 'ring' ? 'transparent' : LANE_COLORS[c.lane],
                           border: marks.shape === 'ring'
                             ? `2.5px solid ${LANE_COLORS[c.lane]}`
                             : single ? undefined : '1px solid rgba(0,0,0,0.45)',
+                          // §6: 2px brand-red outer ring, dot at 1.3×. The ring
+                          // used to take the lane's colour, which since the
+                          // lanes went neutral would have made a keyboard move
+                          // almost invisible — the one thing it must not be.
+                          transform: sel
+                            ? `${marks.shape === 'diamond' ? 'rotate(45deg) ' : ''}scale(1.3)`
+                            : marks.shape === 'diamond' ? 'rotate(45deg)' : undefined,
                           boxShadow: sel
-                            ? `0 0 0 2px #0a0a0a, 0 0 0 3px ${LANE_COLORS[c.lane]}, 0 0 12px ${LANE_COLORS[c.lane]}60`
+                            ? `0 0 0 2px #121214, 0 0 0 4px #d75f63, 0 0 12px #d75f6360`
                             : inChain
                               ? `0 0 0 1.5px ${chainRingColor}, 0 0 8px ${chainRingColor}80`
                               : `0 0 6px ${LANE_COLORS[c.lane]}40`
@@ -3190,6 +3255,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                           className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
                           onClick={() => {
                             setSelectedEvent(evt)
+                            setDetailOpen(true)
                             setCluster(null)
                             // Zoom based on cluster time span rather than a hardcoded 8×
                             // so a 500-event burst in 1s and a 5-event burst in 30min
@@ -3214,7 +3280,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
                           <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
-                          <span className="text-redlog-text text-xs truncate">{eventTitle(evt)}</span>
+                          <span title={eventTitle(evt)} className="text-redlog-text text-xs truncate">{eventTitle(evt)}</span>
                         </button>
                       ))}
                       {overflow > 0 && (
@@ -3240,7 +3306,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             <span className="text-xs text-redlog-text-dim font-mono uppercase tracking-wider">{t('timeline.title')}</span>
             <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{recentEvents.length}</span>
           </div>
-          <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent ? '18vh' : '22vh'} - 32px)` }}>
+          <div className="overflow-y-auto" style={{ height: `calc(${selectedEvent && detailOpen ? '18vh' : '22vh'} - 32px)` }}>
             {recentEvents.map((evt) => {
               const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)
               const isSel = selectedEvent?.id === evt.id
@@ -3250,7 +3316,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   className={`flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors text-xs border-b border-redlog-border-subtle/30 ${
                     isSel ? 'bg-redlog-elevated/50' : 'hover:bg-redlog-elevated/20'
                   }`}
-                  onClick={() => setSelectedEvent(isSel ? null : evt)}
+                  onClick={() => { if (isSel) { setSelectedEvent(null); setDetailOpen(false) } else { setSelectedEvent(evt); setDetailOpen(true) } }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
                   <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
@@ -3267,7 +3333,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       {operatorLabel(evt.operatorId)}
                     </span>
                   )}
-                  <span className="text-redlog-text-dim truncate">{eventTitle(evt)}</span>
+                  <span title={eventTitle(evt)} className="text-redlog-text-dim truncate">{eventTitle(evt)}</span>
                 </div>
               )
             })}
@@ -3278,7 +3344,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       {/* Enhanced detail panel — height is drag-resizable; the handle at the
           top edge sets height in px (persisted to localStorage). Falling back
           to the CSS `max-h-[45vh]` when the operator hasn't dragged. */}
-      {selectedEvent && (
+      {selectedEvent && detailOpen && (
         <>
           {/* Drag handle — 4px hit strip along the top edge; visual accent on hover. */}
           <div
@@ -3315,71 +3381,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               <TierBadge tier={selectedEvent.tier} variant="detail" />
             </div>
             <div className="flex items-center gap-2">
-              {(() => {
-                const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
-                const fields = fieldsWithRedactions(spans)
-                if (fields.length === 0) return null
-                const revealed = revealedEvents.has(selectedEvent.id)
-                return (
-                  <button
-                    onClick={async () => {
-                      const next = new Set(revealedEvents)
-                      if (revealed) {
-                        next.delete(selectedEvent.id)
-                      } else {
-                        next.add(selectedEvent.id)
-                        // Log the reveal — additive event, never blocks the UI.
-                        try { await window.redlog.events.logSecretRevealed(selectedEvent.id, fields) } catch { /* ignore */ }
-                      }
-                      setRevealedEvents(next)
-                    }}
-                    title={revealed ? t('timeline.reveal.hideHint') : t('timeline.reveal.showHint', { fields: fields.join(', ') })}
-                    className={`text-xs px-2 py-0.5 rounded transition-colors ${revealed ? 'bg-amber-700/60 text-amber-100' : 'bg-amber-900/40 text-amber-400 hover:bg-amber-900/60'}`}
-                  >
-                    {revealed ? t('timeline.reveal.hide') : t('timeline.reveal.show', { n: spans?.length ?? 0 })}
-                  </button>
-                )
-              })()}
-              {/* v0.7.7 U3: "Open sidecar" for agent.transcript_snapshot
-                  events. `snapshot_path` is inside the project's
-                  agent-transcripts/ dir; data.revealPath opens it via the
-                  OS file browser (`shell.openPath` in main). Pre-v0.7.7
-                  the sidecar was only reachable if the operator dug it out
-                  of the raw JSON view — one click now. */}
-              {selectedEvent.agentType === 'agent'
-                && (selectedEvent.data?.subtype as string | undefined) === 'transcript_snapshot'
-                && typeof selectedEvent.data?.snapshot_path === 'string' && (
-                <button
-                  onClick={async () => {
-                    const p = selectedEvent.data?.snapshot_path as string
-                    const ok = await window.redlog.data?.revealPath?.(p)
-                    if (!ok) toast(t('timeline.openSidecarFailed'), 'error')
-                  }}
-                  className="text-xs px-2 py-0.5 rounded bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60 transition-colors"
-                  title={t('timeline.openSidecarHint')}
-                >
-                  {t('timeline.openSidecar')}
-                </button>
-              )}
-              <button
-                onClick={() => setShowJson(!showJson)}
-                className={`text-xs px-2 py-0.5 rounded transition-colors ${showJson ? 'bg-redlog-elevated-hover text-redlog-text' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text'}`}
-              >
-                {t('timeline.fullData')}
-              </button>
-              <button
-                onClick={copyEventJson}
-                className="text-xs px-2 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text transition-colors"
-              >
-                {t('timeline.copyJson')}
-              </button>
-              <button
-                onClick={() => { setSelectedEvent(null); setShowJson(false) }}
-                className="text-xs text-redlog-text-faint hover:text-redlog-text transition-colors ml-1"
-              >
-                ✕
-              </button>
-              <span className="text-xs text-redlog-text-faint font-mono tabular-nums">{formatTs(selectedEvent.timestamp, tz, projectTz, 'full')}</span>
             </div>
           </div>
           <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
@@ -3435,7 +3436,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   return (
                     <button
                       key={cid}
-                      onClick={() => { setSelectedEvent(cev); scrollToEvent(cev) }}
+                      onClick={() => { setSelectedEvent(cev); setDetailOpen(true); scrollToEvent(cev) }}
                       className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: cc, backgroundColor: `${cc}18`, border: `1px solid ${cc}40` }}
                       title={eventTitle(cev)}
@@ -3468,7 +3469,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                   return (
                     <button
                       key={eid}
-                      onClick={() => { setSelectedEvent(ev); scrollToEvent(ev) }}
+                      onClick={() => { setSelectedEvent(ev); setDetailOpen(true); scrollToEvent(ev) }}
                       className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: ec, backgroundColor: `${ec}18`, border: `1px solid ${ec}40` }}
                       title={eventTitle(ev)}
@@ -3545,20 +3546,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             && (
               <ReplayCommand eventId={selectedEvent.id} mode="session" />
             )}
-          {showJson && (() => {
-            const spans = selectedEvent.data?.redactions as RedactionSpan[] | undefined
-            const revealed = revealedEvents.has(selectedEvent.id)
-            // Mask string fields that have redaction spans unless the reviewer
-            // opted into reveal. copyJson still copies the RAW event by design —
-            // an operator investigating on their own machine needs the raw
-            // bytes; the mask is UX, not the security boundary (that's Layer 4).
-            const shown = revealed ? selectedEvent.data : maskEventData(selectedEvent.data ?? {}, spans)
-            return (
-              <pre className="mt-2 p-3 bg-redlog-bg rounded border border-redlog-border text-xs text-redlog-text-dim font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
-                {JSON.stringify(shown, null, 2)}
-              </pre>
-            )
-          })()}
+          {/* Shown as recorded. See copyJson above — layer 3 display masking
+              is gone; layer 4 still redacts everything that leaves. */}
+          {showJson && (
+            <pre className="mt-2 p-3 bg-redlog-bg rounded border border-redlog-border text-xs text-redlog-text-dim font-mono overflow-x-auto leading-relaxed max-h-[120px] overflow-y-auto">
+              {JSON.stringify(selectedEvent.data, null, 2)}
+            </pre>
+          )}
         </div>
         </>
       )}

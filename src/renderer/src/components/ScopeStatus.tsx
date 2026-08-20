@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
 import { Ban } from 'lucide-react'
+import { formatTime } from '../lib/time'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -42,7 +43,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
             onClick={async () => {
               const p = await (window.redlog.data as { exportViolations?: () => Promise<string | null> }).exportViolations?.()
               if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-              else toast(t('toast.exportFailed'), 'error')
+              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
             title={t('scope.exportHint')}
@@ -98,8 +99,8 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               title={onOpenInTimeline ? t('scope.openInTimeline') : undefined}
             >
               <div className="text-red-300 text-xs font-mono">{v.target}</div>
-              <div className="text-redlog-text-dim text-xs truncate">{v.command}</div>
-              <div className="text-redlog-text-faint text-xs">{new Date(v.timestamp).toLocaleTimeString()}</div>
+              <div title={v.command} className="text-redlog-text-dim text-xs truncate">{v.command}</div>
+              <div className="text-redlog-text-faint text-xs">{formatTime(v.timestamp, { seconds: true })}</div>
             </button>
           ))}
         </div>

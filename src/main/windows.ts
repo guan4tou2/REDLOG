@@ -2,6 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { attachContextMenu } from './context-menu'
+import { defaultOverlayBounds } from '../core/overlay-layout'
 
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
@@ -57,14 +58,16 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
   return win
 }
 
-export function createOverlayWindow(): BrowserWindow {
+export function createOverlayWindow(saved?: { x: number; y: number } | null): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workArea
+  const width = 440
+  const placed = saved ?? defaultOverlayBounds(workArea, width)
 
   const win = new BrowserWindow({
-    width: 440,
+    width,
     height: 52,
-    x: workArea.x + workArea.width - 440,
-    y: workArea.y + 8,
+    x: placed.x,
+    y: placed.y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,

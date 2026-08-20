@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
-import { confirm } from './ConfirmDialog'
+import { useFocusTrap } from '../lib/useFocusTrap'
+import { formatFreshness } from '../lib/time'
+import { confirmChainImpact } from './ConfirmDialog'
 import { toast } from './Toast'
 import logoUrl from '../assets/logo.svg'
 
@@ -9,10 +11,21 @@ interface ProjectPickerProps {
 }
 
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
+  // Advanced-setup dialog. It focused itself once and let Tab walk out into
+  // the picker behind it; Escape only worked while focus happened to be on the
+  // backdrop, which is the case that was already broken (§4).
+  const advancedRef = useRef<HTMLDivElement | null>(null)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  useFocusTrap(advancedRef, showAdvanced)
+  useEffect(() => {
+    if (!showAdvanced) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') { e.preventDefault(); setShowAdvanced(false) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showAdvanced])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
@@ -56,7 +69,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
       setCreating(false)
-      toast(t('project.openFailed', { error: (e as Error).message }), 'error')
+      toast(t('project.openFailedTitle'), {
+        type: 'error',
+        why: t('project.openFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
     }
   }
 
@@ -64,14 +81,35 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     try {
       const project = await window.redlog.project.open(id)
       if (project) onProjectOpen({ id: project.id, name: project.name })
-      else toast(t('project.openMissing'), 'error')
+      else toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') })
     } catch (e) {
-      toast(t('project.openFailed', { error: (e as Error).message }), 'error')
+      toast(t('project.openFailedTitle'), {
+        type: 'error',
+        why: t('project.openFailedWhy'),
+        detail: String((e as Error)?.message ?? e)
+      })
     }
   }
 
   async function handleDelete(id: string): Promise<void> {
-    const ok = await confirm(t('confirm.deleteProject'), t('confirm.deleteProjectDesc'), true)
+    const project = projects.find((p) => p.id === id)
+    if (!project) return
+    // §5.5 level 3. This is the single most consequential action in the app —
+    // it destroys the SHA-256 chain, the screenshots, the session recordings
+    // and the OpenTimestamps receipts, and the receipts in particular cannot
+    // be regenerated at any price, because they attest to a moment that has
+    // passed. It was running on the same checkbox as removing a shell hook.
+    const ok = await confirmChainImpact({
+      title: t('confirm.deleteProject'),
+      message: t('confirm.deleteProjectDesc', { name: project.name }),
+      confirmLabel: t('confirm.deleteProjectConfirm'),
+      consequences: [
+        t('confirm.deleteProjectChain'),
+        t('confirm.deleteProjectMedia'),
+        t('confirm.deleteProjectAnchors')
+      ],
+      requireTyped: project.name
+    })
     if (!ok) return
     await window.redlog.project.delete(id)
     setProjects((prev) => prev.filter((p) => p.id !== id))
@@ -88,17 +126,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     else if (profile.scope?.enforcement) setWarnOnViolation(profile.scope.enforcement !== 'log')
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
-  }
-
-  function timeAgo(ts: number): string {
-    const diff = Date.now() - ts
-    const mins = Math.floor(diff / 60000)
-    if (mins < 1) return t('time.justNow')
-    if (mins < 60) return t('time.mAgo', { m: mins })
-    const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return t('time.hAgo', { h: hrs })
-    const days = Math.floor(hrs / 24)
-    return t('time.dAgo', { d: days })
   }
 
   // v0.14 picker layout: the pre-v0.14 fixed 480px column left huge empty
@@ -186,11 +213,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 select-text"
             onClick={() => setShowAdvanced(false)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setShowAdvanced(false) }}
             role="presentation"
           >
             <div
-              ref={(el) => el?.focus()}
+              ref={advancedRef}
               role="dialog"
               aria-modal="true"
               aria-label={t('project.advancedSetup')}
@@ -295,9 +321,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                         className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-xs font-medium font-mono focus:outline-none focus:border-red-500/50"
                       />
                     ) : (
-                      <div className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
+                      <div title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
                     )}
-                    <div className="text-redlog-text-faint text-xs font-mono">{timeAgo(p.lastOpened)}</div>
+                    <div className="text-redlog-text-faint text-xs font-mono">{formatFreshness(p.lastOpened, t)}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }}

@@ -18,6 +18,8 @@ export interface TimelineKeyContext {
   helpOpen: boolean
   /** focus-chain mode is active */
   focusActive: boolean
+  /** an event is selected (the selection ring is drawn) */
+  hasSelection?: boolean
 }
 
 export type TimelineKeyAction =
@@ -27,8 +29,19 @@ export type TimelineKeyAction =
   | 'close-help' // Escape, help modal open (highest precedence)
   | 'exit-focus' // Escape, focus-chain active
   | 'close-detail' // Escape, detail panel open
-  | 'nav-prev' // ArrowUp with a detail panel open
-  | 'nav-next' // ArrowDown with a detail panel open
+  | 'clear-selection' // Escape, an event selected but no panel open
+  | 'nav-prev' // ←  previous event in the same lane
+  | 'nav-next' // →  next event in the same lane
+  | 'nav-lane-up' // ↑  nearest event in time, one lane up
+  | 'nav-lane-down' // ↓  nearest event in time, one lane down
+  | 'nav-state-prev' // ⇧← previous event carrying state
+  | 'nav-state-next' // ⇧→ next event carrying state
+  | 'nav-first' // Home
+  | 'nav-last' // End
+  | 'zoom-in' // +
+  | 'zoom-out' // −
+  | 'zoom-reset' // 0
+  | 'toggle-detail' // Enter → open/close the Inspector on the selection
   | 'toggle-focus' // 'f'  → enter/exit focus-chain mode
 
 interface KeyLike {
@@ -36,6 +49,7 @@ interface KeyLike {
   metaKey: boolean
   ctrlKey: boolean
   altKey: boolean
+  shiftKey?: boolean
 }
 
 export function resolveTimelineKey(e: KeyLike, ctx: TimelineKeyContext): TimelineKeyAction {
@@ -50,17 +64,38 @@ export function resolveTimelineKey(e: KeyLike, ctx: TimelineKeyContext): Timelin
     if (ctx.helpOpen) return 'close-help'
     if (ctx.focusActive) return 'exit-focus'
     if (ctx.hasDetail) return 'close-detail'
+    // §5.7 peels one layer at a time, and the selection is now a layer of its
+    // own: closing the Inspector leaves the ring, and the next Escape drops it.
+    if (ctx.hasSelection) return 'clear-selection'
     return 'none'
   }
 
-  // Arrow navigation belongs to the detail panel — it walks the selected event.
-  // With no panel open, arrows must fall through to normal scrolling.
-  if (e.key === 'ArrowUp') return ctx.hasDetail ? 'nav-prev' : 'none'
-  if (e.key === 'ArrowDown') return ctx.hasDetail ? 'nav-next' : 'none'
+  // §6 movement. Arrows navigate the *selection*, which exists independently
+  // of the Inspector now — the two used to be the same thing, so an operator
+  // could not walk the timeline without a panel covering a third of it.
+  //   ← →  stay in the lane. A lane is one producer, so this reads its story.
+  //   ↑ ↓  change lane and land on the nearest event in time, which is what
+  //        "what else was happening then" means.
+  //   ⇧← ⇧→ skip to the next event that carries state — a non-zero exit, a
+  //        scope violation, loot. The dense middle of a run is mostly noise.
+  if (e.metaKey || e.ctrlKey || e.altKey) return 'none'
+  if (e.key === 'ArrowLeft') return e.shiftKey ? 'nav-state-prev' : 'nav-prev'
+  if (e.key === 'ArrowRight') return e.shiftKey ? 'nav-state-next' : 'nav-next'
+  if (e.key === 'ArrowUp') return 'nav-lane-up'
+  if (e.key === 'ArrowDown') return 'nav-lane-down'
+  if (e.key === 'Home') return 'nav-first'
+  if (e.key === 'End') return 'nav-last'
+  if (e.key === 'Enter') return ctx.hasSelection ? 'toggle-detail' : 'none'
+
+  // Zoom, anchored on the selection rather than the viewport centre (§6).
+  // `=` because + is shift-equals on most layouts and demanding the shift
+  // makes a frequent key awkward.
+  if (e.key === '+' || e.key === '=') return 'zoom-in'
+  if (e.key === '-' || e.key === '_') return 'zoom-out'
+  if (e.key === '0') return 'zoom-reset'
 
   // The letter/symbol affordances never fire with a modifier held, so they
   // can't shadow ⌘K, ⌘F, and friends.
-  if (e.metaKey || e.ctrlKey || e.altKey) return 'none'
   if (e.key === '/') return 'focus-filter'
   if (e.key === '?') return 'toggle-help'
   if (e.key === 'f' || e.key === 'F') return 'toggle-focus'

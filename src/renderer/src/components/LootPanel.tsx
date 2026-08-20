@@ -3,6 +3,8 @@ import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
 import { Gem } from 'lucide-react'
+import { formatDateTime } from '../lib/time'
+import { useListKeyboard } from '../lib/useListKeyboard'
 
 export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -82,6 +84,15 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     }
     return list
   }, [lootEvents, typeFilter, dedupOn])
+
+  // Same keys as every other list (§9). ⌘↩ and Enter both go to the Timeline
+  // here: a loot row has no detail panel of its own, so "activate" and "show
+  // me where this came from" are the same request.
+  const listNav = useListKeyboard({
+    count: visibleList.length,
+    onActivate: (i) => { const le = visibleList[i]; if (le) onOpenInTimeline?.(le.id, le.timestamp) },
+    onJumpToTimeline: (i) => { const le = visibleList[i]; if (le) onOpenInTimeline?.(le.id, le.timestamp) }
+  })
   const visibleMatchCount = useMemo(
     () => visibleList.reduce((n, le) => n + le.matches.length, 0),
     [visibleList]
@@ -102,7 +113,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             onClick={async () => {
               const p = await (window.redlog.data as { exportLoot?: () => Promise<string | null> }).exportLoot?.()
               if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-              else toast(t('toast.exportFailed'), 'error')
+              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
             title={t('loot.exportHint')}
@@ -152,23 +163,24 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         // header count, so what you see and what the header says can never
         // disagree. Each source event keeps its own grouping so the "click
         // card → jump to timeline" flow still lands on a real event id.
-        <div className="space-y-2">
+        <div className="space-y-2" {...listNav.containerProps} aria-label={t('loot.title', { count: visibleList.length })}>
           {visibleList.length === 0 && (
             <p className="text-redlog-text-faint text-xs">{t('loot.noMatches')}</p>
           )}
-          {visibleList.map((le, i) => (
+          {visibleList.map((le, i) => {
+            const rowProps = listNav.itemProps(i)
+            return (
             <div
               key={le.id || i}
-              role={onOpenInTimeline ? 'button' : undefined}
-              tabIndex={onOpenInTimeline ? 0 : undefined}
-              onClick={() => onOpenInTimeline?.(le.id, le.timestamp)}
-              onKeyDown={onOpenInTimeline ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenInTimeline(le.id, le.timestamp) } } : undefined}
-              className={`bg-redlog-surface border border-redlog-border rounded-lg p-3 ${onOpenInTimeline ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-redlog-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors' : ''}`}
+              {...rowProps}
+              ref={(el) => rowProps.ref(el)}
+              onClick={() => { rowProps.onClick(); onOpenInTimeline?.(le.id, le.timestamp) }}
+              className={`bg-redlog-surface border border-redlog-border rounded-lg p-3 ${onOpenInTimeline ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-redlog-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors' : ''} ${rowProps['aria-selected'] ? 'border-redlog-accent/50' : ''}`}
               title={onOpenInTimeline ? t('loot.openInTimelineHint') : undefined}
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="text-redlog-text-dim text-xs">
-                  <span className="text-redlog-text-dim tabular-nums">{new Date(le.timestamp).toLocaleString()}</span>
+                  <span className="text-redlog-text-dim tabular-nums">{formatDateTime(le.timestamp, { seconds: true })}</span>
                   {le.source && (
                     <span> · {t('loot.from')} <span className="text-redlog-text font-mono">{le.source}</span></span>
                   )}
@@ -195,11 +207,12 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                       {m.confidence}
                     </span>
                   </div>
-                  <div className="text-redlog-text-dim text-xs font-mono mt-0.5 truncate">{m.preview}</div>
+                  <div title={m.preview} className="text-redlog-text-dim text-xs font-mono mt-0.5 truncate">{m.preview}</div>
                 </div>
               ))}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

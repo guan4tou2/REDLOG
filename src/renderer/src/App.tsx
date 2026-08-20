@@ -18,12 +18,13 @@ import { ToastContainer } from './components/Toast'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
-import { computeCaptureReadiness } from './lib/captureReadiness'
+import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
 import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
+import { formatTime } from './lib/time'
 
 type View = SidebarViewId | 'settings' | 'search'
 
@@ -92,72 +93,82 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!project) return
-      const cmd = e.ctrlKey || e.metaKey
-      // Search: ⌘/ was the original shortcut but macOS sends `Unidentified`
-      // as e.key for that combo (system-level Help-menu grab), so it never
-      // matched. Fall back to `e.code === 'Slash'` which stays 'Slash'
-      // regardless of layout/system grab, and also accept ⌘K (common command-
-      // palette pattern in Slack/Notion/Linear so muscle memory works).
-      if (cmd && (e.key === '/' || e.code === 'Slash' || e.key === 'k' || e.key === 'K')) {
+      // Dispatch off the one table (lib/shortcuts.ts) rather than a ladder of
+      // hand-written conditions. The table is what the Dashboard cheatsheet
+      // and the Timeline's `?` panel render, so a binding that works and a
+      // binding that is documented are now the same fact — the cheatsheet had
+      // drifted four bindings behind before this.
+      const rows = appShortcuts(currentShortcutOrder(), isMac)
+      const hit = rows.find((r) => r.match?.(e))
+      if (!hit) return
+
+      // Only the rows that ask for it yield to a focused text field. A blanket
+      // guard here is what broke ⌘1..9 while the Terminal was open — xterm
+      // keeps a hidden textarea focused for as long as that view is mounted.
+      if (hit.guardTyping) {
         const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
+        const typing = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
+        if (typing) return
+      }
+
+      if (hit.scope === 'nav') {
+        const target = hit.id === 'nav:settings' ? ('settings' as View) : viewForShortcut(parseInt(hit.keys.slice(-1)))
+        if (!target) return
         e.preventDefault()
-        // v0.6.91 W3: ⌘K inside the Timeline view opens the local fuzzy
-        // palette instead of jumping to the Search sidebar — palette scopes
-        // to the currently-loaded events, which is where operators want to
-        // muscle-memory ⌘K. ⌘/ still routes to Search everywhere. Anywhere
-        // outside Timeline both shortcuts keep the old Search behaviour.
-        const isPalette = view === 'timeline' && (e.key === 'k' || e.key === 'K')
-        if (isPalette) {
-          window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
+        setView(target)
+        return
+      }
+
+      switch (hit.id) {
+        case 'app:search':
+        case 'app:palette': {
+          e.preventDefault()
+          // v0.6.91 W3: ⌘K inside the Timeline opens the local fuzzy palette
+          // instead of jumping to the Search sidebar — it scopes to the
+          // currently-loaded events, which is where the muscle memory points.
+          // ⌘/ still routes to Search everywhere.
+          if (hit.id === 'app:palette' && view === 'timeline') {
+            window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
+          } else {
+            setView('search')
+          }
           return
         }
-        setView('search')
-        return
-      }
-      // ⌘/Ctrl+. pause/resume recording — matches the "period = pause"
-      // convention macOS uses for stop-download / stop-loading.
-      if (cmd && e.key === '.') {
-        e.preventDefault()
-        window.redlog.recording.toggle().then((on) => {
-          toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
-        }).catch(() => {})
-        return
-      }
-      // ⌘⇧⌥ + arrow snaps the HUD to a corner of the display it's currently
-      // on (audit finding #53). Was ⌘⌥ initially but macOS Sequoia's built-in
-      // window tiling grabs that combo before the app sees it, so add Shift
-      // as a third modifier — nothing on stock macOS uses ⌘⇧⌥ + Arrow. Skip
-      // when a text field has focus so arrow keys still move the caret.
-      // Mapping is symmetric: Up/Left → top-left, Up+Right → top-right,
-      // Down/Left → bottom-left, Down+Right → bottom-right — but with a
-      // single arrow we pick ↑=tl, ↓=bl, ←=tl, →=br so every combo maps.
-      if (cmd && e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-        if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable) return
-        // Clockwise around the four corners: ↑ = TL, → = TR, ↓ = BR, ← = BL.
-        // Reads as "pick the corner in that direction on a compass rose."
-        const corner: 'tl' | 'tr' | 'bl' | 'br' =
-          e.key === 'ArrowUp' ? 'tl'
-          : e.key === 'ArrowRight' ? 'tr'
-          : e.key === 'ArrowDown' ? 'br'
-          : 'bl'
-        e.preventDefault()
-        window.redlog.overlay.moveToCorner?.(corner)
-        return
-      }
-      if (cmd && !e.shiftKey && !e.altKey) {
-        const num = parseInt(e.key)
-        if (Number.isNaN(num)) return
-        const target = viewForShortcut(num)
-        if (target) {
+        case 'app:toggleRecording': {
           e.preventDefault()
-          setView(target)
+          window.redlog.recording.toggle().then((on) => {
+            toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
+          }).catch(() => {})
+          return
+        }
+        case 'app:hudCorner': {
+          // Clockwise around the four corners: ↑ = TL, → = TR, ↓ = BR, ← = BL.
+          // Reads as "pick the corner in that direction on a compass rose."
+          // ⌘⇧⌥ rather than ⌘⌥ because macOS Sequoia's window tiling grabs
+          // the latter before the app sees it (audit finding #53).
+          const corner: 'tl' | 'tr' | 'bl' | 'br' =
+            e.key === 'ArrowUp' ? 'tl'
+              : e.key === 'ArrowRight' ? 'tr'
+                : e.key === 'ArrowDown' ? 'br'
+                  : 'bl'
+          e.preventDefault()
+          window.redlog.overlay.moveToCorner?.(corner)
         }
       }
     }
+    // The status bar's fault counters live below the view switcher and cannot
+    // reach `setView` directly, so they ask by event (§9 — an issue names the
+    // view where it can be dealt with).
+    const onNavigate = (e: Event): void => {
+      const target = (e as CustomEvent<string>).detail
+      if (target) setView(target as View)
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('redlog:navigate', onNavigate)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('redlog:navigate', onNavigate)
+    }
     // `view` is read inside the handler to route ⌘K in Timeline to the local
     // palette rather than the Search sidebar (v0.6.91 W3).
   }, [project, t, view])
@@ -203,7 +214,7 @@ export default function App(): JSX.Element {
           {project.name}
         </button>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <LaunchBrowserButton />
+          <LaunchBrowserButton onNavigate={(v) => setView(v as View)} />
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
@@ -219,7 +230,7 @@ export default function App(): JSX.Element {
         <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
-          <ErrorBoundary label={view}>
+          <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
             {view === 'terminal' && <TerminalView />}
             {/* key on project.id: a project switch (e.g. project:open) must
@@ -411,7 +422,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     try {
       const api = window.redlog.hooks
       const r = install ? await api?.install(s.hookId) : await api?.uninstall(s.hookId)
-      if (r && r.success === false) toast(r.message || t('capture.actionFailed'), 'error')
+      if (r && r.success === false) {
+        toast(t('capture.actionFailed'), {
+          type: 'error',
+          why: t('capture.actionFailedWhy'),
+          detail: r.message,
+          action: { label: t('common.retry'), onClick: () => { void setInstalled(s, install) } }
+        })
+      }
       onRefresh()
     } finally { setBusy(null) }
   }
@@ -495,7 +513,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
+              <span title={SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
                 {SOURCE_LABEL[s.id] ?? s.id}
               </span>
               <span className="text-redlog-text-faint text-xs">
@@ -514,32 +532,39 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                       installed but switched off, or switched on but not yet
                       installed — collapsing them into one button would hide
                       which half is missing. */}
-                  {s.configPath && (
-                    <button
-                      disabled={busy === s.id}
-                      onClick={() => void setEnabled(s, s.enabled === false)}
-                      className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
-                        s.enabled === false
-                          ? 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
-                          : 'border-emerald-700/50 text-emerald-400 hover:bg-emerald-900/20'
-                      }`}
-                    >
-                      {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
-                    </button>
-                  )}
-                  {s.hookId && (
-                    <button
-                      disabled={busy === s.id}
-                      onClick={() => void setInstalled(s, s.installed !== true)}
-                      className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${
-                        s.installed === true
-                          ? 'border-redlog-border text-redlog-text-dim hover:text-red-400'
-                          : 'border-cyan-700/50 text-cyan-400 hover:bg-cyan-900/20'
-                      }`}
-                    >
-                      {s.installed === true ? t('capture.uninstall') : t('capture.install')}
-                    </button>
-                  )}
+                  {(() => {
+                    // §17: both axes stay visible, but exactly one control is
+                    // drawn as the primary — the operator should not have to
+                    // work out which button moves them forward when the state
+                    // already determines it.
+                    const primary = primaryCaptureAction(s)
+                    const emphasis = (mine: CaptureAction): string =>
+                      primary === mine
+                        ? 'border-redlog-accent/60 text-redlog-accent hover:bg-redlog-accent/10'
+                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
+                    return (
+                      <>
+                        {s.configPath && (
+                          <button
+                            disabled={busy === s.id}
+                            onClick={() => void setEnabled(s, s.enabled === false)}
+                            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('enable')}`}
+                          >
+                            {s.enabled === false ? t('capture.turnOn') : t('capture.turnOff')}
+                          </button>
+                        )}
+                        {s.hookId && (
+                          <button
+                            disabled={busy === s.id}
+                            onClick={() => void setInstalled(s, s.installed !== true)}
+                            className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40 ${emphasis('install')}`}
+                          >
+                            {s.installed === true ? t('capture.uninstall') : t('capture.install')}
+                          </button>
+                        )}
+                      </>
+                    )
+                  })()}
                   {/* No switch and nothing to install: these turn on when
                       their upstream does (mitmproxy in DNS mode, the launched
                       browser, a terminal pane). Claiming "always on" would
@@ -588,7 +613,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   )
 }
 
-function LaunchBrowserButton(): JSX.Element {
+function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [running, setRunning] = useState(false)
   const [busy, setBusy] = useState(false)
   const { t } = useI18n()
@@ -609,7 +634,12 @@ function LaunchBrowserButton(): JSX.Element {
         setRunning(true)
         toast(t('browser.launched'), 'success')
       } else {
-        toast(r.error || t('browser.failed'), 'error')
+        toast(t('browser.failed'), {
+          type: 'error',
+          why: t('browser.failedWhy'),
+          detail: r.error,
+          action: { label: t('browser.openSettings'), onClick: () => onNavigate('settings') }
+        })
       }
     }
     setBusy(false)
@@ -756,7 +786,7 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
             onClick={async () => {
               const path = await window.redlog.data.exportJson()
               if (path) toast(t('toast.exported'), 'success')
-              else toast(t('toast.exportFailed'), 'error')
+              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
             }}
             className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
           >
@@ -1018,7 +1048,7 @@ function ScreenshotsView(): JSX.Element {
               key={s.id}
               role="button"
               tabIndex={0}
-              aria-label={`Screenshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+              aria-label={`Screenshot at ${formatTime(s.timestamp, { seconds: true })}`}
               className="group relative rounded border border-redlog-border overflow-hidden bg-redlog-surface cursor-pointer hover:border-redlog-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors"
               onClick={() => !deletedIds.has(s.id) && setExpanded(expanded === s.id ? null : s.id)}
               onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !deletedIds.has(s.id)) { e.preventDefault(); setExpanded(expanded === s.id ? null : s.id) } }}
@@ -1045,8 +1075,8 @@ function ScreenshotsView(): JSX.Element {
                 )}
               </div>
               <div className="px-2 py-1 flex items-center justify-between gap-1">
-                <p className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
-                  {new Date(s.timestamp).toLocaleTimeString()} — {s.data.trigger as string}
+                <p title={`${formatTime(s.timestamp, { seconds: true })} — ${String(s.data.trigger ?? '')}`} className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
+                  {formatTime(s.timestamp, { seconds: true })} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
                     <span className="ml-1 text-redlog-text-faint">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>
                   )}
@@ -1064,7 +1094,11 @@ function ScreenshotsView(): JSX.Element {
                         setDeletedIds((prev) => { const n = new Set(prev); n.add(s.id); return n })
                         toast(t('screenshots.deletedToast'), 'success')
                       } else {
-                        toast(res.error || 'Delete failed', 'error')
+                        toast(t('screenshots.deleteFailed'), {
+                          type: 'error',
+                          why: t('screenshots.deleteFailedWhy'),
+                          detail: res.error
+                        })
                       }
                     }}
                     onKeyDown={(e) => e.stopPropagation()}
