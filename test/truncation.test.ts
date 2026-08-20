@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { repoRelative } from './helpers/repo-path'
 import glob from 'fast-glob'
 
 // §9: "文字截斷一律可 hover 看全文" — anything that truncates has to keep a
@@ -27,7 +28,7 @@ describe('truncated text', () => {
   it('always keeps a route to the full value', () => {
     const offenders: string[] = []
     for (const file of glob.sync('src/renderer/src/**/*.tsx', { cwd: ROOT, absolute: true })) {
-      const rel = path.relative(ROOT, file)
+      const rel = repoRelative(ROOT, file)
       const src = fs.readFileSync(file, 'utf-8')
       for (const m of src.matchAll(/<(\w+)\b((?:[^<>]|\{[^{}]*\})*?)>/gs)) {
         const attrs = m[2]
@@ -38,6 +39,20 @@ describe('truncated text', () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+
+  it('has an exemption list that actually matches the files it scans', () => {
+    // The assertion that would have named the Windows failure for what it was.
+    // `path.relative` yields backslashes there, so every exemption key missed
+    // and four deliberately-exempt elements were reported as violations — with
+    // the failure reading "expected [ …(4) ] to deeply equal []", which says
+    // nothing about separators.
+    const scanned = new Set(
+      glob.sync('src/renderer/src/**/*.tsx', { cwd: ROOT, absolute: true })
+        .map((f) => repoRelative(ROOT, f))
+    )
+    const unmatched = Object.keys(EXEMPT).filter((rel) => !scanned.has(rel))
+    expect(unmatched, 'exemption keys that match no scanned file').toEqual([])
   })
 
   it('keeps the exemption list honest', () => {

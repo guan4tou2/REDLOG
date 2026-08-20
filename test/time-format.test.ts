@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { repoRelative } from './helpers/repo-path'
 import glob from 'fast-glob'
 import { formatTime, formatDateTime, formatIso, formatFreshness } from '../src/renderer/src/lib/time'
 
@@ -60,7 +61,7 @@ describe('time formatting', () => {
 describe('no component formats its own time', () => {
   const sources = (): Array<[string, string]> =>
     glob.sync('src/renderer/src/**/*.{ts,tsx}', { cwd: ROOT, absolute: true })
-      .map((f) => [path.relative(ROOT, f), fs.readFileSync(f, 'utf-8')] as [string, string])
+      .map((f) => [repoRelative(ROOT, f), fs.readFileSync(f, 'utf-8')] as [string, string])
 
   it('never calls a bare toLocale*String', () => {
     // `toLocaleTimeString()` with no options is the 12-hour bug. Timeline's
