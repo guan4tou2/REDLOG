@@ -2856,10 +2856,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             onMouseDown={handleMouseDown}
             onScroll={updateView}
             onContextMenu={(e) => {
-              // v0.6.87 C1: right-click on the timeline background drops a
-              // marker at the clicked timestamp. Skips when the click landed
-              // on an event dot (they have their own click handler) or on
-              // the cluster popup.
+              // v0.6.87 C1 dropped a marker on the bare right-click. Two
+              // problems, both from §10. The renderer's `preventDefault` does
+              // not reach the main process's own `context-menu` event, so a
+              // right-click over selected text both dropped a marker and
+              // opened the copy menu — and that marker was already hashed into
+              // the chain by the time the menu appeared. And a chained event
+              // is not something a stray right-click should be able to write.
+              // It is a menu item now: right-click offers it, a click takes it.
               if (!onDropMarker) return
               const target = e.target as HTMLElement | null
               if (target?.closest('[data-timeline-popup]')) return
@@ -2869,8 +2873,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               if (!el || timeSpan <= 0) return
               const rect = el.getBoundingClientRect()
               const trackX = (e.clientX - rect.left) + el.scrollLeft
-              const ts = fromX(trackX)
-              onDropMarker(Math.round(ts))
+              const ts = Math.round(fromX(trackX))
+              void window.redlog.ui?.contextMenu?.([
+                { id: 'drop-marker', label: t('timeline.dropMarkerHere', { time: formatTime(ts, { seconds: true }) }) }
+              ]).then((picked) => {
+                if (picked === 'drop-marker') onDropMarker(ts)
+              })
             }}
           >
             <div style={{ width: TRACK_W, position: 'relative' }}>

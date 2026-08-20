@@ -586,7 +586,7 @@
   "timeline.help.focusChain": "對所選事件切換 focus-chain 模式",
   "timeline.help.selectDot": "選取事件 / 展開詳細面板",
   "timeline.help.walk": "在可見清單上下走動選取",
-  "timeline.help.dropMarker": "在此時間點落 marker",
+  "timeline.help.dropMarker": "右鍵 →〈在此落標記〉",
   "timeline.help.zoom": "拖曳 minimap 縮放時間範圍",
   "timeline.help.expandCluster": "展開重疊事件的 cluster",
   "timeline.help.expandBody": "展開 / 收合內文區塊",
@@ -937,5 +937,15 @@
   "issues.captureDetail": "事件仍在寫入，但至少有一個來源已停止產出——缺口會出現在時間軸上，不會出現在錯誤訊息裡。",
   "issues.chainBroken": "證據鏈驗證失敗",
   "issues.chainBrokenDetail": "錨定點與現在之間有一列的雜湊接不上下一列。做任何其他事之前先匯出證據包。",
-  "search.resultsLabel": "搜尋結果，{{count}} 筆事件"
+  "search.resultsLabel": "搜尋結果，{{count}} 筆事件",
+  "timeline.dropMarkerHere": "在 {{time}} 落一個標記",
+  "fatal.title": "{{view}} 停止運作",
+  "fatal.thisView": "這個畫面",
+  "fatal.why": "沒有東西遺失——已記錄的事件都在磁碟上，證據鏈完整。只有這個畫面停止繪製。",
+  "fatal.retry": "重試",
+  "fatal.goHome": "回到儀表板",
+  "fatal.diagnostics": "診斷資訊",
+  "fatal.copy": "複製",
+  "fatal.openIssue": "開一個 GitHub issue",
+  "fatal.scrubbed": "路徑已收斂到 app 套件內，使用者名稱與專案名稱已替換。送出前請先讀過——分享出去的就是這段文字。"
 }
