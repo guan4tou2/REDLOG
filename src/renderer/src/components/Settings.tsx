@@ -1741,7 +1741,7 @@ function DeconflictionPanel({
 function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
   const [operators, setOperators] = useState<OperatorInfo[]>([])
   const [newName, setNewName] = useState('')
-  const [pendingToken, setPendingToken] = useState<{ id: string; token: string; note: string } | null>(null)
+  const [pendingToken, setPendingToken] = useState<{ id: string; note: string; path: string | null } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   const reload = async (): Promise<void> => {
@@ -1759,7 +1759,8 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
     setBusy(null)
     if (result) {
       setNewName('')
-      setPendingToken({ id: result.operator.id, token: result.token, note: t('settings.operatorCreated') })
+      const written = await window.redlog.operators.writeToken(result.operator.id, result.token)
+      setPendingToken({ id: result.operator.id, note: t('settings.operatorCreated'), path: written })
       await reload()
     } else {
       toast(t('settings.operatorCreateFailed'), {
@@ -1774,7 +1775,8 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
     const result = await window.redlog.operators.rotate(id)
     setBusy(null)
     if (result) {
-      setPendingToken({ id, token: result.token, note: t('settings.operatorRotated') })
+      const written = await window.redlog.operators.writeToken(id, result.token)
+      setPendingToken({ id, note: t('settings.operatorRotated'), path: written })
       await reload()
     }
   }
@@ -1872,29 +1874,50 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         </button>
       </div>
 
+      {/* §10: the token is written to a file, not handed over as text to
+          copy. A token on the clipboard is a token in every clipboard manager
+          on the machine, and one pasted into a note is a token in whatever
+          that note syncs to. `~/.redlog/tokens/` sits outside the project
+          directory on purpose — bundle export and cloud share walk the project
+          tree, and a credential is not evidence. */}
       {pendingToken && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
           <p className="text-xs text-red-300">{pendingToken.note}</p>
-          <div className="flex items-center gap-1">
-            <code title={pendingToken.token} className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded truncate">
-              {pendingToken.token}
-            </code>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(pendingToken.token)
-                toast(t('toast.copied'), 'success')
-              }}
-              className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
-            >
-              {t('settings.operatorTokenCopy')}
-            </button>
-            <button
-              onClick={() => setPendingToken(null)}
-              className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
-            >
-              {t('settings.operatorTokenClose')}
-            </button>
-          </div>
+          {pendingToken.path ? (
+            <>
+              <p className="text-xs text-redlog-text-dim">{t('settings.operatorTokenWritten')}</p>
+              <div className="flex items-center gap-1">
+                <code title={pendingToken.path} className="flex-1 bg-black/40 text-redlog-text-dim text-xs font-mono px-2 py-1.5 rounded truncate">
+                  {pendingToken.path}
+                </code>
+                <button
+                  onClick={() => { void window.redlog.data.revealPath?.(pendingToken.path as string) }}
+                  className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover whitespace-nowrap"
+                >
+                  {t('settings.exportBundleReveal')}
+                </button>
+                <button
+                  onClick={() => setPendingToken(null)}
+                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
+                >
+                  {t('settings.operatorTokenClose')}
+                </button>
+              </div>
+            </>
+          ) : (
+            // The write failed. Falling back to showing the token is worse
+            // than losing it — an operator can always rotate — so say what
+            // happened and let them retry rather than putting it on screen.
+            <div className="flex items-center gap-1">
+              <p className="flex-1 text-xs text-redlog-text-dim">{t('settings.operatorTokenWriteFailed')}</p>
+              <button
+                onClick={() => setPendingToken(null)}
+                className="px-2 py-1.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover"
+              >
+                {t('settings.operatorTokenClose')}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </FieldGroup>
