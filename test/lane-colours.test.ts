@@ -2,9 +2,16 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 
-// v0.11.4 (AUDIT V1/V2). Two properties of the lane palette that regressed
-// silently and that no rendering test can see — empty lanes auto-collapse, so
-// the DOM never shows all eighteen at once.
+// v0.14.4 (UIUX-STANDARD §1). This file used to assert the opposite: that all
+// eighteen lanes had *distinct*, far-apart hues. That property was real and
+// tested, and it was the wrong property to have. Eighteen hues on one screen
+// left nothing for status to say — `marker`, `scope` and `cleanup` sat in the
+// same red family as the red that means "this violated scope" — so hue is now
+// reserved for status and lanes separate by label and vertical position.
+//
+// The invariant is inverted, not deleted: every lane must be the one neutral,
+// and the assertions below exist so a future "just give this lane its own
+// colour" change has to walk past a red test and read this comment.
 //
 // The palette is parsed out of the source rather than imported: Timeline.tsx
 // pulls in the whole renderer tree (xterm, i18n, the preload bridge), none of
@@ -13,67 +20,60 @@ import path from 'path'
 const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
 )
+const TAILWIND = fs.readFileSync(path.join(__dirname, '..', 'tailwind.config.js'), 'utf-8')
 
-function lanePalette(): Array<[string, string]> {
-  const block = /const LANE_COLORS[^=]*=\s*\{([\s\S]*?)\n\}/.exec(SRC)
-  if (!block) throw new Error('LANE_COLORS not found — did the declaration move?')
-  return [...block[1].matchAll(/(\w+):\s*'(#[0-9a-fA-F]{6})'/g)].map((m) => [m[1], m[2]])
+function laneColour(): string {
+  const m = /const LANE_COLOR = '(#[0-9a-fA-F]{6})'/.exec(SRC)
+  if (!m) throw new Error('LANE_COLOR not found — did the declaration move?')
+  return m[1].toLowerCase()
 }
 
-const rgb = (hex: string): [number, number, number] =>
-  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
-
-const distance = (a: string, b: string): number =>
-  Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i]))
+function lanes(): string[] {
+  return [...SRC.matchAll(/const LANES = \[([^\]]+)\]/g)][0][1]
+    .split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean)
+}
 
 describe('lane palette', () => {
   it('covers every lane exactly once', () => {
-    const lanes = [...SRC.matchAll(/const LANES = \[([^\]]+)\]/g)][0][1]
-      .split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean)
-    const palette = lanePalette()
-    expect(palette.length).toBe(lanes.length)
-    expect(new Set(palette.map(([k]) => k))).toEqual(new Set(lanes))
+    // The table became a generated map, so coverage is structural rather than
+    // a count — but assert LANES is still what feeds it.
+    expect(SRC).toMatch(/LANES\.map\(\(id\) => \[id, LANE_COLOR\]\)/)
+    expect(lanes().length).toBe(18)
+    expect(new Set(lanes()).size).toBe(18)
   })
 
-  it('gives no two lanes the same colour', () => {
-    // `marker` and `scope` were byte-identical (#ef4444) — the two lanes an
-    // operator most needs to tell apart at a glance — with `cleanup` a shade
-    // away. Nothing in the UI would have shown that.
-    const palette = lanePalette()
-    const seen = new Map<string, string>()
-    const clashes: string[] = []
-    for (const [lane, colour] of palette) {
-      const prev = seen.get(colour)
-      if (prev) clashes.push(`${prev} and ${lane} are both ${colour}`)
-      else seen.set(colour, lane)
+  it('gives every lane the same neutral', () => {
+    expect(laneColour()).toBe('#6e6e78')
+  })
+
+  it('matches the `lane` token in tailwind.config.js', () => {
+    // Two files, one colour: the Timeline draws lane dots inline (SVG fill,
+    // not a class) while chips use the Tailwind token. They have to agree.
+    const m = /lane: '(#[0-9a-fA-F]{6})'/.exec(TAILWIND)
+    expect(m?.[1].toLowerCase()).toBe(laneColour())
+  })
+
+  it('is a neutral — no hue for a lane to claim', () => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(laneColour().slice(i, i + 2), 16))
+    const max = Math.max(r, g, b), min = Math.min(r, g, b)
+    expect((max - min) / max).toBeLessThan(0.12)
+  })
+
+  it('separates from the surfaces it is drawn on', () => {
+    // Non-text UI elements need 3:1 (WCAG SC 1.4.11). A lane dot is the only
+    // thing marking which row belongs to which lane once hue is gone.
+    const lum = (hex: string): number => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      const f = (x: number): number => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)
+      const [r, g, b] = c.map(f)
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
-    expect(clashes).toEqual([])
-  })
-
-  it('keeps every pair far enough apart to separate side by side', () => {
-    // Not a perceptual model — a crude RGB distance floor that catches "these
-    // two are the same shade with one channel nudged", which is how the red
-    // family drifted together in the first place.
-    const palette = lanePalette()
-    const tooClose: string[] = []
-    for (let i = 0; i < palette.length; i++) {
-      for (let j = i + 1; j < palette.length; j++) {
-        const d = distance(palette[i][1], palette[j][1])
-        if (d < 18) tooClose.push(`${palette[i][0]}/${palette[j][0]} (${d.toFixed(0)})`)
-      }
+    const ratio = (a: string, b: string): number => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+      return (hi + 0.05) / (lo + 0.05)
     }
-    expect(tooClose).toEqual([])
-  })
-
-  it('stays inside the desaturated band the rest of the app uses', () => {
-    // tailwind.config.js desaturates every accent because high-saturation on
-    // near-black vibrates. The lane palette used raw Tailwind values and was
-    // the most saturated surface in the app.
-    const loud = lanePalette().filter(([, hex]) => {
-      const [r, g, b] = rgb(hex)
-      const max = Math.max(r, g, b), min = Math.min(r, g, b)
-      return max > 0 && (max - min) / max > 0.72
-    })
-    expect(loud.map(([lane, hex]) => `${lane}=${hex}`)).toEqual([])
+    for (const surface of ['#121214', '#1a1a1d', '#212126']) {
+      expect(ratio(laneColour(), surface), `lane on ${surface}`).toBeGreaterThanOrEqual(3)
+    }
   })
 })
