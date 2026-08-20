@@ -896,5 +896,7 @@
   "capture.actionFailedWhy": "hook 沒有被改動。shell 設定檔可能是唯讀，或路徑已不存在。",
   "transcript.copyFailedWhy": "剪貼簿拒絕寫入，可能被其他應用程式占用。",
   "project.openMissingWhy": "資料夾已不存在，或所在的磁碟區未掛載。",
-  "common.openFolder": "開啟資料夾"
+  "common.openFolder": "開啟資料夾",
+  "confirm.ackDefault": "我了解這個動作無法復原。",
+  "confirm.typeToConfirm": "輸入 {{value}} 以確認"
 }

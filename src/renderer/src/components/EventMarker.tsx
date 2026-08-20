@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
+import { useFocusTrap } from '../lib/useFocusTrap'
 
 const SEVERITIES = ['info', 'important', 'critical'] as const
 const CATEGORIES = [
@@ -26,11 +27,19 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
   const [saving, setSaving] = useState(false)
   const { t } = useI18n()
 
-  // Close on Escape — audit finding P1 #30 (modals need proper keyboard).
-  // Backdrop click handler on the outer div covers mouse dismiss.
-  const dialogRef = ((): ((el: HTMLDivElement | null) => void) => {
-    return (el) => { el?.focus() }
-  })()
+  // The dialog used to focus itself once and stop there, so Tab walked out
+  // into the page behind it (§4). Trap it, and take Escape at the window
+  // rather than from a keydown on the backdrop — the backdrop only sees the
+  // key if focus happens to be inside it, which is exactly the case that was
+  // broken. Backdrop click still covers mouse dismiss.
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const titleRef = useRef<HTMLInputElement | null>(null)
+  useFocusTrap(dialogRef, true, titleRef)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') { e.preventDefault(); onClose() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const handleSave = async () => {
     setSaving(true)
@@ -60,7 +69,6 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 select-text"
       onClick={onClose}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
       role="presentation"
     >
       <div
@@ -82,7 +90,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         </h3>
 
         <input
-          autoFocus
+          ref={titleRef}
           type="text"
           placeholder={t('marker.placeholder')}
           value={title}
