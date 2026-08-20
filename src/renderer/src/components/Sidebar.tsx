@@ -79,7 +79,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: AlignLeft },
     screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: Image },
     targets: { id: 'targets', label: t('sidebar.targets'), icon: Crosshair },
-    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-red-500' },
+    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger' },
     loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500' },
     marks: { id: 'marks', label: t('sidebar.marks'), icon: Flag }
   }

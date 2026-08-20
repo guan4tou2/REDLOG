@@ -154,7 +154,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             <button
               onClick={handleCreate}
               disabled={!newName.trim() || creating}
-              className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-redlog-elevated disabled:text-redlog-text-faint text-white text-sm font-medium rounded-lg transition-colors"
+              className="px-4 py-2 bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 disabled:bg-redlog-elevated disabled:text-redlog-text-faint text-white text-sm font-medium rounded-lg transition-colors"
             >
               {t('project.create')}
             </button>

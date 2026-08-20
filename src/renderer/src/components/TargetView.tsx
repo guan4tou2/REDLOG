@@ -149,7 +149,7 @@ export function TargetView(): JSX.Element {
               onClick={() => setFilter(f)}
               className={`px-2 py-0.5 text-xs rounded ${
                 filter === f
-                  ? 'bg-red-600 text-white'
+                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
                   : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
               }`}
             >

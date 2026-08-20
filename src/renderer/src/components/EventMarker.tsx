@@ -139,7 +139,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 text-xs bg-redlog-accent text-white rounded hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 text-xs bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 rounded disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? t('marker.saving') : t('marker.submit')}
           </button>

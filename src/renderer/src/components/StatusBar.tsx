@@ -93,7 +93,7 @@ export default function StatusBar(): JSX.Element {
   }
 
   const safety = ipStatus?.ipSafety ?? 'unknown'
-  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-red-500' : 'bg-amber-500'
+  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'
   const safetyLabel = safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
 
   const hours = Math.floor(uptime / 3600)

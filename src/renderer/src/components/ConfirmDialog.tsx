@@ -80,7 +80,7 @@ function ConfirmDialogInner({ state, close, t }: {
             onClick={() => close(true)}
             className={`px-3 py-1.5 text-xs rounded-md font-medium focus:outline-none focus:ring-2 transition-colors ${
               state.destructive
-                ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-400'
+                ? 'bg-redlog-danger text-white hover:bg-redlog-danger-hover focus:ring-redlog-danger'
                 : 'bg-redlog-elevated-hover text-redlog-text hover:bg-redlog-elevated-hover focus:ring-redlog-text-dim'
             }`}
           >
