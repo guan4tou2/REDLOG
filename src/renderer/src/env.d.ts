@@ -139,6 +139,9 @@ interface RedLogAPI {
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
   }
+  httpBody: {
+    read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
+  }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
     onShortcut: (cb: () => void) => () => void

@@ -192,10 +192,11 @@ export function sweepRetention(config: {
   terminal?: { castKeepDays?: number }
   screenshots?: { keepDays?: number }
   agentTranscripts?: { keepDays?: number }
-}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number } {
-  if (!opts.operatorId) return { cast: 0, screenshots: 0, agentTranscripts: 0 }
+  httpBodies?: { keepDays?: number }
+}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number; httpBodies: number } {
+  if (!opts.operatorId) return { cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 }
   let projectDir: string
-  try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0, agentTranscripts: 0 } }
+  try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 } }
   const castDays = config.terminal?.castKeepDays ?? 0
   const shotDays = config.screenshots?.keepDays ?? 0
   // v0.7.2 F: agent-transcripts sweep.
@@ -231,5 +232,13 @@ export function sweepRetention(config: {
     'agent_transcript_pruned',
     opts
   )
-  return { cast, screenshots, agentTranscripts }
+  const httpBodyDays = config.httpBodies?.keepDays ?? 0
+  const httpBodies = sweepDir(
+    path.join(projectDir, 'http-bodies'),
+    httpBodyDays,
+    (n) => n.endsWith('.body'),
+    'http_body_pruned',
+    opts
+  )
+  return { cast, screenshots, agentTranscripts, httpBodies }
 }

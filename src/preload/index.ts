@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld('redlog', {
     logSecretRevealed: (sourceEventId: string, fields: string[]) =>
       ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields)
   },
+  httpBody: {
+    read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
+      ipcRenderer.invoke('httpBody:read', ref) as Promise<string | null>
+  },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),
     onShortcut: (cb: () => void) => {

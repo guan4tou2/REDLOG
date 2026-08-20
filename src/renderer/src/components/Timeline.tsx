@@ -3733,19 +3733,62 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isResponse = subtype === 'http_response'
+  const isRequest = subtype === 'http_request_start'
   const params = data.params as Record<string, unknown> | undefined
   const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
+  const reqPreview = typeof data.request_body_preview === 'string' ? (data.request_body_preview as string) : ''
   const contentType = String(data.content_type ?? '')
   const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
 
-  // A textual body that mitmproxy chose not to capture is different from a
-  // binary one it never could — say which.
-  const bodyless = isResponse && !preview && contentLength !== null && contentLength > 0
+  const inlineReqBody = data.request_body as { data?: string; encoding?: string; size?: number } | undefined
+  const inlineRespBody = data.response_body as { data?: string; encoding?: string; size?: number } | undefined
+  const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
+  const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
+
+  const hasFullReqBody = !!(inlineReqBody?.data || reqBodyRef)
+  const hasFullRespBody = !!(inlineRespBody?.data || respBodyRef)
+
+  const [loadedReqBody, setLoadedReqBody] = useState<string | null>(null)
+  const [loadedRespBody, setLoadedRespBody] = useState<string | null>(null)
+  const [loadingReq, setLoadingReq] = useState(false)
+  const [loadingResp, setLoadingResp] = useState(false)
+
+  const loadFullBody = useCallback(async (
+    ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined,
+    inline: { data?: string; encoding?: string; size?: number } | undefined,
+    setter: (v: string | null) => void,
+    setLoading: (v: boolean) => void
+  ) => {
+    if (inline?.data) {
+      setter(inline.encoding === 'base64'
+        ? `[base64, ${inline.size ?? inline.data.length} bytes]\n${inline.data}`
+        : inline.data)
+      return
+    }
+    if (!ref) return
+    setLoading(true)
+    try {
+      const content = await window.redlog.httpBody.read(ref)
+      setter(content)
+    } catch { setter(null) }
+    setLoading(false)
+  }, [])
+
+  const headers = data.request_headers ?? data.response_headers
+  const headersText = useMemo(() => {
+    if (!headers) return ''
+    if (Array.isArray(headers)) {
+      return (headers as string[][]).map(([n, v]) => `${n}: ${v}`).join('\n')
+    }
+    return safePretty(headers)
+  }, [headers])
+
+  const bodyless = isResponse && !preview && !hasFullRespBody && contentLength !== null && contentLength > 0
   const binaryish = bodyless && !!contentType && !/json|html|text|xml|javascript/i.test(contentType)
 
   return (
     <div className="mt-2 space-y-1.5">
-      {!isResponse && params && Object.keys(params).length > 0 && (
+      {isRequest && params && Object.keys(params).length > 0 && (
         <CollapsibleStream
           label={t('timeline.detail.httpRequestParams')}
           content={safePretty(params)}
@@ -3753,15 +3796,54 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           startOpen
         />
       )}
-      {isResponse && preview.length > 0 && (
+      {isRequest && reqPreview.length > 0 && !loadedReqBody && (
+        <CollapsibleStream
+          label={t('timeline.detail.httpRequestBody')}
+          content={reqPreview}
+          bytes={inlineReqBody?.size ?? reqPreview.length}
+          truncated={hasFullReqBody}
+          accent="zinc"
+          startOpen
+        />
+      )}
+      {isRequest && hasFullReqBody && !loadedReqBody && (
+        <button
+          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          onClick={() => loadFullBody(reqBodyRef, inlineReqBody, setLoadedReqBody, setLoadingReq)}
+          disabled={loadingReq}
+        >
+          {loadingReq ? '...' : t('timeline.detail.httpLoadFullBody')}
+          {' '}({formatBytes(inlineReqBody?.size ?? reqBodyRef?.size ?? 0)})
+        </button>
+      )}
+      {isRequest && loadedReqBody && (
+        <CollapsibleStream
+          label={t('timeline.detail.httpRequestBody')}
+          content={loadedReqBody}
+          bytes={inlineReqBody?.size ?? reqBodyRef?.size}
+          accent="zinc"
+          startOpen
+        />
+      )}
+      {isResponse && (preview.length > 0 || loadedRespBody) && (
         <CollapsibleStream
           label={t('timeline.detail.httpResponseBody')}
-          content={preview}
-          bytes={contentLength ?? preview.length}
-          truncated={contentLength !== null && contentLength > preview.length}
+          content={loadedRespBody || preview}
+          bytes={contentLength ?? (loadedRespBody || preview).length}
+          truncated={!loadedRespBody && hasFullRespBody}
           accent="emerald"
           startOpen
         />
+      )}
+      {isResponse && hasFullRespBody && !loadedRespBody && (
+        <button
+          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          onClick={() => loadFullBody(respBodyRef, inlineRespBody, setLoadedRespBody, setLoadingResp)}
+          disabled={loadingResp}
+        >
+          {loadingResp ? '...' : t('timeline.detail.httpLoadFullBody')}
+          {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
+        </button>
       )}
       {bodyless && (
         <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
@@ -3770,10 +3852,10 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           })}
         </p>
       )}
-      {(data.request_headers || data.response_headers) && (
+      {headersText && (
         <CollapsibleStream
           label={t('timeline.detail.httpHeaders')}
-          content={safePretty(data.response_headers ?? data.request_headers)}
+          content={headersText}
           accent="zinc"
         />
       )}
