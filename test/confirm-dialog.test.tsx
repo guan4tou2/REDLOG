@@ -9,6 +9,8 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import fs from 'fs'
+import path from 'path'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import {
   ConfirmDialogContainer, confirm, confirmIrreversible, confirmChainImpact
@@ -146,5 +148,25 @@ describe('focus trap', () => {
     await answer
     await waitFor(() => expect(document.activeElement).toBe(opener))
     opener.remove()
+  })
+})
+
+// §5.5 grades by consequence, and the grading only means anything if the most
+// consequential action in the app is actually wired to the top level. Deleting
+// a project destroys the SHA-256 chain, the screenshots, the session
+// recordings and the OpenTimestamps receipts — and it ran on the same checkbox
+// as removing a shell hook until this was checked against the design.
+describe('the levels are wired, not just available', () => {
+  it('project deletion asks for the project name and lists what goes', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../src/renderer/src/components/ProjectPicker.tsx'), 'utf-8'
+    )
+    const handler = src.slice(src.indexOf('async function handleDelete'))
+    const body = handler.slice(0, handler.indexOf('\n  }'))
+    expect(body).toMatch(/confirmChainImpact/)
+    expect(body).toMatch(/requireTyped: project\.name/)
+    expect(body).toMatch(/consequences:/)
+    // The plain two-argument confirm would silently downgrade it again.
+    expect(body).not.toMatch(/\bawait confirm\(/)
   })
 })
