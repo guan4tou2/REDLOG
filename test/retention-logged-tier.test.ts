@@ -159,7 +159,10 @@ describeDB('sweepLoggedTier — v0.13.0', () => {
     expect(r.deleted).toBe(1)
   })
 
-  it('batched delete handles > BATCH_SIZE rows', () => {
+  // Windows CI runs each insertEvent slower (WAL fsync + AV scans); 100 rows
+  // sequentially can push past the 5s default. Bump to 20s for headroom —
+  // macOS/Linux still finish in <1s.
+  it('batched delete handles > BATCH_SIZE rows', { timeout: 20000 }, () => {
     // Insert 100 rows and backdate all of them. Even though we don't hit
     // the real BATCH_SIZE=5000, this exercises the delete loop and
     // guarantees `pruned` matches what got deleted.
