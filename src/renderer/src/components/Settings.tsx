@@ -4,6 +4,7 @@ import { toast } from './Toast'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../lib/verifyResultCache'
 import WslPanel from './WslPanel'
+import { DEFAULT_CDP_PORT } from '../lib/defaults'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -188,14 +189,16 @@ export default function Settings(): JSX.Element {
             <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
             <BrowserPanel t={t} config={config} setConfig={setConfig} />
             <FieldGroup title={t('settings.cdp')}>
-              <p className="text-xs text-zinc-600 mb-2">{t('settings.cdpHint')}</p>
+              <p className="text-xs text-zinc-600 mb-2">
+                {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
+              </p>
               <button
                 onClick={async () => {
                   // Uses the CDP port from BrowserPanel above (config.browser.
                   // cdpPort) — the previous separate field silently didn't
                   // auto-save so users often set two different ports without
                   // knowing (audit finding P0 #43).
-                  const port = config.browser?.cdpPort ?? 9222
+                  const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
                   await window.redlog.cdp.setPort(port)
                   const cdpTab = await window.redlog.cdp.getTab()
                   if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
@@ -1048,7 +1051,7 @@ function BrowserPanel({
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
   const b = config.browser ?? {
-    binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: 9222,
+    binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: DEFAULT_CDP_PORT,
     isolateProfile: true, ignoreCertErrors: true, startUrl: '', extraArgs: []
   }
   const [detected, setDetected] = useState<string | null>(null)
@@ -1072,7 +1075,7 @@ function BrowserPanel({
       <Field
         label={t('settings.cdpPort')}
         value={String(b.cdpPort)}
-        onChange={(v) => patch({ cdpPort: parseInt(v) || 9222 })}
+        onChange={(v) => patch({ cdpPort: parseInt(v) || DEFAULT_CDP_PORT })}
         type="number"
       />
       <Field label={t('settings.browserStartUrl')} value={b.startUrl} onChange={(v) => patch({ startUrl: v })} />

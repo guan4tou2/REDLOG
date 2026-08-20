@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
+import { DEFAULT_CDP_PORT } from '../lib/defaults'
 
 const TAG_COLORS = [
   { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
@@ -233,7 +234,7 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
       )}
       {!initial && !browserTab?.connected && (
         <div className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-500">
-          {t('marks.cdpHint')}
+          {t('marks.cdpHint', { port: String(browserTab?.port ?? DEFAULT_CDP_PORT) })}
         </div>
       )}
 
