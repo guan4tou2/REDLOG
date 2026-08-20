@@ -260,7 +260,7 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
       </div>
 
       <div className="flex gap-2 pt-1">
-        <button onClick={submit} className="px-4 py-1.5 bg-redlog-accent text-white text-xs rounded hover:bg-red-700">
+        <button onClick={submit} className="px-4 py-1.5 bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 text-xs rounded hover:bg-red-700">
           {initial ? t('marks.update') : t('marks.save')}
         </button>
         <button onClick={onCancel} className="px-3 py-1.5 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">

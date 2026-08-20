@@ -41,7 +41,7 @@ export default function IPStatusCard(): JSX.Element {
   const safety = status.ipSafety
   const STATUS_CONFIG = {
     safe: { indicator: 'bg-green-500', label: t('ip.safeIp'), color: 'text-green-400' },
-    exposed: { indicator: 'bg-red-500', label: t('ip.exposedIp'), color: 'text-red-400' },
+    exposed: { indicator: 'bg-redlog-danger', label: t('ip.exposedIp'), color: 'text-red-400' },
     unknown: { indicator: 'bg-yellow-500', label: t('ip.unknownIp'), color: 'text-yellow-400' }
   }
   const cfg = STATUS_CONFIG[safety]

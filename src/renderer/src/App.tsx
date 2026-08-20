@@ -459,7 +459,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // the single primary CTA below, replacing the old one-line "go to Settings"
   // hint that dropped a first-run operator into a 2600-line page with no order.
   const readiness = computeCaptureReadiness(capture)
-  const barColor = dark ? 'bg-red-500' : partial ? 'bg-amber-500' : 'bg-emerald-500'
+  const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
   return (
