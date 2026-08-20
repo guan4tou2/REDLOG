@@ -46,7 +46,7 @@ test('folds request/response pairs into single exchanges', async () => {
 
   // Six events in, four exchanges out: the two pairs each collapse to one.
   const blocks = await page.evaluate(() =>
-    document.querySelectorAll('div.rounded.border.border-zinc-800\\/70').length)
+    document.querySelectorAll('div.rounded.border.border-redlog-border\\/70').length)
   expect(blocks, 'a call and its result must render as one exchange').toBe(4)
 
   // Collapsed is the default as of fc30071 — a transcript of a real engagement

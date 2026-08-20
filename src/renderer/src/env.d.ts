@@ -71,6 +71,8 @@ interface BrowserTabInfo {
   url: string | null
   title: string | null
   connected: boolean
+  /** Port the connector is polling — quote this in setup guidance. */
+  port: number
 }
 
 interface WslDistro {

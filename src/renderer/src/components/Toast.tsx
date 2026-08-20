@@ -17,7 +17,7 @@ export function toast(message: string, type: ToastData['type'] = 'info'): void {
 const TYPE_STYLES: Record<string, string> = {
   success: 'border-emerald-500/30 bg-emerald-950/80 text-emerald-300',
   error: 'border-red-500/30 bg-red-950/80 text-red-300',
-  info: 'border-zinc-600/30 bg-zinc-900/90 text-zinc-300',
+  info: 'border-redlog-border/30 bg-redlog-surface/90 text-redlog-text',
   warning: 'border-amber-500/30 bg-amber-950/80 text-amber-300'
 }
 
@@ -66,7 +66,7 @@ export function ToastContainer(): JSX.Element | null {
           role="status"
           className={`flex items-center gap-2.5 px-4 py-2.5 rounded-lg border backdrop-blur-md text-xs font-medium shadow-lg animate-toast-in pointer-events-auto ${TYPE_STYLES[t.type]}`}
         >
-          <span className="text-[11px] opacity-70">{TYPE_ICONS[t.type]}</span>
+          <span className="text-xs opacity-70">{TYPE_ICONS[t.type]}</span>
           <span>{t.message}</span>
           <button
             onClick={() => dismiss(t.id)}

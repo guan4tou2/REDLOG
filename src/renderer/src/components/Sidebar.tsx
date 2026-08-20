@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
+  Ban, Gem, Flag, Settings as SettingsIcon, type LucideIcon
+} from 'lucide-react'
 import { useI18n } from '../i18n'
 
 interface SidebarProps {
@@ -9,10 +13,18 @@ interface SidebarProps {
 interface NavItem {
   id: string
   label: string
-  icon: string
+  icon: LucideIcon
   badge?: number
   badgeColor?: string
 }
+
+// Lucide, 1.5px stroke, 16px (UIUX-STANDARD §4). These used to be the Unicode
+// geometry `◉ ▸ ═ ☰ ◻ ⊕ ⊘ ◆ ⚑`, which is a glyph lookup rather than an icon:
+// each one lands in a different fallback font per platform, so the row heights
+// and optical weights disagreed between macOS and Windows, and a screen reader
+// announced them by their Unicode names.
+const NAV_ICON_SIZE = 16
+const NAV_ICON_STROKE = 1.5
 
 // Shared with App.tsx's ⌘1..9 shortcut handler so the two orders can't
 // drift. See src/renderer/src/lib/sidebarOrder.ts.
@@ -55,21 +67,21 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
   const badge = (count: number, color: string): JSX.Element | null =>
     count > 0 ? (
-      <span className={`ml-auto min-w-[18px] h-[18px] rounded-full ${color} text-[11px] text-white font-bold flex items-center justify-center px-1`}>
+      <span className={`ml-auto min-w-[18px] h-[18px] rounded-full ${color} text-xs text-white font-bold flex items-center justify-center px-1`}>
         {count > 99 ? '99+' : count}
       </span>
     ) : null
 
   const itemMap: Record<string, NavItem> = {
-    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: '◉' },
-    terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: '▸' },
-    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: '═' },
-    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: '☰' },
-    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: '◻' },
-    targets: { id: 'targets', label: t('sidebar.targets'), icon: '⊕' },
-    scope: { id: 'scope', label: t('sidebar.scope'), icon: '⊘', badge: scopeViolations, badgeColor: 'bg-red-500' },
-    loot: { id: 'loot', label: t('sidebar.loot'), icon: '◆', badge: lootCount, badgeColor: 'bg-amber-500' },
-    marks: { id: 'marks', label: t('sidebar.marks'), icon: '⚑' }
+    dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: Gauge },
+    terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ChevronRight },
+    timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
+    transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: AlignLeft },
+    screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: Image },
+    targets: { id: 'targets', label: t('sidebar.targets'), icon: Crosshair },
+    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger' },
+    loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500' },
+    marks: { id: 'marks', label: t('sidebar.marks'), icon: Flag }
   }
 
   const items = order.map((id) => itemMap[id]).filter(Boolean)
@@ -138,44 +150,52 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
               title={`${item.label} · ${isMac ? '⌘' : 'Ctrl+'}${index + 1}${index === 0 ? '  (' + t('sidebar.reorderHint') + ')' : ''}`}
               aria-label={`${item.label} — ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
+              className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${
                 draggingId === item.id ? 'bg-white/[0.07] cursor-grabbing' : ''
               } ${
                 isActive
                   ? 'text-red-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+                  : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
               }`}
             >
               {isActive && (
                 <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
               )}
-              <span className={`text-[13px] leading-none w-4 text-center shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}>
-                {item.icon}
-              </span>
-              <span className={`text-[11px] leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
+              <item.icon
+                size={NAV_ICON_SIZE}
+                strokeWidth={NAV_ICON_STROKE}
+                aria-hidden
+                className={`shrink-0 transition-colors ${isActive ? 'text-red-400' : ''}`}
+              />
+              <span className={`text-xs leading-none truncate font-medium ${isActive ? 'text-red-400' : ''}`}>
                 {item.label}
               </span>
-              {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-zinc-500')}
+              {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-text-dim')}
             </button>
           )
         })}
       </div>
 
-      <div className="mt-auto pt-3 border-t border-zinc-800/40">
+      <div className="mt-auto pt-3 border-t border-redlog-border/40">
         <button
           data-view-btn="settings"
           onClick={() => onNavigate('settings')}
-          className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
+          className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative ${
             active === 'settings'
               ? 'text-red-400'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]'
+              : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
           }`}
         >
           {active === 'settings' && (
             <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-red-500" />
           )}
-          <span className={`text-[13px] leading-none w-4 text-center shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}>⚙</span>
-          <span className={`text-[11px] leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
+          <SettingsIcon
+            size={NAV_ICON_SIZE}
+            strokeWidth={NAV_ICON_STROKE}
+            aria-hidden
+            className={`shrink-0 ${active === 'settings' ? 'text-red-400' : ''}`}
+          />
+          <span className={`text-xs leading-none truncate font-medium ${active === 'settings' ? 'text-red-400' : ''}`}>{t('sidebar.config')}</span>
         </button>
       </div>
     </nav>

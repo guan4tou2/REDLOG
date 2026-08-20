@@ -43,10 +43,15 @@ interface BrowserContext {
   url: string | null
   title: string | null
   connected: boolean
+  // The port we are actually polling. Ships with every status read so the
+  // renderer's "launch Chrome with --remote-debugging-port=N" guidance can
+  // quote the real number instead of a copy of the default that goes stale
+  // the moment anyone changes the port in Settings.
+  port: number
 }
 
 let cdpPort = 9222
-let lastContext: BrowserContext = { url: null, title: null, connected: false }
+let lastContext: BrowserContext = { url: null, title: null, connected: false, port: cdpPort }
 
 // Per-tab last-seen URL so we only emit an event when navigation actually
 // changed. Chrome DevTools' /json endpoint is polled — no WebSocket subscription
@@ -403,12 +408,12 @@ export async function getActiveBrowserTab(): Promise<BrowserContext> {
     const tabs = await fetchJson<BrowserTab[]>(`http://127.0.0.1:${cdpPort}/json`)
     const page = tabs.find((t) => t.type === 'page')
     if (page) {
-      lastContext = { url: page.url, title: page.title, connected: true }
+      lastContext = { url: page.url, title: page.title, connected: true, port: cdpPort }
     } else {
-      lastContext = { url: null, title: null, connected: true }
+      lastContext = { url: null, title: null, connected: true, port: cdpPort }
     }
   } catch {
-    lastContext = { url: null, title: null, connected: false }
+    lastContext = { url: null, title: null, connected: false, port: cdpPort }
   }
   return lastContext
 }

@@ -13,6 +13,7 @@ import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
+import { QUICK_MARK_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -1988,7 +1989,7 @@ app.whenReady().then(() => {
   })
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
-  globalShortcut.register('CommandOrControl+Shift+M', triggerQuickMark)
+  globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerQuickMark)
   ipcMain.on('overlay:quickMark', triggerQuickMark)
   ipcMain.handle('overlay:instantMark', () => triggerInstantMark())
 

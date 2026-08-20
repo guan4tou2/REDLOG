@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
+import { DEFAULT_CDP_PORT } from '../lib/defaults'
 
 const TAG_COLORS = [
   { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
@@ -93,7 +94,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
       <div className="w-80 border-r border-redlog-border flex flex-col">
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
-            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex-1 truncate">
+            <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
               {t('marks.title', { count: marks.length })}
             </span>
             {marks.length > 0 && (
@@ -103,7 +104,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                   if (p) toast(t('toast.exportedTo', { path: p }), 'success')
                   else toast(t('toast.exportFailed'), 'error')
                 }}
-                className="px-2 py-1 text-xs bg-zinc-800 text-zinc-400 rounded hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
+                className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
                 title={t('marks.exportHint')}
               >
                 {t('marks.export')}
@@ -117,9 +118,9 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             </button>
           </div>
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
-            browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-zinc-800 text-zinc-500'
+            browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-redlog-elevated text-redlog-text-dim'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${browserTab?.connected ? 'bg-green-400' : 'bg-zinc-600'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${browserTab?.connected ? 'bg-green-400' : 'bg-redlog-elevated-hover'}`} />
             {browserTab?.connected
               ? <span className="truncate">{browserTab.url || t('marks.connected')}</span>
               : <span>{t('marks.cdpDisconnected')}</span>
@@ -134,7 +135,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('marks.searchPlaceholder')}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[11px] text-zinc-200 font-mono focus:outline-none focus:border-red-500/40 placeholder-zinc-700"
+              className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40 placeholder-redlog-muted"
             />
           </div>
         )}
@@ -146,27 +147,27 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
               <button
                 key={m.id}
                 onClick={() => { setSelected(m); setCreating(false) }}
-                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-zinc-800/50 ${
-                  selected?.id === m.id ? 'bg-zinc-800' : ''
+                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 ${
+                  selected?.id === m.id ? 'bg-redlog-elevated' : ''
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${tagColor.dot}`} />
-                  <span className="text-xs text-zinc-200 truncate flex-1">{m.title}</span>
+                  <span className="text-xs text-redlog-text truncate flex-1">{m.title}</span>
                   {/* Pinned marks get a small star indicator; pin/unpin action
                       lives in the detail panel (low-frequency action, keep
                       the list clean). */}
                   {isPinned && <span className="text-xs text-amber-400 shrink-0" aria-hidden="true">★</span>}
                 </div>
                 {m.url && <div className="text-xs text-blue-400/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
-                <div className="text-xs text-zinc-600 mt-0.5 pl-4">
+                <div className="text-xs text-redlog-text-faint mt-0.5 pl-4">
                   {new Date(m.createdAt).toLocaleString()}
                 </div>
               </button>
             )
           })}
           {filteredMarks.length === 0 && !creating && (
-            <div className="p-4 text-xs text-zinc-600 text-center">
+            <div className="p-4 text-xs text-redlog-text-faint text-center">
               {marks.length === 0 ? t('marks.empty') : t('marks.noSearchMatches', { query: search })}
             </div>
           )}
@@ -192,9 +193,9 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
           />
         )}
         {!selected && !creating && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-600 text-sm gap-2">
+          <div className="flex flex-col items-center justify-center h-full text-redlog-text-faint text-sm gap-2">
             <span>{t('marks.placeholder')}</span>
-            <span className="text-xs text-zinc-700">{t('marks.placeholderSub')}</span>
+            <span className="text-xs text-redlog-muted">{t('marks.placeholderSub')}</span>
           </div>
         )}
       </div>
@@ -224,7 +225,7 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
 
   return (
     <div className="space-y-3 max-w-xl">
-      <h3 className="text-sm font-semibold text-zinc-300">{initial ? t('marks.editMark') : t('marks.quickCapture')}</h3>
+      <h3 className="text-sm font-semibold text-redlog-text">{initial ? t('marks.editMark') : t('marks.quickCapture')}</h3>
 
       {!initial && browserTab?.connected && (
         <div className="bg-green-500/10 border border-green-500/20 rounded px-3 py-2 text-xs text-green-400">
@@ -232,37 +233,37 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
         </div>
       )}
       {!initial && !browserTab?.connected && (
-        <div className="bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-500">
-          {t('marks.cdpHint')}
+        <div className="bg-redlog-elevated border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text-dim">
+          {t('marks.cdpHint', { port: String(browserTab?.port ?? DEFAULT_CDP_PORT) })}
         </div>
       )}
 
       <div>
-        <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldTitle')}</label>
+        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldTitle')}</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={t('marks.fieldTitlePlaceholder')}
-          className="w-full mt-0.5 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 focus:border-red-500 outline-none" />
+          className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none" />
       </div>
 
       <div>
-        <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldUrl')}</label>
+        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldUrl')}</label>
         <input value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://..."
-          className="w-full mt-0.5 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 focus:border-red-500 outline-none font-mono text-xs" />
+          className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none font-mono text-xs" />
       </div>
 
       <div>
-        <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldNote')}</label>
+        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldNote')}</label>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={4}
           placeholder={t('marks.fieldNotePlaceholder')}
-          className="w-full mt-0.5 px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-sm text-zinc-200 outline-none resize-y" />
+          className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text outline-none resize-y" />
       </div>
 
       <div className="flex gap-2 pt-1">
-        <button onClick={submit} className="px-4 py-1.5 bg-redlog-accent text-white text-xs rounded hover:bg-red-700">
+        <button onClick={submit} className="px-4 py-1.5 bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 text-xs rounded hover:bg-red-700">
           {initial ? t('marks.update') : t('marks.save')}
         </button>
-        <button onClick={onCancel} className="px-3 py-1.5 bg-zinc-800 text-zinc-400 text-xs rounded hover:bg-zinc-700">
+        <button onClick={onCancel} className="px-3 py-1.5 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">
           {t('marks.cancel')}
         </button>
       </div>
@@ -296,7 +297,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-base font-semibold text-zinc-200">{mark.title}</h3>
+          <h3 className="text-base font-semibold text-redlog-text">{mark.title}</h3>
           {mark.url && (
             <button
               onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.url as string) }}
@@ -306,16 +307,16 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
               {mark.url} ↗
             </button>
           )}
-          <div className="text-xs text-zinc-500 mt-1">
+          <div className="text-xs text-redlog-text-dim mt-1">
             {new Date(mark.createdAt).toLocaleString()}
           </div>
         </div>
         <div className="flex gap-1">
           {onOpenInTimeline && (
-            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-zinc-800 text-cyan-400 rounded hover:bg-zinc-700">{t('loot.openInTimeline')}</button>
+            <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-redlog-elevated text-cyan-400 rounded hover:bg-redlog-elevated-hover">{t('loot.openInTimeline')}</button>
           )}
-          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700">{t('marks.edit')}</button>
-          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-zinc-800 text-red-400 rounded hover:bg-zinc-700">{t('marks.delete')}</button>
+          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover">{t('marks.edit')}</button>
+          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-redlog-elevated text-red-400 rounded hover:bg-redlog-elevated-hover">{t('marks.delete')}</button>
         </div>
       </div>
 
@@ -324,7 +325,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
         <button
           onClick={onTogglePin}
           className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-500/40 ${
-            isPinned ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'bg-zinc-800 text-zinc-500 hover:text-amber-400 hover:bg-zinc-700'
+            isPinned ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'bg-redlog-elevated text-redlog-text-dim hover:text-amber-400 hover:bg-redlog-elevated-hover'
           }`}
           aria-pressed={!!isPinned}
         >
@@ -335,18 +336,18 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
 
       {mark.note && (
         <div>
-          <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.fieldNote')}</label>
-          <div className="mt-1 text-xs text-zinc-300 whitespace-pre-wrap bg-zinc-900 rounded p-3 border border-zinc-800">{mark.note}</div>
+          <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldNote')}</label>
+          <div className="mt-1 text-xs text-redlog-text whitespace-pre-wrap bg-redlog-surface rounded p-3 border border-redlog-border">{mark.note}</div>
         </div>
       )}
 
       {Object.keys(mark.context).length > 0 && (
         <div>
-          <label className="text-xs text-zinc-500 uppercase tracking-wider">{t('marks.autoContext')}</label>
-          <div className="mt-1 bg-zinc-900 rounded p-3 border border-zinc-800 space-y-1">
+          <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.autoContext')}</label>
+          <div className="mt-1 bg-redlog-surface rounded p-3 border border-redlog-border space-y-1">
             {mark.context.browserUrl && (
               <div className="text-xs">
-                <span className="text-zinc-500">{t('marks.browserUrl')}</span>{' '}
+                <span className="text-redlog-text-dim">{t('marks.browserUrl')}</span>{' '}
                 <button
                   onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
                   className="text-blue-400 font-mono hover:text-blue-300 hover:underline transition-colors cursor-pointer"
@@ -358,14 +359,14 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
             )}
             {mark.context.browserTitle && (
               <div className="text-xs">
-                <span className="text-zinc-500">{t('marks.pageTitle')}</span>{' '}
-                <span className="text-zinc-300">{mark.context.browserTitle}</span>
+                <span className="text-redlog-text-dim">{t('marks.pageTitle')}</span>{' '}
+                <span className="text-redlog-text">{mark.context.browserTitle}</span>
               </div>
             )}
             {mark.context.externalIP && (
               <div className="text-xs">
-                <span className="text-zinc-500">{t('marks.ipLabel')}</span>{' '}
-                <span className="text-zinc-300 font-mono">{mark.context.externalIP}</span>
+                <span className="text-redlog-text-dim">{t('marks.ipLabel')}</span>{' '}
+                <span className="text-redlog-text font-mono">{mark.context.externalIP}</span>
               </div>
             )}
           </div>

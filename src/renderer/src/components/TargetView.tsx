@@ -132,7 +132,7 @@ export function TargetView(): JSX.Element {
 
   const agentColor: Record<string, string> = {
     shell: 'text-green-400', screenshot: 'text-blue-400', clipboard: 'text-yellow-400',
-    file_transfer: 'text-purple-400', marker: 'text-red-400', loot: 'text-orange-400', system: 'text-zinc-400'
+    file_transfer: 'text-purple-400', marker: 'text-red-400', loot: 'text-orange-400', system: 'text-redlog-text-dim'
   }
 
   return (
@@ -140,7 +140,7 @@ export function TargetView(): JSX.Element {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-white">{t('targets.title', { count: targets.length })}</h2>
-          <p className="text-[11px] text-zinc-500 mt-0.5 max-w-xl">{t('targets.subtitle')}</p>
+          <p className="text-xs text-redlog-text-dim mt-0.5 max-w-xl">{t('targets.subtitle')}</p>
         </div>
         <div className="flex gap-1">
           {(['all', 'in_scope', 'out_scope'] as const).map((f) => (
@@ -149,8 +149,8 @@ export function TargetView(): JSX.Element {
               onClick={() => setFilter(f)}
               className={`px-2 py-0.5 text-xs rounded ${
                 filter === f
-                  ? 'bg-red-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
               }`}
             >
               {f === 'all' ? t('targets.all') : f === 'in_scope' ? t('targets.inScope') : t('targets.outOfScope')}
@@ -160,21 +160,21 @@ export function TargetView(): JSX.Element {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-zinc-500 text-sm">{t('targets.empty')}</p>
+        <p className="text-redlog-text-dim text-sm">{t('targets.empty')}</p>
       ) : (
         <div className="space-y-2">
           {filtered.map((tgt) => (
             <div key={tgt.target}>
               <div
                 onClick={() => loadEvidence(tgt.target)}
-                className={`bg-zinc-900 border rounded-lg p-3 cursor-pointer transition-colors ${
-                  selected === tgt.target ? 'border-red-600' : 'border-zinc-800 hover:border-zinc-700'
+                className={`bg-redlog-surface border rounded-lg p-3 cursor-pointer transition-colors ${
+                  selected === tgt.target ? 'border-red-600' : 'border-redlog-border hover:border-redlog-border'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-white font-mono text-sm">{tgt.target}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-zinc-500 text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
+                    <span className="text-redlog-text-dim text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
                     {tgt.inScope === false && (
                       <>
                         <span className="text-red-400 text-xs bg-red-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
@@ -197,18 +197,18 @@ export function TargetView(): JSX.Element {
                         >+ 範圍</button>
                       </>
                     )}
-                    <span className="text-zinc-600 text-xs">{selected === tgt.target ? '▾' : '▸'}</span>
+                    <span className="text-redlog-text-faint text-xs">{selected === tgt.target ? '▾' : '▸'}</span>
                   </div>
                 </div>
-                <div className="mt-1 text-zinc-500 text-xs">
+                <div className="mt-1 text-redlog-text-dim text-xs">
                   {t('targets.first', { time: new Date(tgt.firstSeen).toLocaleTimeString() })} · {t('targets.last', { time: new Date(tgt.lastSeen).toLocaleTimeString() })}
                 </div>
               </div>
 
               {selected === tgt.target && (
-                <div className="ml-4 mt-1 border-l-2 border-zinc-800 pl-3 space-y-1 py-2">
+                <div className="ml-4 mt-1 border-l-2 border-redlog-border pl-3 space-y-1 py-2">
                   {evidence.length === 0 ? (
-                    <p className="text-zinc-600 text-xs">{t('targets.noEvidence')}</p>
+                    <p className="text-redlog-text-faint text-xs">{t('targets.noEvidence')}</p>
                   ) : (
                     <>
                       <div className="flex gap-2 mb-2">
@@ -218,20 +218,20 @@ export function TargetView(): JSX.Element {
                             return acc
                           }, {})
                         ).map(([type, count]) => (
-                          <span key={type} className={`text-xs ${agentColor[type] || 'text-zinc-400'} bg-zinc-800 px-1.5 py-0.5 rounded`}>
+                          <span key={type} className={`text-xs ${agentColor[type] || 'text-redlog-text-dim'} bg-redlog-elevated px-1.5 py-0.5 rounded`}>
                             {type}: {count}
                           </span>
                         ))}
                       </div>
                       {evidence.slice(0, 20).map((e) => (
                         <div key={e.id} className="flex items-start gap-2 text-xs">
-                          <span className={`font-mono font-bold w-4 shrink-0 ${agentColor[e.agentType] || 'text-zinc-400'}`}>
+                          <span className={`font-mono font-bold w-4 shrink-0 ${agentColor[e.agentType] || 'text-redlog-text-dim'}`}>
                             {agentIcon[e.agentType] || '?'}
                           </span>
-                          <span className="text-zinc-600 w-16 shrink-0">
+                          <span className="text-redlog-text-faint w-16 shrink-0">
                             {new Date(e.timestamp).toLocaleTimeString()}
                           </span>
-                          <span className="text-zinc-300 truncate">
+                          <span className="text-redlog-text truncate">
                             {e.agentType === 'shell' && (e.data.command as string)}
                             {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
@@ -243,7 +243,7 @@ export function TargetView(): JSX.Element {
                         </div>
                       ))}
                       {evidence.length > 20 && (
-                        <p className="text-zinc-600 text-xs">{t('targets.andMore', { count: evidence.length - 20 })}</p>
+                        <p className="text-redlog-text-faint text-xs">{t('targets.andMore', { count: evidence.length - 20 })}</p>
                       )}
                     </>
                   )}
