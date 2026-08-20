@@ -91,6 +91,19 @@ test.describe.serial('command I/O capture', () => {
     expect(io!.ref).toContain('.cast')
     expect(typeof io!.off, 'off must be a byte offset').toBe('number')
     expect(io!.len, 'the echo printed something, so len must be > 0').toBeGreaterThan(0)
+
+    // The offset is a position in the file, so it has to account for the
+    // asciicast header line. It did not: `castBytes` started at 0 and only
+    // counted output events, leaving every range short by the header's length
+    // and therefore starting mid-line. Reading from there yields no parseable
+    // events, which is how replay came to report 0 bytes — on Linux and under
+    // bash, while passing under zsh, for two weeks.
+    const cast = readFileSync(io!.ref!, 'utf-8')
+    const headerLen = cast.indexOf('\n') + 1
+    expect(headerLen, 'the cast has a header line').toBeGreaterThan(1)
+    expect(io!.off, 'the range must start past the header').toBeGreaterThanOrEqual(headerLen)
+    const before = Buffer.from(cast, 'utf-8').subarray(0, io!.off).toString('utf-8')
+    expect(before.endsWith('\n'), 'the range must start on a line boundary').toBe(true)
   })
 
   test('the chain stores only the reference, never the bytes', async () => {

@@ -2,7 +2,7 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
 
 // v0.11.6: AUDIT V7 (idle-gap compression) and V9 (keyboard/screen-reader
 // reachable event dots). V8 and V13 are geometry properties covered by
@@ -36,7 +36,7 @@ test.describe.serial('timeline presentation', () => {
     await page.evaluate(() => localStorage.setItem('redlog-timeline-zoom', '1'))
     await page.reload()
     await page.waitForTimeout(2500)
-    await page.click('button:has-text("Timeline")').catch(() => {})
+    await openView(page, 'timeline')
     await page.waitForTimeout(1500)
   })
 

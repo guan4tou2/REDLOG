@@ -865,9 +865,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // instead of streaming the file from 0. Falls back to the time window
       // for pre-v0.9.6 events and unbracketed pairs.
       const io = td.io as { off?: number; len?: number } | undefined
-      const slice = typeof io?.off === 'number' && typeof io.len === 'number' && io.len > 0
+      const bracketed = typeof io?.off === 'number' && typeof io.len === 'number' && io.len > 0
         ? await readCastRange(resolvedCast, io.off, io.len)
-          ?? await readCastSlice(resolvedCast, startMs, target.timestamp)
+        : null
+      // Defence in depth for a bad bracket. `readCastRange` returns a valid
+      // slice containing zero complete cast events when the range lands
+      // mid-line, and `?? fallback` does not fire on that — so replay answered
+      // "0 bytes" rather than dropping to the time window that exists for
+      // exactly this case. An empty bracket is a failed bracket.
+      //
+      // The bracket that made this reachable (offsets short by the cast
+      // header's length) is fixed in terminal-manager; this stays because a
+      // range can also be invalidated by a truncated or rotated cast, and
+      // silently returning nothing is the worst available answer.
+      const slice = bracketed && bracketed.bytes > 0
+        ? bracketed
         : await readCastSlice(resolvedCast, startMs, target.timestamp)
       if (!slice) { json(res, 500, { error: 'failed to read cast file' }); return }
       json(res, 200, {

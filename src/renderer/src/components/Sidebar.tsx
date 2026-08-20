@@ -124,6 +124,12 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
           return (
             <button
               key={item.id}
+              // Stable hook for e2e. Without it the suite reached these rows by
+              // visible text, and `:has-text()` is a case-insensitive substring
+              // match — so `button:has-text("Timeline")` also matched the
+              // title bar's close-project button while a project named
+              // `timeline-geometry` was open, and clicked that instead.
+              data-view-btn={item.id}
               onPointerDown={(e) => onPointerDown(e, item.id)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
@@ -157,6 +163,7 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
 
       <div className="mt-auto pt-3 border-t border-zinc-800/40">
         <button
+          data-view-btn="settings"
           onClick={() => onNavigate('settings')}
           className={`w-full h-8 rounded-md flex items-center gap-2 px-2 transition-all duration-150 text-left relative ${
             active === 'settings'

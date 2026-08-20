@@ -343,6 +343,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 {b.meta && <span className="text-[10px] text-zinc-600 font-mono shrink-0">{b.meta}</span>}
                 {hasOutput && (
                   <button
+                    // Stable hook: the e2e reached this by matching the ▶ glyph
+                    // inside `button[title]`, which also matched the neighbouring
+                    // open-in-timeline control and turned one assertion into a
+                    // two-minute locator crawl.
+                    data-testid="transcript-toggle"
+                    data-expanded={revealed ? 'true' : 'false'}
                     onClick={() => setExpanded((p) => {
                       const next = new Set(p)
                       if (next.has(b.id)) next.delete(b.id); else next.add(b.id)
