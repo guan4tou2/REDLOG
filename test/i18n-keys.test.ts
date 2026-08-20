@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { repoRelative } from './helpers/repo-path'
 import glob from 'fast-glob'
 
 // A missing translation key does not throw and does not fall back to English —
@@ -21,7 +22,7 @@ function usedKeys(): Map<string, string[]> {
   for (const file of glob.sync('src/renderer/src/**/*.tsx', { cwd: ROOT, absolute: true })) {
     const src = fs.readFileSync(file, 'utf-8')
     for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'/g)) {
-      const rel = path.relative(ROOT, file)
+      const rel = repoRelative(ROOT, file)
       out.set(m[1], [...(out.get(m[1]) ?? []), rel])
     }
   }
