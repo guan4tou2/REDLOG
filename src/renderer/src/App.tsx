@@ -514,7 +514,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
+              <span title={SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
                 {SOURCE_LABEL[s.id] ?? s.id}
               </span>
               <span className="text-redlog-text-faint text-xs">
@@ -1069,7 +1069,7 @@ function ScreenshotsView(): JSX.Element {
                 )}
               </div>
               <div className="px-2 py-1 flex items-center justify-between gap-1">
-                <p className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
+                <p title={`${formatTime(s.timestamp, { seconds: true })} — ${String(s.data.trigger ?? '')}`} className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
                   {formatTime(s.timestamp, { seconds: true })} — {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
                     <span className="ml-1 text-redlog-text-faint">({t('screenshots.diff', { pct: (s.data.diffPercent as number).toFixed(1) })})</span>

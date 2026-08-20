@@ -143,7 +143,7 @@ export default function TerminalView(): JSX.Element {
             }`}
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
-            <span className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
+            <span title={tab.label} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
             {tab.cwd && tab.alive && (
               <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
             )}

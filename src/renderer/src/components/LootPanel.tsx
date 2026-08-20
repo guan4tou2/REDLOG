@@ -196,7 +196,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                       {m.confidence}
                     </span>
                   </div>
-                  <div className="text-redlog-text-dim text-xs font-mono mt-0.5 truncate">{m.preview}</div>
+                  <div title={m.preview} className="text-redlog-text-dim text-xs font-mono mt-0.5 truncate">{m.preview}</div>
                 </div>
               ))}
             </div>

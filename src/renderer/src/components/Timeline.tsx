@@ -2362,7 +2362,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim w-14 shrink-0">
                       {t(groupKey)}
                     </span>
-                    <span className="text-xs font-mono text-redlog-text truncate flex-1">{item.label}</span>
+                    <span title={item.label} className="text-xs font-mono text-redlog-text truncate flex-1">{item.label}</span>
                     <span className="text-xs font-mono text-redlog-text-faint shrink-0">{item.sub}</span>
                   </button>
                 )
@@ -2860,7 +2860,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                 style={{ height: laneH }}
               >
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
-                <span className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
+                <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
               </div>
             ))}
           </div>
@@ -3221,7 +3221,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
                           <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
-                          <span className="text-redlog-text text-xs truncate">{eventTitle(evt)}</span>
+                          <span title={eventTitle(evt)} className="text-redlog-text text-xs truncate">{eventTitle(evt)}</span>
                         </button>
                       ))}
                       {overflow > 0 && (
@@ -3274,7 +3274,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                       {operatorLabel(evt.operatorId)}
                     </span>
                   )}
-                  <span className="text-redlog-text-dim truncate">{eventTitle(evt)}</span>
+                  <span title={eventTitle(evt)} className="text-redlog-text-dim truncate">{eventTitle(evt)}</span>
                 </div>
               )
             })}

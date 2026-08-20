@@ -865,7 +865,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                         </p>
                         {step.command && (
                           <div className="flex items-center gap-2 mt-1">
-                            <code className="flex-1 min-w-0 truncate bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono">
+                            <code title={step.command} className="flex-1 min-w-0 truncate bg-redlog-bg border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono">
                               {step.command}
                             </code>
                             <button
@@ -1810,7 +1810,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-redlog-text font-medium truncate">{op.name}</span>
+                <span title={op.name} className="text-redlog-text font-medium truncate">{op.name}</span>
                 {op.isPrimary && (
                   <span className="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
                     {t('settings.operatorPrimary')}
@@ -1822,7 +1822,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-redlog-text-dim font-mono truncate">{op.id}</p>
+              <p title={op.id} className="text-xs text-redlog-text-dim font-mono truncate">{op.id}</p>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -1876,7 +1876,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
           <p className="text-xs text-red-300">{pendingToken.note}</p>
           <div className="flex items-center gap-1">
-            <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded truncate">
+            <code title={pendingToken.token} className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded truncate">
               {pendingToken.token}
             </code>
             <button
@@ -2118,7 +2118,7 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
           </p>
         ) : watchPaths.map((p) => (
           <div key={p} className="flex items-center gap-2 px-2 py-1 bg-redlog-surface border border-redlog-border rounded">
-            <span className="text-xs font-mono text-redlog-text flex-1 truncate">{p}</span>
+            <span title={p} className="text-xs font-mono text-redlog-text flex-1 truncate">{p}</span>
             <button
               onClick={() => removePath(p)}
               className="text-xs text-red-400 hover:text-red-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
@@ -2647,7 +2647,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                 {suggestedUntrusted.map((p) => (
                   <li key={p.id} className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
+                      <p title={p.id} className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
                       {/* The fingerprint is the point of this row: the operator
                           is meant to compare it against the publisher's own
                           site before pinning, not take the registry's word. */}

@@ -99,7 +99,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               title={onOpenInTimeline ? t('scope.openInTimeline') : undefined}
             >
               <div className="text-red-300 text-xs font-mono">{v.target}</div>
-              <div className="text-redlog-text-dim text-xs truncate">{v.command}</div>
+              <div title={v.command} className="text-redlog-text-dim text-xs truncate">{v.command}</div>
               <div className="text-redlog-text-faint text-xs">{formatTime(v.timestamp, { seconds: true })}</div>
             </button>
           ))}

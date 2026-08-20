@@ -346,7 +346,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 <span className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
                   {formatTime(b.ts, { seconds: true })}
                 </span>
-                <span className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
+                <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
                 {b.meta && <span className="text-xs text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}
                 {hasOutput && (
                   <button

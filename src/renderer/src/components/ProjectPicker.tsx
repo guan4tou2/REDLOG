@@ -304,7 +304,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                         className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-xs font-medium font-mono focus:outline-none focus:border-red-500/50"
                       />
                     ) : (
-                      <div className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
+                      <div title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
                     )}
                     <div className="text-redlog-text-faint text-xs font-mono">{formatFreshness(p.lastOpened, t)}</div>
                   </div>
