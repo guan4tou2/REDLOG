@@ -18,9 +18,17 @@
 
 export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
-  | 'targets' | 'scope' | 'loot' | 'marks'
+  | 'targets' | 'scope' | 'loot' | 'marks' | 'search'
 
-// `transcript` sits next to `timeline` — same events, read the other way.
+// `transcript` sits next to `timeline` — same events, read the other way, and
+// `search` between them because finding evidence afterwards is a core use
+// rather than a detour.
+//
+// Ten entries, eight numbered slots (⌘9 is Settings), so the last two —
+// `loot` and `marks` — carry no chord. That is a real cost and it is taken
+// deliberately: both are reachable from the sidebar and from ⌘K, and neither
+// is somewhere an operator jumps mid-keystroke the way they jump to the
+// timeline or to search.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'timeline', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
+  'dashboard', 'timeline', 'search', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
 ]

@@ -9,10 +9,6 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
-import {
-  MODE_SETTINGS, modeFor, isLocked,
-  type TimelineMode, type TimelineSettings
-} from '../lib/timelineModes'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
 import { isMac } from '../lib/platform'
@@ -884,7 +880,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       localStorage.setItem(`redlog-timeline-auditor-view:${projectIdForKeys}`, auditorView ? '1' : '0')
     } catch { /* ignore */ }
   }, [auditorView, projectIdForKeys])
-
+  useEffect(() => {
+    // v0.14 §9.4: the StatusBar's tier counter dispatches this event when
+    // clicked. Toggle here so the click "opens" the auditor view exactly
+    // like clicking the chip would. Only wired when Timeline is mounted;
+    // a click from Dashboard is a documented silent no-op (tooltip warns).
+    const onToggle = (): void => setAuditorView((v) => !v)
+    window.addEventListener('redlog:auditor-view:toggle', onToggle)
+    return () => window.removeEventListener('redlog:auditor-view:toggle', onToggle)
+  }, [])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
@@ -940,38 +944,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
       return raw === 'utc' || raw === 'project' ? raw : 'local'
     } catch { return 'local' }
   })
-
-  // §6. The settings are still individual state — they have to be, since
-  // working and debug remain adjustable — so the mode is derived rather than
-  // stored. That way the label can never disagree with what is on screen,
-  // which is the failure that makes an audit view worthless.
-  const modeSettings: TimelineSettings = {
-    collapseAgentTurns, compressGaps, auditorView, anomalyFilter, sessionDividers, tz
-  }
-  const currentMode = modeFor(modeSettings)
-  const modeLocked = currentMode !== null && isLocked(currentMode)
-  const applyMode = (mode: TimelineMode): void => {
-    const preset = MODE_SETTINGS[mode]
-    setCollapseAgentTurns(preset.collapseAgentTurns)
-    setCompressGaps(preset.compressGaps)
-    setAuditorView(preset.auditorView)
-    setAnomalyFilter(preset.anomalyFilter)
-    setSessionDividers(preset.sessionDividers)
-    setTz(preset.tz)
-  }
-
-  useEffect(() => {
-    // The StatusBar's tier counter dispatches this when clicked. §7 folds the
-    // standalone auditor chip into audit *mode*: flipping one flag used to
-    // leave the view in a state that hid the logged tier while still
-    // compressing time and folding agent turns — which looks like an audit
-    // view and is not one. Clicking it now enters audit properly, and
-    // clicking again returns to working.
-    const onToggle = (): void => applyMode(currentMode === 'audit' ? 'working' : 'audit')
-    window.addEventListener('redlog:auditor-view:toggle', onToggle)
-    return () => window.removeEventListener('redlog:auditor-view:toggle', onToggle)
-  }, [currentMode])
-
   useEffect(() => {
     try { localStorage.setItem('redlog-timeline-tz', tz) } catch { /* ignore */ }
   }, [tz])
@@ -2559,35 +2531,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           >+</button>
         </div>
 
-        {/* §6: the three view modes. The toolbar used to carry eight
-            independent toggles side by side with equal weight — 256 states,
-            and no way for an operator who landed in one to tell whether it
-            was a sensible place to be. They are not really independent: they
-            fall into three postures (working, audit, debug), and the modes
-            name them. The individual chips stay for the working and debug
-            postures; audit locks them, because a claim you can quietly tweak
-            is not a claim. */}
-        <label className="ml-2 flex items-center gap-1.5">
-          <span className="sr-only">{t('timeline.mode.label')}</span>
-          <select
-            data-testid="timeline-mode"
-            value={currentMode ?? 'custom'}
-            onChange={(e) => applyMode(e.target.value as TimelineMode)}
-            className="h-5 px-1.5 text-xs rounded bg-redlog-elevated text-redlog-text border border-redlog-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50"
-            title={t('timeline.mode.hint')}
-          >
-            <option value="working">{t('timeline.mode.working')}</option>
-            <option value="audit">{t('timeline.mode.audit')}</option>
-            <option value="debug">{t('timeline.mode.debug')}</option>
-            {currentMode === null && <option value="custom">{t('timeline.mode.custom')}</option>}
-          </select>
-          {modeLocked && (
-            <span className="text-xs text-redlog-text-faint" title={t('timeline.mode.lockedHint')}>
-              {t('timeline.mode.locked')}
-            </span>
-          )}
-        </label>
-
         {/* v0.9.3 U3: collapse-agent-turns chip. Off by default (existing
             operators don't lose visibility on upgrade). When on, per-turn
             agent subtypes are dropped from the render pipeline — the
@@ -2595,7 +2538,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             like a bug. Same visual weight as the other filter chips. */}
         <button
           onClick={() => setCollapseAgentTurns((v) => !v)}
-          disabled={modeLocked}
           title={collapseAgentTurns
             ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
             : t('timeline.collapseAgent.hint')}
@@ -2615,7 +2557,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             without hovering. */}
         {timeMap.gaps.length > 0 || compressGaps ? (
           <button
-            disabled={modeLocked}
             onClick={() => {
               // Keep the operator where they were. The mapping is about to
               // change under a fixed scrollLeft, so capture the timestamp at
@@ -2770,7 +2711,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           {/* v0.6.91 S3: session boundaries visibility toggle. */}
           <button
             onClick={() => setSessionDividers((v) => !v)}
-            disabled={modeLocked}
             className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
               sessionDividers ? 'text-indigo-300 bg-indigo-500/10' : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]'
             }`}

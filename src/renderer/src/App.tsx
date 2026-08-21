@@ -15,6 +15,7 @@ import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
 import { CommandPalette } from './components/CommandPalette'
+import { SearchPanel } from './components/SearchPanel'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
@@ -265,6 +266,7 @@ export default function App(): JSX.Element {
               />
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={(v) => setView(v as View)} />}
+            {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}

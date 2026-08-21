@@ -40,18 +40,22 @@ test.describe.serial('project flow', () => {
   })
 
   test('⌘1..9 switches views (v0.6.67 focus fix)', async () => {
-    // Default sidebar order: dashboard, timeline, transcript, terminal,
-    // screenshots, targets, scope, loot, marks. The sidebar takes 1..8 and
-    // ⌘9 is pinned to settings (v0.11.2) — before that the two were one
-    // concatenated list, so adding a ninth sidebar entry pushed settings past
-    // the reachable digits and it silently lost its shortcut.
+    // Default sidebar order: dashboard, timeline, search, transcript,
+    // terminal, screenshots, targets, scope, loot, marks. The sidebar takes
+    // 1..8 and ⌘9 is pinned to settings (v0.11.2) — before that the two were
+    // one concatenated list, so adding a ninth sidebar entry pushed settings
+    // past the reachable digits and it silently lost its shortcut.
+    //
+    // Search sits at 3 because finding evidence afterwards is a core use, not
+    // a detour. Ten entries into eight numbered slots means `loot` and `marks`
+    // have no chord — a real cost, taken deliberately.
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
     const viewRoot = page.locator('[data-testid="view-root"]')
 
     for (const [key, expected] of [
       ['2', 'timeline'],
-      ['3', 'transcript'],
-      ['4', 'terminal'],
+      ['3', 'search'],
+      ['4', 'transcript'],
       ['1', 'dashboard'],
       ['9', 'settings']
     ] as const) {

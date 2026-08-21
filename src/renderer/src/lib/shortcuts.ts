@@ -108,9 +108,10 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
   return [
     ...nav,
     {
-      // §10: one palette, every view. ⌘/ used to open a separate Search page
-      // that has been deleted; it stays bound here as an alias so the muscle
-      // memory still lands somewhere useful rather than nowhere.
+      // One palette, every view — ⌘K is the jumper. ⌘/ is bound to it as an
+      // alias, and the Search *view* is the explorer: a dropdown cannot
+      // filter, sort, or let you read forty results one by one, and "find the
+      // evidence afterwards" is a core use, not a jump.
       id: 'app:palette', keys: `${m}K`, label: 'dashboard.palette', scope: 'app',
       guardTyping: true,
       // macOS sends `Unidentified` as `key` for ⌘/ (the system Help-menu
