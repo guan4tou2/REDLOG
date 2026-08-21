@@ -34,8 +34,11 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center text-center py-10 px-6 gap-3">
       <Icon size={24} strokeWidth={1.5} aria-hidden className="text-redlog-text-faint" />
-      <p className="text-sm text-redlog-text">{title}</p>
-      <p className="text-xs text-redlog-text-dim max-w-[46ch] leading-relaxed text-pretty">
+      {/* An empty state is the whole screen, so it takes screen-title weight
+          rather than the size a list row would use — 19px/15px, not 15px/13px.
+          Sized down, it reads as a caption for content that is not there. */}
+      <h2 className="text-lg font-semibold text-redlog-text text-balance">{title}</h2>
+      <p className="text-sm text-redlog-text-dim max-w-[46ch] leading-relaxed text-pretty">
         {reason}
       </p>
       {(action || secondary) && (
@@ -43,7 +46,10 @@ export function EmptyState({
           {action && (
             <button
               onClick={action.onClick}
-              className="px-3 py-1.5 text-xs rounded border border-redlog-accent/60 text-redlog-accent hover:bg-redlog-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 transition-colors"
+              // §4's primary: this is the only action on the screen, so it is
+              // the primary one by definition. `h-[34px]`, 8px radius, and the
+              // focus ring the standard specifies.
+              className="h-[34px] px-4 text-sm font-medium rounded-lg bg-redlog-accent text-white hover:bg-redlog-accent-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg transition-colors"
             >
               {action.label}
             </button>
@@ -51,7 +57,7 @@ export function EmptyState({
           {secondary && (
             <button
               onClick={secondary.onClick}
-              className="text-xs text-redlog-text-dim hover:text-redlog-text underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim rounded"
+              className="text-sm text-redlog-text-dim hover:text-redlog-text underline underline-offset-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim rounded"
             >
               {secondary.label}
             </button>
