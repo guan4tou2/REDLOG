@@ -141,7 +141,7 @@ export default function Settings(): JSX.Element {
             key={tb.id}
             onClick={() => setTab(tb.id)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
-              tab === tb.id ? 'bg-redlog-elevated text-white' : 'text-redlog-text-dim hover:text-redlog-text'
+              tab === tb.id ? 'bg-redlog-elevated text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'
             }`}
           >
             {tb.label}
@@ -691,7 +691,7 @@ export default function Settings(): JSX.Element {
               setSaved(true)
               setTimeout(() => setSaved(false), 1500)
             }}
-            className="px-4 py-1.5 bg-redlog-danger text-white hover:bg-redlog-danger-hover text-xs rounded transition-colors"
+            className="px-4 py-1.5 bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover text-xs rounded transition-colors"
           >
             {t('settings.save')}
           </button>
@@ -841,7 +841,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                       className={`px-3 py-1 text-xs rounded ml-3 transition-colors ${
                         hook.installed
                           ? 'bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400'
-                          : 'bg-redlog-danger text-white hover:bg-redlog-danger-hover'
+                          : 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover'
                       } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
                     >
                       {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
@@ -1048,7 +1048,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                       disabled={busy === p.id}
                       onClick={() => toggle(p, p.status === 'disabled')}
                       className={`px-3 py-1 text-xs rounded ${
-                        p.status === 'disabled' ? 'bg-redlog-danger text-white hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+                        p.status === 'disabled' ? 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
                       }`}
                     >
                       {busy === p.id ? '…' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
@@ -1059,7 +1059,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                     <button
                       disabled={busy === p.id}
                       onClick={() => setConfirmGrant(p)}
-                      className="px-3 py-1 text-xs rounded bg-amber-600/80 text-white hover:bg-amber-600"
+                      className="px-3 py-1 text-xs rounded bg-amber-600/80 text-redlog-on-warn hover:bg-amber-600"
                     >
                       {t('plugins.review')}
                     </button>
@@ -1100,7 +1100,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
               <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
                 {t('common.cancel')}
               </button>
-              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover">
+              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
                 {t('plugins.grantRun')}
               </button>
             </div>
@@ -1361,7 +1361,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <button
           onClick={handleAnchor}
           disabled={busy}
-          className="px-3 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+          className="px-3 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
         </button>
@@ -1552,7 +1552,7 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
         <button
           onClick={setup}
           disabled={busy || !info}
-          className="shrink-0 px-3 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+          className="shrink-0 px-3 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy ? '…' : t('settings.mcpSetup')}
         </button>
@@ -1868,7 +1868,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <button
           onClick={handleAdd}
           disabled={busy === 'add' || !newName.trim()}
-          className="px-3 py-1 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+          className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy === 'add' ? '...' : t('settings.operatorAdd')}
         </button>
@@ -1898,7 +1898,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                 </button>
                 <button
                   onClick={() => setPendingToken(null)}
-                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
+                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover"
                 >
                   {t('settings.operatorTokenClose')}
                 </button>
@@ -2446,7 +2446,7 @@ function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string 
 
       <div className="flex items-center gap-2">
         <button data-testid="cloud-share-button" onClick={upload} disabled={!canUpload}
-          className="px-3 py-1.5 bg-redlog-danger text-white hover:bg-redlog-danger-hover text-xs rounded disabled:opacity-40">
+          className="px-3 py-1.5 bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover text-xs rounded disabled:opacity-40">
           {busy === 'prepare' ? t('cloudShare.preparing')
             : busy === 'upload' ? t('cloudShare.uploading')
               : mode === 'https' ? t('cloudShare.shareHttps') : t('cloudShare.shareStub')}
@@ -2645,7 +2645,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
               placeholder={defaultRegistryUrl}
               className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text" />
             <button onClick={doFetch} disabled={fetchState === 'loading'}
-              className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50">
+              className="px-3 py-1 text-xs bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover rounded disabled:opacity-50">
               {fetchState === 'loading' ? t('marketplace.fetching') : t('marketplace.fetch')}
             </button>
           </div>
@@ -2684,7 +2684,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                       data-testid={`marketplace-trust-${p.id}`}
                       onClick={() => void trustOne(p)}
                       disabled={trustingId === p.id}
-                      className="shrink-0 px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-white rounded disabled:opacity-50"
+                      className="shrink-0 px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-redlog-on-warn rounded disabled:opacity-50"
                     >
                       {trustingId === p.id ? '…' : t('marketplace.trustThisPublisher')}
                     </button>
@@ -2717,7 +2717,7 @@ function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string
                       )}
                     </div>
                     <button onClick={() => doInstall(e)} disabled={installBusy === e.id}
-                      className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50 shrink-0">
+                      className="px-3 py-1 text-xs bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover rounded disabled:opacity-50 shrink-0">
                       {installBusy === e.id ? t('marketplace.installing') : t('marketplace.install')}
                     </button>
                   </div>
@@ -2820,7 +2820,7 @@ function PublisherEditor({ t, publishers, api, onReload }: {
           className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y" />
         <div className="flex justify-end mt-2">
           <button onClick={add} disabled={busy || !draftId.trim() || !draftKey.trim()}
-            className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50">
+            className="px-3 py-1 text-xs bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover rounded disabled:opacity-50">
             {t('marketplace.trustPublisher')}
           </button>
         </div>
