@@ -81,7 +81,7 @@ describe('the cheatsheet table', () => {
   it('documents the app- and terminal-scoped bindings', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true).filter((r) => r.scope !== 'nav')
     expect(rows.map((r) => r.keys)).toEqual([
-      '⌘/', '⌘K', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
+      '⌘K', '⌘F', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
     ])
   })
 })
@@ -128,7 +128,7 @@ describe('the table drives the handler, not just the cheatsheet', () => {
       expect(r.guardTyping, r.id).toBeFalsy()
     }
     // The ones a field may reasonably want do yield.
-    for (const id of ['app:search', 'app:palette', 'app:hudCorner']) {
+    for (const id of ['app:palette', 'app:findInPage', 'app:hudCorner']) {
       expect(rows.find((r) => r.id === id)?.guardTyping, id).toBe(true)
     }
   })

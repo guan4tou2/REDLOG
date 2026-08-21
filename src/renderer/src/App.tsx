@@ -10,11 +10,11 @@ import ProjectPicker from './components/ProjectPicker'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
-import { SearchPanel } from './components/SearchPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
+import { CommandPalette } from './components/CommandPalette'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
@@ -27,7 +27,7 @@ import { Image } from 'lucide-react'
 import { EmptyState } from './components/EmptyState'
 import { formatTime } from './lib/time'
 
-type View = SidebarViewId | 'settings' | 'search'
+type View = SidebarViewId | 'settings'
 
 // ⌘/Ctrl+1..8 map to the sidebar order (which the user can reorder); ⌘9 =
 // Settings (pinned at the sidebar's bottom, not part of the reorderable list).
@@ -64,6 +64,8 @@ export default function App(): JSX.Element {
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
   const [showMarker, setShowMarker] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [recordingOn, setRecordingOn] = useState(true)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const { t } = useI18n()
 
@@ -81,6 +83,13 @@ export default function App(): JSX.Element {
   // must be scoped to the app window.
   useEffect(() => {
     return window.redlog.marker.onShortcut(() => setShowMarker(true))
+  }, [])
+
+  // The palette shows "pause" or "resume" depending on the current state, so
+  // it has to know it.
+  useEffect(() => {
+    window.redlog.recording.get().then(setRecordingOn).catch(() => {})
+    return window.redlog.recording.onChange(setRecordingOn)
   }, [])
 
   // ⌘/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
@@ -121,18 +130,21 @@ export default function App(): JSX.Element {
       }
 
       switch (hit.id) {
-        case 'app:search':
         case 'app:palette': {
+          // §10: ⌘K is the same palette on every view. It used to mean two
+          // different things — the Timeline's local fuzzy search there, the
+          // Search sidebar page everywhere else — so an operator had to know
+          // which surface they were on to know what the key did.
           e.preventDefault()
-          // v0.6.91 W3: ⌘K inside the Timeline opens the local fuzzy palette
-          // instead of jumping to the Search sidebar — it scopes to the
-          // currently-loaded events, which is where the muscle memory points.
-          // ⌘/ still routes to Search everywhere.
-          if (hit.id === 'app:palette' && view === 'timeline') {
-            window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
-          } else {
-            setView('search')
-          }
+          setPaletteOpen(true)
+          return
+        }
+        case 'app:findInPage': {
+          // §5.7 / §10: in-page filtering is ⌘F, which every other desktop
+          // app has already taught. The view that has a filter takes it; the
+          // ones that do not simply ignore the event.
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('redlog:find-in-page'))
           return
         }
         case 'app:toggleRecording': {
@@ -260,13 +272,19 @@ export default function App(): JSX.Element {
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}
-            {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
           </ErrorBoundary>
         </div>
       </div>
 
       <StatusBar />
       {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined) }} atTimestamp={markerAtTs} />}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(v) => setView(v as View)}
+        onOpenEvent={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
+        recording={recordingOn}
+      />
       <ToastContainer />
       <ConfirmDialogContainer />
     </div>
