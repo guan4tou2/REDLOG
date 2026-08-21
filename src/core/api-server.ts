@@ -453,7 +453,15 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (route === '/api/events' && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const agentType = body.agent_type || body.agentType || 'external'
+      const agentType = String(body.agent_type || body.agentType || 'external')
+      const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
+        'scanner', 'shell', 'dns', 'external', 'agent', 'marker',
+        'process', 'credential_use', 'file_transfer'
+      ])
+      if (!EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+        json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
+        return
+      }
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
 

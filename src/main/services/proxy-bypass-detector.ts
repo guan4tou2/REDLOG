@@ -22,9 +22,9 @@ const pendingChecks = new Map<number, { command: string; spawnedAt: number; pid:
 let cfg: { engagementId: string; operatorId: string } | null = null
 
 function extractBinary(command: string): string {
-  const parts = command.split(/[\s/\\]+/)
-  const last = parts[parts.length - 1] || ''
-  return last.replace(/\.exe$/i, '').toLowerCase()
+  const parts = command.split(/[\s/\\]+/).filter(Boolean)
+  const first = parts[0] || ''
+  return first.replace(/\.exe$/i, '').toLowerCase()
 }
 
 function isNetworkTool(command: string): boolean {

@@ -30,6 +30,47 @@ interface HarEntry {
   timings: { send: number; wait: number; receive: number; connect?: number; ssl?: number }
 }
 
+interface HarCookie {
+  name: string
+  value: string
+  path?: string
+  domain?: string
+  expires?: string
+  httpOnly?: boolean
+  secure?: boolean
+}
+
+function requestCookiesToHar(raw: unknown): HarCookie[] {
+  if (!Array.isArray(raw)) return []
+  return (raw as { name?: string; value?: string }[])
+    .filter(c => c.name)
+    .map(c => ({ name: String(c.name), value: String(c.value ?? '') }))
+}
+
+function responseCookiesToHar(raw: unknown): HarCookie[] {
+  if (!Array.isArray(raw)) return []
+  return (raw as Record<string, unknown>[])
+    .filter(c => c.name)
+    .map(c => ({
+      name: String(c.name),
+      value: String(c.value ?? ''),
+      ...(c.path ? { path: String(c.path) } : {}),
+      ...(c.domain ? { domain: String(c.domain) } : {}),
+      ...(c.expires ? { expires: String(c.expires) } : {}),
+      ...(c.httponly ? { httpOnly: true } : {}),
+      ...(c.secure ? { secure: true } : {})
+    }))
+}
+
+function findHeader(headers: unknown, name: string): string | undefined {
+  if (!Array.isArray(headers)) return undefined
+  const lower = name.toLowerCase()
+  for (const pair of headers as string[][]) {
+    if (Array.isArray(pair) && pair[0]?.toLowerCase() === lower) return pair[1]
+  }
+  return undefined
+}
+
 function headersToHar(raw: unknown): { name: string; value: string }[] {
   if (Array.isArray(raw)) {
     return (raw as string[][]).map(([n, v]) => ({ name: n, value: v }))
@@ -125,19 +166,19 @@ export function exportHar(opts?: {
       request: {
         method: String(rd.method ?? 'GET'),
         url: String(rd.url ?? ''),
-        httpVersion: 'HTTP/1.1',
-        cookies: [],
+        httpVersion: String(rd.http_version ?? rsd?.http_version ?? 'HTTP/1.1'),
+        cookies: requestCookiesToHar(rd.cookies),
         headers: headersToHar(rd.request_headers),
         queryString: parseQueryString(String(rd.url ?? '')),
-        ...(reqBody ? { postData: { mimeType: String(rd.content_type ?? 'application/octet-stream'), text: reqBody.text } } : {}),
+        ...(reqBody ? { postData: { mimeType: findHeader(rd.request_headers, 'content-type') ?? 'application/octet-stream', text: reqBody.text } } : {}),
         headersSize: -1,
         bodySize: reqBody?.size ?? -1,
       },
       response: {
         status: (rsd?.status as number) ?? 0,
         statusText: '',
-        httpVersion: 'HTTP/1.1',
-        cookies: [],
+        httpVersion: String(rsd?.http_version ?? rd.http_version ?? 'HTTP/1.1'),
+        cookies: responseCookiesToHar(rsd?.set_cookies),
         headers: headersToHar(rsd?.response_headers),
         content: {
           size: (rsd?.content_length as number) ?? 0,
