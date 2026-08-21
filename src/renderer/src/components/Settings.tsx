@@ -74,9 +74,19 @@ const LOCALE_LABELS: Record<Locale, string> = {
   'zh-TW': '繁體中文'
 }
 
+// The thirteen pages §10 asks for. Declared as a union so a typo in a route
+// is a compile error rather than a page that silently never renders.
+type SettingsPage =
+  | 'hooks' | 'agents' | 'captureControl'
+  | 'scope' | 'network' | 'deconfliction'
+  | 'integrity' | 'export'
+  | 'operators' | 'cloud' | 'plugins'
+  | 'general' | 'hud'
+
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
+  const [tab, setTab] = useState<SettingsPage>('hooks')
+  const [pageQuery, setPageQuery] = useState('')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -122,35 +132,121 @@ export default function Settings(): JSX.Element {
   //     than one source among several.
   //   · Marketplace folded into Plugins as a sub-tab. "What is installed" and
   //     "where to get more" are one task split across two top-level tabs.
-  const tabs = [
-    { id: 'general' as const, label: t('settings.general') },
-    { id: 'capture' as const, label: t('settings.capture') },
-    { id: 'scope' as const, label: t('settings.scope') },
-    { id: 'network' as const, label: t('settings.networkIp') },
-    { id: 'hud' as const, label: t('settings.hud') },
-    { id: 'integrations' as const, label: t('settings.integrations') },
-    { id: 'data' as const, label: t('settings.data') },
-    { id: 'plugins' as const, label: t('settings.plugins') }
+  // §10 / §5.7: a left list of categories with the content on the right.
+  //
+  // Eight tabs in a single row at 13px was already hard to scan, and two of
+  // them ("Integrations", "Data") had drifted into meaning roughly the same
+  // thing. Underneath, Plugins held its own sub-tabs and those held publisher
+  // and revocation lists — three levels deep inside the second level, which is
+  // past the two the standard allows.
+  //
+  // A left list solves the part a tab row cannot: the categories stay visible
+  // while you read a page, it takes group headings, and it has somewhere to
+  // put a search box. Thirteen pages fit down the side and would not fit
+  // across the top, which is why the content could not be split before the
+  // container existed.
+  const groups: Array<{ heading: string; pages: Array<{ id: SettingsPage; label: string }> }> = [
+    {
+      heading: t('settings.groupCapture'),
+      pages: [
+        { id: 'hooks', label: t('settings.pageHooks') },
+        { id: 'agents', label: t('settings.pageAgents') },
+        { id: 'captureControl', label: t('settings.pageCaptureControl') }
+      ]
+    },
+    {
+      heading: t('settings.groupScope'),
+      pages: [
+        { id: 'scope', label: t('settings.pageScope') },
+        { id: 'network', label: t('settings.pageNetwork') },
+        { id: 'deconfliction', label: t('settings.pageDeconfliction') }
+      ]
+    },
+    {
+      heading: t('settings.groupEvidence'),
+      pages: [
+        { id: 'integrity', label: t('settings.pageIntegrity') },
+        { id: 'export', label: t('settings.pageExport') }
+      ]
+    },
+    {
+      heading: t('settings.groupCollab'),
+      pages: [
+        { id: 'operators', label: t('settings.pageOperators') },
+        { id: 'cloud', label: t('settings.pageCloud') },
+        { id: 'plugins', label: t('settings.pagePlugins') }
+      ]
+    },
+    {
+      heading: t('settings.groupApp'),
+      pages: [
+        { id: 'general', label: t('settings.pageGeneral') },
+        { id: 'hud', label: t('settings.pageHud') }
+      ]
+    }
   ]
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-redlog-border shrink-0">
-        {tabs.map((tb) => (
-          <button
-            key={tb.id}
-            onClick={() => setTab(tb.id)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              tab === tb.id ? 'bg-redlog-elevated text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'
-            }`}
-          >
-            {tb.label}
-          </button>
-        ))}
-        {saved && <span className="ml-auto text-green-400 text-xs">{t('settings.saved')}</span>}
-      </div>
+  const q = pageQuery.trim().toLowerCase()
+  const visible = groups
+    .map((g) => ({ ...g, pages: g.pages.filter((pg) => !q || pg.label.toLowerCase().includes(q)) }))
+    .filter((g) => g.pages.length > 0)
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+  return (
+    <div className="flex h-full">
+      <nav
+        aria-label={t('settings.categories')}
+        className="w-[212px] shrink-0 border-r border-redlog-border flex flex-col overflow-hidden"
+      >
+        <div className="p-2 border-b border-redlog-border">
+          <input
+            value={pageQuery}
+            onChange={(e) => setPageQuery(e.target.value)}
+            placeholder={t('settings.searchPages')}
+            aria-label={t('settings.searchPages')}
+            className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto py-2">
+          {visible.length === 0 && (
+            <p className="px-3 py-4 text-xs text-redlog-text-faint text-center">
+              {t('settings.noPageMatches', { query: pageQuery })}
+            </p>
+          )}
+          {visible.map((g) => (
+            <div key={g.heading} className="mb-2">
+              <p className="px-3 pt-1 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+                {g.heading}
+              </p>
+              {g.pages.map((pg) => (
+                <button
+                  key={pg.id}
+                  data-settings-page={pg.id}
+                  onClick={() => setTab(pg.id)}
+                  aria-current={tab === pg.id ? 'page' : undefined}
+                  className={`w-full text-left px-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
+                    tab === pg.id
+                      ? 'bg-redlog-elevated text-redlog-text'
+                      : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
+                  }`}
+                >
+                  {pg.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+        {saved && (
+          <p className="px-3 py-2 text-xs text-emerald-400 border-t border-redlog-border">
+            {t('settings.saved')}
+          </p>
+        )}
+      </nav>
+
+      {/* The right pane is a column: content scrolls, the save bar stays put
+          under it. Making the root a row without this turned that bar into a
+          third column and squeezed the content to 35px. */}
+      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[900px]">
         {tab === 'general' && (
           <>
             <FieldGroup title={t('settings.engagement')}>
@@ -184,14 +280,14 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {tab === 'integrations' && (
+        {(tab === 'agents' || tab === 'network' || tab === 'deconfliction' || tab === 'operators') && (
           <>
-            <McpPanel t={t} />
-            <HookWatchPathsPanel t={t} />
-            <OperatorsPanel t={t} />
-            <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
-            <BrowserPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.cdp')}>
+            {tab === 'agents' && <McpPanel t={t} />}
+            {tab === 'agents' && <HookWatchPathsPanel t={t} />}
+            {tab === 'operators' && <OperatorsPanel t={t} />}
+            {tab === 'deconfliction' && <DeconflictionPanel t={t} config={config} setConfig={setConfig} />}
+            {tab === 'network' && <BrowserPanel t={t} config={config} setConfig={setConfig} />}
+            {tab === 'network' && <FieldGroup title={t('settings.cdp')}>
               <p className="text-xs text-redlog-text-faint mb-2">
                 {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
               </p>
@@ -217,7 +313,7 @@ export default function Settings(): JSX.Element {
               >
                 {t('settings.testConnection')}
               </button>
-            </FieldGroup>
+            </FieldGroup>}
           </>
         )}
 
@@ -436,12 +532,12 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {tab === 'capture' && (
+        {(tab === 'hooks' || tab === 'captureControl') && (
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
             {isWindows && <WslPanel t={t} />}
             <AgentsPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.screenshotQuality')}>
+            {tab === 'captureControl' && <FieldGroup title={t('settings.screenshotQuality')}>
               <Field
                 label={t('settings.jpegQuality')}
                 value={String(config.screenshot?.quality ?? 85)}
@@ -451,8 +547,8 @@ export default function Settings(): JSX.Element {
               <p className="text-xs text-redlog-text-faint">
                 {t('settings.qualityHint')}
               </p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.clipboardGroup')}>
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.clipboardGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -477,8 +573,8 @@ export default function Settings(): JSX.Element {
               {config.clipboard?.enabled && (
                 <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
               )}
-            </FieldGroup>
-            <FieldGroup title={t('settings.fileWatcherGroup')}>
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.fileWatcherGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -506,8 +602,8 @@ export default function Settings(): JSX.Element {
                   <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
                 </>
               )}
-            </FieldGroup>
-            <FieldGroup title={t('settings.processMonitorGroup')}>
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.processMonitorGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -529,13 +625,13 @@ export default function Settings(): JSX.Element {
                   <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
                 </>
               )}
-            </FieldGroup>
+            </FieldGroup>}
           </>
         )}
 
-        {tab === 'data' && (
+        {(tab === 'export' || tab === 'integrity' || tab === 'cloud' || tab === 'general') && (
           <>
-            <FieldGroup title={t('settings.screenshotGroup')}>
+            {tab === 'export' && <FieldGroup title={t('settings.screenshotGroup')}>
               <div className="flex items-center gap-2 flex-wrap">
                 {[
                   { v: 0, k: 'settings.screenshot.interval.off' },
@@ -555,8 +651,8 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
               <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.intervalHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.updateGroup')}>
+            </FieldGroup>}
+            {tab === 'general' && <FieldGroup title={t('settings.updateGroup')}>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => window.redlog.app.checkForUpdates()}
@@ -567,8 +663,8 @@ export default function Settings(): JSX.Element {
                 <span className="text-xs text-redlog-text-faint font-mono">v{__APP_VERSION__}</span>
               </div>
               <p className="text-xs text-redlog-text-faint">{t('settings.checkUpdateHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.exportAll')}>
+            </FieldGroup>}
+            {tab === 'export' && <FieldGroup title={t('settings.exportAll')}>
               <button
                 onClick={async () => {
                   const path = await window.redlog.data.exportJson()
@@ -583,9 +679,9 @@ export default function Settings(): JSX.Element {
               <p className="text-xs text-redlog-text-faint">
                 {t('settings.exportHint')}
               </p>
-            </FieldGroup>
-            <ExportBundlePanel t={t} />
-            <FieldGroup title={t('settings.scopeExport')}>
+            </FieldGroup>}
+            {tab === 'export' && <ExportBundlePanel t={t} />}
+            {tab === 'export' && <FieldGroup title={t('settings.scopeExport')}>
               <button
                 onClick={async () => {
                   const p = await (window.redlog.data as { exportScopeFiltered: () => Promise<string | null> }).exportScopeFiltered()
@@ -600,10 +696,10 @@ export default function Settings(): JSX.Element {
               <p className="text-xs text-redlog-text-faint">
                 {t('settings.scopeExportHint')}
               </p>
-            </FieldGroup>
-            <CloudSharePanel t={t} />
-            <IntegrityPanel t={t} />
-            <FieldGroup title={t('settings.profileSync')}>
+            </FieldGroup>}
+            {tab === 'cloud' && <CloudSharePanel t={t} />}
+            {tab === 'integrity' && <IntegrityPanel t={t} />}
+            {tab === 'general' && <FieldGroup title={t('settings.profileSync')}>
               <div className="flex gap-2">
                 <button
                   onClick={async () => {
@@ -630,7 +726,7 @@ export default function Settings(): JSX.Element {
               <p className="text-xs text-redlog-text-faint">
                 {t('settings.profileHint')}
               </p>
-            </FieldGroup>
+            </FieldGroup>}
           </>
         )}
 
@@ -679,7 +775,7 @@ export default function Settings(): JSX.Element {
         {tab === 'plugins' && <PluginsTab t={t} />}
       </div>
 
-      <div className="px-4 py-3 border-t border-redlog-border shrink-0">
+      <div className="px-4 py-3 border-t border-redlog-border shrink-0 max-w-[900px]">
         <div className="flex items-center gap-2">
           <button
             onClick={async () => {
@@ -697,6 +793,7 @@ export default function Settings(): JSX.Element {
           </button>
           <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
         </div>
+      </div>
       </div>
     </div>
   )
@@ -909,23 +1006,19 @@ interface PluginView {
  *  between them constantly while installing something. Sub-tabs keep both a
  *  click away without spending two of the eight top-level slots. */
 function PluginsTab({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [sub, setSub] = useState<'installed' | 'marketplace'>('installed')
+  // §10: two levels, not four. This page used to hold sub-tabs for installed
+  // and marketplace, and the marketplace held its own for publishers and
+  // revocations — three levels below a second-level tab, when the standard
+  // allows two.
+  //
+  // "What is installed" and "where to get more" are one task, so they are two
+  // sections of one page rather than two destinations. Publisher trust and
+  // revocation stop being lists you navigate to and become state on the row
+  // they describe, which is where an operator was looking anyway.
   return (
     <>
-      <div className="flex gap-1 mb-3">
-        {([['installed', t('settings.plugins')], ['marketplace', t('settings.marketplace')]] as const).map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setSub(id)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              sub === id ? 'bg-redlog-elevated-hover text-redlog-text' : 'bg-redlog-surface text-redlog-text-dim hover:text-redlog-text'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {sub === 'installed' ? <PluginsPanel t={t} /> : <MarketplacePanel t={t} />}
+      <PluginsPanel t={t} />
+      <MarketplacePanel t={t} />
     </>
   )
 }

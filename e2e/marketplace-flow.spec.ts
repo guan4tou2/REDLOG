@@ -3,14 +3,13 @@ import { createHash, generateKeyPairSync } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { launchWithTempHome, openTestProject } from './helpers'
+import { launchWithTempHome, openTestProject, openSettingsPage } from './helpers'
 
-/** v0.9.10: Settings went from ten top-level tabs to eight; Plugins and
- *  Marketplace merged into one tab with sub-tabs, since "what is installed" and
- *  "where to get more" are one task. Click through both. */
+/** Installed plugins and the marketplace are two sections of one page now
+ *  (§10 — they were a tab holding sub-tabs holding publisher and revocation
+ *  lists, three levels under a second-level tab). One click, no sub-tab. */
 async function openMarketplaceTab(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /^plugins$/i }).first().click()
-  await page.getByRole('button', { name: /^marketplace$/i }).first().click()
+  await openSettingsPage(page, 'plugins')
 }
 
 const SCREENSHOT_DIR = join(__dirname, 'screenshots')

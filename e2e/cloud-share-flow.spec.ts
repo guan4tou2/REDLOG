@@ -2,7 +2,7 @@ import { test, expect, type ElectronApplication, type Page } from '@playwright/t
 import { existsSync, mkdirSync, readFileSync, openSync, readSync, closeSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { launchWithTempHome, openTestProject } from './helpers'
+import { launchWithTempHome, openTestProject, openSettingsPage } from './helpers'
 
 const SCREENSHOT_DIR = join(__dirname, 'screenshots')
 
@@ -72,10 +72,9 @@ test.describe.serial('cloud share', () => {
     const viewRoot = page.locator('[data-testid="view-root"]')
     await expect(viewRoot).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
 
-    // The Data tab hosts the Cloud share panel. The tab bar is a row of
-    // <button>s — click by exact "Data" text so we don't collide with any
-    // other data-labeled buttons on the page.
-    await page.getByRole('button', { name: /^data$/i }).first().click()
+    // Cloud share has its own category now — "Data" split into retention,
+    // chain, sharing and appearance when Settings went to a left list (§10).
+    await openSettingsPage(page, 'cloud')
 
     // Wait for the Cloud share panel title to appear — the group heading
     // comes from t('cloudShare.title') = "Cloud share (bundle)".
@@ -242,7 +241,7 @@ test.describe.serial('cloud share', () => {
     const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
     await page.keyboard.press(`${mod}+9`)
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'settings', { timeout: 2_000 })
-    await page.getByRole('button', { name: /^data$/i }).first().click()
+    await openSettingsPage(page, 'cloud')
 
     // Re-hydrated values. The inputs live inside the Advanced fold, which
     // opens itself when an endpoint is stored — no manual click needed.
