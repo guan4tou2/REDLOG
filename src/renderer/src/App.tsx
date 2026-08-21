@@ -24,6 +24,7 @@ import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './l
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
+import { EmptyState } from './components/EmptyState'
 import { formatTime } from './lib/time'
 
 type View = SidebarViewId | 'settings' | 'search'
@@ -245,10 +246,15 @@ export default function App(): JSX.Element {
             {view === 'transcript' && (
               <TranscriptView
                 key={project?.id ?? 'no-project'}
-                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); onNavigate('timeline') }}
+                // `onNavigate` is not in scope here — App switches views with
+                // `setView`. This threw a ReferenceError on every use of the
+                // transcript's ↗ button, which is §7's transcript ↔ timeline
+                // link and one of the five cross-view routes phase 3 is meant
+                // to be completing.
+                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
               />
             )}
-            {view === 'screenshots' && <ScreenshotsView />}
+            {view === 'screenshots' && <ScreenshotsView onNavigate={(v) => setView(v as View)} />}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
@@ -940,7 +946,7 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   )
 }
 
-function ScreenshotsView(): JSX.Element {
+function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -1013,13 +1019,16 @@ function ScreenshotsView(): JSX.Element {
         </button>
       </div>
       {screenshots.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
-            <Image size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
-          </div>
-          <p className="text-redlog-text-dim text-sm">{t('screenshots.empty')}</p>
-          <p className="text-redlog-muted text-xs">{t('screenshots.emptyDesc')}</p>
-        </div>
+        <EmptyState
+          icon={Image}
+          title={t('screenshots.empty')}
+          reason={t('screenshots.emptyReason')}
+          action={{
+            label: t('screenshots.captureNow'),
+            onClick: () => { void window.redlog.screenshot.capture() }
+          }}
+          secondary={{ label: t('screenshots.emptyEnable'), onClick: () => onNavigate('settings') }}
+        />
       ) : (() => {
         // Trigger filter (audit #32) — all captures land in one grid mixing
         // periodic / manual / mark-triggered. Chip toggles narrow the view.

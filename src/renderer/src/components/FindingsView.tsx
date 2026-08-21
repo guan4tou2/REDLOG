@@ -5,6 +5,8 @@ import { toast } from './Toast'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { formatDateTime } from '../lib/time'
+import { EmptyState } from './EmptyState'
+import { Flag } from 'lucide-react'
 
 const TAG_COLORS = [
   { bg: 'bg-red-500/20', text: 'text-red-400', dot: 'bg-red-400' },
@@ -182,9 +184,18 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             )
           })}
           {filteredMarks.length === 0 && !creating && (
-            <div className="p-4 text-xs text-redlog-text-faint text-center">
-              {marks.length === 0 ? t('marks.empty') : t('marks.noSearchMatches', { query: search })}
-            </div>
+            marks.length === 0 ? (
+              <EmptyState
+                icon={Flag}
+                title={t('marks.empty')}
+                reason={t('marks.emptyReason')}
+                action={{ label: t('marks.quickCapture'), onClick: () => setCreating(true) }}
+              />
+            ) : (
+              <div className="p-4 text-xs text-redlog-text-faint text-center">
+                {t('marks.noSearchMatches', { query: search })}
+              </div>
+            )
           )}
         </div>
       </div>

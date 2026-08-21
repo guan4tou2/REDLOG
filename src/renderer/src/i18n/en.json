@@ -960,5 +960,11 @@
   "statusBar.tierCountTitle": "{{chained}} chained (the audit chain) · {{logged}} logged (supporting evidence). Click to hide the logged rows on the Timeline — open the Timeline first, or the click does nothing.",
   "statusBar.tierCountLabel": "{{chained}} chained events, {{logged}} logged events",
   "targets.listLabel": "Targets, {{count}} entries",
-  "scope.violationsLabel": "Scope violations, {{count}} entries"
+  "scope.violationsLabel": "Scope violations, {{count}} entries",
+  "screenshots.emptyReason": "Periodic capture is off and nothing has been captured by hand yet. Every screenshot carries a SHA-256 and the reason it was taken.",
+  "screenshots.emptyEnable": "Turn on periodic capture",
+  "loot.emptyReason": "Credentials and keys are detected in command output and clipboard content as they go past. Nothing has matched yet — which is the expected state at the start of an engagement.",
+  "targets.emptyReason": "Hosts and addresses are extracted from commands, HTTP traffic and DNS queries as they are captured. Nothing has been seen yet — run something against a host and it will appear.",
+  "marks.emptyReason": "Markers are the notes you leave for the write-up: what you found, and when. ⌘⇧M drops one from anywhere, including while another application is in front.",
+  "transcript.emptyReason": "This is what you typed and what came back, in order. It fills from shell commands, agent turns and HTTP exchanges as they are captured."
 }

@@ -960,5 +960,11 @@
   "statusBar.tierCountTitle": "{{chained}} 筆已上鏈（證據鏈）· {{logged}} 筆已記錄（佐證資料）。點擊可在時間軸隱藏已記錄的列——請先開啟時間軸，否則點了不會有反應。",
   "statusBar.tierCountLabel": "{{chained}} 筆已上鏈事件，{{logged}} 筆已記錄事件",
   "targets.listLabel": "目標清單，{{count}} 筆",
-  "scope.violationsLabel": "範圍違規清單，{{count}} 筆"
+  "scope.violationsLabel": "範圍違規清單，{{count}} 筆",
+  "screenshots.emptyReason": "定時擷取目前關閉,而你尚未手動擷取過。每張截圖都帶 SHA-256 與觸發原因。",
+  "screenshots.emptyEnable": "開啟定時擷取",
+  "loot.emptyReason": "憑證與金鑰會在指令輸出與剪貼簿內容經過時被偵測。目前還沒有命中——在行動剛開始時這是正常的。",
+  "targets.emptyReason": "主機與位址會在指令、HTTP 流量與 DNS 查詢被擷取時自動抽出。目前還沒有看到任何一個——對某台主機跑點東西,它就會出現。",
+  "marks.emptyReason": "標記是你為報告留下的筆記:發現了什麼、在什麼時候。⌘⇧M 可以從任何地方落一個,包括其他應用程式在前景時。",
+  "transcript.emptyReason": "這裡按順序呈現你輸入了什麼、回來了什麼。它會隨著 shell 指令、代理對話與 HTTP 往返被擷取而填滿。"
 }

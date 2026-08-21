@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
 import { formatTime } from '../lib/time'
+import { EmptyState } from './EmptyState'
+import { AlignLeft } from 'lucide-react'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -330,7 +332,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
         {loading && <p className="text-xs text-redlog-text-faint">{t('transcript.loading')}</p>}
         {!loading && shown.length === 0 && (
-          <p className="text-xs text-redlog-text-faint">{t('transcript.empty')}</p>
+          <EmptyState
+            icon={AlignLeft}
+            title={t('transcript.empty')}
+            reason={t('transcript.emptyReason')}
+          />
         )}
         {shown.map((b) => {
           const revealed = expanded.has(b.id)
