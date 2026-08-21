@@ -17,6 +17,13 @@ done.
 > judge traffic from, and, above all, **find evidence of the things you were
 > not watching when they happened.**
 
+The everyday consumer of all this is **the operator themselves, writing the
+engagement up a day later** — not the purple team and not a lawyer. Writing a
+report means going back for the screenshot of a finding and the exact command
+with its output. That is the trip every captured thing has to survive, and it
+is why the output-capture gaps below (§2.3, §2.4) matter more than their size
+suggests: a command without its output is not evidence of anything.
+
 The third clause is the motive, and it is general. Work happens that you did
 not see: a scan running for four minutes, a background process, a teammate's
 session on the shared VPS, a command whose output scrolled past. Later you

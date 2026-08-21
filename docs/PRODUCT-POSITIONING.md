@@ -31,9 +31,10 @@ how the record is kept**, not the reason to keep one.
 ## The job to be done
 
 > When I run an engagement, I need a complete record of what was done and when
-> — so I can reconstruct the attack timeline, show a purple team what my
-> traffic was, prove I stayed in scope, and **find out what happened during the
-> stretches I wasn't watching** — **without spending the engagement taking
+> — so I can **write it up afterwards with the screenshots and the exact
+> commands**, reconstruct the attack timeline, show a purple team what my
+> traffic was, prove I stayed in scope, and find out what happened during the
+> stretches I wasn't watching — **without spending the engagement taking
 > notes.**
 
 Two halves, and both are load-bearing:
@@ -84,21 +85,42 @@ the transcript tailer + shell hooks (passive, can't be forgotten) with MCP as an
 explicit control plane. This persona is why "hooks log, MCP operates" is a hard
 rule, not a preference.
 
-### S1 — The purple team / blue team *(stakeholder, not a user)*
+## Who consumes the output
 
-The client's defenders, correlating what they saw against what the red team
-actually did. They never open the app; they receive an activity record —
-time, source, target, command, HTTP exchange, across every capture source —
-and match it against their own telemetry. `deconfliction.md` covers the live
-half of this ("was that us?"); the exported record covers the after-action
-half.
+The everyday consumer of RedLog's output is **the operator themselves**, and
+that is not a fourth persona — it is P1, P2 or P3 a day later, writing the
+engagement up.
 
-### S2 — The evidence consumer *(stakeholder, occasional)*
+This is the phase the whole record exists to serve. Writing a report means
+going back for **the screenshot of that finding** and **the exact command,
+with its output, its timestamp and its target** — in a form that can be
+pasted into a document. RedLog does not write the report (see the non-goals
+below; that stays downstream), but everything it captures is judged by
+whether it survives that trip.
 
-The client's counsel, or the operator's own QA, when a record is challenged.
-Receives the signed bundle and runs `ots verify` / `redlog-verify.py`. This
-path stays fully supported and is what the hash chain is *for* — but it is the
-exception, not the design centre, and it should not shape the everyday UI.
+Two consequences worth stating, because they are easy to under-weight:
+
+- **Screenshots are report material, not incidental artefacts.** They need to
+  be findable by what they show and when they were taken, and they need to
+  come out at usable fidelity.
+- **A command record is only as useful as its output.** "I ran `nmap -sV`" is
+  not evidence of anything; the command plus what came back is. This is what
+  makes the output-capture gaps (§2.3 Windows, §2.4 tool output) matter more
+  than their size suggests.
+
+### Secondary consumers *(stakeholders, not users)*
+
+- **The purple / blue team** — the client's defenders, correlating what they
+  saw against what the red team actually did. They receive an activity record
+  (time, source, target, command, HTTP exchange, across every capture source)
+  and match it against their own telemetry. `deconfliction.md` covers the live
+  half of this ("was that us?"); the exported record covers the after-action
+  half.
+- **The evidence consumer** — the client's counsel, or the operator's own QA,
+  when a record is challenged. Receives the signed bundle and runs
+  `ots verify` / `redlog-verify.py`. Fully supported, and what the hash chain
+  is *for* — but the exception, not the design centre, and it should not shape
+  the everyday UI.
 
 ## What RedLog is NOT
 
