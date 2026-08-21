@@ -155,6 +155,14 @@ work as **V4** below and, once done, deletes the wheel-mode branch behind T2.
 
 ## v1.0 gate
 
+> **Needs review after the 2026-08-21 core revision.** The gate below is
+> written entirely around a third party verifying a bundle, which was the old
+> design centre. Under the revised core (`DESIGN-core-and-capture.md`) the
+> everyday job is the operator finding out what happened, so the gate is
+> arguably missing its own criteria — capture coverage and findability. The
+> five items below are still correct and still blockers; the question is
+> whether they are *sufficient*. Not rewritten unilaterally.
+
 1.0 means an operator can hand a bundle to a third party and every claim in
 the docs is one they can check. Concretely:
 
