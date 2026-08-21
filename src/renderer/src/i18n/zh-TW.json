@@ -995,5 +995,13 @@
   "settings.pageHud": "HUD",
   "capture.group.commands": "指令",
   "capture.group.traffic": "流量",
-  "capture.group.artifacts": "畫面與檔案"
+  "capture.group.artifacts": "畫面與檔案",
+  "timeline.mode.label": "檢視模式",
+  "timeline.mode.working": "作業中",
+  "timeline.mode.audit": "稽核",
+  "timeline.mode.debug": "除錯",
+  "timeline.mode.custom": "自訂",
+  "timeline.mode.locked": "已鎖定",
+  "timeline.mode.hint": "作業中：收合、壓縮閒置、本機時區。稽核：只顯示已上鏈事件、UTC、不折不壓。除錯：全部事件，含 session 邊界。",
+  "timeline.mode.lockedHint": "稽核模式不可微調——一個能被悄悄調整的畫面，證明不了任何事。要改這些請切到作業中或除錯。"
 }

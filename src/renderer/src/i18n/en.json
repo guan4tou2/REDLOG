@@ -995,5 +995,13 @@
   "settings.pageHud": "HUD",
   "capture.group.commands": "Commands",
   "capture.group.traffic": "Traffic",
-  "capture.group.artifacts": "Screen & files"
+  "capture.group.artifacts": "Screen & files",
+  "timeline.mode.label": "View mode",
+  "timeline.mode.working": "Working",
+  "timeline.mode.audit": "Audit",
+  "timeline.mode.debug": "Debug",
+  "timeline.mode.custom": "Custom",
+  "timeline.mode.locked": "locked",
+  "timeline.mode.hint": "Working: collapsed and compressed, local time. Audit: chained events only, UTC, nothing folded or squeezed. Debug: everything, including session boundaries.",
+  "timeline.mode.lockedHint": "Audit mode cannot be adjusted — a view you can quietly tweak is not a record of anything. Switch to Working or Debug to change these."
 }
