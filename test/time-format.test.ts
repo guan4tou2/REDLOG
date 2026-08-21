@@ -63,21 +63,36 @@ describe('no component formats its own time', () => {
     glob.sync('src/renderer/src/**/*.{ts,tsx}', { cwd: ROOT, absolute: true })
       .map((f) => [repoRelative(ROOT, f), fs.readFileSync(f, 'utf-8')] as [string, string])
 
-  it('never calls a bare toLocale*String', () => {
-    // `toLocaleTimeString()` with no options is the 12-hour bug. Timeline's
-    // `formatTs` may still call the localised forms — it also resolves the
-    // operator's UTC/Project zone choice — but it passes `hour12: false`.
+  it('never formats a date outside lib/time.ts', () => {
+    // Tightened once the Timeline's timezone-aware `formatTs` moved in here.
+    // It used to be exempt on the grounds that it passed `hour12: false`, and
+    // it did — the two implementations agreed exactly, which is the dangerous
+    // state rather than the safe one: nothing would have reported the day they
+    // stopped agreeing. Now the rule is simply that date formatting happens in
+    // one file.
     const offenders = sources()
       .filter(([f]) => !f.endsWith('lib/time.ts'))
       .flatMap(([f, src]) =>
         [...src.matchAll(/(.{0,40})\.toLocale(Time|Date)?String\(([^)]*)\)/g)]
-          .filter(([, before, kind, args]) =>
-            // `toLocaleString()` is also how a *number* gets its thousands
-            // separators, which is not a time and not this rule's business.
-            (kind !== undefined || /Date\(/.test(before)) && !/hour12:\s*false/.test(args))
+          // `toLocaleString()` is also how a *number* gets its thousands
+          // separators, which is not a time and not this rule's business.
+          .filter(([, before, kind]) => kind !== undefined || /Date\(/.test(before))
           .map(([full]) => `${f}: ${full.trim()}`)
       )
     expect(offenders).toEqual([])
+  })
+
+  it('keeps the zone-aware path in the same module as the plain one', () => {
+    // The Timeline's audit mode pins UTC. While that branch lived only in
+    // Timeline.tsx, `lib/time.ts` did not know timestamps could carry a zone
+    // at all — so any rule it enforced was enforced over half the app.
+    const mod = fs.readFileSync(path.join(ROOT, 'src/renderer/src/lib/time.ts'), 'utf-8')
+    expect(mod).toMatch(/export function formatTs/)
+    expect(mod).toMatch(/export type TzMode/)
+    const timeline = fs.readFileSync(
+      path.join(ROOT, 'src/renderer/src/components/Timeline.tsx'), 'utf-8'
+    )
+    expect(timeline).not.toMatch(/^function formatTs/m)
   })
 
   it('keeps relative time to freshness fields', () => {

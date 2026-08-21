@@ -4,6 +4,7 @@ import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
 import { Ban } from 'lucide-react'
 import { formatTime } from '../lib/time'
+import { useListKeyboard } from '../lib/useListKeyboard'
 
 export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [violations, setViolations] = useState<Array<{ target: string; command: string; timestamp: number }>>([])
@@ -11,6 +12,17 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   const [chainLen, setChainLen] = useState(0)
   const [loading, setLoading] = useState(true)
   const { t } = useI18n()
+
+  // §9's list contract, same as Findings/Loot/Search. The violation list is
+  // the one an operator reaches for under time pressure — "which rule did this
+  // hit, and where is it on the timeline" — so it should not be the one list
+  // that needs a mouse.
+  const shownViolations = violations.slice(0, 10)
+  const listNav = useListKeyboard({
+    count: shownViolations.length,
+    onActivate: (i) => { const v = shownViolations[i]; if (v) onOpenInTimeline?.(v.timestamp) },
+    onJumpToTimeline: (i) => { const v = shownViolations[i]; if (v) onOpenInTimeline?.(v.timestamp) }
+  })
 
   useEffect(() => {
     Promise.all([
@@ -90,10 +102,19 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
       {violations.length > 0 && (
         <div className="space-y-1">
           <h3 className="text-sm text-redlog-text-dim">{t('scope.recentViolations')}</h3>
-          {violations.slice(0, 10).map((v, i) => (
+          <div
+            className="space-y-1"
+            {...listNav.containerProps}
+            aria-label={t('scope.violationsLabel', { count: shownViolations.length })}
+          >
+          {shownViolations.map((v, i) => {
+            const rowProps = listNav.itemProps(i)
+            return (
             <button
               key={i}
-              onClick={() => onOpenInTimeline?.(v.timestamp)}
+              {...rowProps}
+              ref={(el) => rowProps.ref(el)}
+              onClick={() => { rowProps.onClick(); onOpenInTimeline?.(v.timestamp) }}
               disabled={!onOpenInTimeline}
               className="w-full text-left bg-red-900/20 border border-red-800/30 rounded p-2 hover:bg-red-900/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 disabled:cursor-default disabled:hover:bg-red-900/20 transition-colors"
               title={onOpenInTimeline ? t('scope.openInTimeline') : undefined}
@@ -102,7 +123,9 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
               <div title={v.command} className="text-redlog-text-dim text-xs truncate">{v.command}</div>
               <div className="text-redlog-text-faint text-xs">{formatTime(v.timestamp, { seconds: true })}</div>
             </button>
-          ))}
+            )
+          })}
+          </div>
         </div>
       )}
     </div>

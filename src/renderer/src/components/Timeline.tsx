@@ -8,7 +8,7 @@ import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
-import { formatTime } from '../lib/time'
+import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
 
@@ -396,8 +396,6 @@ function formatTimeLabel(date: Date): string {
 // this so the operator's chosen zone (Local / UTC / Project-configured) sticks.
 // Invalid `projectTz` (typo, unrecognised IANA name) silently falls back to
 // Local so the UI never breaks — the picker itself guards against bad names.
-type TzMode = 'local' | 'utc' | 'project'
-type TsStyle = 'time' | 'timeSec' | 'full'
 /** v0.11.4 (AUDIT V6): time-only ticks are ambiguous across midnight. Prefix
  *  the date on the first tick and on any tick that starts a new day, so a
  *  three-day engagement stops showing three indistinguishable "09:11"s. */
@@ -416,31 +414,6 @@ function axisLabel(
     ? d.toISOString().slice(5, 10)
     : `${d.getMonth() + 1}/${d.getDate()}`
   return `${date} ${time}`
-}
-
-function formatTs(ms: number, tz: TzMode, projectTz: string | null, style: TsStyle = 'time'): string {
-  if (!Number.isFinite(ms)) return ''
-  const d = new Date(ms)
-  if (tz === 'utc') {
-    // toISOString → 2026-01-01T15:04:05.123Z
-    if (style === 'time') return d.toISOString().slice(11, 16) + 'Z'
-    if (style === 'timeSec') return d.toISOString().slice(11, 19) + 'Z'
-    return d.toISOString().replace('T', ' ')
-  }
-  const timeZone = tz === 'project' && projectTz ? projectTz : undefined
-  const opts: Intl.DateTimeFormatOptions = {}
-  if (timeZone) opts.timeZone = timeZone
-  try {
-    if (style === 'time') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', ...opts })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', ...opts })
-    return d.toLocaleString([], { hour12: false, ...opts })
-  } catch {
-    // Bad IANA name → fall back to Local so a mistyped project.timezone can't
-    // wipe every time label on the panel.
-    if (style === 'time') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
-    if (style === 'timeSec') return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    return d.toLocaleString([], { hour12: false })
-  }
 }
 
 // v0.6.91 W1/W3: simple case-insensitive substring "score". Higher = better.

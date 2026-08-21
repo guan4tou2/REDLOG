@@ -956,5 +956,9 @@
   "confirm.deleteProjectConfirm": "永久刪除",
   "confirm.deleteProjectChain": "全部事件與整條 SHA-256 證據鏈",
   "confirm.deleteProjectMedia": "所有截圖與終端機工作階段錄影",
-  "confirm.deleteProjectAnchors": "OpenTimestamps 錨點收據——這些無法重新產生，因為它們見證的是一個已經過去的時刻"
+  "confirm.deleteProjectAnchors": "OpenTimestamps 錨點收據——這些無法重新產生，因為它們見證的是一個已經過去的時刻",
+  "statusBar.tierCountTitle": "{{chained}} 筆已上鏈（證據鏈）· {{logged}} 筆已記錄（佐證資料）。點擊可在時間軸隱藏已記錄的列——請先開啟時間軸，否則點了不會有反應。",
+  "statusBar.tierCountLabel": "{{chained}} 筆已上鏈事件，{{logged}} 筆已記錄事件",
+  "targets.listLabel": "目標清單，{{count}} 筆",
+  "scope.violationsLabel": "範圍違規清單，{{count}} 筆"
 }

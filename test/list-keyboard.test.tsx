@@ -8,6 +8,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import { useListKeyboard } from '../src/renderer/src/lib/useListKeyboard'
+import fs from 'fs'
+import path from 'path'
 
 afterEach(cleanup)
 
@@ -114,5 +116,31 @@ describe('list keyboard', () => {
     key('ArrowDown'); key('Enter')
     expect(index()).toBe('-1')
     expect(onActivate).not.toHaveBeenCalled()
+  })
+})
+
+// The checklist says "全部清單頁一致" — every list page, the same keys. That is
+// a property of the tree, not of the hook, and it is exactly the kind of thing
+// that ends up 80% done: Findings, Loot and Search got it, while Targets and
+// Scope violations — the two lists an operator reaches for under time pressure
+// — did not, and nothing said so.
+describe('every list view uses the shared contract', () => {
+  const LIST_VIEWS = [
+    'FindingsView.tsx',
+    'LootPanel.tsx',
+    'SearchPanel.tsx',
+    'TargetView.tsx',
+    'ScopeStatus.tsx'
+  ]
+
+  it.each(LIST_VIEWS)('%s wires useListKeyboard', (file) => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../src/renderer/src/components', file), 'utf-8'
+    )
+    expect(src, 'imports the hook').toMatch(/useListKeyboard/)
+    // Spreading both halves is what actually makes the keys work; importing
+    // the hook and forgetting the container is a silent no-op.
+    expect(src, 'spreads containerProps onto the scroll container').toMatch(/\{\.\.\.\w*\.?containerProps\}/)
+    expect(src, 'spreads itemProps onto each row').toMatch(/itemProps\(/)
   })
 })
