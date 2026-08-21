@@ -3,6 +3,8 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { EmptyState } from './EmptyState'
+import { Crosshair } from 'lucide-react'
 
 interface TargetEntry {
   target: string
@@ -182,7 +184,11 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-redlog-text-dim text-sm">{t('targets.empty')}</p>
+        <EmptyState
+          icon={Crosshair}
+          title={t('targets.empty')}
+          reason={t('targets.emptyReason')}
+        />
       ) : (
         <div className="space-y-2" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
           {filtered.map((tgt, i) => {

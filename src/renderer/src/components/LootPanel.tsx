@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { toast } from './Toast'
 import { Gem } from 'lucide-react'
+import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 
@@ -151,13 +152,11 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
       })()}
 
       {lootEvents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
-            <Gem size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
-          </div>
-          <p className="text-sm text-redlog-text-dim">{t('loot.empty')}</p>
-          <p className="text-xs text-redlog-muted text-center max-w-xs">{t('loot.emptyDesc')}</p>
-        </div>
+        <EmptyState
+          icon={Gem}
+          title={t('loot.empty')}
+          reason={t('loot.emptyReason')}
+        />
       ) : (
         // v0.7.1 P1: rendering uses the same `visibleList` that feeds the
         // header count, so what you see and what the header says can never

@@ -65,3 +65,41 @@ describe('truncated text', () => {
     expect(stale).toEqual([])
   })
 })
+
+// §5.4: an empty state has three parts, and the third — a way out — is the
+// one that was missing from every one of them. "Screenshots will appear here
+// when captured" restates the empty screen the operator is already looking at.
+describe('empty states', () => {
+  it('every view that can be empty uses the shared three-part component', () => {
+    const VIEWS = [
+      ['App.tsx', 'screenshots'],
+      ['components/LootPanel.tsx', 'loot'],
+      ['components/TargetView.tsx', 'targets'],
+      ['components/FindingsView.tsx', 'marks'],
+      ['components/TranscriptView.tsx', 'transcript']
+    ] as const
+    const missing = VIEWS.filter(([file]) => {
+      const src = fs.readFileSync(path.join(ROOT, 'src/renderer/src', file), 'utf-8')
+      return !/<EmptyState\b/.test(src)
+    }).map(([file]) => file)
+    expect(missing).toEqual([])
+  })
+
+  it('gives each one a reason distinct from its title', () => {
+    // The failure mode is a `reason` that restates the title in more words.
+    // Comparing the strings catches the laziest version of that.
+    const en = JSON.parse(
+      fs.readFileSync(path.join(ROOT, 'src/renderer/src/i18n/en.json'), 'utf-8')
+    ) as Record<string, string>
+    const pairs = Object.keys(en)
+      .filter((k) => k.endsWith('.emptyReason'))
+      .map((k) => [k.replace('.emptyReason', '.empty'), k])
+    expect(pairs.length, 'no empty-state reasons found at all').toBeGreaterThan(2)
+    for (const [titleKey, reasonKey] of pairs) {
+      expect(en[reasonKey], `${reasonKey} is missing`).toBeTruthy()
+      expect(en[reasonKey], `${reasonKey} just restates the title`).not.toBe(en[titleKey])
+      // A reason short enough to be a title is not explaining anything.
+      expect(en[reasonKey].length, `${reasonKey} is too short to be a reason`).toBeGreaterThan(40)
+    }
+  })
+})
