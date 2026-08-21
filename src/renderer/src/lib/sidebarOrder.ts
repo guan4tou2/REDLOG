@@ -10,14 +10,14 @@
 
 export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
-  | 'targets' | 'scope' | 'loot' | 'marks'
+  | 'targets' | 'scope' | 'loot' | 'marks' | 'http_history'
 
 export const STORAGE_KEY = 'redlog-sidebar-order-v2'
 // v0.11.2: `transcript` sits next to `timeline` — same events, read the other
 // way. loadSidebarOrder() rejects a saved list whose length no longer matches,
 // so existing installs fall back to this order once and keep their new one.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'timeline', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
+  'dashboard', 'timeline', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
 ]
 
 /** Read the persisted order, falling back to DEFAULT_ORDER if missing or

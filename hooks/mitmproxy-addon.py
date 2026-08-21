@@ -22,11 +22,19 @@ Usage — DNS capture (mitmproxy's DNS mode, v0.6.92):
     with the same addon is the recommended setup for full coverage.
 
 What gets logged:
-    - HTTP request: method, URL, ALL headers, query params, FULL body
-    - HTTP response: status code, ALL headers, FULL body, content type, size,
-      duration_ms
-    - DNS query:     question name/type/id, transport, source_addr
-    - DNS response:  response_code, answers, duration_ms, _causes ← query event
+    - HTTP request:   method, URL, ALL headers, query params, FULL body,
+                      timing breakdown (dns/connect/tls/ttfb), cookies,
+                      HTTP version, HTTP/2 stream_id
+    - HTTP response:  status code, ALL headers, FULL body, content type, size,
+                      duration_ms, TLS version, server cert subject/issuer/SAN,
+                      JA3 fingerprint, Set-Cookie details, HTTP/2 stream_id
+    - WebSocket:      per-frame direction, text/binary, full payload
+    - TCP stream:     raw bytes per message (text/binary), direction
+    - TLS handshake:  SNI, TLS version, cipher, ALPN, cert subject/issuer/SAN,
+                      JA3 hash + raw string
+    - Cookie change:  session cookie rotation detection per domain
+    - DNS query:      question name/type/id, transport, source_addr
+    - DNS response:   response_code, answers, duration_ms, _causes ← query event
 
 Environment variables:
     REDLOG_MAX_BODY       Max body bytes to capture (default 10485760 = 10 MB;
@@ -35,6 +43,9 @@ Environment variables:
                           large bodies to sidecar files on disk.
     REDLOG_PREVIEW_BODY   Max body bytes for the inline preview field kept in
                           the event JSON for timeline display (default 4096).
+    REDLOG_MAX_HEADERS    Max number of headers to capture per request/response
+                          (default 200). Prevents pathological header sets from
+                          bloating event JSON.
     REDLOG_SKIP_STATIC    Skip static assets like .css/.js/.png/.woff
                           (default false — Burp-like full capture by default)
     REDLOG_VERBOSE        Log every request/DNS message to stderr (default false)
@@ -54,7 +65,7 @@ try:
 except ImportError:
     pass
 
-from mitmproxy import http, ctx
+from mitmproxy import http, tcp, tls, ctx
 
 
 REDLOG_PORT_FILE = Path.home() / ".redlog" / "api-port"
@@ -63,6 +74,7 @@ SPOOL_DIR = Path.home() / ".redlog" / "pending"
 
 MAX_BODY = int(os.environ.get("REDLOG_MAX_BODY", "10485760"))
 PREVIEW_BODY = int(os.environ.get("REDLOG_PREVIEW_BODY", "4096"))
+MAX_HEADERS = int(os.environ.get("REDLOG_MAX_HEADERS", "200"))
 SKIP_STATIC = os.environ.get("REDLOG_SKIP_STATIC", "false").lower() in ("true", "1", "yes")
 VERBOSE = os.environ.get("REDLOG_VERBOSE", "false").lower() in ("true", "1", "yes")
 
@@ -223,7 +235,7 @@ def _capture_body(content: bytes | None, content_type: str, max_bytes: int) -> d
         "data": str,           # text content or base64-encoded binary
         "encoding": str,       # "text" or "base64"
         "size": int,           # original byte count
-        "sha256": str,         # hex digest of the raw bytes
+        "sha256": str,         # hex digest of the stored bytes (post-truncation)
         "truncated": bool,     # whether data was cut short
         "content_type": str,   # as reported by the server/client
     }
@@ -232,12 +244,13 @@ def _capture_body(content: bytes | None, content_type: str, max_bytes: int) -> d
         return None
 
     raw_size = len(content)
-    sha256 = hashlib.sha256(content).hexdigest()
     truncated = False
 
     if max_bytes > 0 and raw_size > max_bytes:
         content = content[:max_bytes]
         truncated = True
+
+    sha256 = hashlib.sha256(content).hexdigest()
 
     is_text = _is_text_content(content_type)
 
@@ -269,9 +282,12 @@ def _capture_body(content: bytes | None, content_type: str, max_bytes: int) -> d
 def _extract_all_headers(headers) -> list[list[str]]:
     """Capture ALL headers as an ordered list of [name, value] pairs.
     Preserves duplicate headers (e.g. multiple Set-Cookie) and original
-    casing — exactly what Burp shows."""
+    casing — exactly what Burp shows. Capped at MAX_HEADERS."""
     result = []
     for name, value in headers.items(multi=True):
+        if len(result) >= MAX_HEADERS:
+            result.append(["X-RedLog-Truncated", f"{len(list(headers.items(multi=True)))} total, showing {MAX_HEADERS}"])
+            break
         result.append([name, value])
     return result
 
@@ -320,6 +336,163 @@ def _is_static(url: str) -> bool:
     return any(path.endswith(ext) for ext in STATIC_EXTENSIONS)
 
 
+def _compute_ja3(client_hello: tls.ClientHelloData) -> dict | None:
+    """Compute JA3 fingerprint from a TLS ClientHello.
+
+    JA3 format: TLSVersion,Ciphers,Extensions,EllipticCurves,ECPointFormats
+    Each field is a dash-separated list of decimal values.
+    The JA3 hash is the MD5 of the resulting string.
+    """
+    try:
+        ch = client_hello.context
+        if not ch:
+            return None
+
+        tls_version = getattr(ch, 'tls_version', None)
+        cipher_suites = getattr(ch, 'cipher_suites', None) or []
+        extensions = getattr(ch, 'extensions', None) or {}
+        ec_curves = getattr(ch, 'elliptic_curves', None) or []
+        ec_point_formats = getattr(ch, 'ec_point_formats', None) or []
+
+        grease_values = {
+            0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a,
+            0x6a6a, 0x7a7a, 0x8a8a, 0x9a9a, 0xaaaa, 0xbaba,
+            0xcaca, 0xdada, 0xeaea, 0xfafa,
+        }
+
+        ciphers_clean = [c for c in cipher_suites if c not in grease_values]
+        ext_clean = sorted(e for e in extensions if e not in grease_values)
+        curves_clean = [c for c in ec_curves if c not in grease_values]
+        points_clean = list(ec_point_formats)
+
+        ver_str = str(tls_version) if tls_version else "0"
+        ja3_raw = ",".join([
+            ver_str,
+            "-".join(str(c) for c in ciphers_clean),
+            "-".join(str(e) for e in ext_clean),
+            "-".join(str(c) for c in curves_clean),
+            "-".join(str(p) for p in points_clean),
+        ])
+
+        ja3_hash = hashlib.md5(ja3_raw.encode()).hexdigest()
+        return {
+            "ja3": ja3_hash,
+            "ja3_raw": ja3_raw[:500],
+        }
+    except Exception:
+        return None
+
+
+def _extract_tls_info(flow: http.HTTPFlow) -> dict | None:
+    """Extract TLS handshake details from a completed flow."""
+    try:
+        conn = flow.server_conn
+        if not conn or not getattr(conn, 'tls_version', None):
+            return None
+        info: dict = {
+            "tls_version": conn.tls_version,
+        }
+        if hasattr(conn, 'alpn') and conn.alpn:
+            info["alpn"] = conn.alpn.decode("ascii", errors="replace") if isinstance(conn.alpn, bytes) else str(conn.alpn)
+        if hasattr(conn, 'cipher') and conn.cipher:
+            info["cipher"] = conn.cipher
+        cert_list = getattr(conn, 'certificate_list', None)
+        if cert_list and len(cert_list) > 0:
+            leaf = cert_list[0]
+            info["cert_subject"] = str(getattr(leaf, 'subject', ''))
+            info["cert_issuer"] = str(getattr(leaf, 'issuer', ''))
+            san = getattr(leaf, 'altnames', None) or getattr(leaf, 'san', None)
+            if san:
+                info["cert_san"] = list(san)[:20]
+            serial = getattr(leaf, 'serial', None)
+            if serial is not None:
+                info["cert_serial"] = str(serial)
+        return info
+    except Exception:
+        return None
+
+
+def _extract_timing(flow: http.HTTPFlow) -> dict | None:
+    """Extract timing breakdown from a completed flow (ms precision)."""
+    try:
+        sc = flow.server_conn
+        if not sc:
+            return None
+        timing: dict = {}
+        ts_start = getattr(sc, 'timestamp_start', None)
+        ts_tcp = getattr(sc, 'timestamp_tcp_setup', None)
+        ts_tls = getattr(sc, 'timestamp_tls_setup', None)
+        req_start = getattr(flow.request, 'timestamp_start', None)
+        req_end = getattr(flow.request, 'timestamp_end', None)
+        resp_start = getattr(flow.response, 'timestamp_start', None) if flow.response else None
+        resp_end = getattr(flow.response, 'timestamp_end', None) if flow.response else None
+        if ts_start and ts_tcp:
+            timing["connect_ms"] = round((ts_tcp - ts_start) * 1000)
+        if ts_tcp and ts_tls:
+            timing["tls_ms"] = round((ts_tls - ts_tcp) * 1000)
+        if req_start and req_end:
+            timing["send_ms"] = round((req_end - req_start) * 1000)
+        if req_end and resp_start:
+            timing["wait_ms"] = round((resp_start - req_end) * 1000)
+        if resp_start and resp_end:
+            timing["receive_ms"] = round((resp_end - resp_start) * 1000)
+        if ts_start and resp_end:
+            timing["total_ms"] = round((resp_end - ts_start) * 1000)
+        return timing if timing else None
+    except Exception:
+        return None
+
+
+def _extract_request_cookies(flow: http.HTTPFlow) -> list[dict] | None:
+    """Extract cookies sent in the request's Cookie header."""
+    try:
+        cookie_header = flow.request.headers.get("cookie", "")
+        if not cookie_header:
+            return None
+        cookies = []
+        for pair in cookie_header.split(";"):
+            pair = pair.strip()
+            if "=" in pair:
+                name, _, value = pair.partition("=")
+                cookies.append({"name": name.strip(), "value": value.strip()[:200]})
+        return cookies[:50] if cookies else None
+    except Exception:
+        return None
+
+
+def _extract_set_cookies(flow: http.HTTPFlow) -> list[dict] | None:
+    """Extract Set-Cookie headers from the response."""
+    try:
+        if not flow.response:
+            return None
+        set_cookies = []
+        for value in flow.response.headers.get_all("set-cookie"):
+            parts = value.split(";")
+            main = parts[0].strip()
+            name, _, val = main.partition("=")
+            attrs: dict = {"name": name.strip(), "value": val.strip()[:200]}
+            for attr in parts[1:]:
+                attr = attr.strip().lower()
+                if attr.startswith("path="):
+                    attrs["path"] = attr[5:]
+                elif attr.startswith("domain="):
+                    attrs["domain"] = attr[7:]
+                elif attr.startswith("expires="):
+                    attrs["expires"] = attr[8:]
+                elif attr.startswith("max-age="):
+                    attrs["max_age"] = attr[8:]
+                elif attr == "secure":
+                    attrs["secure"] = True
+                elif attr == "httponly":
+                    attrs["httponly"] = True
+                elif attr.startswith("samesite="):
+                    attrs["samesite"] = attr[9:]
+            set_cookies.append(attrs)
+        return set_cookies[:50] if set_cookies else None
+    except Exception:
+        return None
+
+
 PENDING_TTL_SEC = 300
 
 
@@ -327,6 +500,46 @@ class RedLogAddon:
     def __init__(self):
         self._request_times: dict[str, dict] = {}
         self._dns_query_events: dict[str, dict] = {}
+        self._ja3_cache: dict[str, dict] = {}
+        self._cookie_jar: dict[str, dict[str, str]] = {}
+
+    def _track_cookies(self, domain: str, set_cookies: list[dict]):
+        """Track Set-Cookie headers in memory. When a session-like cookie
+        changes value, emit a cookie_change event so the operator knows
+        a session was established or rotated."""
+        if domain not in self._cookie_jar:
+            self._cookie_jar[domain] = {}
+
+        session_names = {"session", "sessionid", "sid", "jsessionid", "phpsessid",
+                         "connect.sid", "asp.net_sessionid", "laravel_session",
+                         "token", "auth", "jwt", "access_token", "csrf", "_csrf_token"}
+
+        for cookie in set_cookies:
+            name = cookie.get("name", "")
+            value = cookie.get("value", "")
+            name_lower = name.lower()
+            prev = self._cookie_jar[domain].get(name)
+            self._cookie_jar[domain][name] = value
+
+            if prev is not None and prev != value and name_lower in session_names:
+                _send_to_redlog({
+                    "agent_type": "scanner",
+                    "data": {
+                        "subtype": "cookie_change",
+                        "domain": domain,
+                        "cookie_name": name,
+                        "old_hash": hashlib.sha256(prev.encode()).hexdigest()[:16],
+                        "new_hash": hashlib.sha256(value.encode()).hexdigest()[:16],
+                        "secure": cookie.get("secure", False),
+                        "httponly": cookie.get("httponly", False),
+                    },
+                    "target_id": domain,
+                })
+
+        if len(self._cookie_jar) > 500:
+            oldest_domains = list(self._cookie_jar.keys())[:100]
+            for d in oldest_domains:
+                self._cookie_jar.pop(d, None)
 
     def _sweep_stale(self):
         """Emit dropped-markers for pending requests older than PENDING_TTL_SEC."""
@@ -383,11 +596,15 @@ class RedLogAddon:
         req_headers = _extract_all_headers(flow.request.headers)
 
         content_type = flow.request.headers.get("content-type", "")
-        request_body = _capture_body(flow.request.content, content_type, MAX_BODY)
-
+        request_body = None
         request_body_preview = ""
-        if request_body and request_body["encoding"] == "text":
-            request_body_preview = _truncate(request_body["data"], PREVIEW_BODY)
+        try:
+            request_body = _capture_body(flow.request.content, content_type, MAX_BODY)
+            if request_body and request_body["encoding"] == "text":
+                request_body_preview = _truncate(request_body["data"], PREVIEW_BODY)
+        except Exception as exc:
+            if VERBOSE:
+                ctx.log.warn(f"[redlog] req body decode failed for {url}: {exc}")
 
         event_data = {
             "subtype": "http_request_start",
@@ -407,6 +624,17 @@ class RedLogAddon:
             event_data["request_body_preview"] = request_body_preview
         if request_body:
             event_data["request_body"] = request_body
+
+        http_version = getattr(flow.request, 'http_version', None)
+        if http_version:
+            event_data["http_version"] = http_version
+        stream_id = getattr(flow.request, 'stream_id', None)
+        if stream_id is not None:
+            event_data["stream_id"] = stream_id
+
+        req_cookies = _extract_request_cookies(flow)
+        if req_cookies:
+            event_data["cookies"] = req_cookies
 
         payload = {
             "agent_type": "scanner",
@@ -441,19 +669,20 @@ class RedLogAddon:
         resp_headers = _extract_all_headers(flow.response.headers) if flow.response else []
 
         content_type = flow.response.headers.get("content-type", "") if flow.response else ""
-        response_body = _capture_body(
-            flow.response.content if flow.response else None,
-            content_type,
-            MAX_BODY,
-        )
-
+        response_body = None
         response_body_preview = ""
-        if response_body and response_body["encoding"] == "text":
-            response_body_preview = _truncate(response_body["data"], PREVIEW_BODY)
-
         content_length = 0
-        if flow.response and flow.response.content:
-            content_length = len(flow.response.content)
+        try:
+            resp_content = flow.response.content if flow.response else None
+            response_body = _capture_body(resp_content, content_type, MAX_BODY)
+            if response_body and response_body["encoding"] == "text":
+                response_body_preview = _truncate(response_body["data"], PREVIEW_BODY)
+            if resp_content:
+                content_length = len(resp_content)
+        except Exception as exc:
+            content_length = int(flow.response.headers.get("content-length", "0") or "0") if flow.response else 0
+            if VERBOSE:
+                ctx.log.warn(f"[redlog] body decode failed for {url}: {exc}")
 
         event_data = {
             "subtype": "http_response",
@@ -472,6 +701,32 @@ class RedLogAddon:
             event_data["response_body"] = response_body
         if duration_ms is not None:
             event_data["duration_ms"] = duration_ms
+
+        tls_info = _extract_tls_info(flow)
+        if tls_info:
+            event_data["tls"] = tls_info
+        timing = _extract_timing(flow)
+        if timing:
+            event_data["timing"] = timing
+
+        ja3 = self._get_ja3_for_flow(flow)
+        if ja3:
+            if "tls" not in event_data:
+                event_data["tls"] = {}
+            event_data["tls"]["ja3"] = ja3["ja3"]
+            event_data["tls"]["ja3_raw"] = ja3["ja3_raw"]
+
+        http_version = getattr(flow.request, 'http_version', None)
+        if http_version:
+            event_data["http_version"] = http_version
+        stream_id = getattr(flow.request, 'stream_id', None)
+        if stream_id is not None:
+            event_data["stream_id"] = stream_id
+
+        set_cookies = _extract_set_cookies(flow)
+        if set_cookies:
+            event_data["set_cookies"] = set_cookies
+            self._track_cookies(target, set_cookies)
 
         payload = {
             "agent_type": "scanner",
@@ -587,6 +842,148 @@ class RedLogAddon:
                 f"[redlog] DNS ⇐ {query_name} {query_type} → {response_code} "
                 f"[{ans_preview}] ({duration_ms}ms)"
             )
+
+    # ─── WebSocket capture ────────────────────────────────────────────────
+
+    def websocket_message(self, flow: http.HTTPFlow):
+        assert flow.websocket is not None
+        msg = flow.websocket.messages[-1]
+
+        url = flow.request.pretty_url
+        parsed = urlparse(url)
+        target = parsed.hostname or ""
+
+        direction = "client" if msg.from_client else "server"
+        is_text = msg.type == 1
+        content = msg.content
+
+        raw_size = len(content) if content else 0
+        ws_body = None
+        ws_preview = ""
+
+        if content and raw_size > 0:
+            ws_body = _capture_body(content, "text/plain" if is_text else "application/octet-stream", MAX_BODY)
+            if ws_body and ws_body["encoding"] == "text":
+                ws_preview = _truncate(ws_body["data"], PREVIEW_BODY)
+
+        event_data = {
+            "subtype": "ws_message",
+            "flow_id": flow.id,
+            "url": url,
+            "host": target,
+            "direction": direction,
+            "message_type": "text" if is_text else "binary",
+            "size": raw_size,
+            "message_count": len(flow.websocket.messages),
+        }
+
+        if ws_preview:
+            event_data["ws_preview"] = ws_preview
+        if ws_body:
+            event_data["ws_body"] = ws_body
+
+        payload = {
+            "agent_type": "scanner",
+            "data": event_data,
+            "target_id": target,
+        }
+        _send_to_redlog(payload)
+
+        if VERBOSE:
+            arrow = "▲" if msg.from_client else "▼"
+            ctx.log.info(
+                f"[redlog] WS {arrow} {url} "
+                f"({raw_size}B {'text' if is_text else 'bin'}, "
+                f"#{len(flow.websocket.messages)})"
+            )
+
+    # ─── TCP stream capture ───────────────────────────────────────────────
+
+    def tcp_message(self, flow: tcp.TCPFlow):
+        msg = flow.messages[-1]
+        direction = "client" if msg.from_client else "server"
+        content = msg.content
+        raw_size = len(content) if content else 0
+
+        target = ""
+        port = 0
+        try:
+            addr = flow.server_conn.peername or flow.server_conn.address
+            if addr:
+                target = addr[0] if isinstance(addr, tuple) else str(addr)
+                port = addr[1] if isinstance(addr, tuple) and len(addr) > 1 else 0
+        except Exception:
+            pass
+
+        tcp_body = None
+        tcp_preview = ""
+        if content and raw_size > 0:
+            tcp_body = _capture_body(content, "application/octet-stream", MAX_BODY)
+            if tcp_body and tcp_body["encoding"] == "text":
+                tcp_preview = _truncate(tcp_body["data"], PREVIEW_BODY)
+            elif tcp_body:
+                tcp_preview = f"[binary, {raw_size} bytes]"
+
+        event_data = {
+            "subtype": "tcp_message",
+            "flow_id": flow.id,
+            "direction": direction,
+            "size": raw_size,
+            "host": target,
+            "port": port,
+            "message_count": len(flow.messages),
+        }
+
+        if tcp_preview:
+            event_data["tcp_preview"] = tcp_preview
+        if tcp_body:
+            event_data["tcp_body"] = tcp_body
+
+        tls_version = getattr(flow.server_conn, 'tls_version', None)
+        if tls_version:
+            event_data["tls_version"] = tls_version
+
+        payload = {
+            "agent_type": "scanner",
+            "data": event_data,
+            "target_id": target,
+        }
+        _send_to_redlog(payload)
+
+        if VERBOSE:
+            arrow = "▲" if msg.from_client else "▼"
+            ctx.log.info(f"[redlog] TCP {arrow} {target}:{port} ({raw_size}B, #{len(flow.messages)})")
+
+    # ─── TLS ClientHello capture (JA3 fingerprint) ────────────────────────
+
+    def tls_clienthello(self, data: tls.ClientHelloData):
+        """Cache JA3 fingerprint from the TLS ClientHello for later attachment
+        to the HTTP response event. The ClientHello fires before any HTTP
+        hooks, so we stash by client address and look it up in response()."""
+        try:
+            ja3 = _compute_ja3(data)
+            if ja3:
+                conn = data.context.client
+                key = f"{conn.peername[0]}:{conn.peername[1]}" if hasattr(conn, 'peername') and conn.peername else ""
+                if key:
+                    self._ja3_cache[key] = ja3
+                    if len(self._ja3_cache) > 5000:
+                        oldest = list(self._ja3_cache.keys())[:1000]
+                        for k in oldest:
+                            self._ja3_cache.pop(k, None)
+        except Exception:
+            pass
+
+    def _get_ja3_for_flow(self, flow: http.HTTPFlow) -> dict | None:
+        """Look up cached JA3 fingerprint for a flow's client connection."""
+        try:
+            client = flow.client_conn
+            if client and hasattr(client, 'peername') and client.peername:
+                key = f"{client.peername[0]}:{client.peername[1]}"
+                return self._ja3_cache.get(key)
+        except Exception:
+            pass
+        return None
 
     def error(self, flow: http.HTTPFlow):
         url = flow.request.pretty_url

@@ -167,6 +167,17 @@ function eventTitle(event: RedLogEvent): string {
         }
         case 'http_error':
           return `[err] ${method} ${url}: ${d.error || 'unknown'}`.trim()
+        case 'ws_message': {
+          const dir = d.direction === 'client' ? '▲' : '▼'
+          const msgType = d.message_type === 'binary' ? 'bin' : 'txt'
+          return `[WS ${dir}] ${url} (${formatBytes(d.size as number ?? 0)} ${msgType})`.trim()
+        }
+        case 'tcp_message': {
+          const tcpDir = d.direction === 'client' ? '▲' : '▼'
+          return `[TCP ${tcpDir}] ${d.host || ''}:${d.port || '?'} (${formatBytes(d.size as number ?? 0)})`.trim()
+        }
+        case 'cookie_change':
+          return `[cookie] ${d.domain || '?'} ${d.cookie_name || '?'} rotated`.trim()
         default:
           return `[${d.subtype || 'req'}] ${method} ${url}`.trim()
       }
@@ -3495,7 +3506,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               the raw-JSON toggle: unformatted, redaction-masked, in a 120px
               box. Same treatment as shell and agent events now. */}
           {selectedEvent.agentType === 'scanner' && (
-            <ScannerDetail data={selectedEvent.data as Record<string, unknown>} />
+            <ScannerDetail data={selectedEvent.data as Record<string, unknown>} eventId={selectedEvent.id} />
           )}
           {selectedEvent.agentType === 'browser' && (
             <BrowserConsoleDetail data={selectedEvent.data as Record<string, unknown>} />
@@ -3729,29 +3740,64 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
  *  out, what came back. The request and response arrive as two separate chain
  *  events linked by `flow_id`, so each renders the half it holds and names the
  *  other half's absence rather than showing a blank. */
-function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; eventId: string }): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isResponse = subtype === 'http_response'
   const isRequest = subtype === 'http_request_start'
+  const isWs = subtype === 'ws_message'
+  const isTcp = subtype === 'tcp_message'
+  const tlsInfo = data.tls as Record<string, unknown> | undefined
+  const timingInfo = data.timing as Record<string, number> | undefined
+
+  const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
+  const [pairedData, setPairedData] = useState<Record<string, unknown> | null>(null)
+  const [pairedLoading, setPairedLoading] = useState(false)
+
+  useEffect(() => {
+    if (!flowId || (!isRequest && !isResponse)) { setPairedData(null); return }
+    let cancelled = false
+    setPairedLoading(true)
+    window.redlog.events.queryByFlowId(flowId).then(evts => {
+      if (cancelled) return
+      const partner = evts.find(e => e.id !== eventId && (
+        isRequest ? e.data?.subtype === 'http_response' : e.data?.subtype === 'http_request_start'
+      ))
+      setPairedData(partner?.data ?? null)
+      setPairedLoading(false)
+    }).catch(() => { if (!cancelled) setPairedLoading(false) })
+    return () => { cancelled = true }
+  }, [flowId, eventId, isRequest, isResponse])
   const params = data.params as Record<string, unknown> | undefined
   const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
   const reqPreview = typeof data.request_body_preview === 'string' ? (data.request_body_preview as string) : ''
+  const wsPreview = typeof data.ws_preview === 'string' ? (data.ws_preview as string) : ''
+  const tcpPreview = typeof data.tcp_preview === 'string' ? (data.tcp_preview as string) : ''
   const contentType = String(data.content_type ?? '')
   const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
 
   const inlineReqBody = data.request_body as { data?: string; encoding?: string; size?: number } | undefined
   const inlineRespBody = data.response_body as { data?: string; encoding?: string; size?: number } | undefined
+  const inlineWsBody = data.ws_body as { data?: string; encoding?: string; size?: number } | undefined
+  const inlineTcpBody = data.tcp_body as { data?: string; encoding?: string; size?: number } | undefined
   const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
   const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
+  const wsBodyRef = data.ws_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
+  const tcpBodyRef = data.tcp_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
 
   const hasFullReqBody = !!(inlineReqBody?.data || reqBodyRef)
   const hasFullRespBody = !!(inlineRespBody?.data || respBodyRef)
+  const hasFullWsBody = !!(inlineWsBody?.data || wsBodyRef)
+  const hasFullTcpBody = !!(inlineTcpBody?.data || tcpBodyRef)
 
   const [loadedReqBody, setLoadedReqBody] = useState<string | null>(null)
   const [loadedRespBody, setLoadedRespBody] = useState<string | null>(null)
+  const [loadedWsBody, setLoadedWsBody] = useState<string | null>(null)
+  const [loadedTcpBody, setLoadedTcpBody] = useState<string | null>(null)
   const [loadingReq, setLoadingReq] = useState(false)
   const [loadingResp, setLoadingResp] = useState(false)
+  const [loadingWs, setLoadingWs] = useState(false)
+  const [loadingTcp, setLoadingTcp] = useState(false)
 
   const loadFullBody = useCallback(async (
     ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined,
@@ -3845,6 +3891,46 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
           {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
         </button>
       )}
+      {isWs && (wsPreview.length > 0 || loadedWsBody) && (
+        <CollapsibleStream
+          label={t('timeline.detail.wsPayload')}
+          content={loadedWsBody || wsPreview}
+          bytes={data.size as number ?? (loadedWsBody || wsPreview).length}
+          truncated={!loadedWsBody && hasFullWsBody}
+          accent={data.direction === 'client' ? 'zinc' : 'emerald'}
+          startOpen
+        />
+      )}
+      {isWs && hasFullWsBody && !loadedWsBody && (
+        <button
+          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          onClick={() => loadFullBody(wsBodyRef, inlineWsBody, setLoadedWsBody, setLoadingWs)}
+          disabled={loadingWs}
+        >
+          {loadingWs ? '...' : t('timeline.detail.httpLoadFullBody')}
+          {' '}({formatBytes(inlineWsBody?.size ?? wsBodyRef?.size ?? 0)})
+        </button>
+      )}
+      {isTcp && (tcpPreview.length > 0 || loadedTcpBody) && (
+        <CollapsibleStream
+          label={t('timeline.detail.tcpPayload')}
+          content={loadedTcpBody || tcpPreview}
+          bytes={data.size as number ?? (loadedTcpBody || tcpPreview).length}
+          truncated={!loadedTcpBody && hasFullTcpBody}
+          accent={data.direction === 'client' ? 'zinc' : 'emerald'}
+          startOpen
+        />
+      )}
+      {isTcp && hasFullTcpBody && !loadedTcpBody && (
+        <button
+          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          onClick={() => loadFullBody(tcpBodyRef, inlineTcpBody, setLoadedTcpBody, setLoadingTcp)}
+          disabled={loadingTcp}
+        >
+          {loadingTcp ? '...' : t('timeline.detail.httpLoadFullBody')}
+          {' '}({formatBytes(inlineTcpBody?.size ?? tcpBodyRef?.size ?? 0)})
+        </button>
+      )}
       {bodyless && (
         <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
           {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
@@ -3861,15 +3947,105 @@ function ScannerDetail({ data }: { data: Record<string, unknown> }): JSX.Element
       )}
       <MetadataGrid
         entries={[
-          ['method', data.method],
-          ['status', data.status],
-          ['content_type', contentType || undefined],
-          ['content_length', contentLength !== null ? formatBytes(contentLength) : undefined],
-          ['duration_ms', data.duration_ms],
+          ...(isWs ? [
+            ['direction', data.direction],
+            ['message_type', data.message_type],
+            ['size', formatBytes(data.size as number ?? 0)],
+            ['message_#', data.message_count],
+          ] as [string, unknown][] : isTcp ? [
+            ['direction', data.direction],
+            ['size', formatBytes(data.size as number ?? 0)],
+            ['port', data.port],
+            ['message_#', data.message_count],
+            ['tls_version', data.tls_version],
+          ] as [string, unknown][] : [
+            ['method', data.method],
+            ['status', data.status],
+            ['content_type', contentType || undefined],
+            ['content_length', contentLength !== null ? formatBytes(contentLength) : undefined],
+            ['duration_ms', data.duration_ms],
+            ['http_version', data.http_version],
+            ['stream_id', data.stream_id],
+          ] as [string, unknown][]),
           ['host', data.host],
           ['flow_id', data.flow_id]
         ]}
       />
+      {tlsInfo && (
+        <CollapsibleStream
+          label={t('timeline.detail.tlsInfo')}
+          content={Object.entries(tlsInfo).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n')}
+          accent="zinc"
+        />
+      )}
+      {timingInfo && (
+        <CollapsibleStream
+          label={t('timeline.detail.timing')}
+          content={Object.entries(timingInfo).map(([k, v]) => `${k}: ${v}ms`).join('\n')}
+          accent="zinc"
+        />
+      )}
+      {isRequest && Array.isArray(data.cookies) && (data.cookies as Array<{name: string; value: string}>).length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.cookies')}
+          content={(data.cookies as Array<{name: string; value: string}>).map(c => `${c.name}=${c.value}`).join('\n')}
+          accent="zinc"
+        />
+      )}
+      {isResponse && Array.isArray(data.set_cookies) && (data.set_cookies as Array<Record<string, unknown>>).length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.setCookies')}
+          content={(data.set_cookies as Array<Record<string, unknown>>).map(c => {
+            const parts = [`${c.name}=${c.value}`]
+            if (c.domain) parts.push(`Domain=${c.domain}`)
+            if (c.path) parts.push(`Path=${c.path}`)
+            if (c.secure) parts.push('Secure')
+            if (c.httponly) parts.push('HttpOnly')
+            if (c.samesite) parts.push(`SameSite=${c.samesite}`)
+            return parts.join('; ')
+          }).join('\n')}
+          accent="zinc"
+        />
+      )}
+      {pairedLoading && (
+        <p className="text-[11px] text-zinc-500 font-mono px-2">loading paired event...</p>
+      )}
+      {pairedData && (() => {
+        const pSub = String(pairedData.subtype ?? '')
+        const pLabel = pSub === 'http_request_start'
+          ? t('timeline.detail.pairedRequest')
+          : t('timeline.detail.pairedResponse')
+        const pHeaders = pairedData.request_headers ?? pairedData.response_headers
+        const pHeadersText = pHeaders
+          ? Array.isArray(pHeaders)
+            ? (pHeaders as string[][]).map(([n, v]) => `${n}: ${v}`).join('\n')
+            : safePretty(pHeaders)
+          : ''
+        const pPreview = typeof pairedData.request_body_preview === 'string'
+          ? pairedData.request_body_preview as string
+          : typeof pairedData.response_preview === 'string'
+            ? pairedData.response_preview as string
+            : ''
+        const pMeta: [string, unknown][] = pSub === 'http_request_start'
+          ? [['method', pairedData.method], ['url', pairedData.url], ['host', pairedData.host]]
+          : [['status', pairedData.status], ['content_type', pairedData.content_type], ['duration_ms', pairedData.duration_ms]]
+        return (
+          <div className="mt-2 pt-2 border-t border-zinc-700/40 space-y-1.5">
+            <span className="text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider px-1">{pLabel}</span>
+            <MetadataGrid entries={pMeta} />
+            {pHeadersText && (
+              <CollapsibleStream label={t('timeline.detail.httpHeaders')} content={pHeadersText} accent="zinc" />
+            )}
+            {pPreview.length > 0 && (
+              <CollapsibleStream
+                label={pSub === 'http_request_start' ? t('timeline.detail.httpRequestBody') : t('timeline.detail.httpResponseBody')}
+                content={pPreview}
+                accent={pSub === 'http_request_start' ? 'zinc' : 'emerald'}
+              />
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }

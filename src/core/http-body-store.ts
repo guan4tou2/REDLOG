@@ -12,10 +12,18 @@ export interface BodyRef {
   encoding: 'text' | 'base64'
 }
 
+let _cachedDir: string | null = null
+
 function bodiesDir(): string {
+  if (_cachedDir && fs.existsSync(_cachedDir)) return _cachedDir
   const dir = path.join(getProjectDir(), 'http-bodies')
   fs.mkdirSync(dir, { recursive: true })
+  _cachedDir = dir
   return dir
+}
+
+export function resetBodiesDirCache(): void {
+  _cachedDir = null
 }
 
 export function storeBody(body: {
@@ -32,21 +40,22 @@ export function storeBody(body: {
     ? Buffer.from(body.data, 'base64')
     : Buffer.from(body.data, 'utf-8')
 
-  const sha256 = body.sha256 || crypto.createHash('sha256').update(rawBytes).digest('hex')
-  const filename = `${sha256.slice(0, 32)}.body`
+  const sha256 = crypto.createHash('sha256').update(rawBytes).digest('hex')
+  const filename = `${sha256}.body`
   const filePath = path.join(bodiesDir(), filename)
 
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, rawBytes)
   }
 
-  return { sha256, size: body.size, file: filename, encoding: body.encoding }
+  return { sha256, size: rawBytes.length, file: filename, encoding: body.encoding }
 }
 
 export function readBody(ref: BodyRef): string | null {
   try {
-    const filePath = path.join(bodiesDir(), ref.file)
-    if (!filePath.startsWith(bodiesDir())) return null
+    const dir = bodiesDir()
+    const filePath = path.join(dir, ref.file)
+    if (!filePath.startsWith(dir)) return null
     if (!fs.existsSync(filePath)) return null
     const raw = fs.readFileSync(filePath)
     if (ref.encoding === 'base64') {
@@ -65,7 +74,7 @@ export function shouldExternalize(body: { data: string } | undefined): boolean {
 
 export function extractBodyToSidecar(
   data: Record<string, unknown>,
-  field: 'request_body' | 'response_body'
+  field: 'request_body' | 'response_body' | 'ws_body' | 'tcp_body'
 ): void {
   const body = data[field] as {
     data: string
@@ -81,7 +90,10 @@ export function extractBodyToSidecar(
   const ref = storeBody(body)
   if (!ref) return
 
-  const refField = field === 'request_body' ? 'request_body_ref' : 'response_body_ref'
+  const refField = field === 'request_body' ? 'request_body_ref'
+    : field === 'response_body' ? 'response_body_ref'
+    : field === 'ws_body' ? 'ws_body_ref'
+    : 'tcp_body_ref'
   data[refField] = ref
   delete data[field]
 }

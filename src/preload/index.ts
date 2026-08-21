@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('redlog', {
     getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
+    queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
       ipcRenderer.on('events:new', handler)
@@ -74,6 +75,10 @@ contextBridge.exposeInMainWorld('redlog', {
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
       ipcRenderer.invoke('httpBody:read', ref) as Promise<string | null>
+  },
+  har: {
+    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) =>
+      ipcRenderer.invoke('har:export', opts) as Promise<string | null>
   },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),
