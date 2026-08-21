@@ -11,19 +11,23 @@ import { formatTime } from '../lib/time'
 import { toast } from './Toast'
 import { MOD } from '../lib/platform'
 
-// ⌘K, the one way in (docs/UIUX-STANDARD.md §10).
+// ⌘K — the jumper.
 //
-// The sidebar had a Search page: a whole navigation slot, reachable by ⌘/,
-// that did one thing — full-text over events. Meanwhile navigation, project
-// switching, density and every app-level action had no keyboard route at all,
-// and the Timeline had its own separate palette on the same ⌘K that did not
-// exist anywhere else. An operator had to know which surface they were on to
-// know what a key would do.
+// ⌘K used to mean two different things depending on where you were: the
+// Timeline's own fuzzy palette there, the Search page everywhere else. So an
+// operator had to know which surface they were on to know what the key did,
+// while navigation, project switching and every app-level action had no
+// keyboard route at all. This is the same palette on every view.
 //
-// §10 collapses that: ⌘K is global and covers navigation, fuzzy search over
-// events/markers/operators/hosts, actions, density, and project switching.
-// In-page filtering moves to ⌘F, which is the convention every other desktop
-// app already taught the operator.
+// It is deliberately *not* the search surface. A dropdown is the right shape
+// for "take me to that one thing" and the wrong shape for "show me everything
+// matching, let me filter it and read it" — which is what after-action review
+// actually asks: which files did the agent touch, what happened on this host,
+// which commands failed in those two hours. Those are not jumps. The Search
+// view is the explorer; ⌘K reaches it like anything else.
+//
+// In-page filtering is ⌘F, the convention every other desktop app has already
+// taught.
 
 type Section = 'nav' | 'action' | 'view' | 'project' | 'operator' | 'search'
 

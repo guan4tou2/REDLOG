@@ -125,12 +125,10 @@ describe('list keyboard', () => {
 // Scope violations — the two lists an operator reaches for under time pressure
 // — did not, and nothing said so.
 describe('every list view uses the shared contract', () => {
-  // SearchPanel was on this list until §10 deleted the Search page and folded
-  // it into ⌘K. The palette has its own keyboard handling — it is a dialog,
-  // not a list view — so it is not a sixth entry here.
   const LIST_VIEWS = [
     'FindingsView.tsx',
     'LootPanel.tsx',
+    'SearchPanel.tsx',
     'TargetView.tsx',
     'ScopeStatus.tsx'
   ]

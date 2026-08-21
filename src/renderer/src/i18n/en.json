@@ -996,12 +996,12 @@
   "capture.group.commands": "Commands",
   "capture.group.traffic": "Traffic",
   "capture.group.artifacts": "Screen & files",
-  "timeline.mode.label": "View mode",
-  "timeline.mode.working": "Working",
-  "timeline.mode.audit": "Audit",
-  "timeline.mode.debug": "Debug",
-  "timeline.mode.custom": "Custom",
-  "timeline.mode.locked": "locked",
-  "timeline.mode.hint": "Working: collapsed and compressed, local time. Audit: chained events only, UTC, nothing folded or squeezed. Debug: everything, including session boundaries.",
-  "timeline.mode.lockedHint": "Audit mode cannot be adjusted — a view you can quietly tweak is not a record of anything. Switch to Working or Debug to change these."
+  "sidebar.search": "Search (⌘/)",
+  "search.placeholder": "Search commands, targets, clipboard, loot...",
+  "search.hint": "Type at least 2 characters to search across all events",
+  "search.noResults": "No results for \"{{query}}\"",
+  "search.results": "{{count}} results",
+  "search.openInTimeline": "Open in timeline",
+  "search.clearFilter": "clear filter",
+  "search.resultsLabel": "Search results, {{count}} events"
 }
