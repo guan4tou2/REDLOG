@@ -75,3 +75,58 @@ describe('button levels', () => {
     expect(offenders).toEqual([])
   })
 })
+
+// Every accent in this palette is mid-luminance, so white text fails AA on
+// all of them — #d75f63 gives 3.68:1, #ff4d4f 3.27:1, and the emerald and
+// cyan are down at 1.9 and 2.0, which is barely text at all. Dark text clears
+// 5:1 on every one. The rule is therefore not per-colour and not per-
+// component: fill anything, and the text on it goes dark.
+describe('text on a fill', () => {
+  const luminance = (hex: string): number => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    const f = (x: number): number => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)
+    const [r, g, b] = c.map(f)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const ratio = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi + 0.05) / (lo + 0.05)
+  }
+
+  function tokens(): Record<string, string> {
+    const config = read('tailwind.config.js')
+    const block = /redlog: \{([\s\S]*?)\n        \}/.exec(config)
+    if (!block) throw new Error('redlog token block not found')
+    const out: Record<string, string> = {}
+    for (const m of block[1].matchAll(/'?([a-z][a-z-]*)'?: '(#[0-9a-fA-F]{6})'/g)) out[m[1]] = m[2]
+    return out
+  }
+
+  it('pairs every fill with a dark that clears 4.5:1', () => {
+    const t = tokens()
+    const pairs: Array<[string, string]> = [
+      ['accent', 'on-accent'],
+      ['danger', 'on-danger']
+    ]
+    for (const [fill, on] of pairs) {
+      expect(t[on], `missing token: ${on}`).toBeTruthy()
+      const r = ratio(t[on], t[fill])
+      expect(r, `${on} on ${fill} is ${r.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+      // And prove the thing being replaced really was failing, so the rule
+      // keeps its justification attached.
+      expect(ratio('#ffffff', t[fill]), `white on ${fill} should be the bad option`).toBeLessThan(4.5)
+    }
+  })
+
+  it('leaves no white text on a coloured fill anywhere', () => {
+    const offenders: string[] = []
+    for (const file of glob.sync('src/renderer/src/**/*.tsx', { cwd: ROOT, absolute: true })) {
+      const src = fs.readFileSync(file, 'utf-8')
+      if (/text-white/.test(src)) offenders.push(repoRelative(ROOT, file))
+    }
+    // Not "no white on a fill" but "no white at all": the four remaining uses
+    // were plain text on a dark surface, where white was only ever an
+    // approximation of `text` (#ececf0) from outside the token namespace.
+    expect(offenders).toEqual([])
+  })
+})

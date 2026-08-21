@@ -23,7 +23,7 @@ const TONE: Record<CardTone, { block: string; icon: string }> = {
   warn: { block: 'bg-amber-500/12', icon: 'text-amber-400' },
   info: { block: 'bg-cyan-500/12', icon: 'text-cyan-400' },
   // The one solid fill, and the one the standard allows once per screen.
-  danger: { block: 'bg-redlog-danger', icon: 'text-white' }
+  danger: { block: 'bg-redlog-danger', icon: 'text-redlog-on-danger' }
 }
 
 export interface CardProps {

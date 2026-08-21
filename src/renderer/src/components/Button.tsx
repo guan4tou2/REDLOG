@@ -29,15 +29,13 @@ const BASE =
   'focus-visible:ring-offset-redlog-bg disabled:opacity-40 disabled:cursor-not-allowed'
 
 const LEVEL: Record<ButtonLevel, string> = {
-  // The verb. At most one per screen (§4). Dark text, not white: white on
-  // #d75f63 is 3.68:1 and fails AA, while #16090a is 5.3:1. The standard
-  // specifies the exact value, so it is written here rather than approximated
-  // with a Tailwind shade.
-  primary: 'bg-redlog-accent text-[#16090a] hover:bg-redlog-accent-dim focus-visible:ring-redlog-accent/40',
+  // The verb. At most one per screen (§4). Dark text, like every fill in this
+  // palette — see the `on-*` tokens for why white fails on all of them.
+  primary: 'bg-redlog-accent text-redlog-on-accent hover:bg-redlog-accent-dim focus-visible:ring-redlog-accent/40',
   secondary: 'bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover focus-visible:ring-redlog-text-dim/40',
   quiet: 'text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated focus-visible:ring-redlog-text-dim/40',
   // The only other fill in the system.
-  danger: 'bg-redlog-danger text-white hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
+  danger: 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger/40'
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

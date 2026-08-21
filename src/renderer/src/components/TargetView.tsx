@@ -163,7 +163,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     <div className="p-4 space-y-4 h-full overflow-auto">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{t('targets.title', { count: targets.length })}</h2>
+          <h2 className="text-lg font-semibold text-redlog-text">{t('targets.title', { count: targets.length })}</h2>
           <p className="text-xs text-redlog-text-dim mt-0.5 max-w-xl">{t('targets.subtitle')}</p>
         </div>
         <div className="flex gap-1">
@@ -204,7 +204,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-white font-mono text-sm">{tgt.target}</span>
+                  <span className="text-redlog-text font-mono text-sm">{tgt.target}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-redlog-text-dim text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
                     {tgt.inScope === false && (
