@@ -106,16 +106,19 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
   return [
     ...nav,
     {
-      id: 'app:search', keys: `${m}/`, label: 'dashboard.search', scope: 'app',
-      guardTyping: true,
-      // ⌘/ was the original chord, but macOS sends `Unidentified` as `key` for
-      // it (the system Help-menu grab), so `code` is what actually matches.
-      match: (e) => mod(e) && (e.key === '/' || e.code === 'Slash')
-    },
-    {
+      // §10: one palette, every view. ⌘/ used to open a separate Search page
+      // that has been deleted; it stays bound here as an alias so the muscle
+      // memory still lands somewhere useful rather than nowhere.
       id: 'app:palette', keys: `${m}K`, label: 'dashboard.palette', scope: 'app',
       guardTyping: true,
-      match: (e) => mod(e) && (e.key === 'k' || e.key === 'K')
+      // macOS sends `Unidentified` as `key` for ⌘/ (the system Help-menu
+      // grab), so `code` is what actually matches for that alias.
+      match: (e) => mod(e) && (e.key === 'k' || e.key === 'K' || e.key === '/' || e.code === 'Slash')
+    },
+    {
+      id: 'app:findInPage', keys: `${m}F`, label: 'dashboard.findInPage', scope: 'app',
+      guardTyping: true,
+      match: (e) => mod(e) && (e.key === 'f' || e.key === 'F')
     },
     {
       id: 'app:toggleRecording', keys: `${m}.`, label: 'dashboard.toggleRecording', scope: 'app',

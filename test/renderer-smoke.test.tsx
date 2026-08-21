@@ -22,7 +22,6 @@ import IPStatusCard from '../src/renderer/src/components/IPStatusCard'
 import { TargetView } from '../src/renderer/src/components/TargetView'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 import { LootPanel } from '../src/renderer/src/components/LootPanel'
-import { SearchPanel } from '../src/renderer/src/components/SearchPanel'
 import { QuickMarksView } from '../src/renderer/src/components/FindingsView'
 
 const AGENT_TYPES = [
@@ -217,7 +216,6 @@ describe('renderer views render without throwing', () => {
     ['TargetView', () => <TargetView />],
     ['ScopeStatus', () => <ScopeStatus />],
     ['LootPanel', () => <LootPanel />],
-    ['SearchPanel', () => <SearchPanel />],
     ['QuickMarksView', () => <QuickMarksView />],
     ['OverlayApp', () => <OverlayApp />]
   ]

@@ -966,6 +966,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     window.addEventListener('redlog-timeline-palette', onOpen)
     return () => window.removeEventListener('redlog-timeline-palette', onOpen)
   }, [])
+
+  // ⌘F focuses the in-page filter (§5.7, §10). `/` still does too — it is the
+  // chord this view taught first and there is no reason to take it away — but
+  // ⌘F is the one an operator arrives already knowing.
+  useEffect(() => {
+    const onFind = (): void => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }
+    window.addEventListener('redlog:find-in-page', onFind)
+    return () => window.removeEventListener('redlog:find-in-page', onFind)
+  }, [])
   useEffect(() => {
     if (paletteOpen) {
       // Autofocus after paint — the modal renders inside a portal-like fixed
