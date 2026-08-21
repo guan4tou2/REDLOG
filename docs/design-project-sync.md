@@ -15,6 +15,14 @@ path: src/renderer
 
 date: 2026-08-20T02:19:20Z
 
+### 2026-08-20 · §10 裁決後同步
+
+- §10 新增兩條規則，把「為什麼」寫進規範本身，避免下次重新裁決一次：
+  移除 hook 屬第一級（非第二級），以及暫停錄製的文案不得聲稱「不會擷取任何東西」。
+- 1c 的第二級範例由「移除 Shell hook」換成「信任外掛發行者」——前者是可復原的，
+  真正的風險（悄悄停止擷取）由常駐的〈需要注意 N〉指示器承接，而不是一次性的對話框文字。
+- 兩條規則在 `main` 上都已成立：hook 移除走 `toastDeferred`，暫停文案已修正。
+
 ### Updated in this project
 - 對照 main（v0.14.3 + 未發布 commit）確認設計 tokens 未變：`tailwind.config.js`、`lib/hud.ts` 逐字節相同。
 - `styles/index.css` 已變動（新增殼層 `user-select: none`），規範的 index.css 建議片段已同步保留該段。
