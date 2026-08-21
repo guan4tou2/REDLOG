@@ -49,7 +49,7 @@ export function EmptyState({
               // §4's primary: this is the only action on the screen, so it is
               // the primary one by definition. `h-[34px]`, 8px radius, and the
               // focus ring the standard specifies.
-              className="h-[34px] px-4 text-sm font-medium rounded-lg bg-redlog-accent text-white hover:bg-redlog-accent-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg transition-colors"
+              className="h-[34px] px-4 text-sm font-medium rounded-lg bg-redlog-accent text-[#16090a] hover:bg-redlog-accent-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg transition-colors"
             >
               {action.label}
             </button>
