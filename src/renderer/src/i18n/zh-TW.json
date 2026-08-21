@@ -969,5 +969,7 @@
   "palette.densityTight": "切換為緊密密度",
   "palette.densityComfortable": "切換為寬鬆密度",
   "dashboard.findInPage": "篩選目前畫面上的內容",
-  "palette.timelineScoped": "在已載入的時間軸內搜尋（泳道、operator、host）"
+  "palette.timelineScoped": "在已載入的時間軸內搜尋（泳道、operator、host）",
+  "palette.sectionOperator": "Operator",
+  "palette.operatorPrimary": "主要"
 }

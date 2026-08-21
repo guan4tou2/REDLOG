@@ -11,6 +11,7 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
+import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -66,7 +67,7 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 // (#6e6e78) and the palette is a function, not a table.
 // Read defensively — this runs at module load, before the preload bridge
 // is guaranteed present (e.g. in tests). Default to mac styling, as App does.
-const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+const isMacPlatform = isMac
 
 const LANE_COLOR = '#6e6e78'
 const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
@@ -977,6 +978,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     }
     window.addEventListener('redlog:find-in-page', onFind)
     return () => window.removeEventListener('redlog:find-in-page', onFind)
+  }, [])
+
+  // ⌘K → an operator → filter this view to what that person did. The palette
+  // cannot reach into the Timeline's filter state, so it asks by event.
+  useEffect(() => {
+    const onFilterOperator = (e: Event): void => {
+      const name = (e as CustomEvent<string>).detail
+      if (name) setFilterQuery(name)
+    }
+    window.addEventListener('redlog:filter-operator', onFilterOperator)
+    return () => window.removeEventListener('redlog:filter-operator', onFilterOperator)
   }, [])
   useEffect(() => {
     if (paletteOpen) {

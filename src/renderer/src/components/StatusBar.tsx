@@ -4,10 +4,11 @@ import { toast, toastUndo } from './Toast'
 import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { appShortcuts } from '../lib/shortcuts'
+import { isMac } from '../lib/platform'
 
 // The ⌘. chord, drawn the way this platform writes it. Read from the one
 // shortcut table so the toast cannot drift from the binding (§11).
-const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+const isMacPlatform = isMac
 const recordingChord =
   appShortcuts([], isMacPlatform).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 

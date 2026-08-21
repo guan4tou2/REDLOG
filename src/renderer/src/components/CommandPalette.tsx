@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Flag,
-  Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, type LucideIcon
+  Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon
 } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
@@ -9,6 +9,7 @@ import { DEFAULT_ORDER } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
 import { formatTime } from '../lib/time'
 import { toast } from './Toast'
+import { MOD } from '../lib/platform'
 
 // ⌘K, the one way in (docs/UIUX-STANDARD.md §10).
 //
@@ -24,7 +25,7 @@ import { toast } from './Toast'
 // In-page filtering moves to ⌘F, which is the convention every other desktop
 // app already taught the operator.
 
-type Section = 'nav' | 'action' | 'view' | 'project' | 'search'
+type Section = 'nav' | 'action' | 'view' | 'project' | 'operator' | 'search'
 
 interface Item {
   id: string
@@ -40,7 +41,7 @@ interface Item {
 const NUMBERED_VIEWS = 8
 // Same detection App uses; read defensively because this module is imported
 // in tests where the preload bridge may be absent.
-const MOD = (window as { redlog?: { platform?: string } }).redlog?.platform === 'win32' ? 'Ctrl+' : '⌘'
+
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   dashboard: Gauge, terminal: ChevronRight, timeline: Rows3, transcript: AlignLeft,
@@ -52,6 +53,7 @@ const SECTION_KEY: Record<Section, string> = {
   action: 'palette.sectionAction',
   view: 'palette.sectionView',
   project: 'palette.sectionProject',
+  operator: 'palette.sectionOperator',
   search: 'palette.sectionSearch'
 }
 
@@ -82,6 +84,7 @@ export function CommandPalette({
   const [cursor, setCursor] = useState(0)
   const [events, setEvents] = useState<RedLogEvent[]>([])
   const [projects, setProjects] = useState<ProjectMeta[]>([])
+  const [operators, setOperators] = useState<OperatorInfo[]>([])
   const panel = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLInputElement | null>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -96,6 +99,10 @@ export function CommandPalette({
     setCursor(0)
     setEvents([])
     window.redlog.project.list().then(setProjects).catch(() => {})
+    // §10 lists operator among what ⌘K covers. It needs no aggregation and no
+    // loaded timeline — `operators:list` is a plain registry read, which is
+    // why this half could land ahead of host search.
+    window.redlog.operators.list().then(setOperators).catch(() => {})
   }, [open])
 
   // Event search is the only part that costs anything, so it is the only part
@@ -179,6 +186,18 @@ export function CommandPalette({
       })
     }
 
+    for (const op of operators) {
+      if (op.revokedAt) continue
+      out.push({
+        id: `operator:${op.id}`, section: 'operator', icon: UserRound,
+        label: op.name,
+        hint: op.isPrimary ? t('palette.operatorPrimary') : undefined,
+        // Filtering the timeline by operator is the question worth asking of
+        // one: "what did this person do".
+        run: () => { onNavigate('timeline'); setTimeout(() => window.dispatchEvent(new CustomEvent('redlog:filter-operator', { detail: op.name })), 0) }
+      })
+    }
+
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
       const label = String(d?.command ?? d?.title ?? d?.url ?? d?.description ?? e.agentType)
@@ -198,7 +217,7 @@ export function CommandPalette({
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.i)
-  }, [query, events, projects, recording, t, onNavigate, onOpenEvent])
+  }, [query, events, projects, operators, recording, t, onNavigate, onOpenEvent])
 
   useEffect(() => { setCursor(0) }, [query])
 

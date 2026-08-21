@@ -26,6 +26,7 @@ import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
 import { EmptyState } from './components/EmptyState'
 import { formatTime } from './lib/time'
+import { isMac } from './lib/platform'
 
 type View = SidebarViewId | 'settings'
 
@@ -53,9 +54,6 @@ function viewForShortcut(num: number): View | null {
   return num >= 1 && num <= order.length ? order[num - 1] : null
 }
 
-// Read defensively — this runs at module load, before the preload bridge is
-// guaranteed present (e.g. in tests). Default to mac styling.
-const isMac = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)

@@ -969,5 +969,7 @@
   "palette.densityTight": "Switch to tight density",
   "palette.densityComfortable": "Switch to comfortable density",
   "dashboard.findInPage": "Filter what is on screen",
-  "palette.timelineScoped": "Search within the loaded timeline (lanes, operators, hosts)"
+  "palette.timelineScoped": "Search within the loaded timeline (lanes, operators, hosts)",
+  "palette.sectionOperator": "Operators",
+  "palette.operatorPrimary": "primary"
 }
