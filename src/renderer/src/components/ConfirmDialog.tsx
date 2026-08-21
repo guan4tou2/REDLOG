@@ -87,6 +87,7 @@ function ConfirmDialogInner({ state, close, t }: {
   const dialog = useRef<HTMLDivElement | null>(null)
   const confirmBtn = useRef<HTMLButtonElement | null>(null)
   const typedField = useRef<HTMLInputElement | null>(null)
+  const ackBox = useRef<HTMLInputElement | null>(null)
   const [acked, setAcked] = useState(false)
   const [typed, setTyped] = useState('')
 
@@ -100,8 +101,12 @@ function ConfirmDialogInner({ state, close, t }: {
 
   // Focus lands on the gate rather than the confirm button at the two graded
   // levels: putting it on a disabled button says "you are done here" to a
-  // keyboard user at the exact moment they are not.
-  useFocusTrap(dialog, true, level === 'chain' ? typedField : confirmBtn)
+  // keyboard user at the exact moment they are not. Worse than misleading —
+  // a disabled button cannot take focus at all, so `irreversible` left focus
+  // outside the dialog entirely, which is the exact failure the trap exists to
+  // prevent. The comment said this before the code did.
+  const initialFocus = level === 'chain' ? typedField : level === 'irreversible' ? ackBox : confirmBtn
+  useFocusTrap(dialog, true, initialFocus)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -146,6 +151,7 @@ function ConfirmDialogInner({ state, close, t }: {
         {level === 'irreversible' && (
           <label className="mt-4 flex items-start gap-2 text-xs text-redlog-text cursor-pointer">
             <input
+              ref={ackBox}
               type="checkbox"
               checked={acked}
               onChange={(e) => setAcked(e.target.checked)}
