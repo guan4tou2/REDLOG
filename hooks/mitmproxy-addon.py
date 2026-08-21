@@ -573,6 +573,13 @@ class RedLogAddon:
                     f"(age {age_sec}s, no response/error)"
                 )
 
+        stale_dns = [
+            fid for fid, meta in self._dns_query_events.items()
+            if now - meta["at"] > PENDING_TTL_SEC
+        ]
+        for fid in stale_dns:
+            self._dns_query_events.pop(fid, None)
+
     def request(self, flow: http.HTTPFlow):
         self._sweep_stale()
 

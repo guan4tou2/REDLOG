@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 
 interface HttpFlow {
@@ -241,17 +241,23 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     setLoading(false)
   }, [])
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debouncedLoadFlows = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => { debounceRef.current = null; loadFlows() }, 300)
+  }, [loadFlows])
+
   useEffect(() => {
     loadFlows()
     const unsub = window.redlog.events.onNew((evt) => {
       const sub = (evt as RedLogEvent).data?.subtype as string
       if ((evt as RedLogEvent).agentType === 'scanner' &&
         (sub === 'http_request_start' || sub === 'http_response')) {
-        loadFlows()
+        debouncedLoadFlows()
       }
     })
-    return unsub
-  }, [loadFlows])
+    return () => { unsub(); if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [loadFlows, debouncedLoadFlows])
 
   const methods = useMemo(() => {
     const s = new Set<string>()
@@ -281,6 +287,24 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     })
     return list
   }, [flows, filterText, methodFilter, statusFilter, sortCol, sortAsc])
+
+  const PAGE_SIZE = 200
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const sentinelRef = useRef<HTMLTableRowElement | null>(null)
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filtered])
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisibleCount(prev => Math.min(prev + PAGE_SIZE, filtered.length))
+    }, { rootMargin: '200px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [filtered.length, visibleCount])
+
+  const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
 
   const sitemapTree = useMemo(() => buildSitemapTree(filtered), [filtered])
 
@@ -373,7 +397,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(f => {
+              {visibleRows.map(f => {
                 const statusClass = f.status !== null
                   ? STATUS_COLORS[String(f.status)[0]] ?? 'text-zinc-400'
                   : 'text-zinc-600'
@@ -405,6 +429,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                   </tr>
                 )
               })}
+              {visibleCount < filtered.length && (
+                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-zinc-600 text-[10px]">Loading more...</td></tr>
+              )}
             </tbody>
           </table>
           {filtered.length === 0 && (
