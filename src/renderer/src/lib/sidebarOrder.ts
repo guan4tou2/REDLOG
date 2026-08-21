@@ -1,59 +1,26 @@
-// Shared source of truth for the sidebar item order + persistence, imported
-// by BOTH Sidebar (renders + drag-reorders) and App (⌘1..9 shortcuts). Prior
-// to this both maintained their own hardcoded arrays that drifted whenever
-// Sidebar was reshuffled (v0.6.18 moved Timeline to slot 2 in the sidebar
-// but ⌘2 still jumped to Terminal — audit finding P0 #8).
+// The navigation order (docs/UIUX-STANDARD.md §5.3).
 //
-// Settings is intentionally NOT in DEFAULT_ORDER — it's pinned at the bottom
-// of Sidebar and doesn't participate in drag-reorder. Callers that want a
-// full nav order for keyboard shortcuts should append 'settings' themselves.
+// This used to be a user-reorderable list persisted to localStorage, with
+// load/save/subscribe machinery and a drag gesture in the sidebar. §5.3 fixes
+// it instead: ⌘1..9 always means the same view, and the number is printed on
+// the row.
+//
+// Those two facts depend on each other. While rows could be dragged, the
+// number was a property of the operator's current arrangement rather than of
+// the view, so printing it would have taught the wrong thing — and ⌘2 had in
+// fact already drifted off the sidebar once, which is why the shared order
+// module was created in the first place. Fixing the order is what lets the
+// number be shown, and showing the number is what makes the shortcut
+// learnable without the ? panel.
+//
+// Settings is not in this list: it is pinned to ⌘9 at the bottom of the
+// sidebar and is not part of the numbered run.
 
 export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
   | 'targets' | 'scope' | 'loot' | 'marks'
 
-export const STORAGE_KEY = 'redlog-sidebar-order-v2'
-// v0.11.2: `transcript` sits next to `timeline` — same events, read the other
-// way. loadSidebarOrder() rejects a saved list whose length no longer matches,
-// so existing installs fall back to this order once and keep their new one.
+// `transcript` sits next to `timeline` — same events, read the other way.
 export const DEFAULT_ORDER: SidebarViewId[] = [
   'dashboard', 'timeline', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
 ]
-
-/** Read the persisted order, falling back to DEFAULT_ORDER if missing or
- *  corrupt. Rejects reordered lists that lost or gained items compared to
- *  the current defaults — that means the list schema evolved and the saved
- *  order is no longer valid. */
-export function loadSidebarOrder(): SidebarViewId[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (!saved) return DEFAULT_ORDER
-    const parsed = JSON.parse(saved) as string[]
-    if (!Array.isArray(parsed)) return DEFAULT_ORDER
-    const hasAllItems = DEFAULT_ORDER.every((id) => parsed.includes(id))
-    if (!hasAllItems || parsed.length !== DEFAULT_ORDER.length) return DEFAULT_ORDER
-    return parsed as SidebarViewId[]
-  } catch { return DEFAULT_ORDER }
-}
-
-export function saveSidebarOrder(order: SidebarViewId[]): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(order)) } catch { /* quota — ignore */ }
-  // Same-tab listeners don't get the standard 'storage' event; fire a custom
-  // one so App.tsx's ⌘1..9 handler picks up the new order without needing a
-  // page reload. Cross-tab (unused here — Electron single-window) still gets
-  // the native event.
-  try { window.dispatchEvent(new CustomEvent('redlog:sidebar-order-changed')) } catch { /* ignore */ }
-}
-
-/** Subscribe to persisted-order changes — both same-tab (custom event, above)
- *  and cross-tab (native `storage`). Returns an unsubscribe. */
-export function onSidebarOrderChanged(cb: () => void): () => void {
-  const handler = (): void => cb()
-  window.addEventListener('redlog:sidebar-order-changed', handler)
-  const storageHandler = (e: StorageEvent): void => { if (e.key === STORAGE_KEY) cb() }
-  window.addEventListener('storage', storageHandler)
-  return () => {
-    window.removeEventListener('redlog:sidebar-order-changed', handler)
-    window.removeEventListener('storage', storageHandler)
-  }
-}

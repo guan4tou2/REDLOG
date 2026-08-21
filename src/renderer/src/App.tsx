@@ -20,7 +20,7 @@ import { ConfirmDialogContainer, confirm as confirmDialog } from './components/C
 import { toast } from './components/Toast'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
-import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
+import { DEFAULT_ORDER, type SidebarViewId } from './lib/sidebarOrder'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
@@ -44,7 +44,7 @@ type View = SidebarViewId | 'settings' | 'search'
 const SETTINGS_SHORTCUT_INDEX = 9
 
 function currentShortcutOrder(): View[] {
-  return loadSidebarOrder().slice(0, SETTINGS_SHORTCUT_INDEX - 1) as View[]
+  return DEFAULT_ORDER.slice(0, SETTINGS_SHORTCUT_INDEX - 1) as View[]
 }
 
 function viewForShortcut(num: number): View | null {
@@ -684,10 +684,10 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
   const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  // Shortcut order — kept in state + subscribed so a drag-reorder in the sidebar
-  // updates the cheatsheet immediately, no view switch required.
-  const [shortcutOrder, setShortcutOrder] = useState(currentShortcutOrder)
-  useEffect(() => onSidebarOrderChanged(() => setShortcutOrder(currentShortcutOrder())), [])
+  // Fixed since §5.3 — no state, no subscription. It was both when the
+  // sidebar could be dragged.
+  const shortcutOrder = currentShortcutOrder()
+
   const { t } = useI18n()
 
   useEffect(() => {
