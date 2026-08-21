@@ -136,11 +136,15 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
+    queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
   }
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
+  }
+  har: {
+    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => Promise<string | null>
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>

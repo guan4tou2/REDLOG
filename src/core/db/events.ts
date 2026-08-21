@@ -64,6 +64,9 @@ const LOGGED_TIER: ReadonlySet<string> = new Set([
   'scanner:http_response',
   'scanner:http_error',
   'scanner:http_request_dropped',
+  'scanner:ws_message',
+  'scanner:tcp_message',
+  'scanner:cookie_change',
   // CDP browser console. `browser_launched` + top-level navigation stay
   // CHAINED — they're session-genesis rows.
   'browser:console',
@@ -691,6 +694,17 @@ export function queryEventById(id: string): RedLogEvent | null {
   const logged = db.prepare('SELECT * FROM events_logged WHERE id = ? LIMIT 1').get(id) as
     Record<string, unknown> | undefined
   return logged ? rowToEvent({ ...logged, tier: 'logged' }) : null
+}
+
+export function queryByFlowId(flowId: string): RedLogEvent[] {
+  const db = getDB()
+  const pattern = `%"flow_id":"${flowId}"%`
+  const rows = db.prepare(
+    `SELECT *, 'logged' AS tier FROM events_logged
+     WHERE agent_type = 'scanner' AND data LIKE ?
+     ORDER BY timestamp ASC LIMIT 10`
+  ).all(pattern) as Array<Record<string, unknown>>
+  return rows.map(rowToEvent)
 }
 
 /** Count rows in the chained tier by default. The chain-anchor code path

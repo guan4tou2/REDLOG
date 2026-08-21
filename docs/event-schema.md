@@ -59,6 +59,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `browser_launched` — proxied browser opened
   - `secret_revealed` — reviewer clicked "Reveal" on an event whose data has redaction spans; records `source_event`, `fields`, and the viewing operator (four-layer redaction, layer 3 — see [redaction-design.md](redaction-design.md))
   - `sanitized` — `redlog-cli sanitize --confirm` (or the REST equivalent) wrote sanitized bytes to the `sanitized_events` table for pre-delivery scrub; records `source_events`, `fields`, per-field `replacement_sha256`, and an optional `reason`. Source events are never mutated (four-layer redaction, layer 4)
+  - `proxy_bypass_suspected` — network tool spawned without corresponding proxy traffic (heuristic, see [DESIGN-traffic-capture.md](DESIGN-traffic-capture.md))
   - `api_started`, `session_start`, `deconfliction_test` — housekeeping, hidden from Timeline by default
 
 ### `pivot` events
@@ -117,6 +118,81 @@ http.server`. Agents can still emit explicit `file_transfer` events via API.
 | `url`, `localPath`, `remotePath` | any of these populated depending on tool |
 | `mitre_ttp` | `T1105` (ingress-tool-transfer) for download; `T1041` (exfil over C2) for upload |
 | `command` | verbatim command that triggered detection |
+
+### `scanner` events (mitmproxy traffic capture)
+
+Events from the mitmproxy addon go to the **logged tier** (`events_logged`).
+See [DESIGN-traffic-capture.md](DESIGN-traffic-capture.md) for the full
+pipeline architecture.
+
+#### HTTP subtypes
+
+| Subtype | When | Key fields |
+|---------|------|------------|
+| `http_request_start` | `request()` hook fires | `method`, `url`, `host`, `port`, `scheme`, `request_headers` (all, ordered), `request_body` / `request_body_ref`, `request_body_preview`, `params`, `flow_id`, `http_version`, `stream_id`, `cookies` |
+| `http_response` | `response()` hook fires | `status`, `response_headers` (all, ordered), `response_body` / `response_body_ref`, `response_preview`, `content_type`, `content_length`, `duration_ms`, `tls` object (+ `ja3`, `ja3_raw`), `timing` object, `flow_id`, `http_version`, `stream_id`, `set_cookies` |
+| `cookie_change` | session cookie rotation detected | `domain`, `cookie_name`, `old_hash`, `new_hash`, `flow_id` |
+| `http_error` | `error()` hook fires | `error`, `request_headers`, `duration_ms`, `flow_id` |
+| `http_request_dropped` | stale-flow sweep (>300 s) | `flow_id`, `age_sec` |
+
+Headers are stored as `[[name, value], ...]` arrays preserving duplicates
+and casing, capped at `MAX_HEADERS` (default 200).
+
+Bodies larger than `INLINE_THRESHOLD` (4096 bytes) are stored as sidecar
+files in `<projectDir>/http-bodies/<sha256>.body` and replaced in the event
+with a `BodyRef`:
+```json
+{ "sha256": "a1b2c3...", "size": 81920, "file": "a1b2c3....body", "encoding": "text" }
+```
+
+The `tls` object (HTTPS only):
+```json
+{ "tls_version": "TLSv1.3", "cipher": "...", "alpn": "h2",
+  "cert_subject": "CN=...", "cert_issuer": "...", "cert_san": [...], "cert_serial": "...",
+  "ja3": "e7d705a3286e19ea42f587b344ee6865", "ja3_raw": "771,4866-4867-..." }
+```
+
+`ja3` and `ja3_raw` are computed from the TLS ClientHello via the
+`tls_clienthello` hook. GREASE values are filtered. `ja3_raw` is
+truncated to 500 characters.
+
+The `timing` object:
+```json
+{ "connect_ms": 12, "tls_ms": 45, "send_ms": 1, "wait_ms": 230, "receive_ms": 15, "total_ms": 303 }
+```
+
+#### WebSocket subtype
+
+| Subtype | When | Key fields |
+|---------|------|------------|
+| `ws_message` | `websocket_message()` hook | `flow_id`, `url`, `host`, `direction` (`client`/`server`), `message_type` (`text`/`binary`), `size`, `message_count`, `ws_body` / `ws_body_ref`, `ws_preview` |
+
+Each WebSocket frame is a separate event. Binary payloads use base64 encoding.
+
+#### TCP subtype
+
+| Subtype | When | Key fields |
+|---------|------|------------|
+| `tcp_message` | `tcp_message()` hook | `flow_id`, `host`, `port`, `direction`, `size`, `message_count`, `tls_version` (if TLS), `tcp_body` / `tcp_body_ref`, `tcp_preview` |
+
+Requires mitmproxy `--mode tcp@port` or transparent mode.
+
+#### Auto-detected `credential_use` companion
+
+When `http_request_start` carries authentication indicators, a companion
+`credential_use` event is emitted with `_causes` pointing to the source:
+
+| Pattern detected | `method` value |
+|------------------|---------------|
+| `Authorization: Basic …` | `basic_auth` |
+| `Authorization: Bearer …` | `bearer_token` |
+| `Authorization: NTLM …` | `ntlm` |
+| `Authorization: Negotiate …` | `negotiate` |
+| Session/auth cookies | `session_cookie` |
+| `X-API-Key` / `API-Key` header | `api_key` |
+| Body contains password/passwd/credential fields | `form_login` |
+
+All auto-detected credentials carry `mitre_ttp: "T1078"`.
 
 ### `http_navigation` events
 
