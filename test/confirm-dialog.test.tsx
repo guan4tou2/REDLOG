@@ -29,11 +29,30 @@ const mount = (): void => {
 const pressEnter = (): void => { fireEvent.keyDown(window, { key: 'Enter' }) }
 const pressEscape = (): void => { fireEvent.keyDown(window, { key: 'Escape' }) }
 
+/**
+ * Wait for the dialog to be *listening*, not merely present.
+ *
+ * The element enters the DOM during commit; the effect that registers the
+ * keydown handler is passive and runs after it. Pressing a key in that gap
+ * does nothing and the test hangs until its timeout — which is what happened
+ * on a loaded CI worker (`plain: Enter confirms` timed out at 5s having
+ * normally taken 20ms), while never reproducing locally in eleven runs.
+ *
+ * The focus trap moves focus inside on mount, so focus landing there proves
+ * the effects have flushed. Waiting on the thing that actually gates the
+ * behaviour beats waiting on the DOM and hoping.
+ */
+async function openedDialog(): Promise<HTMLElement> {
+  const dialog = await screen.findByRole('dialog')
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+  return dialog
+}
+
 describe('graded confirmation', () => {
   it('plain: Enter confirms', async () => {
     mount()
     const answer = confirm('Clear filter', 'The events stay where they are.')
-    await screen.findByRole('dialog')
+    await openedDialog()
     pressEnter()
     await expect(answer).resolves.toBe(true)
   })
@@ -41,7 +60,7 @@ describe('graded confirmation', () => {
   it('irreversible: the confirm button is disabled until the box is ticked', async () => {
     mount()
     const answer = confirmIrreversible({ title: 'Remove hook', message: 'This cannot be undone.' })
-    await screen.findByRole('dialog')
+    await openedDialog()
 
     const button = screen.getByRole('button', { name: /delete|刪除/i })
     expect((button as HTMLButtonElement).disabled).toBe(true)
@@ -63,7 +82,7 @@ describe('graded confirmation', () => {
       requireTyped: 'op-falcon',
       consequences: ['412 chained events go', 'The OTS anchor stops verifying']
     })
-    await screen.findByRole('dialog')
+    await openedDialog()
 
     expect(screen.getByText('412 chained events go')).toBeTruthy()
     expect(screen.getByText('The OTS anchor stops verifying')).toBeTruthy()
@@ -90,7 +109,7 @@ describe('graded confirmation', () => {
     ]) {
       mount()
       const answer = open()
-      await screen.findByRole('dialog')
+      await openedDialog()
       pressEscape()
       await expect(answer).resolves.toBe(false)
       cleanup()
@@ -102,8 +121,7 @@ describe('focus trap', () => {
   it('keeps Tab inside the dialog', async () => {
     mount()
     void confirm('Trapped', 'Tab should not leave.')
-    const dialog = await screen.findByRole('dialog')
-    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    const dialog = await openedDialog()
 
     const inside = [...dialog.querySelectorAll('button')]
     expect(inside.length).toBeGreaterThan(1)
@@ -119,6 +137,22 @@ describe('focus trap', () => {
     first.focus()
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
     expect(document.activeElement).toBe(last)
+  })
+
+  it('lands focus on the gate, not on the disabled confirm button', async () => {
+    // A disabled button cannot take focus, so aiming the trap at it left focus
+    // outside the dialog entirely — the exact failure a trap exists to
+    // prevent, in the two levels that matter most.
+    mount()
+    void confirmIrreversible({ title: 'Remove hook', message: 'Gone for good.' })
+    await openedDialog()
+    expect((document.activeElement as HTMLElement)?.getAttribute('type')).toBe('checkbox')
+    cleanup()
+
+    mount()
+    void confirmChainImpact({ title: 'Delete', message: 'Gone.', requireTyped: 'proj' })
+    await openedDialog()
+    expect(document.activeElement).toBe(screen.getByRole('textbox'))
   })
 
   it('pulls focus back when it is outside the dialog', async () => {
@@ -141,8 +175,7 @@ describe('focus trap', () => {
 
     mount()
     const answer = confirm('Give it back', 'On close.')
-    const dialog = await screen.findByRole('dialog')
-    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+    await openedDialog()
 
     pressEscape()
     await answer
