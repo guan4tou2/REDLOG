@@ -82,8 +82,10 @@ export function formatAccelerator(accelerator: string, isMac: boolean): string {
 }
 
 /** Every shortcut the app binds, in the order the cheatsheet shows them.
- *  `order` is the live sidebar order so the ⌘1..8 rows follow a drag-reorder;
- *  Settings is pinned to ⌘9 and is not part of that order. */
+ *  `order` is the navigation order — fixed since §5.3, though this still takes
+ *  it as a parameter rather than importing it, so a test can pass a short list
+ *  and assert the numbering without standing up the whole sidebar. Settings is
+ *  pinned to ⌘9 and is not part of it. */
 export function appShortcuts(order: readonly string[], isMac: boolean): ShortcutRow[] {
   const m = isMac ? '⌘' : 'Ctrl+'
   const nav: ShortcutRow[] = order.map((view, i) => ({

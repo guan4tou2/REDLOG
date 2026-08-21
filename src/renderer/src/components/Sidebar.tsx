@@ -29,6 +29,7 @@ const NAV_ICON_STROKE = 1.5
 // Shared with App.tsx's ⌘1..9 shortcut handler so the two orders can't
 // drift. See src/renderer/src/lib/sidebarOrder.ts.
 import { DEFAULT_ORDER } from '../lib/sidebarOrder'
+import { isMac } from '../lib/platform'
 
 // Aliased so existing call sites don't need to change; the persistence lives
 // in the shared module now so App.tsx's ⌘1..9 handler sees the same order.
@@ -39,7 +40,6 @@ import { DEFAULT_ORDER } from '../lib/sidebarOrder'
 // navigation (the "first click does nothing" bug).
 const DRAG_THRESHOLD_PX = 12
 const ITEM_STRIDE_PX = 34 // h-8 button + space-y-0.5 gap
-const isMac = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
 
 export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
