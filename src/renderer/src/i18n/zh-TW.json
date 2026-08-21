@@ -992,5 +992,8 @@
   "settings.pageCloud": "分享與藍隊通報",
   "settings.pagePlugins": "外掛與市集",
   "settings.pageGeneral": "外觀與語言",
-  "settings.pageHud": "HUD"
+  "settings.pageHud": "HUD",
+  "capture.group.commands": "指令",
+  "capture.group.traffic": "流量",
+  "capture.group.artifacts": "畫面與檔案"
 }

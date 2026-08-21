@@ -307,7 +307,13 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
   const STEP_LABEL: Record<string, string> = {
     'shell-hook': t('capture.shellHook'),
     'agent-tailer': t('capture.agentTailer'),
-    'builtin-terminal': t('capture.builtinTerminal')
+    'builtin-terminal': t('capture.builtinTerminal'),
+    'mitmproxy': t('capture.mitmproxy'),
+    'browser-console': t('capture.browserConsole'),
+    'screenshot': t('capture.screenshot'),
+    'clipboard': t('capture.clipboard'),
+    'file-watcher': t('capture.fileWatcher'),
+    'process-monitor': t('capture.processMonitor')
   }
   const glyph = (status: string): { mark: string; cls: string } =>
     status === 'active' ? { mark: '●', cls: 'text-emerald-500' }
@@ -338,21 +344,35 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
       <p className="text-xs text-redlog-text-dim mb-2">
         {readiness.level === 'dark' ? t('capture.setupIntro') : t('capture.setupAlmost')}
       </p>
-      <ol className="space-y-1 mb-2.5">
-        {readiness.steps.map((s, i) => {
-          const g = glyph(s.status)
-          return (
-            <li key={s.id} className="flex items-center gap-2 text-xs">
-              <span className={`shrink-0 ${g.cls}`}>{g.mark}</span>
-              <span className="text-redlog-text-dim tabular-nums">{i + 1}.</span>
-              <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
-                {STEP_LABEL[s.id] ?? s.id}
-              </span>
-              <span className="text-xs font-mono text-redlog-text-faint">{t(`capture.step.${s.status}`)}</span>
-            </li>
-          )
-        })}
-      </ol>
+      {/* Grouped, and no longer numbered. The numbers described a sequence
+          that does not exist — an operator on a proxied assessment starts with
+          traffic and may never install a shell hook. What the groups say is
+          what each source captures, which is the choice actually being made. */}
+      <div className="space-y-2.5 mb-2.5">
+        {readiness.groups.map((group) => (
+          <div key={group.id}>
+            <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider mb-1">
+              {t(`capture.group.${group.id}`)}
+            </p>
+            <ul className="space-y-1">
+              {group.steps.map((s) => {
+                const g = glyph(s.status)
+                return (
+                  <li key={s.id} className="flex items-center gap-2 text-xs">
+                    <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
+                    <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
+                      {STEP_LABEL[s.id] ?? s.id}
+                    </span>
+                    <span className="ml-auto text-xs font-mono text-redlog-text-faint">
+                      {t(`capture.step.${s.status}`)}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
       <div className="flex items-center gap-3">
         {cta && (
           <button

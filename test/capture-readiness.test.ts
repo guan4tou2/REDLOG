@@ -51,7 +51,11 @@ describe('computeCaptureReadiness', () => {
     expect(r.nextStep?.id).toBe('shell-hook')
   })
 
-  it('orders the core steps by the canonical onboarding sequence', () => {
+  it('groups sources by what they capture, and claims no order within a group', () => {
+    // The model used to be an ordered triple that declared everything else
+    // "enrichment". An operator on a proxied web assessment wires mitmproxy
+    // first and may never install a shell hook — and was told they were dark
+    // while HTTP events landed on the timeline.
     const h = health([
       src('builtin-terminal', { state: 'idle' }),
       src('agent-tailer', { configPath: 'agentTailer.enabled', state: 'idle' }),
@@ -59,7 +63,25 @@ describe('computeCaptureReadiness', () => {
     ], { verdict: 'dark' })
 
     const r = computeCaptureReadiness(h)
-    expect(r.steps.filter((s) => s.core).map((s) => s.id)).toEqual(CORE)
+    expect(r.groups.map((g) => g.id)).toEqual(['commands', 'traffic', 'artifacts'])
+    expect(r.groups.find((g) => g.id === 'commands')?.steps.map((s) => s.id).sort())
+      .toEqual([...CORE].sort())
+    // Traffic and artefacts are in the model now, not excluded from it.
+    expect(r.steps.map((s) => s.id)).toContain('mitmproxy')
+    expect(r.steps.map((s) => s.id)).toContain('screenshot')
+  })
+
+  it('is recording when traffic alone is feeding the timeline', () => {
+    // The case the ordered model got wrong: events are landing, so the app is
+    // not dark, whatever the shell hook is doing.
+    const h = health([
+      src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
+      src('mitmproxy', { state: 'active', lastEventAt: 1 })
+    ], { verdict: 'partial' })
+    const r = computeCaptureReadiness(h)
+    expect(r.level).toBe('recording')
+    expect(r.nextStep).toBeNull()
+    expect(r.groups.find((g) => g.id === 'traffic')?.activeCount).toBe(1)
   })
 
   it('counts an installed-but-silent hook as wired, and points at the next unset source', () => {
@@ -73,8 +95,11 @@ describe('computeCaptureReadiness', () => {
     const r = computeCaptureReadiness(h)
     expect(r.level).toBe('setup')
     expect(r.steps.find((s) => s.id === 'shell-hook')?.status).toBe('wired')
-    // shell hook is set up; the next unfinished setup step is the agent tailer.
-    expect(r.nextStep?.id).toBe('agent-tailer')
+    // Chosen by state, not position: a wired source needs an event, a todo one
+    // needs an installation first. The wired one is the shorter route out of
+    // dark, which is the only thing this model is for.
+    expect(r.nextStep?.id).toBe('shell-hook')
+    expect(r.nextStep?.status).toBe('wired')
   })
 
   it('treats an enabled tailer as wired even before its first event', () => {
@@ -85,8 +110,9 @@ describe('computeCaptureReadiness', () => {
     ])
     const r = computeCaptureReadiness(h)
     expect(r.steps.find((s) => s.id === 'agent-tailer')?.status).toBe('wired')
-    // shell-hook is still the only untouched core step, so it stays the next action.
-    expect(r.nextStep?.id).toBe('shell-hook')
+    // The tailer is wired and the hook is not, so the tailer is the shorter
+    // step — it needs an agent turn, not an installation.
+    expect(r.nextStep?.id).toBe('agent-tailer')
   })
 
   it('is recording, with no urgent next step, once any core source is active', () => {

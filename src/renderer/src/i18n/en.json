@@ -992,5 +992,8 @@
   "settings.pageCloud": "Sharing & blue-team",
   "settings.pagePlugins": "Plugins & marketplace",
   "settings.pageGeneral": "Appearance & language",
-  "settings.pageHud": "HUD"
+  "settings.pageHud": "HUD",
+  "capture.group.commands": "Commands",
+  "capture.group.traffic": "Traffic",
+  "capture.group.artifacts": "Screen & files"
 }
