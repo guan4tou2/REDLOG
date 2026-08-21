@@ -2,6 +2,7 @@ import { Component, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import { buildDiagnostics, issueUrl } from '../lib/diagnostics'
 import { toast } from './Toast'
+import { Button } from './Button'
 
 // The screen an operator sees when a view crashes mid-engagement
 // (docs/UIUX-STANDARD.md §9). It used to be a red glyph, `error.message` and a
@@ -131,16 +132,16 @@ function FatalScreen({ error, label, projectName, onRetry, onGoHome }: {
             >
               {t('fatal.copy')}
             </button>
-            <button
+            <Button
+              level="primary"
               onClick={() => {
                 void window.redlog?.openExternal?.(
                   issueUrl(REPO, `${label ?? 'View'} crashed: ${error.message.slice(0, 80)}`, diagnostics)
                 )
               }}
-              className="px-3 py-1.5 text-xs rounded bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10"
             >
               {t('fatal.openIssue')}
-            </button>
+            </Button>
           </div>
         </div>
       )}

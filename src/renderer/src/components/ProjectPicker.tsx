@@ -5,6 +5,7 @@ import { formatFreshness } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
 import { toast } from './Toast'
 import logoUrl from '../assets/logo.svg'
+import { Button } from './Button'
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
@@ -178,13 +179,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               autoFocus
               className="flex-1 bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-sm text-redlog-text font-mono focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 placeholder-redlog-muted transition-all"
             />
-            <button
+            <Button
+              level="primary"
               onClick={handleCreate}
               disabled={!newName.trim() || creating}
-              className="px-4 py-2 bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 disabled:bg-redlog-elevated disabled:text-redlog-text-faint text-white text-sm font-medium rounded-lg transition-colors"
             >
               {t('project.create')}
-            </button>
+            </Button>
           </div>
 
           {/* Advanced toggle — opens a modal instead of expanding inline. The
