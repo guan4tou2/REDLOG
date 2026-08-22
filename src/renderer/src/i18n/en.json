@@ -960,5 +960,12 @@
   "export.done": "Exported {{label}}",
   "export.failed": "Could not export {{label}}",
   "settings.revealInFolder": "Show in Finder / Explorer",
-  "transcript.copyMd": "Copy as Markdown"
+  "transcript.copyMd": "Copy as Markdown",
+  "castSearch.heading": "Terminal recordings",
+  "castSearch.showOutput": "Show the surrounding output",
+  "castSearch.openAtMoment": "Open the timeline at this moment",
+  "castSearch.reading": "Reading the recording…",
+  "castSearch.unreadable": "That part of the recording could not be read — the file may have been pruned or moved.",
+  "castSearch.stillIndexing": "{{pending}} recording(s) not read yet. Results are incomplete until indexing finishes.",
+  "castSearch.tokenNote": "Matches whole words and word beginnings, not text inside a word."
 }

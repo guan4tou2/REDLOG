@@ -91,6 +91,23 @@ describeDB('evidence bundle export', () => {
     expect([...ts].sort((a, b) => a - b), 'export must be in insertion order').toEqual(ts)
   })
 
+  it('leaves the recording search index out of the bundle', () => {
+    // cast-index.db is derived, mutable and rebuildable — it is a search
+    // cache over the recordings, not evidence about them. Shipping it would
+    // make a bundle's bytes change for reasons unrelated to the engagement,
+    // and it duplicates terminal output into a file the verifier says
+    // nothing about.
+    //
+    // Today it stays out because the export copies named subdirectories
+    // rather than walking the project root. This test is here so a later
+    // "just copy the whole project" simplification cannot quietly include it.
+    fs.writeFileSync(path.join(dir, 'cast-index.db'), 'not evidence')
+    const { outDir } = exportBundle('eng', { outRoot: path.join(dir, 'out2') })
+    const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true })
+      .flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [e.name])
+    expect(walk(outDir)).not.toContain('cast-index.db')
+  })
+
   it('excludes agent transcripts by default — they can contain pasted secrets', () => {
     seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"my api key is sk-SECRET"}\n')
     const { outDir, manifest } = exportBundle('eng')

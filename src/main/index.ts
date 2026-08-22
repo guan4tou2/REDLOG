@@ -56,6 +56,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -419,6 +420,20 @@ function startProject(project: ProjectMeta): void {
   currentOperatorId = operatorId
 
   initDB(projectDir)
+
+  // Bring the recording index up to date in the background. Idempotent and
+  // cheap when nothing changed — it hashes each cast and skips matches — so
+  // running it on every open is what keeps a project that was recorded by an
+  // older build, restored from a backup, or written to while RedLog was shut
+  // searchable without anyone having to know to ask.
+  //
+  // Not awaited: a first index of an engagement's worth of recordings takes
+  // real time, and holding project-open on it would trade a visible stall for
+  // an invisible one. The UI reads `casts:status` and says how much is still
+  // pending, which is the honest version of the same information.
+  void import('../core/cast-index')
+    .then((m) => m.backfillCastIndex(projectDir))
+    .catch(() => { /* index is rebuildable; never block opening a project */ })
 
   screenshotAgent.configure({
     engagementId,
@@ -843,6 +858,7 @@ function stopProject(): void {
   stopCdpMonitor()
   stopOpsecMonitor()
   screenshotAgent.stop()
+  closeCastIndex()
   closeDB()
   activeProject = null
   currentEngagementId = null
@@ -1181,6 +1197,35 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
   ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
+
+  // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
+  // §2.4). Separate from events:search because the two answer different
+  // questions and have different completeness: an event either exists or does
+  // not, whereas a recording may be on disk and not yet indexed. `casts:status`
+  // exists so the UI can say which of those it is, rather than returning zero
+  // hits and letting the operator conclude the bytes are missing.
+  ipcMain.handle('casts:search', async (_e, query: string, limit?: number) => {
+    if (!activeProject) return []
+    const { searchCasts } = await import('../core/cast-index')
+    return searchCasts(query, limit)
+  })
+  ipcMain.handle('casts:status', async () => {
+    if (!activeProject) return { total: 0, indexed: 0, pending: 0 }
+    const { castIndexStatus } = await import('../core/cast-index')
+    return castIndexStatus()
+  })
+  ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number) => {
+    if (!activeProject) return null
+    // castRel comes from a search hit, but the hit came from a DB the renderer
+    // can reach — so re-derive the path from the project root and refuse
+    // anything that escapes it, the same guard the api-server applies to
+    // castPath out of event data.
+    const castsDir = path.join(getProjectPath(activeProject), 'casts')
+    const full = path.resolve(castsDir, castRel)
+    if (!isInsideDir(castsDir, full)) return null
+    const { readCastRange } = await import('../core/cast-slice')
+    return readCastRange(full, off, len)
+  })
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
   ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {

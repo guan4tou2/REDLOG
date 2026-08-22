@@ -136,6 +136,14 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
+    /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
+    searchCasts?: (query: string, limit?: number) => Promise<Array<{
+      castRel: string; tMs: number; off: number; len: number; snippet: string
+    }>>
+    castIndexStatus?: () => Promise<{ total: number; indexed: number; pending: number }>
+    readCastRange: (castRel: string, off: number, len: number) => Promise<{
+      text: string; bytes: number; truncated: boolean
+    } | null>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
   }

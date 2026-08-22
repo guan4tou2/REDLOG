@@ -13,6 +13,7 @@ import { getProjectDir, getDB } from './db/index'
 import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
+import { pruneCast } from './cast-index'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
 // upstream event so focus chain walks light up the "originally recorded here
@@ -75,6 +76,13 @@ function sweepDir(
     try {
       fs.unlinkSync(full)
       pruned++
+      // The recording's text lives in a second place. An index that outlives
+      // the file it describes turns a retention policy into a lie: the
+      // operator is told the recording aged out, and its contents are still
+      // searchable.
+      if (auditSubtype === 'cast_pruned') {
+        try { pruneCast(name) } catch (e) { noteDbError('retention-cast-index', e) }
+      }
       try {
         const ev = insertEvent('system', {
           subtype: auditSubtype,

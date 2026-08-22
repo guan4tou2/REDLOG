@@ -12,6 +12,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let sweepRetention: typeof import('../src/core/retention').sweepRetention
 let queryEvents: typeof import('../src/core/db/events').queryEvents
+let castIndex: typeof import('../src/core/cast-index')
 
 let dbAvailable = false
 try {
@@ -19,6 +20,7 @@ try {
   const r = await import('../src/core/retention')
   const e = await import('../src/core/db/events')
   initDB = d.initDB; closeDB = d.closeDB; sweepRetention = r.sweepRetention; queryEvents = e.queryEvents
+  castIndex = await import('../src/core/cast-index')
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
 
@@ -47,6 +49,7 @@ describeDB('retention sweep', () => {
     initDB(dir)
   })
   afterEach(() => {
+    castIndex.closeCastIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })
@@ -101,6 +104,30 @@ describeDB('retention sweep', () => {
     expect(sweepRetention({ terminal: { castKeepDays: 1 } }, { engagementId: 'e', operatorId: '' }))
       .toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0 })
     expect(fs.existsSync(f)).toBe(true)
+  })
+
+  it('takes a pruned recording out of the search index too', async () => {
+    // The recording's text lives in a second place (src/core/cast-index.ts).
+    // If the sweep deletes the .cast and leaves the index, retention becomes
+    // a lie: the operator is told the recording aged out, and its contents
+    // are still searchable — which is worse than never having pruned, because
+    // now nobody thinks to look.
+    const castsDir = path.join(dir, 'casts')
+    fs.mkdirSync(castsDir, { recursive: true })
+    const cast = path.join(castsDir, 'old.cast')
+    fs.writeFileSync(
+      cast,
+      JSON.stringify({ version: 2, width: 80, height: 24, timestamp: 1_700_000_000 }) + '\n' +
+      JSON.stringify([0.1, 'o', 'RETENTION-CANARY-4471\r\n']) + '\n'
+    )
+    await castIndex.indexCast(cast, dir)
+    expect(castIndex.searchCasts('RETENTION-CANARY-4471', 10, dir).length).toBe(1)
+
+    ageFile(cast, 400)
+    const swept = sweepRetention({ terminal: { castKeepDays: 30 } }, OPTS)
+    expect(swept.cast).toBe(1)
+    expect(fs.existsSync(cast)).toBe(false)
+    expect(castIndex.searchCasts('RETENTION-CANARY-4471', 10, dir).length).toBe(0)
   })
 
   it('tolerates a missing directory', () => {

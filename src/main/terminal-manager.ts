@@ -47,6 +47,22 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
     } catch { castSha256 = null }
   }
 
+  // Make the recording searchable now that it is closed and its bytes are
+  // final (docs/DESIGN-core-and-capture.md §2.4). Indexing a live cast would
+  // mean re-reading a growing file; indexing at close reads it once.
+  //
+  // Fire-and-forget on purpose. This runs on the pty exit path, which on app
+  // quit is racing the DB close — blocking it to build a search index would
+  // risk the session_end event above, and that one is evidence. A cast that
+  // misses its index is picked up by the next backfill; a lost session_end is
+  // lost.
+  if (session.castPath) {
+    const p = session.castPath
+    void import('../core/cast-index')
+      .then((m) => m.indexCast(p))
+      .catch(() => { /* index is rebuildable; never block the exit path */ })
+  }
+
   try {
     const event = insertEvent('shell', {
       subtype: 'session_end',
