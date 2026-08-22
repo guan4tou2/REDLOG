@@ -9,9 +9,13 @@ import path from 'path'
 // Below that, Plugins held sub-tabs and those held publisher and revocation
 // lists: three levels underneath the second level.
 //
-// The container had to come first. Thirteen categories fit down a side and do
+// The container had to come first. Twelve categories fit down a side and do
 // not fit across a top, so the content could not be split until there was
 // somewhere to put it.
+//
+// There is no "export" page. Exporting is an action, not a setting, and it
+// was three separate groups here before §10 collapsed every entry point into
+// one control in the shell. This list is the guard against it drifting back.
 
 const ROOT = path.join(__dirname, '..')
 const SRC = fs.readFileSync(path.join(ROOT, 'src/renderer/src/components/Settings.tsx'), 'utf-8')
@@ -19,13 +23,13 @@ const SRC = fs.readFileSync(path.join(ROOT, 'src/renderer/src/components/Setting
 const PAGES = [
   'hooks', 'agents', 'captureControl',
   'scope', 'network', 'deconfliction',
-  'integrity', 'export',
+  'integrity',
   'operators', 'cloud', 'plugins',
   'general', 'hud'
 ]
 
 describe('settings information architecture', () => {
-  it('declares thirteen pages as a union', () => {
+  it('declares twelve pages as a union', () => {
     const block = /type SettingsPage =([\s\S]*?)\n\n/.exec(SRC)
     expect(block, 'SettingsPage union not found').not.toBeNull()
     for (const page of PAGES) {
@@ -47,6 +51,14 @@ describe('settings information architecture', () => {
       .map((m) => m[1] ?? m[2])
       .filter((id) => PAGES.includes(id))
     expect([...new Set(listed)].sort()).toEqual([...PAGES].sort())
+  })
+
+  it('keeps exporting out of settings', () => {
+    // The three groups that used to live here — export all, export the
+    // filtered scope, build an evidence bundle — were actions wearing a
+    // settings page. Each was also a fourth place to look for the same verb.
+    expect(SRC).not.toMatch(/data\.export(Json|Bundle|ScopeFiltered)/)
+    expect(SRC).not.toMatch(/tab === 'export'/)
   })
 
   it('has a search box over the categories', () => {

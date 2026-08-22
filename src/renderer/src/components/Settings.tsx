@@ -79,7 +79,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl'
   | 'scope' | 'network' | 'deconfliction'
-  | 'integrity' | 'export'
+  | 'integrity'
   | 'operators' | 'cloud' | 'plugins'
   | 'general' | 'hud'
 
@@ -142,9 +142,12 @@ export default function Settings(): JSX.Element {
   //
   // A left list solves the part a tab row cannot: the categories stay visible
   // while you read a page, it takes group headings, and it has somewhere to
-  // put a search box. Thirteen pages fit down the side and would not fit
+  // put a search box. Twelve pages fit down the side and would not fit
   // across the top, which is why the content could not be split before the
   // container existed.
+  //
+  // The "export" page is deliberately absent: exporting is an action, not a
+  // setting, and it now lives in the shell's one export control (§10).
   const groups: Array<{ heading: string; pages: Array<{ id: SettingsPage; label: string }> }> = [
     {
       heading: t('settings.groupCapture'),
@@ -165,8 +168,7 @@ export default function Settings(): JSX.Element {
     {
       heading: t('settings.groupEvidence'),
       pages: [
-        { id: 'integrity', label: t('settings.pageIntegrity') },
-        { id: 'export', label: t('settings.pageExport') }
+        { id: 'integrity', label: t('settings.pageIntegrity') }
       ]
     },
     {
@@ -629,9 +631,9 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {(tab === 'export' || tab === 'integrity' || tab === 'cloud' || tab === 'general') && (
+        {(tab === 'captureControl' || tab === 'integrity' || tab === 'cloud' || tab === 'general') && (
           <>
-            {tab === 'export' && <FieldGroup title={t('settings.screenshotGroup')}>
+            {tab === 'captureControl' && <FieldGroup title={t('settings.screenshotGroup')}>
               <div className="flex items-center gap-2 flex-wrap">
                 {[
                   { v: 0, k: 'settings.screenshot.interval.off' },
@@ -664,39 +666,8 @@ export default function Settings(): JSX.Element {
               </div>
               <p className="text-xs text-redlog-text-faint">{t('settings.checkUpdateHint')}</p>
             </FieldGroup>}
-            {tab === 'export' && <FieldGroup title={t('settings.exportAll')}>
-              <button
-                onClick={async () => {
-                  const path = await window.redlog.data.exportJson()
-                  setExportResult(path ? t('settings.savedTo', { path }) : t('settings.exportFailed'))
-                  setTimeout(() => setExportResult(null), 5000)
-                }}
-                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-              >
-                {t('settings.exportJson')}
-              </button>
-              {exportResult && <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">{exportResult}</p>}
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.exportHint')}
-              </p>
-            </FieldGroup>}
-            {tab === 'export' && <ExportBundlePanel t={t} />}
-            {tab === 'export' && <FieldGroup title={t('settings.scopeExport')}>
-              <button
-                onClick={async () => {
-                  const p = await (window.redlog.data as { exportScopeFiltered: () => Promise<string | null> }).exportScopeFiltered()
-                  setExportResult(p ? t('settings.savedTo', { path: p }) : t('settings.exportFailed'))
-                  if (p) toast(t('toast.scopeExported'), 'success')
-                  setTimeout(() => setExportResult(null), 5000)
-                }}
-                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-              >
-                {t('settings.exportScopeJson')}
-              </button>
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.scopeExportHint')}
-              </p>
-            </FieldGroup>}
+            
+            
             {tab === 'cloud' && <CloudSharePanel t={t} />}
             {tab === 'integrity' && <IntegrityPanel t={t} />}
             {tab === 'general' && <FieldGroup title={t('settings.profileSync')}>
@@ -1285,87 +1256,9 @@ interface FullVerifyResult {
   badSignatureAtEventId?: string | null
 }
 
-// v0.6.94 D: renderer-side wrapper around data:exportBundle. Builds a sanitized
-// evidence pack via src/core/bundle-export.ts (same code path as the CLI +
-// MCP tool) and surfaces the resulting directory with a Reveal button so the
-// operator can zip it up and hand-deliver. Building is synchronous inside the
-// main process (walks events.jsonl + hashes screenshots), so the button
-// disables itself with a "Building..." label until IPC returns.
-function ExportBundlePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{ path: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleExport = async (): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    setResult(null)
-    try {
-      const dataApi = window.redlog.data as { exportBundle?: () => Promise<{ ok?: boolean; outDir?: string; error?: string } | null> }
-      if (!dataApi.exportBundle) {
-        setError(t('settings.exportFailed'))
-        setBusy(false)
-        return
-      }
-      const r = await dataApi.exportBundle()
-      if (!r) {
-        setError(t('settings.exportFailed'))
-      } else if (r.ok === false || !r.outDir) {
-        setError(r.error || t('settings.exportFailed'))
-      } else {
-        setResult({ path: r.outDir })
-        toast(t('toast.bundleExported'), 'success')
-      }
-    } catch (e) {
-      setError((e as Error)?.message ?? String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleReveal = async (): Promise<void> => {
-    if (!result?.path) return
-    const dataApi = window.redlog.data as { revealPath?: (p: string) => Promise<boolean> }
-    if (dataApi.revealPath) await dataApi.revealPath(result.path)
-  }
-
-  return (
-    <FieldGroup title={t('settings.exportBundleTitle')}>
-      <div className="flex items-center gap-2">
-        <button
-          data-testid="settings-export-bundle"
-          onClick={handleExport}
-          disabled={busy}
-          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {busy ? t('settings.exportBundleBuilding') : t('settings.exportBundle')}
-        </button>
-        {result && (
-          <button
-            onClick={handleReveal}
-            className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-          >
-            {t('settings.exportBundleReveal')}
-          </button>
-        )}
-      </div>
-      {result && (
-        <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">
-          {t('settings.savedTo', { path: result.path })}
-        </p>
-      )}
-      {error && (
-        <div className="mt-1 text-xs text-red-400 border border-red-900/60 bg-red-950/40 rounded px-2 py-1 break-all">
-          {error}
-        </div>
-      )}
-      <p className="text-xs text-redlog-text-faint mt-1">
-        {t('settings.exportBundleHint')}
-      </p>
-    </FieldGroup>
-  )
-}
-
+// Chain state: anchors, the two-tier counter, and verification. Read-only —
+// building the evidence pack itself moved to the shell's export control (§10),
+// because it is an action and this page is where you look at the chain.
 function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
   const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
   const [busy, setBusy] = useState(false)
@@ -1987,7 +1880,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                   onClick={() => { void window.redlog.data.revealPath?.(pendingToken.path as string) }}
                   className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover whitespace-nowrap"
                 >
-                  {t('settings.exportBundleReveal')}
+                  {t('settings.revealInFolder')}
                 </button>
                 <button
                   onClick={() => setPendingToken(null)}
