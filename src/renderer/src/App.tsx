@@ -16,6 +16,7 @@ import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchPanel } from './components/SearchPanel'
+import { ExportMenu } from './components/ExportMenu'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
@@ -63,6 +64,10 @@ export default function App(): JSX.Element {
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
   const [showMarker, setShowMarker] = useState(false)
+  // Feeds the export menu's "N events · about X" line. Refreshed on view
+  // changes rather than per event — the preview exists to catch "I meant the
+  // slice, not all 28,000", and that answer does not move by one.
+  const [exportableCount, setExportableCount] = useState(0)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [recordingOn, setRecordingOn] = useState(true)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
@@ -73,6 +78,11 @@ export default function App(): JSX.Element {
       if (p) setProject(p)
     })
   }, [])
+
+  useEffect(() => {
+    if (!project) return
+    window.redlog.events.getCount().then(setExportableCount).catch(() => {})
+  }, [project, view])
 
   // Global marker shortcut (⌘/Ctrl+Shift+M) is registered in the main process
   // via Electron globalShortcut so it fires whether the window has focus or
@@ -226,6 +236,9 @@ export default function App(): JSX.Element {
           {project.name}
         </button>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* §10: one export control, in the shell rather than six places.
+              Its scope is an option, not a location. */}
+          <ExportMenu totalCount={exportableCount} />
           <LaunchBrowserButton onNavigate={(v) => setView(v as View)} />
           <button
             onClick={() => setShowMarker(true)}
@@ -822,21 +835,9 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">
-            {t('dashboard.sessionStats')}
-          </h2>
-          <button
-            onClick={async () => {
-              const path = await window.redlog.data.exportJson()
-              if (path) toast(t('toast.exported'), 'success')
-              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
-          >
-            {t('dashboard.exportData')}
-          </button>
-        </div>
+        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+          {t('dashboard.sessionStats')}
+        </h2>
         <div className="grid grid-cols-3 gap-3">
           {/* Events + chain length were two cards showing the same number —
               every event is one chain entry so they moved in lockstep. Merged

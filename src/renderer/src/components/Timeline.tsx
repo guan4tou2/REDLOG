@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { useContributeExport } from '../lib/exportScope'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -1422,6 +1423,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
 
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
+
+  // The timeline is the one surface with a scope nothing else can name: the
+  // range currently framed. It contributes that to the shell's export control
+  // rather than carrying its own button (§10).
+  const exportSlice = useCallback(async (): Promise<string | null> => {
+    if (!window.redlog.data.exportTimelineSlice) return null
+    const from = Math.round(fromX((view.left / 100) * TRACK_W))
+    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    return window.redlog.data.exportTimelineSlice(from, to)
+  }, [fromX, view.left, view.width, TRACK_W])
+
+  useContributeExport({ label: t('export.slice'), run: exportSlice })
   const totalH = visibleLanes.length * laneH
 
   const laneEvents = useMemo(() => {
@@ -2786,18 +2799,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
               zoom to the attack moment then click this to grab an evidence
               slice. Saved under exports/redlog-timeline-<ts>.json. */}
-          <button
-            onClick={async () => {
-              if (!window.redlog.data.exportTimelineSlice) return
-              const from = Math.round(fromX((view.left / 100) * TRACK_W))
-              const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-              const path = await window.redlog.data.exportTimelineSlice(from, to)
-              if (path) toast(t('timeline.exportSliceOk', { path }), 'success')
-              else toast(t('timeline.exportSliceFail'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-emerald-400 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-            title={t('timeline.exportSliceHint')}
-          >⬇ {t('timeline.exportSlice')}</button>
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}
