@@ -953,5 +953,10 @@
   "httpHistory.kind.span": "A run of requests",
   "httpHistory.hasParentCommand": "Produced by a recorded command",
   "httpHistory.openAtMoment": "Open the timeline at this moment",
-  "httpHistory.empty": "No HTTP traffic captured yet."
+  "httpHistory.empty": "No HTTP traffic captured yet.",
+  "settings.connectionMonitorGroup": "Network connections",
+  "settings.connectionMonitorEnable": "Record established connections",
+  "settings.connectionMonitorEnableHint": "Polls the socket table and records who you connected to — IP, port, protocol, duration. No payload, no root. Fills the gap the proxy cannot see: SMB, RDP, reverse shells, C2 beacons.",
+  "settings.connectionMonitorSynNote": "Established connections only. A SYN scan (nmap -sS) completes no handshake and will not appear — the command is still recorded, the connections are not.",
+  "capture.connectionMonitor": "Network connections"
 }

@@ -37,7 +37,7 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
   // What was typed, by a person or an agent.
   { id: 'commands', sources: ['shell-hook', 'agent-tailer', 'builtin-terminal'] },
   // What went over the wire. mitmproxy carries HTTP and DNS on one addon.
-  { id: 'traffic', sources: ['mitmproxy', 'browser-console'] },
+  { id: 'traffic', sources: ['mitmproxy', 'browser-console', 'connection-monitor'] },
   // What was on screen or on disk.
   { id: 'artifacts', sources: ['screenshot', 'clipboard', 'file-watcher', 'process-monitor'] }
 ]

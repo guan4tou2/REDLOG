@@ -25,6 +25,7 @@ interface ConfigState {
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
+  connectionMonitor?: { enabled: boolean; pollMs?: number }
   browser?: {
     binary: string
     proxy: string
@@ -643,6 +644,21 @@ export default function Settings(): JSX.Element {
                   <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
                 </>
               )}
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.connectionMonitorGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.connectionMonitor?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, connectionMonitor: { ...config.connectionMonitor, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-redlog-text">{t('settings.connectionMonitorEnable')}</span>
+              </label>
+              <p className="text-xs text-redlog-text-faint">{t('settings.connectionMonitorEnableHint')}</p>
+              {/* The blind spot, stated where the operator turns it on — not
+                  only in a system event they might scroll past. */}
+              <p className="text-xs text-amber-500/80">{t('settings.connectionMonitorSynNote')}</p>
             </FieldGroup>}
           </>
         )}

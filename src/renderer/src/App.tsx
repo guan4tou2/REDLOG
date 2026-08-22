@@ -340,7 +340,8 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
     'screenshot': t('capture.screenshot'),
     'clipboard': t('capture.clipboard'),
     'file-watcher': t('capture.fileWatcher'),
-    'process-monitor': t('capture.processMonitor')
+    'process-monitor': t('capture.processMonitor'),
+    'connection-monitor': t('capture.connectionMonitor')
   }
   const glyph = (status: string): { mark: string; cls: string } =>
     status === 'active' ? { mark: '●', cls: 'text-emerald-500' }
@@ -439,6 +440,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     // v0.6.92 W-project producers.
     'browser-console': t('capture.browserConsole'),
     'process-monitor': t('capture.processMonitor'),
+    'connection-monitor': t('capture.connectionMonitor'),
     'file-watcher': t('capture.fileWatcher')
   }
   const dot = (s: string): string =>

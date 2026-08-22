@@ -47,6 +47,7 @@ import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstal
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
+import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
@@ -661,6 +662,13 @@ function startProject(project: ProjectMeta): void {
     ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
     engagementId, operatorId
   })
+  configureConnectionMonitor({
+    enabled: config.connectionMonitor?.enabled ?? false,
+    pollMs: config.connectionMonitor?.pollMs,
+    engagementId,
+    operatorId,
+    selfPorts: [getApiPort()]
+  })
   configureProcessMonitor({
     enabled: config.processMonitor?.enabled ?? false,
     pollMs: config.processMonitor?.pollMs,
@@ -886,6 +894,7 @@ function stopProject(): void {
   stopClipboardMonitor()
   stopFileWatcher()
   stopProcessMonitor()
+  stopConnectionMonitor()
   stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
@@ -1124,6 +1133,11 @@ app.whenReady().then(() => {
       watchPaths: newConfig.fileWatcher?.watchPaths ?? [],
       ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
+    })
+    configureConnectionMonitor({
+      enabled: newConfig.connectionMonitor?.enabled ?? false,
+      pollMs: newConfig.connectionMonitor?.pollMs,
+      selfPorts: [getApiPort()]
     })
     configureProcessMonitor({
       enabled: newConfig.processMonitor?.enabled ?? false,
