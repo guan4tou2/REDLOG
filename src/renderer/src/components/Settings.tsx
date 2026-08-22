@@ -25,6 +25,7 @@ interface ConfigState {
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
+  connectionMonitor?: { enabled: boolean; pollMs?: number }
   browser?: {
     binary: string
     proxy: string
@@ -74,9 +75,19 @@ const LOCALE_LABELS: Record<Locale, string> = {
   'zh-TW': '繁體中文'
 }
 
+// The thirteen pages §10 asks for. Declared as a union so a typo in a route
+// is a compile error rather than a page that silently never renders.
+type SettingsPage =
+  | 'hooks' | 'agents' | 'captureControl'
+  | 'scope' | 'network' | 'deconfliction'
+  | 'integrity'
+  | 'operators' | 'plugins'
+  | 'general' | 'hud'
+
 export default function Settings(): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<'general' | 'hud' | 'capture' | 'network' | 'scope' | 'integrations' | 'data' | 'plugins'>('general')
+  const [tab, setTab] = useState<SettingsPage>('hooks')
+  const [pageQuery, setPageQuery] = useState('')
   const [saved, setSaved] = useState(false)
   const [exportResult, setExportResult] = useState<string | null>(null)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -120,37 +131,126 @@ export default function Settings(): JSX.Element {
   //     monitor, all of which already live there; on its own it was a tab
   //     holding three checkboxes, which made it look like a subsystem rather
   //     than one source among several.
-  //   · Marketplace folded into Plugins as a sub-tab. "What is installed" and
-  //     "where to get more" are one task split across two top-level tabs.
-  const tabs = [
-    { id: 'general' as const, label: t('settings.general') },
-    { id: 'capture' as const, label: t('settings.capture') },
-    { id: 'scope' as const, label: t('settings.scope') },
-    { id: 'network' as const, label: t('settings.networkIp') },
-    { id: 'hud' as const, label: t('settings.hud') },
-    { id: 'integrations' as const, label: t('settings.integrations') },
-    { id: 'data' as const, label: t('settings.data') },
-    { id: 'plugins' as const, label: t('settings.plugins') }
+  //   · The marketplace is gone entirely. "Where to get more capture code"
+  //     serves extensibility; the core is "nothing missing, findable
+  //     afterwards" (docs/DESIGN-core-and-capture.md §1). Managing what is
+  //     installed stays — acquiring more is not this product's job.
+  // §10 / §5.7: a left list of categories with the content on the right.
+  //
+  // Eight tabs in a single row at 13px was already hard to scan, and two of
+  // them ("Integrations", "Data") had drifted into meaning roughly the same
+  // thing. Underneath, Plugins held its own sub-tabs and those held publisher
+  // and revocation lists — three levels deep inside the second level, which is
+  // past the two the standard allows.
+  //
+  // A left list solves the part a tab row cannot: the categories stay visible
+  // while you read a page, it takes group headings, and it has somewhere to
+  // put a search box. Twelve pages fit down the side and would not fit
+  // across the top, which is why the content could not be split before the
+  // container existed.
+  //
+  // The "export" page is deliberately absent: exporting is an action, not a
+  // setting, and it now lives in the shell's one export control (§10).
+  const groups: Array<{ heading: string; pages: Array<{ id: SettingsPage; label: string }> }> = [
+    {
+      heading: t('settings.groupCapture'),
+      pages: [
+        { id: 'hooks', label: t('settings.pageHooks') },
+        { id: 'agents', label: t('settings.pageAgents') },
+        { id: 'captureControl', label: t('settings.pageCaptureControl') }
+      ]
+    },
+    {
+      heading: t('settings.groupScope'),
+      pages: [
+        { id: 'scope', label: t('settings.pageScope') },
+        { id: 'network', label: t('settings.pageNetwork') },
+        { id: 'deconfliction', label: t('settings.pageDeconfliction') }
+      ]
+    },
+    {
+      heading: t('settings.groupEvidence'),
+      pages: [
+        { id: 'integrity', label: t('settings.pageIntegrity') }
+      ]
+    },
+    {
+      heading: t('settings.groupCollab'),
+      pages: [
+        { id: 'operators', label: t('settings.pageOperators') },
+        { id: 'plugins', label: t('settings.pagePlugins') }
+      ]
+    },
+    {
+      heading: t('settings.groupApp'),
+      pages: [
+        { id: 'general', label: t('settings.pageGeneral') },
+        { id: 'hud', label: t('settings.pageHud') }
+      ]
+    }
   ]
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-redlog-border shrink-0">
-        {tabs.map((tb) => (
-          <button
-            key={tb.id}
-            onClick={() => setTab(tb.id)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              tab === tb.id ? 'bg-redlog-elevated text-white' : 'text-redlog-text-dim hover:text-redlog-text'
-            }`}
-          >
-            {tb.label}
-          </button>
-        ))}
-        {saved && <span className="ml-auto text-green-400 text-xs">{t('settings.saved')}</span>}
-      </div>
+  const q = pageQuery.trim().toLowerCase()
+  const visible = groups
+    .map((g) => ({ ...g, pages: g.pages.filter((pg) => !q || pg.label.toLowerCase().includes(q)) }))
+    .filter((g) => g.pages.length > 0)
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+  return (
+    <div className="flex h-full">
+      <nav
+        aria-label={t('settings.categories')}
+        className="w-[212px] shrink-0 border-r border-redlog-border flex flex-col overflow-hidden"
+      >
+        <div className="p-2 border-b border-redlog-border">
+          <input
+            value={pageQuery}
+            onChange={(e) => setPageQuery(e.target.value)}
+            placeholder={t('settings.searchPages')}
+            aria-label={t('settings.searchPages')}
+            className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto py-2">
+          {visible.length === 0 && (
+            <p className="px-3 py-4 text-xs text-redlog-text-faint text-center">
+              {t('settings.noPageMatches', { query: pageQuery })}
+            </p>
+          )}
+          {visible.map((g) => (
+            <div key={g.heading} className="mb-2">
+              <p className="px-3 pt-1 pb-1 text-xs font-semibold text-redlog-text-faint uppercase tracking-wider">
+                {g.heading}
+              </p>
+              {g.pages.map((pg) => (
+                <button
+                  key={pg.id}
+                  data-settings-page={pg.id}
+                  onClick={() => setTab(pg.id)}
+                  aria-current={tab === pg.id ? 'page' : undefined}
+                  className={`w-full text-left px-3 h-[var(--row-h)] flex items-center text-xs rounded-md transition-colors ${
+                    tab === pg.id
+                      ? 'bg-redlog-elevated text-redlog-text'
+                      : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
+                  }`}
+                >
+                  {pg.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+        {saved && (
+          <p className="px-3 py-2 text-xs text-emerald-400 border-t border-redlog-border">
+            {t('settings.saved')}
+          </p>
+        )}
+      </nav>
+
+      {/* The right pane is a column: content scrolls, the save bar stays put
+          under it. Making the root a row without this turned that bar into a
+          third column and squeezed the content to 35px. */}
+      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[900px]">
         {tab === 'general' && (
           <>
             <FieldGroup title={t('settings.engagement')}>
@@ -160,6 +260,22 @@ export default function Settings(): JSX.Element {
             <FieldGroup title={t('settings.operatorGroup')}>
               <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
               <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
+            </FieldGroup>
+            {/* Was "Team Profile Sync", two buttons. The import half duplicated
+                the one on the project picker, which is where you actually want
+                it — you seed a config when creating the project, not after.
+                The export half stays: deleting it would leave an import that
+                consumes files nothing can produce. It carries views.json too,
+                so it is not merely a copy of config.yaml. */}
+            <FieldGroup title={t('settings.handoffProfile')}>
+              <button
+                onClick={async () => {
+                  const p = await window.redlog.config.exportProfile()
+                  if (p) toast(t('toast.profileExported'), { type: 'success', why: p })
+                }}
+                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover self-start"
+              >{t('settings.exportProfile')}</button>
+              <p className="text-xs text-redlog-text-faint">{t('settings.handoffProfileHint')}</p>
             </FieldGroup>
             <FieldGroup title={t('settings.language')}>
               <div className="flex gap-2">
@@ -184,14 +300,14 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {tab === 'integrations' && (
+        {(tab === 'agents' || tab === 'network' || tab === 'deconfliction' || tab === 'operators') && (
           <>
-            <McpPanel t={t} />
-            <HookWatchPathsPanel t={t} />
-            <OperatorsPanel t={t} />
-            <DeconflictionPanel t={t} config={config} setConfig={setConfig} />
-            <BrowserPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.cdp')}>
+            {tab === 'agents' && <McpPanel t={t} />}
+            {tab === 'agents' && <HookWatchPathsPanel t={t} />}
+            {tab === 'operators' && <OperatorsPanel t={t} />}
+            {tab === 'deconfliction' && <DeconflictionPanel t={t} config={config} setConfig={setConfig} />}
+            {tab === 'network' && <BrowserPanel t={t} config={config} setConfig={setConfig} />}
+            {tab === 'network' && <FieldGroup title={t('settings.cdp')}>
               <p className="text-xs text-redlog-text-faint mb-2">
                 {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
               </p>
@@ -217,13 +333,17 @@ export default function Settings(): JSX.Element {
               >
                 {t('settings.testConnection')}
               </button>
-            </FieldGroup>
+            </FieldGroup>}
           </>
         )}
 
         {tab === 'network' && (
           <>
             <FieldGroup title={t('settings.ipSafety')}>
+              {/* Adapter detection used to be its own group. It exists only to
+                  answer this group's question — is my traffic where I think it
+                  is — and reading it as a separate subject made "am I exposed"
+                  look like two unrelated settings instead of one. */}
               <ListField
                 label={t('settings.whitelist')}
                 items={config.network.whitelist}
@@ -236,8 +356,15 @@ export default function Settings(): JSX.Element {
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
                 placeholder={t('settings.exposedIpPlaceholder')}
               />
+              <VpnAdaptersField config={config} setConfig={setConfig} />
             </FieldGroup>
-            <FieldGroup title={t('settings.polling')}>
+            {/* Was "Polling", which read as a tuning knob and is why I nearly deleted
+                it. It is not: every field here decides what RedLog itself sends
+                out to the network and to whom — which resolver or third-party
+                echo service learns your address, how often, and from where.
+                During an engagement that is OPSEC surface, and §1's operator
+                has to be able to see it, not discover it in a packet capture. */}
+            <FieldGroup title={t('settings.ownTraffic')}>
               <div>
                 <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
                 <div className="flex gap-1">
@@ -299,7 +426,6 @@ export default function Settings(): JSX.Element {
               />
               <p className="text-xs text-redlog-text-faint">{t('settings.ipProvidersHint')}</p>
             </FieldGroup>
-            <VpnAdaptersField config={config} setConfig={setConfig} />
           </>
         )}
 
@@ -436,23 +562,12 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {tab === 'capture' && (
+        {(tab === 'hooks' || tab === 'captureControl') && (
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
             {isWindows && <WslPanel t={t} />}
             <AgentsPanel t={t} config={config} setConfig={setConfig} />
-            <FieldGroup title={t('settings.screenshotQuality')}>
-              <Field
-                label={t('settings.jpegQuality')}
-                value={String(config.screenshot?.quality ?? 85)}
-                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
-                type="number"
-              />
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.qualityHint')}
-              </p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.clipboardGroup')}>
+                        {tab === 'captureControl' && <FieldGroup title={t('settings.clipboardGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -477,8 +592,8 @@ export default function Settings(): JSX.Element {
               {config.clipboard?.enabled && (
                 <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
               )}
-            </FieldGroup>
-            <FieldGroup title={t('settings.fileWatcherGroup')}>
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.fileWatcherGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -506,8 +621,8 @@ export default function Settings(): JSX.Element {
                   <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
                 </>
               )}
-            </FieldGroup>
-            <FieldGroup title={t('settings.processMonitorGroup')}>
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.processMonitorGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -529,13 +644,28 @@ export default function Settings(): JSX.Element {
                   <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
                 </>
               )}
-            </FieldGroup>
+            </FieldGroup>}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.connectionMonitorGroup')}>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.connectionMonitor?.enabled === true}
+                  onChange={(e) => setConfig({ ...config, connectionMonitor: { ...config.connectionMonitor, enabled: e.target.checked } })}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-redlog-text">{t('settings.connectionMonitorEnable')}</span>
+              </label>
+              <p className="text-xs text-redlog-text-faint">{t('settings.connectionMonitorEnableHint')}</p>
+              {/* The blind spot, stated where the operator turns it on — not
+                  only in a system event they might scroll past. */}
+              <p className="text-xs text-amber-500/80">{t('settings.connectionMonitorSynNote')}</p>
+            </FieldGroup>}
           </>
         )}
 
-        {tab === 'data' && (
+        {(tab === 'captureControl' || tab === 'integrity' || tab === 'general') && (
           <>
-            <FieldGroup title={t('settings.screenshotGroup')}>
+            {tab === 'captureControl' && <FieldGroup title={t('settings.screenshotGroup')}>
               <div className="flex items-center gap-2 flex-wrap">
                 {[
                   { v: 0, k: 'settings.screenshot.interval.off' },
@@ -555,83 +685,21 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
               <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.intervalHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.updateGroup')}>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => window.redlog.app.checkForUpdates()}
-                  className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors"
-                >
-                  {t('settings.checkUpdate')}
-                </button>
-                <span className="text-xs text-redlog-text-faint font-mono">v{__APP_VERSION__}</span>
-              </div>
-              <p className="text-xs text-redlog-text-faint">{t('settings.checkUpdateHint')}</p>
-            </FieldGroup>
-            <FieldGroup title={t('settings.exportAll')}>
-              <button
-                onClick={async () => {
-                  const path = await window.redlog.data.exportJson()
-                  setExportResult(path ? t('settings.savedTo', { path }) : t('settings.exportFailed'))
-                  setTimeout(() => setExportResult(null), 5000)
-                }}
-                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-              >
-                {t('settings.exportJson')}
-              </button>
-              {exportResult && <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">{exportResult}</p>}
+            
+              <Field
+                label={t('settings.jpegQuality')}
+                value={String(config.screenshot?.quality ?? 85)}
+                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+                type="number"
+              />
               <p className="text-xs text-redlog-text-faint">
-                {t('settings.exportHint')}
+                {t('settings.qualityHint')}
               </p>
-            </FieldGroup>
-            <ExportBundlePanel t={t} />
-            <FieldGroup title={t('settings.scopeExport')}>
-              <button
-                onClick={async () => {
-                  const p = await (window.redlog.data as { exportScopeFiltered: () => Promise<string | null> }).exportScopeFiltered()
-                  setExportResult(p ? t('settings.savedTo', { path: p }) : t('settings.exportFailed'))
-                  if (p) toast(t('toast.scopeExported'), 'success')
-                  setTimeout(() => setExportResult(null), 5000)
-                }}
-                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-              >
-                {t('settings.exportScopeJson')}
-              </button>
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.scopeExportHint')}
-              </p>
-            </FieldGroup>
-            <CloudSharePanel t={t} />
-            <IntegrityPanel t={t} />
-            <FieldGroup title={t('settings.profileSync')}>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    const path = await window.redlog.config.exportProfile()
-                    if (path) toast(t('toast.profileExported'), 'success')
-                  }}
-                  className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-                >
-                  {t('settings.exportProfile')}
-                </button>
-                <button
-                  onClick={async () => {
-                    const profile = await window.redlog.config.importProfile() as Record<string, unknown> | null
-                    if (profile) {
-                      setConfig(profile as unknown as ConfigState)
-                      toast(t('toast.profileImported'), 'success')
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-                >
-                  {t('settings.importProfile')}
-                </button>
-              </div>
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.profileHint')}
-              </p>
-            </FieldGroup>
-          </>
+            </FieldGroup>}
+                        
+            
+            {tab === 'integrity' && <IntegrityPanel t={t} />}
+                      </>
         )}
 
         {tab === 'scope' && (
@@ -679,7 +747,7 @@ export default function Settings(): JSX.Element {
         {tab === 'plugins' && <PluginsTab t={t} />}
       </div>
 
-      <div className="px-4 py-3 border-t border-redlog-border shrink-0">
+      <div className="px-4 py-3 border-t border-redlog-border shrink-0 max-w-[900px]">
         <div className="flex items-center gap-2">
           <button
             onClick={async () => {
@@ -691,12 +759,13 @@ export default function Settings(): JSX.Element {
               setSaved(true)
               setTimeout(() => setSaved(false), 1500)
             }}
-            className="px-4 py-1.5 bg-redlog-danger text-white hover:bg-redlog-danger-hover text-xs rounded transition-colors"
+            className="px-4 py-1.5 bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover text-xs rounded transition-colors"
           >
             {t('settings.save')}
           </button>
           <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
         </div>
+      </div>
       </div>
     </div>
   )
@@ -841,7 +910,7 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                       className={`px-3 py-1 text-xs rounded ml-3 transition-colors ${
                         hook.installed
                           ? 'bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400'
-                          : 'bg-redlog-danger text-white hover:bg-redlog-danger-hover'
+                          : 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover'
                       } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
                     >
                       {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}
@@ -904,30 +973,18 @@ interface PluginView {
   error?: string
 }
 
-/** v0.9.10: Plugins and Marketplace were separate top-level tabs, but they are
- *  one task — "what do I have" and "what can I get" — and the operator moves
- *  between them constantly while installing something. Sub-tabs keep both a
- *  click away without spending two of the eight top-level slots. */
+// §10: two levels, not four. This page used to hold sub-tabs for installed
+// and marketplace, and the marketplace held its own for publishers and
+// revocations — three levels below a second-level tab, when the standard
+// allows two.
+//
+// The marketplace is now gone rather than flattened. Browsing a registry,
+// trusting publishers by fingerprint, and reading revocation lists are the
+// machinery of distributing capture code, and distribution is not what this
+// product is for. What stays is the part an operator needs to answer "is
+// anything capturing that I did not put there" — the installed list.
 function PluginsTab({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [sub, setSub] = useState<'installed' | 'marketplace'>('installed')
-  return (
-    <>
-      <div className="flex gap-1 mb-3">
-        {([['installed', t('settings.plugins')], ['marketplace', t('settings.marketplace')]] as const).map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setSub(id)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              sub === id ? 'bg-redlog-elevated-hover text-redlog-text' : 'bg-redlog-surface text-redlog-text-dim hover:text-redlog-text'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {sub === 'installed' ? <PluginsPanel t={t} /> : <MarketplacePanel t={t} />}
-    </>
-  )
+  return <PluginsPanel t={t} />
 }
 
 function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
@@ -1048,7 +1105,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                       disabled={busy === p.id}
                       onClick={() => toggle(p, p.status === 'disabled')}
                       className={`px-3 py-1 text-xs rounded ${
-                        p.status === 'disabled' ? 'bg-redlog-danger text-white hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+                        p.status === 'disabled' ? 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
                       }`}
                     >
                       {busy === p.id ? '…' : p.status === 'disabled' ? t('plugins.enable') : t('plugins.disable')}
@@ -1059,7 +1116,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
                     <button
                       disabled={busy === p.id}
                       onClick={() => setConfirmGrant(p)}
-                      className="px-3 py-1 text-xs rounded bg-amber-600/80 text-white hover:bg-amber-600"
+                      className="px-3 py-1 text-xs rounded bg-amber-600/80 text-redlog-on-warn hover:bg-amber-600"
                     >
                       {t('plugins.review')}
                     </button>
@@ -1100,7 +1157,7 @@ function PluginsPanel({ t }: { t: (key: string, vars?: Record<string, string | n
               <button onClick={() => setConfirmGrant(null)} className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
                 {t('common.cancel')}
               </button>
-              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover">
+              <button onClick={() => grant(confirmGrant)} className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover">
                 {t('plugins.grantRun')}
               </button>
             </div>
@@ -1192,87 +1249,9 @@ interface FullVerifyResult {
   badSignatureAtEventId?: string | null
 }
 
-// v0.6.94 D: renderer-side wrapper around data:exportBundle. Builds a sanitized
-// evidence pack via src/core/bundle-export.ts (same code path as the CLI +
-// MCP tool) and surfaces the resulting directory with a Reveal button so the
-// operator can zip it up and hand-deliver. Building is synchronous inside the
-// main process (walks events.jsonl + hashes screenshots), so the button
-// disables itself with a "Building..." label until IPC returns.
-function ExportBundlePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{ path: string } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleExport = async (): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    setResult(null)
-    try {
-      const dataApi = window.redlog.data as { exportBundle?: () => Promise<{ ok?: boolean; outDir?: string; error?: string } | null> }
-      if (!dataApi.exportBundle) {
-        setError(t('settings.exportFailed'))
-        setBusy(false)
-        return
-      }
-      const r = await dataApi.exportBundle()
-      if (!r) {
-        setError(t('settings.exportFailed'))
-      } else if (r.ok === false || !r.outDir) {
-        setError(r.error || t('settings.exportFailed'))
-      } else {
-        setResult({ path: r.outDir })
-        toast(t('toast.bundleExported'), 'success')
-      }
-    } catch (e) {
-      setError((e as Error)?.message ?? String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleReveal = async (): Promise<void> => {
-    if (!result?.path) return
-    const dataApi = window.redlog.data as { revealPath?: (p: string) => Promise<boolean> }
-    if (dataApi.revealPath) await dataApi.revealPath(result.path)
-  }
-
-  return (
-    <FieldGroup title={t('settings.exportBundleTitle')}>
-      <div className="flex items-center gap-2">
-        <button
-          data-testid="settings-export-bundle"
-          onClick={handleExport}
-          disabled={busy}
-          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {busy ? t('settings.exportBundleBuilding') : t('settings.exportBundle')}
-        </button>
-        {result && (
-          <button
-            onClick={handleReveal}
-            className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-          >
-            {t('settings.exportBundleReveal')}
-          </button>
-        )}
-      </div>
-      {result && (
-        <p className="text-xs text-redlog-text-dim font-mono mt-1 break-all">
-          {t('settings.savedTo', { path: result.path })}
-        </p>
-      )}
-      {error && (
-        <div className="mt-1 text-xs text-red-400 border border-red-900/60 bg-red-950/40 rounded px-2 py-1 break-all">
-          {error}
-        </div>
-      )}
-      <p className="text-xs text-redlog-text-faint mt-1">
-        {t('settings.exportBundleHint')}
-      </p>
-    </FieldGroup>
-  )
-}
-
+// Chain state: anchors, the two-tier counter, and verification. Read-only —
+// building the evidence pack itself moved to the shell's export control (§10),
+// because it is an action and this page is where you look at the chain.
 function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
   const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
   const [busy, setBusy] = useState(false)
@@ -1361,7 +1340,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <button
           onClick={handleAnchor}
           disabled={busy}
-          className="px-3 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+          className="px-3 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
         </button>
@@ -1552,7 +1531,7 @@ function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | numbe
         <button
           onClick={setup}
           disabled={busy || !info}
-          className="shrink-0 px-3 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+          className="shrink-0 px-3 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy ? '…' : t('settings.mcpSetup')}
         </button>
@@ -1868,7 +1847,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
         <button
           onClick={handleAdd}
           disabled={busy === 'add' || !newName.trim()}
-          className="px-3 py-1 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+          className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
         >
           {busy === 'add' ? '...' : t('settings.operatorAdd')}
         </button>
@@ -1878,7 +1857,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
           copy. A token on the clipboard is a token in every clipboard manager
           on the machine, and one pasted into a note is a token in whatever
           that note syncs to. `~/.redlog/tokens/` sits outside the project
-          directory on purpose — bundle export and cloud share walk the project
+          directory on purpose — bundle export walks the project
           tree, and a credential is not evidence. */}
       {pendingToken && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
@@ -1894,11 +1873,11 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
                   onClick={() => { void window.redlog.data.revealPath?.(pendingToken.path as string) }}
                   className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover whitespace-nowrap"
                 >
-                  {t('settings.exportBundleReveal')}
+                  {t('settings.revealInFolder')}
                 </button>
                 <button
                   onClick={() => setPendingToken(null)}
-                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover"
+                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover"
                 >
                   {t('settings.operatorTokenClose')}
                 </button>
@@ -2010,8 +1989,9 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
   }
 
   return (
-    <FieldGroup title={t('settings.vpnAdapters')}>
-      <p className="text-xs text-redlog-text-faint -mt-1 mb-2">{t('settings.vpnAdaptersHint')}</p>
+    <div>
+      <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.vpnAdapters')}</label>
+      <p className="text-xs text-redlog-text-faint mb-2">{t('settings.vpnAdaptersHint')}</p>
       <div className="space-y-1">
         {adapters.map((a, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -2050,7 +2030,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
           <button onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
         </div>
       </div>
-    </FieldGroup>
+    </div>
   )
 }
 
@@ -2170,690 +2150,3 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
   )
 }
 
-// -------- Cloud share panel --------------------------------------------------
-//
-// Wraps window.redlog.cloudShare.* — the real work lives in
-// src/core/cloud-share.ts + cloud-share-uploader.ts. Two modes: preview
-// (cheap, called every render) and the actual build+upload (guarded by a
-// mandatory review checkbox — the hard redaction gate from spec §9).
-
-interface CloudSharePreview {
-  eventCount: number
-  sanitizedEventCount: number
-  sanitizedEventCountTotal: number
-  /** DEPRECATED — old pre-v0.6.76 field, still populated for compat. */
-  approxSizeBytes: number
-  rawBytes?: number
-  approxCompressedBytes?: number
-  screenshotCount: number
-  castCount: number
-  chainHead: { hash: string; eventCount: number } | null
-}
-interface CloudShareBundleManifest {
-  bundleFormat: number
-  createdAt: string
-  engagement: { id: string; name?: string }
-  zipSha256: string
-  zipBytes: number
-  contents: {
-    eventCount: number
-    sanitizedEventCount: number
-    sanitizedEventCountTotal: number
-    chainHead: { hash: string; eventCount: number } | null
-  }
-}
-
-function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [preview, setPreview] = useState<CloudSharePreview | null>(null)
-  const [previewError, setPreviewError] = useState<string>('')
-  // Last failure message from prepare/upload — sticks around so the operator
-  // can read it after the transient toast fades. Cleared on next attempt.
-  const [lastError, setLastError] = useState<string>('')
-  const [reviewed, setReviewed] = useState(false)
-  const [expiresIn, setExpiresIn] = useState<'24h' | '7d' | '30d' | '90d' | 'never'>('30d')
-  const [busy, setBusy] = useState<'preview' | 'prepare' | 'upload' | null>(null)
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
-  // "stub" writes to ~/.redlog/shares/ (v1 default). "https" hits a
-  // user-deployed redlog-share-worker; both endpoint+token must be set.
-  const [mode, setMode] = useState<'stub' | 'https'>('stub')
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [endpoint, setEndpoint] = useState<string>('')
-  const [authToken, setAuthToken] = useState<string>('')
-  const [tokenVisible, setTokenVisible] = useState(false)
-  // Client-side bundle-size override. Empty string → uses backend default (100 MB).
-  const [maxMbInput, setMaxMbInput] = useState<string>('')
-
-  const api = (window.redlog as unknown as { cloudShare: {
-    preview: () => Promise<{ ok: boolean; preview?: CloudSharePreview; error?: string }>
-    prepare: (engagementId: string, reviewedByOperator: boolean) =>
-      Promise<{ ok: boolean; zipPath?: string; manifest?: CloudShareBundleManifest; error?: string }>
-    uploadStub: (zipPath: string, manifestJson: string, expiresIn?: string) =>
-      Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
-    upload: (zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) =>
-      Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
-  } }).cloudShare
-
-  const refreshPreview = async (): Promise<void> => {
-    setBusy('preview')
-    const r = await api.preview()
-    if (r.ok && r.preview) { setPreview(r.preview); setPreviewError('') }
-    else setPreviewError(r.error ?? 'preview failed')
-    setBusy(null)
-  }
-  useEffect(() => { refreshPreview() }, [])
-  // Load persisted endpoint + token so the operator doesn't retype every session.
-  useEffect(() => {
-    window.redlog.config.get().then((c) => {
-      const cs = (c as { cloudShare?: { endpoint?: string; authToken?: string; maxBundleBytes?: number } }).cloudShare
-      if (cs) {
-        if (cs.endpoint) { setEndpoint(cs.endpoint); setAdvancedOpen(true); setMode('https') }
-        if (cs.authToken) setAuthToken(cs.authToken)
-        if (typeof cs.maxBundleBytes === 'number' && cs.maxBundleBytes > 0) {
-          setMaxMbInput(String(Math.round(cs.maxBundleBytes / (1024 * 1024))))
-        }
-      }
-    }).catch(() => {})
-  }, [])
-
-  // Persist endpoint+token to config.yaml. Debounced so text-input typing
-  // doesn't blast one write per keystroke.
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const persistBackend = (nextEndpoint: string, nextToken: string, nextMaxMb: string): void => {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      try {
-        const c = await window.redlog.config.get() as Record<string, { cloudShare?: unknown } & Record<string, unknown>>
-        const parsedMb = parseInt(nextMaxMb, 10)
-        const maxBundleBytes = Number.isFinite(parsedMb) && parsedMb > 0 ? parsedMb * 1024 * 1024 : undefined
-        const merged = {
-          ...c,
-          cloudShare: {
-            endpoint: nextEndpoint,
-            authToken: nextToken,
-            ...(maxBundleBytes ? { maxBundleBytes } : {})
-          }
-        }
-        await window.redlog.config.save(merged)
-      } catch { /* silent — settings panel already surfaces save failures elsewhere */ }
-    }, 350)
-  }
-
-  const httpsReady = mode === 'https' && endpoint.trim().length > 0 && authToken.trim().length > 0
-  const canUpload = reviewed && busy === null && (mode === 'stub' || httpsReady)
-
-  const upload = async (): Promise<void> => {
-    if (!canUpload) return
-    setBusy('prepare'); setShareUrl(null); setLastError('')
-    const engagementId = 'default' // Bundle-export doesn't split by engagement yet — spec §14 open Q.
-    const p = await api.prepare(engagementId, true)
-    if (!p.ok || !p.zipPath || !p.manifest) {
-      setBusy(null)
-      const msg = `${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`
-      setLastError(msg)
-      toast(t('cloudShare.prepareFailed'), {
-        type: 'error',
-        why: t('cloudShare.prepareFailedWhy'),
-        detail: p.error
-      })
-      return
-    }
-    setBusy('upload')
-    const u = mode === 'https'
-      ? await api.upload(p.zipPath, JSON.stringify(p.manifest), expiresIn, endpoint.trim(), authToken.trim())
-      : await api.uploadStub(p.zipPath, JSON.stringify(p.manifest), expiresIn)
-    setBusy(null)
-    if (u.ok && u.shareUrl) {
-      setShareUrl(u.shareUrl)
-      toast(t('cloudShare.uploaded'), 'success')
-    } else {
-      const msg = `${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`
-      setLastError(msg)
-      toast(t('cloudShare.uploadFailed'), {
-        type: 'error',
-        why: t('cloudShare.uploadFailedWhy'),
-        detail: u.error,
-        action: { label: t('common.retry'), onClick: () => { void upload() } }
-      })
-    }
-  }
-
-  const humanBytes = (n: number): string => {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    return `${(n / 1024 / 1024).toFixed(1)} MB`
-  }
-
-  return (
-    <FieldGroup title={t('cloudShare.title')}>
-      <p className="text-xs text-redlog-text-faint mb-3">{t('cloudShare.hint')}</p>
-
-      {previewError && <p className="text-xs text-red-400 mb-2">{previewError}</p>}
-
-      {preview && (
-        <div className="rounded border border-redlog-border bg-redlog-surface/50 p-3 mb-3">
-          <p className="text-xs text-redlog-text-dim mb-2">{t('cloudShare.reviewTitle')}</p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-redlog-text">
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.events')}</span><span className="font-mono">{preview.eventCount}</span></div>
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.screenshots')}</span><span className="font-mono">{preview.screenshotCount}</span></div>
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.casts')}</span><span className="font-mono">{preview.castCount}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.rawBytes')}</span><span className="font-mono">{humanBytes(preview.rawBytes ?? preview.approxSizeBytes)}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.approxCompressed')}</span><span className="font-mono">{preview.approxCompressedBytes !== undefined ? humanBytes(preview.approxCompressedBytes) : '—'}</span></div>
-            {preview.approxCompressedBytes !== undefined && (() => {
-              const capMb = parseInt(maxMbInput, 10) || 100
-              const capBytes = capMb * 1024 * 1024
-              return preview.approxCompressedBytes > capBytes ? (
-                <p className="col-span-2 text-xs text-red-400 mt-1">
-                  {t('cloudShare.capExceedWarning', { cap: capMb })}
-                </p>
-              ) : null
-            })()}
-            {preview.chainHead && (
-              <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.chainHead')}</span>
-                <span className="font-mono truncate max-w-[280px]" title={preview.chainHead.hash}>{preview.chainHead.hash.slice(0, 24)}… ({preview.chainHead.eventCount})</span></div>
-            )}
-          </div>
-          <button onClick={refreshPreview} disabled={busy === 'preview'}
-            className="mt-3 px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
-            {busy === 'preview' ? '…' : t('cloudShare.refresh')}
-          </button>
-        </div>
-      )}
-
-      <div className="mb-3">
-        <label className="text-xs text-redlog-text-dim flex items-center gap-2 mb-2">
-          {t('cloudShare.expiresIn')}
-          <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as typeof expiresIn)}
-            className="bg-redlog-surface border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text">
-            <option value="24h">24h</option>
-            <option value="7d">7 days</option>
-            <option value="30d">30 days</option>
-            <option value="90d">90 days</option>
-            <option value="never">{t('cloudShare.never')}</option>
-          </select>
-        </label>
-
-        <label className="text-xs text-amber-400/90 flex items-start gap-2 cursor-pointer">
-          <input data-testid="cloud-share-reviewed" type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)}
-            className="mt-0.5 accent-amber-500" />
-          <span>{t('cloudShare.gateCheckbox')}</span>
-        </label>
-      </div>
-
-      <div className="mb-3 rounded border border-redlog-border bg-redlog-bg/40">
-        <button data-testid="cloud-share-advanced-toggle" type="button" onClick={() => setAdvancedOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 text-xs text-redlog-text-dim hover:bg-redlog-surface/60">
-          <span>{t('cloudShare.advancedTitle')}</span>
-          <span className="text-redlog-text-faint">{advancedOpen ? '▾' : '▸'}</span>
-        </button>
-        {advancedOpen && (
-          <div className="px-3 pb-3 pt-1 space-y-2">
-            <p className="text-xs text-redlog-text-faint">{t('cloudShare.advancedHint')}</p>
-            <label className="block text-xs text-redlog-text-dim">
-              {t('cloudShare.endpoint')}
-              <input data-testid="cloud-share-endpoint" type="text" value={endpoint}
-                onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken, maxMbInput) }}
-                placeholder="https://redlog-share.<acct>.workers.dev"
-                className="mt-1 w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-            </label>
-            <label className="block text-xs text-redlog-text-dim">
-              {t('cloudShare.authToken')}
-              <div className="mt-1 flex gap-2">
-                <input data-testid="cloud-share-authtoken" type={tokenVisible ? 'text' : 'password'} value={authToken}
-                  onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value, maxMbInput) }}
-                  placeholder={t('cloudShare.authTokenPlaceholder')}
-                  className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-                <button type="button" onClick={() => setTokenVisible((v) => !v)}
-                  className="px-2 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
-                  {tokenVisible ? t('cloudShare.hide') : t('cloudShare.show')}
-                </button>
-              </div>
-            </label>
-            <div className="flex items-center gap-4 text-xs pt-1">
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input data-testid="cloud-share-mode-stub" type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
-                  className="accent-redlog-text-dim" />
-                <span className={mode === 'stub' ? 'text-redlog-text' : 'text-redlog-text-dim'}>{t('cloudShare.modeStub')}</span>
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input data-testid="cloud-share-mode-https" type="radio" name="cloudshare-mode" checked={mode === 'https'} onChange={() => setMode('https')}
-                  className="accent-red-500" />
-                <span className={mode === 'https' ? 'text-redlog-text' : 'text-redlog-text-dim'}>{t('cloudShare.modeHttps')}</span>
-              </label>
-              {mode === 'https' && !httpsReady && (
-                <span className="text-amber-400/80">{t('cloudShare.httpsNeedsFields')}</span>
-              )}
-            </div>
-            <label className="block text-xs text-redlog-text-dim pt-1">
-              {t('cloudShare.maxBundleMb')}
-              <input type="number" min="1" max="10000" value={maxMbInput}
-                onChange={(e) => { setMaxMbInput(e.target.value); persistBackend(endpoint, authToken, e.target.value) }}
-                placeholder="100"
-                className="mt-1 w-32 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-              <span className="ml-2 text-redlog-text-faint">{t('cloudShare.maxBundleMbHint')}</span>
-            </label>
-          </div>
-        )}
-      </div>
-
-      {lastError && (
-        <div data-testid="cloud-share-inline-error" className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
-          <span className="text-red-400 shrink-0">⚠</span>
-          <p className="text-xs text-red-300 font-mono break-all flex-1">{lastError}</p>
-          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <button data-testid="cloud-share-button" onClick={upload} disabled={!canUpload}
-          className="px-3 py-1.5 bg-redlog-danger text-white hover:bg-redlog-danger-hover text-xs rounded disabled:opacity-40">
-          {busy === 'prepare' ? t('cloudShare.preparing')
-            : busy === 'upload' ? t('cloudShare.uploading')
-              : mode === 'https' ? t('cloudShare.shareHttps') : t('cloudShare.shareStub')}
-        </button>
-        <span className="text-xs text-redlog-text-faint">
-          {mode === 'https' ? t('cloudShare.httpsNote') : t('cloudShare.stubNote')}
-        </span>
-      </div>
-
-      {shareUrl && (
-        <div data-testid="cloud-share-result" className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
-          <p className="text-xs text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
-          <p data-testid="cloud-share-url" className="text-xs text-redlog-text font-mono break-all">{shareUrl}</p>
-          <div className="flex gap-2 mt-2">
-            <button onClick={() => navigator.clipboard.writeText(shareUrl)}
-              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
-              {t('cloudShare.copyUrl')}
-            </button>
-            <button onClick={() => window.redlog.app.openExternal(shareUrl).catch(() => {})}
-              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
-              {t('cloudShare.openUrl')}
-            </button>
-          </div>
-        </div>
-      )}
-    </FieldGroup>
-  )
-}
-
-// -------- Marketplace panel ---------------------------------------------------
-//
-// Thin wrapper around window.redlog.marketplace.*. The heavy lifting (fetch,
-// sha256 verify, signature verify, atomic swap, rollback) lives in
-// src/core/plugins/marketplace.ts. This panel only decides what to show and
-// which IPC to call.
-//
-// Three sub-tabs:
-//   Plugins       — fetch a registry index, install entries.
-//   Publishers    — list trusted publishers, add a new one manually (paste
-//                   an SPKI base64 pubkey), untrust.
-//   Revocations   — surface the local revocation cache so operators can see
-//                   why an install is being blocked.
-
-interface RegistryEntryView {
-  id: string
-  name?: string
-  description?: string
-  homepage?: string
-  publisher: string
-  version: string
-  tarball: string
-  sha256: string
-  signature?: string
-  sizeKb?: number
-  tags?: string[]
-}
-interface RegistryPublisherAdView {
-  id: string
-  homepage?: string
-  keys: Array<{ label?: string; publicKey: string }>
-}
-interface RegistryIndexView { updatedAt: number; entries: RegistryEntryView[]; publishers?: RegistryPublisherAdView[] }
-interface PublisherKeyView { publicKey: string; label?: string; trustedAt: number; trustedBy?: string }
-interface PublisherView { id: string; homepage?: string; keys: PublisherKeyView[] }
-interface InstallResultView {
-  ok: boolean; pluginId?: string; error?: string
-  contentHash?: string; installedDir?: string; rolledBackFrom?: string
-  tier?: 'declarative' | 'privileged'; signatureVerified?: boolean
-}
-interface RevocationsView { updatedAt: number; plugins?: string[]; publishers?: string[] }
-
-function MarketplacePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [sub, setSub] = useState<'plugins' | 'publishers' | 'revocations'>('plugins')
-  const [registryUrl, setRegistryUrl] = useState<string>('')
-  const [defaultRegistryUrl, setDefaultRegistryUrl] = useState<string>('https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json')
-  useEffect(() => {
-    // Load config once so the placeholder + one-click fetch honour any
-    // config-defined default. Air-gapped shops override this to point at
-    // their internal mirror.
-    window.redlog.config.get().then((c) => {
-      const url = (c as { marketplace?: { defaultRegistryUrl?: string } }).marketplace?.defaultRegistryUrl
-      if (url) setDefaultRegistryUrl(url)
-    }).catch(() => {})
-  }, [])
-  const [index, setIndex] = useState<RegistryIndexView | null>(null)
-  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [fetchError, setFetchError] = useState<string>('')
-  const [installBusy, setInstallBusy] = useState<string | null>(null)
-  // Last install failure per plugin id — sticks around like cloud-share's
-  // persistent error box so the operator can read it after the toast fades.
-  // Keyed so multiple failed installs don't overwrite each other.
-  const [installError, setInstallError] = useState<Record<string, string>>({})
-  const [publishers, setPublishers] = useState<PublisherView[]>([])
-  const [revocations, setRevocations] = useState<RevocationsView | null>(null)
-
-  const api = (window.redlog as unknown as { marketplace: {
-    fetchIndex: (url?: string) => Promise<{ ok: boolean; index?: RegistryIndexView; error?: string }>
-    listPublishers: () => Promise<PublisherView[]>
-    trustPublisher: (id: string, publicKey: string, homepage?: string, label?: string) => Promise<{ ok: boolean; fingerprint?: string; error?: string }>
-    untrustPublisher: (id: string) => Promise<{ ok: boolean }>
-    install: (entryJson: string) => Promise<InstallResultView>
-    revocations: () => Promise<RevocationsView>
-  } }).marketplace
-
-  const reloadPublishers = async (): Promise<void> => { setPublishers(await api.listPublishers()) }
-  const reloadRevocations = async (): Promise<void> => { setRevocations(await api.revocations()) }
-  useEffect(() => { reloadPublishers(); reloadRevocations() }, [])
-
-  const doFetch = async (): Promise<void> => {
-    setFetchState('loading'); setFetchError('')
-    // Empty box → use the config-declared default (see marketplace.defaultRegistryUrl).
-    const url = registryUrl.trim() || defaultRegistryUrl
-    const r = await api.fetchIndex(url)
-    if (r.ok && r.index) { setIndex(r.index); setFetchState('idle') }
-    else { setFetchState('error'); setFetchError(r.error ?? 'unknown error') }
-  }
-
-  const doInstall = async (entry: RegistryEntryView): Promise<void> => {
-    setInstallBusy(entry.id)
-    // Clear a previous failure for this plugin so the box collapses on retry.
-    setInstallError((prev) => { const next = { ...prev }; delete next[entry.id]; return next })
-    const r = await api.install(JSON.stringify(entry))
-    setInstallBusy(null)
-    if (r.ok) {
-      toast(t('marketplace.installed'), 'success')
-      reloadPublishers()
-    } else {
-      const msg = r.error ?? 'unknown'
-      setInstallError((prev) => ({ ...prev, [entry.id]: msg }))
-      toast(t('marketplace.installFailed'), {
-        type: 'error',
-        why: t('marketplace.installFailedWhy'),
-        detail: msg,
-        action: { label: t('common.retry'), onClick: () => { void install(entry) } }
-      })
-    }
-  }
-  const dismissInstallError = (id: string): void => {
-    setInstallError((prev) => { const next = { ...prev }; delete next[id]; return next })
-  }
-
-  const publisherTrusted = (id: string): boolean => publishers.some((p) => p.id === id)
-
-  // v0.11.0: the registry index is UNTRUSTED input, and this list is the only
-  // place that mattered. `index.json` carries no signature RedLog can check —
-  // it names publishers and their keys, and nothing more. The real trust
-  // boundary is one step later: each tarball's Ed25519 signature verified
-  // against a key the operator has pinned.
-  //
-  // The old "Trust all suggested" button collapsed that boundary. Whoever
-  // controlled the index (or the domain, or a MITM without cert pinning) could
-  // advertise their own key, get it pinned in one click, and thereafter sign
-  // privileged plugins that passed every check. One button undid the whole
-  // model.
-  //
-  // Trusting a key is now per-publisher and shows the fingerprint the operator
-  // is supposed to compare against the publisher's own channel — a keypress
-  // per key, which is the correct amount of friction for "let this stranger
-  // run code in my audit tool".
-  const suggestedUntrusted = (index?.publishers ?? []).filter((p) => !publisherTrusted(p.id))
-  const [trustingId, setTrustingId] = useState<string | null>(null)
-  const trustOne = async (pub: { id: string; homepage?: string; keys: Array<{ publicKey: string; label?: string }> }): Promise<void> => {
-    setTrustingId(pub.id)
-    try {
-      for (const k of pub.keys) {
-        await api.trustPublisher(pub.id, k.publicKey, pub.homepage, k.label)
-      }
-      toast(t('marketplace.publisherTrusted', { id: pub.id }), 'success')
-      reloadPublishers()
-    } catch (e) {
-      toast(t('marketplace.trustFailed', { id: pub.id }), {
-        type: 'error',
-        why: t('marketplace.trustFailedWhy'),
-        detail: String((e as Error)?.message ?? e)
-      })
-    } finally { setTrustingId(null) }
-  }
-
-  return (
-    <FieldGroup title={t('settings.marketplace')}>
-      <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.hint')}</p>
-
-      <div className="flex items-center gap-1 mb-3">
-        {(['plugins', 'publishers', 'revocations'] as const).map((k) => (
-          <button key={k} onClick={() => setSub(k)}
-            className={`px-2.5 py-1 text-xs rounded ${sub === k ? 'bg-red-950/60 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'}`}>
-            {t(`marketplace.tab${k[0].toUpperCase()}${k.slice(1)}`)}
-          </button>
-        ))}
-      </div>
-
-      {sub === 'plugins' && (
-        <>
-          <div className="flex items-center gap-2 mb-3">
-            <input type="text" value={registryUrl} onChange={(e) => setRegistryUrl(e.target.value)}
-              placeholder={defaultRegistryUrl}
-              className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text" />
-            <button onClick={doFetch} disabled={fetchState === 'loading'}
-              className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50">
-              {fetchState === 'loading' ? t('marketplace.fetching') : t('marketplace.fetch')}
-            </button>
-          </div>
-
-          {fetchState === 'error' && (
-            <p className="text-xs text-red-400 mb-2">{t('marketplace.fetchFailed')}: {fetchError}</p>
-          )}
-          {!index && fetchState !== 'error' && (
-            <p className="text-xs text-redlog-text-faint">{t('marketplace.indexEmpty')}</p>
-          )}
-          {index && index.entries.length === 0 && (
-            <p className="text-xs text-redlog-text-faint">{t('marketplace.noEntries')}</p>
-          )}
-
-          {suggestedUntrusted.length > 0 && (
-            <div data-testid="marketplace-suggested-banner" className="mb-3 rounded border border-amber-800/50 bg-amber-950/20 p-3">
-              <p className="text-xs text-amber-300 mb-1">
-                {t('marketplace.suggestedPublishersTitle', { n: suggestedUntrusted.length })}
-              </p>
-              <p className="text-xs text-redlog-text-dim mb-2">{t('marketplace.suggestedPublishersHint')}</p>
-              <ul className="space-y-1.5">
-                {suggestedUntrusted.map((p) => (
-                  <li key={p.id} className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p title={p.id} className="text-xs text-redlog-text font-mono truncate">{p.id}</p>
-                      {/* The fingerprint is the point of this row: the operator
-                          is meant to compare it against the publisher's own
-                          site before pinning, not take the registry's word. */}
-                      {p.keys.map((k) => (
-                        <p key={k.publicKey} className="text-xs text-redlog-text-dim font-mono truncate" title={k.publicKey}>
-                          {(k as { fingerprint?: string }).fingerprint ?? k.publicKey.slice(0, 16)}{k.label ? ` · ${k.label}` : ''}
-                        </p>
-                      ))}
-                    </div>
-                    <button
-                      data-testid={`marketplace-trust-${p.id}`}
-                      onClick={() => void trustOne(p)}
-                      disabled={trustingId === p.id}
-                      className="shrink-0 px-2.5 py-1 text-xs bg-amber-600/80 hover:bg-amber-600 text-white rounded disabled:opacity-50"
-                    >
-                      {trustingId === p.id ? '…' : t('marketplace.trustThisPublisher')}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {index?.entries.map((e) => {
-              const trusted = publisherTrusted(e.publisher)
-              const signed = !!e.signature
-              return (
-                <div key={`${e.id}@${e.version}`} className="rounded border border-redlog-border bg-redlog-surface/50 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-medium text-redlog-text">{e.name || e.id}</span>
-                        <span className="text-xs text-redlog-text-dim">v{e.version}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim">{e.publisher}</span>
-                        {signed && <span className="text-xs px-1.5 py-0.5 rounded bg-green-950/60 text-green-300">{t('marketplace.signatureVerified')}</span>}
-                        {e.sizeKb !== undefined && (
-                          <span className="text-xs text-redlog-text-faint">{t('marketplace.sizeKb', { size: e.sizeKb })}</span>
-                        )}
-                      </div>
-                      {e.description && <p className="text-xs text-redlog-text-dim mt-0.5">{e.description}</p>}
-                      {!trusted && (
-                        <p className="text-xs text-amber-500/80 mt-1">{t('marketplace.publisherUntrusted')}</p>
-                      )}
-                    </div>
-                    <button onClick={() => doInstall(e)} disabled={installBusy === e.id}
-                      className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50 shrink-0">
-                      {installBusy === e.id ? t('marketplace.installing') : t('marketplace.install')}
-                    </button>
-                  </div>
-                  {installError[e.id] && (
-                    <div className="mt-2 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
-                      <span className="text-red-400 shrink-0">⚠</span>
-                      <p className="text-xs text-red-300 font-mono break-all flex-1">
-                        {t('marketplace.installFailed')}: {installError[e.id]}
-                      </p>
-                      <button onClick={() => dismissInstallError(e.id)} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
-
-      {sub === 'publishers' && (
-        <PublisherEditor t={t} publishers={publishers} api={api} onReload={reloadPublishers} />
-      )}
-
-      {sub === 'revocations' && (
-        <div>
-          <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.revocationsHint')}</p>
-          {(!revocations || ((revocations.plugins?.length ?? 0) === 0 && (revocations.publishers?.length ?? 0) === 0)) && (
-            <p className="text-xs text-redlog-text-faint">{t('marketplace.revocationsEmpty')}</p>
-          )}
-          {revocations && (revocations.plugins?.length ?? 0) > 0 && (
-            <div className="mb-3">
-              <p className="text-xs text-redlog-text-dim mb-1">{t('marketplace.revokedPlugins')}</p>
-              <div className="flex flex-wrap gap-1">
-                {revocations.plugins!.map((p) => <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
-              </div>
-            </div>
-          )}
-          {revocations && (revocations.publishers?.length ?? 0) > 0 && (
-            <div>
-              <p className="text-xs text-redlog-text-dim mb-1">{t('marketplace.revokedPublishers')}</p>
-              <div className="flex flex-wrap gap-1">
-                {revocations.publishers!.map((p) => <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-red-950/50 text-red-300 font-mono">{p}</span>)}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </FieldGroup>
-  )
-}
-
-function PublisherEditor({ t, publishers, api, onReload }: {
-  t: (key: string, vars?: Record<string, string | number>) => string
-  publishers: PublisherView[]
-  api: {
-    trustPublisher: (id: string, publicKey: string, homepage?: string, label?: string) => Promise<{ ok: boolean; fingerprint?: string; error?: string }>
-    untrustPublisher: (id: string) => Promise<{ ok: boolean }>
-  }
-  onReload: () => Promise<void>
-}): JSX.Element {
-  const [draftId, setDraftId] = useState('')
-  const [draftKey, setDraftKey] = useState('')
-  const [draftLabel, setDraftLabel] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const add = async (): Promise<void> => {
-    if (!draftId.trim() || !draftKey.trim()) return
-    setBusy(true)
-    const r = await api.trustPublisher(draftId.trim(), draftKey.trim(), undefined, draftLabel.trim() || undefined)
-    setBusy(false)
-    if (r.ok) {
-      toast(`${t('marketplace.publisherAdded')} · fp ${r.fingerprint ?? ''}`, 'success')
-      setDraftId(''); setDraftKey(''); setDraftLabel('')
-      onReload()
-    } else {
-      toast(t('marketplace.addPublisherFailed'), {
-        type: 'error',
-        why: t('marketplace.addPublisherFailedWhy'),
-        detail: r.error
-      })
-    }
-  }
-
-  const untrust = async (id: string): Promise<void> => { await api.untrustPublisher(id); onReload() }
-
-  return (
-    <div>
-      <div className="rounded border border-redlog-border bg-redlog-surface/40 p-3 mb-3">
-        <p className="text-xs text-redlog-text-dim mb-2">{t('marketplace.addPublisher')}</p>
-        <p className="text-xs text-redlog-text-faint mb-2">{t('marketplace.addPublisherHint')}</p>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <input value={draftId} onChange={(e) => setDraftId(e.target.value)} placeholder={t('marketplace.publisherId')}
-            className="bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-          <input value={draftLabel} onChange={(e) => setDraftLabel(e.target.value)} placeholder={t('marketplace.publisherLabel')}
-            className="bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text" />
-        </div>
-        <textarea value={draftKey} onChange={(e) => setDraftKey(e.target.value)}
-          placeholder={t('marketplace.publisherPubKey')}
-          rows={3}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y" />
-        <div className="flex justify-end mt-2">
-          <button onClick={add} disabled={busy || !draftId.trim() || !draftKey.trim()}
-            className="px-3 py-1 text-xs bg-redlog-danger text-white hover:bg-redlog-danger-hover rounded disabled:opacity-50">
-            {t('marketplace.trustPublisher')}
-          </button>
-        </div>
-      </div>
-
-      {publishers.length === 0 && <p className="text-xs text-redlog-text-faint">{t('marketplace.publisherEmpty')}</p>}
-      <div className="space-y-2">
-        {publishers.map((p) => (
-          <div key={p.id} className="rounded border border-redlog-border bg-redlog-surface/50 p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-redlog-text font-mono">{p.id}</span>
-                  <span className="text-xs text-redlog-text-dim">{p.keys.length} {t('marketplace.publisherKeys')}</span>
-                </div>
-                {p.homepage && <a href={p.homepage} onClick={(e) => { e.preventDefault(); window.redlog.app.openExternal(p.homepage!) }}
-                  className="text-xs text-blue-400 hover:text-blue-300 underline">{p.homepage}</a>}
-                <ul className="mt-2 space-y-1">
-                  {p.keys.map((k) => (
-                    <li key={k.publicKey} className="text-xs text-redlog-text-dim font-mono truncate" title={k.publicKey}>
-                      {k.label ? `[${k.label}] ` : ''}{k.publicKey.slice(0, 32)}…
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <button onClick={() => untrust(p.id)}
-                className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/60 hover:text-red-300 rounded shrink-0">
-                {t('marketplace.untrustPublisher')}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}

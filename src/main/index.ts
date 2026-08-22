@@ -47,6 +47,7 @@ import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstal
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
+import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
@@ -59,6 +60,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -85,11 +87,6 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
-// Dev/E2E-only stash for marketplace:fetchIndex. When REDLOG_E2E=1 and a
-// test has called marketplace:testSetIndex, fetchIndex returns this object
-// instead of hitting the network. Loose-typed so we don't pull the
-// RegistryIndex import into main just for a mock hook.
-let testFetchIndexOverride: unknown = null
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 // v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
@@ -429,6 +426,20 @@ function startProject(project: ProjectMeta): void {
 
   initDB(projectDir)
 
+  // Bring the recording index up to date in the background. Idempotent and
+  // cheap when nothing changed — it hashes each cast and skips matches — so
+  // running it on every open is what keeps a project that was recorded by an
+  // older build, restored from a backup, or written to while RedLog was shut
+  // searchable without anyone having to know to ask.
+  //
+  // Not awaited: a first index of an engagement's worth of recordings takes
+  // real time, and holding project-open on it would trade a visible stall for
+  // an invisible one. The UI reads `casts:status` and says how much is still
+  // pending, which is the honest version of the same information.
+  void import('../core/cast-index')
+    .then((m) => m.backfillCastIndex(projectDir))
+    .catch(() => { /* index is rebuildable; never block opening a project */ })
+
   screenshotAgent.configure({
     engagementId,
     operatorId,
@@ -650,6 +661,13 @@ function startProject(project: ProjectMeta): void {
     watchPaths: config.fileWatcher?.watchPaths ?? [],
     ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
     engagementId, operatorId
+  })
+  configureConnectionMonitor({
+    enabled: config.connectionMonitor?.enabled ?? false,
+    pollMs: config.connectionMonitor?.pollMs,
+    engagementId,
+    operatorId,
+    selfPorts: [getApiPort()]
   })
   configureProcessMonitor({
     enabled: config.processMonitor?.enabled ?? false,
@@ -876,11 +894,13 @@ function stopProject(): void {
   stopClipboardMonitor()
   stopFileWatcher()
   stopProcessMonitor()
+  stopConnectionMonitor()
   stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
   stopOpsecMonitor()
   screenshotAgent.stop()
+  closeCastIndex()
   closeDB()
   resetBodiesDirCache()
   activeProject = null
@@ -1114,6 +1134,11 @@ app.whenReady().then(() => {
       ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
+    configureConnectionMonitor({
+      enabled: newConfig.connectionMonitor?.enabled ?? false,
+      pollMs: newConfig.connectionMonitor?.pollMs,
+      selfPorts: [getApiPort()]
+    })
     configureProcessMonitor({
       enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
@@ -1220,6 +1245,35 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
   ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
+
+  // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
+  // §2.4). Separate from events:search because the two answer different
+  // questions and have different completeness: an event either exists or does
+  // not, whereas a recording may be on disk and not yet indexed. `casts:status`
+  // exists so the UI can say which of those it is, rather than returning zero
+  // hits and letting the operator conclude the bytes are missing.
+  ipcMain.handle('casts:search', async (_e, query: string, limit?: number) => {
+    if (!activeProject) return []
+    const { searchCasts } = await import('../core/cast-index')
+    return searchCasts(query, limit)
+  })
+  ipcMain.handle('casts:status', async () => {
+    if (!activeProject) return { total: 0, indexed: 0, pending: 0 }
+    const { castIndexStatus } = await import('../core/cast-index')
+    return castIndexStatus()
+  })
+  ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number) => {
+    if (!activeProject) return null
+    // castRel comes from a search hit, but the hit came from a DB the renderer
+    // can reach — so re-derive the path from the project root and refuse
+    // anything that escapes it, the same guard the api-server applies to
+    // castPath out of event data.
+    const castsDir = path.join(getProjectPath(activeProject), 'casts')
+    const full = path.resolve(castsDir, castRel)
+    if (!isInsideDir(castsDir, full)) return null
+    const { readCastRange } = await import('../core/cast-slice')
+    return readCastRange(full, off, len)
+  })
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
@@ -1498,7 +1552,7 @@ app.whenReady().then(() => {
   // exactly one copy and the app knows where it is.
   //
   // `~/.redlog/tokens/` sits deliberately outside the project directory, so
-  // no bundle export, evidence package or cloud share can ever sweep it up —
+  // no bundle export or evidence package can ever sweep it up —
   // those walk the project tree, and a credential is not evidence.
   ipcMain.handle('operators:writeToken', async (_e, id: string, token: string) => {
     if (typeof id !== 'string' || !id || typeof token !== 'string' || !token) return null
@@ -1807,181 +1861,6 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
-  // --- Cloud share (bundle → sign → upload) ---
-  // Real backend upload is not wired in Settings yet — spec is at
-  // docs/CLOUD_SHARE_BUNDLE.md and hosts pending a decision. The stub uploader
-  // exercises the whole flow (build → gate → "upload" → get URL) against a
-  // ~/.redlog/shares/ directory so operators can rehearse before the backend
-  // exists.
-  ipcMain.handle('cloudShare:preview', async () => {
-    try {
-      const { previewRedaction } = await import('../core/cloud-share')
-      return { ok: true, preview: previewRedaction() }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('cloudShare:prepare', async (_e, engagementId: string, reviewedByOperator: boolean) => {
-    try {
-      const { prepareCloudShareBundle } = await import('../core/cloud-share')
-      // Honour cloudShare.maxBundleBytes override — operators with lots of
-      // screenshots + .cast blow through the 100 MB default; raising this
-      // client-side matters only if the backend also allows it.
-      const cfg = activeProject ? loadConfig(getProjectPath(activeProject)) : null
-      const maxBytes = cfg?.cloudShare?.maxBundleBytes
-      const prepared = prepareCloudShareBundle({ engagementId, reviewedByOperator, maxBytes })
-      return { ok: true, zipPath: prepared.zipPath, manifest: prepared.manifest }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('cloudShare:uploadStub', async (_e, zipPath: string, manifestJson: string, expiresIn?: string) => {
-    try {
-      const { localFileUploader } = await import('../core/cloud-share-uploader')
-      const manifest = JSON.parse(manifestJson)
-      const result = await localFileUploader.upload(
-        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
-        { expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined }
-      )
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // HTTPS backend upload — points at a user-deployed redlog-share-worker
-  // (see redlog-share-worker/README.md). The wire contract is the two-step
-  // POST /api/share/init + PUT signed URL flow documented on the Worker.
-  // Endpoint + bearer are passed explicitly so the Settings UI can drive
-  // them without needing to reload config for every share attempt.
-  ipcMain.handle('cloudShare:upload', async (_e, zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) => {
-    try {
-      if (!endpoint) return { ok: false, error: 'endpoint required' }
-      const { httpsUploader } = await import('../core/cloud-share-uploader')
-      const manifest = JSON.parse(manifestJson)
-      const result = await httpsUploader.upload(
-        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
-        {
-          endpoint,
-          bearer: authToken || undefined,
-          expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined
-        }
-      )
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-
-  // --- Plugin marketplace ---
-  // These wrap src/core/plugins/marketplace.ts + publisher-trust.ts. The whole
-  // fetch/verify/install pipeline lives in core so it stays unit-testable;
-  // main just exposes it over IPC. The registry client uses HTTPS only, hard
-  // caps size (5 MB tarball / 1 MB index), and every install goes through
-  // sha256 + Ed25519 signature verify + manifest re-validate.
-  // v0.11.0: stamp each advertised key with the same fingerprint the trust
-  // store shows. The operator is meant to compare it against the publisher's
-  // own channel before pinning, so it has to be the identical string in both
-  // places — computed here rather than in the renderer, where it would be a
-  // second implementation free to drift from publisher-trust.ts.
-  const annotateIndex = async (index: unknown): Promise<unknown> => {
-    const idx = index as { publishers?: Array<{ keys?: Array<{ publicKey: string }> }> } | null
-    if (!idx?.publishers) return index
-    const { fingerprint } = await import('../core/plugins/publisher-trust')
-    for (const p of idx.publishers) {
-      for (const k of p.keys ?? []) {
-        try { (k as { fingerprint?: string }).fingerprint = fingerprint(k.publicKey) } catch { /* malformed key */ }
-      }
-    }
-    return idx
-  }
-  ipcMain.handle('marketplace:fetchIndex', async (_e, url?: string) => {
-    // Dev/E2E-only override: if a test has stashed a fake index via
-    // marketplace:testSetIndex, return it verbatim instead of hitting the
-    // network. Kept alongside the real path so the UI code driving fetchIndex
-    // stays identical between real and mocked runs.
-    if (process.env.REDLOG_E2E === '1' && testFetchIndexOverride) {
-      return { ok: true, index: await annotateIndex(testFetchIndexOverride) }
-    }
-    try {
-      const { fetchIndex } = await import('../core/plugins/marketplace')
-      return { ok: true, index: await annotateIndex(await fetchIndex(url)) }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // Dev/E2E-only sibling of marketplace:fetchIndex. Lets a test inject a
-  // canned RegistryIndex (including publishers[]) so the "trust suggested
-  // publishers" banner can be exercised without a real HTTPS registry.
-  // Gated on REDLOG_E2E=1 — the endpoint is effectively absent in a normal
-  // launch. Pass an empty string to clear the override.
-  ipcMain.handle('marketplace:testSetIndex', async (_e, indexJson: string) => {
-    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testSetIndex disabled' }
-    try {
-      testFetchIndexOverride = indexJson ? JSON.parse(indexJson) : null
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('marketplace:listPublishers', async () => {
-    const { listPublishers } = await import('../core/plugins/publisher-trust')
-    return listPublishers()
-  })
-  ipcMain.handle('marketplace:trustPublisher', async (_e, id: string, publicKey: string, homepage?: string, label?: string) => {
-    const { trustPublisher, fingerprint } = await import('../core/plugins/publisher-trust')
-    const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
-    trustPublisher(id, { publicKey, trustedAt: Date.now(), trustedBy: opId, label }, homepage)
-    return { ok: true, fingerprint: fingerprint(publicKey) }
-  })
-  ipcMain.handle('marketplace:untrustPublisher', async (_e, id: string) => {
-    const { untrustPublisher } = await import('../core/plugins/publisher-trust')
-    untrustPublisher(id); return { ok: true }
-  })
-  ipcMain.handle('marketplace:install', async (_e, entryJson: string) => {
-    try {
-      const entry = JSON.parse(entryJson)
-      const { installFromRegistry } = await import('../core/plugins/marketplace')
-      const result = await installFromRegistry(entry)
-      // Re-scan plugins on successful install so the newly landed plugin
-      // shows up in Settings ▸ Plugins immediately.
-      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // Dev/E2E-only sibling of marketplace:install. Skips the network by taking
-  // the tarball bytes directly from the caller (base64 for IPC-safety) and
-  // handing them to installFromRegistry via its `fetchTarball` hook. Gated on
-  // REDLOG_E2E=1 so the endpoint is effectively absent in a normal launch —
-  // never gate on NODE_ENV, electron-vite already claims that flag.
-  ipcMain.handle('marketplace:testInstall', async (_e, entryJson: string, tarballBytesB64: string) => {
-    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testInstall disabled' }
-    try {
-      const entry = JSON.parse(entryJson)
-      const bytes = Buffer.from(tarballBytesB64, 'base64')
-      const { installFromRegistry } = await import('../core/plugins/marketplace')
-      const result = await installFromRegistry(entry, { fetchTarball: async () => bytes })
-      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('marketplace:listVersions', async (_e, pluginId: string) => {
-    const { listVersions } = await import('../core/plugins/marketplace')
-    return listVersions(pluginId)
-  })
-  ipcMain.handle('marketplace:rollback', async (_e, pluginId: string, versionKey: string) => {
-    const { rollback } = await import('../core/plugins/marketplace')
-    const r = rollback(pluginId, versionKey)
-    if (r.ok) { invalidateHooksCache(); reloadPlugins() }
-    return r
-  })
-  ipcMain.handle('marketplace:revocations', async () => {
-    const { loadRevocations } = await import('../core/plugins/marketplace')
-    return loadRevocations()
-  })
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)

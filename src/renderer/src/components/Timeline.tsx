@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { useContributeExport } from '../lib/exportScope'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -11,6 +12,7 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
+import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -66,7 +68,7 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 // (#6e6e78) and the palette is a function, not a table.
 // Read defensively — this runs at module load, before the preload bridge
 // is guaranteed present (e.g. in tests). Default to mac styling, as App does.
-const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+const isMacPlatform = isMac
 
 const LANE_COLOR = '#6e6e78'
 const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
@@ -178,6 +180,16 @@ function eventTitle(event: RedLogEvent): string {
         }
         case 'cookie_change':
           return `[cookie] ${d.domain || '?'} ${d.cookie_name || '?'} rotated`.trim()
+        case 'connection': {
+          // Connection-level capture (§2.1): who connected where, no payload.
+          const proto = (d.proto as string || 'tcp').toUpperCase()
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'}`.trim()
+        }
+        case 'connection_end': {
+          const proto = (d.proto as string || 'tcp').toUpperCase()
+          const dur = d.duration_sec != null ? ` (${d.duration_sec}s)` : ''
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'} closed${dur}`.trim()
+        }
         default:
           return `[${d.subtype || 'req'}] ${method} ${url}`.trim()
       }
@@ -257,6 +269,8 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
       if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
       if (d.subtype === 'secret_revealed') return `👁 Secret revealed: ${(d.fields as string[])?.join(', ') || 'unknown fields'}`
+      if (d.subtype === 'connection_capture_started') return `⇄ Connection capture on — established connections only, no SYN scans`
+      if (d.subtype === 'connection_monitor_saturated') return `⇄ ${d.count ?? '?'} connections in one poll — recording the count, not each`
       return `${event.agentType}: ${d.subtype || ''}`
     default:
       return `${event.agentType}: ${d.subtype || ''}`
@@ -977,6 +991,29 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     window.addEventListener('redlog-timeline-palette', onOpen)
     return () => window.removeEventListener('redlog-timeline-palette', onOpen)
   }, [])
+
+  // ⌘F focuses the in-page filter (§5.7, §10). `/` still does too — it is the
+  // chord this view taught first and there is no reason to take it away — but
+  // ⌘F is the one an operator arrives already knowing.
+  useEffect(() => {
+    const onFind = (): void => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }
+    window.addEventListener('redlog:find-in-page', onFind)
+    return () => window.removeEventListener('redlog:find-in-page', onFind)
+  }, [])
+
+  // ⌘K → an operator → filter this view to what that person did. The palette
+  // cannot reach into the Timeline's filter state, so it asks by event.
+  useEffect(() => {
+    const onFilterOperator = (e: Event): void => {
+      const name = (e as CustomEvent<string>).detail
+      if (name) setFilterQuery(name)
+    }
+    window.addEventListener('redlog:filter-operator', onFilterOperator)
+    return () => window.removeEventListener('redlog:filter-operator', onFilterOperator)
+  }, [])
   useEffect(() => {
     if (paletteOpen) {
       // Autofocus after paint — the modal renders inside a portal-like fixed
@@ -1409,6 +1446,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
 
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
+
+  // The timeline is the one surface with a scope nothing else can name: the
+  // range currently framed. It contributes that to the shell's export control
+  // rather than carrying its own button (§10).
+  const exportSlice = useCallback(async (): Promise<string | null> => {
+    if (!window.redlog.data.exportTimelineSlice) return null
+    const from = Math.round(fromX((view.left / 100) * TRACK_W))
+    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    return window.redlog.data.exportTimelineSlice(from, to)
+  }, [fromX, view.left, view.width, TRACK_W])
+
+  useContributeExport({ label: t('export.slice'), run: exportSlice })
   const totalH = visibleLanes.length * laneH
 
   const laneEvents = useMemo(() => {
@@ -2294,7 +2343,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // machine — masking it here protected nothing and cost a step, and the
     // "did I remember to hit Reveal?" question meant a copied JSON could be
     // silently incomplete. The redaction boundary that matters is layer 4, on
-    // the way *out*: bundle export, cloud share and the blue-team webhook all
+    // the way *out*: bundle export and the blue-team webhook both
     // redact in src/core, independently of anything the renderer shows.
     navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
     toast(t('toast.copied'), 'success')
@@ -2773,18 +2822,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
               zoom to the attack moment then click this to grab an evidence
               slice. Saved under exports/redlog-timeline-<ts>.json. */}
-          <button
-            onClick={async () => {
-              if (!window.redlog.data.exportTimelineSlice) return
-              const from = Math.round(fromX((view.left / 100) * TRACK_W))
-              const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-              const path = await window.redlog.data.exportTimelineSlice(from, to)
-              if (path) toast(t('timeline.exportSliceOk', { path }), 'success')
-              else toast(t('timeline.exportSliceFail'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-emerald-400 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-            title={t('timeline.exportSliceHint')}
-          >⬇ {t('timeline.exportSlice')}</button>
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}

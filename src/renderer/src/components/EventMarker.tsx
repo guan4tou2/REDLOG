@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatTime } from '../lib/time'
+import { Button } from './Button'
 
 const SEVERITIES = ['info', 'important', 'critical'] as const
 const CATEGORIES = [
@@ -145,13 +146,9 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           <button onClick={onClose} className="px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text">
             {t('marker.cancel')}
           </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-1.5 text-xs bg-transparent text-redlog-accent border border-redlog-accent/60 hover:bg-redlog-accent/10 rounded disabled:opacity-40 disabled:cursor-not-allowed"
-          >
+          <Button level="primary" onClick={handleSave} disabled={saving}>
             {saving ? t('marker.saving') : t('marker.submit')}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

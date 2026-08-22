@@ -1,5 +1,0 @@
-# Private signing key — never commit
-redlog-example-keypair.json
-
-# Intermediate signed entries (merged into index.json)
-*.entry.json

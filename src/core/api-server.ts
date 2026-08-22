@@ -34,7 +34,7 @@ import { exportHar } from './har-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
 import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
-import { getCaptureHealth } from './capture-health'
+import { getCaptureHealth, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
@@ -450,15 +450,40 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/events' && req.method === 'POST') {
+    // `/api/events/seed` is the E2E fixture door: same handler, allowlist
+    // skipped, and it does not exist unless REDLOG_E2E=1. Specs need to plant
+    // derived rows (pivot, cleanup, a scope violation, eighteen lanes' worth
+    // of types) that in production only RedLog's own analysis writes.
+    //
+    // A flag on `/api/events` would have been fewer lines and wrong: the
+    // production route's refusal is itself under test
+    // (e2e/recording-pause.spec.ts, "a forged system event is refused"), and a
+    // bypass reachable on the same route would have made that test pass while
+    // the door stood open.
+    const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
+    if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
+    if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const agentType = String(body.agent_type || body.agentType || 'external')
+      // Types an outside tool may report. The ones deliberately absent are
+      // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
+      // written by RedLog's own analysis, and letting a caller forge them
+      // means forging RedLog's conclusions about the engagement.
+      //
+      // `terminal` is here because it is the type in redlog-cli's own help
+      // text (`redlog-cli log terminal --data ...`). Leaving it out 403'd the
+      // documented path; e2e/cli-smoke.spec.ts caught it.
       const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
-        'scanner', 'shell', 'dns', 'external', 'agent', 'marker',
-        'process', 'credential_use', 'file_transfer'
+        'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
+        'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
+        'browser', 'http_navigation'
       ])
-      if (!EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+      if (!e2eSeed && !EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+        // A 403 an integration ignores is capture silently stopping, which is
+        // the one failure §1 does not allow. Record it so a tool posting a
+        // blocked type shows up as a capture problem rather than as nothing.
+        noteDbError('api-external-rejected', new Error(`agent_type "${agentType}" rejected`))
         json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
         return
       }

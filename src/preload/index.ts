@@ -50,6 +50,14 @@ contextBridge.exposeInMainWorld('redlog', {
     getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
+    // Recordings are searched separately from events — see casts:search in
+    // main. `status` is not optional decoration: a project whose recordings
+    // are still being indexed returns fewer hits than it will in a minute,
+    // and this product cannot let that read as "nothing there".
+    searchCasts: (query: string, limit?: number) => ipcRenderer.invoke('casts:search', query, limit),
+    castIndexStatus: () => ipcRenderer.invoke('casts:status'),
+    readCastRange: (castRel: string, off: number, len: number) =>
+      ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
@@ -158,46 +166,6 @@ contextBridge.exposeInMainWorld('redlog', {
     setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('plugins:setEnabled', id, enabled),
     grant: (id: string) => ipcRenderer.invoke('plugins:grant', id),
     revoke: (id: string) => ipcRenderer.invoke('plugins:revoke', id)
-  },
-  cloudShare: {
-    /** Cheap read — safe to call from every dialog open. */
-    preview: () => ipcRenderer.invoke('cloudShare:preview'),
-    /** Build the .zip + bundle.json. Fails if reviewedByOperator is false or
-     *  the bundle exceeds the size cap. */
-    prepare: (engagementId: string, reviewedByOperator: boolean) =>
-      ipcRenderer.invoke('cloudShare:prepare', engagementId, reviewedByOperator),
-    /** Ships the prepared bundle via the local stub uploader (writes to
-     *  ~/.redlog/shares/). v1 has no real HTTPS backend wired to Settings. */
-    uploadStub: (zipPath: string, manifestJson: string, expiresIn?: string) =>
-      ipcRenderer.invoke('cloudShare:uploadStub', zipPath, manifestJson, expiresIn),
-    /** Ships the prepared bundle to a user-deployed redlog-share-worker
-     *  (spec §5 wire format). Endpoint + auth token are passed explicitly so
-     *  the caller controls when they're in scope — avoids leaking the token
-     *  to a stub-only flow. */
-    upload: (zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) =>
-      ipcRenderer.invoke('cloudShare:upload', zipPath, manifestJson, expiresIn, endpoint, authToken)
-  },
-  marketplace: {
-    // Fetch the registry index. Optional URL override so operators can point
-    // at their own mirror / air-gapped registry via Settings.
-    fetchIndex: (url?: string) => ipcRenderer.invoke('marketplace:fetchIndex', url),
-    listPublishers: () => ipcRenderer.invoke('marketplace:listPublishers'),
-    trustPublisher: (id: string, publicKey: string, homepage?: string, label?: string) =>
-      ipcRenderer.invoke('marketplace:trustPublisher', id, publicKey, homepage, label),
-    untrustPublisher: (id: string) => ipcRenderer.invoke('marketplace:untrustPublisher', id),
-    install: (entryJson: string) => ipcRenderer.invoke('marketplace:install', entryJson),
-    // Dev/E2E-only path — main gates this on REDLOG_E2E=1. Bytes are base64
-    // so we can hop across the IPC boundary without a Buffer polyfill in the
-    // renderer. Never called by production code paths.
-    testInstall: (entryJson: string, tarballBytesB64: string) =>
-      ipcRenderer.invoke('marketplace:testInstall', entryJson, tarballBytesB64),
-    // Dev/E2E-only override for fetchIndex — gated on REDLOG_E2E=1 in main.
-    // Pass a JSON-stringified RegistryIndex to install a mock; pass '' to clear.
-    testSetIndex: (indexJson: string) =>
-      ipcRenderer.invoke('marketplace:testSetIndex', indexJson),
-    listVersions: (pluginId: string) => ipcRenderer.invoke('marketplace:listVersions', pluginId),
-    rollback: (pluginId: string, versionKey: string) => ipcRenderer.invoke('marketplace:rollback', pluginId, versionKey),
-    revocations: () => ipcRenderer.invoke('marketplace:revocations')
   },
   capture: {
     health: () => ipcRenderer.invoke('capture:health')
