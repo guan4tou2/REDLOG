@@ -53,10 +53,15 @@ Surfaced across `OFF-CHAIN-CONTENT-STORES` (gaps 1–6) + `SPEC-SCOPE-AWARE-LIFE
 
 ## Quick wins (🟢 zero core change — immediate value)
 
-### Q1 — `scan-parsers` plugin pack
-`SPEC-AI-ERA-PLUGINS` gap 1 / `PLUGIN-ROLES` Parser. Bundled 🟢 pack: parse nmap
-`-oX` / nuclei `-json` → typed `scanner`/`scan_result` events + `eventTypes` +
-`targetExtractors`. No core change. **Doc/plugin.**
+### Q1 — `scan-parsers` plugin pack  ❌ NOT DOING (2026-08-22)
+`SPEC-AI-ERA-PLUGINS` gap 1 / `PLUGIN-ROLES` Parser. Would parse nmap `-oX` /
+nuclei `-json` into typed `scanner`/`scan_result` events. **Ruled against** by
+`DESIGN-core-and-capture.md` §2.4: turning tool output into structured findings
+is interpretation, and what counts as a finding is per-shop opinion — the same
+line the positioning draws at ATT&CK tagging. The recording is kept and made
+searchable instead (`cast-index.ts`); "which run mentioned 445" is answerable,
+"list every open port" is deliberately not. The PR #8 branch built this pack;
+it was left unmerged on that ruling.
 
 ### Q2 — `mcp-tee` example + shim
 `SPEC-AI-ERA-PLUGINS` gap 3 / `PLUGIN-ROLES` Tee. A stdio/HTTP-MCP proxy that
@@ -100,6 +105,15 @@ cloud-share `RedactionPreview` / deconfliction subtype-filter) into named profil
 `PLUGIN-ROLES` gap 1 / `SPEC-AI-ERA-PLUGINS` gap 4. Isolated 🔴 that reads the event
 stream + appends inferred detections. **Depends on K1.** Unblocks semantic injection
 labels + plugin Monitor path. **Code.**
+
+### ✅ `c2-tailers` pack — BUILT (2026-08-22)
+`SPEC-AI-ERA-PLUGINS` gap 2 / `PLUGIN-ROLES` Tailer. Salvaged from PR #8 and
+verified against the current manifest schema. Follows a Sliver or generic-JSONL
+C2 log shell-side and lands beacon check-ins, task results and pivots on the
+timeline. Unlike Q1 this is *capture*, not interpretation: a C2 log is an event
+stream of things that happened, recorded verbatim (DESIGN-PRINCIPLES §3), where
+scan output is a result set — a set of claims about the world. Tests:
+`test/c2-tailers.test.ts` (parsers + loads-against-schema + shell-side tier).
 
 ### C2 — Add `detectionPatterns` (🟢)
 `PLUGIN-ROLES` gap 4 / `DETECTOR-ROLES` gap 2. A 🟢 sibling of `lootPatterns` (or a
