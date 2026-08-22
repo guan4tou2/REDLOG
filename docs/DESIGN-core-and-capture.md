@@ -369,12 +369,12 @@ recordings.
 ## 6. Still open
 
 - Windows script-block logging (§2.3) and queryable tool output (§2.4).
-- Settings: **12 pages / 30 field groups**, against positioning risk #2 which
+- Settings: **12 pages / 27 field groups**, against positioning risk #2 which
   named "8 tabs / 34 groups" as the symptom of breadth outrunning the persona.
-  The left list took the page count *up* to 13 before two rounds of removal
-  brought it to 12 and the groups from 34 to 30. That is a dent, not a
-  resolution — the remaining test is the one below, applied to each group in
-  turn, and most of the 30 have not been through it yet.
+  The left list took the page count *up* to 13 before three rounds of removal
+  brought it to 12 and the groups from 34 to 27. Four groups still need a
+  scope ruling rather than a merge: cloud share, the deconfliction webhook,
+  operator tokens, and the MCP server.
 - Timeline view modes — the audit-mode shape does not survive §1, but the
   eight flat toggles are still a real problem.
 - 18 lanes.
@@ -406,3 +406,26 @@ The second removed the marketplace. Only one group, but the group was a
 registry browser, a publisher trust editor, and a revocation viewer stacked
 inside it — the group count understated it, which is worth noting because the
 count is the metric positioning risk #2 uses.
+
+The third went group by group, and two of the five candidates turned out to
+be wrong on inspection. Both failures were the same shape — **the name did
+not describe the contents**:
+
+*"Polling" is not a tuning knob.* Every field in it decides what RedLog
+itself sends to the network and to whom: which resolver or third-party echo
+service learns the operator's address, how often, from where. During an
+engagement that is OPSEC surface, and it belongs in front of the operator
+rather than in a packet capture. It stays, renamed to "What RedLog itself
+sends out". The bad name is what nearly deleted it.
+
+*"Team Profile Sync" was one useful button and one duplicate.* Import
+duplicated the project picker's, which is where you want it — you seed a
+config when creating a project, not after. Export could not go with it:
+deleting it would leave an import that consumes files nothing produces, and
+it carries `views.json` as well as `config.yaml`, so it is not a button for
+`cp`. Kept as one button, renamed "Hand-off profile".
+
+Actually removed or merged: screenshot quality folded into screenshots (one
+subject, two groups); VPN adapter detection folded into safe/exposed IPs (it
+exists only to answer that group's question); "Check for updates" moved to the
+title bar beside the version string it sat next to a copy of.
