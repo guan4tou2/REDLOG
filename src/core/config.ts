@@ -156,6 +156,14 @@ export interface RedLogConfig {
     pollMs?: number
     ignoreCommands?: string[]
   }
+  /** Connection-level network capture (DESIGN-core-and-capture.md §2.1).
+   *  Polls the socket table for established connections; no payload, no root.
+   *  Off by default — it is capture the operator opts into, and it shells out
+   *  every pollMs. */
+  connectionMonitor?: {
+    enabled: boolean
+    pollMs?: number
+  }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
    *  per-turn `agent.*` events into the hash chain. On by default —
@@ -276,6 +284,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false,
     pollMs: 500,
     ignoreCommands: []
+  },
+  connectionMonitor: {
+    enabled: false,
+    pollMs: 2000
   },
   agentTailer: {
     enabled: true,

@@ -953,5 +953,10 @@
   "httpHistory.kind.span": "一連串請求",
   "httpHistory.hasParentCommand": "由已記錄的指令產生",
   "httpHistory.openAtMoment": "在時間軸開啟這個時刻",
-  "httpHistory.empty": "尚未擷取到 HTTP 流量。"
+  "httpHistory.empty": "尚未擷取到 HTTP 流量。",
+  "settings.connectionMonitorGroup": "網路連線",
+  "settings.connectionMonitorEnable": "記錄已建立的連線",
+  "settings.connectionMonitorEnableHint": "輪詢 socket 表,記錄你連到哪裡——IP、埠、協定、持續時間。無 payload、不需 root。補上 proxy 看不到的洞:SMB、RDP、反向 shell、C2 beacon。",
+  "settings.connectionMonitorSynNote": "只記錄已建立的連線。SYN 掃描(nmap -sS)不完成握手,不會出現——指令仍會記錄,連線不會。",
+  "capture.connectionMonitor": "網路連線"
 }

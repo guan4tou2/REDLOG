@@ -180,6 +180,16 @@ function eventTitle(event: RedLogEvent): string {
         }
         case 'cookie_change':
           return `[cookie] ${d.domain || '?'} ${d.cookie_name || '?'} rotated`.trim()
+        case 'connection': {
+          // Connection-level capture (§2.1): who connected where, no payload.
+          const proto = (d.proto as string || 'tcp').toUpperCase()
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'}`.trim()
+        }
+        case 'connection_end': {
+          const proto = (d.proto as string || 'tcp').toUpperCase()
+          const dur = d.duration_sec != null ? ` (${d.duration_sec}s)` : ''
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'} closed${dur}`.trim()
+        }
         default:
           return `[${d.subtype || 'req'}] ${method} ${url}`.trim()
       }
@@ -259,6 +269,8 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
       if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
       if (d.subtype === 'secret_revealed') return `👁 Secret revealed: ${(d.fields as string[])?.join(', ') || 'unknown fields'}`
+      if (d.subtype === 'connection_capture_started') return `⇄ Connection capture on — established connections only, no SYN scans`
+      if (d.subtype === 'connection_monitor_saturated') return `⇄ ${d.count ?? '?'} connections in one poll — recording the count, not each`
       return `${event.agentType}: ${d.subtype || ''}`
     default:
       return `${event.agentType}: ${d.subtype || ''}`
