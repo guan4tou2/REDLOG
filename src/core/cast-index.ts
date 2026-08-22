@@ -29,7 +29,7 @@ import { getProjectDir } from './db'
 //   1. `events` carries append-only triggers and a hash chain. An index that
 //      is rewritten whenever a recording is re-read does not belong beside
 //      rows whose immutability is the product's foundation.
-//   2. `bundle-export` and `cloud-share` copy the evidence DB. Shipping a
+//   2. `bundle-export` copies the evidence DB. Shipping a
 //      search cache inside an evidence bundle means the bundle's bytes change
 //      for reasons that have nothing to do with the evidence.
 //   3. Retention prunes `.cast` files after N days. If the text survived in

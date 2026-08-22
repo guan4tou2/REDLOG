@@ -10,7 +10,7 @@ import path from 'path'
 // lists: three levels underneath the second level. That whole branch is gone
 // now — see the marketplace test below for why removing beat flattening.
 //
-// The container had to come first. Twelve categories fit down a side and do
+// The container had to come first. Eleven categories fit down a side and do
 // not fit across a top, so the content could not be split until there was
 // somewhere to put it.
 //
@@ -26,12 +26,12 @@ const PAGES = [
   'hooks', 'agents', 'captureControl',
   'scope', 'network', 'deconfliction',
   'integrity',
-  'operators', 'cloud', 'plugins',
+  'operators', 'plugins',
   'general', 'hud'
 ]
 
 describe('settings information architecture', () => {
-  it('declares twelve pages as a union', () => {
+  it('declares eleven pages as a union', () => {
     const block = /type SettingsPage =([\s\S]*?)\n\n/.exec(SRC)
     expect(block, 'SettingsPage union not found').not.toBeNull()
     for (const page of PAGES) {
@@ -85,6 +85,17 @@ describe('settings information architecture', () => {
     // group removed should have to argue for itself in a diff.
     const groups = (SRC.match(/<FieldGroup title=/g) ?? []).length
     expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(27)
+  })
+
+  it('does not ship a cloud share backend', () => {
+    // Uploading an evidence bundle to a backend with an expiry is
+    // distribution infrastructure — the same argument that removed the
+    // marketplace, and heavier: §1 makes the operator writing the engagement
+    // up the consumer of the output. The bundle itself stays, in the one
+    // export control; how it reaches anyone else is the operator's business.
+    expect(SRC).not.toMatch(/CloudSharePanel|cloudShare/)
+    expect(fs.existsSync(path.join(ROOT, 'src/core/cloud-share.ts'))).toBe(false)
+    expect(fs.existsSync(path.join(ROOT, 'src/core/cloud-share-uploader.ts'))).toBe(false)
   })
 
   it('does not ship a marketplace', () => {

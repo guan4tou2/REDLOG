@@ -1538,7 +1538,7 @@ app.whenReady().then(() => {
   // exactly one copy and the app knows where it is.
   //
   // `~/.redlog/tokens/` sits deliberately outside the project directory, so
-  // no bundle export, evidence package or cloud share can ever sweep it up —
+  // no bundle export or evidence package can ever sweep it up —
   // those walk the project tree, and a credential is not evidence.
   ipcMain.handle('operators:writeToken', async (_e, id: string, token: string) => {
     if (typeof id !== 'string' || !id || typeof token !== 'string' || !token) return null
@@ -1847,70 +1847,6 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
-  // --- Cloud share (bundle → sign → upload) ---
-  // Real backend upload is not wired in Settings yet — spec is at
-  // docs/CLOUD_SHARE_BUNDLE.md and hosts pending a decision. The stub uploader
-  // exercises the whole flow (build → gate → "upload" → get URL) against a
-  // ~/.redlog/shares/ directory so operators can rehearse before the backend
-  // exists.
-  ipcMain.handle('cloudShare:preview', async () => {
-    try {
-      const { previewRedaction } = await import('../core/cloud-share')
-      return { ok: true, preview: previewRedaction() }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('cloudShare:prepare', async (_e, engagementId: string, reviewedByOperator: boolean) => {
-    try {
-      const { prepareCloudShareBundle } = await import('../core/cloud-share')
-      // Honour cloudShare.maxBundleBytes override — operators with lots of
-      // screenshots + .cast blow through the 100 MB default; raising this
-      // client-side matters only if the backend also allows it.
-      const cfg = activeProject ? loadConfig(getProjectPath(activeProject)) : null
-      const maxBytes = cfg?.cloudShare?.maxBundleBytes
-      const prepared = prepareCloudShareBundle({ engagementId, reviewedByOperator, maxBytes })
-      return { ok: true, zipPath: prepared.zipPath, manifest: prepared.manifest }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('cloudShare:uploadStub', async (_e, zipPath: string, manifestJson: string, expiresIn?: string) => {
-    try {
-      const { localFileUploader } = await import('../core/cloud-share-uploader')
-      const manifest = JSON.parse(manifestJson)
-      const result = await localFileUploader.upload(
-        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
-        { expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined }
-      )
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // HTTPS backend upload — points at a user-deployed redlog-share-worker
-  // (see redlog-share-worker/README.md). The wire contract is the two-step
-  // POST /api/share/init + PUT signed URL flow documented on the Worker.
-  // Endpoint + bearer are passed explicitly so the Settings UI can drive
-  // them without needing to reload config for every share attempt.
-  ipcMain.handle('cloudShare:upload', async (_e, zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) => {
-    try {
-      if (!endpoint) return { ok: false, error: 'endpoint required' }
-      const { httpsUploader } = await import('../core/cloud-share-uploader')
-      const manifest = JSON.parse(manifestJson)
-      const result = await httpsUploader.upload(
-        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
-        {
-          endpoint,
-          bearer: authToken || undefined,
-          expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined
-        }
-      )
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
