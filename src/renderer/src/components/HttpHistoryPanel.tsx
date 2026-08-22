@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { groupFlows, type Activity } from '../lib/httpActivity'
 
 interface HttpFlow {
   flowId: string
@@ -19,6 +20,8 @@ interface HttpFlow {
   hasResponseBody: boolean
   httpVersion: string
   streamId: number | null
+  /** First `_causes` entry on the request — the command that produced this. */
+  causeEventId: string | null
 }
 
 function formatBytes(n: number): string {
@@ -32,6 +35,130 @@ const STATUS_COLORS: Record<string, string> = {
   '3': 'text-blue-400',
   '4': 'text-amber-400',
   '5': 'text-red-400'
+}
+
+/**
+ * The command that produced this flow, if the record links one.
+ *
+ * Only the *request* can carry that link. A response's `_causes` points at its
+ * own request — the api-server pairs the two by `flow_id` — so reading it as
+ * parentage gives every flow a unique "parent" and grouping degenerates into
+ * one group per connection, which is the shape §3 exists to remove. The unit
+ * tests could not catch that, because they hand `causeEventId` in directly;
+ * e2e/http-activity-view.spec.ts did, immediately.
+ */
+function parentCommandOf(
+  request: RedLogEvent | null,
+  response: RedLogEvent | null
+): string | null {
+  const causes = request?.data?._causes as string[] | undefined
+  if (!Array.isArray(causes) || causes.length === 0) return null
+  const self = new Set([request?.id, response?.id].filter(Boolean) as string[])
+  return causes.find((c) => !self.has(c)) ?? null
+}
+
+// ---------------------------------------------------------------------------
+// Activity row — §3's point-or-span
+// ---------------------------------------------------------------------------
+//
+// One line per thing the operator did, not per connection it produced. The
+// connections are still all here, one disclosure down; what changed is which
+// level the eye lands on. A 40,000-request brute force and a single curl both
+// occupy one row, which is the point: they were both one action.
+
+function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }: {
+  activity: Activity<HttpFlow>
+  t: (k: string, vars?: Record<string, string | number>) => string
+  rowProps: ReturnType<ReturnType<typeof useListKeyboard>['itemProps']>
+  open: boolean
+  onToggle: () => void
+  onOpenInTimeline?: (eventId: string, ts: number) => void
+}): JSX.Element {
+  const { statusBuckets: sb, flows } = activity
+  const spanSec = Math.round((activity.endMs - activity.startMs) / 1000)
+  const jumpId = activity.causeEventId ?? flows[0]?.responseEventId ?? flows[0]?.requestEventId
+
+  return (
+    <div className="rounded border border-redlog-border-subtle">
+      <div
+        {...rowProps}
+        ref={(el) => rowProps.ref(el)}
+        onClick={() => { rowProps.onClick(); onToggle() }}
+        aria-expanded={open}
+        data-testid="http-activity-row"
+        data-kind={activity.kind}
+        className="flex items-center gap-2 px-2 py-1.5 text-xs cursor-pointer hover:bg-redlog-elevated/30 focus-visible:outline-none focus-visible:bg-redlog-elevated/50 rounded"
+      >
+        {/* Shape carries the point/span distinction, and the label repeats it,
+            because shape alone is not an accessible channel (§5.7). */}
+        <span
+          aria-hidden
+          className={`shrink-0 ${activity.kind === 'span'
+            ? 'w-4 h-[3px] rounded-sm bg-redlog-cyan'
+            : 'w-[7px] h-[7px] rounded-full bg-redlog-cyan'}`}
+        />
+        <span className="sr-only">{t(`httpHistory.kind.${activity.kind}`)}</span>
+
+        <span className="font-mono text-redlog-text truncate max-w-[220px]" title={activity.host}>
+          {activity.host || t('httpHistory.noHost')}
+        </span>
+
+        <span className="font-mono text-redlog-text-dim shrink-0">{activity.methods.join(' ')}</span>
+
+        <span className="font-mono text-redlog-text-dim shrink-0 tabular-nums">
+          {t('httpHistory.requestCount', { n: flows.length })}
+        </span>
+
+        <span className="flex items-center gap-1 shrink-0 font-mono tabular-nums">
+          {(['2', '3', '4', '5'] as const).filter((b) => sb[b]).map((b) => (
+            <span key={b} className={STATUS_COLORS[b] ?? 'text-redlog-text-dim'}>{b}xx·{sb[b]}</span>
+          ))}
+        </span>
+
+        <span className="ml-auto shrink-0 text-redlog-text-faint tabular-nums">
+          {formatTime(activity.startMs, { seconds: true })}
+          {activity.kind === 'span' && spanSec > 0 && ` +${spanSec}s`}
+        </span>
+
+        {activity.causeEventId && (
+          <span
+            title={t('httpHistory.hasParentCommand')}
+            className="shrink-0 text-redlog-text-faint"
+          >⌘</span>
+        )}
+
+        {jumpId && onOpenInTimeline && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenInTimeline(jumpId, activity.startMs) }}
+            title={t('httpHistory.openAtMoment')}
+            aria-label={t('httpHistory.openAtMoment')}
+            className="shrink-0 text-redlog-text-dim hover:text-redlog-text px-1 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50"
+          >↗</button>
+        )}
+      </div>
+
+      {open && (
+        <ul className="border-t border-redlog-border-subtle divide-y divide-redlog-border-subtle/50">
+          {flows.map((f) => {
+            const path = (() => {
+              try { const u = new URL(f.url); return u.pathname + (u.search || '') } catch { return f.url }
+            })()
+            const sc = f.status !== null ? STATUS_COLORS[String(f.status)[0]] : undefined
+            return (
+              <li key={f.flowId} className="flex items-center gap-2 px-2 py-1 text-[11px] font-mono">
+                <span className="text-redlog-text-dim shrink-0 w-12">{f.method}</span>
+                <span className={`shrink-0 w-8 tabular-nums ${sc ?? 'text-redlog-text-faint'}`}>{f.status ?? '—'}</span>
+                <span className="text-redlog-text truncate flex-1" title={f.url}>{path}</span>
+                <span className="text-redlog-text-faint shrink-0 tabular-nums">
+                  {formatTime(f.timestamp, { seconds: true })}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +320,11 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [sortCol, setSortCol] = useState<'timestamp' | 'status' | 'size' | 'durationMs'>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
-  const [viewMode, setViewMode] = useState<'table' | 'sitemap'>('table')
+  // §3: the activity is the row, not the connection. 'flows' is still here
+  // as an explicit escape hatch, because a record has to let you get at the
+  // raw thing — it is just no longer what you land on.
+  const [viewMode, setViewMode] = useState<'activity' | 'flows' | 'sitemap'>('activity')
+  const [openActivity, setOpenActivity] = useState<string | null>(null)
 
   const loadFlows = useCallback(async () => {
     const events = await window.redlog.events.query({
@@ -238,7 +369,8 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         hasRequestBody: !!(req?.request_body || req?.request_body_ref),
         hasResponseBody: !!(resp?.response_body || resp?.response_body_ref),
         httpVersion: String(resp?.http_version ?? req?.http_version ?? ''),
-        streamId: typeof resp?.stream_id === 'number' ? resp.stream_id : null
+        streamId: typeof resp?.stream_id === 'number' ? resp.stream_id : null,
+        causeEventId: parentCommandOf(request, response)
       })
     }
 
@@ -329,6 +461,22 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     onEscape: () => { setMethodFilter(null); setStatusFilter(null) }
   })
 
+  const activities = useMemo(() => groupFlows(filtered), [filtered])
+
+  const activityNav = useListKeyboard({
+    count: activities.length,
+    onActivate: (i) => {
+      const a = activities[i]
+      if (a) setOpenActivity((cur) => (cur === a.id ? null : a.id))
+    },
+    onJumpToTimeline: (i) => {
+      const a = activities[i]
+      const id = a?.causeEventId ?? a?.flows[0]?.responseEventId ?? a?.flows[0]?.requestEventId
+      if (id && a) onOpenInTimeline?.(id, a.startMs)
+    },
+    onEscape: () => setOpenActivity(null)
+  })
+
   const sitemapTree = useMemo(() => buildSitemapTree(filtered), [filtered])
 
   const toggleSort = (col: typeof sortCol) => {
@@ -351,15 +499,27 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border-subtle/60 bg-redlog-bg/50">
         <span className="text-sm font-semibold text-redlog-text">{t('httpHistory.title')}</span>
-        <span className="text-xs text-redlog-text-dim font-mono">{filtered.length}/{flows.length}</span>
+        <span className="text-xs text-redlog-text-dim font-mono tabular-nums">
+          {t('httpHistory.counts', { activities: activities.length, flows: filtered.length })}
+        </span>
 
         <div className="flex items-center gap-0.5 ml-3 bg-redlog-elevated/60 rounded p-0.5">
           <button
-            onClick={() => setViewMode('table')}
-            className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'table' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
-          >{t('httpHistory.viewTable')}</button>
+            onClick={() => setViewMode('activity')}
+            data-http-view="activity"
+            aria-pressed={viewMode === 'activity'}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'activity' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+          >{t('httpHistory.viewActivity')}</button>
+          <button
+            onClick={() => setViewMode('flows')}
+            data-http-view="flows"
+            aria-pressed={viewMode === 'flows'}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+          >{t('httpHistory.viewFlows')}</button>
           <button
             onClick={() => setViewMode('sitemap')}
+            data-http-view="sitemap"
+            aria-pressed={viewMode === 'sitemap'}
             className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'sitemap' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewSitemap')}</button>
         </div>
@@ -396,7 +556,23 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         ))}
       </div>
 
-      {viewMode === 'table' ? (
+      {viewMode === 'activity' ? (
+        <div className="flex-1 overflow-auto p-2 space-y-1" {...activityNav.containerProps}>
+          {activities.length === 0 ? (
+            <p className="text-xs text-redlog-text-faint px-1 py-2">{t('httpHistory.empty')}</p>
+          ) : activities.map((a, i) => (
+            <ActivityRow
+              key={a.id}
+              activity={a}
+              t={t}
+              rowProps={activityNav.itemProps(i)}
+              open={openActivity === a.id}
+              onToggle={() => setOpenActivity((cur) => (cur === a.id ? null : a.id))}
+              onOpenInTimeline={onOpenInTimeline}
+            />
+          ))}
+        </div>
+      ) : viewMode === 'flows' ? (
         <div className="flex-1 overflow-auto">
           <table className="w-full text-[11px] font-mono">
             <thead className="sticky top-0 bg-redlog-surface/95 z-10">
