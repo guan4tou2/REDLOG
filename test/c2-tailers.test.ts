@@ -95,10 +95,21 @@ describe('the bundled c2-tailers plugin actually loads', () => {
     expect(missing).toEqual([])
   })
 
-  it('ships its hooks executable', () => {
-    for (const h of fs.readdirSync(path.join(dir, 'hooks'))) {
-      const mode = fs.statSync(path.join(dir, 'hooks', h)).mode
-      expect(mode & 0o111, `${h} is not executable`).toBeGreaterThan(0)
+  it('tracks its hooks as executable in git', () => {
+    // The exec bit has to survive a fresh clone, and the filesystem stat mode
+    // does not: Windows checkouts drop it entirely, so `fs.statSync().mode`
+    // reads 0 there and asserting on it fails a green plugin. Git's own index
+    // mode (100755) is the cross-platform source of truth — it is what a Unix
+    // operator's clone will actually get.
+    const { execFileSync } = require('child_process') as typeof import('child_process')
+    const out = execFileSync('git', ['ls-files', '-s', 'plugins/c2-tailers/hooks'], {
+      cwd: path.join(__dirname, '..'), encoding: 'utf-8'
+    })
+    const lines = out.trim().split('\n').filter(Boolean)
+    expect(lines.length, 'no hooks tracked').toBeGreaterThan(0)
+    for (const line of lines) {
+      const mode = line.split(/\s/)[0]
+      expect(mode, `${line} is not tracked 100755`).toBe('100755')
     }
   })
 })

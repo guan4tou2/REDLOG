@@ -32,7 +32,10 @@ const PAGES = [
 
 describe('settings information architecture', () => {
   it('declares eleven pages as a union', () => {
-    const block = /type SettingsPage =([\s\S]*?)\n\n/.exec(SRC)
+    // CRLF-safe: .tsx files check out with \r\n on Windows (.gitattributes only
+    // pins .sh/.py to LF), so a bare \n\n never matches there — the same
+    // line-ending trap the repo hit once before with path.sep.
+    const block = /type SettingsPage =([\s\S]*?)\r?\n\r?\n/.exec(SRC)
     expect(block, 'SettingsPage union not found').not.toBeNull()
     for (const page of PAGES) {
       expect(block![1], `missing page: ${page}`).toContain(`'${page}'`)
