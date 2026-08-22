@@ -18,7 +18,7 @@
 
 export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
-  | 'targets' | 'scope' | 'loot' | 'marks' | 'search'
+  | 'targets' | 'scope' | 'loot' | 'marks' | 'search' | 'http_history'
 
 // `transcript` sits next to `timeline` — same events, read the other way, and
 // `search` between them because finding evidence afterwards is a core use
@@ -30,5 +30,5 @@ export type SidebarViewId =
 // is somewhere an operator jumps mid-keystroke the way they jump to the
 // timeline or to search.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'timeline', 'search', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
+  'dashboard', 'timeline', 'search', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
 ]

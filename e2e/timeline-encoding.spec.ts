@@ -50,7 +50,7 @@ test.describe.serial('timeline visual encoding', () => {
     const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
     const post = (agent_type: string, data: Record<string, unknown>): Promise<Response> =>
-      fetch(`${base}/api/events`, { method: 'POST',
+      fetch(`${base}/api/events/seed`, { method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent_type, data }) })
     // Spread the markers in time. Posted back-to-back they land in the same

@@ -101,7 +101,7 @@ test.describe.serial('timeline geometry + startup gates', () => {
     ]
 
     for (const [agent_type, data] of rows) {
-      const r = await fetch(`${base}/api/events`, {
+      const r = await fetch(`${base}/api/events/seed`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent_type, data })

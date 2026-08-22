@@ -85,14 +85,27 @@ test.describe.serial('recording pause semantics', () => {
       .toBe(before)
   })
 
-  test('system and marker keep recording while paused', async () => {
+  test('a marker still records while paused', async () => {
     const before = await count()
     // 201 = row created. The paused path answers 200 with `skipped` instead —
     // both are 2xx, so `curl -sf` in the hook is happy either way.
-    expect((await post('system', { subtype: 'ip_transition', from: 'safe', to: 'exposed' })).status).toBe(201)
     expect((await post('marker', { title: 'noted while paused', severity: 'info' })).status).toBe(201)
     await page.waitForTimeout(300)
-    expect(await count(), 'system + marker are exempt').toBe(before + 2)
+    expect(await count(), 'marker is pause-exempt').toBe(before + 1)
+  })
+
+  test('a forged system event is refused even though system is pause-exempt', async () => {
+    // This used to post `system` over HTTP and assert 201, which made the
+    // pause exemption look like it depended on an open external door. It does
+    // not: no hook or addon posts `system`, and the external allowlist now
+    // refuses it, because `system` rows are RedLog's own conclusions about
+    // the engagement and forging them forges the record.
+    //
+    // The exemption itself is proven through the path that actually produces
+    // system rows — the two tests below read `recording_paused` /
+    // `recording_resumed`, which are written while paused, by RedLog.
+    const res = await post('system', { subtype: 'ip_transition', from: 'safe', to: 'exposed' })
+    expect(res.status, 'external system must be refused').toBe(403)
   })
 
   test('resuming restores capture and the pause is bracketed in the log', async () => {

@@ -30,13 +30,15 @@ import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
+import { exportHar } from './har-export'
 import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
 import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
-import { getCaptureHealth } from './capture-health'
+import { getCaptureHealth, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
+import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -119,6 +121,15 @@ function scopeSignalFor(
       target,
       source: 'http',
       action: `${(data.method as string) ?? 'GET'} ${(data.url as string) ?? ''}`.trim()
+    }
+  }
+  if (agentType === 'scanner' && (data.subtype === 'ws_message' || data.subtype === 'tcp_message')) {
+    const target = (data.host as string | undefined) ?? null
+    if (!target) return null
+    return {
+      target,
+      source: 'scanner',
+      action: `${data.subtype === 'ws_message' ? 'WS' : 'TCP'} ${data.direction ?? ''} ${(data.url as string) ?? target}`.trim()
     }
   }
   if (agentType === 'dns' && data.subtype === 'dns_query') {
@@ -330,10 +341,21 @@ function json(res: http.ServerResponse, status: number, data: unknown): void {
   res.end(JSON.stringify(data))
 }
 
+const MAX_REQUEST_BYTES = 20 * 1024 * 1024
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (c) => chunks.push(c))
+    let total = 0
+    req.on('data', (c: Buffer) => {
+      total += c.length
+      if (total > MAX_REQUEST_BYTES) {
+        req.destroy()
+        reject(new Error('request body too large'))
+        return
+      }
+      chunks.push(c)
+    })
     req.on('end', () => resolve(Buffer.concat(chunks).toString()))
     req.on('error', reject)
   })
@@ -428,10 +450,43 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/events' && req.method === 'POST') {
+    // `/api/events/seed` is the E2E fixture door: same handler, allowlist
+    // skipped, and it does not exist unless REDLOG_E2E=1. Specs need to plant
+    // derived rows (pivot, cleanup, a scope violation, eighteen lanes' worth
+    // of types) that in production only RedLog's own analysis writes.
+    //
+    // A flag on `/api/events` would have been fewer lines and wrong: the
+    // production route's refusal is itself under test
+    // (e2e/recording-pause.spec.ts, "a forged system event is refused"), and a
+    // bypass reachable on the same route would have made that test pass while
+    // the door stood open.
+    const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
+    if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
+    if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const agentType = body.agent_type || body.agentType || 'external'
+      const agentType = String(body.agent_type || body.agentType || 'external')
+      // Types an outside tool may report. The ones deliberately absent are
+      // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
+      // written by RedLog's own analysis, and letting a caller forge them
+      // means forging RedLog's conclusions about the engagement.
+      //
+      // `terminal` is here because it is the type in redlog-cli's own help
+      // text (`redlog-cli log terminal --data ...`). Leaving it out 403'd the
+      // documented path; e2e/cli-smoke.spec.ts caught it.
+      const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
+        'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
+        'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
+        'browser', 'http_navigation'
+      ])
+      if (!e2eSeed && !EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+        // A 403 an integration ignores is capture silently stopping, which is
+        // the one failure §1 does not allow. Record it so a tool posting a
+        // blocked type shows up as a capture problem rather than as nothing.
+        noteDbError('api-external-rejected', new Error(`agent_type "${agentType}" rejected`))
+        json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
+        return
+      }
       const data = body.data || {}
       let targetId = body.target_id || body.targetId || undefined
 
@@ -575,6 +630,48 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         }
       }
 
+      if (agentType === 'scanner') {
+        extractBodyToSidecar(data, 'request_body')
+        extractBodyToSidecar(data, 'response_body')
+        extractBodyToSidecar(data, 'ws_body')
+        extractBodyToSidecar(data, 'tcp_body')
+      }
+
+      // Credential-use detection for HTTP requests: when we see auth headers
+      // or login-form bodies, emit a companion credential_use event so the
+      // dedicated lane lights up without relying on external agents.
+      let detectedCred: { method: string; target: string; detail: string } | null = null
+      if (agentType === 'scanner' && data.subtype === 'http_request_start') {
+        const reqHeaders = data.request_headers as string[][] | Record<string, string> | undefined
+        const headerList: [string, string][] = Array.isArray(reqHeaders)
+          ? reqHeaders as [string, string][]
+          : reqHeaders ? Object.entries(reqHeaders) : []
+        for (const [name, value] of headerList) {
+          const ln = name.toLowerCase()
+          if (ln === 'authorization') {
+            const scheme = (value as string).split(' ')[0]?.toLowerCase() ?? ''
+            if (scheme === 'basic') detectedCred = { method: 'basic_auth', target: String(data.host ?? ''), detail: 'Basic auth header' }
+            else if (scheme === 'bearer') detectedCred = { method: 'bearer_token', target: String(data.host ?? ''), detail: 'Bearer token' }
+            else if (scheme === 'ntlm') detectedCred = { method: 'ntlm', target: String(data.host ?? ''), detail: 'NTLM auth' }
+            else if (scheme === 'negotiate') detectedCred = { method: 'negotiate', target: String(data.host ?? ''), detail: 'Kerberos/Negotiate' }
+            else detectedCred = { method: scheme || 'auth_header', target: String(data.host ?? ''), detail: `Authorization: ${scheme}` }
+            break
+          }
+          if (ln === 'cookie' && /(?:session|token|auth|jwt|sid)[\s]*=/i.test(value as string)) {
+            detectedCred = { method: 'session_cookie', target: String(data.host ?? ''), detail: 'Session cookie' }
+          }
+          if (ln === 'x-api-key' || ln === 'api-key') {
+            detectedCred = { method: 'api_key', target: String(data.host ?? ''), detail: `${name} header` }
+          }
+        }
+        if (!detectedCred) {
+          const bodyPreview = typeof data.request_body_preview === 'string' ? data.request_body_preview : ''
+          if (bodyPreview && /password|passwd|pass_?word|pwd|credential/i.test(bodyPreview)) {
+            detectedCred = { method: 'form_login', target: String(data.host ?? ''), detail: 'Password in request body' }
+          }
+        }
+      }
+
       const baseRules = getRules()
       const perEventRules = lootValues.length > 0
         ? { ...baseRules, denylist: [...baseRules.denylist, ...lootValues] }
@@ -586,7 +683,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // does the actual byte replacement at export time (layer 4).
       // v0.6.89: also redact new `stdout`/`stderr` fields so masked spans
       // land on them consistently with the existing `output` handling.
-      for (const field of ['output', 'output_preview', 'command', 'stdout', 'stderr']) {
+      for (const field of ['output', 'output_preview', 'command', 'stdout', 'stderr', 'request_body_preview', 'response_preview', 'ws_preview', 'tcp_preview']) {
         if (typeof data[field] === 'string' && data[field]) {
           const result = redact(data[field] as string, perEventRules)
           if (result.redacted.length > 0) {
@@ -684,6 +781,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         } catch { /* additive */ }
       }
 
+      // Credential-use companion event for HTTP requests carrying auth.
+      if (detectedCred) {
+        try {
+          const ce = insertEvent('credential_use', {
+            subtype: detectedCred.method,
+            url: data.url,
+            host: data.host,
+            description: `${detectedCred.detail} → ${detectedCred.target}`,
+            mitre_ttp: 'T1078',
+            _causes: [event.id]
+          }, { engagementId, operatorId: operator.id, targetId: detectedCred.target || targetId })
+          if (ce) eventBus.publish(ce)
+        } catch { /* additive */ }
+      }
+
       json(res, 201, event)
       return
     }
@@ -713,6 +825,27 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/events/count' && req.method === 'GET') {
       json(res, 200, { count: getEventCount() })
+      return
+    }
+
+    if (route === '/api/export/har' && req.method === 'GET') {
+      const since = url.searchParams.get('since') ? parseInt(url.searchParams.get('since')!) : undefined
+      const before = url.searchParams.get('before') ? parseInt(url.searchParams.get('before')!) : undefined
+      const targetId = url.searchParams.get('target_id') || undefined
+      const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : undefined
+      const harJson = exportHar({ since, before, targetId, limit })
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="redlog-export.har"' })
+      res.end(harJson)
+      return
+    }
+
+    const bodyMatch = route.match(/^\/api\/http-body\/([a-f0-9]{64})$/)
+    if (bodyMatch && req.method === 'GET') {
+      const file = `${bodyMatch[1]}.body`
+      const encoding = (url.searchParams.get('encoding') || 'text') as 'text' | 'base64'
+      const content = readHttpBody({ sha256: '', size: 0, file, encoding })
+      if (content === null) { json(res, 404, { error: 'body not found' }); return }
+      json(res, 200, { data: content, encoding, file })
       return
     }
 
