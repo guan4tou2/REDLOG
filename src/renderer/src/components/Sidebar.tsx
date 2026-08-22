@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
-  Ban, Gem, Flag, Search, Settings as SettingsIcon, type LucideIcon
+  Ban, Gem, Flag, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon
 } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -67,7 +67,8 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger' },
     loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400' },
     marks: { id: 'marks', label: t('sidebar.marks'), icon: Flag },
-    search: { id: 'search', label: t('sidebar.search'), icon: Search }
+    search: { id: 'search', label: t('sidebar.search'), icon: Search },
+    http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
   const items = DEFAULT_ORDER.map((id) => itemMap[id]).filter(Boolean)

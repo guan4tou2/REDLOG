@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('redlog', {
     castIndexStatus: () => ipcRenderer.invoke('casts:status'),
     readCastRange: (castRel: string, off: number, len: number) =>
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
+    queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
       ipcRenderer.on('events:new', handler)
@@ -78,6 +79,14 @@ contextBridge.exposeInMainWorld('redlog', {
     // so the audit trail shows who saw what and when.
     logSecretRevealed: (sourceEventId: string, fields: string[]) =>
       ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields)
+  },
+  httpBody: {
+    read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
+      ipcRenderer.invoke('httpBody:read', ref) as Promise<string | null>
+  },
+  har: {
+    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) =>
+      ipcRenderer.invoke('har:export', opts) as Promise<string | null>
   },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),

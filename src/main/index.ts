@@ -9,7 +9,7 @@ import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
@@ -25,6 +25,8 @@ import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../c
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier } from '../core/retention'
+import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
+import { exportHar } from '../core/har-export'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
@@ -45,6 +47,7 @@ import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstal
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
+import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
@@ -93,6 +96,7 @@ let chainSampleTimer: ReturnType<typeof setInterval> | null = null
  *  retention.md §5.1 — 24h default cadence. `stopProject` clears on
  *  project close so the timer doesn't fire against a closed DB. */
 let loggedTierTimer: ReturnType<typeof setInterval> | null = null
+let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
 
 // While `overlayPassThrough` is on, mouse tracking is disabled entirely —
 // the HUD stays ignore-mouse regardless of cursor position. Users who want
@@ -531,8 +535,8 @@ function startProject(project: ProjectMeta): void {
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
-    if (swept.cast > 0 || swept.screenshots > 0) {
-      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s)`)
+    if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
+      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see loggedTierTimer below.
@@ -600,6 +604,32 @@ function startProject(project: ProjectMeta): void {
     }
   } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
+  spoolDrainTimer = setInterval(() => {
+    if (!currentEngagementId || !currentOperatorId) return
+    try {
+      const spoolPath = path.join(homedir(), '.redlog', 'pending')
+      if (!fs.existsSync(spoolPath)) return
+      const files = fs.readdirSync(spoolPath).filter((f) => f.endsWith('.json')).sort().slice(0, 200)
+      if (files.length === 0) return
+      let count = 0
+      for (const f of files) {
+        const full = path.join(spoolPath, f)
+        try {
+          const raw = fs.readFileSync(full, 'utf8')
+          const payload = JSON.parse(raw)
+          const at = String(payload?.agent_type || '')
+          const d = payload?.data && typeof payload.data === 'object' ? payload.data : null
+          if (at && d) {
+            const ev = insertEvent(at, { ...d, recovered_from_spool: true }, { engagementId: currentEngagementId!, operatorId: currentOperatorId! })
+            if (ev) { eventBus.publish(ev); count++ }
+          }
+          fs.unlinkSync(full)
+        } catch { try { fs.renameSync(full, full + '.bad') } catch { /* */ } }
+      }
+      if (count > 0) console.log(`[hook-spool] drained ${count} spooled event(s)`)
+    } catch { /* */ }
+  }, 30_000)
+
   alertRuntime.start()
   startLinkMonitor()
   configureOpsecMonitor((delta, current) => {
@@ -637,6 +667,7 @@ function startProject(project: ProjectMeta): void {
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
   })
+  startProxyBypassDetector({ engagementId, operatorId })
   // v0.7.2 A: Claude Code transcript tailer. Reads `~/.claude/projects/`
   // JSONL sessions, derives per-turn events (user_message / assistant_message
   // / tool_call / tool_result) plus a whole-file sha256 snapshot event
@@ -849,17 +880,20 @@ function stopProject(): void {
   stopNtpLoop()
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
   if (loggedTierTimer) { clearInterval(loggedTierTimer); loggedTierTimer = null }
+  if (spoolDrainTimer) { clearInterval(spoolDrainTimer); spoolDrainTimer = null }
   onApiProjectClose()
   alertRuntime.stop()
   stopClipboardMonitor()
   stopFileWatcher()
   stopProcessMonitor()
+  stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
   stopOpsecMonitor()
   screenshotAgent.stop()
   closeCastIndex()
   closeDB()
+  resetBodiesDirCache()
   activeProject = null
   currentEngagementId = null
   currentOperatorId = null
@@ -1226,6 +1260,7 @@ app.whenReady().then(() => {
     const { readCastRange } = await import('../core/cast-slice')
     return readCastRange(full, off, len)
   })
+  ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
   ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
@@ -1242,6 +1277,16 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+  ipcMain.handle('httpBody:read', (_e, ref: BodyRef) => {
+    if (!activeProject) return null
+    return readHttpBody(ref)
+  })
+
+  ipcMain.handle('har:export', (_e, opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => {
+    if (!activeProject) return null
+    return exportHar(opts)
+  })
+
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
   // still fires `events:new` per-event (deconfliction webhook + overlay
   // pivot HUD subscribe to it), but the renderer's Timeline drains

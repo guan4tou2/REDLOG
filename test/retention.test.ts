@@ -58,7 +58,7 @@ describeDB('retention sweep', () => {
     const cast = seed('casts', 'old.cast', 400)
     const shot = seed('screenshots', 'old.jpg', 400)
     const swept = sweepRetention({}, OPTS)
-    expect(swept).toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0 })
+    expect(swept).toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 })
     expect(fs.existsSync(cast)).toBe(true)
     expect(fs.existsSync(shot)).toBe(true)
   })
@@ -88,7 +88,7 @@ describeDB('retention sweep', () => {
     const swept = sweepRetention(
       { terminal: { castKeepDays: 30 }, screenshots: { keepDays: 0 }, agentTranscripts: { keepDays: 10 } }, OPTS
     )
-    expect(swept).toEqual({ cast: 1, screenshots: 0, agentTranscripts: 1 })
+    expect(swept).toEqual({ cast: 1, screenshots: 0, agentTranscripts: 1, httpBodies: 0 })
     expect(auditEvents('screenshot_pruned')).toBe(0)
     expect(auditEvents('agent_transcript_pruned')).toBe(1)
   })
@@ -102,7 +102,7 @@ describeDB('retention sweep', () => {
   it('is a no-op without an operator id — every event needs attribution', () => {
     const f = seed('casts', 'a.cast', 400)
     expect(sweepRetention({ terminal: { castKeepDays: 1 } }, { engagementId: 'e', operatorId: '' }))
-      .toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0 })
+      .toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 })
     expect(fs.existsSync(f)).toBe(true)
   })
 
