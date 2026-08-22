@@ -7,7 +7,8 @@ import path from 'path'
 // Eight tabs in one 13px row was already hard to scan, and two of them —
 // "Integrations" and "Data" — had drifted into meaning roughly the same thing.
 // Below that, Plugins held sub-tabs and those held publisher and revocation
-// lists: three levels underneath the second level.
+// lists: three levels underneath the second level. That whole branch is gone
+// now — see the marketplace test below for why removing beat flattening.
 //
 // The container had to come first. Twelve categories fit down a side and do
 // not fit across a top, so the content could not be split until there was
@@ -18,7 +19,8 @@ import path from 'path'
 // one control in the shell. This list is the guard against it drifting back.
 
 const ROOT = path.join(__dirname, '..')
-const SRC = fs.readFileSync(path.join(ROOT, 'src/renderer/src/components/Settings.tsx'), 'utf-8')
+const R = (p: string): string => fs.readFileSync(path.join(ROOT, p), 'utf-8')
+const SRC = R('src/renderer/src/components/Settings.tsx')
 
 const PAGES = [
   'hooks', 'agents', 'captureControl',
@@ -66,14 +68,33 @@ describe('settings information architecture', () => {
     expect(SRC).toMatch(/pageQuery/)
   })
 
-  it('flattens plugins to two levels', () => {
+  it('flattens plugins to one level', () => {
     // The marker of the old shape was a second `useState` for a sub-tab
-    // inside the page. Installed and marketplace are sections now, not
-    // destinations.
+    // inside the page. There is one section left, so there is nothing to
+    // select between.
     const tab = SRC.slice(SRC.indexOf('function PluginsTab'))
     const body = tab.slice(0, tab.indexOf('\n}'))
     expect(body, 'a sub-tab selector is the third level').not.toMatch(/useState<'installed'/)
     expect(body).toMatch(/<PluginsPanel/)
-    expect(body).toMatch(/<MarketplacePanel/)
+  })
+
+  it('does not ship a marketplace', () => {
+    // Browsing a registry, pinning publishers by Ed25519 fingerprint, and
+    // reading revocation lists are the machinery of distributing capture
+    // code. The core is "nothing missing, findable afterwards"
+    // (docs/DESIGN-core-and-capture.md §1) — distribution serves
+    // extensibility, which is a different product.
+    //
+    // What stays is the installed list, because an operator does need to
+    // answer "is anything capturing that I did not put there".
+    expect(SRC).not.toMatch(/MarketplacePanel|PublisherEditor/)
+    expect(fs.existsSync(path.join(ROOT, 'src/core/plugins/marketplace.ts'))).toBe(false)
+    expect(fs.existsSync(path.join(ROOT, 'src/core/plugins/publisher-trust.ts'))).toBe(false)
+    // The signing CLI existed to produce registry entries. No registry, no
+    // entries — and a `redlog-sign` on someone's PATH that signs for nothing
+    // is worse than its absence.
+    expect(fs.existsSync(path.join(ROOT, 'cli/redlog-sign.js'))).toBe(false)
+    const pkg = JSON.parse(R('package.json'))
+    expect(Object.keys(pkg.bin)).toEqual(['redlog-cli'])
   })
 })

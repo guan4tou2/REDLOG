@@ -342,12 +342,40 @@ recordings.
 ## 6. Still open
 
 - Windows script-block logging (§2.3) and queryable tool output (§2.4).
-- Settings: 13 pages / 34 field groups, against positioning risk #2 which
+- Settings: **12 pages / 30 field groups**, against positioning risk #2 which
   named "8 tabs / 34 groups" as the symptom of breadth outrunning the persona.
-  The page count went **up**.
+  The left list took the page count *up* to 13 before two rounds of removal
+  brought it to 12 and the groups from 34 to 30. That is a dent, not a
+  resolution — the remaining test is the one below, applied to each group in
+  turn, and most of the 30 have not been through it yet.
 - Timeline view modes — the audit-mode shape does not survive §1, but the
   eight flat toggles are still a real problem.
 - 18 lanes.
-- The plugin marketplace, publisher trust and revocation lists — an ecosystem,
-  which is enterprise shape; neither core answers for it.
+- ~~The plugin marketplace, publisher trust and revocation lists.~~
+  **Removed 2026-08-22.** Browsing a registry, pinning publishers by Ed25519
+  fingerprint, and reading revocation lists are the machinery of *distributing*
+  capture code. §1 is about not missing anything and finding it afterwards;
+  distribution serves extensibility, which is a different product. Managing
+  what is installed stays, because "is anything capturing that I did not put
+  there" is a question §1 does have to answer. The `redlog-sign` CLI went with
+  it — it existed only to produce registry entries.
 - Rewriting `PRODUCT-POSITIONING.md` to match §1.
+
+### The test being applied to Settings
+
+For each field group: **does the operator in §1 have to understand this to
+answer "what happened, and can I show it"?** If not, it is either a default
+this product should pick, or something that belongs to a different product.
+
+Two rounds so far, worth 4 groups and 1 page between them.
+
+The first removed three groups that were not settings at all — export is an
+action, and it now lives in the shell's one export control (§10). That also
+emptied the "Retention & export" page down to a screenshot interval, which had
+been filed under export while being a capture setting; it moved, and the page
+went.
+
+The second removed the marketplace. Only one group, but the group was a
+registry browser, a publisher trust editor, and a revocation viewer stacked
+inside it — the group count understated it, which is worth noting because the
+count is the metric positioning risk #2 uses.

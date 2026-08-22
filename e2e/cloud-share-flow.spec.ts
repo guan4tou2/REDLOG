@@ -45,7 +45,6 @@ function readMagic(path: string, n: number): Buffer {
 
 // Shared electronApp across the four tests — one launch, one project, and
 // Test 2 depends on Test 1's UI state (Data tab already open, panel visible).
-// Same pattern as marketplace-flow.spec.ts.
 test.describe.serial('cloud share', () => {
   let app: ElectronApplication
   let page: Page

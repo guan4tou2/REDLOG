@@ -82,11 +82,6 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
-// Dev/E2E-only stash for marketplace:fetchIndex. When REDLOG_E2E=1 and a
-// test has called marketplace:testSetIndex, fetchIndex returns this object
-// instead of hitting the network. Loose-typed so we don't pull the
-// RegistryIndex import into main just for a mock hook.
-let testFetchIndexOverride: unknown = null
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 // v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
@@ -1825,117 +1820,6 @@ app.whenReady().then(() => {
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }
-  })
-
-  // --- Plugin marketplace ---
-  // These wrap src/core/plugins/marketplace.ts + publisher-trust.ts. The whole
-  // fetch/verify/install pipeline lives in core so it stays unit-testable;
-  // main just exposes it over IPC. The registry client uses HTTPS only, hard
-  // caps size (5 MB tarball / 1 MB index), and every install goes through
-  // sha256 + Ed25519 signature verify + manifest re-validate.
-  // v0.11.0: stamp each advertised key with the same fingerprint the trust
-  // store shows. The operator is meant to compare it against the publisher's
-  // own channel before pinning, so it has to be the identical string in both
-  // places — computed here rather than in the renderer, where it would be a
-  // second implementation free to drift from publisher-trust.ts.
-  const annotateIndex = async (index: unknown): Promise<unknown> => {
-    const idx = index as { publishers?: Array<{ keys?: Array<{ publicKey: string }> }> } | null
-    if (!idx?.publishers) return index
-    const { fingerprint } = await import('../core/plugins/publisher-trust')
-    for (const p of idx.publishers) {
-      for (const k of p.keys ?? []) {
-        try { (k as { fingerprint?: string }).fingerprint = fingerprint(k.publicKey) } catch { /* malformed key */ }
-      }
-    }
-    return idx
-  }
-  ipcMain.handle('marketplace:fetchIndex', async (_e, url?: string) => {
-    // Dev/E2E-only override: if a test has stashed a fake index via
-    // marketplace:testSetIndex, return it verbatim instead of hitting the
-    // network. Kept alongside the real path so the UI code driving fetchIndex
-    // stays identical between real and mocked runs.
-    if (process.env.REDLOG_E2E === '1' && testFetchIndexOverride) {
-      return { ok: true, index: await annotateIndex(testFetchIndexOverride) }
-    }
-    try {
-      const { fetchIndex } = await import('../core/plugins/marketplace')
-      return { ok: true, index: await annotateIndex(await fetchIndex(url)) }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // Dev/E2E-only sibling of marketplace:fetchIndex. Lets a test inject a
-  // canned RegistryIndex (including publishers[]) so the "trust suggested
-  // publishers" banner can be exercised without a real HTTPS registry.
-  // Gated on REDLOG_E2E=1 — the endpoint is effectively absent in a normal
-  // launch. Pass an empty string to clear the override.
-  ipcMain.handle('marketplace:testSetIndex', async (_e, indexJson: string) => {
-    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testSetIndex disabled' }
-    try {
-      testFetchIndexOverride = indexJson ? JSON.parse(indexJson) : null
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('marketplace:listPublishers', async () => {
-    const { listPublishers } = await import('../core/plugins/publisher-trust')
-    return listPublishers()
-  })
-  ipcMain.handle('marketplace:trustPublisher', async (_e, id: string, publicKey: string, homepage?: string, label?: string) => {
-    const { trustPublisher, fingerprint } = await import('../core/plugins/publisher-trust')
-    const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
-    trustPublisher(id, { publicKey, trustedAt: Date.now(), trustedBy: opId, label }, homepage)
-    return { ok: true, fingerprint: fingerprint(publicKey) }
-  })
-  ipcMain.handle('marketplace:untrustPublisher', async (_e, id: string) => {
-    const { untrustPublisher } = await import('../core/plugins/publisher-trust')
-    untrustPublisher(id); return { ok: true }
-  })
-  ipcMain.handle('marketplace:install', async (_e, entryJson: string) => {
-    try {
-      const entry = JSON.parse(entryJson)
-      const { installFromRegistry } = await import('../core/plugins/marketplace')
-      const result = await installFromRegistry(entry)
-      // Re-scan plugins on successful install so the newly landed plugin
-      // shows up in Settings ▸ Plugins immediately.
-      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // Dev/E2E-only sibling of marketplace:install. Skips the network by taking
-  // the tarball bytes directly from the caller (base64 for IPC-safety) and
-  // handing them to installFromRegistry via its `fetchTarball` hook. Gated on
-  // REDLOG_E2E=1 so the endpoint is effectively absent in a normal launch —
-  // never gate on NODE_ENV, electron-vite already claims that flag.
-  ipcMain.handle('marketplace:testInstall', async (_e, entryJson: string, tarballBytesB64: string) => {
-    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testInstall disabled' }
-    try {
-      const entry = JSON.parse(entryJson)
-      const bytes = Buffer.from(tarballBytesB64, 'base64')
-      const { installFromRegistry } = await import('../core/plugins/marketplace')
-      const result = await installFromRegistry(entry, { fetchTarball: async () => bytes })
-      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('marketplace:listVersions', async (_e, pluginId: string) => {
-    const { listVersions } = await import('../core/plugins/marketplace')
-    return listVersions(pluginId)
-  })
-  ipcMain.handle('marketplace:rollback', async (_e, pluginId: string, versionKey: string) => {
-    const { rollback } = await import('../core/plugins/marketplace')
-    const r = rollback(pluginId, versionKey)
-    if (r.ok) { invalidateHooksCache(); reloadPlugins() }
-    return r
-  })
-  ipcMain.handle('marketplace:revocations', async () => {
-    const { loadRevocations } = await import('../core/plugins/marketplace')
-    return loadRevocations()
   })
 
   // --- Recording ---
