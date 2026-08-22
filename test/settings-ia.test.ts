@@ -78,6 +78,15 @@ describe('settings information architecture', () => {
     expect(body).toMatch(/<PluginsPanel/)
   })
 
+  it('keeps the group count from creeping back', () => {
+    // positioning risk #2 names "8 tabs / 34 groups" as the symptom of breadth
+    // outrunning the persona. The number is a proxy, but it is the proxy that
+    // was measured, so it is the one worth holding — a group added without a
+    // group removed should have to argue for itself in a diff.
+    const groups = (SRC.match(/<FieldGroup title=/g) ?? []).length
+    expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(27)
+  })
+
   it('does not ship a marketplace', () => {
     // Browsing a registry, pinning publishers by Ed25519 fingerprint, and
     // reading revocation lists are the machinery of distributing capture

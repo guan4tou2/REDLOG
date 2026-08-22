@@ -261,6 +261,22 @@ export default function Settings(): JSX.Element {
               <Field label={t('settings.id')} value={config.operator.id} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, id: v } })} />
               <Field label={t('settings.name')} value={config.operator.name} onChange={(v) => setConfig({ ...config, operator: { ...config.operator, name: v } })} />
             </FieldGroup>
+            {/* Was "Team Profile Sync", two buttons. The import half duplicated
+                the one on the project picker, which is where you actually want
+                it — you seed a config when creating the project, not after.
+                The export half stays: deleting it would leave an import that
+                consumes files nothing can produce. It carries views.json too,
+                so it is not merely a copy of config.yaml. */}
+            <FieldGroup title={t('settings.handoffProfile')}>
+              <button
+                onClick={async () => {
+                  const p = await window.redlog.config.exportProfile()
+                  if (p) toast(t('toast.profileExported'), { type: 'success', why: p })
+                }}
+                className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover self-start"
+              >{t('settings.exportProfile')}</button>
+              <p className="text-xs text-redlog-text-faint">{t('settings.handoffProfileHint')}</p>
+            </FieldGroup>
             <FieldGroup title={t('settings.language')}>
               <div className="flex gap-2">
                 {(Object.keys(LOCALE_LABELS) as Locale[]).map((l) => (
@@ -324,6 +340,10 @@ export default function Settings(): JSX.Element {
         {tab === 'network' && (
           <>
             <FieldGroup title={t('settings.ipSafety')}>
+              {/* Adapter detection used to be its own group. It exists only to
+                  answer this group's question — is my traffic where I think it
+                  is — and reading it as a separate subject made "am I exposed"
+                  look like two unrelated settings instead of one. */}
               <ListField
                 label={t('settings.whitelist')}
                 items={config.network.whitelist}
@@ -336,8 +356,15 @@ export default function Settings(): JSX.Element {
                 onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
                 placeholder={t('settings.exposedIpPlaceholder')}
               />
+              <VpnAdaptersField config={config} setConfig={setConfig} />
             </FieldGroup>
-            <FieldGroup title={t('settings.polling')}>
+            {/* Was "Polling", which read as a tuning knob and is why I nearly deleted
+                it. It is not: every field here decides what RedLog itself sends
+                out to the network and to whom — which resolver or third-party
+                echo service learns your address, how often, and from where.
+                During an engagement that is OPSEC surface, and §1's operator
+                has to be able to see it, not discover it in a packet capture. */}
+            <FieldGroup title={t('settings.ownTraffic')}>
               <div>
                 <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
                 <div className="flex gap-1">
@@ -399,7 +426,6 @@ export default function Settings(): JSX.Element {
               />
               <p className="text-xs text-redlog-text-faint">{t('settings.ipProvidersHint')}</p>
             </FieldGroup>
-            <VpnAdaptersField config={config} setConfig={setConfig} />
           </>
         )}
 
@@ -541,18 +567,7 @@ export default function Settings(): JSX.Element {
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
             {isWindows && <WslPanel t={t} />}
             <AgentsPanel t={t} config={config} setConfig={setConfig} />
-            {tab === 'captureControl' && <FieldGroup title={t('settings.screenshotQuality')}>
-              <Field
-                label={t('settings.jpegQuality')}
-                value={String(config.screenshot?.quality ?? 85)}
-                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
-                type="number"
-              />
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.qualityHint')}
-              </p>
-            </FieldGroup>}
-            {tab === 'captureControl' && <FieldGroup title={t('settings.clipboardGroup')}>
+                        {tab === 'captureControl' && <FieldGroup title={t('settings.clipboardGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -655,52 +670,22 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
               <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.intervalHint')}</p>
-            </FieldGroup>}
-            {tab === 'general' && <FieldGroup title={t('settings.updateGroup')}>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => window.redlog.app.checkForUpdates()}
-                  className="px-3 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors"
-                >
-                  {t('settings.checkUpdate')}
-                </button>
-                <span className="text-xs text-redlog-text-faint font-mono">v{__APP_VERSION__}</span>
-              </div>
-              <p className="text-xs text-redlog-text-faint">{t('settings.checkUpdateHint')}</p>
-            </FieldGroup>}
             
+              <Field
+                label={t('settings.jpegQuality')}
+                value={String(config.screenshot?.quality ?? 85)}
+                onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
+                type="number"
+              />
+              <p className="text-xs text-redlog-text-faint">
+                {t('settings.qualityHint')}
+              </p>
+            </FieldGroup>}
+                        
             
             {tab === 'cloud' && <CloudSharePanel t={t} />}
             {tab === 'integrity' && <IntegrityPanel t={t} />}
-            {tab === 'general' && <FieldGroup title={t('settings.profileSync')}>
-              <div className="flex gap-2">
-                <button
-                  onClick={async () => {
-                    const path = await window.redlog.config.exportProfile()
-                    if (path) toast(t('toast.profileExported'), 'success')
-                  }}
-                  className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-                >
-                  {t('settings.exportProfile')}
-                </button>
-                <button
-                  onClick={async () => {
-                    const profile = await window.redlog.config.importProfile() as Record<string, unknown> | null
-                    if (profile) {
-                      setConfig(profile as unknown as ConfigState)
-                      toast(t('toast.profileImported'), 'success')
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-                >
-                  {t('settings.importProfile')}
-                </button>
-              </div>
-              <p className="text-xs text-redlog-text-faint">
-                {t('settings.profileHint')}
-              </p>
-            </FieldGroup>}
-          </>
+                      </>
         )}
 
         {tab === 'scope' && (
@@ -1990,8 +1975,9 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
   }
 
   return (
-    <FieldGroup title={t('settings.vpnAdapters')}>
-      <p className="text-xs text-redlog-text-faint -mt-1 mb-2">{t('settings.vpnAdaptersHint')}</p>
+    <div>
+      <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.vpnAdapters')}</label>
+      <p className="text-xs text-redlog-text-faint mb-2">{t('settings.vpnAdaptersHint')}</p>
       <div className="space-y-1">
         {adapters.map((a, i) => (
           <div key={i} className="flex items-center gap-2">
@@ -2030,7 +2016,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
           <button onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">+</button>
         </div>
       </div>
-    </FieldGroup>
+    </div>
   )
 }
 

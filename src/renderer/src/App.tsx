@@ -222,6 +222,16 @@ export default function App(): JSX.Element {
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title={t('app.copyVersionHint')}
           >v{__APP_VERSION__}</span>
+          {/* "Check for updates" was a Settings group, next to a copy of this
+              same version string. It is an action about the version, so it
+              belongs beside the version rather than in a page of settings —
+              and nobody looks for it under Settings anyway. */}
+          <button
+            onClick={() => void window.redlog.app.checkForUpdates()}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={t('settings.checkUpdateHint')}
+            className="text-redlog-text-faint hover:text-redlog-text text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 rounded px-1"
+          >{t('settings.checkUpdate')}</button>
         </div>
         <button
           className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
