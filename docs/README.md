@@ -27,6 +27,24 @@ Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links
 - **[Dev requirements — capture onboarding](DEV-REQUIREMENTS-capture-onboarding.md)** — spec + acceptance criteria for the Capture Readiness onboarding, and the red→green→integrate→cover TDD process every UX change should copy.
 - **[Timeline I/O visibility](timeline-io-visibility.md)** — design note (proposed). Which sources capture input/output today, where the gaps are, and the `io_ref` sidecar + transcript-view proposal that closes them.
 
+## Subsystem decomposition (salvaged from PR #8)
+
+A framework and eleven applications of it, written 2026-08-11 → 08-15 and never
+merged — while code that cites them shipped anyway (`src/core/alert/` names
+`ALERT-ROLES.md` three times). Recovered as documentation only. Each page turns
+an open-ended subsystem into a small, provably-complete set of roles with a
+per-item template, so "add another one" is filling in a row rather than a fresh
+design.
+
+- **[Method](DECOMPOSITION-METHOD.md)** — how a subsystem gets decomposed, and the test for "provably complete".
+- **[Backlog](DECOMPOSITION-BACKLOG.md)** — the gaps the eleven decompositions named, still open.
+- **[Design principles](DESIGN-PRINCIPLES.md)** — the durable laws. **§1 is superseded** by `DESIGN-core-and-capture.md`; the header says how.
+- **[Alert roles](ALERT-ROLES.md)** — self alarm vs target alarm, and the authority tiers that stop an inference reading as a fact. Cited by `src/core/alert/`.
+- **[Capture source taxonomy](CAPTURE-SOURCE-TAXONOMY.md)** · **[Detector roles](DETECTOR-ROLES.md)** · **[Plugin roles](PLUGIN-ROLES.md)** · **[Event type vocabulary](EVENT-TYPE-VOCABULARY.md)** — the four member catalogues.
+- **[Control plane faces](CONTROL-PLANE-FACES.md)** · **[Delivery targets](DELIVERY-TARGETS.md)** · **[Off-chain content stores](OFF-CHAIN-CONTENT-STORES.md)** · **[Timeline elements](TIMELINE-ELEMENTS.md)** — the four surface catalogues.
+- **[I/O sidecar](SPEC-IO-SIDECAR.md)** · **[Scope-aware lifecycle](SPEC-SCOPE-AWARE-LIFECYCLE.md)** · **[Timeline axis](SPEC-TIMELINE-AXIS.md)** · **[AI-era plugins](SPEC-AI-ERA-PLUGINS.md)** — four specs. Unbuilt; read as proposals, not as descriptions of the code.
+- **[Testing](TESTING.md)** — the test strategy the suite assumes: what belongs in a unit test, what needs the app in the loop, and why.
+
 ## Integrations
 
 - **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
