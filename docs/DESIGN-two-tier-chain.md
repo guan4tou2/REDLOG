@@ -51,7 +51,7 @@ Prior-art guidance: this is not a performance PR. v0.12.1 cached Ed25519 keys an
 - Every logged-tier row lands in every export bundle whether the recipient asked for full evidence footprint or not.
 - Every logged-tier row that touches the chain widens the window during which `chain_sample_broken` can misfire under real-world clock skew.
 
-Fixing this at v0.13 also unblocks the plugin-marketplace roadmap ([PLUGIN_MARKETPLACE.md](PLUGIN_MARKETPLACE.md)), because a 🟢 trust-tier plugin that wants to log its own high-frequency observations can be pointed at the logged tier by default, without every plugin author having to think about anchor cadence.
+Fixing this at v0.13 also helps plugins, because a 🟢 trust-tier plugin that wants to log its own high-frequency observations can be pointed at the logged tier by default, without every plugin author having to think about anchor cadence.
 
 ---
 
@@ -777,7 +777,7 @@ Release note draft (for CHANGELOG.md):
 
 ### 13.1 Plugin-contributed event types default to which tier?
 
-**Recommendation: chained.** A 🟢-trust plugin (see [PLUGIN_MARKETPLACE.md](PLUGIN_MARKETPLACE.md) and [MEMORY.md#redlog-plugin-system](file:///Users/guantou/.claude/projects/-Users-guantou-Desktop-redlog/memory/redlog-plugin-system.md)) that emits `insertEvent('my-plugin', {...})` should land chained by default. Plugin authors can opt into logged tier by extending `LOGGED_TIER` in a plugin manifest field:
+**Recommendation: chained.** A 🟢-trust plugin that emits `insertEvent('my-plugin', {...})` should land chained by default. Plugin authors can opt into logged tier by extending `LOGGED_TIER` in a plugin manifest field:
 
 ```yaml
 # plugin.yaml

@@ -148,13 +148,6 @@ export interface RedLogConfig {
      *  client-side value only helps if the backend also allows it. */
     maxBundleBytes?: number
   }
-  /** Plugin marketplace overrides. Empty defaults ship the built-in
-   *  placeholder (GitHub raw of the example registry). Air-gapped shops
-   *  point this at their internal registry mirror. */
-  marketplace: {
-    /** Registry URL the Settings placeholder + one-click fetch use. */
-    defaultRegistryUrl: string
-  }
   /** v0.6.92 W-project: file-watcher (chokidar). Opt-in — file activity is
    *  noisy without a well-scoped watchPaths list. Emits `file_transfer`
    *  events with subtype `file_created/modified/deleted`. */
@@ -289,11 +282,6 @@ const DEFAULT_CONFIG: RedLogConfig = {
   cloudShare: {
     endpoint: '',
     authToken: ''
-  },
-  marketplace: {
-    // Default: the example registry hosted from this repo on GitHub raw.
-    // Deployers running a private registry override this in config.yaml.
-    defaultRegistryUrl: 'https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json'
   },
   fileWatcher: {
     enabled: false,

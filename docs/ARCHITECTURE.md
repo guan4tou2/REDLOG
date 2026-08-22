@@ -2,7 +2,7 @@
 
 Current as of **v0.9.3**. This page is the map the README's ASCII diagram
 stopped being (that diagram predates the tailer host, plugin host,
-marketplace and cloud share). Read `event-schema.md` for what lands on the
+cloud share). Read `event-schema.md` for what lands on the
 timeline and `audit-trail.md` for why it can't be quietly edited.
 
 ## 1. Process / layer model
@@ -267,11 +267,6 @@ surface (`read:events`, `write:events`, `read:findings`, `read:config`,
 signing keys. Trust is pinned to a content hash covering the manifest plus
 every privileged code file; changing either the code or the requested
 capabilities revokes it automatically.
-
-Marketplace install: revocation check → HTTPS fetch (5 MB cap, one redirect,
-20 s timeout) → sha256 match → Ed25519 verify against a pinned publisher key
-→ tar-escape pre-check → extract to scratch → manifest re-validation → tier
-post-check → atomic rename with the previous version snapshotted.
 
 `tailers` is the exception and currently does **not** follow this path — see
 `AUDIT-2026-08-08.md` §2 (P1-3).

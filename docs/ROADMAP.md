@@ -96,7 +96,6 @@ privileged path that skips the gate:
 | Item | Ref |
 |---|---|
 | `tailers`: isolate like `mcpTools`, or make first-party-only explicit and move it out of `PRIVILEGED_KEYS` | P1-3 |
-| Registry index signing — implement it or delete the claim; replace "Trust all suggested" with per-publisher confirmation; drop the unregistered default registry URL | P1-4 |
 | Fetch + verify signed revocations, or remove the tab and the doc section | P1-5 |
 | `vps-deploy.sh` refuses the primary token; prints the `operators add` command | P1-6 |
 | Content hash covers `capture[].hookFile` | P2-1 |

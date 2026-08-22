@@ -12,8 +12,7 @@
   "license": "MIT",
   "main": "./out/main/index.js",
   "bin": {
-    "redlog-cli": "./cli/redlog-cli.js",
-    "redlog-sign": "./cli/redlog-sign.js"
+    "redlog-cli": "./cli/redlog-cli.js"
   },
   "scripts": {
     "predev": "electron-rebuild",

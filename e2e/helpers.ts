@@ -46,9 +46,8 @@ export async function launchWithTempHome(): Promise<{
       NODE_ENV: 'test',
       HOME: tmpHome,
       USERPROFILE: tmpHome,
-      // Enables dev-only IPC endpoints used by E2E specs (e.g.
-      // `marketplace:testInstall` which injects a fetched tarball via bytes).
-      // The main process refuses the endpoint when this flag is unset.
+      // Enables dev-only IPC endpoints used by E2E specs. The main process
+      // refuses those endpoints when this flag is unset.
       REDLOG_E2E: '1'
     }
   })
