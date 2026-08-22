@@ -202,6 +202,33 @@ Full-text search over `.cast` closes two gaps at once — it is also what makes
 an unstructured remote session (§2.2) findable — which makes it the
 highest-leverage single capability in this note.
 
+**Built 2026-08-22** (`src/core/cast-index.ts`). Three decisions worth
+recording, because each had a plausible alternative:
+
+*A separate database file, not a table in `events.db`.* The index is derived,
+mutable and rebuildable; the evidence DB is none of those, carries
+append-only triggers, and is copied verbatim into evidence bundles. The
+deciding argument was retention: recordings are swept after N days, and text
+surviving in an index inside the evidence DB would make the retention policy
+a lie — the operator is told the recording aged out while its contents stay
+searchable. `retention.ts` now calls `pruneCast`, and a test in
+`test/retention.test.ts` fails if that link is ever cut.
+
+*Token search, not trigram.* Trigram gives grep semantics, which is what an
+operator reaching for this expects, at roughly 3x the indexed text on disk.
+Across an engagement of 50 MB recordings that is the difference between an
+index that ships and one that fills the disk. unicode61 with prefix indexes
+covers what operators actually type — an IP, a port, a hostname, a tool name
+— because those are token-initial. The UI states the limit rather than
+letting a miss read as absent bytes.
+
+*The index status is surfaced, not hidden.* A project whose recordings are
+still being read returns fewer hits than it will in a minute. For this
+product that is the one failure mode that must never be silent, so the search
+view says how many recordings are still pending — including on the "no
+results" screen, which is exactly where a silent partial index would do its
+damage.
+
 ## 3. Point and span
 
 Not a new model — the data already carries it and the timeline does not show

@@ -960,5 +960,12 @@
   "export.done": "已匯出{{label}}",
   "export.failed": "無法匯出{{label}}",
   "settings.revealInFolder": "在 Finder / 檔案總管開啟",
-  "transcript.copyMd": "複製為 Markdown"
+  "transcript.copyMd": "複製為 Markdown",
+  "castSearch.heading": "終端機錄影",
+  "castSearch.showOutput": "顯示前後輸出",
+  "castSearch.openAtMoment": "在時間軸開啟這個時刻",
+  "castSearch.reading": "讀取錄影中…",
+  "castSearch.unreadable": "這段錄影讀不到——檔案可能已被保存期限清除或移動。",
+  "castSearch.stillIndexing": "還有 {{pending}} 份錄影尚未讀取,索引完成前結果並不完整。",
+  "castSearch.tokenNote": "比對整個字與字首,不比對字中間的片段。"
 }
