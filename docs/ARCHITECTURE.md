@@ -1,8 +1,8 @@
 # Architecture
 
 Current as of **v0.9.3**. This page is the map the README's ASCII diagram
-stopped being (that diagram predates the tailer host, plugin host,
-cloud share). Read `event-schema.md` for what lands on the
+stopped being (that diagram predates the tailer host and plugin host).
+Read `event-schema.md` for what lands on the
 timeline and `audit-trail.md` for why it can't be quietly edited.
 
 ## 1. Process / layer model
@@ -28,7 +28,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 │  chain-anchor   evidence-chain   bundle-export   sanitize   redaction          │
 │  api-server (REST + HTTP MCP)   mcp-tools   capture-health   deconfliction     │
 │  loot- / pivot- / technique- / command- / target- detectors   scope-monitor    │
-│  ip-monitor   retention   cloud-share   plugins/{loader,manifest,trust,host,…} │
+│  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
 └───────────────────────────────────────────────────────────────────────────────┘
         ▲ HTTP 127.0.0.1:6660 (Bearer)         ▲ file watch
    hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex · opencode storage

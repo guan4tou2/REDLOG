@@ -167,24 +167,6 @@ contextBridge.exposeInMainWorld('redlog', {
     grant: (id: string) => ipcRenderer.invoke('plugins:grant', id),
     revoke: (id: string) => ipcRenderer.invoke('plugins:revoke', id)
   },
-  cloudShare: {
-    /** Cheap read — safe to call from every dialog open. */
-    preview: () => ipcRenderer.invoke('cloudShare:preview'),
-    /** Build the .zip + bundle.json. Fails if reviewedByOperator is false or
-     *  the bundle exceeds the size cap. */
-    prepare: (engagementId: string, reviewedByOperator: boolean) =>
-      ipcRenderer.invoke('cloudShare:prepare', engagementId, reviewedByOperator),
-    /** Ships the prepared bundle via the local stub uploader (writes to
-     *  ~/.redlog/shares/). v1 has no real HTTPS backend wired to Settings. */
-    uploadStub: (zipPath: string, manifestJson: string, expiresIn?: string) =>
-      ipcRenderer.invoke('cloudShare:uploadStub', zipPath, manifestJson, expiresIn),
-    /** Ships the prepared bundle to a user-deployed redlog-share-worker
-     *  (spec §5 wire format). Endpoint + auth token are passed explicitly so
-     *  the caller controls when they're in scope — avoids leaking the token
-     *  to a stub-only flow. */
-    upload: (zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) =>
-      ipcRenderer.invoke('cloudShare:upload', zipPath, manifestJson, expiresIn, endpoint, authToken)
-  },
   capture: {
     health: () => ipcRenderer.invoke('capture:health')
   },

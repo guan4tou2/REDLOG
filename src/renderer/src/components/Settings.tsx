@@ -80,7 +80,7 @@ type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl'
   | 'scope' | 'network' | 'deconfliction'
   | 'integrity'
-  | 'operators' | 'cloud' | 'plugins'
+  | 'operators' | 'plugins'
   | 'general' | 'hud'
 
 export default function Settings(): JSX.Element {
@@ -177,7 +177,6 @@ export default function Settings(): JSX.Element {
       heading: t('settings.groupCollab'),
       pages: [
         { id: 'operators', label: t('settings.pageOperators') },
-        { id: 'cloud', label: t('settings.pageCloud') },
         { id: 'plugins', label: t('settings.pagePlugins') }
       ]
     },
@@ -648,7 +647,7 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {(tab === 'captureControl' || tab === 'integrity' || tab === 'cloud' || tab === 'general') && (
+        {(tab === 'captureControl' || tab === 'integrity' || tab === 'general') && (
           <>
             {tab === 'captureControl' && <FieldGroup title={t('settings.screenshotGroup')}>
               <div className="flex items-center gap-2 flex-wrap">
@@ -683,7 +682,6 @@ export default function Settings(): JSX.Element {
             </FieldGroup>}
                         
             
-            {tab === 'cloud' && <CloudSharePanel t={t} />}
             {tab === 'integrity' && <IntegrityPanel t={t} />}
                       </>
         )}
@@ -1843,7 +1841,7 @@ function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
           copy. A token on the clipboard is a token in every clipboard manager
           on the machine, and one pasted into a note is a token in whatever
           that note syncs to. `~/.redlog/tokens/` sits outside the project
-          directory on purpose — bundle export and cloud share walk the project
+          directory on purpose — bundle export walks the project
           tree, and a credential is not evidence. */}
       {pendingToken && (
         <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
@@ -2136,308 +2134,3 @@ function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string |
   )
 }
 
-// -------- Cloud share panel --------------------------------------------------
-//
-// Wraps window.redlog.cloudShare.* — the real work lives in
-// src/core/cloud-share.ts + cloud-share-uploader.ts. Two modes: preview
-// (cheap, called every render) and the actual build+upload (guarded by a
-// mandatory review checkbox — the hard redaction gate from spec §9).
-
-interface CloudSharePreview {
-  eventCount: number
-  sanitizedEventCount: number
-  sanitizedEventCountTotal: number
-  /** DEPRECATED — old pre-v0.6.76 field, still populated for compat. */
-  approxSizeBytes: number
-  rawBytes?: number
-  approxCompressedBytes?: number
-  screenshotCount: number
-  castCount: number
-  chainHead: { hash: string; eventCount: number } | null
-}
-interface CloudShareBundleManifest {
-  bundleFormat: number
-  createdAt: string
-  engagement: { id: string; name?: string }
-  zipSha256: string
-  zipBytes: number
-  contents: {
-    eventCount: number
-    sanitizedEventCount: number
-    sanitizedEventCountTotal: number
-    chainHead: { hash: string; eventCount: number } | null
-  }
-}
-
-function CloudSharePanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [preview, setPreview] = useState<CloudSharePreview | null>(null)
-  const [previewError, setPreviewError] = useState<string>('')
-  // Last failure message from prepare/upload — sticks around so the operator
-  // can read it after the transient toast fades. Cleared on next attempt.
-  const [lastError, setLastError] = useState<string>('')
-  const [reviewed, setReviewed] = useState(false)
-  const [expiresIn, setExpiresIn] = useState<'24h' | '7d' | '30d' | '90d' | 'never'>('30d')
-  const [busy, setBusy] = useState<'preview' | 'prepare' | 'upload' | null>(null)
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
-  // "stub" writes to ~/.redlog/shares/ (v1 default). "https" hits a
-  // user-deployed redlog-share-worker; both endpoint+token must be set.
-  const [mode, setMode] = useState<'stub' | 'https'>('stub')
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [endpoint, setEndpoint] = useState<string>('')
-  const [authToken, setAuthToken] = useState<string>('')
-  const [tokenVisible, setTokenVisible] = useState(false)
-  // Client-side bundle-size override. Empty string → uses backend default (100 MB).
-  const [maxMbInput, setMaxMbInput] = useState<string>('')
-
-  const api = (window.redlog as unknown as { cloudShare: {
-    preview: () => Promise<{ ok: boolean; preview?: CloudSharePreview; error?: string }>
-    prepare: (engagementId: string, reviewedByOperator: boolean) =>
-      Promise<{ ok: boolean; zipPath?: string; manifest?: CloudShareBundleManifest; error?: string }>
-    uploadStub: (zipPath: string, manifestJson: string, expiresIn?: string) =>
-      Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
-    upload: (zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) =>
-      Promise<{ ok: boolean; shareUrl?: string; uploadedAt?: string; expiresAt?: string; error?: string }>
-  } }).cloudShare
-
-  const refreshPreview = async (): Promise<void> => {
-    setBusy('preview')
-    const r = await api.preview()
-    if (r.ok && r.preview) { setPreview(r.preview); setPreviewError('') }
-    else setPreviewError(r.error ?? 'preview failed')
-    setBusy(null)
-  }
-  useEffect(() => { refreshPreview() }, [])
-  // Load persisted endpoint + token so the operator doesn't retype every session.
-  useEffect(() => {
-    window.redlog.config.get().then((c) => {
-      const cs = (c as { cloudShare?: { endpoint?: string; authToken?: string; maxBundleBytes?: number } }).cloudShare
-      if (cs) {
-        if (cs.endpoint) { setEndpoint(cs.endpoint); setAdvancedOpen(true); setMode('https') }
-        if (cs.authToken) setAuthToken(cs.authToken)
-        if (typeof cs.maxBundleBytes === 'number' && cs.maxBundleBytes > 0) {
-          setMaxMbInput(String(Math.round(cs.maxBundleBytes / (1024 * 1024))))
-        }
-      }
-    }).catch(() => {})
-  }, [])
-
-  // Persist endpoint+token to config.yaml. Debounced so text-input typing
-  // doesn't blast one write per keystroke.
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const persistBackend = (nextEndpoint: string, nextToken: string, nextMaxMb: string): void => {
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      try {
-        const c = await window.redlog.config.get() as Record<string, { cloudShare?: unknown } & Record<string, unknown>>
-        const parsedMb = parseInt(nextMaxMb, 10)
-        const maxBundleBytes = Number.isFinite(parsedMb) && parsedMb > 0 ? parsedMb * 1024 * 1024 : undefined
-        const merged = {
-          ...c,
-          cloudShare: {
-            endpoint: nextEndpoint,
-            authToken: nextToken,
-            ...(maxBundleBytes ? { maxBundleBytes } : {})
-          }
-        }
-        await window.redlog.config.save(merged)
-      } catch { /* silent — settings panel already surfaces save failures elsewhere */ }
-    }, 350)
-  }
-
-  const httpsReady = mode === 'https' && endpoint.trim().length > 0 && authToken.trim().length > 0
-  const canUpload = reviewed && busy === null && (mode === 'stub' || httpsReady)
-
-  const upload = async (): Promise<void> => {
-    if (!canUpload) return
-    setBusy('prepare'); setShareUrl(null); setLastError('')
-    const engagementId = 'default' // Bundle-export doesn't split by engagement yet — spec §14 open Q.
-    const p = await api.prepare(engagementId, true)
-    if (!p.ok || !p.zipPath || !p.manifest) {
-      setBusy(null)
-      const msg = `${t('cloudShare.prepareFailed')}: ${p.error ?? ''}`
-      setLastError(msg)
-      toast(t('cloudShare.prepareFailed'), {
-        type: 'error',
-        why: t('cloudShare.prepareFailedWhy'),
-        detail: p.error
-      })
-      return
-    }
-    setBusy('upload')
-    const u = mode === 'https'
-      ? await api.upload(p.zipPath, JSON.stringify(p.manifest), expiresIn, endpoint.trim(), authToken.trim())
-      : await api.uploadStub(p.zipPath, JSON.stringify(p.manifest), expiresIn)
-    setBusy(null)
-    if (u.ok && u.shareUrl) {
-      setShareUrl(u.shareUrl)
-      toast(t('cloudShare.uploaded'), 'success')
-    } else {
-      const msg = `${t('cloudShare.uploadFailed')}: ${u.error ?? ''}`
-      setLastError(msg)
-      toast(t('cloudShare.uploadFailed'), {
-        type: 'error',
-        why: t('cloudShare.uploadFailedWhy'),
-        detail: u.error,
-        action: { label: t('common.retry'), onClick: () => { void upload() } }
-      })
-    }
-  }
-
-  const humanBytes = (n: number): string => {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    return `${(n / 1024 / 1024).toFixed(1)} MB`
-  }
-
-  return (
-    <FieldGroup title={t('cloudShare.title')}>
-      <p className="text-xs text-redlog-text-faint mb-3">{t('cloudShare.hint')}</p>
-
-      {previewError && <p className="text-xs text-red-400 mb-2">{previewError}</p>}
-
-      {preview && (
-        <div className="rounded border border-redlog-border bg-redlog-surface/50 p-3 mb-3">
-          <p className="text-xs text-redlog-text-dim mb-2">{t('cloudShare.reviewTitle')}</p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-redlog-text">
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.events')}</span><span className="font-mono">{preview.eventCount}</span></div>
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.sanitized')}</span><span className="font-mono">{preview.sanitizedEventCountTotal}</span></div>
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.screenshots')}</span><span className="font-mono">{preview.screenshotCount}</span></div>
-            <div className="flex justify-between"><span className="text-redlog-text-dim">{t('cloudShare.casts')}</span><span className="font-mono">{preview.castCount}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.rawBytes')}</span><span className="font-mono">{humanBytes(preview.rawBytes ?? preview.approxSizeBytes)}</span></div>
-            <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.approxCompressed')}</span><span className="font-mono">{preview.approxCompressedBytes !== undefined ? humanBytes(preview.approxCompressedBytes) : '—'}</span></div>
-            {preview.approxCompressedBytes !== undefined && (() => {
-              const capMb = parseInt(maxMbInput, 10) || 100
-              const capBytes = capMb * 1024 * 1024
-              return preview.approxCompressedBytes > capBytes ? (
-                <p className="col-span-2 text-xs text-red-400 mt-1">
-                  {t('cloudShare.capExceedWarning', { cap: capMb })}
-                </p>
-              ) : null
-            })()}
-            {preview.chainHead && (
-              <div className="flex justify-between col-span-2"><span className="text-redlog-text-dim">{t('cloudShare.chainHead')}</span>
-                <span className="font-mono truncate max-w-[280px]" title={preview.chainHead.hash}>{preview.chainHead.hash.slice(0, 24)}… ({preview.chainHead.eventCount})</span></div>
-            )}
-          </div>
-          <button onClick={refreshPreview} disabled={busy === 'preview'}
-            className="mt-3 px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
-            {busy === 'preview' ? '…' : t('cloudShare.refresh')}
-          </button>
-        </div>
-      )}
-
-      <div className="mb-3">
-        <label className="text-xs text-redlog-text-dim flex items-center gap-2 mb-2">
-          {t('cloudShare.expiresIn')}
-          <select value={expiresIn} onChange={(e) => setExpiresIn(e.target.value as typeof expiresIn)}
-            className="bg-redlog-surface border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text">
-            <option value="24h">24h</option>
-            <option value="7d">7 days</option>
-            <option value="30d">30 days</option>
-            <option value="90d">90 days</option>
-            <option value="never">{t('cloudShare.never')}</option>
-          </select>
-        </label>
-
-        <label className="text-xs text-amber-400/90 flex items-start gap-2 cursor-pointer">
-          <input data-testid="cloud-share-reviewed" type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)}
-            className="mt-0.5 accent-amber-500" />
-          <span>{t('cloudShare.gateCheckbox')}</span>
-        </label>
-      </div>
-
-      <div className="mb-3 rounded border border-redlog-border bg-redlog-bg/40">
-        <button data-testid="cloud-share-advanced-toggle" type="button" onClick={() => setAdvancedOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 text-xs text-redlog-text-dim hover:bg-redlog-surface/60">
-          <span>{t('cloudShare.advancedTitle')}</span>
-          <span className="text-redlog-text-faint">{advancedOpen ? '▾' : '▸'}</span>
-        </button>
-        {advancedOpen && (
-          <div className="px-3 pb-3 pt-1 space-y-2">
-            <p className="text-xs text-redlog-text-faint">{t('cloudShare.advancedHint')}</p>
-            <label className="block text-xs text-redlog-text-dim">
-              {t('cloudShare.endpoint')}
-              <input data-testid="cloud-share-endpoint" type="text" value={endpoint}
-                onChange={(e) => { setEndpoint(e.target.value); persistBackend(e.target.value, authToken, maxMbInput) }}
-                placeholder="https://redlog-share.<acct>.workers.dev"
-                className="mt-1 w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-            </label>
-            <label className="block text-xs text-redlog-text-dim">
-              {t('cloudShare.authToken')}
-              <div className="mt-1 flex gap-2">
-                <input data-testid="cloud-share-authtoken" type={tokenVisible ? 'text' : 'password'} value={authToken}
-                  onChange={(e) => { setAuthToken(e.target.value); persistBackend(endpoint, e.target.value, maxMbInput) }}
-                  placeholder={t('cloudShare.authTokenPlaceholder')}
-                  className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-                <button type="button" onClick={() => setTokenVisible((v) => !v)}
-                  className="px-2 text-xs rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover">
-                  {tokenVisible ? t('cloudShare.hide') : t('cloudShare.show')}
-                </button>
-              </div>
-            </label>
-            <div className="flex items-center gap-4 text-xs pt-1">
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input data-testid="cloud-share-mode-stub" type="radio" name="cloudshare-mode" checked={mode === 'stub'} onChange={() => setMode('stub')}
-                  className="accent-redlog-text-dim" />
-                <span className={mode === 'stub' ? 'text-redlog-text' : 'text-redlog-text-dim'}>{t('cloudShare.modeStub')}</span>
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input data-testid="cloud-share-mode-https" type="radio" name="cloudshare-mode" checked={mode === 'https'} onChange={() => setMode('https')}
-                  className="accent-red-500" />
-                <span className={mode === 'https' ? 'text-redlog-text' : 'text-redlog-text-dim'}>{t('cloudShare.modeHttps')}</span>
-              </label>
-              {mode === 'https' && !httpsReady && (
-                <span className="text-amber-400/80">{t('cloudShare.httpsNeedsFields')}</span>
-              )}
-            </div>
-            <label className="block text-xs text-redlog-text-dim pt-1">
-              {t('cloudShare.maxBundleMb')}
-              <input type="number" min="1" max="10000" value={maxMbInput}
-                onChange={(e) => { setMaxMbInput(e.target.value); persistBackend(endpoint, authToken, e.target.value) }}
-                placeholder="100"
-                className="mt-1 w-32 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono" />
-              <span className="ml-2 text-redlog-text-faint">{t('cloudShare.maxBundleMbHint')}</span>
-            </label>
-          </div>
-        )}
-      </div>
-
-      {lastError && (
-        <div data-testid="cloud-share-inline-error" className="mb-3 rounded border border-red-800/50 bg-red-950/20 p-2 flex items-start gap-2">
-          <span className="text-red-400 shrink-0">⚠</span>
-          <p className="text-xs text-red-300 font-mono break-all flex-1">{lastError}</p>
-          <button data-testid="cloud-share-inline-error-dismiss" onClick={() => setLastError('')} className="text-xs text-red-400 hover:text-red-300 shrink-0">✕</button>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <button data-testid="cloud-share-button" onClick={upload} disabled={!canUpload}
-          className="px-3 py-1.5 bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover text-xs rounded disabled:opacity-40">
-          {busy === 'prepare' ? t('cloudShare.preparing')
-            : busy === 'upload' ? t('cloudShare.uploading')
-              : mode === 'https' ? t('cloudShare.shareHttps') : t('cloudShare.shareStub')}
-        </button>
-        <span className="text-xs text-redlog-text-faint">
-          {mode === 'https' ? t('cloudShare.httpsNote') : t('cloudShare.stubNote')}
-        </span>
-      </div>
-
-      {shareUrl && (
-        <div data-testid="cloud-share-result" className="mt-3 rounded border border-green-800/50 bg-green-950/20 p-3">
-          <p className="text-xs text-green-400 mb-1">{t('cloudShare.uploaded')}</p>
-          <p data-testid="cloud-share-url" className="text-xs text-redlog-text font-mono break-all">{shareUrl}</p>
-          <div className="flex gap-2 mt-2">
-            <button onClick={() => navigator.clipboard.writeText(shareUrl)}
-              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
-              {t('cloudShare.copyUrl')}
-            </button>
-            <button onClick={() => window.redlog.app.openExternal(shareUrl).catch(() => {})}
-              className="px-2 py-0.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover">
-              {t('cloudShare.openUrl')}
-            </button>
-          </div>
-        </div>
-      )}
-    </FieldGroup>
-  )
-}

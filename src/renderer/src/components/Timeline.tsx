@@ -2331,7 +2331,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // machine — masking it here protected nothing and cost a step, and the
     // "did I remember to hit Reveal?" question meant a copied JSON could be
     // silently incomplete. The redaction boundary that matters is layer 4, on
-    // the way *out*: bundle export, cloud share and the blue-team webhook all
+    // the way *out*: bundle export and the blue-team webhook both
     // redact in src/core, independently of anything the renderer shows.
     navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
     toast(t('toast.copied'), 'success')

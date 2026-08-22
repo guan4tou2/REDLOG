@@ -136,18 +136,6 @@ export interface RedLogConfig {
    *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
    *  their own redlog-share-worker deploy. Empty endpoint = fall back to the
    *  local file:// stub uploader. */
-  cloudShare: {
-    /** Base URL of the deployed Worker, e.g. https://redlog-share.acme.workers.dev */
-    endpoint: string
-    /** Shared bearer set via `wrangler secret put AUTH_TOKEN`. Stored in plain
-     *  YAML — same trust model as `deconfliction.secret`. */
-    authToken: string
-    /** Override the default 100 MB bundle size cap. Operators with big
-     *  screenshot / .cast collections trip the cap fast; the Worker
-     *  enforces its own MAX_UPLOAD_MB independently, so raising this
-     *  client-side value only helps if the backend also allows it. */
-    maxBundleBytes?: number
-  }
   /** v0.6.92 W-project: file-watcher (chokidar). Opt-in — file activity is
    *  noisy without a well-scoped watchPaths list. Emits `file_transfer`
    *  events with subtype `file_created/modified/deleted`. */
@@ -278,10 +266,6 @@ const DEFAULT_CONFIG: RedLogConfig = {
     events: ['marker', 'system', 'credential_use', 'c2_checkin'],
     subtypes: ['scope_violation'],
     includeData: false
-  },
-  cloudShare: {
-    endpoint: '',
-    authToken: ''
   },
   fileWatcher: {
     enabled: false,
