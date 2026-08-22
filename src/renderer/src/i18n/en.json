@@ -943,5 +943,15 @@
   "httpHistory.colUrl": "URL",
   "httpHistory.colType": "Type",
   "httpHistory.filterAll": "ALL",
-  "httpHistory.filterPlaceholder": "Filter URL / host / type…"
+  "httpHistory.filterPlaceholder": "Filter URL / host / type…",
+  "httpHistory.viewActivity": "Activity",
+  "httpHistory.viewFlows": "Every request",
+  "httpHistory.counts": "{{activities}} activities · {{flows}} requests",
+  "httpHistory.requestCount": "{{n}} req",
+  "httpHistory.noHost": "(no host)",
+  "httpHistory.kind.point": "A single request",
+  "httpHistory.kind.span": "A run of requests",
+  "httpHistory.hasParentCommand": "Produced by a recorded command",
+  "httpHistory.openAtMoment": "Open the timeline at this moment",
+  "httpHistory.empty": "No HTTP traffic captured yet."
 }

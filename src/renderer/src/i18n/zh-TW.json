@@ -943,5 +943,15 @@
   "httpHistory.colUrl": "URL",
   "httpHistory.colType": "類型",
   "httpHistory.filterAll": "全部",
-  "httpHistory.filterPlaceholder": "篩選 URL／主機／類型…"
+  "httpHistory.filterPlaceholder": "篩選 URL／主機／類型…",
+  "httpHistory.viewActivity": "活動",
+  "httpHistory.viewFlows": "每一筆請求",
+  "httpHistory.counts": "{{activities}} 個活動 · {{flows}} 筆請求",
+  "httpHistory.requestCount": "{{n}} 筆",
+  "httpHistory.noHost": "（無主機）",
+  "httpHistory.kind.point": "單一請求",
+  "httpHistory.kind.span": "一連串請求",
+  "httpHistory.hasParentCommand": "由已記錄的指令產生",
+  "httpHistory.openAtMoment": "在時間軸開啟這個時刻",
+  "httpHistory.empty": "尚未擷取到 HTTP 流量。"
 }
