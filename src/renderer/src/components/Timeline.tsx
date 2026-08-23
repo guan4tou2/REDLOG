@@ -211,8 +211,14 @@ function eventTitle(event: RedLogEvent): string {
       const size = d.size != null ? ` (${d.size}B)` : d.bytes ? ` (${d.bytes}B)` : ''
       return `${label}: ${target}${size}`.trim()
     }
-    case 'credential_use':
-      return `${d.subtype || 'cred'}: ${d.user_context || '?'} @ ${d.dest_host || d.dest_ip || ''}`
+    case 'credential_use': {
+      const who = d.user_context || d.scheme || ''
+      const where = d.dest_host || d.dest_ip || d.host || ''
+      // Command-line creds carry a masked value; HTTP-auth creds carry a user
+      // and host. Show whichever is present, never the secret itself.
+      const detail = d.masked ? `${d.masked}${where ? ` → ${where}` : ''}` : `${who || '?'}${where ? ` @ ${where}` : ''}`
+      return `🔑 ${d.subtype || 'cred'}: ${detail}`.trim()
+    }
     case 'c2_checkin':
       return `C2 beacon ← ${d.dest_ip || d.dest_host || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
     case 'pivot':
