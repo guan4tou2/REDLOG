@@ -64,6 +64,9 @@ export default function App(): JSX.Element {
   // Event to focus when the Timeline opens (set when jumping from Loot); cleared
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
+  // A target to scope the timeline to, set when arriving from the Targets
+  // view. Cleared on any nav so it never silently narrows a later visit.
+  const [focusTarget, setFocusTarget] = useState<string | null>(null)
   const [showMarker, setShowMarker] = useState(false)
   // Feeds the export menu's "N events · about X" line. Refreshed on view
   // changes rather than per event — the preview exists to catch "I meant the
@@ -263,7 +266,7 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
+        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); setView(v as View) }} />
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
@@ -273,7 +276,7 @@ export default function App(): JSX.Element {
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} focusTarget={focusTarget ?? undefined} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
                 this answers "what did I type and what came back", which is the
@@ -291,7 +294,7 @@ export default function App(): JSX.Element {
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={(v) => setView(v as View)} />}
             {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'targets' && <TargetView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
+            {view === 'targets' && <TargetView onOpenInTimeline={(ts, target) => { setFocusEvent({ id: '', ts }); setFocusTarget(target ?? null); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}

@@ -36,9 +36,10 @@ function matchesScope(target: string, pattern: string): boolean {
 }
 
 interface TargetViewProps {
-  /** §7: a target row leads to the Timeline. Optional so the view still
-   *  renders standalone in tests. */
-  onOpenInTimeline?: (ts: number) => void
+  /** §7: a target row leads to the Timeline. The target string comes with it
+   *  so the timeline can focus on just that target's activity. Optional so the
+   *  view still renders standalone in tests. */
+  onOpenInTimeline?: (ts: number, target?: string) => void
 }
 
 export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Element {
@@ -118,7 +119,10 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     }
     setSelected(target)
     const allEvents = await window.redlog.events.query({ limit: 500 })
-    const filtered = allEvents.filter((e) => {
+    // Named distinctly from the component-level `filtered` (the target list):
+    // two same-named consts in nested scopes tripped a bundler TDZ that
+    // crashed the whole view once it had any targets to render.
+    const matched = allEvents.filter((e) => {
       if (e.targetId === target) return true
       if (e.data?.detectedTarget === target) return true
       // Scope violations are agent_type='system' with subtype='scope_violation';
@@ -127,26 +131,30 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       if (e.agentType === 'system' && e.data?.subtype === 'scope_violation' && e.data?.target === target) return true
       return false
     })
-    setEvidence(filtered.sort((a, b) => b.timestamp - a.timestamp))
+    setEvidence(matched.sort((a, b) => b.timestamp - a.timestamp))
   }, [selected])
 
+  // The filtered target list must be fully built BEFORE the keyboard hook
+  // reads its length. These were interleaved — `listNav` sat inside the
+  // `targets.filter` callback and read `filtered.length` mid-filter — which is
+  // a temporal-dead-zone crash that only fires once there is a target to
+  // filter, and a Rules-of-Hooks violation besides. The static keyboard
+  // contract test is a grep, so it never saw it; e2e/target-focus.spec.ts did.
   const filtered = targets.filter((tgt) => {
+    if (filter === 'in_scope') return tgt.inScope === true
+    if (filter === 'out_scope') return tgt.inScope === false
+    return true
+  })
 
-  // §7's main path starts here: target → expand its commands → ⌘↩ to the
-  // Timeline. It was the list most in need of arrow keys and the one that did
-  // not have them.
+  // §7's main path: target → expand its commands → ⌘↩ to the Timeline.
   const listNav = useListKeyboard({
     count: filtered.length,
     onActivate: (i) => { const tgt = filtered[i]; if (tgt) void loadEvidence(tgt.target) },
     onJumpToTimeline: (i) => {
       const tgt = filtered[i]
-      if (tgt) onOpenInTimeline?.(tgt.lastSeen)
+      if (tgt) onOpenInTimeline?.(tgt.lastSeen, tgt.target)
     },
     onEscape: () => setSelected(null)
-  })
-    if (filter === 'in_scope') return tgt.inScope === true
-    if (filter === 'out_scope') return tgt.inScope === false
-    return true
   })
 
   const agentIcon: Record<string, string> = {

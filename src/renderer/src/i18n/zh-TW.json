@@ -959,5 +959,7 @@
   "settings.connectionMonitorEnableHint": "輪詢 socket 表,記錄你連到哪裡——IP、埠、協定、持續時間。無 payload、不需 root。補上 proxy 看不到的洞:SMB、RDP、反向 shell、C2 beacon。",
   "settings.connectionMonitorSynNote": "只記錄已建立的連線。SYN 掃描(nmap -sS)不完成握手,不會出現——指令仍會記錄,連線不會。",
   "capture.connectionMonitor": "網路連線",
-  "timeline.detail.httpBodyEvicted": "主體內容已不在磁碟——被保存期限清除或在磁碟壓力下驅逐。事件與其 SHA-256 仍在,只有可開啟的主體不見了。"
+  "timeline.detail.httpBodyEvicted": "主體內容已不在磁碟——被保存期限清除或在磁碟壓力下驅逐。事件與其 SHA-256 仍在,只有可開啟的主體不見了。",
+  "timeline.targetFocus.badge": "聚焦 {{target}} · {{count}} 筆事件",
+  "timeline.targetFocus.exit": "清除目標聚焦"
 }

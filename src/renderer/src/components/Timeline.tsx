@@ -671,7 +671,7 @@ function walkFocusChain(
   return visited
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -921,6 +921,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
   // filter survives a reload; empty string means "no filter".
+  // Target focus: scope the view to one target's activity, arrived at from
+  // the Targets list. It reuses the filter-dimming pipeline rather than
+  // adding a second axis - the source lanes stay, and everything that did
+  // not touch this target dims away. Matched precisely (id or endpoint), so
+  // 10.0.0.5 does not also light up 10.0.0.50 the way the text filter would.
+  const [targetFocus, setTargetFocus] = useState<string | null>(focusTarget ?? null)
+  useEffect(() => { setTargetFocus(focusTarget ?? null) }, [focusTarget])
+
   const [filterQuery, setFilterQuery] = useState<string>(() => {
     try { return localStorage.getItem('redlog-timeline-filter-query') || '' } catch { return '' }
   })
@@ -1536,6 +1544,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     for (const [id, bag] of searchIndex) if (bag.includes(q)) set.add(id)
     return set
   }, [searchIndex, filterQueryDebounced])
+
+  // Events that touched the focused target. Touched is intentionally broad:
+  // an event carrying this target as its target_id, or naming it as the
+  // endpoint it connected to / requested / violated scope against - the
+  // operator asking what happened to a host wants the connection, the
+  // request and the scope violation, not only the extractor-tagged rows.
+  const targetMatches = useMemo(() => {
+    if (!targetFocus) return null
+    const t = targetFocus.toLowerCase()
+    const set = new Set<string>()
+    for (const e of events) {
+      const d = e.data as Record<string, unknown> | undefined
+      const fields = [e.targetId, d?.detectedTarget, d?.remote_addr, d?.host, d?.dest_ip, d?.dest_host, d?.target]
+      if (fields.some((v) => typeof v === 'string' && v.toLowerCase() === t)) set.add(e.id)
+    }
+    return set
+  }, [events, targetFocus])
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => {
@@ -2524,6 +2549,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
           >×</button>
         </div>
       )}
+      {targetFocus && (
+        <div
+          data-testid="timeline-target-focus-badge"
+          className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-redlog-accent/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
+          style={{ top: focusChain ? 36 : 6, right: 8 }}
+        >
+          <span className="text-redlog-accent">
+            {t('timeline.targetFocus.badge', { target: targetFocus, count: targetMatches?.size ?? 0 })}
+          </span>
+          <button
+            onClick={() => setTargetFocus(null)}
+            className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+            title={t('timeline.targetFocus.exit')}
+            aria-label={t('timeline.targetFocus.exit')}
+          >×</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-redlog-border/80 shrink-0">
         <span className="text-xs font-semibold text-redlog-text tracking-wide">{t('timeline.title')}</span>
@@ -3101,8 +3143,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
                   } else if (anomalyFilter) {
                     dimmed = !c.events.some((e) => badgesById.has(e.id))
-                  } else if (filterMatches) {
-                    dimmed = !c.events.some((e) => filterMatches.has(e.id))
+                  } else if (targetMatches || filterMatches) {
+                    // Compose: when both a target focus and a text filter
+                    // are active, a cluster stays lit only if it has an
+                    // event satisfying both.
+                    dimmed = !c.events.some((e) =>
+                      (!targetMatches || targetMatches.has(e.id)) &&
+                      (!filterMatches || filterMatches.has(e.id)))
                   }
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
