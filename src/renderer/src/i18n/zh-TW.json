@@ -917,5 +917,8 @@
   "capture.connectionMonitor": "網路連線",
   "timeline.detail.httpBodyEvicted": "主體內容已不在磁碟——被保存期限清除或在磁碟壓力下驅逐。事件與其 SHA-256 仍在,只有可開啟的主體不見了。",
   "timeline.targetFocus.badge": "聚焦 {{target}} · {{count}} 筆事件",
-  "timeline.targetFocus.exit": "清除目標聚焦"
+  "timeline.targetFocus.exit": "清除目標聚焦",
+  "settings.transcriptTailerGroup": "Windows 終端輸出",
+  "settings.transcriptTailerEnable": "跟隨 PowerShell Start-Transcript",
+  "settings.transcriptTailerEnableHint": "僅 Windows。透過跟隨 PowerShell transcript 檔,不需 Redlog-Run 前綴即可擷取完整指令輸出。把 hooks/start-transcript-hook.ps1 加進你的 $PROFILE,再開啟此項。"
 }

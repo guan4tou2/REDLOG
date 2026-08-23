@@ -167,6 +167,11 @@ export interface RedLogConfig {
     enabled: boolean
     pollMs?: number
   }
+  /** PowerShell Start-Transcript follower (§2.3), Windows output capture.
+   *  Off by default; the operator opts in and adds the hook to their profile. */
+  transcriptTailer?: {
+    enabled: boolean
+  }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
    *  per-turn `agent.*` events into the hash chain. On by default —
@@ -287,6 +292,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   connectionMonitor: {
     enabled: false,
     pollMs: 2000
+  },
+  transcriptTailer: {
+    enabled: false
   },
   agentTailer: {
     enabled: true,
