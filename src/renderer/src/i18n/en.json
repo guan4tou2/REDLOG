@@ -923,5 +923,11 @@
   "settings.transcriptTailerEnableHint": "Windows only. Captures full command output without the Redlog-Run prefix by following a PowerShell transcript file. Add hooks/start-transcript-hook.ps1 to your $PROFILE, then turn this on.",
   "timeline.more.button": "More",
   "timeline.more.hint": "Session dividers, timezone, auditor view",
-  "timeline.more.viewGroup": "View"
+  "timeline.more.viewGroup": "View",
+  "timeline.band.commands": "Commands",
+  "timeline.band.traffic": "Traffic",
+  "timeline.band.artifacts": "Artifacts",
+  "timeline.band.signals": "Signals",
+  "timeline.band.expandHint": "Expand {{band}} into its lanes",
+  "timeline.band.collapseHint": "Collapse the {{band}} band"
 }

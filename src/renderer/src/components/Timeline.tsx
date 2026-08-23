@@ -41,6 +41,28 @@ const BODY_GONE = '\u0000__redlog_body_gone__'
 const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
+// Capture-group bands (docs/DESIGN-core-and-capture.md §6). Eighteen lanes is
+// past reliable scanning; most engagements touch three or four. The bands are
+// the same grouping the capture-readiness model uses (commands / traffic /
+// artifacts) plus a signals band for the derived/alert lanes — so the timeline
+// and the readiness card describe capture the same way. A band collapses to a
+// single row whose dots keep their per-lane colour (so what happened is still
+// legible), and expands to its member lanes. Every lane belongs to exactly one
+// band; the order here is the row order.
+type BandId = 'commands' | 'traffic' | 'artifacts' | 'signals'
+const BANDS: ReadonlyArray<{ id: BandId; lanes: readonly LaneId[] }> = [
+  { id: 'commands', lanes: ['shell', 'agent', 'process'] },
+  { id: 'traffic', lanes: ['http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'c2_checkin'] },
+  { id: 'artifacts', lanes: ['screenshot', 'clipboard', 'file_transfer', 'loot'] },
+  { id: 'signals', lanes: ['marker', 'scope', 'credential_use', 'cleanup', 'system'] }
+]
+const BAND_OF: Record<LaneId, BandId> = Object.fromEntries(
+  BANDS.flatMap((b) => b.lanes.map((l) => [l, b.id]))
+) as Record<LaneId, BandId>
+// Lanes in band order — replaces the raw LANES order for row layout so a
+// band's members are contiguous.
+const LANES_BY_BAND: readonly LaneId[] = BANDS.flatMap((b) => b.lanes)
+
 // Lanes with no built-in producer — populated only by external agents
 // (custom MCP tools, third-party plugins) posting to /api/events. Showing
 // them as plain "empty" is misleading; the chip tooltip says so explicitly.
@@ -765,6 +787,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // operator who solo'd "shell" doesn't lose that filter after a reload.
   // Stored as a JSON array of lane ids; unknown ids (renamed lanes from an
   // old release) are dropped silently.
+  // Which capture-group bands are collapsed to a single aggregate row (§6).
+  // Default: all collapsed, so the timeline opens as three or four bands
+  // instead of up to eighteen lanes. The operator expands the one they are
+  // working in. Persisted per project.
+  // Default all bands collapsed; the per-project stored set (if any) is loaded
+  // when the project id resolves, in the effect below.
+  const [collapsedBands, setCollapsedBands] = useState<Set<BandId>>(() => new Set(BANDS.map((b) => b.id)))
+  const bandsLoadedFor = useRef<string | null>(null)
   const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(() => {
     try {
       const raw = localStorage.getItem('redlog-timeline-hidden-lanes')
@@ -826,6 +856,21 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // typing, focus toggle — doesn't get clobbered when project.active()
   // arrives seconds later. Migration only runs once per (project, mount).
   const [projectIdForKeys, setProjectIdForKeys] = useState<string | null>(null)
+  // Project-scoped band-collapse load (placed AFTER projectIdForKeys is
+  // declared — its dep array evaluates during render, so an earlier placement
+  // is a temporal-dead-zone crash the e2e caught).
+  useEffect(() => {
+    if (!projectIdForKeys) return
+    if (bandsLoadedFor.current === projectIdForKeys) return
+    bandsLoadedFor.current = projectIdForKeys
+    try {
+      const raw = localStorage.getItem(`redlog-timeline-collapsed-bands:${projectIdForKeys}`)
+      if (raw === null) { setCollapsedBands(new Set(BANDS.map((b) => b.id))); return }
+      const arr = JSON.parse(raw)
+      setCollapsedBands(new Set((Array.isArray(arr) ? arr : []).filter((b): b is BandId => BANDS.some((x) => x.id === b))))
+    } catch { setCollapsedBands(new Set(BANDS.map((b) => b.id))) }
+  }, [projectIdForKeys])
+
   const migrationAppliedFor = useRef<string | null>(null)
   const [anomalyFilter, setAnomalyFilter] = useState<boolean>(() => {
     try { return localStorage.getItem('redlog-timeline-anomaly-filter') === '1' } catch { return false }
@@ -1203,17 +1248,40 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     // `recentEvents` below.
   }, [events, pluginTypes])
 
+  // The lane an event's row is keyed on: its band's id when that band is
+  // collapsed, otherwise the lane itself.
+  const rowKeyOf = useCallback(
+    (lane: LaneId): string => (collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane),
+    [collapsedBands]
+  )
+
+  // The rows actually rendered, in band order. A band with any populated lane
+  // contributes either one aggregate row (collapsed) or its populated,
+  // non-hidden lanes (expanded). Empty bands contribute nothing, exactly as
+  // empty lanes did.
+  const visibleRows = useMemo(() => {
+    const rows: string[] = []
+    for (const band of BANDS) {
+      const popLanes = band.lanes.filter((l) => populatedLanes.has(l))
+      if (popLanes.length === 0) continue
+      if (collapsedBands.has(band.id)) rows.push(band.id)
+      else for (const l of popLanes) if (!hiddenLanes.has(l)) rows.push(l)
+    }
+    return rows
+  }, [populatedLanes, hiddenLanes, collapsedBands])
+
+  // Still keyed on individual lanes; retained for the zoom-ceiling scan below.
   const visibleLanes = useMemo(
     () => LANES.filter((l) => populatedLanes.has(l) && !hiddenLanes.has(l)),
     [populatedLanes, hiddenLanes]
   )
 
   const laneH = useMemo(() => {
-    if (visibleLanes.length === 0) return MIN_LANE_H
+    if (visibleRows.length === 0) return MIN_LANE_H
     const axisH = 28
     const available = containerH - axisH
-    return Math.max(MIN_LANE_H, Math.floor(available / visibleLanes.length))
-  }, [containerH, visibleLanes.length])
+    return Math.max(MIN_LANE_H, Math.floor(available / visibleRows.length))
+  }, [containerH, visibleRows.length])
 
   const loadMore = useCallback(() => {
     if (loading || allLoaded) return
@@ -1483,13 +1551,28 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   }, [fromX, view.left, view.width, TRACK_W])
 
   useContributeExport({ label: t('export.slice'), run: exportSlice })
-  const totalH = visibleLanes.length * laneH
+  const totalH = visibleRows.length * laneH
 
   const laneEvents = useMemo(() => {
     const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
     for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
     return map
   }, [events, pluginTypes])
+
+  // Events grouped by the row they render in — a collapsed band's row holds
+  // every event from its lanes. Only rows that are actually visible get a
+  // bucket, so a hidden lane's events fall out here.
+  const rowEvents = useMemo(() => {
+    const map: Record<string, RedLogEvent[]> = {}
+    for (const r of visibleRows) map[r] = []
+    for (const e of events) {
+      const lane = toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)
+      const key = collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane
+      const bucket = map[key]
+      if (bucket) bucket.push(e)
+    }
+    return map
+  }, [events, visibleRows, collapsedBands, pluginTypes])
 
   // Debounced so a held key or a fast typist does not run the scan per
   // character. 120 ms sits below the point where the filter feels laggy and
@@ -1643,8 +1726,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     if (!projectIdForKeys) return
     try {
       localStorage.setItem(`redlog-timeline-hidden-lanes:${projectIdForKeys}`, JSON.stringify([...hiddenLanes]))
+      localStorage.setItem(`redlog-timeline-collapsed-bands:${projectIdForKeys}`, JSON.stringify([...collapsedBands]))
     } catch { /* ignore */ }
-  }, [hiddenLanes, projectIdForKeys])
+  }, [hiddenLanes, collapsedBands, projectIdForKeys])
   useEffect(() => {
     try {
       if (selectedEvent?.id) localStorage.setItem('redlog-timeline-focus-event', selectedEvent.id)
@@ -1721,15 +1805,16 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   useEffect(() => { maxZoomRef.current = maxZoom }, [maxZoom])
   const clusters = useMemo(() => {
     const out: Array<{ key: string; lane: LaneId; li: number; x: number; y: number; events: RedLogEvent[] }> = []
-    visibleLanes.forEach((lane, li) => {
-      const evs = laneEvents[lane]
-      if (!evs.length) return
+    visibleRows.forEach((rowKey, li) => {
+      const evs = rowEvents[rowKey]
+      if (!evs || !evs.length) return
       let bucket: RedLogEvent[] = []
       let curBi = NaN
       const flush = (): void => {
         if (!bucket.length) return
         const x = bucket.reduce((a, e) => a + toX(displayTs(e)), 0) / bucket.length
-        out.push({ key: `${lane}-${bucket[0].id}`, lane, li, x, y: li * laneH + laneH / 2, events: bucket })
+        const colorLane = toLane(bucket[0].agentType, bucket[0].data?.subtype as string | undefined, pluginTypes)
+        out.push({ key: `${rowKey}-${bucket[0].id}`, lane: colorLane, li, x, y: li * laneH + laneH / 2, events: bucket })
         bucket = []
       }
       for (const e of evs) {
@@ -1741,7 +1826,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       flush()
     })
     return out
-  }, [visibleLanes, laneEvents, toX, laneH])
+  }, [visibleRows, rowEvents, toX, laneH, pluginTypes])
 
   // v0.6.91 S3: derive session-band segments from `shell.session_end` +
   // `system.recording_paused`/`recording_resumed` pairs. session_start is
@@ -2111,6 +2196,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     // the operator on empty track.
   }, [TRACK_W, timeMap, updateView, timeStart, timeEnd, loading])
 
+  const toggleBand = useCallback((band: BandId) => {
+    setCollapsedBands((prev) => {
+      const next = new Set(prev)
+      if (next.has(band)) next.delete(band); else next.add(band)
+      return next
+    })
+  }, [])
+
   const toggleLane = useCallback((lane: LaneId) => {
     setHiddenLanes((prev) => {
       const next = new Set(prev)
@@ -2199,8 +2292,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             events,
             hiddenLanes,
             pluginTypes,
-            laneOrder: LANES as readonly LaneId[],
-            laneOf: (ev) => toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes),
+            laneOrder: visibleRows,
+            laneOf: (ev) => rowKeyOf(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)),
             tsOf: displayTs
           })
           if (next) setSelectedEvent(next)
@@ -2966,16 +3059,49 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           {/* Lane labels */}
           <div className="shrink-0 border-r border-redlog-border/60 bg-redlog-bg/50" style={{ width: LABEL_W }}>
             <div className="h-7 border-b border-redlog-border/60" />
-            {visibleLanes.map((id) => (
-              <div
-                key={id}
-                className="flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs"
-                style={{ height: laneH }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
-                <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
-              </div>
-            ))}
+            {visibleRows.map((rowKey) => {
+              const band = BANDS.find((b) => b.id === rowKey)
+              if (band) {
+                // A collapsed band row: caret + name + how many of its lanes
+                // have events, clickable to expand. Dots for its events render
+                // in the track at this row, each keeping its lane colour.
+                const popCount = band.lanes.filter((l) => populatedLanes.has(l)).length
+                return (
+                  <button
+                    key={rowKey}
+                    data-testid={`timeline-band-${rowKey}`}
+                    onClick={() => toggleBand(band.id)}
+                    className="w-full flex items-center gap-1.5 px-2 border-b border-redlog-border/30 font-mono text-xs text-left hover:bg-white/[0.04] focus-visible:outline-none focus-visible:bg-white/[0.04]"
+                    style={{ height: laneH }}
+                    title={t('timeline.band.expandHint', { band: t(`timeline.band.${band.id}`) })}
+                    aria-expanded={false}
+                  >
+                    <span className="text-redlog-text-faint w-2 shrink-0">▸</span>
+                    <span title={t(`timeline.band.${band.id}`)} className="text-redlog-text truncate">{t(`timeline.band.${band.id}`)}</span>
+                    <span className="text-redlog-text-faint tabular-nums ml-auto">{popCount}</span>
+                  </button>
+                )
+              }
+              const id = rowKey as LaneId
+              // An expanded lane row: indented under its band, with a caret on
+              // the band-owning first lane so the operator can collapse back.
+              return (
+                <div
+                  key={rowKey}
+                  className="group flex items-center gap-1.5 pl-4 pr-2 border-b border-redlog-border/30 font-mono text-xs"
+                  style={{ height: laneH }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[id] }} />
+                  <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
+                  <button
+                    onClick={() => toggleBand(BAND_OF[id])}
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-redlog-text-faint hover:text-redlog-text text-[10px] shrink-0"
+                    title={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
+                    aria-label={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
+                  >▾</button>
+                </div>
+              )
+            })}
           </div>
 
           {/* Scrollable track */}
@@ -3048,7 +3174,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
 
               {/* Lanes area */}
               <div style={{ height: totalH, position: 'relative' }}>
-                {visibleLanes.map((_, i) => (
+                {visibleRows.map((_, i) => (
                   <div
                     key={i}
                     className="absolute w-full border-b border-redlog-border/30"
