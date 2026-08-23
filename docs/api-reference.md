@@ -172,30 +172,6 @@ Defaults: `title` → `"Untitled"`, `severity` → `"info"`, `category` → `"ex
 
 **Response:** `{ operators: [{ id, name, isPrimary, createdAt, revokedAt }] }`
 
-#### `POST /api/operators` (primary only)
-
-**Body:** `{ name, id? }`
-
-**Response:** `201 { operator, token }` — token is returned **once**.
-
-#### `PATCH /api/operators/:id` (primary only)
-
-**Body:** `{ name }`
-
-**Response:** `{ renamed: boolean }`
-
-#### `POST /api/operators/:id/rotate` (self or primary)
-
-**Response:** `{ token: "<new-token>" }`
-
-#### `POST /api/operators/:id/revoke` (primary only)
-
-**Response:** `{ revoked: boolean }`
-
-#### `DELETE /api/operators/:id` (primary only)
-
-**Response:** `{ deleted: boolean }`
-
 ---
 
 ### Terminal Replay
@@ -311,11 +287,6 @@ Writes masked bytes to `sanitized_events` table + appends chained `system.saniti
 | GET | `/api/recording` | yes | Recording |
 | POST | `/api/recording` | yes | Recording |
 | GET | `/api/operators` | yes | Operators |
-| POST | `/api/operators` | primary | Operators |
-| PATCH | `/api/operators/:id` | primary | Operators |
-| POST | `/api/operators/:id/rotate` | self/primary | Operators |
-| POST | `/api/operators/:id/revoke` | primary | Operators |
-| DELETE | `/api/operators/:id` | primary | Operators |
 | POST | `/api/terminal/replay` | yes | Terminal |
 | GET | `/api/chain` | yes | Chain |
 | GET | `/api/anchors` | yes | Chain |

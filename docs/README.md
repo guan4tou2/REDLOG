@@ -53,7 +53,6 @@ design.
 
 ## Operator identity
 
-- **[Operators & tokens](operators.md)** — how per-operator attribution works, secondary operators for teammates or agent contexts (the MCP setup mints a dedicated non-rotating `mcp-agent` token), rotate/revoke lifecycle, threat model.
 
 ## Capture surface
 

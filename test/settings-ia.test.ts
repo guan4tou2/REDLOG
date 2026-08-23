@@ -26,12 +26,12 @@ const PAGES = [
   'hooks', 'agents', 'captureControl',
   'scope', 'network',
   'integrity',
-  'operators', 'plugins',
+  'plugins',
   'general', 'hud'
 ]
 
 describe('settings information architecture', () => {
-  it('declares ten pages as a union', () => {
+  it('declares nine pages as a union', () => {
     // CRLF-safe: .tsx files check out with \r\n on Windows (.gitattributes only
     // pins .sh/.py to LF), so a bare \n\n never matches there — the same
     // line-ending trap the repo hit once before with path.sep.

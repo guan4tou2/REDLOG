@@ -8,13 +8,7 @@ import {
   ensurePrimaryOperator,
   resolveOperatorByToken,
   listOperators,
-  createOperator,
-  updateOperatorToken,
-  revokeOperator,
-  deleteOperator,
-  renameOperator,
   generateToken,
-  slugifyOperatorId,
   getPrimaryOperator,
   type Operator
 } from './db/operators'
@@ -990,72 +984,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/operators' && req.method === 'POST') {
-      if (!operator.isPrimary) {
-        json(res, 403, { error: 'Only the primary operator can create operators' })
-        return
-      }
-      let body: Record<string, unknown>
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const name = (body.name || '').toString().trim()
-      if (!name) { json(res, 400, { error: 'name is required' }); return }
-      const id = (body.id || '').toString().trim() || slugifyOperatorId(name)
-      const token = generateToken()
-      try {
-        const op = createOperator({ id, name, token, isPrimary: false })
-        json(res, 201, { operator: publicOperator(op), token })
-      } catch (e) {
-        json(res, 400, { error: (e as Error).message })
-      }
-      return
-    }
-
-    const opMatch = route.match(/^\/api\/operators\/([^/]+)(?:\/(rotate|revoke))?$/)
-    if (opMatch) {
-      const targetId = decodeURIComponent(opMatch[1])
-      const action = opMatch[2]
-
-      if (action === 'rotate' && req.method === 'POST') {
-        if (!operator.isPrimary && operator.id !== targetId) {
-          json(res, 403, { error: 'Cannot rotate another operator token' })
-          return
-        }
-        const token = generateToken()
-        const ok = updateOperatorToken(targetId, token)
-        if (!ok) { json(res, 404, { error: 'Operator not found' }); return }
-        if (targetId === primaryOperatorId) {
-          fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
-          primaryToken = token
-        }
-        json(res, 200, { token })
-        return
-      }
-
-      if (action === 'revoke' && req.method === 'POST') {
-        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        const ok = revokeOperator(targetId)
-        json(res, ok ? 200 : 400, { revoked: ok })
-        return
-      }
-
-      if (!action && req.method === 'PATCH') {
-        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        let body: Record<string, unknown>
-        try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-        const name = (body.name || '').toString().trim()
-        if (!name) { json(res, 400, { error: 'name is required' }); return }
-        const ok = renameOperator(targetId, name)
-        json(res, ok ? 200 : 404, { renamed: ok })
-        return
-      }
-
-      if (!action && req.method === 'DELETE') {
-        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        const ok = deleteOperator(targetId)
-        json(res, ok ? 200 : 400, { deleted: ok })
-        return
-      }
-    }
 
     // ── Hybrid D Phase 1: session registration ──────────────────────────
     if (route === '/api/session/register' && req.method === 'POST') {

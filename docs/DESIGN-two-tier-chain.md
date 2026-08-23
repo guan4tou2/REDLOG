@@ -316,7 +316,7 @@ function insertLoggedEvent(
 ): RedLogEvent | null {
   if (!opts?.operatorId) {
     throw new Error(`insertEvent (logged): operatorId is required (agent_type=${agentType}). ` +
-      `Every event must resolve to a known operator — see docs/operators.md.`)
+      `Every event must resolve to a known operator.`)
   }
   const db = getDB()
   const now = Date.now()

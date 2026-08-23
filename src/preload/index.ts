@@ -170,17 +170,11 @@ contextBridge.exposeInMainWorld('redlog', {
   capture: {
     health: () => ipcRenderer.invoke('capture:health')
   },
-  operators: {
-    list: () => ipcRenderer.invoke('operators:list'),
-    create: (name: string) => ipcRenderer.invoke('operators:create', name),
-    rotate: (id: string) => ipcRenderer.invoke('operators:rotate', id),
-    rename: (id: string, name: string) => ipcRenderer.invoke('operators:rename', id, name),
-    revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
-    delete: (id: string) => ipcRenderer.invoke('operators:delete', id),
-    writeToken: (id: string, token: string) => ipcRenderer.invoke('operators:writeToken', id, token) as Promise<string | null>
-  },
   clock: {
     status: () => ipcRenderer.invoke('clock:status')
+  },
+  operators: {
+    list: () => ipcRenderer.invoke('operators:list')
   },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),

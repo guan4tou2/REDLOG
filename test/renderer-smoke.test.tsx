@@ -140,12 +140,7 @@ function installBridge(): void {
     data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
     operators: {
-      list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }],
-      create: async () => null,
-      rotate: async () => null,
-      rename: async () => true,
-      revoke: async () => true,
-      delete: async () => true
+      list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]
     },
     capture: {
       health: async () => ({
