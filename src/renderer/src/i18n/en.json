@@ -958,5 +958,6 @@
   "settings.connectionMonitorEnable": "Record established connections",
   "settings.connectionMonitorEnableHint": "Polls the socket table and records who you connected to — IP, port, protocol, duration. No payload, no root. Fills the gap the proxy cannot see: SMB, RDP, reverse shells, C2 beacons.",
   "settings.connectionMonitorSynNote": "Established connections only. A SYN scan (nmap -sS) completes no handshake and will not appear — the command is still recorded, the connections are not.",
-  "capture.connectionMonitor": "Network connections"
+  "capture.connectionMonitor": "Network connections",
+  "timeline.detail.httpBodyEvicted": "Body content no longer on disk — pruned by retention or evicted under disk pressure. The event and its SHA-256 remain; only the openable body is gone."
 }

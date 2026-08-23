@@ -100,6 +100,17 @@ export interface RedLogConfig {
      *  `system.screenshot_pruned` audit event is appended per deletion. */
     keepDays?: number
   }
+  /** Captured HTTP request/response bodies (http-body-store.ts). */
+  httpBodies?: {
+    /** Age-based sweep of the sidecar store, days. 0 = keep forever. */
+    keepDays?: number
+    /** Size-pressure cap in bytes. When the store exceeds this, the coldest
+     *  UNPINNED bodies are evicted until under it — in-scope bodies are pinned
+     *  and never evicted (body-eviction.ts). 0 (default) = unbounded. The
+     *  event and its sha256 attestation always survive; only the openable
+     *  body content is dropped. */
+    maxBytes?: number
+  }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
     enabled: boolean
@@ -246,6 +257,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshots: {
     keepDays: 0
+  },
+  httpBodies: {
+    keepDays: 0,
+    maxBytes: 0
   },
   clipboard: {
     enabled: false,

@@ -34,6 +34,10 @@ const MAX_TRACK_W = 400_000
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
 // and `process` (spawn/exit) between scope and system so it doesn't dilute
 // the top attack-narrative lanes.
+// Sentinel: a body whose sidecar file is no longer on disk (pruned or evicted
+// under disk pressure). Distinct from null (never loaded) and '' (empty body).
+const BODY_GONE = '\u0000__redlog_body_gone__'
+
 const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
@@ -3852,8 +3856,12 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
     setLoading(true)
     try {
       const content = await window.redlog.httpBody.read(ref)
-      setter(content)
-    } catch { setter(null) }
+      // A ref that resolves to nothing means the file is gone — pruned by
+      // retention or evicted under disk pressure. The sha256 attestation on
+      // the event still stands; only the openable content is gone. Say that,
+      // rather than leaving the load button to do nothing.
+      setter(content === null ? BODY_GONE : content)
+    } catch { setter(BODY_GONE) }
     setLoading(false)
   }, [])
 
@@ -3899,7 +3907,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {' '}({formatBytes(inlineReqBody?.size ?? reqBodyRef?.size ?? 0)})
         </button>
       )}
-      {isRequest && loadedReqBody && (
+      {isRequest && loadedReqBody && loadedReqBody !== BODY_GONE && (
         <CollapsibleStream
           label={t('timeline.detail.httpRequestBody')}
           content={loadedReqBody}
@@ -3908,11 +3916,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           startOpen
         />
       )}
-      {isResponse && (preview.length > 0 || loadedRespBody) && (
+      {isResponse && (preview.length > 0 || (loadedRespBody && loadedRespBody !== BODY_GONE)) && (
         <CollapsibleStream
           label={t('timeline.detail.httpResponseBody')}
-          content={loadedRespBody || preview}
-          bytes={contentLength ?? (loadedRespBody || preview).length}
+          content={(loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview}
+          bytes={contentLength ?? ((loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview).length}
           truncated={!loadedRespBody && hasFullRespBody}
           accent="emerald"
           startOpen
@@ -3928,11 +3936,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
         </button>
       )}
-      {isWs && (wsPreview.length > 0 || loadedWsBody) && (
+      {isWs && (wsPreview.length > 0 || (loadedWsBody && loadedWsBody !== BODY_GONE)) && (
         <CollapsibleStream
           label={t('timeline.detail.wsPayload')}
-          content={loadedWsBody || wsPreview}
-          bytes={data.size as number ?? (loadedWsBody || wsPreview).length}
+          content={(loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview}
+          bytes={data.size as number ?? ((loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview).length}
           truncated={!loadedWsBody && hasFullWsBody}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
@@ -3948,11 +3956,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {' '}({formatBytes(inlineWsBody?.size ?? wsBodyRef?.size ?? 0)})
         </button>
       )}
-      {isTcp && (tcpPreview.length > 0 || loadedTcpBody) && (
+      {isTcp && (tcpPreview.length > 0 || (loadedTcpBody && loadedTcpBody !== BODY_GONE)) && (
         <CollapsibleStream
           label={t('timeline.detail.tcpPayload')}
-          content={loadedTcpBody || tcpPreview}
-          bytes={data.size as number ?? (loadedTcpBody || tcpPreview).length}
+          content={(loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview}
+          bytes={data.size as number ?? ((loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview).length}
           truncated={!loadedTcpBody && hasFullTcpBody}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
@@ -3973,6 +3981,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
             type: contentType || '—', size: formatBytes(contentLength ?? 0)
           })}
+        </p>
+      )}
+      {[loadedReqBody, loadedRespBody, loadedWsBody, loadedTcpBody].includes(BODY_GONE) && (
+        <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+          {t('timeline.detail.httpBodyEvicted')}
         </p>
       )}
       {headersText && (

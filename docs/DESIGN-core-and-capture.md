@@ -368,13 +368,17 @@ recordings.
 
 ## 6. Still open
 
-- Windows script-block logging (§2.3) and queryable tool output (§2.4).
-- Settings: **12 pages / 27 field groups**, against positioning risk #2 which
+- Windows script-block logging (§2.3). Queryable tool output (§2.4) is
+  **done** — full-text search over `.cast` recordings (`cast-index.ts`).
+  Non-HTTP traffic (§2.1) is **done** — connection-level capture
+  (`connection-monitor.ts` / `connection-table.ts`).
+- Settings: **11 pages / 27 field groups**, against positioning risk #2 which
   named "8 tabs / 34 groups" as the symptom of breadth outrunning the persona.
-  The left list took the page count *up* to 13 before three rounds of removal
-  brought it to 12 and the groups from 34 to 27. Four groups still need a
-  scope ruling rather than a merge: cloud share, the deconfliction webhook,
-  operator tokens, and the MCP server.
+  The left list took the page count *up* to 13 before removals brought it to 11
+  (export and cloud-share pages gone) and the groups from 34 to 26, then back
+  to 27 when connection capture added one. Three groups still need a scope
+  ruling rather than a merge: the deconfliction webhook, operator tokens, and
+  the MCP server.
 - Timeline view modes — the audit-mode shape does not survive §1, but the
   eight flat toggles are still a real problem.
 - 18 lanes.
@@ -386,6 +390,16 @@ recordings.
   what is installed stays, because "is anything capturing that I did not put
   there" is a question §1 does have to answer. The `redlog-sign` CLI went with
   it — it existed only to produce registry entries.
+- ~~Size-pressure eviction for the body store.~~ **Built 2026-08-22**
+  (`body-eviction.ts` + `sweepBodyStore` in `retention.ts`). Time-based
+  retention did not bound the store by size; this evicts the coldest UNPINNED
+  bodies when it exceeds `httpBodies.maxBytes` (config-only, 0 = unbounded,
+  the default). Scope is the pin: an in-scope body is never evicted. The safety
+  property is that eviction deletes the `.body` file, never the event — the
+  sha256 attestation and the chain survive, and an evicted body reads back as
+  "content no longer on disk", not as an erased fact. A `system.body_evicted`
+  audit event records each sweep, and if the pinned set alone exceeds the
+  budget the shortfall is reported rather than resolved by touching evidence.
 - Rewriting `PRODUCT-POSITIONING.md` to match §1.
 
 ### The test being applied to Settings

@@ -24,7 +24,7 @@ import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAn
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
-import { sweepRetention, sweepLoggedTier } from '../core/retention'
+import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
 import { exportHar } from '../core/har-export'
 import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
@@ -538,6 +538,13 @@ function startProject(project: ProjectMeta): void {
     const swept = sweepRetention(config, { engagementId, operatorId })
     if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
+    }
+    // Size-pressure eviction of the body store, after the age sweep — whatever
+    // aged out has already gone, so this only reaches live-but-cold bodies.
+    const evicted = sweepBodyStore(config, { engagementId, operatorId })
+    if (evicted.evicted > 0 || evicted.shortfallBytes > 0) {
+      console.log(`[retention] evicted ${evicted.evicted} body file(s) under disk pressure` +
+        (evicted.shortfallBytes > 0 ? ` (still ${evicted.shortfallBytes} bytes over budget; in-scope bodies kept)` : ''))
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see loggedTierTimer below.
