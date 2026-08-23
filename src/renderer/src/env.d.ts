@@ -248,10 +248,6 @@ interface RedLogAPI {
      *  a credential is not evidence and must never enter a bundle. */
     writeToken: (id: string, token: string) => Promise<string | null>
   }
-  mcp: {
-    info: () => Promise<McpInfo | null>
-    setupToken: (opts?: { name?: string }) => Promise<{ token: string; port: number; endpoint: string; operatorId: string; name: string } | null>
-  }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
   }
@@ -286,14 +282,6 @@ interface CaptureHealthInfo {
   lastDbError?: { source: string; at: number; message: string }
   lastSampleBroken?: { at: number; eventId: string; reason: string }
   lastSampleOkAt?: number | null
-}
-
-interface McpInfo {
-  port: number
-  endpoint: string
-  stdioPath: string
-  hasToken: boolean
-  operators?: Array<{ id: string; name: string }>
 }
 
 interface BrowserLaunchResult {

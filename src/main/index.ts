@@ -1885,57 +1885,6 @@ app.whenReady().then(() => {
     }
   })
 
-  // --- MCP (app-hosted HTTP server) ---
-  // v0.6.87 A3: MCP operator id is no longer hardcoded. `mcp:setupToken` now
-  // accepts an optional { name } that becomes the operator label + id, so
-  // Claude Desktop, OpenCode, Codex, etc. can each have their own attribution
-  // (previously every MCP-driven event was attributed to the single global
-  // `mcp-agent` operator and the "> 1 operator" heuristic in Timeline broke).
-  const MCP_DEFAULT_OPERATOR_ID = 'mcp-agent'
-  const mcpOperatorIdFromName = (name?: string | null): string => {
-    const raw = (name || '').trim()
-    if (!raw) return MCP_DEFAULT_OPERATOR_ID
-    // slugify: lowercase alnum + dashes, prefix "mcp-" so operator lists stay
-    // sortable and MCP-owned tokens are visually distinct.
-    const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
-    return slug ? `mcp-${slug}` : MCP_DEFAULT_OPERATOR_ID
-  }
-  ipcMain.handle('mcp:info', () => {
-    if (!activeProject) return null
-    const port = getApiPort()
-    // In dev the stdio bridge is in the repo; in a packaged app it's unpacked
-    // next to resources. HTTP is the recommended transport either way.
-    const stdioPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'mcp', 'redlog-mcp-server.js')
-      : path.join(__dirname, '../../mcp/redlog-mcp-server.js')
-    // On Windows there's no shebang execution, so `claude mcp add
-    // <path>.js` would silently fail. Return a `command` + `args` pair
-    // the client can spawn directly on every OS. Audit P1-5.
-    return {
-      port,
-      endpoint: `http://127.0.0.1:${port}/mcp`,
-      stdioPath,
-      stdioCommand: process.execPath.endsWith('node') || process.execPath.endsWith('node.exe') ? process.execPath : 'node',
-      stdioArgs: [stdioPath],
-      hasToken: listOperators().some((o) => o.id.startsWith('mcp-') && !o.revokedAt),
-      // List MCP-owned operators so Settings can show which agents are
-      // already registered.
-      operators: listOperators()
-        .filter((o) => o.id.startsWith('mcp-') && !o.revokedAt)
-        .map((o) => ({ id: o.id, name: o.name }))
-    }
-  })
-  ipcMain.handle('mcp:setupToken', (_e, opts?: { name?: string }) => {
-    if (!activeProject) return null
-    const operatorId = mcpOperatorIdFromName(opts?.name)
-    const displayName = (opts?.name || '').trim() || 'MCP agent'
-    const token = generateToken()
-    const existing = listOperators().find((o) => o.id === operatorId)
-    if (existing) updateOperatorToken(operatorId, token)
-    else createOperator({ id: operatorId, name: displayName, token, isPrimary: false })
-    return { token, port: getApiPort(), endpoint: `http://127.0.0.1:${getApiPort()}/mcp`, operatorId, name: displayName }
-  })
-
   // --- Operators ---
   ipcMain.handle('operators:list', () => {
     if (!activeProject) return []

@@ -30,16 +30,6 @@ No auth required. Liveness check.
 
 ---
 
-### MCP
-
-#### `POST /mcp` (also `/api/mcp`)
-
-MCP over Streamable HTTP (JSON-RPC 2.0). Accepts a single message or a batch array. Returns `202` with empty body when no responses are produced.
-
-See [agent-integration.md § MCP tools](agent-integration.md#available-tools) for the 18 tool definitions.
-
----
-
 ### Identity
 
 #### `GET /api/whoami`
@@ -304,7 +294,6 @@ Writes masked bytes to `sanitized_events` table + appends chained `system.saniti
 | Method | Path | Auth | Category |
 |--------|------|------|----------|
 | GET | `/api/health` | no | Health |
-| POST | `/mcp` | yes | MCP |
 | GET | `/api/whoami` | yes | Identity |
 | POST | `/api/events` | yes | Events |
 | GET | `/api/events` | yes | Events |

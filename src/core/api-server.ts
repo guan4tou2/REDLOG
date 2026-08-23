@@ -31,8 +31,6 @@ import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { exportHar } from './har-export'
-import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
-import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
 import { getCaptureHealth, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { isInsideDir } from './paths'
@@ -178,137 +176,6 @@ export function configureApi(opts: {
   if (opts.watchPathManager) watchPathManagerRef = opts.watchPathManager
 }
 
-// Runs an MCP tool directly against the same internal functions the REST
-// routes use, attributed to the operator the bearer token resolved to. This is
-// the app-hosted counterpart of mcp/redlog-mcp-server.js's HTTP calls — same
-// tools, no subprocess.
-function makeMcpDispatch(operator: Operator): ToolDispatch {
-  const attributed = { engagementId, operatorId: operator.id }
-
-  return async (name, args): Promise<unknown> => {
-    switch (name) {
-      case 'redlog_status':
-        return {
-          ip: alertRuntimeRef?.ipStatus() ?? null,
-          eventCount: getEventCount(),
-          scopeViolations: alertRuntimeRef?.scopeViolationCount() ?? 0,
-          capture: getCaptureHealth()
-        }
-
-      case 'redlog_whoami':
-        return { operator: publicOperator(operator), engagementId }
-
-      case 'redlog_operators_list':
-        return { operators: listOperators().map(publicOperator) }
-
-      case 'redlog_mark': {
-        const event = insertEvent('marker', {
-          title: args.title ?? 'Untitled',
-          notes: args.notes ?? '',
-          severity: args.severity ?? 'info',
-          category: 'mcp'
-        }, { ...attributed, targetId: args.target as string | undefined })
-        if (event) eventBus.publish(event)
-        return event
-      }
-
-      case 'redlog_log_event': {
-        const data = (args.data as Record<string, unknown>) ?? {}
-        const event = insertEvent(
-          (args.agent_type as string) || 'agent',
-          data,
-          { ...attributed, targetId: args.target as string | undefined }
-        )
-        if (event) eventBus.publish(event)
-        return event
-      }
-
-      case 'redlog_search':
-        return { events: searchEvents(String(args.query ?? ''), Number(args.limit) || 20) }
-
-      case 'redlog_events':
-        return {
-          events: queryEvents({
-            agentType: args.agent_type as string | undefined,
-            targetId: args.target as string | undefined,
-            limit: Number(args.limit) || 50
-          })
-        }
-
-      case 'redlog_scope':
-        return {
-          targets: configLoaderRef?.getTargets() ?? [],
-          violations: alertRuntimeRef?.scopeViolations() ?? [],
-          violationCount: alertRuntimeRef?.scopeViolationCount() ?? 0
-        }
-
-      case 'redlog_config':
-        return configLoaderRef?.getConfig() ?? {}
-
-      case 'redlog_quickmark':
-        return createQuickMark({
-          title: (args.title as string) || 'Untitled',
-          url: args.url as string | undefined,
-          note: (args.note as string) || '',
-          context: {}
-        })
-
-      case 'redlog_quickmarks_list':
-        return { quickmarks: listQuickMarks() }
-
-      case 'redlog_loot_scan': {
-        if (!lootDetectorRef) return { findings: [] }
-        return { findings: lootDetectorRef.scan(String(args.text ?? ''), args.targetId ? String(args.targetId) : undefined, args.source ? String(args.source) : undefined) }
-      }
-
-      case 'redlog_screenshot': {
-        if (!screenshotAgentRef) return { captured: false }
-        const filePath = await screenshotAgentRef.captureNow('mcp')
-        return { captured: !!filePath, filePath }
-      }
-
-      case 'redlog_recording': {
-        const action = args.action as string
-        if (action === 'pause') eventBus.pause('mcp')
-        else if (action === 'resume') eventBus.resume('mcp')
-        else if (action === 'toggle') { if (eventBus.paused) eventBus.resume('mcp'); else eventBus.pause('mcp') }
-        return { recording: !eventBus.paused }
-      }
-
-      case 'redlog_chain_status':
-        return { length: getChainLength(), lastAnchor: listAnchors(1)[0] ?? null }
-
-      case 'redlog_chain_anchor_now':
-        return { anchor: await anchorNow() }
-
-      case 'redlog_chain_verify':
-        return verifyLatestAnchor()
-
-      case 'redlog_chain_upgrade':
-        return args.anchor_id
-          ? { anchor: await upgradeAnchor(String(args.anchor_id)) }
-          : await upgradeAllPending()
-
-      case 'redlog_session_register': {
-        const sid = String(args.session_id ?? '')
-        if (!sid) throw new Error('session_id is required')
-        if (sessionRegistryRef) sessionRegistryRef.register(sid)
-        const cwd = typeof args.cwd === 'string' ? args.cwd.trim() : ''
-        let watchPathAdded = false
-        if (cwd && watchPathManagerRef) watchPathAdded = watchPathManagerRef.addPath(cwd)
-        return { registered: true, session_id: sid, ...(cwd ? { cwd, watchpath_added: watchPathAdded } : {}) }
-      }
-
-      default: {
-        // Route to a trusted 🔴 plugin tool if one owns this name.
-        const plug = await dispatchPluginTool(name, args)
-        if (plug.owned) return plug.result
-        throw new Error(`Unknown tool: ${name}`)
-      }
-    }
-  }
-}
-
 function writePrimaryToken(): string {
   const token = generateToken()
   fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
@@ -425,24 +292,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   try {
-    // MCP over Streamable HTTP — the app hosts its own MCP server, so it is live
-    // whenever RedLog is open. Connect with:
-    //   claude mcp add --transport http redlog http://127.0.0.1:<port>/mcp \
-    //     --header "Authorization: Bearer <operator-token>"
-    if ((route === '/mcp' || route === '/api/mcp') && req.method === 'POST') {
-      let parsed: unknown
-      try { parsed = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const dispatch = makeMcpDispatch(operator)
-      const messages = Array.isArray(parsed) ? parsed : [parsed]
-      const extraTools = listPluginTools().map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
-      const responses = (await Promise.all(
-        messages.map((m) => handleMcpMessage(m, { version: appVersion, dispatch, extraTools }))
-      )).filter((r): r is Record<string, unknown> => r !== null)
-
-      if (responses.length === 0) { res.writeHead(202); res.end(); return }
-      json(res, 200, Array.isArray(parsed) ? responses : responses[0])
-      return
-    }
 
     if (route === '/api/whoami' && req.method === 'GET') {
       json(res, 200, { operator: publicOperator(operator), engagementId })

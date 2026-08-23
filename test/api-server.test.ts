@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// Integration test for the app-hosted REST/MCP server: real HTTP requests against
+// Integration test for the app-hosted REST server: real HTTP requests against
 // a live server backed by a temp SQLite project. Guarded so it skips cleanly when
 // better-sqlite3 isn't compiled for the running Node ABI (same pattern as the
 // other DB-backed suites).
