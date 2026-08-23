@@ -920,5 +920,8 @@
   "timeline.targetFocus.exit": "Clear target focus",
   "settings.transcriptTailerGroup": "Windows terminal output",
   "settings.transcriptTailerEnable": "Follow PowerShell Start-Transcript",
-  "settings.transcriptTailerEnableHint": "Windows only. Captures full command output without the Redlog-Run prefix by following a PowerShell transcript file. Add hooks/start-transcript-hook.ps1 to your $PROFILE, then turn this on."
+  "settings.transcriptTailerEnableHint": "Windows only. Captures full command output without the Redlog-Run prefix by following a PowerShell transcript file. Add hooks/start-transcript-hook.ps1 to your $PROFILE, then turn this on.",
+  "timeline.more.button": "More",
+  "timeline.more.hint": "Session dividers, timezone, auditor view",
+  "timeline.more.viewGroup": "View"
 }
