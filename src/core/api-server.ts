@@ -8,17 +8,12 @@ import {
   ensurePrimaryOperator,
   resolveOperatorByToken,
   listOperators,
-  createOperator,
-  updateOperatorToken,
-  revokeOperator,
-  deleteOperator,
-  renameOperator,
   generateToken,
-  slugifyOperatorId,
   getPrimaryOperator,
   type Operator
 } from './db/operators'
 import { eventBus } from './event-bus'
+import { detectCredentialUse } from './credential-detector'
 import { extractTarget, extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
@@ -31,10 +26,7 @@ import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { exportHar } from './har-export'
-import { getDeconflictionConfig, testWebhook } from './deconfliction'
-import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
-import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
-import { getCaptureHealth } from './capture-health'
+import { getCaptureHealth, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
@@ -179,137 +171,6 @@ export function configureApi(opts: {
   if (opts.watchPathManager) watchPathManagerRef = opts.watchPathManager
 }
 
-// Runs an MCP tool directly against the same internal functions the REST
-// routes use, attributed to the operator the bearer token resolved to. This is
-// the app-hosted counterpart of mcp/redlog-mcp-server.js's HTTP calls — same
-// tools, no subprocess.
-function makeMcpDispatch(operator: Operator): ToolDispatch {
-  const attributed = { engagementId, operatorId: operator.id }
-
-  return async (name, args): Promise<unknown> => {
-    switch (name) {
-      case 'redlog_status':
-        return {
-          ip: alertRuntimeRef?.ipStatus() ?? null,
-          eventCount: getEventCount(),
-          scopeViolations: alertRuntimeRef?.scopeViolationCount() ?? 0,
-          capture: getCaptureHealth()
-        }
-
-      case 'redlog_whoami':
-        return { operator: publicOperator(operator), engagementId }
-
-      case 'redlog_operators_list':
-        return { operators: listOperators().map(publicOperator) }
-
-      case 'redlog_mark': {
-        const event = insertEvent('marker', {
-          title: args.title ?? 'Untitled',
-          notes: args.notes ?? '',
-          severity: args.severity ?? 'info',
-          category: 'mcp'
-        }, { ...attributed, targetId: args.target as string | undefined })
-        if (event) eventBus.publish(event)
-        return event
-      }
-
-      case 'redlog_log_event': {
-        const data = (args.data as Record<string, unknown>) ?? {}
-        const event = insertEvent(
-          (args.agent_type as string) || 'agent',
-          data,
-          { ...attributed, targetId: args.target as string | undefined }
-        )
-        if (event) eventBus.publish(event)
-        return event
-      }
-
-      case 'redlog_search':
-        return { events: searchEvents(String(args.query ?? ''), Number(args.limit) || 20) }
-
-      case 'redlog_events':
-        return {
-          events: queryEvents({
-            agentType: args.agent_type as string | undefined,
-            targetId: args.target as string | undefined,
-            limit: Number(args.limit) || 50
-          })
-        }
-
-      case 'redlog_scope':
-        return {
-          targets: configLoaderRef?.getTargets() ?? [],
-          violations: alertRuntimeRef?.scopeViolations() ?? [],
-          violationCount: alertRuntimeRef?.scopeViolationCount() ?? 0
-        }
-
-      case 'redlog_config':
-        return configLoaderRef?.getConfig() ?? {}
-
-      case 'redlog_quickmark':
-        return createQuickMark({
-          title: (args.title as string) || 'Untitled',
-          url: args.url as string | undefined,
-          note: (args.note as string) || '',
-          context: {}
-        })
-
-      case 'redlog_quickmarks_list':
-        return { quickmarks: listQuickMarks() }
-
-      case 'redlog_loot_scan': {
-        if (!lootDetectorRef) return { findings: [] }
-        return { findings: lootDetectorRef.scan(String(args.text ?? ''), args.targetId ? String(args.targetId) : undefined, args.source ? String(args.source) : undefined) }
-      }
-
-      case 'redlog_screenshot': {
-        if (!screenshotAgentRef) return { captured: false }
-        const filePath = await screenshotAgentRef.captureNow('mcp')
-        return { captured: !!filePath, filePath }
-      }
-
-      case 'redlog_recording': {
-        const action = args.action as string
-        if (action === 'pause') eventBus.pause('mcp')
-        else if (action === 'resume') eventBus.resume('mcp')
-        else if (action === 'toggle') { if (eventBus.paused) eventBus.resume('mcp'); else eventBus.pause('mcp') }
-        return { recording: !eventBus.paused }
-      }
-
-      case 'redlog_chain_status':
-        return { length: getChainLength(), lastAnchor: listAnchors(1)[0] ?? null }
-
-      case 'redlog_chain_anchor_now':
-        return { anchor: await anchorNow() }
-
-      case 'redlog_chain_verify':
-        return verifyLatestAnchor()
-
-      case 'redlog_chain_upgrade':
-        return args.anchor_id
-          ? { anchor: await upgradeAnchor(String(args.anchor_id)) }
-          : await upgradeAllPending()
-
-      case 'redlog_session_register': {
-        const sid = String(args.session_id ?? '')
-        if (!sid) throw new Error('session_id is required')
-        if (sessionRegistryRef) sessionRegistryRef.register(sid)
-        const cwd = typeof args.cwd === 'string' ? args.cwd.trim() : ''
-        let watchPathAdded = false
-        if (cwd && watchPathManagerRef) watchPathAdded = watchPathManagerRef.addPath(cwd)
-        return { registered: true, session_id: sid, ...(cwd ? { cwd, watchpath_added: watchPathAdded } : {}) }
-      }
-
-      default: {
-        // Route to a trusted 🔴 plugin tool if one owns this name.
-        const plug = await dispatchPluginTool(name, args)
-        if (plug.owned) return plug.result
-        throw new Error(`Unknown tool: ${name}`)
-      }
-    }
-  }
-}
-
 function writePrimaryToken(): string {
   const token = generateToken()
   fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
@@ -426,39 +287,46 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   try {
-    // MCP over Streamable HTTP — the app hosts its own MCP server, so it is live
-    // whenever RedLog is open. Connect with:
-    //   claude mcp add --transport http redlog http://127.0.0.1:<port>/mcp \
-    //     --header "Authorization: Bearer <operator-token>"
-    if ((route === '/mcp' || route === '/api/mcp') && req.method === 'POST') {
-      let parsed: unknown
-      try { parsed = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const dispatch = makeMcpDispatch(operator)
-      const messages = Array.isArray(parsed) ? parsed : [parsed]
-      const extraTools = listPluginTools().map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
-      const responses = (await Promise.all(
-        messages.map((m) => handleMcpMessage(m, { version: appVersion, dispatch, extraTools }))
-      )).filter((r): r is Record<string, unknown> => r !== null)
-
-      if (responses.length === 0) { res.writeHead(202); res.end(); return }
-      json(res, 200, Array.isArray(parsed) ? responses : responses[0])
-      return
-    }
 
     if (route === '/api/whoami' && req.method === 'GET') {
       json(res, 200, { operator: publicOperator(operator), engagementId })
       return
     }
 
-    if (route === '/api/events' && req.method === 'POST') {
+    // `/api/events/seed` is the E2E fixture door: same handler, allowlist
+    // skipped, and it does not exist unless REDLOG_E2E=1. Specs need to plant
+    // derived rows (pivot, cleanup, a scope violation, eighteen lanes' worth
+    // of types) that in production only RedLog's own analysis writes.
+    //
+    // A flag on `/api/events` would have been fewer lines and wrong: the
+    // production route's refusal is itself under test
+    // (e2e/recording-pause.spec.ts, "a forged system event is refused"), and a
+    // bypass reachable on the same route would have made that test pass while
+    // the door stood open.
+    const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
+    if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
+    if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const agentType = String(body.agent_type || body.agentType || 'external')
+      // Types an outside tool may report. The ones deliberately absent are
+      // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
+      // written by RedLog's own analysis, and letting a caller forge them
+      // means forging RedLog's conclusions about the engagement.
+      //
+      // `terminal` is here because it is the type in redlog-cli's own help
+      // text (`redlog-cli log terminal --data ...`). Leaving it out 403'd the
+      // documented path; e2e/cli-smoke.spec.ts caught it.
       const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
-        'scanner', 'shell', 'dns', 'external', 'agent', 'marker',
-        'process', 'credential_use', 'file_transfer'
+        'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
+        'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
+        'browser', 'http_navigation'
       ])
-      if (!EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+      if (!e2eSeed && !EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+        // A 403 an integration ignores is capture silently stopping, which is
+        // the one failure §1 does not allow. Record it so a tool posting a
+        // blocked type shows up as a capture problem rather than as nothing.
+        noteDbError('api-external-rejected', new Error(`agent_type "${agentType}" rejected`))
         json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
         return
       }
@@ -771,6 +639,32 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         } catch { /* additive */ }
       }
 
+      // Command-line credential use (§4d): -p/--password, user:pass@host in a
+      // URL argument. Derived from the command text that was going to be
+      // captured anyway, and the secret is masked before it reaches the event
+      // — the fact of the credential use is evidence, the secret is liability.
+      if ((agentType === 'shell' || agentType === 'terminal') && typeof data.command === 'string' && data.command) {
+        for (const cred of detectCredentialUse(data.command as string)) {
+          try {
+            const ce = insertEvent('credential_use', {
+              subtype: cred.kind,
+              masked: cred.masked,
+              // No raw command here — it carries the plaintext secret. The
+              // parent shell event (linked via _causes) holds the command,
+              // subject to the normal redaction layers; this event records
+              // only the masked fact.
+              ...(cred.destHost ? { host: cred.destHost } : {}),
+              ...(cred.userContext ? { user_context: cred.userContext } : {}),
+              ...(cred.scheme ? { scheme: cred.scheme } : {}),
+              description: `credential in command (${cred.kind})`,
+              mitre_ttp: 'T1078',
+              _causes: [event.id]
+            }, { engagementId, operatorId: operator.id, targetId: cred.destHost || targetId })
+            if (ce) eventBus.publish(ce)
+          } catch { /* additive */ }
+        }
+      }
+
       json(res, 201, event)
       return
     }
@@ -1061,17 +955,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/deconfliction' && req.method === 'GET') {
-      const cfg = getDeconflictionConfig()
-      json(res, 200, { ...cfg, secret: cfg.secret ? '***' : '' })
-      return
-    }
 
-    if (route === '/api/deconfliction/test' && req.method === 'POST') {
-      const result = await testWebhook(getDeconflictionConfig())
-      json(res, 200, result)
-      return
-    }
 
     if (route === '/api/clock' && req.method === 'GET') {
       json(res, 200, {
@@ -1127,72 +1011,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/operators' && req.method === 'POST') {
-      if (!operator.isPrimary) {
-        json(res, 403, { error: 'Only the primary operator can create operators' })
-        return
-      }
-      let body: Record<string, unknown>
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const name = (body.name || '').toString().trim()
-      if (!name) { json(res, 400, { error: 'name is required' }); return }
-      const id = (body.id || '').toString().trim() || slugifyOperatorId(name)
-      const token = generateToken()
-      try {
-        const op = createOperator({ id, name, token, isPrimary: false })
-        json(res, 201, { operator: publicOperator(op), token })
-      } catch (e) {
-        json(res, 400, { error: (e as Error).message })
-      }
-      return
-    }
-
-    const opMatch = route.match(/^\/api\/operators\/([^/]+)(?:\/(rotate|revoke))?$/)
-    if (opMatch) {
-      const targetId = decodeURIComponent(opMatch[1])
-      const action = opMatch[2]
-
-      if (action === 'rotate' && req.method === 'POST') {
-        if (!operator.isPrimary && operator.id !== targetId) {
-          json(res, 403, { error: 'Cannot rotate another operator token' })
-          return
-        }
-        const token = generateToken()
-        const ok = updateOperatorToken(targetId, token)
-        if (!ok) { json(res, 404, { error: 'Operator not found' }); return }
-        if (targetId === primaryOperatorId) {
-          fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
-          primaryToken = token
-        }
-        json(res, 200, { token })
-        return
-      }
-
-      if (action === 'revoke' && req.method === 'POST') {
-        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        const ok = revokeOperator(targetId)
-        json(res, ok ? 200 : 400, { revoked: ok })
-        return
-      }
-
-      if (!action && req.method === 'PATCH') {
-        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        let body: Record<string, unknown>
-        try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-        const name = (body.name || '').toString().trim()
-        if (!name) { json(res, 400, { error: 'name is required' }); return }
-        const ok = renameOperator(targetId, name)
-        json(res, ok ? 200 : 404, { renamed: ok })
-        return
-      }
-
-      if (!action && req.method === 'DELETE') {
-        if (!operator.isPrimary) { json(res, 403, { error: 'Primary only' }); return }
-        const ok = deleteOperator(targetId)
-        json(res, ok ? 200 : 400, { deleted: ok })
-        return
-      }
-    }
 
     // ── Hybrid D Phase 1: session registration ──────────────────────────
     if (route === '/api/session/register' && req.method === 'POST') {

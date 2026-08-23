@@ -192,7 +192,7 @@ function ConfirmDialogInner({ state, close, t }: {
             className={`px-3 py-1.5 text-xs rounded-md font-medium focus-visible:outline-none focus-visible:ring-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               level === 'plain'
                 ? 'bg-redlog-elevated-hover text-redlog-text focus-visible:ring-redlog-text-dim'
-                : 'bg-redlog-danger text-white hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger'
+                : 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover focus-visible:ring-redlog-danger'
             }`}
           >
             {state.confirmLabel || (level === 'plain' ? t('confirm.confirm') : t('confirm.delete'))}

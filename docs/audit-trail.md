@@ -179,6 +179,5 @@ redlog-cli chain verify --full
 
 ## Related
 
-- [Operators](operators.md) — who submitted which anchor
-- [Agent integration](agent-integration.md) — REST + MCP surface
+- [Agent integration](agent-integration.md) — REST surface
 - [Skill: redlog-pentest](skills/redlog-pentest.md) — when to anchor during an engagement

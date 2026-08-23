@@ -19,7 +19,6 @@ import {
   IPPolicy,
   ScopePolicy,
   ViolationLog,
-  WebhookForwarder,
   AdherenceCounter,
   type IPVerdict,
   type ViolationRow,
@@ -62,7 +61,6 @@ export class AlertRuntime {
   readonly burstPolicy: BurstPolicy
   readonly chainEmitter: ChainEmitter
   readonly badgeSurface: BadgeSurface
-  readonly webhookForwarder: WebhookForwarder
   readonly adherenceCounter: AdherenceCounter
   readonly violationLog: ViolationLog
   readonly ipProducer: IPSignalProducer
@@ -75,7 +73,6 @@ export class AlertRuntime {
     this.burstPolicy = new BurstPolicy()
     this.chainEmitter = new ChainEmitter(initial)
     this.badgeSurface = new BadgeSurface()
-    this.webhookForwarder = new WebhookForwarder()
     this.adherenceCounter = new AdherenceCounter()
     this.violationLog = new ViolationLog()
     this.ipProducer = new IPSignalProducer(this.bus)
@@ -88,7 +85,6 @@ export class AlertRuntime {
     // the source IP/Scope verdicts in the audit log).
     this.bus.registerSurface(this.chainEmitter)
     this.bus.registerSurface(this.badgeSurface)
-    this.bus.registerSurface(this.webhookForwarder)
     this.bus.registerSurface(this.adherenceCounter)
     this.bus.registerSurface(this.violationLog)
 
@@ -121,11 +117,6 @@ export class AlertRuntime {
         : ['excluded', 'adjacent_subnet', 'adjacent_domain']
     })
 
-    this.webhookForwarder.configure({
-      enabled: cfg.deconfliction?.enabled ?? false,
-      url: cfg.deconfliction?.url ?? null,
-      authorityFloor: ['fact']  // ea G-C2 — only facts hit the blue team's inbox
-    })
 
     this.ipProducer.configure({
       checkIntervalSec: cfg.network?.checkInterval ?? 10,

@@ -30,16 +30,6 @@ No auth required. Liveness check.
 
 ---
 
-### MCP
-
-#### `POST /mcp` (also `/api/mcp`)
-
-MCP over Streamable HTTP (JSON-RPC 2.0). Accepts a single message or a batch array. Returns `202` with empty body when no responses are produced.
-
-See [agent-integration.md § MCP tools](agent-integration.md#available-tools) for the 18 tool definitions.
-
----
-
 ### Identity
 
 #### `GET /api/whoami`
@@ -182,30 +172,6 @@ Defaults: `title` → `"Untitled"`, `severity` → `"info"`, `category` → `"ex
 
 **Response:** `{ operators: [{ id, name, isPrimary, createdAt, revokedAt }] }`
 
-#### `POST /api/operators` (primary only)
-
-**Body:** `{ name, id? }`
-
-**Response:** `201 { operator, token }` — token is returned **once**.
-
-#### `PATCH /api/operators/:id` (primary only)
-
-**Body:** `{ name }`
-
-**Response:** `{ renamed: boolean }`
-
-#### `POST /api/operators/:id/rotate` (self or primary)
-
-**Response:** `{ token: "<new-token>" }`
-
-#### `POST /api/operators/:id/revoke` (primary only)
-
-**Response:** `{ revoked: boolean }`
-
-#### `DELETE /api/operators/:id` (primary only)
-
-**Response:** `{ deleted: boolean }`
-
 ---
 
 ### Terminal Replay
@@ -299,24 +265,11 @@ Writes masked bytes to `sanitized_events` table + appends chained `system.saniti
 
 ---
 
-### Deconfliction
-
-#### `GET /api/deconfliction`
-
-**Response:** Config object with `secret` masked as `"***"`.
-
-#### `POST /api/deconfliction/test`
-
-Send a test payload to the configured webhook.
-
----
-
 ## Endpoint Summary
 
 | Method | Path | Auth | Category |
 |--------|------|------|----------|
 | GET | `/api/health` | no | Health |
-| POST | `/mcp` | yes | MCP |
 | GET | `/api/whoami` | yes | Identity |
 | POST | `/api/events` | yes | Events |
 | GET | `/api/events` | yes | Events |
@@ -334,11 +287,6 @@ Send a test payload to the configured webhook.
 | GET | `/api/recording` | yes | Recording |
 | POST | `/api/recording` | yes | Recording |
 | GET | `/api/operators` | yes | Operators |
-| POST | `/api/operators` | primary | Operators |
-| PATCH | `/api/operators/:id` | primary | Operators |
-| POST | `/api/operators/:id/rotate` | self/primary | Operators |
-| POST | `/api/operators/:id/revoke` | primary | Operators |
-| DELETE | `/api/operators/:id` | primary | Operators |
 | POST | `/api/terminal/replay` | yes | Terminal |
 | GET | `/api/chain` | yes | Chain |
 | GET | `/api/anchors` | yes | Chain |
@@ -350,5 +298,3 @@ Send a test payload to the configured webhook.
 | GET | `/api/clock` | yes | Clock |
 | POST | `/api/export/bundle` | yes | Export |
 | POST | `/api/sanitize` | yes | Redaction |
-| GET | `/api/deconfliction` | yes | Deconfliction |
-| POST | `/api/deconfliction/test` | yes | Deconfliction |

@@ -30,7 +30,7 @@ class RedLogEventBus extends EventEmitter {
   // v0.12.2: fanout is deferred via queueMicrotask so the caller (insertEvent
   // + everywhere that publishes after a DB write) returns before listeners
   // run. Every subscriber today either coalesces (renderer IPC batch,
-  // deconfliction webhook, AlertBus surfaces) or is already async — the sync
+  // AlertBus surfaces) or is already async — the sync
   // fanout was a latent stacking hazard as more subscribers land. Ordering
   // between two publish() calls is preserved (microtasks drain FIFO on the
   // same tick), so a command_start followed by command_end still reaches

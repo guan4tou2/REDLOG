@@ -8,7 +8,7 @@
 // least one event of every agent_type, which is exactly the shape that broke.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
@@ -22,7 +22,6 @@ import IPStatusCard from '../src/renderer/src/components/IPStatusCard'
 import { TargetView } from '../src/renderer/src/components/TargetView'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 import { LootPanel } from '../src/renderer/src/components/LootPanel'
-import { SearchPanel } from '../src/renderer/src/components/SearchPanel'
 import { QuickMarksView } from '../src/renderer/src/components/FindingsView'
 
 const AGENT_TYPES = [
@@ -47,6 +46,7 @@ function makeEvent(agentType: string): Record<string, unknown> {
     data: {
       subtype: `${agentType}_sub`,
       command: 'nmap -sV example.com',
+      detectedTarget: 'example.com',
       exit_code: 0,
       trigger: 'manual',
       title: 'A finding',
@@ -96,8 +96,7 @@ function installBridge(): void {
         scope: { warnOnViolation: true, targets: [], excludeTargets: [], scopeFile: '' },
         screenshot: { quality: 85 },
         terminal: { maxCastBytes: 1024 },
-        redaction: { allowlist: [], denylist: [], entropyThreshold: 4.5, minLength: 20 },
-        deconfliction: { enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false }
+        redaction: { allowlist: [], denylist: [], entropyThreshold: 4.5, minLength: 20 }
       }),
       save: async () => true,
       exportProfile: async () => null,
@@ -141,20 +140,7 @@ function installBridge(): void {
     data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
     operators: {
-      list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }],
-      create: async () => null,
-      rotate: async () => null,
-      rename: async () => true,
-      revoke: async () => true,
-      delete: async () => true
-    },
-    deconfliction: {
-      get: async () => ({ enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false }),
-      test: async () => ({ ok: true, status: 200 })
-    },
-    mcp: {
-      info: async () => ({ port: 6660, endpoint: 'http://127.0.0.1:6660/mcp', stdioPath: '/x/mcp/redlog-mcp-server.js', hasToken: false }),
-      setupToken: async () => ({ token: 't'.repeat(64), port: 6660, endpoint: 'http://127.0.0.1:6660/mcp' })
+      list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]
     },
     capture: {
       health: async () => ({
@@ -217,7 +203,6 @@ describe('renderer views render without throwing', () => {
     ['TargetView', () => <TargetView />],
     ['ScopeStatus', () => <ScopeStatus />],
     ['LootPanel', () => <LootPanel />],
-    ['SearchPanel', () => <SearchPanel />],
     ['QuickMarksView', () => <QuickMarksView />],
     ['OverlayApp', () => <OverlayApp />]
   ]
@@ -227,6 +212,17 @@ describe('renderer views render without throwing', () => {
       expect(() => renderView(make())).not.toThrow()
     })
   }
+
+  // The mount loop above only proves the FIRST synchronous render survives.
+  // TargetView builds its rows after an async query resolves, and a crash in
+  // that second render (a hook interleaved into the filter callback, reading
+  // `filtered` before it was assigned) is invisible to a synchronous
+  // not.toThrow — it shipped, and only an app-in-the-loop e2e caught it. This
+  // waits for a real row so the data-render path is under test here too.
+  it('TargetView survives rendering actual target rows', async () => {
+    renderView(<TargetView />)
+    expect(await screen.findByText('example.com', {}, { timeout: 3000 })).toBeTruthy()
+  })
 
   it('Timeline renders a row for every agent_type without a missing-lane crash', async () => {
     const { findAllByText } = render(<I18nProvider><TimelinePanel /></I18nProvider>)

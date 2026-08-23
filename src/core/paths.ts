@@ -8,8 +8,8 @@ import path from 'path'
  * are caught too, and case-folds both sides on Windows only.
  *
  * The `screenshot:read` / `screenshot:deleteFile` IPC guards, plugin
- * marketplace extract, and any other "resolve then check inside root" call
- * should route through this helper rather than reinventing it. Audit P1-2
+ * extraction, and any other "resolve then check inside root" call should
+ * route through this helper rather than reinventing it. Audit P1-2
  * (docs/WINDOWS_COMPAT_AUDIT.md).
  */
 export function isInsideDir(root: string, target: string): boolean {

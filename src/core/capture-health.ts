@@ -234,7 +234,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
     `agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command_end') AND coalesce(json_extract(data,'$.source'),'') != 'builtin-terminal'`
   )
   // mitmproxy addon writes scanner http_request/http_error events.
-  const mitmLast = lastEventFor(`agent_type = 'scanner'`)
+  // mitmproxy and the connection monitor both land on agent_type='scanner';
+  // split them by subtype so one does not light the other's indicator.
+  const mitmLast = lastEventFor(`agent_type = 'scanner' AND json_extract(data,'$.subtype') NOT IN ('connection','connection_end')`)
+  const connLast = lastEventFor(`agent_type = 'scanner' AND json_extract(data,'$.subtype') IN ('connection','connection_end')`)
   // RedLog's own terminal panes.
   const builtinLast = lastEventFor(`agent_type = 'shell' AND json_extract(data,'$.source') = 'builtin-terminal'`)
   // v0.6.92: DNS/browser/process/file-watcher producers. `installed` is
@@ -292,6 +295,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       installed: hookInstalled('mitmproxy'), hookId: 'mitmproxy'
     }),
     mk('browser-console', browserLast),
+    mk('connection-monitor', connLast, { configPath: 'connectionMonitor.enabled' }),
     mk('screenshot', screenshotLast),
     mk('clipboard', clipboardLast, { configPath: 'clipboard.enabled' }),
     mk('process-monitor', processLast, { configPath: 'processMonitor.enabled' }),

@@ -136,6 +136,14 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
+    /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
+    searchCasts?: (query: string, limit?: number) => Promise<Array<{
+      castRel: string; tMs: number; off: number; len: number; snippet: string
+    }>>
+    castIndexStatus?: () => Promise<{ total: number; indexed: number; pending: number }>
+    readCastRange: (castRel: string, off: number, len: number) => Promise<{
+      text: string; bytes: number; truncated: boolean
+    } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
@@ -230,23 +238,6 @@ interface RedLogAPI {
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
-    create: (name: string) => Promise<{ operator: OperatorInfo; token: string } | null>
-    rotate: (id: string) => Promise<{ token: string } | null>
-    rename: (id: string, name: string) => Promise<boolean>
-    revoke: (id: string) => Promise<boolean>
-    delete: (id: string) => Promise<boolean>
-    /** Writes the token to ~/.redlog/tokens/<id>.token (0600) and returns
-     *  its path, or null on failure. Outside the project tree on purpose —
-     *  a credential is not evidence and must never enter a bundle. */
-    writeToken: (id: string, token: string) => Promise<string | null>
-  }
-  deconfliction: {
-    get: () => Promise<DeconflictionConfigInfo>
-    test: (cfg: DeconflictionConfigInfo) => Promise<{ ok: boolean; status: number; error?: string }>
-  }
-  mcp: {
-    info: () => Promise<McpInfo | null>
-    setupToken: (opts?: { name?: string }) => Promise<{ token: string; port: number; endpoint: string; operatorId: string; name: string } | null>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
@@ -284,14 +275,6 @@ interface CaptureHealthInfo {
   lastSampleOkAt?: number | null
 }
 
-interface McpInfo {
-  port: number
-  endpoint: string
-  stdioPath: string
-  hasToken: boolean
-  operators?: Array<{ id: string; name: string }>
-}
-
 interface BrowserLaunchResult {
   ok: boolean
   pid?: number
@@ -299,15 +282,6 @@ interface BrowserLaunchResult {
   args?: string[]
   profileDir?: string
   error?: string
-}
-
-interface DeconflictionConfigInfo {
-  enabled: boolean
-  url: string
-  secret: string
-  events: string[]
-  subtypes: string[]
-  includeData: boolean
 }
 
 interface OperatorInfo {

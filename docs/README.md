@@ -19,6 +19,7 @@ Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links
 - **[Roadmap](ROADMAP.md)** — what ships next and the v1.0 gate. Also states what is deliberately not planned.
 - **[Audit 2026-08-08](AUDIT-2026-08-08.md)** — standing defect list from a full-tree review: correctness, trust-model gaps, presentation, test coverage, doc drift. Each item tagged verified/reported.
 - **[UX & complexity audit 2026-08-10](UX-AUDIT-2026-08.md)** — persona-driven review of the renderer: where breadth has outrun the solo operator (Timeline 3,875 lines / Settings 2,681 lines), the first-run friction gap, and a prioritized backlog. Companion to the correctness audit above.
+- **[Core purpose and capture coverage](DESIGN-core-and-capture.md)** — the 2026-08-21 review that moved the core from *defensibility* to *knowability*, and what that does to capture: four gaps (non-HTTP traffic, remote commands, Windows output, queryable tool output), the point/span timeline model, and the purple-team activity record. Read alongside `PRODUCT-POSITIONING.md`, which it revised.
 - **[UI/UX 標準](UIUX-STANDARD.md)** — the rule book UI code lands against, extracted from `src/renderer` itself: colour tokens, type scale, density, the component contract, UX principles, Timeline/HUD rules, and the three-phase checklist the PR templates in `.github/pull_request_template/` check against. Written and maintained in the Claude Design project — see [design-project-sync.md](design-project-sync.md) for the screen-to-source map and the last sync.
 - **[Timeline UX deep-dive 2026-08-10](UX-TIMELINE-2026-08.md)** — the F2 deep-dive: why the timeline feels unintuitive (invisible, overloaded, context-dependent gestures), what it is *not* (lanes/data are fine), and the T1–T6 simplification plan.
 - **[UX backlog — ticket specs](UX-BACKLOG-TICKETS.md)** — every finding (F1–F7, T1–T6) broken out into an independently implementable ticket: problem, proposed solution, acceptance criteria, pure test seam, effort, priority order.
@@ -26,17 +27,32 @@ Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links
 - **[Dev requirements — capture onboarding](DEV-REQUIREMENTS-capture-onboarding.md)** — spec + acceptance criteria for the Capture Readiness onboarding, and the red→green→integrate→cover TDD process every UX change should copy.
 - **[Timeline I/O visibility](timeline-io-visibility.md)** — design note (proposed). Which sources capture input/output today, where the gaps are, and the `io_ref` sidecar + transcript-view proposal that closes them.
 
+## Subsystem decomposition (salvaged from PR #8)
+
+A framework and eleven applications of it, written 2026-08-11 → 08-15 and never
+merged — while code that cites them shipped anyway (`src/core/alert/` names
+`ALERT-ROLES.md` three times). Recovered as documentation only. Each page turns
+an open-ended subsystem into a small, provably-complete set of roles with a
+per-item template, so "add another one" is filling in a row rather than a fresh
+design.
+
+- **[Method](DECOMPOSITION-METHOD.md)** — how a subsystem gets decomposed, and the test for "provably complete".
+- **[Backlog](DECOMPOSITION-BACKLOG.md)** — the gaps the eleven decompositions named, still open.
+- **[Design principles](DESIGN-PRINCIPLES.md)** — the durable laws. **§1 is superseded** by `DESIGN-core-and-capture.md`; the header says how.
+- **[Alert roles](ALERT-ROLES.md)** — self alarm vs target alarm, and the authority tiers that stop an inference reading as a fact. Cited by `src/core/alert/`.
+- **[Capture source taxonomy](CAPTURE-SOURCE-TAXONOMY.md)** · **[Detector roles](DETECTOR-ROLES.md)** · **[Plugin roles](PLUGIN-ROLES.md)** · **[Event type vocabulary](EVENT-TYPE-VOCABULARY.md)** — the four member catalogues.
+- **[Control plane faces](CONTROL-PLANE-FACES.md)** · **[Delivery targets](DELIVERY-TARGETS.md)** · **[Off-chain content stores](OFF-CHAIN-CONTENT-STORES.md)** · **[Timeline elements](TIMELINE-ELEMENTS.md)** — the four surface catalogues.
+- **[I/O sidecar](SPEC-IO-SIDECAR.md)** · **[Scope-aware lifecycle](SPEC-SCOPE-AWARE-LIFECYCLE.md)** · **[Timeline axis](SPEC-TIMELINE-AXIS.md)** · **[AI-era plugins](SPEC-AI-ERA-PLUGINS.md)** — four specs. Unbuilt; read as proposals, not as descriptions of the code.
+- **[Testing](TESTING.md)** — the test strategy the suite assumes: what belongs in a unit test, what needs the app in the loop, and why.
+
 ## Integrations
 
-- **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
+- **[Agent integration](agent-integration.md)** — the full surface: the capture model (hooks *log*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
 - **[REST API reference](api-reference.md)** — complete per-endpoint docs for all 37 HTTP endpoints: auth, request/response schemas, auto-processing behavior.
-- **[MCP server](agent-integration.md#2-mcp-server-operate-the-app)** — RedLog hosts its own MCP endpoint over HTTP, live the moment the app opens (`http://127.0.0.1:<port>/mcp`); stdio bridge as a fallback. Set up in Settings ▸ Team & Integrations.
 - **[Proxied browser](agent-integration.md#proxied-browser)** — one-click Chromium through your mitmproxy, CDP enabled, project-local profile.
-- **[Deconfliction webhook](deconfliction.md)** — real-time signed feed to the blue team. When to enable, when not to, payload shape, threat model.
 
 ## Operator identity
 
-- **[Operators & tokens](operators.md)** — how per-operator attribution works, secondary operators for teammates or agent contexts (the MCP setup mints a dedicated non-rotating `mcp-agent` token), rotate/revoke lifecycle, threat model.
 
 ## Capture surface
 
@@ -86,9 +102,7 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 ## Related source
 
-- REST + HTTP MCP server: [`src/core/api-server.ts`](../src/core/api-server.ts)
-- MCP tool registry + JSON-RPC handler: [`src/core/mcp-tools.ts`](../src/core/mcp-tools.ts)
-- stdio MCP bridge: [`mcp/redlog-mcp-server.js`](../mcp/redlog-mcp-server.js)
+- REST API server: [`src/core/api-server.ts`](../src/core/api-server.ts)
 - Hooks: [`hooks/`](../hooks/) and [`shell/`](../shell/)
 - Anchoring: [`src/core/chain-anchor.ts`](../src/core/chain-anchor.ts)
 - Operator model: [`src/core/db/operators.ts`](../src/core/db/operators.ts)

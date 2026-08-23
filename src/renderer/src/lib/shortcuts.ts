@@ -82,8 +82,10 @@ export function formatAccelerator(accelerator: string, isMac: boolean): string {
 }
 
 /** Every shortcut the app binds, in the order the cheatsheet shows them.
- *  `order` is the live sidebar order so the ⌘1..8 rows follow a drag-reorder;
- *  Settings is pinned to ⌘9 and is not part of that order. */
+ *  `order` is the navigation order — fixed since §5.3, though this still takes
+ *  it as a parameter rather than importing it, so a test can pass a short list
+ *  and assert the numbering without standing up the whole sidebar. Settings is
+ *  pinned to ⌘9 and is not part of it. */
 export function appShortcuts(order: readonly string[], isMac: boolean): ShortcutRow[] {
   const m = isMac ? '⌘' : 'Ctrl+'
   const nav: ShortcutRow[] = order.map((view, i) => ({
@@ -106,16 +108,20 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
   return [
     ...nav,
     {
-      id: 'app:search', keys: `${m}/`, label: 'dashboard.search', scope: 'app',
-      guardTyping: true,
-      // ⌘/ was the original chord, but macOS sends `Unidentified` as `key` for
-      // it (the system Help-menu grab), so `code` is what actually matches.
-      match: (e) => mod(e) && (e.key === '/' || e.code === 'Slash')
-    },
-    {
+      // One palette, every view — ⌘K is the jumper. ⌘/ is bound to it as an
+      // alias, and the Search *view* is the explorer: a dropdown cannot
+      // filter, sort, or let you read forty results one by one, and "find the
+      // evidence afterwards" is a core use, not a jump.
       id: 'app:palette', keys: `${m}K`, label: 'dashboard.palette', scope: 'app',
       guardTyping: true,
-      match: (e) => mod(e) && (e.key === 'k' || e.key === 'K')
+      // macOS sends `Unidentified` as `key` for ⌘/ (the system Help-menu
+      // grab), so `code` is what actually matches for that alias.
+      match: (e) => mod(e) && (e.key === 'k' || e.key === 'K' || e.key === '/' || e.code === 'Slash')
+    },
+    {
+      id: 'app:findInPage', keys: `${m}F`, label: 'dashboard.findInPage', scope: 'app',
+      guardTyping: true,
+      match: (e) => mod(e) && (e.key === 'f' || e.key === 'F')
     },
     {
       id: 'app:toggleRecording', keys: `${m}.`, label: 'dashboard.toggleRecording', scope: 'app',

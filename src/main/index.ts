@@ -24,18 +24,16 @@ import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAn
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
-import { sweepRetention, sweepLoggedTier } from '../core/retention'
+import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
 import { exportHar } from '../core/har-export'
-import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  listOperators, createOperator, updateOperatorToken, revokeOperator,
-  deleteOperator, renameOperator, generateToken, slugifyOperatorId
+  listOperators
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
@@ -47,6 +45,8 @@ import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstal
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
+import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
+import { configureTranscriptTailer, stopTranscriptTailer } from './services/transcript-tailer'
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
@@ -59,6 +59,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -85,11 +86,6 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
-// Dev/E2E-only stash for marketplace:fetchIndex. When REDLOG_E2E=1 and a
-// test has called marketplace:testSetIndex, fetchIndex returns this object
-// instead of hitting the network. Loose-typed so we don't pull the
-// RegistryIndex import into main just for a mock hook.
-let testFetchIndexOverride: unknown = null
 let overlayMouseInside = false
 let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 // v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
@@ -377,8 +373,6 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
   check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
   check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
-  check('deconfliction.enabled', oldCfg.deconfliction?.enabled, newCfg.deconfliction?.enabled)
-  check('deconfliction.url', oldCfg.deconfliction?.url, newCfg.deconfliction?.url)
   check('clipboard.enabled', oldCfg.clipboard?.enabled, newCfg.clipboard?.enabled)
   check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
   check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
@@ -428,6 +422,20 @@ function startProject(project: ProjectMeta): void {
   currentOperatorId = operatorId
 
   initDB(projectDir)
+
+  // Bring the recording index up to date in the background. Idempotent and
+  // cheap when nothing changed — it hashes each cast and skips matches — so
+  // running it on every open is what keeps a project that was recorded by an
+  // older build, restored from a backup, or written to while RedLog was shut
+  // searchable without anyone having to know to ask.
+  //
+  // Not awaited: a first index of an engagement's worth of recordings takes
+  // real time, and holding project-open on it would trade a visible stall for
+  // an invisible one. The UI reads `casts:status` and says how much is still
+  // pending, which is the honest version of the same information.
+  void import('../core/cast-index')
+    .then((m) => m.backfillCastIndex(projectDir))
+    .catch(() => { /* index is rebuildable; never block opening a project */ })
 
   screenshotAgent.configure({
     engagementId,
@@ -503,7 +511,6 @@ function startProject(project: ProjectMeta): void {
     const psum = initPlugins()
     if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)
   } catch (e) { console.error('[plugins] init failed:', e) }
-  configureDeconfliction(config.deconfliction)
   setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
@@ -527,6 +534,13 @@ function startProject(project: ProjectMeta): void {
     const swept = sweepRetention(config, { engagementId, operatorId })
     if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
+    }
+    // Size-pressure eviction of the body store, after the age sweep — whatever
+    // aged out has already gone, so this only reaches live-but-cold bodies.
+    const evicted = sweepBodyStore(config, { engagementId, operatorId })
+    if (evicted.evicted > 0 || evicted.shortfallBytes > 0) {
+      console.log(`[retention] evicted ${evicted.evicted} body file(s) under disk pressure` +
+        (evicted.shortfallBytes > 0 ? ` (still ${evicted.shortfallBytes} bytes over budget; in-scope bodies kept)` : ''))
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see loggedTierTimer below.
@@ -650,6 +664,18 @@ function startProject(project: ProjectMeta): void {
     watchPaths: config.fileWatcher?.watchPaths ?? [],
     ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
     engagementId, operatorId
+  })
+  configureConnectionMonitor({
+    enabled: config.connectionMonitor?.enabled ?? false,
+    pollMs: config.connectionMonitor?.pollMs,
+    engagementId,
+    operatorId,
+    selfPorts: [getApiPort()]
+  })
+  configureTranscriptTailer({
+    enabled: config.transcriptTailer?.enabled ?? false,
+    engagementId,
+    operatorId
   })
   configureProcessMonitor({
     enabled: config.processMonitor?.enabled ?? false,
@@ -876,11 +902,14 @@ function stopProject(): void {
   stopClipboardMonitor()
   stopFileWatcher()
   stopProcessMonitor()
+  stopConnectionMonitor()
+  stopTranscriptTailer()
   stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
   stopOpsecMonitor()
   screenshotAgent.stop()
+  closeCastIndex()
   closeDB()
   resetBodiesDirCache()
   activeProject = null
@@ -1114,6 +1143,12 @@ app.whenReady().then(() => {
       ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
+    configureConnectionMonitor({
+      enabled: newConfig.connectionMonitor?.enabled ?? false,
+      pollMs: newConfig.connectionMonitor?.pollMs,
+      selfPorts: [getApiPort()]
+    })
+    configureTranscriptTailer({ enabled: newConfig.transcriptTailer?.enabled ?? false })
     configureProcessMonitor({
       enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
@@ -1121,7 +1156,6 @@ app.whenReady().then(() => {
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
-    if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     setVpnAdapters(newConfig.network.vpnAdapters)
     // The HUD reads its config once at mount — push overlay settings so toggling
     // "show Mark button" takes effect live instead of only after a restart.
@@ -1220,6 +1254,35 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
   ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
+
+  // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
+  // §2.4). Separate from events:search because the two answer different
+  // questions and have different completeness: an event either exists or does
+  // not, whereas a recording may be on disk and not yet indexed. `casts:status`
+  // exists so the UI can say which of those it is, rather than returning zero
+  // hits and letting the operator conclude the bytes are missing.
+  ipcMain.handle('casts:search', async (_e, query: string, limit?: number) => {
+    if (!activeProject) return []
+    const { searchCasts } = await import('../core/cast-index')
+    return searchCasts(query, limit)
+  })
+  ipcMain.handle('casts:status', async () => {
+    if (!activeProject) return { total: 0, indexed: 0, pending: 0 }
+    const { castIndexStatus } = await import('../core/cast-index')
+    return castIndexStatus()
+  })
+  ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number) => {
+    if (!activeProject) return null
+    // castRel comes from a search hit, but the hit came from a DB the renderer
+    // can reach — so re-derive the path from the project root and refuse
+    // anything that escapes it, the same guard the api-server applies to
+    // castPath out of event data.
+    const castsDir = path.join(getProjectPath(activeProject), 'casts')
+    const full = path.resolve(castsDir, castRel)
+    if (!isInsideDir(castsDir, full)) return null
+    const { readCastRange } = await import('../core/cast-slice')
+    return readCastRange(full, off, len)
+  })
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
@@ -1248,7 +1311,7 @@ app.whenReady().then(() => {
   })
 
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
-  // still fires `events:new` per-event (deconfliction webhook + overlay
+  // still fires `events:new` per-event (overlay
   // pivot HUD subscribe to it), but the renderer's Timeline drains
   // `events:new-batch` on a single frame per burst. A 200 evt/s mitmproxy
   // scan collapses from 200 IPC hops to ~12 (60 fps) with one setEvents
@@ -1263,10 +1326,9 @@ app.whenReady().then(() => {
     send(mainWindow, 'events:new-batch', drained)
   }
   eventBus.on('event', (event) => {
-    // Per-event channel stays — deconfliction/overlay HUD and any external
-    // subscriber that doesn't want to buffer keeps its existing shape.
+    // Per-event channel stays — the overlay HUD and any external subscriber
+    // that doesn't want to buffer keeps its existing shape.
     send(mainWindow, 'events:new', event)
-    notifyDeconfliction(event)
     // Batch channel — Timeline listens here and rebuilds once per frame.
     batchBuffer.push(event)
     if (!batchScheduled) {
@@ -1354,8 +1416,6 @@ app.whenReady().then(() => {
     if (id) return await upgradeAnchor(id)
     return await upgradeAllPending()
   })
-  ipcMain.handle('deconfliction:get', () => getDeconflictionConfig())
-  ipcMain.handle('deconfliction:test', async (_e, cfg) => testWebhook(cfg))
 
   ipcMain.handle('clock:status', () => ({
     ntpOffsetMs: getNtpOffsetMs(),
@@ -1498,28 +1558,8 @@ app.whenReady().then(() => {
   // exactly one copy and the app knows where it is.
   //
   // `~/.redlog/tokens/` sits deliberately outside the project directory, so
-  // no bundle export, evidence package or cloud share can ever sweep it up —
+  // no bundle export or evidence package can ever sweep it up —
   // those walk the project tree, and a credential is not evidence.
-  ipcMain.handle('operators:writeToken', async (_e, id: string, token: string) => {
-    if (typeof id !== 'string' || !id || typeof token !== 'string' || !token) return null
-    // The id becomes a filename, so it may not be allowed to escape the
-    // directory or collide with something outside it.
-    const safeId = id.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
-    if (!safeId || safeId === '.' || safeId === '..') return null
-    try {
-      const dir = path.join(homedir(), '.redlog', 'tokens')
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
-      const file = path.join(dir, `${safeId}.token`)
-      // 0600 from the moment it exists — writing then chmod-ing leaves a
-      // window where the file is world-readable.
-      fs.writeFileSync(file, `${token}\n`, { mode: 0o600 })
-      // An existing file keeps its old mode, so set it explicitly too.
-      fs.chmodSync(file, 0o600)
-      return file
-    } catch {
-      return null
-    }
-  })
 
   ipcMain.handle('data:revealPath', async (_e, target: string) => {
     if (typeof target !== 'string' || !target) return false
@@ -1807,181 +1847,6 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
 
-  // --- Cloud share (bundle → sign → upload) ---
-  // Real backend upload is not wired in Settings yet — spec is at
-  // docs/CLOUD_SHARE_BUNDLE.md and hosts pending a decision. The stub uploader
-  // exercises the whole flow (build → gate → "upload" → get URL) against a
-  // ~/.redlog/shares/ directory so operators can rehearse before the backend
-  // exists.
-  ipcMain.handle('cloudShare:preview', async () => {
-    try {
-      const { previewRedaction } = await import('../core/cloud-share')
-      return { ok: true, preview: previewRedaction() }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('cloudShare:prepare', async (_e, engagementId: string, reviewedByOperator: boolean) => {
-    try {
-      const { prepareCloudShareBundle } = await import('../core/cloud-share')
-      // Honour cloudShare.maxBundleBytes override — operators with lots of
-      // screenshots + .cast blow through the 100 MB default; raising this
-      // client-side matters only if the backend also allows it.
-      const cfg = activeProject ? loadConfig(getProjectPath(activeProject)) : null
-      const maxBytes = cfg?.cloudShare?.maxBundleBytes
-      const prepared = prepareCloudShareBundle({ engagementId, reviewedByOperator, maxBytes })
-      return { ok: true, zipPath: prepared.zipPath, manifest: prepared.manifest }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('cloudShare:uploadStub', async (_e, zipPath: string, manifestJson: string, expiresIn?: string) => {
-    try {
-      const { localFileUploader } = await import('../core/cloud-share-uploader')
-      const manifest = JSON.parse(manifestJson)
-      const result = await localFileUploader.upload(
-        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
-        { expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined }
-      )
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // HTTPS backend upload — points at a user-deployed redlog-share-worker
-  // (see redlog-share-worker/README.md). The wire contract is the two-step
-  // POST /api/share/init + PUT signed URL flow documented on the Worker.
-  // Endpoint + bearer are passed explicitly so the Settings UI can drive
-  // them without needing to reload config for every share attempt.
-  ipcMain.handle('cloudShare:upload', async (_e, zipPath: string, manifestJson: string, expiresIn: string | undefined, endpoint: string, authToken: string) => {
-    try {
-      if (!endpoint) return { ok: false, error: 'endpoint required' }
-      const { httpsUploader } = await import('../core/cloud-share-uploader')
-      const manifest = JSON.parse(manifestJson)
-      const result = await httpsUploader.upload(
-        { zipPath, manifest, localBundle: { outDir: zipPath.replace(/\.zip$/, ''), manifest: { bundleVersion: 1, createdAt: '', hostname: '', engagementId: manifest.engagement.id, signedBy: null, chainHead: null, lastAnchor: null, sanitized: { events: 0, totalInDb: 0 }, files: [] } } },
-        {
-          endpoint,
-          bearer: authToken || undefined,
-          expiresIn: expiresIn as '24h' | '7d' | '30d' | '90d' | 'never' | undefined
-        }
-      )
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-
-  // --- Plugin marketplace ---
-  // These wrap src/core/plugins/marketplace.ts + publisher-trust.ts. The whole
-  // fetch/verify/install pipeline lives in core so it stays unit-testable;
-  // main just exposes it over IPC. The registry client uses HTTPS only, hard
-  // caps size (5 MB tarball / 1 MB index), and every install goes through
-  // sha256 + Ed25519 signature verify + manifest re-validate.
-  // v0.11.0: stamp each advertised key with the same fingerprint the trust
-  // store shows. The operator is meant to compare it against the publisher's
-  // own channel before pinning, so it has to be the identical string in both
-  // places — computed here rather than in the renderer, where it would be a
-  // second implementation free to drift from publisher-trust.ts.
-  const annotateIndex = async (index: unknown): Promise<unknown> => {
-    const idx = index as { publishers?: Array<{ keys?: Array<{ publicKey: string }> }> } | null
-    if (!idx?.publishers) return index
-    const { fingerprint } = await import('../core/plugins/publisher-trust')
-    for (const p of idx.publishers) {
-      for (const k of p.keys ?? []) {
-        try { (k as { fingerprint?: string }).fingerprint = fingerprint(k.publicKey) } catch { /* malformed key */ }
-      }
-    }
-    return idx
-  }
-  ipcMain.handle('marketplace:fetchIndex', async (_e, url?: string) => {
-    // Dev/E2E-only override: if a test has stashed a fake index via
-    // marketplace:testSetIndex, return it verbatim instead of hitting the
-    // network. Kept alongside the real path so the UI code driving fetchIndex
-    // stays identical between real and mocked runs.
-    if (process.env.REDLOG_E2E === '1' && testFetchIndexOverride) {
-      return { ok: true, index: await annotateIndex(testFetchIndexOverride) }
-    }
-    try {
-      const { fetchIndex } = await import('../core/plugins/marketplace')
-      return { ok: true, index: await annotateIndex(await fetchIndex(url)) }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // Dev/E2E-only sibling of marketplace:fetchIndex. Lets a test inject a
-  // canned RegistryIndex (including publishers[]) so the "trust suggested
-  // publishers" banner can be exercised without a real HTTPS registry.
-  // Gated on REDLOG_E2E=1 — the endpoint is effectively absent in a normal
-  // launch. Pass an empty string to clear the override.
-  ipcMain.handle('marketplace:testSetIndex', async (_e, indexJson: string) => {
-    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testSetIndex disabled' }
-    try {
-      testFetchIndexOverride = indexJson ? JSON.parse(indexJson) : null
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('marketplace:listPublishers', async () => {
-    const { listPublishers } = await import('../core/plugins/publisher-trust')
-    return listPublishers()
-  })
-  ipcMain.handle('marketplace:trustPublisher', async (_e, id: string, publicKey: string, homepage?: string, label?: string) => {
-    const { trustPublisher, fingerprint } = await import('../core/plugins/publisher-trust')
-    const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
-    trustPublisher(id, { publicKey, trustedAt: Date.now(), trustedBy: opId, label }, homepage)
-    return { ok: true, fingerprint: fingerprint(publicKey) }
-  })
-  ipcMain.handle('marketplace:untrustPublisher', async (_e, id: string) => {
-    const { untrustPublisher } = await import('../core/plugins/publisher-trust')
-    untrustPublisher(id); return { ok: true }
-  })
-  ipcMain.handle('marketplace:install', async (_e, entryJson: string) => {
-    try {
-      const entry = JSON.parse(entryJson)
-      const { installFromRegistry } = await import('../core/plugins/marketplace')
-      const result = await installFromRegistry(entry)
-      // Re-scan plugins on successful install so the newly landed plugin
-      // shows up in Settings ▸ Plugins immediately.
-      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  // Dev/E2E-only sibling of marketplace:install. Skips the network by taking
-  // the tarball bytes directly from the caller (base64 for IPC-safety) and
-  // handing them to installFromRegistry via its `fetchTarball` hook. Gated on
-  // REDLOG_E2E=1 so the endpoint is effectively absent in a normal launch —
-  // never gate on NODE_ENV, electron-vite already claims that flag.
-  ipcMain.handle('marketplace:testInstall', async (_e, entryJson: string, tarballBytesB64: string) => {
-    if (process.env.REDLOG_E2E !== '1') return { ok: false, error: 'testInstall disabled' }
-    try {
-      const entry = JSON.parse(entryJson)
-      const bytes = Buffer.from(tarballBytesB64, 'base64')
-      const { installFromRegistry } = await import('../core/plugins/marketplace')
-      const result = await installFromRegistry(entry, { fetchTarball: async () => bytes })
-      if (result.ok) { invalidateHooksCache(); reloadPlugins() }
-      return result
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('marketplace:listVersions', async (_e, pluginId: string) => {
-    const { listVersions } = await import('../core/plugins/marketplace')
-    return listVersions(pluginId)
-  })
-  ipcMain.handle('marketplace:rollback', async (_e, pluginId: string, versionKey: string) => {
-    const { rollback } = await import('../core/plugins/marketplace')
-    const r = rollback(pluginId, versionKey)
-    if (r.ok) { invalidateHooksCache(); reloadPlugins() }
-    return r
-  })
-  ipcMain.handle('marketplace:revocations', async () => {
-    const { loadRevocations } = await import('../core/plugins/marketplace')
-    return loadRevocations()
-  })
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
@@ -2007,57 +1872,6 @@ app.whenReady().then(() => {
     }
   })
 
-  // --- MCP (app-hosted HTTP server) ---
-  // v0.6.87 A3: MCP operator id is no longer hardcoded. `mcp:setupToken` now
-  // accepts an optional { name } that becomes the operator label + id, so
-  // Claude Desktop, OpenCode, Codex, etc. can each have their own attribution
-  // (previously every MCP-driven event was attributed to the single global
-  // `mcp-agent` operator and the "> 1 operator" heuristic in Timeline broke).
-  const MCP_DEFAULT_OPERATOR_ID = 'mcp-agent'
-  const mcpOperatorIdFromName = (name?: string | null): string => {
-    const raw = (name || '').trim()
-    if (!raw) return MCP_DEFAULT_OPERATOR_ID
-    // slugify: lowercase alnum + dashes, prefix "mcp-" so operator lists stay
-    // sortable and MCP-owned tokens are visually distinct.
-    const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
-    return slug ? `mcp-${slug}` : MCP_DEFAULT_OPERATOR_ID
-  }
-  ipcMain.handle('mcp:info', () => {
-    if (!activeProject) return null
-    const port = getApiPort()
-    // In dev the stdio bridge is in the repo; in a packaged app it's unpacked
-    // next to resources. HTTP is the recommended transport either way.
-    const stdioPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'mcp', 'redlog-mcp-server.js')
-      : path.join(__dirname, '../../mcp/redlog-mcp-server.js')
-    // On Windows there's no shebang execution, so `claude mcp add
-    // <path>.js` would silently fail. Return a `command` + `args` pair
-    // the client can spawn directly on every OS. Audit P1-5.
-    return {
-      port,
-      endpoint: `http://127.0.0.1:${port}/mcp`,
-      stdioPath,
-      stdioCommand: process.execPath.endsWith('node') || process.execPath.endsWith('node.exe') ? process.execPath : 'node',
-      stdioArgs: [stdioPath],
-      hasToken: listOperators().some((o) => o.id.startsWith('mcp-') && !o.revokedAt),
-      // List MCP-owned operators so Settings can show which agents are
-      // already registered.
-      operators: listOperators()
-        .filter((o) => o.id.startsWith('mcp-') && !o.revokedAt)
-        .map((o) => ({ id: o.id, name: o.name }))
-    }
-  })
-  ipcMain.handle('mcp:setupToken', (_e, opts?: { name?: string }) => {
-    if (!activeProject) return null
-    const operatorId = mcpOperatorIdFromName(opts?.name)
-    const displayName = (opts?.name || '').trim() || 'MCP agent'
-    const token = generateToken()
-    const existing = listOperators().find((o) => o.id === operatorId)
-    if (existing) updateOperatorToken(operatorId, token)
-    else createOperator({ id: operatorId, name: displayName, token, isPrimary: false })
-    return { token, port: getApiPort(), endpoint: `http://127.0.0.1:${getApiPort()}/mcp`, operatorId, name: displayName }
-  })
-
   // --- Operators ---
   ipcMain.handle('operators:list', () => {
     if (!activeProject) return []
@@ -2065,45 +1879,6 @@ app.whenReady().then(() => {
       id: op.id, name: op.name, isPrimary: op.isPrimary,
       createdAt: op.createdAt, revokedAt: op.revokedAt
     }))
-  })
-  ipcMain.handle('operators:create', (_e, name: string) => {
-    if (!activeProject) return null
-    const trimmed = (name || '').trim()
-    if (!trimmed) return null
-    const id = slugifyOperatorId(trimmed)
-    const token = generateToken()
-    try {
-      const op = createOperator({ id, name: trimmed, token, isPrimary: false })
-      return { operator: { id: op.id, name: op.name, isPrimary: false, createdAt: op.createdAt, revokedAt: null }, token }
-    } catch {
-      return null
-    }
-  })
-  ipcMain.handle('operators:rotate', (_e, id: string) => {
-    if (!activeProject) return null
-    const token = generateToken()
-    const ok = updateOperatorToken(id, token)
-    if (!ok) return null
-    const primary = listOperators().find((o) => o.id === id && o.isPrimary)
-    if (primary) {
-      const tokenPath = path.join(homedir(), '.redlog', 'api-token')
-      try { fs.writeFileSync(tokenPath, token, { mode: 0o600 }) } catch {}
-    }
-    return { token }
-  })
-  ipcMain.handle('operators:rename', (_e, id: string, name: string) => {
-    if (!activeProject) return false
-    const trimmed = (name || '').trim()
-    if (!trimmed) return false
-    return renameOperator(id, trimmed)
-  })
-  ipcMain.handle('operators:revoke', (_e, id: string) => {
-    if (!activeProject) return false
-    return revokeOperator(id)
-  })
-  ipcMain.handle('operators:delete', (_e, id: string) => {
-    if (!activeProject) return false
-    return deleteOperator(id)
   })
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
@@ -2156,10 +1931,6 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
-  // v0.6.100 F1: flush any pending deconfliction batch before we tear down.
-  // Up to 100 events (or ≤500ms worth) can sit in the buffer; without this
-  // they vanish when the operator quits mid-engagement.
-  try { flushDeconflictionOnShutdown() } catch { /* best-effort */ }
   stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()

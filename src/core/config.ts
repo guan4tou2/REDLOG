@@ -100,6 +100,17 @@ export interface RedLogConfig {
      *  `system.screenshot_pruned` audit event is appended per deletion. */
     keepDays?: number
   }
+  /** Captured HTTP request/response bodies (http-body-store.ts). */
+  httpBodies?: {
+    /** Age-based sweep of the sidecar store, days. 0 = keep forever. */
+    keepDays?: number
+    /** Size-pressure cap in bytes. When the store exceeds this, the coldest
+     *  UNPINNED bodies are evicted until under it — in-scope bodies are pinned
+     *  and never evicted (body-eviction.ts). 0 (default) = unbounded. The
+     *  event and its sha256 attestation always survive; only the openable
+     *  body content is dropped. */
+    maxBytes?: number
+  }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
     enabled: boolean
@@ -124,37 +135,10 @@ export interface RedLogConfig {
     entropyThreshold: number
     minLength: number
   }
-  deconfliction: {
-    enabled: boolean
-    url: string
-    secret: string
-    events: string[]
-    subtypes: string[]
-    includeData: boolean
-  }
   /** Cloud-share bundle backend (spec: docs/CLOUD_SHARE_BUNDLE.md).
    *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
    *  their own redlog-share-worker deploy. Empty endpoint = fall back to the
    *  local file:// stub uploader. */
-  cloudShare: {
-    /** Base URL of the deployed Worker, e.g. https://redlog-share.acme.workers.dev */
-    endpoint: string
-    /** Shared bearer set via `wrangler secret put AUTH_TOKEN`. Stored in plain
-     *  YAML — same trust model as `deconfliction.secret`. */
-    authToken: string
-    /** Override the default 100 MB bundle size cap. Operators with big
-     *  screenshot / .cast collections trip the cap fast; the Worker
-     *  enforces its own MAX_UPLOAD_MB independently, so raising this
-     *  client-side value only helps if the backend also allows it. */
-    maxBundleBytes?: number
-  }
-  /** Plugin marketplace overrides. Empty defaults ship the built-in
-   *  placeholder (GitHub raw of the example registry). Air-gapped shops
-   *  point this at their internal registry mirror. */
-  marketplace: {
-    /** Registry URL the Settings placeholder + one-click fetch use. */
-    defaultRegistryUrl: string
-  }
   /** v0.6.92 W-project: file-watcher (chokidar). Opt-in — file activity is
    *  noisy without a well-scoped watchPaths list. Emits `file_transfer`
    *  events with subtype `file_created/modified/deleted`. */
@@ -174,6 +158,19 @@ export interface RedLogConfig {
     enabled: boolean
     pollMs?: number
     ignoreCommands?: string[]
+  }
+  /** Connection-level network capture (DESIGN-core-and-capture.md §2.1).
+   *  Polls the socket table for established connections; no payload, no root.
+   *  Off by default — it is capture the operator opts into, and it shells out
+   *  every pollMs. */
+  connectionMonitor?: {
+    enabled: boolean
+    pollMs?: number
+  }
+  /** PowerShell Start-Transcript follower (§2.3), Windows output capture.
+   *  Off by default; the operator opts in and adds the hook to their profile. */
+  transcriptTailer?: {
+    enabled: boolean
   }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
@@ -258,6 +255,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
   screenshots: {
     keepDays: 0
   },
+  httpBodies: {
+    keepDays: 0,
+    maxBytes: 0
+  },
   clipboard: {
     enabled: false,
     pollMs: 1500,
@@ -278,23 +279,6 @@ const DEFAULT_CONFIG: RedLogConfig = {
     entropyThreshold: 4.5,
     minLength: 20
   },
-  deconfliction: {
-    enabled: false,
-    url: '',
-    secret: '',
-    events: ['marker', 'system', 'credential_use', 'c2_checkin'],
-    subtypes: ['scope_violation'],
-    includeData: false
-  },
-  cloudShare: {
-    endpoint: '',
-    authToken: ''
-  },
-  marketplace: {
-    // Default: the example registry hosted from this repo on GitHub raw.
-    // Deployers running a private registry override this in config.yaml.
-    defaultRegistryUrl: 'https://raw.githubusercontent.com/guan4tou2/REDLOG/main/examples/registry/index.json'
-  },
   fileWatcher: {
     enabled: false,
     watchPaths: [],
@@ -304,6 +288,13 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false,
     pollMs: 500,
     ignoreCommands: []
+  },
+  connectionMonitor: {
+    enabled: false,
+    pollMs: 2000
+  },
+  transcriptTailer: {
+    enabled: false
   },
   agentTailer: {
     enabled: true,

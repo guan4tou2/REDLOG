@@ -237,7 +237,7 @@ export default function WslPanel({ t }: WslPanelProps): JSX.Element {
                             <button
                               disabled={actionBusy === installKey}
                               onClick={() => handleInstall(distro.name, shell)}
-                              className="px-2.5 py-0.5 text-xs rounded bg-redlog-danger text-white hover:bg-redlog-danger-hover disabled:opacity-50"
+                              className="px-2.5 py-0.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
                             >
                               {actionBusy === installKey ? t('settings.wsl.installing') : t('settings.wsl.install')}
                             </button>

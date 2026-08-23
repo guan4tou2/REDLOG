@@ -10,24 +10,28 @@ import ProjectPicker from './components/ProjectPicker'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
-import { SearchPanel } from './components/SearchPanel'
 import { HttpHistoryPanel } from './components/HttpHistoryPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { QuickMarksView } from './components/FindingsView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
+import { CommandPalette } from './components/CommandPalette'
+import { SearchPanel } from './components/SearchPanel'
+import { ExportMenu } from './components/ExportMenu'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
-import { loadSidebarOrder, onSidebarOrderChanged, type SidebarViewId } from './lib/sidebarOrder'
+import { DEFAULT_ORDER, type SidebarViewId } from './lib/sidebarOrder'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
+import { EmptyState } from './components/EmptyState'
 import { formatTime } from './lib/time'
+import { isMac } from './lib/platform'
 
-type View = SidebarViewId | 'settings' | 'search'
+type View = SidebarViewId | 'settings'
 
 // ⌘/Ctrl+1..8 map to the sidebar order (which the user can reorder); ⌘9 =
 // Settings (pinned at the sidebar's bottom, not part of the reorderable list).
@@ -44,7 +48,7 @@ type View = SidebarViewId | 'settings' | 'search'
 const SETTINGS_SHORTCUT_INDEX = 9
 
 function currentShortcutOrder(): View[] {
-  return loadSidebarOrder().slice(0, SETTINGS_SHORTCUT_INDEX - 1) as View[]
+  return DEFAULT_ORDER.slice(0, SETTINGS_SHORTCUT_INDEX - 1) as View[]
 }
 
 function viewForShortcut(num: number): View | null {
@@ -53,9 +57,6 @@ function viewForShortcut(num: number): View | null {
   return num >= 1 && num <= order.length ? order[num - 1] : null
 }
 
-// Read defensively — this runs at module load, before the preload bridge is
-// guaranteed present (e.g. in tests). Default to mac styling.
-const isMac = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
 
 export default function App(): JSX.Element {
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
@@ -63,7 +64,16 @@ export default function App(): JSX.Element {
   // Event to focus when the Timeline opens (set when jumping from Loot); cleared
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
+  // A target to scope the timeline to, set when arriving from the Targets
+  // view. Cleared on any nav so it never silently narrows a later visit.
+  const [focusTarget, setFocusTarget] = useState<string | null>(null)
   const [showMarker, setShowMarker] = useState(false)
+  // Feeds the export menu's "N events · about X" line. Refreshed on view
+  // changes rather than per event — the preview exists to catch "I meant the
+  // slice, not all 28,000", and that answer does not move by one.
+  const [exportableCount, setExportableCount] = useState(0)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [recordingOn, setRecordingOn] = useState(true)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const { t } = useI18n()
 
@@ -73,6 +83,11 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  useEffect(() => {
+    if (!project) return
+    window.redlog.events.getCount().then(setExportableCount).catch(() => {})
+  }, [project, view])
+
   // Global marker shortcut (⌘/Ctrl+Shift+M) is registered in the main process
   // via Electron globalShortcut so it fires whether the window has focus or
   // not. Do NOT also listen for it in the renderer — audit finding P0 #5
@@ -81,6 +96,13 @@ export default function App(): JSX.Element {
   // must be scoped to the app window.
   useEffect(() => {
     return window.redlog.marker.onShortcut(() => setShowMarker(true))
+  }, [])
+
+  // The palette shows "pause" or "resume" depending on the current state, so
+  // it has to know it.
+  useEffect(() => {
+    window.redlog.recording.get().then(setRecordingOn).catch(() => {})
+    return window.redlog.recording.onChange(setRecordingOn)
   }, [])
 
   // ⌘/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
@@ -121,18 +143,21 @@ export default function App(): JSX.Element {
       }
 
       switch (hit.id) {
-        case 'app:search':
         case 'app:palette': {
+          // §10: ⌘K is the same palette on every view. It used to mean two
+          // different things — the Timeline's local fuzzy search there, the
+          // Search sidebar page everywhere else — so an operator had to know
+          // which surface they were on to know what the key did.
           e.preventDefault()
-          // v0.6.91 W3: ⌘K inside the Timeline opens the local fuzzy palette
-          // instead of jumping to the Search sidebar — it scopes to the
-          // currently-loaded events, which is where the muscle memory points.
-          // ⌘/ still routes to Search everywhere.
-          if (hit.id === 'app:palette' && view === 'timeline') {
-            window.dispatchEvent(new CustomEvent('redlog-timeline-palette'))
-          } else {
-            setView('search')
-          }
+          setPaletteOpen(true)
+          return
+        }
+        case 'app:findInPage': {
+          // §5.7 / §10: in-page filtering is ⌘F, which every other desktop
+          // app has already taught. The view that has a filter takes it; the
+          // ones that do not simply ignore the event.
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent('redlog:find-in-page'))
           return
         }
         case 'app:toggleRecording': {
@@ -201,6 +226,16 @@ export default function App(): JSX.Element {
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title={t('app.copyVersionHint')}
           >v{__APP_VERSION__}</span>
+          {/* "Check for updates" was a Settings group, next to a copy of this
+              same version string. It is an action about the version, so it
+              belongs beside the version rather than in a page of settings —
+              and nobody looks for it under Settings anyway. */}
+          <button
+            onClick={() => void window.redlog.app.checkForUpdates()}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={t('settings.checkUpdateHint')}
+            className="text-redlog-text-faint hover:text-redlog-text text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/50 rounded px-1"
+          >{t('settings.checkUpdate')}</button>
         </div>
         <button
           className="ml-4 text-redlog-text-faint hover:text-redlog-text text-xs font-mono transition-colors flex items-center gap-1"
@@ -215,6 +250,9 @@ export default function App(): JSX.Element {
           {project.name}
         </button>
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          {/* §10: one export control, in the shell rather than six places.
+              Its scope is an option, not a location. */}
+          <ExportMenu totalCount={exportableCount} />
           <LaunchBrowserButton onNavigate={(v) => setView(v as View)} />
           <button
             onClick={() => setShowMarker(true)}
@@ -228,7 +266,7 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setView(v as View) }} />
+        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); setView(v as View) }} />
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
@@ -238,7 +276,7 @@ export default function App(): JSX.Element {
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} focusTarget={focusTarget ?? undefined} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
                 this answers "what did I type and what came back", which is the
@@ -246,23 +284,35 @@ export default function App(): JSX.Element {
             {view === 'transcript' && (
               <TranscriptView
                 key={project?.id ?? 'no-project'}
-                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); onNavigate('timeline') }}
+                // `onNavigate` is not in scope here — App switches views with
+                // `setView`. This threw a ReferenceError on every use of the
+                // transcript's ↗ button, which is §7's transcript ↔ timeline
+                // link and one of the five cross-view routes phase 3 is meant
+                // to be completing.
+                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
               />
             )}
-            {view === 'screenshots' && <ScreenshotsView />}
-            {view === 'targets' && <TargetView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
+            {view === 'screenshots' && <ScreenshotsView onNavigate={(v) => setView(v as View)} />}
+            {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
+            {view === 'targets' && <TargetView onOpenInTimeline={(ts, target) => { setFocusEvent({ id: '', ts }); setFocusTarget(target ?? null); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'http_history' && <HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}
-            {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
           </ErrorBoundary>
         </div>
       </div>
 
       <StatusBar />
       {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined) }} atTimestamp={markerAtTs} />}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(v) => setView(v as View)}
+        onOpenEvent={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
+        recording={recordingOn}
+      />
       <ToastContainer />
       <ConfirmDialogContainer />
     </div>
@@ -287,7 +337,14 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
   const STEP_LABEL: Record<string, string> = {
     'shell-hook': t('capture.shellHook'),
     'agent-tailer': t('capture.agentTailer'),
-    'builtin-terminal': t('capture.builtinTerminal')
+    'builtin-terminal': t('capture.builtinTerminal'),
+    'mitmproxy': t('capture.mitmproxy'),
+    'browser-console': t('capture.browserConsole'),
+    'screenshot': t('capture.screenshot'),
+    'clipboard': t('capture.clipboard'),
+    'file-watcher': t('capture.fileWatcher'),
+    'process-monitor': t('capture.processMonitor'),
+    'connection-monitor': t('capture.connectionMonitor')
   }
   const glyph = (status: string): { mark: string; cls: string } =>
     status === 'active' ? { mark: '●', cls: 'text-emerald-500' }
@@ -318,21 +375,35 @@ function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnable, onNa
       <p className="text-xs text-redlog-text-dim mb-2">
         {readiness.level === 'dark' ? t('capture.setupIntro') : t('capture.setupAlmost')}
       </p>
-      <ol className="space-y-1 mb-2.5">
-        {readiness.steps.map((s, i) => {
-          const g = glyph(s.status)
-          return (
-            <li key={s.id} className="flex items-center gap-2 text-xs">
-              <span className={`shrink-0 ${g.cls}`}>{g.mark}</span>
-              <span className="text-redlog-text-dim tabular-nums">{i + 1}.</span>
-              <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
-                {STEP_LABEL[s.id] ?? s.id}
-              </span>
-              <span className="text-xs font-mono text-redlog-text-faint">{t(`capture.step.${s.status}`)}</span>
-            </li>
-          )
-        })}
-      </ol>
+      {/* Grouped, and no longer numbered. The numbers described a sequence
+          that does not exist — an operator on a proxied assessment starts with
+          traffic and may never install a shell hook. What the groups say is
+          what each source captures, which is the choice actually being made. */}
+      <div className="space-y-2.5 mb-2.5">
+        {readiness.groups.map((group) => (
+          <div key={group.id}>
+            <p className="text-xs font-semibold text-redlog-text-faint uppercase tracking-wider mb-1">
+              {t(`capture.group.${group.id}`)}
+            </p>
+            <ul className="space-y-1">
+              {group.steps.map((s) => {
+                const g = glyph(s.status)
+                return (
+                  <li key={s.id} className="flex items-center gap-2 text-xs">
+                    <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
+                    <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
+                      {STEP_LABEL[s.id] ?? s.id}
+                    </span>
+                    <span className="ml-auto text-xs font-mono text-redlog-text-faint">
+                      {t(`capture.step.${s.status}`)}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
       <div className="flex items-center gap-3">
         {cta && (
           <button
@@ -372,6 +443,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     // v0.6.92 W-project producers.
     'browser-console': t('capture.browserConsole'),
     'process-monitor': t('capture.processMonitor'),
+    'connection-monitor': t('capture.connectionMonitor'),
     'file-watcher': t('capture.fileWatcher')
   }
   const dot = (s: string): string =>
@@ -680,10 +752,10 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
   const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  // Shortcut order — kept in state + subscribed so a drag-reorder in the sidebar
-  // updates the cheatsheet immediately, no view switch required.
-  const [shortcutOrder, setShortcutOrder] = useState(currentShortcutOrder)
-  useEffect(() => onSidebarOrderChanged(() => setShortcutOrder(currentShortcutOrder())), [])
+  // Fixed since §5.3 — no state, no subscription. It was both when the
+  // sidebar could be dragged.
+  const shortcutOrder = currentShortcutOrder()
+
   const { t } = useI18n()
 
   useEffect(() => {
@@ -780,21 +852,9 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
       </section>
 
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">
-            {t('dashboard.sessionStats')}
-          </h2>
-          <button
-            onClick={async () => {
-              const path = await window.redlog.data.exportJson()
-              if (path) toast(t('toast.exported'), 'success')
-              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
-          >
-            {t('dashboard.exportData')}
-          </button>
-        </div>
+        <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em] mb-3">
+          {t('dashboard.sessionStats')}
+        </h2>
         <div className="grid grid-cols-3 gap-3">
           {/* Events + chain length were two cards showing the same number —
               every event is one chain entry so they moved in lockstep. Merged
@@ -942,7 +1002,7 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   )
 }
 
-function ScreenshotsView(): JSX.Element {
+function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -1015,13 +1075,16 @@ function ScreenshotsView(): JSX.Element {
         </button>
       </div>
       {screenshots.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <div className="w-16 h-16 rounded-full bg-redlog-surface border border-redlog-border flex items-center justify-center">
-            <Image size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
-          </div>
-          <p className="text-redlog-text-dim text-sm">{t('screenshots.empty')}</p>
-          <p className="text-redlog-muted text-xs">{t('screenshots.emptyDesc')}</p>
-        </div>
+        <EmptyState
+          icon={Image}
+          title={t('screenshots.empty')}
+          reason={t('screenshots.emptyReason')}
+          action={{
+            label: t('screenshots.captureNow'),
+            onClick: () => { void window.redlog.screenshot.capture() }
+          }}
+          secondary={{ label: t('screenshots.emptyEnable'), onClick: () => onNavigate('settings') }}
+        />
       ) : (() => {
         // Trigger filter (audit #32) — all captures land in one grid mixing
         // periodic / manual / mark-triggered. Chip toggles narrow the view.

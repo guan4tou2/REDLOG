@@ -1,6 +1,10 @@
 # Product Positioning
 
-Written 2026-08-10 against v0.11.5. This is the single source of truth for
+Written 2026-08-10 against v0.11.5. **Revised 2026-08-21** — the core moved
+from *defensibility* to *knowability*; see `DESIGN-core-and-capture.md` for the
+review that produced the change and what it does to capture coverage.
+
+This is the single source of truth for
 **who RedLog is for, what job it does, and where its edges are**. The one-line
 positioning has lived in `ROADMAP.md` and `docs/README.md`; this page keeps
 those in sync and adds the layer they never had — users, jobs, and the
@@ -9,31 +13,46 @@ the roadmap is the bug.
 
 ## One sentence
 
-**RedLog is the local, tamper-evident audit-log layer of a red-team
-engagement:** it passively records every operator and agent action into a
-per-project SHA-256 hash chain, anchored to OpenTimestamps and exportable as a
-signed evidence bundle a third party can verify.
+**RedLog is the local record of what actually happened in a red-team
+engagement:** it passively captures every command, connection, file and screen
+— whoever or whatever produced it — so that afterwards you can replay the
+engagement, hand a purple team something they can judge traffic from, and find
+evidence of the things you were not watching when they happened.
 
-If it happened, RedLog captured it. If the timeline shows a 20-minute gap, the
-timeline is *right* — the operator was idle, or a `recording_paused` row
-explains it.
+If it happened, RedLog captured it. If the record shows a 20-minute gap, the
+record is *right* — the operator was idle, or a `recording_paused` row
+explains it. (The timeline may *draw* that gap compressed; the record still
+contains it. Rendering is a reading convenience, storage is not.)
+
+The hash chain, OpenTimestamps anchoring and the signed bundle still run, and
+still let a third party verify the record end to end. They are a **property of
+how the record is kept**, not the reason to keep one.
 
 ## The job to be done
 
-> When I run an engagement, I need a complete, defensible record of what I did
-> and when — so I can prove I stayed in scope, reconstruct the attack timeline,
-> and hand a client or my own legal team something they can trust — **without
-> spending the engagement taking notes.**
+> When I run an engagement, I need a complete record of what was done and when
+> — so I can **write it up afterwards with the screenshots and the exact
+> commands**, reconstruct the attack timeline, show a purple team what my
+> traffic was, prove I stayed in scope, and find out what happened during the
+> stretches I wasn't watching — **without spending the engagement taking
+> notes.**
 
 Two halves, and both are load-bearing:
 
-1. **Complete + defensible** — the record has to survive scrutiny. That is the
-   hash chain, the OpenTimestamps anchor, the operator attribution, the signed
-   bundle. This is what separates RedLog from a scratchpad.
+1. **Complete** — because you are relying on it to tell you things you do not
+   already know. An hour into a scan, three hundred agent turns in, or a
+   teammate's session on the shared VPS: the record is the only account of
+   what happened, so a hole in it is not an inconvenience, it is the failure.
+   Tamper-evidence falls out of how completeness is kept (an append-only hash
+   chain), and is worth having, but it is not the job.
 2. **Without taking notes** — capture has to be passive. The moment logging
    depends on the operator remembering to log, the record has holes exactly
    where the interesting things happened. This is why hooks are the backbone
    and MCP is only the control plane (see `agent-integration.md`).
+
+An AI agent is the sharpest case of the first half — you delegate, it does
+three hundred things, you know none of them — but it is **one producer among
+several**, not half the product. The same gap opens with no agent involved.
 
 Everything RedLog does is in service of one of these two. A feature that serves
 neither is scope creep.
@@ -66,12 +85,42 @@ the transcript tailer + shell hooks (passive, can't be forgotten) with MCP as an
 explicit control plane. This persona is why "hooks log, MCP operates" is a hard
 rule, not a preference.
 
-### S1 — The evidence consumer *(stakeholder, not a user)*
+## Who consumes the output
 
-The client, the client's counsel, or the operator's own QA. Never opens the app.
-Receives the signed bundle and runs `ots verify` / `redlog-verify.py`. Every
-positioning claim ultimately answers to this person: **can they check it
-themselves?** That is the v1.0 gate.
+The everyday consumer of RedLog's output is **the operator themselves**, and
+that is not a fourth persona — it is P1, P2 or P3 a day later, writing the
+engagement up.
+
+This is the phase the whole record exists to serve. Writing a report means
+going back for **the screenshot of that finding** and **the exact command,
+with its output, its timestamp and its target** — in a form that can be
+pasted into a document. RedLog does not write the report (see the non-goals
+below; that stays downstream), but everything it captures is judged by
+whether it survives that trip.
+
+Two consequences worth stating, because they are easy to under-weight:
+
+- **Screenshots are report material, not incidental artefacts.** They need to
+  be findable by what they show and when they were taken, and they need to
+  come out at usable fidelity.
+- **A command record is only as useful as its output.** "I ran `nmap -sV`" is
+  not evidence of anything; the command plus what came back is. This is what
+  makes the output-capture gaps (§2.3 Windows, §2.4 tool output) matter more
+  than their size suggests.
+
+### Secondary consumers *(stakeholders, not users)*
+
+- **The purple / blue team** — the client's defenders, correlating what they
+  saw against what the red team actually did. They receive an activity record
+  (time, source, target, command, HTTP exchange, across every capture source)
+  and match it against their own telemetry — the exported record, after the
+  action. (RedLog no longer ships a live deconfliction feed; live "was that
+  us?" is out of scope after the 2026-08-22 core revision.)
+- **The evidence consumer** — the client's counsel, or the operator's own QA,
+  when a record is challenged. Receives the signed bundle and runs
+  `ots verify` / `redlog-verify.py`. Fully supported, and what the hash chain
+  is *for* — but the exception, not the design centre, and it should not shape
+  the everyday UI.
 
 ## What RedLog is NOT
 
@@ -89,8 +138,10 @@ RedLog integrates with that job rather than competing for it.
 
 ## Where it sits in the landscape
 
-RedLog occupies a corner none of the established tools do: **local-first +
-passive capture + tamper-evidence + AI-agent-native**. The comparison isn't
+RedLog occupies a corner none of the established tools do: **capture at the
+point of work, locally, readable afterwards**. Tamper-evidence and
+agent-native capture are both real and both differentiating — they are just
+properties of that corner rather than the definition of it. The comparison isn't
 "which is better" — most of these are complementary and sit downstream of
 RedLog.
 

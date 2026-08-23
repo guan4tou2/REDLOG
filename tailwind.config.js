@@ -78,7 +78,17 @@ module.exports = {
           'text-dim': '#9a9aa4',
           'text-faint': '#7a7a84',
           muted: '#6a6a74',
-          // Brand red — text and hairlines only.
+          // Text that sits *on* a fill. Every accent in this palette is
+          // mid-luminance, so white fails AA on all of them — #d75f63 gives
+          // 3.68:1, #ff4d4f 3.27:1, and the green and cyan are down at 1.9
+          // and 2.0. Dark text clears 5:1 on every one. So the rule is not
+          // per-colour: fill anything, and the text on it goes dark.
+          'on-accent': '#16090a', // 5.3:1 on accent
+          'on-danger': '#1a0303', // 6.1:1 on danger
+          'on-warn': '#1a1203', // 7.2:1 on amber, 5.1:1 at 80% over surface
+          'on-safe': '#03150d', // 9.7:1 on emerald
+          'on-info': '#031215', // 9.4:1 on cyan
+          // Brand red — fills command buttons, otherwise text and hairlines.
           accent: '#d75f63',
           'accent-dim': '#b84d51',
           // Danger red — solid fills only, white on top.

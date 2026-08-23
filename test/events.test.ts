@@ -177,14 +177,13 @@ describeDB('queryEvents excludeHousekeeping', () => {
 
   it('filters system.api_started + shell.session_start + hook-source command_start', () => {
     insertEvent('system', { subtype: 'api_started', port: 8420 })
-    insertEvent('system', { subtype: 'deconfliction_test' })
     insertEvent('shell', { subtype: 'session_start', terminalId: 't1' })
     insertEvent('shell', { subtype: 'command_start', command: 'source ~/.redlog/shell-preexec-hook.sh' })
     insertEvent('marker', { title: 'real user event' })
     insertEvent('shell', { command: 'ls', subtype: 'command_start' })
 
     const all = queryEvents({ limit: 100 })
-    expect(all.length).toBe(6)
+    expect(all.length).toBe(5)
     const clean = queryEvents({ limit: 100, excludeHousekeeping: true })
     // Only the marker + the real `ls` should survive.
     expect(clean.length).toBe(2)

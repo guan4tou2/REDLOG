@@ -1,8 +1,8 @@
 # Architecture
 
 Current as of **v0.9.3**. This page is the map the README's ASCII diagram
-stopped being (that diagram predates the tailer host, plugin host,
-marketplace and cloud share). Read `event-schema.md` for what lands on the
+stopped being (that diagram predates the tailer host and plugin host).
+Read `event-schema.md` for what lands on the
 timeline and `audit-trail.md` for why it can't be quietly edited.
 
 ## 1. Process / layer model
@@ -26,9 +26,9 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 ┌──────────────┴─ core (src/core/) — zero Electron imports, unit-testable ──────┐
 │  db/{index,events,operators,findings}   event-bus   clock   signing            │
 │  chain-anchor   evidence-chain   bundle-export   sanitize   redaction          │
-│  api-server (REST + HTTP MCP)   mcp-tools   capture-health   deconfliction     │
+│  api-server (REST)   capture-health                                           │
 │  loot- / pivot- / technique- / command- / target- detectors   scope-monitor    │
-│  ip-monitor   retention   cloud-share   plugins/{loader,manifest,trust,host,…} │
+│  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
 └───────────────────────────────────────────────────────────────────────────────┘
         ▲ HTTP 127.0.0.1:6660 (Bearer)         ▲ file watch
    hooks/ · shell/ · cli/ · mcp/ ·        ~/.claude · ~/.codex · opencode storage
@@ -61,7 +61,7 @@ untested — see `AUDIT-2026-08-08.md` §4).
 loadConfig → initDB(projectDir)               timeline.db, WAL, triggers
 → configure ip / screenshot / scope / loot / redaction
 → setPluginHost → setTailerContributionSink → initPlugins()
-→ configureDeconfliction · setVpnAdapters · configureTerminal
+→ setVpnAdapters · configureTerminal
 → sweepRetention()            expire .cast / screenshots, emit *_pruned events
 → recoverOrphanSessions()     LEFT JOIN to close terminals killed by a crash
 → replay ~/.redlog/pending/*  shell-hook offline spool
@@ -74,9 +74,8 @@ loadConfig → initDB(projectDir)               timeline.db, WAL, triggers
 → create overlay window
 ```
 
-Shutdown (`stopProject()` / `will-quit`) flushes the deconfliction batch,
-kills terminals **before** closing the DB so `session_end` still writes, then
-unwinds every monitor and calls `closeDB()`.
+Shutdown (`stopProject()` / `will-quit`) kills terminals **before** closing the
+DB so `session_end` still writes, then unwinds every monitor and calls `closeDB()`.
 
 ## 3. Data model
 
@@ -158,8 +157,7 @@ insertEvent (src/core/db/events.ts:230)
   · clock-anomaly detection folded into data
   · canonicalStringify (recursive key sort) → SHA-256 → hash → Ed25519 sig
 main/index.ts:1063
-  · send 'events:new'          per event (HUD + deconfliction)
-  · notifyDeconfliction()      500 ms / 100-event batches, HMAC-SHA256
+  · send 'events:new'          per event (HUD)
   · batchBuffer + setImmediate → 'events:new-batch'  (one per frame)
   · recompute getActivePivots() on pivot / command_end → 'pivots:changed'
 ```
@@ -267,11 +265,6 @@ surface (`read:events`, `write:events`, `read:findings`, `read:config`,
 signing keys. Trust is pinned to a content hash covering the manifest plus
 every privileged code file; changing either the code or the requested
 capabilities revokes it automatically.
-
-Marketplace install: revocation check → HTTPS fetch (5 MB cap, one redirect,
-20 s timeout) → sha256 match → Ed25519 verify against a pinned publisher key
-→ tar-escape pre-check → extract to scratch → manifest re-validation → tier
-post-check → atomic rename with the previous version snapshotted.
 
 `tailers` is the exception and currently does **not** follow this path — see
 `AUDIT-2026-08-08.md` §2 (P1-3).

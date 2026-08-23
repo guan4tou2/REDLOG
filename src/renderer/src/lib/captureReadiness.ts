@@ -5,20 +5,42 @@
 // nothing until a source is wired up — being open is not enough."
 //
 // computeCaptureReadiness turns the same CaptureHealth the Dashboard already
-// fetches over the bridge into an ORDERED onboarding model — which core capture
-// sources are live, which are set up but quiet, which are untouched, and the
-// single most useful next action. It lives in the renderer because it is a
+// fetches over the bridge into a GROUPED onboarding model — which sources are
+// live, which are set up but quiet, which are untouched, and the single most
+// useful next action. It lives in the renderer because it is a
 // PRESENTATION model (how to guide the operator), depends on nothing in the
 // main process, and reads only fields present on the bridge's CaptureHealthInfo.
 // Pure and side-effect free, so it is unit tested without a DB or a renderer.
 
-// The sources a solo operator wires first, in the order the README leads with:
-// the shell hook is the capture backbone, the agent tailer covers AI coding
-// agents, the built-in terminal is the zero-setup fallback that records the
-// moment a pane is opened. Everything else (mitmproxy, clipboard, screenshots,
-// file/process watchers) is enrichment and is deliberately not part of the
-// "go from dark to recording" path.
-export const CORE_SOURCE_ORDER = ['shell-hook', 'agent-tailer', 'builtin-terminal'] as const
+// Capture sources, grouped by what they capture — not ranked.
+//
+// This was an ordered triple: shell hook, then agent tailer, then built-in
+// terminal, with everything else (mitmproxy, clipboard, screenshots, the file
+// and process watchers) declared "enrichment" and excluded from the
+// dark→recording path outright. Two things were wrong with that.
+//
+// The ordering claimed a sequence that does not exist. An operator running a
+// proxied web assessment wires mitmproxy first and may never install a shell
+// hook; the model told them they were dark while HTTP events were landing on
+// the timeline, because the source producing them was not on the list.
+//
+// And the grouping the ordering hid is the useful part: sources differ by
+// *what they capture*, which is what an operator is actually choosing between.
+// Commands, traffic, artefacts. Within a group the order carries no meaning,
+// so the model no longer implies one.
+export type CaptureGroupId = 'commands' | 'traffic' | 'artifacts'
+
+export const CAPTURE_GROUPS: ReadonlyArray<{
+  id: CaptureGroupId
+  sources: readonly string[]
+}> = [
+  // What was typed, by a person or an agent.
+  { id: 'commands', sources: ['shell-hook', 'agent-tailer', 'builtin-terminal'] },
+  // What went over the wire. mitmproxy carries HTTP and DNS on one addon.
+  { id: 'traffic', sources: ['mitmproxy', 'browser-console', 'connection-monitor'] },
+  // What was on screen or on disk.
+  { id: 'artifacts', sources: ['screenshot', 'clipboard', 'file-watcher', 'process-monitor'] }
+]
 
 // Minimal structural shape of a capture source. Both the main-process
 // CaptureSource and the renderer's ambient CaptureSourceInfo satisfy it, so
@@ -44,21 +66,29 @@ export interface ReadinessStep {
   /** stable id, matches the source id and the i18n `capture.*` labels */
   id: string
   status: StepStatus
-  /** part of the canonical dark→recording path (vs. optional enrichment) */
-  core: boolean
+  group: CaptureGroupId
 }
 
 export type ReadinessLevel =
-  | 'dark' // no core source is set up — the timeline will stay empty
+  | 'dark' // nothing is set up at all — the timeline will stay empty
   | 'setup' // something is set up but nothing is actively feeding
-  | 'recording' // at least one core source is live
+  | 'recording' // at least one source, in any group, is live
+
+export interface ReadinessGroup {
+  id: CaptureGroupId
+  steps: ReadinessStep[]
+  /** how many sources in this group are feeding the timeline right now */
+  activeCount: number
+}
 
 export interface CaptureReadiness {
   level: ReadinessLevel
   steps: ReadinessStep[]
+  /** the same steps, grouped by what they capture — what the UI renders */
+  groups: ReadinessGroup[]
   /** the single action to surface, or null once recording */
   nextStep: ReadinessStep | null
-  /** how many core sources are currently active — drives "N of 3 live" copy */
+  /** how many sources are currently active, across every group */
   activeCount: number
 }
 
@@ -81,39 +111,48 @@ function statusFor(source: ReadinessSource): StepStatus {
 export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadiness {
   const byId = new Map(health.sources.map((s) => [s.id, s]))
 
-  const steps: ReadinessStep[] = CORE_SOURCE_ORDER.map((id) => {
-    const source = byId.get(id)
-    // Defensive: if a core source is missing from the payload, treat it as
-    // untouched rather than throwing — the health shape can drift across
-    // versions and readiness must never be the thing that crashes the card.
-    const status: StepStatus = source ? statusFor(source) : 'todo'
-    return { id, status, core: true }
+  const steps: ReadinessStep[] = CAPTURE_GROUPS.flatMap((g) =>
+    g.sources.map((id) => {
+      const source = byId.get(id)
+      // Defensive: a source missing from the payload counts as untouched
+      // rather than throwing. The health shape drifts across versions and
+      // readiness must never be the thing that crashes the card.
+      const status: StepStatus = source ? statusFor(source) : 'todo'
+      return { id, status, group: g.id }
+    })
+  )
+
+  const groups: ReadinessGroup[] = CAPTURE_GROUPS.map((g) => {
+    const own = steps.filter((s) => s.group === g.id)
+    return { id: g.id, steps: own, activeCount: own.filter((s) => s.status === 'active').length }
   })
 
-  const coreSteps = steps.filter((s) => s.core)
-  const activeCount = coreSteps.filter((s) => s.status === 'active').length
+  const activeCount = steps.filter((s) => s.status === 'active').length
 
   let level: ReadinessLevel
   if (activeCount > 0) level = 'recording'
-  else if (coreSteps.every((s) => s.status === 'todo')) level = 'dark'
+  else if (steps.every((s) => s.status === 'todo')) level = 'dark'
   else level = 'setup'
 
-  // The next action, in priority order:
-  //   recording → nothing urgent; onboarding is done.
-  //   otherwise → the first core step that still needs SETUP (todo). Highest
-  //               impact, lowest effort, keeps the operator on the canonical
-  //               order (shell hook first).
-  //   all core set up but none active → the first wired source, whose UI copy
-  //               becomes "run a command" rather than a setup CTA.
+  // Chosen by state, not by position — the list is no longer a sequence, so
+  // "first in the array" would be an arbitrary answer dressed up as a
+  // recommendation.
+  //
+  // A `wired` source is one setup step ahead of a `todo` one: it needs an
+  // event, not an installation. Guiding to it first is the shortest route out
+  // of dark, which is the only thing this model is for. Ties inside a status
+  // fall back to group order — commands before traffic before artefacts — not
+  // because commands rank higher, but because a tie needs a stable answer and
+  // that one at least matches how the groups are read.
   let nextStep: ReadinessStep | null = null
   if (level !== 'recording') {
     nextStep =
-      coreSteps.find((s) => s.status === 'todo') ??
-      coreSteps.find((s) => s.status === 'wired') ??
+      steps.find((s) => s.status === 'wired') ??
+      steps.find((s) => s.status === 'todo') ??
       null
   }
 
-  return { level, steps, nextStep, activeCount }
+  return { level, steps, groups, nextStep, activeCount }
 }
 
 

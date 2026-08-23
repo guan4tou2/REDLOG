@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as fs from 'fs'
 import * as path from 'path'
+import glob from 'fast-glob'
 import {
   QUICK_MARK_ACCELERATOR as MAIN_ACCEL,
   HUD_PASSTHROUGH_ACCELERATOR as MAIN_HUD_ACCEL
@@ -81,7 +82,7 @@ describe('the cheatsheet table', () => {
   it('documents the app- and terminal-scoped bindings', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true).filter((r) => r.scope !== 'nav')
     expect(rows.map((r) => r.keys)).toEqual([
-      '⌘/', '⌘K', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
+      '⌘K', '⌘F', '⌘.', '⌘⇧M', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
     ])
   })
 })
@@ -128,7 +129,7 @@ describe('the table drives the handler, not just the cheatsheet', () => {
       expect(r.guardTyping, r.id).toBeFalsy()
     }
     // The ones a field may reasonably want do yield.
-    for (const id of ['app:search', 'app:palette', 'app:hudCorner']) {
+    for (const id of ['app:palette', 'app:findInPage', 'app:hudCorner']) {
       expect(rows.find((r) => r.id === id)?.guardTyping, id).toBe(true)
     }
   })
@@ -151,5 +152,37 @@ describe('the table drives the handler, not just the cheatsheet', () => {
   it('writes the modifier the platform uses, in both tables', () => {
     expect(appShortcuts(SIDEBAR_ORDER, false).find((r) => r.id === 'app:palette')?.keys).toBe('Ctrl+K')
     expect(timelineShortcuts(false)[0].rows[1].keys).toBe('Ctrl+K')
+  })
+})
+
+// Every module that draws a chord asks the same question, and four of the five
+// asked it backwards: `platform !== 'win32'` is true on Linux, so a Linux
+// operator was shown `⌘` — a key their keyboard does not have — in the sidebar
+// tooltips, the status bar, the Timeline and the `?` panel. `shortcuts.ts`
+// itself was always correct; the error was in what each caller passed it,
+// which is why the table's own tests never saw it.
+describe('platform detection', () => {
+  it('lives in one module, and asks whether it is a Mac', () => {
+    const raw = fs.readFileSync(
+      path.join(__dirname, '../src/renderer/src/lib/platform.ts'), 'utf-8'
+    )
+    // Comments only, stripped — the module's header quotes the buggy form in
+    // order to explain it, and matching that would be matching the prose.
+    const code = raw.split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n')
+    expect(code).toMatch(/platform === 'darwin'/)
+    expect(code, 'the inverted form is the bug this module exists to remove')
+      .not.toMatch(/platform !== 'win32'/)
+  })
+
+  it('is not re-derived anywhere else', () => {
+    const offenders = glob.sync('src/renderer/src/**/*.{ts,tsx}', {
+      cwd: path.join(__dirname, '..'), absolute: true
+    })
+      .filter((f) => !f.endsWith('lib/platform.ts'))
+      .filter((f) => /redlog\?\.platform\s*[!=]==/.test(fs.readFileSync(f, 'utf-8')))
+      .map((f) => path.relative(path.join(__dirname, '..'), f).split(path.sep).join('/'))
+    // Settings legitimately branches on the OS for OS-specific features
+    // (macOS location services, Windows WSL) rather than for a keyboard glyph.
+    expect(offenders.filter((f) => !f.endsWith('Settings.tsx'))).toEqual([])
   })
 })

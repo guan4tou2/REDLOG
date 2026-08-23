@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
+import { CastResults, type CastHit } from './CastResults'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -38,6 +39,12 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   // way to say "only screenshots". Kept client-side because the search
   // backend uses full-text LIKE that doesn't take a WHERE agent_type filter.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  // Recordings are searched alongside events (§2.4). Kept as separate state
+  // rather than merged into `results`: an event and a span of terminal output
+  // are not the same kind of thing, and flattening them would mean inventing
+  // a summary line for bytes that already have one.
+  const [castHits, setCastHits] = useState<CastHit[]>([])
+  const [castPending, setCastPending] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { t } = useI18n()
 
@@ -57,6 +64,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     // the prior q<2 gate. 0-char still shows the placeholder hint. Audit P1 #27.
     if (q.length < 1) {
       setResults([])
+      setCastHits([])
       setSearched(false)
       return
     }
@@ -66,6 +74,18 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setSearching(false)
       setSearched(true)
     })
+    // Fired in parallel and settled independently: the recording index can be
+    // slower or absent, and making the event results wait on it would slow
+    // the common case for the rarer one.
+    window.redlog.events.searchCasts?.(q, 50)
+      .then((r) => setCastHits(r ?? []))
+      .catch(() => setCastHits([]))
+  }, [])
+
+  useEffect(() => {
+    window.redlog.events.castIndexStatus?.()
+      .then((s) => setCastPending(s?.pending ?? 0))
+      .catch(() => { /* older main process; treat as fully indexed */ })
   }, [])
 
   const onChange = useCallback((val: string) => {
@@ -95,9 +115,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             {t('search.hint')}
           </div>
         )}
-        {searched && results.length === 0 && (
+        {searched && results.length === 0 && castHits.length === 0 && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.noResults', { query })}
+            {castPending > 0 && (
+              <p className="text-xs text-amber-500/80 mt-2" role="status">
+                {t('castSearch.stillIndexing', { pending: castPending })}
+              </p>
+            )}
           </div>
         )}
         {results.length > 0 && (() => {
@@ -157,6 +182,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             </div>
           </>
         )})()}
+
+        {searched && (
+          <CastResults
+            hits={castHits}
+            pending={castPending}
+            onOpenAt={onOpenInTimeline ? (tMs) => onOpenInTimeline('', tMs) : undefined}
+          />
+        )}
       </div>
     </div>
   )

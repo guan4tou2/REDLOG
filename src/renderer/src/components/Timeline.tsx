@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { useContributeExport } from '../lib/exportScope'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -11,6 +12,7 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
+import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -32,6 +34,10 @@ const MAX_TRACK_W = 400_000
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
 // and `process` (spawn/exit) between scope and system so it doesn't dilute
 // the top attack-narrative lanes.
+// Sentinel: a body whose sidecar file is no longer on disk (pruned or evicted
+// under disk pressure). Distinct from null (never loaded) and '' (empty body).
+const BODY_GONE = '\u0000__redlog_body_gone__'
+
 const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
@@ -66,7 +72,7 @@ const EXTERNAL_ONLY_LANES: Set<LaneId> = new Set(['credential_use', 'c2_checkin'
 // (#6e6e78) and the palette is a function, not a table.
 // Read defensively — this runs at module load, before the preload bridge
 // is guaranteed present (e.g. in tests). Default to mac styling, as App does.
-const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+const isMacPlatform = isMac
 
 const LANE_COLOR = '#6e6e78'
 const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
@@ -178,6 +184,16 @@ function eventTitle(event: RedLogEvent): string {
         }
         case 'cookie_change':
           return `[cookie] ${d.domain || '?'} ${d.cookie_name || '?'} rotated`.trim()
+        case 'connection': {
+          // Connection-level capture (§2.1): who connected where, no payload.
+          const proto = (d.proto as string || 'tcp').toUpperCase()
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'}`.trim()
+        }
+        case 'connection_end': {
+          const proto = (d.proto as string || 'tcp').toUpperCase()
+          const dur = d.duration_sec != null ? ` (${d.duration_sec}s)` : ''
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'} closed${dur}`.trim()
+        }
         default:
           return `[${d.subtype || 'req'}] ${method} ${url}`.trim()
       }
@@ -195,8 +211,14 @@ function eventTitle(event: RedLogEvent): string {
       const size = d.size != null ? ` (${d.size}B)` : d.bytes ? ` (${d.bytes}B)` : ''
       return `${label}: ${target}${size}`.trim()
     }
-    case 'credential_use':
-      return `${d.subtype || 'cred'}: ${d.user_context || '?'} @ ${d.dest_host || d.dest_ip || ''}`
+    case 'credential_use': {
+      const who = d.user_context || d.scheme || ''
+      const where = d.dest_host || d.dest_ip || d.host || ''
+      // Command-line creds carry a masked value; HTTP-auth creds carry a user
+      // and host. Show whichever is present, never the secret itself.
+      const detail = d.masked ? `${d.masked}${where ? ` → ${where}` : ''}` : `${who || '?'}${where ? ` @ ${where}` : ''}`
+      return `🔑 ${d.subtype || 'cred'}: ${detail}`.trim()
+    }
     case 'c2_checkin':
       return `C2 beacon ← ${d.dest_ip || d.dest_host || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
     case 'pivot':
@@ -257,6 +279,8 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
       if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
       if (d.subtype === 'secret_revealed') return `👁 Secret revealed: ${(d.fields as string[])?.join(', ') || 'unknown fields'}`
+      if (d.subtype === 'connection_capture_started') return `⇄ Connection capture on — established connections only, no SYN scans`
+      if (d.subtype === 'connection_monitor_saturated') return `⇄ ${d.count ?? '?'} connections in one poll — recording the count, not each`
       return `${event.agentType}: ${d.subtype || ''}`
     default:
       return `${event.agentType}: ${d.subtype || ''}`
@@ -265,7 +289,7 @@ function eventTitle(event: RedLogEvent): string {
 
 function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventType[]): LaneId {
   // Scope violations are stored under agent_type='system' for historical reasons
-  // (the deconfliction webhook filter watches 'system'). Route them into their own
+  // (historical: a since-removed webhook filter watched 'system'). Route them into their own
   // lane at render time so they don't drown in the system-lane housekeeping.
   if (agentType === 'system' && subtype === 'scope_violation') return 'scope'
   if (LANES.includes(agentType as LaneId)) return agentType as LaneId
@@ -290,7 +314,6 @@ interface PluginEventType {
 // it doesn't drown the actual operation. Real user/agent actions still show; only
 // the app's own plumbing is suppressed:
 //   • system.api_started / session_start — RedLog boot, once per app open
-//   • system.deconfliction_test — manual test button in Settings
 //   • shell.session_start / session_end — user opened/closed a terminal pane
 //   • terminal.session_start — duplicate write-path for the same pane-open event
 //   • command_start whose command IS just sourcing the shell hook (the "silent"
@@ -301,7 +324,7 @@ function isHookSource(cmd: unknown): boolean {
 }
 function isHousekeeping(e: RedLogEvent): boolean {
   const s = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start' || s === 'deconfliction_test')) return true
+  if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start')) return true
   // shell.session_start is redundant with session_end (which has the full
   // castPath + duration), and it fires before there's anything to replay.
   // session_end is kept visible so operators can click it and use the
@@ -585,7 +608,11 @@ function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge
     b.push({ icon: '⚓✗', reason: 'OTS anchor failed', key: 'anchor' })
   }
   if (evt.agentType === 'system' && sub === 'chain_sample_broken') {
-    b.push({ icon: '⛓️‍💥', reason: 'background chain sampler detected tampering', key: 'sample-broken' })
+    // §4e: the sampler cannot tell tampering from a record that does not join
+    // up, and under §1 the honest claim is the latter — the operator is relying
+    // on this record to find what happened, so "something may be missing" is
+    // both truer and more useful than accusing an attacker.
+    b.push({ icon: '⛓️\u200d💥', reason: 'the record does not join up here — something may be missing', key: 'sample-broken' })
   }
   if (brokenAtId && evt.id === brokenAtId) {
     b.push({ icon: '⛓️‍💥', reason: 'full-chain verify broke here', key: 'verify-broken' })
@@ -653,7 +680,7 @@ function walkFocusChain(
   return visited
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -903,6 +930,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
   // filter survives a reload; empty string means "no filter".
+  // Target focus: scope the view to one target's activity, arrived at from
+  // the Targets list. It reuses the filter-dimming pipeline rather than
+  // adding a second axis - the source lanes stay, and everything that did
+  // not touch this target dims away. Matched precisely (id or endpoint), so
+  // 10.0.0.5 does not also light up 10.0.0.50 the way the text filter would.
+  const [targetFocus, setTargetFocus] = useState<string | null>(focusTarget ?? null)
+  useEffect(() => { setTargetFocus(focusTarget ?? null) }, [focusTarget])
+
   const [filterQuery, setFilterQuery] = useState<string>(() => {
     try { return localStorage.getItem('redlog-timeline-filter-query') || '' } catch { return '' }
   })
@@ -976,6 +1011,29 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     const onOpen = (): void => { setPaletteOpen(true); setPaletteQuery(''); setPaletteIndex(0) }
     window.addEventListener('redlog-timeline-palette', onOpen)
     return () => window.removeEventListener('redlog-timeline-palette', onOpen)
+  }, [])
+
+  // ⌘F focuses the in-page filter (§5.7, §10). `/` still does too — it is the
+  // chord this view taught first and there is no reason to take it away — but
+  // ⌘F is the one an operator arrives already knowing.
+  useEffect(() => {
+    const onFind = (): void => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }
+    window.addEventListener('redlog:find-in-page', onFind)
+    return () => window.removeEventListener('redlog:find-in-page', onFind)
+  }, [])
+
+  // ⌘K → an operator → filter this view to what that person did. The palette
+  // cannot reach into the Timeline's filter state, so it asks by event.
+  useEffect(() => {
+    const onFilterOperator = (e: Event): void => {
+      const name = (e as CustomEvent<string>).detail
+      if (name) setFilterQuery(name)
+    }
+    window.addEventListener('redlog:filter-operator', onFilterOperator)
+    return () => window.removeEventListener('redlog:filter-operator', onFilterOperator)
   }, [])
   useEffect(() => {
     if (paletteOpen) {
@@ -1409,6 +1467,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
 
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
+
+  // The timeline is the one surface with a scope nothing else can name: the
+  // range currently framed. It contributes that to the shell's export control
+  // rather than carrying its own button (§10).
+  const exportSlice = useCallback(async (): Promise<string | null> => {
+    if (!window.redlog.data.exportTimelineSlice) return null
+    const from = Math.round(fromX((view.left / 100) * TRACK_W))
+    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    return window.redlog.data.exportTimelineSlice(from, to)
+  }, [fromX, view.left, view.width, TRACK_W])
+
+  useContributeExport({ label: t('export.slice'), run: exportSlice })
   const totalH = visibleLanes.length * laneH
 
   const laneEvents = useMemo(() => {
@@ -1483,6 +1553,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     for (const [id, bag] of searchIndex) if (bag.includes(q)) set.add(id)
     return set
   }, [searchIndex, filterQueryDebounced])
+
+  // Events that touched the focused target. Touched is intentionally broad:
+  // an event carrying this target as its target_id, or naming it as the
+  // endpoint it connected to / requested / violated scope against - the
+  // operator asking what happened to a host wants the connection, the
+  // request and the scope violation, not only the extractor-tagged rows.
+  const targetMatches = useMemo(() => {
+    if (!targetFocus) return null
+    const t = targetFocus.toLowerCase()
+    const set = new Set<string>()
+    for (const e of events) {
+      const d = e.data as Record<string, unknown> | undefined
+      const fields = [e.targetId, d?.detectedTarget, d?.remote_addr, d?.host, d?.dest_ip, d?.dest_host, d?.target]
+      if (fields.some((v) => typeof v === 'string' && v.toLowerCase() === t)) set.add(e.id)
+    }
+    return set
+  }, [events, targetFocus])
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => {
@@ -2294,7 +2381,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
     // machine — masking it here protected nothing and cost a step, and the
     // "did I remember to hit Reveal?" question meant a copied JSON could be
     // silently incomplete. The redaction boundary that matters is layer 4, on
-    // the way *out*: bundle export, cloud share and the blue-team webhook all
+    // the way *out*: bundle export and the blue-team webhook both
     // redact in src/core, independently of anything the renderer shows.
     navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
     toast(t('toast.copied'), 'success')
@@ -2468,6 +2555,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
             className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
             title={t('timeline.focusChain.exit')}
             aria-label={t('timeline.focusChain.exit')}
+          >×</button>
+        </div>
+      )}
+      {targetFocus && (
+        <div
+          data-testid="timeline-target-focus-badge"
+          className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-redlog-accent/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
+          style={{ top: focusChain ? 36 : 6, right: 8 }}
+        >
+          <span className="text-redlog-accent">
+            {t('timeline.targetFocus.badge', { target: targetFocus, count: targetMatches?.size ?? 0 })}
+          </span>
+          <button
+            onClick={() => setTargetFocus(null)}
+            className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+            title={t('timeline.targetFocus.exit')}
+            aria-label={t('timeline.targetFocus.exit')}
           >×</button>
         </div>
       )}
@@ -2773,18 +2877,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
               percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
               zoom to the attack moment then click this to grab an evidence
               slice. Saved under exports/redlog-timeline-<ts>.json. */}
-          <button
-            onClick={async () => {
-              if (!window.redlog.data.exportTimelineSlice) return
-              const from = Math.round(fromX((view.left / 100) * TRACK_W))
-              const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-              const path = await window.redlog.data.exportTimelineSlice(from, to)
-              if (path) toast(t('timeline.exportSliceOk', { path }), 'success')
-              else toast(t('timeline.exportSliceFail'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-emerald-400 hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-            title={t('timeline.exportSliceHint')}
-          >⬇ {t('timeline.exportSlice')}</button>
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}
@@ -3060,8 +3152,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker }: {
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
                   } else if (anomalyFilter) {
                     dimmed = !c.events.some((e) => badgesById.has(e.id))
-                  } else if (filterMatches) {
-                    dimmed = !c.events.some((e) => filterMatches.has(e.id))
+                  } else if (targetMatches || filterMatches) {
+                    // Compose: when both a target focus and a text filter
+                    // are active, a cluster stays lit only if it has an
+                    // event satisfying both.
+                    dimmed = !c.events.some((e) =>
+                      (!targetMatches || targetMatches.has(e.id)) &&
+                      (!filterMatches || filterMatches.has(e.id)))
                   }
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
@@ -3815,8 +3912,12 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
     setLoading(true)
     try {
       const content = await window.redlog.httpBody.read(ref)
-      setter(content)
-    } catch { setter(null) }
+      // A ref that resolves to nothing means the file is gone — pruned by
+      // retention or evicted under disk pressure. The sha256 attestation on
+      // the event still stands; only the openable content is gone. Say that,
+      // rather than leaving the load button to do nothing.
+      setter(content === null ? BODY_GONE : content)
+    } catch { setter(BODY_GONE) }
     setLoading(false)
   }, [])
 
@@ -3862,7 +3963,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {' '}({formatBytes(inlineReqBody?.size ?? reqBodyRef?.size ?? 0)})
         </button>
       )}
-      {isRequest && loadedReqBody && (
+      {isRequest && loadedReqBody && loadedReqBody !== BODY_GONE && (
         <CollapsibleStream
           label={t('timeline.detail.httpRequestBody')}
           content={loadedReqBody}
@@ -3871,11 +3972,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           startOpen
         />
       )}
-      {isResponse && (preview.length > 0 || loadedRespBody) && (
+      {isResponse && (preview.length > 0 || (loadedRespBody && loadedRespBody !== BODY_GONE)) && (
         <CollapsibleStream
           label={t('timeline.detail.httpResponseBody')}
-          content={loadedRespBody || preview}
-          bytes={contentLength ?? (loadedRespBody || preview).length}
+          content={(loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview}
+          bytes={contentLength ?? ((loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview).length}
           truncated={!loadedRespBody && hasFullRespBody}
           accent="emerald"
           startOpen
@@ -3891,11 +3992,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
         </button>
       )}
-      {isWs && (wsPreview.length > 0 || loadedWsBody) && (
+      {isWs && (wsPreview.length > 0 || (loadedWsBody && loadedWsBody !== BODY_GONE)) && (
         <CollapsibleStream
           label={t('timeline.detail.wsPayload')}
-          content={loadedWsBody || wsPreview}
-          bytes={data.size as number ?? (loadedWsBody || wsPreview).length}
+          content={(loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview}
+          bytes={data.size as number ?? ((loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview).length}
           truncated={!loadedWsBody && hasFullWsBody}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
@@ -3911,11 +4012,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {' '}({formatBytes(inlineWsBody?.size ?? wsBodyRef?.size ?? 0)})
         </button>
       )}
-      {isTcp && (tcpPreview.length > 0 || loadedTcpBody) && (
+      {isTcp && (tcpPreview.length > 0 || (loadedTcpBody && loadedTcpBody !== BODY_GONE)) && (
         <CollapsibleStream
           label={t('timeline.detail.tcpPayload')}
-          content={loadedTcpBody || tcpPreview}
-          bytes={data.size as number ?? (loadedTcpBody || tcpPreview).length}
+          content={(loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview}
+          bytes={data.size as number ?? ((loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview).length}
           truncated={!loadedTcpBody && hasFullTcpBody}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
@@ -3936,6 +4037,11 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
             type: contentType || '—', size: formatBytes(contentLength ?? 0)
           })}
+        </p>
+      )}
+      {[loadedReqBody, loadedRespBody, loadedWsBody, loadedTcpBody].includes(BODY_GONE) && (
+        <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+          {t('timeline.detail.httpBodyEvicted')}
         </p>
       )}
       {headersText && (
