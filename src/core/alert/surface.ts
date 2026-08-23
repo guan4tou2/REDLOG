@@ -8,7 +8,6 @@
 // Four bundled surfaces:
 //   • ChainEmitter        — writes verdict as `system.*` event, chained/signed
 //   • BadgeSurface        — updates the operator's IP badge state
-//   • WebhookForwarder    — posts to deconfliction webhook (fact tier only by default)
 //   • AdherenceCounter    — accumulates the post-hoc scope-adherence report
 //
 // Adding a Surface = implement the interface, register with AlertBus.
@@ -132,7 +131,7 @@ export class ChainEmitter implements Surface {
  *  test in `test/alert/ip-event-fields.test.ts` locks the shape. */
 export function ipEventFields(v: IPVerdict & { kind: 'ip' }): Record<string, unknown> {
   // Kind + modifiers land as top-level fields so downstream filters
-  // (StatusBar badge, scope-adherence, deconfliction) can key on them
+  // (StatusBar badge, scope-adherence) can key on them
   // without decoding a nested object.
   return {
     ip_verdict_kind: v.value,
@@ -168,85 +167,7 @@ export class BadgeSurface implements Surface {
   }
 }
 
-// ─── WebhookForwarder — deconfliction post ──────────────────────────────────
 
-export interface WebhookConfig {
-  enabled: boolean
-  url: string | null
-  /** Which authority tiers get forwarded. `fact` only by default per ea
-   *  G-C2 — inferences stay in-house; the blue team hears about facts. */
-  authorityFloor: Authority[]
-}
-
-/** Forwards verdicts to a deconfliction webhook. Coalescing (burst
- *  collapse) is applied at the surface — the underlying signals still hit
- *  the chain independently. */
-export class WebhookForwarder implements Surface {
-  readonly name = 'webhook'
-  private cfg: WebhookConfig = { enabled: false, url: null, authorityFloor: ['fact'] }
-  private pending = new Map<string, Verdict[]>()  // key = coalesce bucket
-  private flushTimer: NodeJS.Timeout | null = null
-  private static readonly FLUSH_MS = 1500  // debounce window
-
-  configure(next: Partial<WebhookConfig>): void {
-    this.cfg = { ...this.cfg, ...next }
-    if (!this.cfg.enabled) this.clearPending()
-  }
-
-  handle(verdict: Verdict): void {
-    if (!this.cfg.enabled || !this.cfg.url) return
-    if (!this.cfg.authorityFloor.includes(verdict.authority)) return
-    const key = coalesceKey(verdict)
-    if (!key) { void this.post([verdict]); return }
-    const bucket = this.pending.get(key) ?? []
-    bucket.push(verdict)
-    this.pending.set(key, bucket)
-    this.scheduleFlush()
-  }
-
-  private scheduleFlush(): void {
-    if (this.flushTimer) return
-    this.flushTimer = setTimeout(() => {
-      this.flushTimer = null
-      const batches = [...this.pending.values()]
-      this.pending.clear()
-      for (const b of batches) void this.post(b)
-    }, WebhookForwarder.FLUSH_MS)
-  }
-
-  private clearPending(): void {
-    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null }
-    this.pending.clear()
-  }
-
-  private async post(batch: Verdict[]): Promise<void> {
-    if (!this.cfg.url) return
-    try {
-      await fetch(this.cfg.url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ verdicts: batch, count: batch.length, ts: Date.now() })
-      })
-    } catch { /* webhook down — dropped; retry not attempted (log spam) */ }
-  }
-
-  /** Test seam — force-flush any queued items. */
-  flush(): void {
-    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null }
-    const batches = [...this.pending.values()]
-    this.pending.clear()
-    for (const b of batches) void this.post(b)
-  }
-}
-
-/** Verdicts with the same coalesce key merge into one webhook post. Scope
- *  verdicts of same distance in same minute bucket collapse; IP and
- *  Combined stay independent (they're state changes, not stream events). */
-function coalesceKey(v: Verdict): string | null {
-  if (v.kind !== 'scope') return null
-  const minute = Math.floor(Date.now() / 60_000)
-  return `${v.distance}:${minute}`
-}
 
 // ─── AdherenceCounter — post-hoc scope-adherence tallies ────────────────────
 

@@ -5,7 +5,7 @@ import os from 'os'
 
 // v0.9.5: pause means "do not record". Before this the gate lived only on
 // eventBus.publish(), so a paused RedLog still wrote every row into the DB and
-// the hash chain — it only muted the UI feed and the deconfliction webhook.
+// the hash chain — it only muted the UI feed.
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB

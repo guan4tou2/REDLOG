@@ -26,7 +26,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 ┌──────────────┴─ core (src/core/) — zero Electron imports, unit-testable ──────┐
 │  db/{index,events,operators,findings}   event-bus   clock   signing            │
 │  chain-anchor   evidence-chain   bundle-export   sanitize   redaction          │
-│  api-server (REST + HTTP MCP)   mcp-tools   capture-health   deconfliction     │
+│  api-server (REST + HTTP MCP)   mcp-tools   capture-health                    │
 │  loot- / pivot- / technique- / command- / target- detectors   scope-monitor    │
 │  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
 └───────────────────────────────────────────────────────────────────────────────┘
@@ -61,7 +61,7 @@ untested — see `AUDIT-2026-08-08.md` §4).
 loadConfig → initDB(projectDir)               timeline.db, WAL, triggers
 → configure ip / screenshot / scope / loot / redaction
 → setPluginHost → setTailerContributionSink → initPlugins()
-→ configureDeconfliction · setVpnAdapters · configureTerminal
+→ setVpnAdapters · configureTerminal
 → sweepRetention()            expire .cast / screenshots, emit *_pruned events
 → recoverOrphanSessions()     LEFT JOIN to close terminals killed by a crash
 → replay ~/.redlog/pending/*  shell-hook offline spool
@@ -74,9 +74,8 @@ loadConfig → initDB(projectDir)               timeline.db, WAL, triggers
 → create overlay window
 ```
 
-Shutdown (`stopProject()` / `will-quit`) flushes the deconfliction batch,
-kills terminals **before** closing the DB so `session_end` still writes, then
-unwinds every monitor and calls `closeDB()`.
+Shutdown (`stopProject()` / `will-quit`) kills terminals **before** closing the
+DB so `session_end` still writes, then unwinds every monitor and calls `closeDB()`.
 
 ## 3. Data model
 
@@ -158,8 +157,7 @@ insertEvent (src/core/db/events.ts:230)
   · clock-anomaly detection folded into data
   · canonicalStringify (recursive key sort) → SHA-256 → hash → Ed25519 sig
 main/index.ts:1063
-  · send 'events:new'          per event (HUD + deconfliction)
-  · notifyDeconfliction()      500 ms / 100-event batches, HMAC-SHA256
+  · send 'events:new'          per event (HUD)
   · batchBuffer + setImmediate → 'events:new-batch'  (one per frame)
   · recompute getActivePivots() on pivot / command_end → 'pivots:changed'
 ```

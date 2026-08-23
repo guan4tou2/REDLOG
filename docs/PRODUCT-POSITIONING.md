@@ -113,9 +113,9 @@ Two consequences worth stating, because they are easy to under-weight:
 - **The purple / blue team** — the client's defenders, correlating what they
   saw against what the red team actually did. They receive an activity record
   (time, source, target, command, HTTP exchange, across every capture source)
-  and match it against their own telemetry. `deconfliction.md` covers the live
-  half of this ("was that us?"); the exported record covers the after-action
-  half.
+  and match it against their own telemetry — the exported record, after the
+  action. (RedLog no longer ships a live deconfliction feed; live "was that
+  us?" is out of scope after the 2026-08-22 core revision.)
 - **The evidence consumer** — the client's counsel, or the operator's own QA,
   when a record is challenged. Receives the signed bundle and runs
   `ots verify` / `redlog-verify.py`. Fully supported, and what the hash chain

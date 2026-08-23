@@ -135,14 +135,6 @@ export interface RedLogConfig {
     entropyThreshold: number
     minLength: number
   }
-  deconfliction: {
-    enabled: boolean
-    url: string
-    secret: string
-    events: string[]
-    subtypes: string[]
-    includeData: boolean
-  }
   /** Cloud-share bundle backend (spec: docs/CLOUD_SHARE_BUNDLE.md).
    *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
    *  their own redlog-share-worker deploy. Empty endpoint = fall back to the
@@ -281,14 +273,6 @@ const DEFAULT_CONFIG: RedLogConfig = {
     denylist: [],
     entropyThreshold: 4.5,
     minLength: 20
-  },
-  deconfliction: {
-    enabled: false,
-    url: '',
-    secret: '',
-    events: ['marker', 'system', 'credential_use', 'c2_checkin'],
-    subtypes: ['scope_violation'],
-    includeData: false
   },
   fileWatcher: {
     enabled: false,

@@ -35,14 +35,6 @@ interface ConfigState {
     startUrl: string
     extraArgs: string[]
   }
-  deconfliction?: {
-    enabled: boolean
-    url: string
-    secret: string
-    events: string[]
-    subtypes: string[]
-    includeData: boolean
-  }
   // v0.7.7 U1: Settings ▸ AI Agents surface for the built-in Claude Code
   // tailer. v0.8.0 will expand this into a list of installed tailer
   // plugins; the shape here (enabled + emitThinking) stays the "default"
@@ -79,7 +71,7 @@ const LOCALE_LABELS: Record<Locale, string> = {
 // is a compile error rather than a page that silently never renders.
 type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl'
-  | 'scope' | 'network' | 'deconfliction'
+  | 'scope' | 'network'
   | 'integrity'
   | 'operators' | 'plugins'
   | 'general' | 'hud'
@@ -164,8 +156,7 @@ export default function Settings(): JSX.Element {
       heading: t('settings.groupScope'),
       pages: [
         { id: 'scope', label: t('settings.pageScope') },
-        { id: 'network', label: t('settings.pageNetwork') },
-        { id: 'deconfliction', label: t('settings.pageDeconfliction') }
+        { id: 'network', label: t('settings.pageNetwork') }
       ]
     },
     {
@@ -300,12 +291,11 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {(tab === 'agents' || tab === 'network' || tab === 'deconfliction' || tab === 'operators') && (
+        {(tab === 'agents' || tab === 'network' || tab === 'operators') && (
           <>
             {tab === 'agents' && <McpPanel t={t} />}
             {tab === 'agents' && <HookWatchPathsPanel t={t} />}
             {tab === 'operators' && <OperatorsPanel t={t} />}
-            {tab === 'deconfliction' && <DeconflictionPanel t={t} config={config} setConfig={setConfig} />}
             {tab === 'network' && <BrowserPanel t={t} config={config} setConfig={setConfig} />}
             {tab === 'network' && <FieldGroup title={t('settings.cdp')}>
               <p className="text-xs text-redlog-text-faint mb-2">
@@ -1614,105 +1604,6 @@ function AgentsPanel({
           {t('settings.agents.selfExclusionHint')}
         </p>
       </div>
-    </FieldGroup>
-  )
-}
-
-function DeconflictionPanel({
-  t, config, setConfig
-}: {
-  t: (key: string) => string
-  config: ConfigState
-  setConfig: (c: ConfigState) => void
-}): JSX.Element {
-  const dc = config.deconfliction ?? {
-    enabled: false, url: '', secret: '', events: ['marker', 'system', 'credential_use', 'c2_checkin'],
-    subtypes: ['scope_violation'], includeData: false
-  }
-  const [secretVisible, setSecretVisible] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [expanded, setExpanded] = useState(dc.enabled)
-
-  const patch = (delta: Partial<typeof dc>): void => {
-    setConfig({ ...config, deconfliction: { ...dc, ...delta } })
-  }
-
-  const handleTest = async (): Promise<void> => {
-    setTesting(true)
-    const result = await window.redlog.deconfliction.test(dc)
-    setTesting(false)
-    toast(
-      result.ok ? `OK (HTTP ${result.status})` : `Failed: ${result.error || 'HTTP ' + result.status}`,
-      result.ok ? 'success' : 'error'
-    )
-  }
-
-  return (
-    <FieldGroup title={t('settings.deconfliction')}>
-      <p className="text-xs text-redlog-text-faint">{t('settings.deconflictionHint')}</p>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={dc.enabled}
-          onChange={(e) => { patch({ enabled: e.target.checked }); setExpanded(e.target.checked) }}
-          className="accent-red-600"
-        />
-        <span className="text-xs text-redlog-text">{t('settings.deconflictionEnable')}</span>
-      </label>
-      {(expanded || dc.enabled) && (
-        <div className="space-y-2 pl-4 border-l border-redlog-border">
-          <Field
-            label={t('settings.deconflictionUrl')}
-            value={dc.url}
-            onChange={(v) => patch({ url: v })}
-          />
-          <div>
-            <label className="text-xs text-redlog-text-dim block mb-1">{t('settings.deconflictionSecret')}</label>
-            <div className="flex gap-1">
-              <input
-                type={secretVisible ? 'text' : 'password'}
-                value={dc.secret}
-                onChange={(e) => patch({ secret: e.target.value })}
-                className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
-              />
-              <button
-                onClick={() => setSecretVisible(!secretVisible)}
-                className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover"
-              >
-                {secretVisible ? t('settings.deconflictionHide') : t('settings.deconflictionShow')}
-              </button>
-            </div>
-          </div>
-          <ListField
-            label={t('settings.deconflictionEvents')}
-            items={dc.events}
-            onChange={(items) => patch({ events: items })}
-            placeholder="marker"
-          />
-          <ListField
-            label={t('settings.deconflictionSubtypes')}
-            items={dc.subtypes}
-            onChange={(items) => patch({ subtypes: items })}
-            placeholder="scope_violation"
-          />
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={dc.includeData}
-              onChange={(e) => patch({ includeData: e.target.checked })}
-              className="accent-red-600"
-            />
-            <span className="text-xs text-redlog-text-dim">{t('settings.deconflictionIncludeData')}</span>
-          </label>
-          <button
-            onClick={handleTest}
-            disabled={!dc.url || testing}
-            className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
-          >
-            {testing ? '...' : t('settings.deconflictionTest')}
-          </button>
-        </div>
-      )}
     </FieldGroup>
   )
 }

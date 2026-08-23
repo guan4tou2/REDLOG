@@ -61,7 +61,6 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Signed evidence bundle** — `redlog-cli export bundle` produces a self-contained directory with SHA-256 manifest ready for delivery
 - **Entropy-based redaction** — high-entropy tokens and per-project allow/denylist patterns are auto-redacted from captured output
 - **Clock hardening** — every event carries wall-clock, monotonic, and NTP offset
-- **Deconfliction webhook** — optional signed feed to the blue team's SOC on marker / scope-violation / cred-use events ([details](docs/deconfliction.md))
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end; the timeline exposes both **per-command replay** (▶ Replay stdout) and **full-session replay** (▶ Replay entire session) — critical when the operator ssh'd into a remote host and the local `ssh` command_end is the only chain entry from that stretch
 - **Built-in MCP server (HTTP)** — the app hosts its own MCP endpoint, live the moment RedLog opens; agents operate the app (markers, scope, anchoring) without spawning a subprocess ([details](docs/agent-integration.md#2-mcp-server-operate-the-app))
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
@@ -325,7 +324,6 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 - [Operators & tokens](docs/operators.md) — multi-operator identity, token lifecycle
 - [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
 - [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
-- [Deconfliction webhook](docs/deconfliction.md) — when/how to feed the blue team
 - [Plugin development](docs/plugin-development.md) — extend RedLog: 🟢 declarative packs + 🔴 trust-gated MCP tools
 - [Skill: redlog-pentest](docs/skills/redlog-pentest.md) — ready-to-copy Claude Code skill
 

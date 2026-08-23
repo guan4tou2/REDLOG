@@ -572,8 +572,6 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | GET | `/api/clock` | yes | NTP offset + last query time + host wall clock |
 | POST | `/api/export/bundle` | yes | Produce signed evidence bundle in `exports/` dir |
 | POST | `/api/sanitize` | yes | Layer 4 redaction: `{ event_ids, fields?, reason?, dry_run? }` → masked bytes + chained `system.sanitized` event |
-| GET | `/api/deconfliction` | yes | Current deconfliction config (secret redacted) |
-| POST | `/api/deconfliction/test` | yes | Send a test payload to the configured webhook |
 
 ### Event Schema
 
