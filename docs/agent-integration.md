@@ -27,7 +27,7 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
 
 **Passive hooks** capture everything without the agent knowing. **MCP/API** lets the agent actively query scope, create markers, and search history.
 
-## Two planes: hooks log, MCP operates
+## How agents capture: hooks log
 
 The cleanest way to think about it:
 
@@ -253,266 +253,6 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 - If called without arguments: starts an interactive shell with preexec hooks loaded
 - Sets `REDLOG_SHELL_WRAPPED=1` env var so tools can detect the wrapper
 
-## 2. MCP Server (operate the app)
-
-The MCP (Model Context Protocol) server lets compatible agents operate RedLog — check scope before scanning, create markers for findings, anchor the chain, search history. Two transports; **HTTP is recommended**.
-
-### Setup — HTTP (recommended, app-hosted)
-
-RedLog hosts its own MCP server over HTTP from the process already running the API, so **MCP is live the moment the app is open** — no subprocess to spawn, no `node` on PATH, nothing to unpack from the app bundle.
-
-1. In RedLog: **Settings ▸ Team & Integrations ▸ MCP Server ▸ Set up MCP access.** This mints a dedicated, non-rotating operator token (so the registration survives restarts and MCP activity is attributed to its own identity) and shows a ready-to-paste command.
-2. Run it once:
-
-```bash
-claude mcp add --transport http redlog http://127.0.0.1:6660/mcp \
-  --header "Authorization: Bearer <mcp-operator-token>"
-```
-
-`claude mcp list` should show `redlog … (HTTP) - ✔ Connected`. From then on, every time RedLog is open the endpoint is live.
-
-### Setup — stdio (fallback)
-
-For clients without HTTP-MCP support, the standalone bridge still works. It's a subprocess the client spawns, and in a packaged app the script lives inside the bundle's resources:
-
-```bash
-# Claude Code (dev checkout)
-claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
-
-# Cursor — .cursor/mcp.json
-{ "mcpServers": { "redlog": { "command": "node", "args": ["/path/to/redlog/mcp/redlog-mcp-server.js"] } } }
-```
-
-The stdio bridge discovers the running app via `~/.redlog/api-port` + `api-token` and proxies to the same tools. HTTP avoids the subprocess and the node-on-PATH requirement entirely.
-
-### Auto-Discovery
-
-The MCP server automatically discovers a running RedLog instance by reading:
-
-- `~/.redlog/api-port` — the HTTP API port (default 6660)
-- `~/.redlog/api-token` — the Bearer auth token
-
-These files are created when RedLog starts. If they don't exist, the MCP server returns an error message suggesting to launch RedLog first.
-
-### Available Tools
-
-#### `redlog_status`
-
-Returns current IP addresses (external/internal), IP safety flag, total event count, and scope violation count.
-
-**Parameters:** none
-
-**Returns:**
-```json
-{
-  "ip": {
-    "externalIP": "203.0.113.42",
-    "internalIP": "10.0.1.5",
-    "ipSafety": "safe",
-    "lastCheck": 1706400000000,
-    "error": null
-  },
-  "eventCount": 1247,
-  "scopeViolations": 3
-}
-```
-
-#### `redlog_whoami`
-
-Return the operator identity that this token resolves to. Every event logged under this token is attributed to this operator. Call once at session start to catch loaded-wrong-token mistakes.
-
-**Parameters:** none
-
-**Returns:**
-```json
-{
-  "operator": {
-    "id": "codex-agent-a1b2c3",
-    "name": "Codex agent",
-    "isPrimary": false,
-    "createdAt": 1706300000000,
-    "revokedAt": null
-  },
-  "engagementId": "client-pentest-q3"
-}
-```
-
-#### `redlog_operators_list`
-
-List every operator token registered on this RedLog instance.
-
-**Returns:** `{ "operators": [ ... ] }` — each entry mirrors the `operator` object in `redlog_whoami`.
-
-#### `redlog_chain_status`
-
-Length of the SHA-256 hash chain and the latest OpenTimestamps anchor.
-
-**Returns:**
-```json
-{
-  "length": 1247,
-  "lastAnchor": {
-    "id": "…",
-    "headHash": "9f2c…",
-    "eventCount": 1200,
-    "status": "complete",
-    "createdAt": 1706398800000,
-    "calendarReceipts": [
-      { "calendar": "https://a.pool.opentimestamps.org", "ok": true, "receiptB64": "…" }
-    ]
-  }
-}
-```
-
-#### `redlog_chain_anchor_now`
-
-Submit the current chain head to public OpenTimestamps calendars immediately. Use before wrapping up a session or right after a critical finding.
-
-#### `redlog_chain_verify`
-
-Fast check: does the latest anchor still describe a prefix of the current chain? Compares event counts (not a full re-walk).
-
-**Returns:** `{ "ok": true, "anchor": { … }, "currentHead": "9f2c…" }`
-
-#### `redlog_chain_upgrade`
-
-Fetch upgraded OpenTimestamps proofs for `pending` anchors. Calendars need a few hours to fold your digest into a Bitcoin block; before that, receipts are proto-proofs. RedLog auto-upgrades every 6 hours; call this to force it (e.g. right before exporting a bundle).
-
-**Parameters:** `anchor_id?: string` — omit to upgrade all pending anchors.
-
-**Returns:** `{ "upgraded": 3, "totalPending": 3, "anchors": [ … ] }`
-
-#### `redlog_mark`
-
-Creates a timestamped marker in the timeline — used for findings, phase changes, and notes.
-
-**Parameters:**
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| title | string | yes | Marker title |
-| notes | string | no | Detailed notes |
-| severity | string | no | `info` / `low` / `medium` / `high` / `critical` |
-| target_id | string | no | Associated target |
-
-**Example:**
-```json
-{
-  "title": "SQL Injection in /api/users",
-  "notes": "Parameter 'id' is injectable — time-based blind, PostgreSQL",
-  "severity": "high",
-  "target_id": "api.example.com"
-}
-```
-
-#### `redlog_log_event`
-
-Logs a raw event with custom agent type and data payload.
-
-**Parameters:**
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| agent_type | string | yes | Event category (`agent`, `scanner`, `recon`, `exploit`) |
-| data | object | yes | Event payload (freeform JSON) |
-| target_id | string | no | Associated target |
-
-#### `redlog_search`
-
-Full-text search across all events.
-
-**Parameters:**
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| query | string | yes | Search query |
-| limit | number | no | Max results (default 20) |
-
-#### `redlog_events`
-
-Query recent events with filters.
-
-**Parameters:**
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| agent_type | string | no | Filter by type |
-| target_id | string | no | Filter by target |
-| limit | number | no | Max results (default 50) |
-
-#### `redlog_scope`
-
-Returns scope configuration, target list, violations, and violation count.
-
-**Returns:**
-```json
-{
-  "targets": ["*.example.com", "10.0.0.0/8"],
-  "excludeTargets": ["10.0.0.1"],
-  "warnOnViolation": true,
-  "violations": [...],
-  "violationCount": 3
-}
-```
-
-#### `redlog_config`
-
-Returns the full project configuration (engagement, operator, network, scope settings).
-
-#### `redlog_quickmark`
-
-Creates a bookmark for an interesting URL, endpoint, or finding.
-
-**Parameters:**
-
-| Param | Type | Required |
-|-------|------|----------|
-| title | string | yes |
-| url | string | no |
-| note | string | no |
-
-#### `redlog_quickmarks_list`
-
-Lists all bookmarks in the current project.
-
-#### `redlog_loot_scan`
-
-Scans arbitrary text for credentials, secrets, and sensitive data.
-
-**Parameters:**
-
-| Param | Type | Required |
-|-------|------|----------|
-| text | string | yes |
-
-**Detected patterns:** AWS keys, API tokens, JWTs, password hashes, private keys, database connection strings, CTF flags.
-
-#### `redlog_screenshot`
-
-Captures a screenshot and saves it to the project's screenshot directory.
-
-#### `redlog_recording`
-
-Controls recording state.
-
-**Parameters:**
-
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| action | string | yes | `pause` / `resume` / `toggle` |
-
-### Building a Claude Code Skill
-
-Ship-ready skill file at [`docs/skills/redlog-pentest.md`](skills/redlog-pentest.md). Install with:
-
-```bash
-cp docs/skills/redlog-pentest.md ~/.claude/skills/redlog-pentest.md
-# or per-project
-cp docs/skills/redlog-pentest.md .claude/skills/redlog-pentest.md
-```
-
-The skill covers the full loop: session start (`whoami` + `status` + `scope`), real-time findings via `redlog_mark`, loot scanning, and end-of-session `chain_anchor_now`. Read [the skill](skills/redlog-pentest.md) directly for the exact flow.
-
 ## 3. HTTP API
 
 Direct REST API for scripts, custom agents, and non-MCP tools. Runs on `127.0.0.1:6660` (configurable).
@@ -538,7 +278,6 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | GET | `/api/health` | no | Health check (`{ ok, version }`) |
-| POST | `/mcp` | yes | MCP over Streamable HTTP (JSON-RPC) — also available at `/api/mcp` |
 | GET | `/api/whoami` | yes | Resolve token → operator + engagement ID |
 | GET | `/api/status` | yes | System status (IP, events, violations, capture health) |
 | GET | `/api/capture` | yes | Detailed capture subsystem health |
@@ -556,11 +295,6 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | POST | `/api/loot/scan` | yes | Scan text for secrets/credentials |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
 | GET | `/api/operators` | yes | List operators (sensitive fields stripped) |
-| POST | `/api/operators` | primary | Create operator, returns token **once** |
-| PATCH | `/api/operators/:id` | primary | Rename |
-| POST | `/api/operators/:id/rotate` | self or primary | Rotate token |
-| POST | `/api/operators/:id/revoke` | primary | Revoke token |
-| DELETE | `/api/operators/:id` | primary | Delete operator |
 | POST | `/api/terminal/replay` | yes | Replay terminal command output from `.cast` file |
 | GET | `/api/chain` | yes | Chain length + latest anchor |
 | GET | `/api/anchors` | yes | List OTS anchors (`?limit=`) |
@@ -572,8 +306,6 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | GET | `/api/clock` | yes | NTP offset + last query time + host wall clock |
 | POST | `/api/export/bundle` | yes | Produce signed evidence bundle in `exports/` dir |
 | POST | `/api/sanitize` | yes | Layer 4 redaction: `{ event_ids, fields?, reason?, dry_run? }` → masked bytes + chained `system.sanitized` event |
-| GET | `/api/deconfliction` | yes | Current deconfliction config (secret redacted) |
-| POST | `/api/deconfliction/test` | yes | Send a test payload to the configured webhook |
 
 ### Event Schema
 
@@ -689,16 +421,6 @@ browser:
   startUrl: ""
   extraArgs: []
 ```
-
-## Multi-Operator Setup
-
-Each API token maps to one operator identity. The audit log tags every event with the operator resolved from the token — so several people (or several agents) can share one RedLog instance and stay distinguishable.
-
-Full lifecycle in [docs/operators.md](operators.md). TL;DR:
-
-1. **You** (primary): use RedLog's own generated token in `~/.redlog/api-token`. Rotated every app launch. Do nothing.
-2. **Teammate**: Settings ▸ General ▸ Operator Tokens ▸ **Add operator** ▸ copy token once ▸ hand over securely. On their machine: `echo -n '<token>' > ~/.redlog/api-token && chmod 600 ~/.redlog/api-token`.
-3. **Distinct agent context** on the same machine (e.g. Codex vs Claude): create a secondary token and have that agent use `REDLOG_TOKEN=<token>` instead of the file — patch the one hook that agent uses.
 
 ## Evidence Chain & OpenTimestamps
 

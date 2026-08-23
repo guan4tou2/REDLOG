@@ -49,7 +49,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">{t('scope.title')}</h2>
+        <h2 className="text-lg font-semibold text-redlog-text">{t('scope.title')}</h2>
         {violations.length > 0 && (
           <button
             onClick={async () => {

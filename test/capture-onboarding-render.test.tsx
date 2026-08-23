@@ -50,14 +50,21 @@ describe('CaptureHealthCard onboarding', () => {
   })
   afterEach(() => cleanup())
 
-  it('renders the ordered three-step checklist when dark', () => {
+  it('renders the sources grouped by what they capture, unnumbered', () => {
+    // This was an ordered <ol> of exactly three. The numbering described a
+    // sequence that does not exist — an operator on a proxied web assessment
+    // starts with traffic and may never install a shell hook — and the three
+    // excluded every other source from the model entirely.
     const el = draw(DARK)
-    const items = el.querySelectorAll('ol li')
-    expect(items.length).toBe(3)
-    // In canonical order: shell hook, then agent, then RedLog terminal.
-    expect(items[0].textContent).toMatch(/Shell hook/)
-    expect(items[1].textContent).toMatch(/agent/i)
-    expect(items[2].textContent).toMatch(/RedLog terminal/)
+    expect(el.querySelectorAll('ol').length, 'a numbered list implies a sequence').toBe(0)
+    const text = el.textContent ?? ''
+    expect(text).toMatch(/Commands/)
+    expect(text).toMatch(/Traffic/)
+    expect(text).toMatch(/Screen & files/)
+    // The command group still holds the three, in the group's own order.
+    const groups = [...el.querySelectorAll('ul')]
+    expect(groups.length).toBeGreaterThanOrEqual(3)
+    expect(groups[0].textContent).toMatch(/Shell hook/)
   })
 
   it('surfaces "Install shell hook" as the primary CTA when nothing is wired', () => {
@@ -65,14 +72,17 @@ describe('CaptureHealthCard onboarding', () => {
     expect(within(el).getByText('Install shell hook')).toBeTruthy()
   })
 
-  it('advances the CTA to the agent step once the shell hook is installed', () => {
+  it('points at the wired source once one is set up, not the next unset one', () => {
+    // Chosen by state rather than position: the installed hook needs a
+    // command, the untouched tailer needs turning on first. The shorter step
+    // is the one that gets the operator out of dark.
     const wired = health([
       { id: 'shell-hook', hookId: 'shell-zsh', installed: true, state: 'idle', lastEventAt: null },
       { id: 'agent-tailer', configPath: 'agentTailer.enabled', state: 'idle', lastEventAt: null },
       { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
     ], 'partial')
     const el = draw(wired)
-    expect(within(el).getByText('Turn on agent capture')).toBeTruthy()
+    expect(within(el).getByText('Run a command')).toBeTruthy()
   })
 
   it('hides the onboarding block once a core source is recording', () => {

@@ -46,9 +46,8 @@ export async function launchWithTempHome(): Promise<{
       NODE_ENV: 'test',
       HOME: tmpHome,
       USERPROFILE: tmpHome,
-      // Enables dev-only IPC endpoints used by E2E specs (e.g.
-      // `marketplace:testInstall` which injects a fetched tarball via bytes).
-      // The main process refuses the endpoint when this flag is unset.
+      // Enables dev-only IPC endpoints used by E2E specs. The main process
+      // refuses those endpoints when this flag is unset.
       REDLOG_E2E: '1'
     }
   })
@@ -97,4 +96,18 @@ export async function openTestProject(
 export async function openView(page: Page, view: string): Promise<void> {
   await page.click(`[data-view-btn="${view}"]`)
   await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 10_000 })
+}
+
+/**
+ * Open a Settings category.
+ *
+ * Settings moved from a row of eight top-level tabs to a left list of thirteen
+ * categories (§10), and the specs that reached those tabs by visible text —
+ * `/^data$/i`, `/^plugins$/i` — broke, because "Data" no longer exists as one
+ * place: it split into retention, chain, sharing and appearance. Reach the
+ * category by its stable id instead, the same way `openView` reaches a view.
+ */
+export async function openSettingsPage(page: Page, id: string): Promise<void> {
+  await page.click(`[data-settings-page="${id}"]`)
+  await page.waitForSelector(`[data-settings-page="${id}"][aria-current="page"]`, { timeout: 10_000 })
 }

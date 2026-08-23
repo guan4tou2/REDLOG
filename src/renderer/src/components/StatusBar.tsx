@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast, toastUndo } from './Toast'
 import { Gem } from 'lucide-react'
-import { formatTime } from '../lib/time'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { appShortcuts } from '../lib/shortcuts'
+import { isMac } from '../lib/platform'
 
 // The ⌘. chord, drawn the way this platform writes it. Read from the one
 // shortcut table so the toast cannot drift from the binding (§11).
-const isMacPlatform = (window as { redlog?: { platform?: string } }).redlog?.platform !== 'win32'
+const isMacPlatform = isMac
 const recordingChord =
   appShortcuts([], isMacPlatform).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 
@@ -20,7 +20,6 @@ export default function StatusBar(): JSX.Element {
   const [scopeViolations, setScopeViolations] = useState(0)
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
-  const [stamped, setStamped] = useState(false)
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
   const { t } = useI18n()
@@ -307,19 +306,6 @@ export default function StatusBar(): JSX.Element {
             {t('statusBar.events', { count: eventCount })}
           </span>
         )}
-        <button
-          onClick={async () => {
-            const ts = formatTime(Date.now(), { seconds: true })
-            await window.redlog.quickmarks.create({ title: `Timestamp ${ts}` })
-            setStamped(true)
-            setTimeout(() => setStamped(false), 1500)
-          }}
-          className={`flex items-center gap-1 transition-colors ${stamped ? 'text-emerald-400' : 'text-redlog-text-dim hover:text-red-400'}`}
-          title={t('statusBar.timestampTitle')}
-        >
-          <span>{stamped ? '✓' : '⏱'}</span>
-          <span>{stamped ? t('statusBar.stamped') : t('statusBar.stamp')}</span>
-        </button>
         <button
           onClick={() => window.redlog.overlay.toggle()}
           className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${overlayVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}

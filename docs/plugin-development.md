@@ -68,7 +68,6 @@ Every path referenced in the manifest must stay **inside** the plugin directory
   "contributes": { … },         // required — see below
   "capabilities": ["…"],        // 🔴 only — what the code needs (least authority)
   "signature": "…",             // optional — reserved for signed publishing
-  "publisher": "…"              // optional — reserved
 }
 ```
 

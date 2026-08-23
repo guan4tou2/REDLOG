@@ -118,7 +118,7 @@ Usage:
   redlog-cli health
   redlog-cli token
   redlog-cli whoami
-  redlog-cli operators [list|add <name>|rotate <id>|revoke <id>|delete <id>]
+  redlog-cli operators [list]
   redlog-cli chain [status|anchor|verify [--full]|anchors|export-ots <id> [--out <file>]|upgrade [<id>|--all]]
   redlog-cli export bundle
 
@@ -132,7 +132,6 @@ Examples:
   redlog-cli search "password"
   redlog-cli loot "root:x:0:0:root:/root:/bin/bash"
   redlog-cli whoami
-  redlog-cli operators add "Codex agent"
   redlog-cli chain anchor
   curl -s -H "Authorization: Bearer $(redlog-cli token)" http://127.0.0.1:6660/api/events
 `)
@@ -368,47 +367,17 @@ Examples:
 
     case 'operators': {
       const sub = positional[0] || 'list'
-      if (sub === 'list') {
-        const res = await request('GET', '/api/operators')
-        if (res.status === 200) {
-          for (const op of res.data.operators) {
-            const tag = op.isPrimary ? '[PRIMARY]' : op.revokedAt ? '[REVOKED]' : '         '
-            console.log(`  ${tag} ${op.id.padEnd(28)} ${op.name}`)
-          }
-        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
-      } else if (sub === 'add') {
-        const name = positional.slice(1).join(' ')
-        if (!name) { console.error('Usage: redlog-cli operators add <name>'); process.exit(1) }
-        const res = await request('POST', '/api/operators', { name })
-        if (res.status === 201) {
-          console.log(`Created: ${res.data.operator.id}`)
-          console.log(`Token (save now — not shown again):`)
-          console.log(`  ${res.data.token}`)
-        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
-      } else if (sub === 'rotate') {
-        const id = positional[1]
-        if (!id) { console.error('Usage: redlog-cli operators rotate <id>'); process.exit(1) }
-        const res = await request('POST', `/api/operators/${encodeURIComponent(id)}/rotate`)
-        if (res.status === 200) {
-          console.log(`New token for ${id}:`)
-          console.log(`  ${res.data.token}`)
-        } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
-      } else if (sub === 'revoke') {
-        const id = positional[1]
-        if (!id) { console.error('Usage: redlog-cli operators revoke <id>'); process.exit(1) }
-        const res = await request('POST', `/api/operators/${encodeURIComponent(id)}/revoke`)
-        console.log(res.status === 200 ? `Revoked ${id}` : `Error ${res.status}: ${JSON.stringify(res.data)}`)
-        if (res.status !== 200) process.exit(1)
-      } else if (sub === 'delete') {
-        const id = positional[1]
-        if (!id) { console.error('Usage: redlog-cli operators delete <id>'); process.exit(1) }
-        const res = await request('DELETE', `/api/operators/${encodeURIComponent(id)}`)
-        console.log(res.status === 200 ? `Deleted ${id}` : `Error ${res.status}: ${JSON.stringify(res.data)}`)
-        if (res.status !== 200) process.exit(1)
-      } else {
-        console.error(`Unknown operators subcommand: ${sub}. Use list|add|rotate|revoke|delete`)
+      if (sub !== 'list') {
+        console.error(`Unknown operators subcommand: ${sub}. Only 'list' remains.`)
         process.exit(1)
       }
+      const res = await request('GET', '/api/operators')
+      if (res.status === 200) {
+        for (const op of res.data.operators) {
+          const tag = op.isPrimary ? '[PRIMARY]' : op.revokedAt ? '[REVOKED]' : '         '
+          console.log(`  ${tag} ${op.id.padEnd(28)} ${op.name}`)
+        }
+      } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       break
     }
 
