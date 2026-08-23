@@ -22,7 +22,7 @@ test('a -p flag on a command produces a masked credential_use event', async () =
     const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
 
-    const SECRET = 'Sup3rSecretPass'
+    const SECRET = 'PLACEHOLDERsecret'
     await fetch(`${base}/api/events`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
