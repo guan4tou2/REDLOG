@@ -96,8 +96,7 @@ function installBridge(): void {
         scope: { warnOnViolation: true, targets: [], excludeTargets: [], scopeFile: '' },
         screenshot: { quality: 85 },
         terminal: { maxCastBytes: 1024 },
-        redaction: { allowlist: [], denylist: [], entropyThreshold: 4.5, minLength: 20 },
-        deconfliction: { enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false }
+        redaction: { allowlist: [], denylist: [], entropyThreshold: 4.5, minLength: 20 }
       }),
       save: async () => true,
       exportProfile: async () => null,
@@ -147,10 +146,6 @@ function installBridge(): void {
       rename: async () => true,
       revoke: async () => true,
       delete: async () => true
-    },
-    deconfliction: {
-      get: async () => ({ enabled: false, url: '', secret: '', events: [], subtypes: [], includeData: false }),
-      test: async () => ({ ok: true, status: 200 })
     },
     mcp: {
       info: async () => ({ port: 6660, endpoint: 'http://127.0.0.1:6660/mcp', stdioPath: '/x/mcp/redlog-mcp-server.js', hasToken: false }),

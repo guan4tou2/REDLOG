@@ -31,7 +31,6 @@ import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { exportHar } from './har-export'
-import { getDeconflictionConfig, testWebhook } from './deconfliction'
 import { handleMcpMessage, type ToolDispatch } from './mcp-tools'
 import { listPluginTools, dispatchPluginTool } from './plugins/tool-registry'
 import { getCaptureHealth, noteDbError } from './capture-health'
@@ -1086,17 +1085,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/deconfliction' && req.method === 'GET') {
-      const cfg = getDeconflictionConfig()
-      json(res, 200, { ...cfg, secret: cfg.secret ? '***' : '' })
-      return
-    }
 
-    if (route === '/api/deconfliction/test' && req.method === 'POST') {
-      const result = await testWebhook(getDeconflictionConfig())
-      json(res, 200, result)
-      return
-    }
 
     if (route === '/api/clock' && req.method === 'GET') {
       json(res, 200, {

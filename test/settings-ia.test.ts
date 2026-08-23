@@ -24,14 +24,14 @@ const SRC = R('src/renderer/src/components/Settings.tsx')
 
 const PAGES = [
   'hooks', 'agents', 'captureControl',
-  'scope', 'network', 'deconfliction',
+  'scope', 'network',
   'integrity',
   'operators', 'plugins',
   'general', 'hud'
 ]
 
 describe('settings information architecture', () => {
-  it('declares eleven pages as a union', () => {
+  it('declares ten pages as a union', () => {
     // CRLF-safe: .tsx files check out with \r\n on Windows (.gitattributes only
     // pins .sh/.py to LF), so a bare \n\n never matches there — the same
     // line-ending trap the repo hit once before with path.sep.

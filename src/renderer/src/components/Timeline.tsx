@@ -283,7 +283,7 @@ function eventTitle(event: RedLogEvent): string {
 
 function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventType[]): LaneId {
   // Scope violations are stored under agent_type='system' for historical reasons
-  // (the deconfliction webhook filter watches 'system'). Route them into their own
+  // (historical: a since-removed webhook filter watched 'system'). Route them into their own
   // lane at render time so they don't drown in the system-lane housekeeping.
   if (agentType === 'system' && subtype === 'scope_violation') return 'scope'
   if (LANES.includes(agentType as LaneId)) return agentType as LaneId
@@ -308,7 +308,6 @@ interface PluginEventType {
 // it doesn't drown the actual operation. Real user/agent actions still show; only
 // the app's own plumbing is suppressed:
 //   • system.api_started / session_start — RedLog boot, once per app open
-//   • system.deconfliction_test — manual test button in Settings
 //   • shell.session_start / session_end — user opened/closed a terminal pane
 //   • terminal.session_start — duplicate write-path for the same pane-open event
 //   • command_start whose command IS just sourcing the shell hook (the "silent"
@@ -319,7 +318,7 @@ function isHookSource(cmd: unknown): boolean {
 }
 function isHousekeeping(e: RedLogEvent): boolean {
   const s = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start' || s === 'deconfliction_test')) return true
+  if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start')) return true
   // shell.session_start is redundant with session_end (which has the full
   // castPath + duration), and it fires before there's anything to replay.
   // session_end is kept visible so operators can click it and use the
@@ -603,7 +602,11 @@ function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge
     b.push({ icon: '⚓✗', reason: 'OTS anchor failed', key: 'anchor' })
   }
   if (evt.agentType === 'system' && sub === 'chain_sample_broken') {
-    b.push({ icon: '⛓️‍💥', reason: 'background chain sampler detected tampering', key: 'sample-broken' })
+    // §4e: the sampler cannot tell tampering from a record that does not join
+    // up, and under §1 the honest claim is the latter — the operator is relying
+    // on this record to find what happened, so "something may be missing" is
+    // both truer and more useful than accusing an attacker.
+    b.push({ icon: '⛓️\u200d💥', reason: 'the record does not join up here — something may be missing', key: 'sample-broken' })
   }
   if (brokenAtId && evt.id === brokenAtId) {
     b.push({ icon: '⛓️‍💥', reason: 'full-chain verify broke here', key: 'verify-broken' })

@@ -249,7 +249,7 @@ const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
 // with more history they couldn't reach.
 const HOUSEKEEPING_SQL = `
   NOT (
-    (agent_type = 'system' AND json_extract(data,'$.subtype') IN ('api_started','session_start','deconfliction_test'))
+    (agent_type = 'system' AND json_extract(data,'$.subtype') IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND json_extract(data,'$.subtype') = 'session_start')
     OR (agent_type = 'terminal' AND json_extract(data,'$.subtype') = 'session_start')
     OR (agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command') AND json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%')
@@ -344,8 +344,8 @@ function insertChainedEvent(
 ): RedLogEvent | null {
   // v0.9.5: pause means "do not record", not "do not display". Before this the
   // gate lived only on eventBus.publish(), so a paused RedLog still wrote every
-  // event into the DB and the hash chain — it only stopped the UI feed and the
-  // deconfliction webhook. The README promised daily/hobby work stayed off the
+  // event into the DB and the hash chain — it only stopped the UI feed. The
+  // README promised daily/hobby work stayed off the
   // audit chain; it did not. Enforcing here rather than at the 46 call sites
   // means no capture source can forget.
   //
@@ -589,7 +589,7 @@ export function queryEvents(opts: {
   beforeCreatedAt?: number
   targetId?: string
   // When true, drop RedLog's own housekeeping rows (api_started, shell
-  // session_start, hook-source command_start, deconfliction_test) at the SQL
+  // session_start, hook-source command_start) at the SQL
   // layer. Previously Timeline fetched 200 rows and filtered them to ~30
   // visible client-side, which meant the pager marked itself "all loaded"
   // when fewer than 200 came back — but the visible count was tiny.

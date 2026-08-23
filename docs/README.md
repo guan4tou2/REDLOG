@@ -51,7 +51,6 @@ design.
 - **[REST API reference](api-reference.md)** — complete per-endpoint docs for all 37 HTTP endpoints: auth, request/response schemas, auto-processing behavior.
 - **[MCP server](agent-integration.md#2-mcp-server-operate-the-app)** — RedLog hosts its own MCP endpoint over HTTP, live the moment the app opens (`http://127.0.0.1:<port>/mcp`); stdio bridge as a fallback. Set up in Settings ▸ Team & Integrations.
 - **[Proxied browser](agent-integration.md#proxied-browser)** — one-click Chromium through your mitmproxy, CDP enabled, project-local profile.
-- **[Deconfliction webhook](deconfliction.md)** — real-time signed feed to the blue team. When to enable, when not to, payload shape, threat model.
 
 ## Operator identity
 

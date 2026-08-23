@@ -27,7 +27,6 @@ import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
 import { exportHar } from '../core/har-export'
-import { configureDeconfliction, getDeconflictionConfig, notifyDeconfliction, testWebhook, flushDeconflictionOnShutdown } from '../core/deconfliction'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
@@ -374,8 +373,6 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
   check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
   check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
-  check('deconfliction.enabled', oldCfg.deconfliction?.enabled, newCfg.deconfliction?.enabled)
-  check('deconfliction.url', oldCfg.deconfliction?.url, newCfg.deconfliction?.url)
   check('clipboard.enabled', oldCfg.clipboard?.enabled, newCfg.clipboard?.enabled)
   check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
   check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
@@ -514,7 +511,6 @@ function startProject(project: ProjectMeta): void {
     const psum = initPlugins()
     if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)
   } catch (e) { console.error('[plugins] init failed:', e) }
-  configureDeconfliction(config.deconfliction)
   setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
@@ -1153,7 +1149,6 @@ app.whenReady().then(() => {
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
-    if (newConfig.deconfliction) configureDeconfliction(newConfig.deconfliction)
     setVpnAdapters(newConfig.network.vpnAdapters)
     // The HUD reads its config once at mount — push overlay settings so toggling
     // "show Mark button" takes effect live instead of only after a restart.
@@ -1309,7 +1304,7 @@ app.whenReady().then(() => {
   })
 
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
-  // still fires `events:new` per-event (deconfliction webhook + overlay
+  // still fires `events:new` per-event (overlay
   // pivot HUD subscribe to it), but the renderer's Timeline drains
   // `events:new-batch` on a single frame per burst. A 200 evt/s mitmproxy
   // scan collapses from 200 IPC hops to ~12 (60 fps) with one setEvents
@@ -1324,10 +1319,9 @@ app.whenReady().then(() => {
     send(mainWindow, 'events:new-batch', drained)
   }
   eventBus.on('event', (event) => {
-    // Per-event channel stays — deconfliction/overlay HUD and any external
-    // subscriber that doesn't want to buffer keeps its existing shape.
+    // Per-event channel stays — the overlay HUD and any external subscriber
+    // that doesn't want to buffer keeps its existing shape.
     send(mainWindow, 'events:new', event)
-    notifyDeconfliction(event)
     // Batch channel — Timeline listens here and rebuilds once per frame.
     batchBuffer.push(event)
     if (!batchScheduled) {
@@ -1415,8 +1409,6 @@ app.whenReady().then(() => {
     if (id) return await upgradeAnchor(id)
     return await upgradeAllPending()
   })
-  ipcMain.handle('deconfliction:get', () => getDeconflictionConfig())
-  ipcMain.handle('deconfliction:test', async (_e, cfg) => testWebhook(cfg))
 
   ipcMain.handle('clock:status', () => ({
     ntpOffsetMs: getNtpOffsetMs(),
@@ -2042,10 +2034,6 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
-  // v0.6.100 F1: flush any pending deconfliction batch before we tear down.
-  // Up to 100 events (or ≤500ms worth) can sit in the buffer; without this
-  // they vanish when the operator quits mid-engagement.
-  try { flushDeconflictionOnShutdown() } catch { /* best-effort */ }
   stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()

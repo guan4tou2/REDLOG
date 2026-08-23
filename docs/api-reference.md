@@ -299,18 +299,6 @@ Writes masked bytes to `sanitized_events` table + appends chained `system.saniti
 
 ---
 
-### Deconfliction
-
-#### `GET /api/deconfliction`
-
-**Response:** Config object with `secret` masked as `"***"`.
-
-#### `POST /api/deconfliction/test`
-
-Send a test payload to the configured webhook.
-
----
-
 ## Endpoint Summary
 
 | Method | Path | Auth | Category |
@@ -350,5 +338,3 @@ Send a test payload to the configured webhook.
 | GET | `/api/clock` | yes | Clock |
 | POST | `/api/export/bundle` | yes | Export |
 | POST | `/api/sanitize` | yes | Redaction |
-| GET | `/api/deconfliction` | yes | Deconfliction |
-| POST | `/api/deconfliction/test` | yes | Deconfliction |

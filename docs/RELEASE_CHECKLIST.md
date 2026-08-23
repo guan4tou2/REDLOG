@@ -166,11 +166,6 @@ Everything below still needs hands on the app.
 - [ ] Switch language via Settings → both languages render without missing key `[foo.bar]`
 - [ ] No CJK mojibake in either lang
 
-## 16. Deconfliction
-
-- [ ] Webhook config accepts URL
-- [ ] `redlog-cli deconfliction test` posts a probe
-
 ## 17. Cross-cutting
 
 - [~] Recording pause: no new events added while paused, resume works —

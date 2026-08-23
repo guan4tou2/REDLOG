@@ -182,10 +182,6 @@ contextBridge.exposeInMainWorld('redlog', {
   clock: {
     status: () => ipcRenderer.invoke('clock:status')
   },
-  deconfliction: {
-    get: () => ipcRenderer.invoke('deconfliction:get'),
-    test: (cfg: unknown) => ipcRenderer.invoke('deconfliction:test', cfg)
-  },
   mcp: {
     info: () => ipcRenderer.invoke('mcp:info'),
     setupToken: (opts?: { name?: string }) => ipcRenderer.invoke('mcp:setupToken', opts)

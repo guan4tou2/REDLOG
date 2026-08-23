@@ -248,10 +248,6 @@ interface RedLogAPI {
      *  a credential is not evidence and must never enter a bundle. */
     writeToken: (id: string, token: string) => Promise<string | null>
   }
-  deconfliction: {
-    get: () => Promise<DeconflictionConfigInfo>
-    test: (cfg: DeconflictionConfigInfo) => Promise<{ ok: boolean; status: number; error?: string }>
-  }
   mcp: {
     info: () => Promise<McpInfo | null>
     setupToken: (opts?: { name?: string }) => Promise<{ token: string; port: number; endpoint: string; operatorId: string; name: string } | null>
@@ -307,15 +303,6 @@ interface BrowserLaunchResult {
   args?: string[]
   profileDir?: string
   error?: string
-}
-
-interface DeconflictionConfigInfo {
-  enabled: boolean
-  url: string
-  secret: string
-  events: string[]
-  subtypes: string[]
-  includeData: boolean
 }
 
 interface OperatorInfo {
