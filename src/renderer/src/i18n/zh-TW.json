@@ -923,5 +923,11 @@
   "settings.transcriptTailerEnableHint": "僅 Windows。透過跟隨 PowerShell transcript 檔,不需 Redlog-Run 前綴即可擷取完整指令輸出。把 hooks/start-transcript-hook.ps1 加進你的 $PROFILE,再開啟此項。",
   "timeline.more.button": "更多",
   "timeline.more.hint": "工作階段分隔、時區、稽核檢視",
-  "timeline.more.viewGroup": "檢視"
+  "timeline.more.viewGroup": "檢視",
+  "timeline.band.commands": "指令",
+  "timeline.band.traffic": "流量",
+  "timeline.band.artifacts": "產物",
+  "timeline.band.signals": "訊號",
+  "timeline.band.expandHint": "展開 {{band}} 的泳道",
+  "timeline.band.collapseHint": "摺疊 {{band}} 帶"
 }
