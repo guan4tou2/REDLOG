@@ -1049,6 +1049,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // doesn't crash the panel — the dropdown just stays disabled.
   const [savedViews, setSavedViews] = useState<SavedTimelineView[] | null>(null)
   const [viewsOpen, setViewsOpen] = useState(false)
+  // Overflow for the low-frequency view/audit controls (session dividers,
+  // timezone, auditor view) so the toolbar row groups by effect instead of
+  // listing eight flat toggles (DESIGN-core-and-capture.md §6).
+  const [moreOpen, setMoreOpen] = useState(false)
   const [viewsName, setViewsName] = useState('')
   // v0.6.96 Clean-3: `views` is now non-optional in env.d.ts (preload always
   // exports it). The old cast is gone; direct access is type-safe.
@@ -2799,31 +2803,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             )}
           </div>
 
-          {/* v0.6.91 S3: session boundaries visibility toggle. */}
-          <button
-            onClick={() => setSessionDividers((v) => !v)}
-            className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
-              sessionDividers ? 'text-indigo-300 bg-indigo-500/10' : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]'
-            }`}
-            title={t('timeline.boundaries.toggle')}
-            aria-pressed={sessionDividers}
-          >⋮ {t('timeline.boundaries.toggle')}</button>
-
-          {/* v0.6.91 S7: timezone selector. Wraps a <select> because the
-              alternative (three chips) uses more header real-estate than we
-              can afford at 1280 width. */}
-          <select
-            data-testid="timeline-tz-select"
-            value={tz}
-            onChange={(e) => setTz(e.target.value as TzMode)}
-            title={t('timeline.tz.tooltip')}
-            className="shrink-0 whitespace-nowrap text-xs px-1 py-0.5 rounded font-mono bg-redlog-elevated/60 text-redlog-text border border-redlog-border hover:bg-redlog-elevated focus:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-          >
-            <option value="local">🕓 {t('timeline.tz.local')}</option>
-            <option value="utc">🕓 {t('timeline.tz.utc')}</option>
-            <option value="project" disabled={!projectTz}>🕓 {t('timeline.tz.project')}{projectTz ? ` (${projectTz})` : ''}</option>
-          </select>
-
           {/* v0.6.89.5 feature 4: anomaly filter — dims every event without an
               integrity badge (clock anomaly / recovery / evidence removal /
               anchor failure / chain break). First chip so it's the fastest
@@ -2848,30 +2827,62 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >
             {t('timeline.anomalies.chip', { count: anomalyCount })}
           </button>
-          {/* v0.14 §9.2 auditor-view chip: hides logged-tier rows so the
-              chained (audit) chain is what the reviewer sees. Uses the
-              chain glyph `⛓` to visually tie it to the per-row tier badge
-              shipped in v0.14.0 (§9.1). Disabled at opacity 0.25 when
-              there are no logged rows to hide (matches the anomaly chip
-              pattern). */}
-          <button
-            data-testid="timeline-auditor-view-chip"
-            onClick={() => {
-              if (hiddenLoggedCount === 0 && !auditorView) return
-              setAuditorView((v) => !v)
-            }}
-            disabled={hiddenLoggedCount === 0 && !auditorView}
-            className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
-              hiddenLoggedCount === 0 && !auditorView
-                ? 'opacity-25 cursor-default text-redlog-text-faint'
-                : auditorView
-                  ? 'text-emerald-200 bg-emerald-500/25 ring-1 ring-emerald-500/40'
-                  : 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
-            }`}
-            title={t('timeline.auditorView.tooltip')}
-          >
-            {t('timeline.auditorView.chip', { count: hiddenLoggedCount })}
-          </button>
+          {/* Overflow: the low-frequency view/audit controls, grouped off the
+              flat row (§6). Session dividers, timezone and the auditor view are
+              set once and rarely touched, so they live behind one control
+              rather than each taking a slot the operator scans past. */}
+          <div className="relative shrink-0">
+            <button
+              data-testid="timeline-more-menu"
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              title={t('timeline.more.hint')}
+              className="whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            >⋯ {t('timeline.more.button')}</button>
+            {moreOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
+                <div role="menu" className="absolute top-full right-0 mt-1 z-40 w-56 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl py-1">
+                  <div className="px-2 py-1 text-xs font-mono uppercase tracking-wider text-redlog-text-faint">{t('timeline.more.viewGroup')}</div>
+                  <button
+                    role="menuitemcheckbox"
+                    aria-checked={sessionDividers}
+                    onClick={() => setSessionDividers((v) => !v)}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+                  >
+                    <span>⋮ {t('timeline.boundaries.toggle')}</span>
+                    <span className={sessionDividers ? 'text-indigo-300' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
+                  </button>
+                  <button
+                    role="menuitemcheckbox"
+                    data-testid="timeline-auditor-view-chip"
+                    aria-checked={auditorView}
+                    disabled={hiddenLoggedCount === 0 && !auditorView}
+                    onClick={() => { if (hiddenLoggedCount === 0 && !auditorView) return; setAuditorView((v) => !v) }}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5 disabled:opacity-40 disabled:cursor-default"
+                    title={t('timeline.auditorView.tooltip')}
+                  >
+                    <span>⛓ {t('timeline.auditorView.chip', { count: hiddenLoggedCount })}</span>
+                    <span className={auditorView ? 'text-emerald-300' : 'text-redlog-text-faint'}>{auditorView ? '✓' : ''}</span>
+                  </button>
+                  <div className="flex items-center gap-2 px-3 py-1.5">
+                    <span className="text-xs font-mono text-redlog-text-dim">{t('timeline.tz.tooltip')}</span>
+                    <select
+                      data-testid="timeline-tz-select"
+                      value={tz}
+                      onChange={(e) => setTz(e.target.value as TzMode)}
+                      className="ml-auto text-xs px-1 py-0.5 rounded font-mono bg-redlog-elevated/60 text-redlog-text border border-redlog-border focus:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+                    >
+                      <option value="local">{t('timeline.tz.local')}</option>
+                      <option value="utc">{t('timeline.tz.utc')}</option>
+                      <option value="project" disabled={!projectTz}>{t('timeline.tz.project')}{projectTz ? ` (${projectTz})` : ''}</option>
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           {/* v0.6.87 C2: export the currently-visible time window as JSON.
               The window is derived from the minimap view (left..left+width in
               percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
