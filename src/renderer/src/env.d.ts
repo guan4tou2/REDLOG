@@ -238,15 +238,6 @@ interface RedLogAPI {
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
-    create: (name: string) => Promise<{ operator: OperatorInfo; token: string } | null>
-    rotate: (id: string) => Promise<{ token: string } | null>
-    rename: (id: string, name: string) => Promise<boolean>
-    revoke: (id: string) => Promise<boolean>
-    delete: (id: string) => Promise<boolean>
-    /** Writes the token to ~/.redlog/tokens/<id>.token (0600) and returns
-     *  its path, or null on failure. Outside the project tree on purpose —
-     *  a credential is not evidence and must never enter a bundle. */
-    writeToken: (id: string, token: string) => Promise<string | null>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>

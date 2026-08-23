@@ -55,7 +55,7 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Zero-friction capture** — installs, starts recording, stays out of your way
 - **AI agent native** — shell hooks let Claude Code, Codex, and GPT log directly into your timeline
 - **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
-- **Per-operator identity** — every event carries an operator id resolved from an API token; teammates and agents get their own tokens ([details](docs/operators.md))
+- **Operator identity** — every event carries an operator id resolved from the API token
 - **Evidence chain + OpenTimestamps** — append-only SHA-256 chain, hourly anchored to public OpenTimestamps calendars, one-command `.ots` bundle export for third-party `ots verify` ([details](docs/audit-trail.md))
 - **Ghostwriter-compatible event schema** — first-class `dns`, `credential_use`, `c2_checkin`, `file_transfer` types plus standard `dest_ip / dest_host / mitre_ttp / description` keys ([details](docs/event-schema.md))
 - **Signed evidence bundle** — `redlog-cli export bundle` produces a self-contained directory with SHA-256 manifest ready for delivery
@@ -243,7 +243,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
 | POST | `/api/loot/scan` | Scan text for secrets |
 | POST | `/api/screenshot` | Trigger manual capture |
 | GET | `/api/whoami` | Operator identity for this token |
-| GET/POST/PATCH/DELETE | `/api/operators[/…]` | Operator token management |
+| GET | `/api/operators` | List operators (attribution) |
 | GET | `/api/chain` | Chain length + last anchor |
 | GET/POST | `/api/anchors` | List / trigger OpenTimestamps anchoring |
 | GET | `/api/anchors/verify` | Fast integrity check |
@@ -270,7 +270,6 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 ### More reading
 
 - [Agent integration](docs/agent-integration.md) — full REST + MCP + hook reference
-- [Operators & tokens](docs/operators.md) — multi-operator identity, token lifecycle
 - [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
 - [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
 - [Plugin development](docs/plugin-development.md) — extend RedLog: 🟢 declarative packs + 🔴 trust-gated MCP tools

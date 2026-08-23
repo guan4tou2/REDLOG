@@ -295,11 +295,6 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | POST | `/api/loot/scan` | yes | Scan text for secrets/credentials |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
 | GET | `/api/operators` | yes | List operators (sensitive fields stripped) |
-| POST | `/api/operators` | primary | Create operator, returns token **once** |
-| PATCH | `/api/operators/:id` | primary | Rename |
-| POST | `/api/operators/:id/rotate` | self or primary | Rotate token |
-| POST | `/api/operators/:id/revoke` | primary | Revoke token |
-| DELETE | `/api/operators/:id` | primary | Delete operator |
 | POST | `/api/terminal/replay` | yes | Replay terminal command output from `.cast` file |
 | GET | `/api/chain` | yes | Chain length + latest anchor |
 | GET | `/api/anchors` | yes | List OTS anchors (`?limit=`) |
@@ -426,16 +421,6 @@ browser:
   startUrl: ""
   extraArgs: []
 ```
-
-## Multi-Operator Setup
-
-Each API token maps to one operator identity. The audit log tags every event with the operator resolved from the token — so several people (or several agents) can share one RedLog instance and stay distinguishable.
-
-Full lifecycle in [docs/operators.md](operators.md). TL;DR:
-
-1. **You** (primary): use RedLog's own generated token in `~/.redlog/api-token`. Rotated every app launch. Do nothing.
-2. **Teammate**: Settings ▸ General ▸ Operator Tokens ▸ **Add operator** ▸ copy token once ▸ hand over securely. On their machine: `echo -n '<token>' > ~/.redlog/api-token && chmod 600 ~/.redlog/api-token`.
-3. **Distinct agent context** on the same machine (e.g. Codex vs Claude): create a secondary token and have that agent use `REDLOG_TOKEN=<token>` instead of the file — patch the one hook that agent uses.
 
 ## Evidence Chain & OpenTimestamps
 

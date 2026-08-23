@@ -33,8 +33,7 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  listOperators, createOperator, updateOperatorToken, revokeOperator,
-  deleteOperator, renameOperator, generateToken, slugifyOperatorId
+  listOperators
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
@@ -1553,26 +1552,6 @@ app.whenReady().then(() => {
   // `~/.redlog/tokens/` sits deliberately outside the project directory, so
   // no bundle export or evidence package can ever sweep it up —
   // those walk the project tree, and a credential is not evidence.
-  ipcMain.handle('operators:writeToken', async (_e, id: string, token: string) => {
-    if (typeof id !== 'string' || !id || typeof token !== 'string' || !token) return null
-    // The id becomes a filename, so it may not be allowed to escape the
-    // directory or collide with something outside it.
-    const safeId = id.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 64)
-    if (!safeId || safeId === '.' || safeId === '..') return null
-    try {
-      const dir = path.join(homedir(), '.redlog', 'tokens')
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
-      const file = path.join(dir, `${safeId}.token`)
-      // 0600 from the moment it exists — writing then chmod-ing leaves a
-      // window where the file is world-readable.
-      fs.writeFileSync(file, `${token}\n`, { mode: 0o600 })
-      // An existing file keeps its old mode, so set it explicitly too.
-      fs.chmodSync(file, 0o600)
-      return file
-    } catch {
-      return null
-    }
-  })
 
   ipcMain.handle('data:revealPath', async (_e, target: string) => {
     if (typeof target !== 'string' || !target) return false
@@ -1892,45 +1871,6 @@ app.whenReady().then(() => {
       id: op.id, name: op.name, isPrimary: op.isPrimary,
       createdAt: op.createdAt, revokedAt: op.revokedAt
     }))
-  })
-  ipcMain.handle('operators:create', (_e, name: string) => {
-    if (!activeProject) return null
-    const trimmed = (name || '').trim()
-    if (!trimmed) return null
-    const id = slugifyOperatorId(trimmed)
-    const token = generateToken()
-    try {
-      const op = createOperator({ id, name: trimmed, token, isPrimary: false })
-      return { operator: { id: op.id, name: op.name, isPrimary: false, createdAt: op.createdAt, revokedAt: null }, token }
-    } catch {
-      return null
-    }
-  })
-  ipcMain.handle('operators:rotate', (_e, id: string) => {
-    if (!activeProject) return null
-    const token = generateToken()
-    const ok = updateOperatorToken(id, token)
-    if (!ok) return null
-    const primary = listOperators().find((o) => o.id === id && o.isPrimary)
-    if (primary) {
-      const tokenPath = path.join(homedir(), '.redlog', 'api-token')
-      try { fs.writeFileSync(tokenPath, token, { mode: 0o600 }) } catch {}
-    }
-    return { token }
-  })
-  ipcMain.handle('operators:rename', (_e, id: string, name: string) => {
-    if (!activeProject) return false
-    const trimmed = (name || '').trim()
-    if (!trimmed) return false
-    return renameOperator(id, trimmed)
-  })
-  ipcMain.handle('operators:revoke', (_e, id: string) => {
-    if (!activeProject) return false
-    return revokeOperator(id)
-  })
-  ipcMain.handle('operators:delete', (_e, id: string) => {
-    if (!activeProject) return false
-    return deleteOperator(id)
   })
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---

@@ -73,7 +73,7 @@ type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl'
   | 'scope' | 'network'
   | 'integrity'
-  | 'operators' | 'plugins'
+  | 'plugins'
   | 'general' | 'hud'
 
 export default function Settings(): JSX.Element {
@@ -168,7 +168,6 @@ export default function Settings(): JSX.Element {
     {
       heading: t('settings.groupCollab'),
       pages: [
-        { id: 'operators', label: t('settings.pageOperators') },
         { id: 'plugins', label: t('settings.pagePlugins') }
       ]
     },
@@ -291,10 +290,9 @@ export default function Settings(): JSX.Element {
           </>
         )}
 
-        {(tab === 'agents' || tab === 'network' || tab === 'operators') && (
+        {(tab === 'agents' || tab === 'network') && (
           <>
             {tab === 'agents' && <HookWatchPathsPanel t={t} />}
-            {tab === 'operators' && <OperatorsPanel t={t} />}
             {tab === 'network' && <BrowserPanel t={t} config={config} setConfig={setConfig} />}
             {tab === 'network' && <FieldGroup title={t('settings.cdp')}>
               <p className="text-xs text-redlog-text-faint mb-2">
@@ -1504,192 +1502,6 @@ function AgentsPanel({
           {t('settings.agents.selfExclusionHint')}
         </p>
       </div>
-    </FieldGroup>
-  )
-}
-
-function OperatorsPanel({ t }: { t: (key: string) => string }): JSX.Element {
-  const [operators, setOperators] = useState<OperatorInfo[]>([])
-  const [newName, setNewName] = useState('')
-  const [pendingToken, setPendingToken] = useState<{ id: string; note: string; path: string | null } | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-
-  const reload = async (): Promise<void> => {
-    const list = await window.redlog.operators.list()
-    setOperators(list)
-  }
-
-  useEffect(() => { reload() }, [])
-
-  const handleAdd = async (): Promise<void> => {
-    const name = newName.trim()
-    if (!name) return
-    setBusy('add')
-    const result = await window.redlog.operators.create(name)
-    setBusy(null)
-    if (result) {
-      setNewName('')
-      const written = await window.redlog.operators.writeToken(result.operator.id, result.token)
-      setPendingToken({ id: result.operator.id, note: t('settings.operatorCreated'), path: written })
-      await reload()
-    } else {
-      toast(t('settings.operatorCreateFailed'), {
-        type: 'error',
-        why: t('settings.operatorCreateFailedWhy')
-      })
-    }
-  }
-
-  const handleRotate = async (id: string): Promise<void> => {
-    setBusy(id + ':rotate')
-    const result = await window.redlog.operators.rotate(id)
-    setBusy(null)
-    if (result) {
-      const written = await window.redlog.operators.writeToken(id, result.token)
-      setPendingToken({ id, note: t('settings.operatorRotated'), path: written })
-      await reload()
-    }
-  }
-
-  const handleRevoke = async (id: string): Promise<void> => {
-    setBusy(id + ':revoke')
-    await window.redlog.operators.revoke(id)
-    setBusy(null)
-    await reload()
-  }
-
-  const handleDelete = async (id: string): Promise<void> => {
-    // Use the app's ConfirmDialog instead of native window.confirm() — matches
-    // every other destructive action + is themable + not blocking (audit P0 #2).
-    if (!await confirmDialog(t('settings.operatorDeleteTitle'), t('settings.operatorDeleteConfirm'), true)) return
-    setBusy(id + ':delete')
-    await window.redlog.operators.delete(id)
-    setBusy(null)
-    await reload()
-  }
-
-  return (
-    <FieldGroup title={t('settings.operators')}>
-      <p className="text-xs text-redlog-text-faint">{t('settings.operatorsHint')}</p>
-
-      <div className="space-y-1">
-        {operators.map((op) => (
-          <div
-            key={op.id}
-            className={`flex items-center gap-2 p-2 rounded border text-xs ${
-              op.revokedAt ? 'border-redlog-border bg-redlog-surface/20 opacity-60' : 'border-redlog-border bg-redlog-surface/50'
-            }`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span title={op.name} className="text-redlog-text font-medium truncate">{op.name}</span>
-                {op.isPrimary && (
-                  <span className="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded">
-                    {t('settings.operatorPrimary')}
-                  </span>
-                )}
-                {op.revokedAt && (
-                  <span className="text-xs bg-redlog-elevated text-redlog-text-dim px-1.5 py-0.5 rounded">
-                    {t('settings.operatorRevoked')}
-                  </span>
-                )}
-              </div>
-              <p title={op.id} className="text-xs text-redlog-text-dim font-mono truncate">{op.id}</p>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                disabled={busy === op.id + ':rotate'}
-                onClick={() => handleRotate(op.id)}
-                className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
-              >
-                {busy === op.id + ':rotate' ? '...' : t('settings.operatorRotate')}
-              </button>
-              {!op.isPrimary && !op.revokedAt && (
-                <button
-                  disabled={busy === op.id + ':revoke'}
-                  onClick={() => handleRevoke(op.id)}
-                  className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
-                >
-                  {busy === op.id + ':revoke' ? '...' : t('settings.operatorRevoke')}
-                </button>
-              )}
-              {!op.isPrimary && (
-                <button
-                  disabled={busy === op.id + ':delete'}
-                  onClick={() => handleDelete(op.id)}
-                  className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-red-900/30 hover:text-red-400 disabled:opacity-50"
-                >
-                  {busy === op.id + ':delete' ? '...' : t('settings.operatorDelete')}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex gap-1 pt-1">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder={t('settings.operatorAddName')}
-          className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
-        />
-        <button
-          onClick={handleAdd}
-          disabled={busy === 'add' || !newName.trim()}
-          className="px-3 py-1 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
-        >
-          {busy === 'add' ? '...' : t('settings.operatorAdd')}
-        </button>
-      </div>
-
-      {/* §10: the token is written to a file, not handed over as text to
-          copy. A token on the clipboard is a token in every clipboard manager
-          on the machine, and one pasted into a note is a token in whatever
-          that note syncs to. `~/.redlog/tokens/` sits outside the project
-          directory on purpose — bundle export walks the project
-          tree, and a credential is not evidence. */}
-      {pendingToken && (
-        <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
-          <p className="text-xs text-red-300">{pendingToken.note}</p>
-          {pendingToken.path ? (
-            <>
-              <p className="text-xs text-redlog-text-dim">{t('settings.operatorTokenWritten')}</p>
-              <div className="flex items-center gap-1">
-                <code title={pendingToken.path} className="flex-1 bg-black/40 text-redlog-text-dim text-xs font-mono px-2 py-1.5 rounded truncate">
-                  {pendingToken.path}
-                </code>
-                <button
-                  onClick={() => { void window.redlog.data.revealPath?.(pendingToken.path as string) }}
-                  className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover whitespace-nowrap"
-                >
-                  {t('settings.revealInFolder')}
-                </button>
-                <button
-                  onClick={() => setPendingToken(null)}
-                  className="px-2 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover"
-                >
-                  {t('settings.operatorTokenClose')}
-                </button>
-              </div>
-            </>
-          ) : (
-            // The write failed. Falling back to showing the token is worse
-            // than losing it — an operator can always rotate — so say what
-            // happened and let them retry rather than putting it on screen.
-            <div className="flex items-center gap-1">
-              <p className="flex-1 text-xs text-redlog-text-dim">{t('settings.operatorTokenWriteFailed')}</p>
-              <button
-                onClick={() => setPendingToken(null)}
-                className="px-2 py-1.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover"
-              >
-                {t('settings.operatorTokenClose')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
     </FieldGroup>
   )
 }
