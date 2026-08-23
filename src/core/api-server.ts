@@ -13,6 +13,7 @@ import {
   type Operator
 } from './db/operators'
 import { eventBus } from './event-bus'
+import { detectCredentialUse } from './credential-detector'
 import { extractTarget, extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
@@ -636,6 +637,32 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           }, { engagementId, operatorId: operator.id, targetId: detectedCred.target || targetId })
           if (ce) eventBus.publish(ce)
         } catch { /* additive */ }
+      }
+
+      // Command-line credential use (§4d): -p/--password, user:pass@host in a
+      // URL argument. Derived from the command text that was going to be
+      // captured anyway, and the secret is masked before it reaches the event
+      // — the fact of the credential use is evidence, the secret is liability.
+      if ((agentType === 'shell' || agentType === 'terminal') && typeof data.command === 'string' && data.command) {
+        for (const cred of detectCredentialUse(data.command as string)) {
+          try {
+            const ce = insertEvent('credential_use', {
+              subtype: cred.kind,
+              masked: cred.masked,
+              // No raw command here — it carries the plaintext secret. The
+              // parent shell event (linked via _causes) holds the command,
+              // subject to the normal redaction layers; this event records
+              // only the masked fact.
+              ...(cred.destHost ? { host: cred.destHost } : {}),
+              ...(cred.userContext ? { user_context: cred.userContext } : {}),
+              ...(cred.scheme ? { scheme: cred.scheme } : {}),
+              description: `credential in command (${cred.kind})`,
+              mitre_ttp: 'T1078',
+              _causes: [event.id]
+            }, { engagementId, operatorId: operator.id, targetId: cred.destHost || targetId })
+            if (ce) eventBus.publish(ce)
+          } catch { /* additive */ }
+        }
       }
 
       json(res, 201, event)
