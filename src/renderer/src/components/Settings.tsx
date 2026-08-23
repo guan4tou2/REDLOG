@@ -293,7 +293,6 @@ export default function Settings(): JSX.Element {
 
         {(tab === 'agents' || tab === 'network' || tab === 'operators') && (
           <>
-            {tab === 'agents' && <McpPanel t={t} />}
             {tab === 'agents' && <HookWatchPathsPanel t={t} />}
             {tab === 'operators' && <OperatorsPanel t={t} />}
             {tab === 'network' && <BrowserPanel t={t} config={config} setConfig={setConfig} />}
@@ -1463,105 +1462,6 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
   )
 }
 
-function McpPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [info, setInfo] = useState<McpInfo | null>(null)
-  const [creds, setCreds] = useState<{ token: string; endpoint: string; name: string } | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [agentName, setAgentName] = useState('')
-
-  useEffect(() => {
-    window.redlog.mcp.info().then(setInfo).catch(() => setInfo(null))
-  }, [])
-
-  const setup = async (): Promise<void> => {
-    setBusy(true)
-    const r = await window.redlog.mcp.setupToken(agentName.trim() ? { name: agentName.trim() } : undefined)
-    setBusy(false)
-    if (r) {
-      setCreds({ token: r.token, endpoint: r.endpoint, name: r.name })
-      window.redlog.mcp.info().then(setInfo)
-    }
-  }
-
-  const httpCmd = creds
-    ? `claude mcp add --transport http redlog ${creds.endpoint} --header "Authorization: Bearer ${creds.token}"`
-    : null
-  const stdioCmd = info ? `claude mcp add redlog -- node ${info.stdioPath}` : null
-
-  const copy = (text: string): void => {
-    navigator.clipboard.writeText(text)
-    toast(t('toast.copied'), 'success')
-  }
-
-  return (
-    <FieldGroup title={t('settings.mcp')}>
-      <p className="text-xs text-redlog-text-faint">{t('settings.mcpHint')}</p>
-
-      {info ? (
-        <p className="text-xs text-emerald-400 font-mono">
-          ● {t('settings.mcpLive', { endpoint: info.endpoint })}
-        </p>
-      ) : (
-        <p className="text-xs text-redlog-text-dim">{t('settings.mcpOffline')}</p>
-      )}
-
-      {/* v0.6.87 A3: named MCP operators. Leave blank → single `MCP agent`
-          operator (previous default). Type a name → per-agent operator
-          (e.g. "Claude Desktop", "OpenCode", "Codex") gets its own token so
-          Timeline attribution shows who did what. */}
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={agentName}
-          onChange={(e) => setAgentName(e.target.value)}
-          placeholder={t('settings.mcpAgentNamePlaceholder')}
-          maxLength={40}
-          className="flex-1 px-2 py-1 text-xs font-mono bg-redlog-surface border border-redlog-border rounded focus:outline-none focus:ring-1 focus:ring-red-500/40"
-        />
-        <button
-          onClick={setup}
-          disabled={busy || !info}
-          className="shrink-0 px-3 py-1.5 text-xs rounded bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover disabled:opacity-50"
-        >
-          {busy ? '…' : t('settings.mcpSetup')}
-        </button>
-      </div>
-
-      {info?.operators && info.operators.length > 0 && (
-        <div className="text-xs text-redlog-text-dim">
-          {t('settings.mcpRegisteredAgents')}: {info.operators.map((o) => o.name).join(' · ')}
-        </div>
-      )}
-
-      {creds && httpCmd && (
-        <div className="mt-2 p-3 rounded border border-red-900/50 bg-red-950/30 space-y-2">
-          <p className="text-xs text-red-300">{t('settings.mcpCreated')}</p>
-          <div className="flex items-start gap-1">
-            <code className="flex-1 bg-black/40 text-redlog-text text-xs font-mono px-2 py-1.5 rounded break-all">{httpCmd}</code>
-            <button onClick={() => copy(httpCmd)} className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover shrink-0">{t('settings.mcpCopy')}</button>
-          </div>
-        </div>
-      )}
-
-      {stdioCmd && (
-        <details className="mt-1">
-          <summary className="text-xs text-redlog-text-faint cursor-pointer">{t('settings.mcpStdio')}</summary>
-          <div className="flex items-start gap-1 mt-1">
-            <code className="flex-1 bg-black/40 text-redlog-text-dim text-xs font-mono px-2 py-1.5 rounded break-all">{stdioCmd}</code>
-            <button onClick={() => copy(stdioCmd)} className="px-2 py-1.5 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover shrink-0">{t('settings.mcpCopy')}</button>
-          </div>
-          <p className="text-xs text-redlog-text-faint mt-1">{t('settings.mcpStdioHint')}</p>
-        </details>
-      )}
-    </FieldGroup>
-  )
-}
-
-// v0.7.7 U1: Settings ▸ AI Agents panel. Currently one built-in tailer
-// (Claude Code, hard-coded in main); v0.8.0 refactors this into a plugin
-// list with per-plugin toggles + `emitThinking` per adapter. For v0.7.7
-// the panel controls the single existing tailer via `config.agentTailer`
-// and previews the fixed self-exclusion mechanism (`.redlog-app-root`).
 function AgentsPanel({
   t, config, setConfig
 }: {

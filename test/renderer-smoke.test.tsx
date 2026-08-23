@@ -147,10 +147,6 @@ function installBridge(): void {
       revoke: async () => true,
       delete: async () => true
     },
-    mcp: {
-      info: async () => ({ port: 6660, endpoint: 'http://127.0.0.1:6660/mcp', stdioPath: '/x/mcp/redlog-mcp-server.js', hasToken: false }),
-      setupToken: async () => ({ token: 't'.repeat(64), port: 6660, endpoint: 'http://127.0.0.1:6660/mcp' })
-    },
     capture: {
       health: async () => ({
         verdict: 'healthy', recording: true, lastEventAt: Date.now(), checkedAt: Date.now(),

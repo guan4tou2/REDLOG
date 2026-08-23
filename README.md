@@ -53,7 +53,7 @@ Penetration testers need a complete, tamper-evident record of every action taken
 **Key differentiators:**
 
 - **Zero-friction capture** — installs, starts recording, stays out of your way
-- **AI agent native** — MCP server + shell hooks let Claude Code, Codex, and GPT log directly into your timeline
+- **AI agent native** — shell hooks let Claude Code, Codex, and GPT log directly into your timeline
 - **Scope-aware** — root-domain matching alerts you when tools touch out-of-scope targets without false positives on unrelated hosts
 - **Per-operator identity** — every event carries an operator id resolved from an API token; teammates and agents get their own tokens ([details](docs/operators.md))
 - **Evidence chain + OpenTimestamps** — append-only SHA-256 chain, hourly anchored to public OpenTimestamps calendars, one-command `.ots` bundle export for third-party `ots verify` ([details](docs/audit-trail.md))
@@ -62,7 +62,6 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Entropy-based redaction** — high-entropy tokens and per-project allow/denylist patterns are auto-redacted from captured output
 - **Clock hardening** — every event carries wall-clock, monotonic, and NTP offset
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end; the timeline exposes both **per-command replay** (▶ Replay stdout) and **full-session replay** (▶ Replay entire session) — critical when the operator ssh'd into a remote host and the local `ssh` command_end is the only chain entry from that stretch
-- **Built-in MCP server (HTTP)** — the app hosts its own MCP endpoint, live the moment RedLog opens; agents operate the app (markers, scope, anchoring) without spawning a subprocess ([details](docs/agent-integration.md#2-mcp-server-operate-the-app))
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
 - **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology; plain `ssh user@host` also fires a pivot so the timeline reflects "attention moved to a remote host" ([details](docs/event-schema.md#pivot-events))
 - **VPS deployment** — `hooks/vps-deploy.sh install user@vps && hooks/vps-deploy.sh tunnel user@vps` copies the shell hook to a remote box and opens a reverse-tunnel session, so every command run on the VPS lands in the local chain in real time
@@ -216,56 +215,6 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 ./hooks/codex-wrapper.sh nmap -sV target.com
 ```
 
-### Layer 2: MCP Server (operate the app) — control plane, not logging
-
-RedLog hosts its own MCP server **over HTTP**, so it's live whenever the app is open — no subprocess to spawn. Use it to *operate* RedLog: create markers, check scope, anchor the chain, read history. Hooks do the logging; MCP does not duplicate it.
-
-Set up in **Settings ▸ Team & Integrations ▸ MCP Server**, then:
-
-```bash
-claude mcp add --transport http redlog http://127.0.0.1:6660/mcp \
-  --header "Authorization: Bearer <mcp-token>"
-```
-
-(A stdio bridge is available as a fallback — see [docs](docs/agent-integration.md#2-mcp-server-operate-the-app).)
-
-```bash
-claude mcp add redlog -- node /path/to/redlog/mcp/redlog-mcp-server.js
-```
-
-**18 available tools (HTTP or stdio):**
-
-| Tool | Description |
-|------|-------------|
-| `redlog_status` | IP state, event count, scope violations |
-| `redlog_whoami` | Confirm which operator token is loaded |
-| `redlog_operators_list` | List every registered operator |
-| `redlog_mark` | Create a timestamped marker (finding, phase change, note) |
-| `redlog_log_event` | Log a raw event with custom type and data |
-| `redlog_search` | Full-text search across all events |
-| `redlog_events` | Query recent events by type/target |
-| `redlog_scope` | Get scope config and violations |
-| `redlog_config` | Get project configuration |
-| `redlog_quickmark` | Bookmark a URL/finding |
-| `redlog_quickmarks_list` | List all bookmarks |
-| `redlog_loot_scan` | Scan text for credentials/secrets |
-| `redlog_screenshot` | Capture desktop screenshot |
-| `redlog_recording` | Pause/resume/toggle recording |
-| `redlog_chain_status` | Chain length + latest OTS anchor |
-| `redlog_chain_anchor_now` | Anchor current chain head to OpenTimestamps |
-| `redlog_chain_verify` | Fast prefix check on latest anchor |
-| `redlog_chain_upgrade` | Fetch upgraded OTS proofs for pending anchors |
-
-Ship-ready skill file at [`docs/skills/redlog-pentest.md`](docs/skills/redlog-pentest.md) — copy to `~/.claude/skills/` to opt an agent into the full flow.
-
-**Example agent interaction:**
-
-```
-User: "Check if this target is in scope, then run a port scan and log the results"
-
-Agent calls: redlog_scope → confirms target → runs nmap → redlog_mark with findings
-```
-
 ### Layer 3: HTTP API (Universal)
 
 Direct REST API for scripts, custom agents, and non-MCP tools.
@@ -371,7 +320,6 @@ Hooks
   └── codex-wrapper.sh      Shell wrapper for Codex/GPT
 
 MCP Server
-  └── redlog-mcp-server.js  18-tool MCP server (stdio transport)
 ```
 
 ## Project Structure
@@ -415,7 +363,6 @@ hooks/
   shell-preexec-hook.sh      zsh/bash preexec → RedLog
   codex-wrapper.sh           shell wrapper for any agent
 mcp/
-  redlog-mcp-server.js       MCP server (18 tools, stdio transport)
 cli/
   redlog-cli.js              CLI tool for external integration
 shell/

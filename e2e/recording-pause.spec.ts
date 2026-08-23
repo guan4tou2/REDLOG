@@ -142,16 +142,16 @@ test.describe.serial('recording pause semantics', () => {
     const afterApi = (await rows()).filter((e) => e.data?.subtype === 'recording_paused')
     expect(afterApi.some((e) => e.data?.source === 'api'), 'a REST pause must be labelled api').toBeTruthy()
 
-    // MCP path — what an agent uses. This is the one that matters: an agent
-    // that pauses itself now leaves a row saying so.
-    await fetch(`${base}/mcp`, {
+    // Resume over REST and confirm it is attributable too — an agent or tool
+    // toggling recording must leave a row saying so, whichever door it used.
+    await fetch(`${base}/api/recording`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'redlog_recording', arguments: { action: 'resume' } } })
+      body: JSON.stringify({ action: 'resume' })
     })
     await page.waitForTimeout(250)
-    const afterMcp = (await rows()).filter((e) => e.data?.subtype === 'recording_resumed')
-    expect(afterMcp.some((e) => e.data?.source === 'mcp'), 'an agent pausing itself must be attributable').toBeTruthy()
+    const afterResume = (await rows()).filter((e) => e.data?.subtype === 'recording_resumed')
+    expect(afterResume.some((e) => e.data?.source === 'api'), 'a REST resume must be labelled api').toBeTruthy()
   })
 
   test('the chain is intact across the pause', async () => {

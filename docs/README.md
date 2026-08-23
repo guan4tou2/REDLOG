@@ -47,9 +47,8 @@ design.
 
 ## Integrations
 
-- **[Agent integration](agent-integration.md)** — the full surface: the two-plane model (hooks *log*, MCP *operates*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), the app-hosted MCP server (18 tools, HTTP + stdio), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
+- **[Agent integration](agent-integration.md)** — the full surface: the capture model (hooks *log*), terminal hooks, agent transcript tailer (primary Claude Code capture), watch paths (whitelist), REST API, shell helpers, Codex function schema, the proxied browser, config profile sharing.
 - **[REST API reference](api-reference.md)** — complete per-endpoint docs for all 37 HTTP endpoints: auth, request/response schemas, auto-processing behavior.
-- **[MCP server](agent-integration.md#2-mcp-server-operate-the-app)** — RedLog hosts its own MCP endpoint over HTTP, live the moment the app opens (`http://127.0.0.1:<port>/mcp`); stdio bridge as a fallback. Set up in Settings ▸ Team & Integrations.
 - **[Proxied browser](agent-integration.md#proxied-browser)** — one-click Chromium through your mitmproxy, CDP enabled, project-local profile.
 
 ## Operator identity
@@ -104,9 +103,7 @@ Drift-signals that make the log honest: `recording_paused` / `recording_resumed`
 
 ## Related source
 
-- REST + HTTP MCP server: [`src/core/api-server.ts`](../src/core/api-server.ts)
-- MCP tool registry + JSON-RPC handler: [`src/core/mcp-tools.ts`](../src/core/mcp-tools.ts)
-- stdio MCP bridge: [`mcp/redlog-mcp-server.js`](../mcp/redlog-mcp-server.js)
+- REST API server: [`src/core/api-server.ts`](../src/core/api-server.ts)
 - Hooks: [`hooks/`](../hooks/) and [`shell/`](../shell/)
 - Anchoring: [`src/core/chain-anchor.ts`](../src/core/chain-anchor.ts)
 - Operator model: [`src/core/db/operators.ts`](../src/core/db/operators.ts)

@@ -26,7 +26,7 @@ timeline and `audit-trail.md` for why it can't be quietly edited.
 ┌──────────────┴─ core (src/core/) — zero Electron imports, unit-testable ──────┐
 │  db/{index,events,operators,findings}   event-bus   clock   signing            │
 │  chain-anchor   evidence-chain   bundle-export   sanitize   redaction          │
-│  api-server (REST + HTTP MCP)   mcp-tools   capture-health                    │
+│  api-server (REST)   capture-health                                           │
 │  loot- / pivot- / technique- / command- / target- detectors   scope-monitor    │
 │  ip-monitor   retention   cast-index   plugins/{loader,manifest,trust,host,…}  │
 └───────────────────────────────────────────────────────────────────────────────┘

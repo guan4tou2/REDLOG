@@ -182,10 +182,6 @@ contextBridge.exposeInMainWorld('redlog', {
   clock: {
     status: () => ipcRenderer.invoke('clock:status')
   },
-  mcp: {
-    info: () => ipcRenderer.invoke('mcp:info'),
-    setupToken: (opts?: { name?: string }) => ipcRenderer.invoke('mcp:setupToken', opts)
-  },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),
     toggle: (): Promise<boolean> => ipcRenderer.invoke('recording:toggle'),
