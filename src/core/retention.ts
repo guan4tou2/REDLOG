@@ -14,6 +14,8 @@ import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
+import { matchTarget } from './db/events'
+import { planEviction, type BodyEntry } from './body-eviction'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
 // upstream event so focus chain walks light up the "originally recorded here
@@ -249,4 +251,125 @@ export function sweepRetention(config: {
     opts
   )
   return { cast, screenshots, agentTranscripts, httpBodies }
+}
+
+// ── Size-pressure eviction for the HTTP body store ──────────────────────────
+//
+// Separate from sweepRetention because it answers a different question: not
+// "what is older than N days" but "the disk is filling — what can go without
+// losing evidence". The planner (body-eviction.ts) holds the policy and the
+// safety proof; this function is the join and the side effects.
+//
+// The event is never touched, only the .body file. The event keeps its
+// { sha256, size, file } attestation and the chain keeps verifying — an
+// evicted body reads back as "content no longer on disk", not as a fact that
+// was erased. See body-eviction.ts for why that makes this safe.
+export function sweepBodyStore(
+  config: {
+    httpBodies?: { maxBytes?: number }
+    scope?: { targets?: string[] }
+  },
+  opts: { engagementId: string; operatorId: string }
+): { evicted: number; freedBytes: number; shortfallBytes: number } {
+  const none = { evicted: 0, freedBytes: 0, shortfallBytes: 0 }
+  if (!opts.operatorId) return none
+  const budget = config.httpBodies?.maxBytes ?? 0
+  if (budget <= 0) return none  // unbounded is the default; opt in to bound it
+
+  let projectDir: string
+  try { projectDir = getProjectDir() } catch { return none }
+  const dir = path.join(projectDir, 'http-bodies')
+  if (!fs.existsSync(dir)) return none
+
+  // 1. The files on disk, with size and coldness.
+  let names: string[]
+  try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.body')) } catch { return none }
+  const stat = new Map<string, { sizeBytes: number; mtimeMs: number }>()
+  for (const n of names) {
+    try { const s = fs.statSync(path.join(dir, n)); stat.set(n, { sizeBytes: s.size, mtimeMs: s.mtimeMs }) }
+    catch { /* vanished mid-scan */ }
+  }
+
+  // 2. Scope is the pin. A .body file is pinned if ANY event referencing it
+  //    (bodies are deduped, so one file backs many events) has an in-scope
+  //    target — OR-ing across references is what makes eviction refcount-gated:
+  //    evictable only when every reference agrees it is not evidence.
+  const pinned = pinnedFiles(config.scope?.targets ?? [])
+
+  const entries: BodyEntry[] = []
+  for (const [file, s] of stat) {
+    entries.push({ file, sizeBytes: s.sizeBytes, mtimeMs: s.mtimeMs, pinned: pinned.has(file) })
+  }
+
+  // 3. Decide, then act.
+  const plan = planEviction(entries, budget)
+  if (plan.evict.length === 0 && plan.shortfallBytes === 0) return none
+
+  let evicted = 0
+  let freedBytes = 0
+  for (const file of plan.evict) {
+    try {
+      fs.unlinkSync(path.join(dir, file))
+      evicted++
+      freedBytes += stat.get(file)?.sizeBytes ?? 0
+    } catch { /* already gone — fine */ }
+  }
+
+  // 4. Evidence that shrinks says so. One summary event, not one per file: a
+  //    wide assessment can evict thousands of bodies, and a per-file flood
+  //    would bury the timeline it is meant to keep legible.
+  try {
+    const ev = insertEvent('system', {
+      subtype: 'body_evicted',
+      count: evicted,
+      freed_bytes: freedBytes,
+      total_bytes: plan.totalBytes,
+      budget_bytes: budget,
+      shortfall_bytes: plan.shortfallBytes,
+      description: plan.shortfallBytes > 0
+        ? `Evicted ${evicted} body file(s) under disk pressure; still ${plan.shortfallBytes} bytes over budget after evicting everything unpinned — pinned (in-scope) bodies were kept.`
+        : `Evicted ${evicted} body file(s) under disk pressure (freed ${freedBytes} bytes; in-scope bodies kept).`
+    }, opts)
+    if (ev) eventBus.publish(ev)
+  } catch (e) { noteDbError('body-eviction', e) }
+
+  return { evicted, freedBytes, shortfallBytes: plan.shortfallBytes }
+}
+
+/** The set of `.body` filenames pinned by an in-scope reference. Empty scope
+ *  pins nothing — with no declared scope there is no "in-scope" to protect,
+ *  and eviction falls back to purely coldest-first, which is the safe order
+ *  anyway. */
+function pinnedFiles(scopeTargets: string[]): Set<string> {
+  const pinned = new Set<string>()
+  if (scopeTargets.length === 0) return pinned
+  let db: ReturnType<typeof getDB>
+  try { db = getDB() } catch { return pinned }
+  const REF_FIELDS = ['request_body_ref', 'response_body_ref', 'ws_body_ref', 'tcp_body_ref']
+  // Alias each extraction to a stable column name (f0..f3) rather than relying
+  // on SQLite naming the column after the expression text.
+  const selects = REF_FIELDS.map((f, i) => `json_extract(data,'$.${f}.file') AS f${i}`).join(', ')
+  const where = REF_FIELDS.map((f) => `json_extract(data,'$.${f}.file') IS NOT NULL`).join(' OR ')
+  // Both tiers: the mitmproxy HTTP events that carry the bodies live in
+  // `events_logged` (LOGGED_TIER), not the chained `events` table — querying
+  // only `events` would pin nothing and quietly evict in-scope evidence.
+  const rows: Array<Record<string, unknown>> = []
+  for (const table of ['events', 'events_logged']) {
+    try {
+      rows.push(...(db.prepare(
+        `SELECT target_id, ${selects} FROM ${table} WHERE ${where}`
+      ).all() as Array<Record<string, unknown>>))
+    } catch { /* table may not exist on an older DB — skip */ }
+  }
+
+  for (const row of rows) {
+    const target = row.target_id as string | null
+    if (!target) continue
+    if (!scopeTargets.some((p) => matchTarget(target, p))) continue
+    for (let i = 0; i < REF_FIELDS.length; i++) {
+      const file = row[`f${i}`] as string | null
+      if (file) pinned.add(file)
+    }
+  }
+  return pinned
 }

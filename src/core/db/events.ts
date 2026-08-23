@@ -782,7 +782,7 @@ export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] 
   })
 }
 
-function matchTarget(target: string, pattern: string): boolean {
+export function matchTarget(target: string, pattern: string): boolean {
   const t = target.toLowerCase()
   const p = pattern.toLowerCase()
   if (p.startsWith('*.')) {
