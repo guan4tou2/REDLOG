@@ -8,7 +8,7 @@
 // least one event of every agent_type, which is exactly the shape that broke.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup } from '@testing-library/react'
+import { render, cleanup, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
@@ -46,6 +46,7 @@ function makeEvent(agentType: string): Record<string, unknown> {
     data: {
       subtype: `${agentType}_sub`,
       command: 'nmap -sV example.com',
+      detectedTarget: 'example.com',
       exit_code: 0,
       trigger: 'manual',
       title: 'A finding',
@@ -225,6 +226,17 @@ describe('renderer views render without throwing', () => {
       expect(() => renderView(make())).not.toThrow()
     })
   }
+
+  // The mount loop above only proves the FIRST synchronous render survives.
+  // TargetView builds its rows after an async query resolves, and a crash in
+  // that second render (a hook interleaved into the filter callback, reading
+  // `filtered` before it was assigned) is invisible to a synchronous
+  // not.toThrow — it shipped, and only an app-in-the-loop e2e caught it. This
+  // waits for a real row so the data-render path is under test here too.
+  it('TargetView survives rendering actual target rows', async () => {
+    renderView(<TargetView />)
+    expect(await screen.findByText('example.com', {}, { timeout: 3000 })).toBeTruthy()
+  })
 
   it('Timeline renders a row for every agent_type without a missing-lane crash', async () => {
     const { findAllByText } = render(<I18nProvider><TimelinePanel /></I18nProvider>)
