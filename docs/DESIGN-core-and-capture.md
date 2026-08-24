@@ -382,9 +382,13 @@ recordings.
   to 27 when connection capture added one. Three groups still need a scope
   ruling rather than a merge: the deconfliction webhook, operator tokens, and
   the MCP server.
-- Timeline view modes — the audit-mode shape does not survive §1, but the
-  eight flat toggles are still a real problem.
-- 18 lanes.
+- ~~Timeline view modes / the eight flat toggles.~~ **Done 2026-08-24.** The
+  three-view-modes attempt was reverted (it invented personas); the toggles are
+  now grouped by effect, with the low-frequency view/audit controls (session
+  dividers, timezone, auditor view) behind one "More" control.
+- ~~18 lanes.~~ **Done 2026-08-24.** Banded by capture group (commands /
+  traffic / artifacts / signals), collapsible; the timeline opens as three or
+  four bands instead of eighteen lanes.
 - ~~The plugin marketplace, publisher trust and revocation lists.~~
   **Removed 2026-08-22.** Browsing a registry, pinning publishers by Ed25519
   fingerprint, and reading revocation lists are the machinery of *distributing*

@@ -119,6 +119,13 @@ test.describe.serial('timeline geometry + startup gates', () => {
 
   // ---------------------------------------------------------------- P0-2
   test('lane stack scrolls vertically instead of clipping (v0.9.4 P0-2)', async () => {
+    // Lanes now open banded (§6). Expand every band so all 18 lanes show, which
+    // is the many-rows overflow scenario this test exists for.
+    for (const b of ['commands', 'traffic', 'artifacts', 'signals']) {
+      const chip = page.locator(`[data-testid="timeline-band-${b}"]`)
+      if (await chip.count()) await chip.click()
+    }
+    await page.waitForTimeout(200)
     const geom = await page.evaluate(() => {
       const outer = document.querySelector('div.overflow-y-auto.min-h-0') as HTMLElement | null
       if (!outer) return null
