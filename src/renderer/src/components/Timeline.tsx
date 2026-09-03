@@ -314,6 +314,11 @@ function eventTitle(event: RedLogEvent): string {
       if (d.subtype === 'recording_paused') return `⏸ Recording paused`
       if (d.subtype === 'recording_resumed') return `⏺ Recording resumed`
       if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
+      // Both carry their own `description`, so this adds no new English to a
+      // function that has no translator; the Inspector composes the localized
+      // line where `t` is in scope.
+      if (d.subtype === 'scope_recomputed') return `⟲ ${d.description || ''}`.trim()
+      if (d.subtype === 'scope_cleared') return `✓ ${d.description || ''}`.trim()
       if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
       if (d.subtype === 'secret_revealed') return `👁 Secret revealed: ${(d.fields as string[])?.join(', ') || 'unknown fields'}`
       if (d.subtype === 'connection_capture_started') return `⇄ Connection capture on — established connections only, no SYN scans`
@@ -328,7 +333,7 @@ function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventTy
   // Scope violations are stored under agent_type='system' for historical reasons
   // (historical: a since-removed webhook filter watched 'system'). Route them into their own
   // lane at render time so they don't drown in the system-lane housekeeping.
-  if (agentType === 'system' && subtype === 'scope_violation') return 'scope'
+  if (agentType === 'system' && (subtype === 'scope_violation' || subtype === 'scope_recomputed' || subtype === 'scope_cleared')) return 'scope'
   if (LANES.includes(agentType as LaneId)) return agentType as LaneId
   // Plugin-registered event type maps into whichever built-in lane the plugin
   // declared (its `lane` field). Falls back to `system` when the plugin didn't
@@ -534,7 +539,14 @@ function formatBehind(ms: number): string {
 //
 // The `⛓️‍💥` badge (feature 5) is only attached when a full-verify has been
 // run AND this event id matches `brokenAtEventId` from that run.
-interface EventBadge { icon: string; reason: string; key: string }
+interface EventBadge {
+  icon: string
+  /** A literal reason, for the twenty badges that predate localisation. */
+  reason?: string
+  /** An i18n key, for new badges. Rendered through `t` at the two call sites. */
+  reasonKey?: string
+  key: string
+}
 
 /** v0.9.6 (T3): what the track should say about a shell command's output.
  *  `fail` outlines the dot when the command exited non-zero; `io` decides
@@ -645,7 +657,12 @@ const IO_MARK_COLOR: Record<Exclude<IoMark, null>, string> = {
   uncaptured: '#f59e0b'
 }
 
-function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge[] {
+function computeBadges(
+  evt: RedLogEvent,
+  brokenAtId?: string | null,
+  clearedViolations?: ReadonlySet<string>,
+  supersededViolations?: ReadonlySet<string>
+): EventBadge[] {
   const b: EventBadge[] = []
   const d = (evt.data as Record<string, unknown> | undefined) ?? {}
   const sub = d.subtype as string | undefined
@@ -684,6 +701,17 @@ function computeBadges(evt: RedLogEvent, brokenAtId?: string | null): EventBadge
   // subagent subtree.
   if (evt.agentType === 'agent' && d.is_sidechain === true) {
     b.push({ icon: '↪', reason: 'subagent (Task tool) turn — separate reasoning thread', key: 'sidechain' })
+  }
+  // A violation judged after the fact is a different claim from one judged as
+  // it happened, and the difference has to be visible on the track — not only
+  // on the Scope page — or the timeline reads as though the operator was warned
+  // at the time and ignored it.
+  if (evt.agentType === 'system' && sub === 'scope_violation' && d.judged === 'retroactive') {
+    b.push({ icon: '⟲', reasonKey: 'timeline.badge.retroactive', key: 'retro' })
+  }
+  if (evt.agentType === 'system' && sub === 'scope_violation'
+      && (clearedViolations?.has(evt.id) || supersededViolations?.has(evt.id))) {
+    b.push({ icon: '✓', reasonKey: 'timeline.badge.cleared', key: 'cleared' })
   }
   return b
 }
@@ -1768,14 +1796,42 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return fold ? ` · ${t('marker.amendedTimes', { count: fold.amendCount })}` : ''
   }, [foldById, t])
 
+  // Which violations no longer stand. Both are read from the rows themselves —
+  // a `scope_cleared` naming one, or a newer violation covering the same source
+  // event — so a withdrawn violation looks withdrawn on the track without the
+  // original row being touched. Same slot and same TDZ contract as the fold
+  // memos above: nothing higher may name these.
+  const violationStanding = useMemo(() => {
+    const cleared = new Set<string>()
+    const superseded = new Set<string>()
+    const latestBySource = new Map<string, string>()
+    for (const e of events) {
+      if (e.agentType !== 'system') continue
+      const d = (e.data ?? {}) as Record<string, unknown>
+      if (d.subtype === 'scope_cleared') {
+        if (typeof d.violation_id === 'string') cleared.add(d.violation_id)
+        continue
+      }
+      if (d.subtype !== 'scope_violation') continue
+      const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
+      const src = typeof causes[0] === 'string' ? (causes[0] as string) : null
+      if (!src) continue
+      // `events` is newest-first, so the FIRST row seen for a source event is
+      // the latest one and everything after it has been superseded.
+      if (latestBySource.has(src)) superseded.add(e.id)
+      else latestBySource.set(src, e.id)
+    }
+    return { cleared, superseded }
+  }, [events])
+
   const badgesById = useMemo(() => {
     const m = new Map<string, EventBadge[]>()
     for (const e of events) {
-      const b = computeBadges(e, brokenAtId)
+      const b = computeBadges(e, brokenAtId, violationStanding.cleared, violationStanding.superseded)
       if (b.length) m.set(e.id, b)
     }
     return m
-  }, [events, brokenAtId])
+  }, [events, brokenAtId, violationStanding])
   const anomalyCount = badgesById.size
 
   // Restore-from-storage: if a focus anchor id was saved in a previous session
@@ -2489,11 +2545,15 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
   // interaction; it uses `displayTs` so a marker with an override timestamp
   // still lands under its rendered position instead of its wall-clock one.
-  const scrollToEvent = useCallback((evt: RedLogEvent) => {
+  const scrollToTs = useCallback((ts: number) => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollLeft = Math.max(0, Math.min(toX(displayTs(evt)) - el.clientWidth / 2, TRACK_W - el.clientWidth))
+    el.scrollLeft = Math.max(0, Math.min(toX(ts) - el.clientWidth / 2, TRACK_W - el.clientWidth))
   }, [toX, TRACK_W])
+
+  const scrollToEvent = useCallback((evt: RedLogEvent) => {
+    scrollToTs(displayTs(evt))
+  }, [scrollToTs])
 
   // v0.6.91 W3: activate a palette result. Events / markers → select + centre.
   // Operator / host → drop the value into the filter query (feature 1 dim path
@@ -3433,7 +3493,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                   // them and see badges in the popover row).
                   const badges = single ? badgesById.get(evt.id) : undefined
                   const badgeTitle = badges && badges.length
-                    ? '\n' + badges.map((b) => `${b.icon} ${b.reason}`).join('\n')
+                    ? '\n' + badges.map((b) => `${b.icon} ${b.reasonKey ? t(b.reasonKey) : b.reason ?? ''}`).join('\n')
                     : ''
                   // v0.7.7 U2: nudge subagent (Task-tool) events right by a
                   // few pixels so a burst of parallel subagent turns visibly
@@ -3753,9 +3813,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                   <span
                     key={b.key}
                     className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 font-mono"
-                    title={b.reason}
+                    title={b.reasonKey ? t(b.reasonKey) : b.reason}
                   >
-                    {b.icon} {b.reason}
+                    {b.icon} {b.reasonKey ? t(b.reasonKey) : b.reason}
                   </span>
                 ))}
               </div>
@@ -3784,6 +3844,23 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                     // this is the DEFAULT path for one — while 「chain broken」 is
                     // the app's most serious claim and must stay rare enough to
                     // be believed. Offer to fetch it instead.
+                    // A retroactive violation cites a source event that is days
+                    // old and almost never inside the loaded window. Same honest
+                    // claim as the amendment case: not loaded, not broken.
+                    const srcTs = (selectedEvent.data as Record<string, unknown> | undefined)?.source_ts
+                    if (typeof srcTs === 'number' && srcTs > 0) {
+                      return (
+                        <button
+                          key={cid}
+                          type="button"
+                          onClick={() => scrollToTs(srcTs)}
+                          className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
+                          title={cid}
+                        >
+                          {t('timeline.detail.causeNotLoaded', { time: formatTs(srcTs, tz, projectTz, 'timeSec') })}
+                        </button>
+                      )
+                    }
                     if (isMarkerAmendment(selectedEvent)) {
                       return (
                         <button

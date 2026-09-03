@@ -24,15 +24,20 @@ export type {
 export type {
   Surface,
   EmitContext,
-  WebhookConfig,
   AdherenceRow,
   ViolationRow
 } from './surface'
 
-export { ChainEmitter, BadgeSurface, WebhookForwarder, AdherenceCounter, ViolationLog } from './surface'
+export { ChainEmitter, BadgeSurface, AdherenceCounter, ViolationLog } from './surface'
 export { AlertBus, type DerivedPolicy } from './bus'
 
 export {
+  classifyScopeTarget,
+  buildScopeIndexes,
+  isReportable,
+  alertFloorFor,
+  type ScopeSnapshot,
+  type ScopeIndexes,
   IPPolicy,
   ScopePolicy,
   CombinedPolicy,
@@ -42,3 +47,5 @@ export {
   type CombinedPolicyConfig,
   type BurstPolicyConfig
 } from './policies'
+
+export { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL, type ScopeSignalSource } from './scope-signal'

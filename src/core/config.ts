@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import yaml from 'js-yaml'
@@ -362,6 +363,51 @@ export function saveConfig(projectDir: string, config: RedLogConfig): void {
   fs.mkdirSync(projectDir, { recursive: true })
   const configPath = path.join(projectDir, 'config.yaml')
   fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
+}
+
+/** The scope actually in force, as one value.
+ *
+ *  `config.scope.targets` is not it: a project can point at a Burp or ZAP scope
+ *  FILE, and what the policy sees is the concatenation. That merge used to be
+ *  written out by hand at three call sites in main, which meant three chances
+ *  for "the scope" to mean three different things — and the recompute needs a
+ *  single answer, because it hashes this to decide whether the boundary moved
+ *  at all.
+ *
+ *  The file's sha256 is carried separately because the path alone cannot say
+ *  whether the boundary changed: an operator editing the file on disk moves the
+ *  scope without touching the config. */
+export interface ScopeInForce {
+  targets: string[]
+  excludeTargets: string[]
+  scopeFile: string | null
+  scopeFileSha256: string | null
+  scopeFileEntries: number
+}
+
+export function snapshotScope(config: RedLogConfig): ScopeInForce {
+  const targets = [...(config.scope?.targets ?? [])]
+  let scopeFileSha256: string | null = null
+  let scopeFileEntries = 0
+  const scopeFile = config.scope?.scopeFile || null
+  if (scopeFile) {
+    const loaded = loadScopeFile(scopeFile)
+    scopeFileEntries = loaded.length
+    if (loaded.length > 0) {
+      // Deduped, order preserved: an entry present in both the config list and
+      // the file is one boundary, not two, and a stable order keeps the hash
+      // stable across restarts.
+      for (const t of loaded) if (!targets.includes(t)) targets.push(t)
+      scopeFileSha256 = crypto.createHash('sha256').update(loaded.join('\n')).digest('hex')
+    }
+  }
+  return {
+    targets,
+    excludeTargets: [...(config.scope?.excludeTargets ?? [])],
+    scopeFile,
+    scopeFileSha256,
+    scopeFileEntries
+  }
 }
 
 export function loadScopeFile(scopeFilePath: string): string[] {

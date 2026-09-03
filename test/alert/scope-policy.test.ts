@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ScopePolicy } from '../../src/core/alert/policies'
+import { ScopePolicy, classifyScopeTarget, isReportable, alertFloorFor } from '../../src/core/alert/policies'
+import { matchTarget } from '../../src/core/db/events'
 import type { TargetHitSignal } from '../../src/core/alert/signal'
 
 function hit(target: string): TargetHitSignal {
@@ -103,5 +104,72 @@ describe('ScopePolicy — D1-D4 distance ladder', () => {
     p.configure({ targets: ['*.example.com'], excludeTargets: ['*.staging.example.com'] })
     const [v] = p.evaluate(hit('api.staging.example.com'))
     expect(v.distance).toBe('excluded')
+  })
+})
+
+describe('the pure classifier is the same classifier', () => {
+  // The recompute re-judges rows the live path already judged. If the two
+  // answers can differ, an allowlist change produces verdicts that contradict
+  // the ones already in the chain, and there is no way to tell which is right.
+  const CASES: Array<{ targets: string[]; excludes?: string[]; target: string }> = [
+    { targets: ['*.example.com'], excludes: ['admin.example.com'], target: 'admin.example.com' },
+    { targets: ['*.example.com'], target: 'www.example.com' },
+    { targets: ['10.0.0.5'], target: '10.0.0.99' },
+    { targets: ['10.0.0.0/24'], target: '10.0.0.99' },
+    { targets: ['example.com'], target: 'other.example.com' },
+    { targets: ['*.example.com'], target: 'evil.test' },
+    { targets: [], target: 'anything.at.all' }
+  ]
+
+  it('agrees with ScopePolicy.evaluate on every ladder case', () => {
+    for (const c of CASES) {
+      const p = new ScopePolicy()
+      p.configure({ targets: c.targets, excludeTargets: c.excludes ?? [], alertFloor: alertFloorFor(true) })
+      const pure = classifyScopeTarget(c.target, { targets: c.targets, excludeTargets: c.excludes ?? [] })
+      const [v] = p.evaluate({
+        kind: 'target_hit', timestamp: 0, target: c.target,
+        source: 'shell', sourceEventId: null, action: 'x'
+      })
+      if (v) {
+        expect(pure.distance, `${c.target} vs ${JSON.stringify(c.targets)}`).toBe(v.distance)
+        expect(pure.authority).toBe(v.authority)
+        expect(pure.severity).toBe(v.severity)
+      } else {
+        // No verdict emitted means the distance was below the floor — which is
+        // exactly what isReportable says about the pure answer.
+        expect(isReportable(pure.distance, alertFloorFor(true))).toBe(false)
+      }
+    }
+  })
+
+  it('reproduces the emit gate under every floor the app actually uses', () => {
+    expect(alertFloorFor(false)).toEqual(['excluded'])
+    expect(alertFloorFor(true)).toEqual(['excluded', 'adjacent_subnet', 'adjacent_domain'])
+    expect(alertFloorFor(undefined)).toEqual(alertFloorFor(true))
+    // `unrelated` is in neither floor: off-profile traffic is noticed, not
+    // alarmed about. A recompute that ignored this would "newly flag" the
+    // entire unrelated corpus on the first save.
+    expect(isReportable('unrelated', alertFloorFor(true))).toBe(false)
+    expect(isReportable('in_scope', alertFloorFor(true))).toBe(false)
+    expect(isReportable('adjacent_domain', alertFloorFor(false))).toBe(false)
+    expect(isReportable('excluded', alertFloorFor(false))).toBe(true)
+  })
+
+  it('classifies case-sensitively, so a caller must not normalise first', () => {
+    const scope = { targets: ['*.Example.com'], excludeTargets: [] }
+    expect(classifyScopeTarget('www.Example.com', scope).distance).toBe('in_scope')
+    expect(classifyScopeTarget('www.example.com', scope).distance).not.toBe('in_scope')
+  })
+
+  it('does NOT agree with matchTarget — the two matchers are different questions', () => {
+    // Documented rather than fixed. `matchTarget` (used by retention's body
+    // pinning) is a substring test, so the pattern 'evil' pins anything
+    // containing it; the policy matcher is exact-or-wildcard. A recompute must
+    // use the policy matcher, because parity with the live verdict is the
+    // whole point. Unifying them is a separate, deliberate change. They also
+    // disagree on case: matchTarget lowercases both sides, the policy does not.
+    expect(matchTarget('a.evil.example', 'evil')).toBe(true)
+    expect(classifyScopeTarget('a.evil.example', { targets: ['evil'], excludeTargets: [] }).distance)
+      .not.toBe('in_scope')
   })
 })

@@ -11,6 +11,8 @@
 import type { RedLogConfig } from '../../core/config'
 import type { IPProducerState } from './producers/ip-signal-producer'
 import {
+  alertFloorFor,
+  type ScopeSnapshot,
   AlertBus,
   BadgeSurface,
   BurstPolicy,
@@ -111,10 +113,10 @@ export class AlertRuntime {
       // v0.11 had `warnOnViolation` as a single boolean gating everything.
       // The new alertFloor list is finer-grained; `warnOnViolation:false`
       // maps to "only in_scope and excluded emit" — every operator wants
-      // the explicit-deny case fired regardless.
-      alertFloor: cfg.scope?.warnOnViolation === false
-        ? ['excluded']
-        : ['excluded', 'adjacent_subnet', 'adjacent_domain']
+      // the explicit-deny case fired regardless. Read from core so the
+      // recompute cannot judge stored rows against a different floor than the
+      // live path used.
+      alertFloor: alertFloorFor(cfg.scope?.warnOnViolation)
     })
 
 
@@ -162,6 +164,10 @@ export class AlertRuntime {
   /** IPC-compat: what the ScopePanel / StatusBar violation counter show. */
   scopeViolations(): ViolationRow[] { return this.violationLog.list() }
   scopeViolationCount(): number { return this.violationLog.count() }
+  /** The scope in force, carried across a config save so the recompute can
+   *  compare before and after. */
+  scopeSnapshot(): ScopeSnapshot { return this.scopePolicy.snapshot() }
+
   scopeIsConfigured(): boolean { return this.scopePolicy.isConfigured() }
 
   /** Adherence snapshot for the post-hoc scope report. */

@@ -167,9 +167,15 @@ interface RedLogAPI {
     capture: (causeEventId?: string) => Promise<string | null>
   }
   scope: {
-    getViolations: () => Promise<Array<{ target: string; command: string; timestamp: number }>>
+    getViolations: () => Promise<Array<{
+      id: string; target: string; command: string; timestamp: number
+      sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
+    }>>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
+    /** The newest scope_recomputed summary, or null. The Scope banner is a
+     *  projection of this row, which is why it needs no dismissal state. */
+    getLastRecompute: () => Promise<Record<string, unknown> | null>
   }
   chain: {
     length: () => Promise<number>

@@ -7,7 +7,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
@@ -24,6 +24,9 @@ import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAn
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
 import { amendMarker, markerIdsIn, sliceWithAmendments } from '../core/marker-amend'
+import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { alertFloorFor } from '../core/alert'
+import type { ScopeSnapshot } from '../core/scope-recompute'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
@@ -367,8 +370,8 @@ function broadcastIPStatus(status: IPStatusShape): void {
 // Log the security-relevant fields that changed on config:save. Cosmetic changes
 // (Dock icon, HUD flash toggle) stay silent — we only record settings that would
 // affect enforcement or attribution if silently loosened.
-function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
-  if (!currentEngagementId || !currentOperatorId) return
+function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): string | null {
+  if (!currentEngagementId || !currentOperatorId) return null
   const changed: Record<string, { from: unknown; to: unknown }> = {}
   const check = (path: string, from: unknown, to: unknown): void => {
     if (JSON.stringify(from) !== JSON.stringify(to)) changed[path] = { from, to }
@@ -385,7 +388,7 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
   check('clipboard.enabled', oldCfg.clipboard?.enabled, newCfg.clipboard?.enabled)
   check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
   check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
-  if (Object.keys(changed).length === 0) return
+  if (Object.keys(changed).length === 0) return null
   try {
     const ev = insertEvent('system', {
       subtype: 'config_changed',
@@ -393,7 +396,84 @@ function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): void {
       description: `Config changed: ${Object.keys(changed).join(', ')}`
     }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
     if (ev) eventBus.publish(ev)
+    // Returned so a scope recompute triggered by this save can cite the row
+    // that recorded the change, rather than appearing to happen for no reason.
+    return ev?.id ?? null
   } catch { /* additive */ }
+  return null
+}
+
+// ─── Scope recompute scheduling (design turn 8a) ────────────────────────────
+//
+// The save is the only door. That is deliberate: TargetView's 〈+ 範圍〉 chip
+// widens scope through a toast that defers the write for eight seconds and
+// cancels on undo, so hanging the recompute off the click would re-judge the
+// corpus for a change the operator then took back.
+//
+// Three gates, and each exists because of a real edit an operator makes:
+//   • trailing debounce — Settings auto-saves on a 350 ms debounce and the
+//     scope file is a free-text field, so typing a path produces a save per
+//     keystroke burst.
+//   • project bail — a queued job must never write into the next project's
+//     chain.
+//   • hash gate — the run itself skips when the boundary did not actually move.
+// StatusBar and Sidebar both ask for the violation count on EVERY captured
+// event, so this cannot be a query per event during a scan. Cached, and dropped
+// only when a row that could change it lands.
+let cachedViolationCount: number | null = null
+function activeViolationCount(): number {
+  if (cachedViolationCount === null) cachedViolationCount = countActiveScopeViolations()
+  return cachedViolationCount
+}
+function invalidateViolationCount(): void { cachedViolationCount = null }
+
+const SCOPE_COUNT_SUBTYPES = new Set(['scope_violation', 'scope_cleared', 'scope_recomputed'])
+eventBus.on('event', (e: RedLogEvent) => {
+  if (e.agentType === 'system' && SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))) invalidateViolationCount()
+})
+
+const RECOMPUTE_DEBOUNCE_MS = 2000
+let recomputeTimer: NodeJS.Timeout | null = null
+let recomputePending: { projectId: string; before: ScopeSnapshot; configChangedId: string | null } | null = null
+let recomputeRunning = false
+
+function scheduleScopeRecompute(before: ScopeSnapshot, configChangedId: string | null): void {
+  if (!activeProject) return
+  // Coalesce to the EARLIEST before-state of the burst: a→b→c is one boundary
+  // move from a to c, and comparing c against b would report the wrong delta.
+  if (!recomputePending || recomputePending.projectId !== activeProject) {
+    recomputePending = { projectId: activeProject, before, configChangedId }
+  } else if (configChangedId) {
+    recomputePending.configChangedId = configChangedId
+  }
+  if (recomputeTimer) clearTimeout(recomputeTimer)
+  recomputeTimer = setTimeout(() => { void runPendingRecompute() }, RECOMPUTE_DEBOUNCE_MS)
+}
+
+async function runPendingRecompute(): Promise<void> {
+  const job = recomputePending
+  recomputeTimer = null
+  if (!job || recomputeRunning) return
+  if (!activeProject || activeProject !== job.projectId) { recomputePending = null; return }
+  recomputePending = null
+  recomputeRunning = true
+  try {
+    const config = loadConfig(getProjectPath(activeProject))
+    const snap = snapshotScope(config)
+    await runScopeRecompute({
+      before: job.before,
+      after: { targets: snap.targets, excludeTargets: snap.excludeTargets, alertFloor: alertFloorFor(config.scope?.warnOnViolation) },
+      engagementId: config.engagement.id,
+      operatorId: config.operator.id,
+      configChangedEventId: job.configChangedId,
+      scopeFile: snap.scopeFile ? { path: snap.scopeFile, sha256: snap.scopeFileSha256, entries: snap.scopeFileEntries } : null
+    })
+  } catch (e) {
+    // A recompute failure must never fail the save that triggered it.
+    noteDbError('scope-recompute', e)
+  } finally {
+    recomputeRunning = false
+  }
 }
 
 // Compress an OpsecStateDelta into a one-line human description for the event
@@ -453,11 +533,9 @@ function startProject(project: ProjectMeta): void {
     intervalSec: config.screenshot.intervalSec ?? 0
   })
 
-  let scopeTargets = config.scope.targets
-  if (config.scope.scopeFile) {
-    const loaded = loadScopeFile(config.scope.scopeFile)
-    if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
-  }
+  invalidateViolationCount()
+  recomputePending = null
+  const scopeTargets = snapshotScope(config).targets
   // v0.12.0: one configure call for the whole alert subsystem. Drops correlation/
   // burst history on every project open (resetOnProjectSwitch) so a stale
   // Combined verdict from the previous engagement can't fire when the new
@@ -1113,20 +1191,18 @@ app.whenReady().then(() => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
     const oldConfig = loadConfig(projectDir)
+    // Captured BEFORE the save so the recompute can say what the boundary was.
+    const beforeScope = snapshotScope(oldConfig)
     saveConfig(projectDir, newConfig)
     currentEngagementId = newConfig.engagement.id
     currentOperatorId = newConfig.operator.id
     // Audit trail — log security-relevant setting changes so a reviewer can see
     // when scope loosened or the IP blacklist changed. Only diffs the fields
     // that affect enforcement or attribution; cosmetic changes stay silent.
-    logConfigDiff(oldConfig, newConfig)
+    const configChangedId = logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
     applyDock()
-    let targets = newConfig.scope.targets
-    if (newConfig.scope.scopeFile) {
-      const loaded = loadScopeFile(newConfig.scope.scopeFile)
-      if (loaded.length > 0) targets = [...targets, ...loaded]
-    }
+    const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, {
       engagementId: newConfig.engagement.id,
       operatorId: newConfig.operator.id
@@ -1139,6 +1215,14 @@ app.whenReady().then(() => {
     // from, so toggling a source updates the card on the next poll instead of
     // at the next project open.
     configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
+    // Re-judge what is already recorded against the boundary that now applies.
+    // Scheduled rather than awaited: the renderer's save must not wait on a
+    // scan, and the debounce collapses an editing burst into one run.
+    scheduleScopeRecompute({
+      targets: beforeScope.targets,
+      excludeTargets: beforeScope.excludeTargets,
+      alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
+    }, configChangedId)
     configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
     configureClipboardMonitor({
       enabled: newConfig.clipboard?.enabled ?? false,
@@ -1445,8 +1529,13 @@ app.whenReady().then(() => {
   })
 
   // --- Scope ---
-  ipcMain.handle('scope:getViolations', () => alertRuntime.scopeViolations())
-  ipcMain.handle('scope:getViolationCount', () => alertRuntime.scopeViolationCount())
+  // Read from the chain, not from the in-process log the alert runtime keeps.
+  // That log holds 500 rows and resets on every project switch, so it could
+  // never show a retroactive row and would go on counting one that had been
+  // withdrawn — the page would contradict the record it exists to show.
+  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : []))
+  ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
+  ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
 
   // --- Evidence Chain ---
@@ -1655,7 +1744,14 @@ app.whenReady().then(() => {
   }
   ipcMain.handle('data:exportMarks', () => activeProject ? sliceExport('marks', listQuickMarks()) : null)
   ipcMain.handle('data:exportLoot', () => activeProject ? sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })) : null)
-  ipcMain.handle('data:exportViolations', () => activeProject ? sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 }).filter((e) => e.data?.subtype === 'scope_violation')) : null)
+  // All three subtypes, not just violations: an export showing a violation
+  // without the record that withdrew it misstates the operator's own
+  // conclusion, and the recompute summary is what says under which boundary the
+  // retroactive rows were judged.
+  ipcMain.handle('data:exportViolations', () => activeProject
+    ? sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 })
+        .filter((e) => SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))))
+    : null)
   // v0.6.87 C2: Timeline slice export. Renderer picks a time window (usually
   // the current visible viewport in Timeline) and gets a filtered JSON slice
   // that a bug-bounty writeup can attach as evidence for a specific attack

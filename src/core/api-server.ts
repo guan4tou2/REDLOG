@@ -13,6 +13,7 @@ import {
   type Operator
 } from './db/operators'
 import { eventBus } from './event-bus'
+import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
 import { extractTarget, extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
@@ -97,46 +98,6 @@ let alertRuntimeRef: AlertRuntimeSlice | null = null
  *  dns_response; command_start but not command_end). Keeping the mapping
  *  in one function means adding a new source is a one-line edit here, not
  *  a hunt through the dispatch site. */
-function scopeSignalFor(
-  agentType: string,
-  data: Record<string, unknown>
-): { target: string; source: 'shell' | 'dns' | 'http' | 'scanner' | 'agent_tool'; action: string } | null {
-  if (agentType === 'shell' && data.subtype === 'command_start') {
-    const target = (data.detectedTarget as string | undefined) ?? null
-    if (!target) return null
-    return { target, source: 'shell', action: (data.command as string) ?? '' }
-  }
-  if (agentType === 'scanner' && data.subtype === 'http_request_start') {
-    const target = (data.host as string | undefined) ?? null
-    if (!target) return null
-    return {
-      target,
-      source: 'http',
-      action: `${(data.method as string) ?? 'GET'} ${(data.url as string) ?? ''}`.trim()
-    }
-  }
-  if (agentType === 'scanner' && (data.subtype === 'ws_message' || data.subtype === 'tcp_message')) {
-    const target = (data.host as string | undefined) ?? null
-    if (!target) return null
-    return {
-      target,
-      source: 'scanner',
-      action: `${data.subtype === 'ws_message' ? 'WS' : 'TCP'} ${data.direction ?? ''} ${(data.url as string) ?? target}`.trim()
-    }
-  }
-  if (agentType === 'dns' && data.subtype === 'dns_query') {
-    const target = (data.query_name as string | undefined) ?? null
-    // Bare `.` shows up on some resolvers as a root-query artifact — skip.
-    if (!target || target === '.') return null
-    return {
-      target: target.replace(/\.$/, ''),  // strip trailing dot from FQDN form
-      source: 'dns',
-      action: `${(data.query_type as string) ?? 'A'} ${target}`
-    }
-  }
-  return null
-}
-
 /** v0.9.6 (T2): lets main wire terminal-manager's live cast position in
  *  without core importing main. Same shape as setPluginHost / the tailer
  *  contribution sink. */
