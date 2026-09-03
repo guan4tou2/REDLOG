@@ -82,7 +82,24 @@ export default function TerminalView(): JSX.Element {
   useEffect(() => {
     if (didInit.current) return   // StrictMode runs this twice in dev
     didInit.current = true
-    if (tabs.length === 0) addTab()
+    if (tabs.length > 0) return
+    // Adopt the shells that are already running before starting a new one.
+    // This component keeps its tab list in local state, so navigating away and
+    // back used to mount with an empty list and spawn a second pty while the
+    // first went on running with nothing attached to it — one orphaned shell
+    // per visit. `terminal:spawn` is idempotent per id and replays the
+    // scrollback, so re-attaching is exactly what the operator wants: the
+    // session they left, with its history.
+    void (window.redlog.terminal.list?.() ?? Promise.resolve([]))
+      .then((live: Array<{ id: string; pid: number }>) => {
+        if (!Array.isArray(live) || live.length === 0) { addTab(); return }
+        setTabs(live.map((s, i) => ({
+          id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true
+        })))
+        setActiveTab(live[0].id)
+        tabCounter = Math.max(tabCounter, live.length)
+      })
+      .catch(() => addTab())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

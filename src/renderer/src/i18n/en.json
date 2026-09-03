@@ -992,5 +992,15 @@
   "sidebar.http_history": "HTTP",
   "settings.disclosure": "Pages",
   "settings.showAllPages": "Show every page at once",
-  "settings.showAllPagesHint": "By default only pages with data in them are listed; the rest stay reachable from ⌘K. Ticking this shows them all (this project only)."
+  "settings.showAllPagesHint": "By default only pages with data in them are listed; the rest stay reachable from ⌘K. Ticking this shows them all (this project only).",
+  "firstRun.title": "Run one command",
+  "firstRun.hint": "Type a command with a target in the terminal below. The strip on the right shows it being recorded.",
+  "firstRun.recording": "Recording",
+  "firstRun.openTimeline": "Open the timeline",
+  "firstRun.waitingTitle": "Nothing recorded yet",
+  "firstRun.waitingHint": "Run a command — nmap -sV 10.0.0.5, say — and it will appear here.",
+  "firstRun.stuckTitle": "A command ran, but nothing arrived",
+  "firstRun.stuckWhy": "The built-in terminal's capture hook needs python3 and curl. Without either the command still runs, but it is not recorded.",
+  "firstRun.stuckAction": "Check the capture sources",
+  "firstRun.moreSources": "Other capture sources"
 }
