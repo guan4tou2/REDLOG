@@ -40,6 +40,11 @@ export interface SelectionContext<L extends string = string> {
  */
 export function carriesState(e: RedLogEvent): boolean {
   const d = (e.data ?? {}) as Record<string, unknown>
+  // A correction to a marker is not a second finding. Without this it would be
+  // a ⇧-arrow stop twice over — `agentType === 'marker'` below, and a severity
+  // amendment also trips the `severity` test — so amending one marker three
+  // times would put three extra stops in the skip-to-what-changed walk.
+  if (e.agentType === 'marker' && d.subtype === 'amended') return false
   if (typeof d.exitCode === 'number' && d.exitCode !== 0) return true
   if (d.severity === 'critical' || d.severity === 'important') return true
   if (d.violation === true || d.inScope === false) return true

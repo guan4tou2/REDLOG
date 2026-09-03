@@ -193,6 +193,13 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     }
 
     if (e.agentType === 'marker') {
+      // A correction is not a turn in the transcript. It carries `title` under
+      // the marker's own name, so an unguarded row would read '⚑ undefined' for
+      // a severity-only amendment; and even a title amendment would appear as a
+      // second finding beside the one it corrects. The transcript reads the
+      // conversation, not the audit of it — the Timeline Inspector is where
+      // amendments are read.
+      if (d.subtype === 'amended' && typeof d.markerId === 'string') continue
       out.push({
         id: e.id, ts: e.timestamp, kind: 'marker', actor: actorOf(e),
         input: `⚑ ${d.title ?? ''}`, output: typeof d.notes === 'string' && d.notes ? (d.notes as string) : undefined,

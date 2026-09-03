@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useI18n } from '../i18n'
+import { isMarkerAmendment, amendedFields } from '../lib/markerFold'
 import { formatTime } from '../lib/time'
 import { toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
@@ -291,7 +292,17 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                             {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
                             {e.agentType === 'file_transfer' && `${e.data.direction}: ${e.data.filename || e.data.localPath || e.data.remotePath}`}
-                            {e.agentType === 'marker' && `[${e.data.severity}] ${e.data.title}`}
+                            {/* An amendment carries `severity` and `title` under the same
+                                names as a marker, so a severity-only correction would read
+                                '[critical] undefined' here. Defensive only — this page
+                                aggregates on target and `marker:create` sets none, so only
+                                markers POSTed with a target_id reach it at all. */}
+                            {e.agentType === 'marker' && (isMarkerAmendment(e)
+                              ? t('marker.amendmentRow', {
+                                  title: String((e.data as Record<string, unknown>).markerId ?? ''),
+                                  fields: amendedFields(e).map((f) => t(`marker.field.${f}`)).join('、')
+                                })
+                              : `[${e.data.severity}] ${e.data.title}`)}
                             {e.agentType === 'loot' && (() => { const m = (e.data.matches as Array<{ type: string; confidence: string }>)?.[0]; return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${e.data.count ?? 0} detected` })()}
                             {!['shell', 'screenshot', 'clipboard', 'file_transfer', 'marker', 'loot'].includes(e.agentType) && JSON.stringify(e.data).slice(0, 80)}
                           </span>

@@ -12,6 +12,10 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
+import {
+  isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
+  AMENDABLE_FIELDS, type MarkerFold
+} from '../lib/markerFold'
 import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
@@ -247,8 +251,18 @@ function eventTitle(event: RedLogEvent): string {
       return `Pivot [${d.tool}] ${d.subtype || ''}${d.via ? ` → ${d.via}` : ''}${d.route ? ` (${d.route})` : ''}`.trim()
     case 'cleanup':
       return `⚠ Cleanup [${d.tool}] ${d.subtype || ''}${d.target ? ` → ${d.target}` : ''}`.trim()
-    case 'marker':
+    case 'marker': {
+      // An amendment carries `title` and `severity` under the SAME names as a
+      // marker, so this branch has to ask what kind of row it is before reading
+      // either — a severity-only correction would otherwise render
+      // "INFO: undefined". No label is added here because this function has no
+      // translator; `titleOf` inside the component composes the localised
+      // 修訂〈…〉 line, and what is returned here is what search matches on.
+      if (d.subtype === 'amended') {
+        return AMENDABLE_FIELDS.map((f) => d[f]).filter((v) => typeof v === 'string' && v).join(' · ')
+      }
       return `${(d.severity as string || 'info').toUpperCase()}: ${d.title}`
+    }
     case 'loot': {
       const m = (d.matches as Array<{ type: string; confidence: string }>)?.[0]
       return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${d.count ?? 0} detected`
@@ -575,22 +589,29 @@ function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
  *    everything else   circle
  */
 type DotShape = 'circle' | 'diamond' | 'ring'
-function dotShape(e: RedLogEvent): { shape: DotShape; scale: number } {
+function dotShape(e: RedLogEvent, effectiveSeverity?: string): { shape: DotShape; scale: number } {
   const sub = e.data?.subtype as string | undefined
   if (e.agentType === 'system' && sub === 'scope_violation') return { shape: 'diamond', scale: 1.25 }
   if (e.agentType === 'marker') {
-    const sev = String(e.data?.severity ?? 'info')
+    // A correction draws as a plain dot: it is an operator action, not a second
+    // critical finding, and a severity amendment would otherwise put a second
+    // alarm ring on the lane for the same one. The MARKER instead takes the
+    // severity now in force, so raising one to critical changes the dot that
+    // stands for the finding.
+    if (sub === 'amended') return { shape: 'circle', scale: 1 }
+    const sev = String(effectiveSeverity ?? e.data?.severity ?? 'info')
     if (sev === 'critical') return { shape: 'ring', scale: 1.5 }
     if (sev === 'important') return { shape: 'circle', scale: 1.25 }
   }
   return { shape: 'circle', scale: 1 }
 }
 
-function shapeTitle(e: RedLogEvent, t: (k: string) => string): string {
+function shapeTitle(e: RedLogEvent, t: (k: string) => string, effectiveSeverity?: string): string {
   const sub = e.data?.subtype as string | undefined
   if (e.agentType === 'system' && sub === 'scope_violation') return ` · ${t('timeline.shape.scopeViolation')}`
   if (e.agentType === 'marker') {
-    const sev = String(e.data?.severity ?? 'info')
+    if (sub === 'amended') return ''
+    const sev = String(effectiveSeverity ?? e.data?.severity ?? 'info')
     if (sev === 'critical' || sev === 'important') return ` · ${t(`marker.severity.${sev}`)}`
   }
   return ''
@@ -1615,8 +1636,18 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     // typing: the index is rebuilt on the first keystroke, and the query is
     // already debounced 120 ms so that happens once, not per character.
     if (!filterQueryDebounced.trim()) return idx
+    // A corrected marker must be findable by what it says NOW as well as by
+    // what it said when it was written — searching the current title and being
+    // shown only the correction, with the finding itself missing, reads as the
+    // finding having been deleted. The fold is computed here rather than read
+    // from `foldById` on purpose: this memo sits above that one, and its
+    // dependency list is pinned by test/timeline-flush.test.ts because adding
+    // to it would undo the W19 idle-bail. Free either way — the loop below is
+    // already skipped whenever no filter is active.
+    const amendmentsByMarker = groupAmendments(events)
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
+      const mine = amendmentsByMarker.get(e.id)
       idx.set(e.id, [
         String(d?.command ?? ''),
         String(d?.url ?? ''),
@@ -1624,6 +1655,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         String(d?.title ?? ''),
         String(d?.subtype ?? ''),
         e.agentType === 'marker' ? String(d?.title ?? '') : '',
+        mine ? foldMarker(e, mine).effective.title : '',
         e.operatorId,
         operatorNames[e.operatorId] ?? '',
         eventTitle(e)
@@ -1674,6 +1706,53 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
     return m
   }, [events])
+  // ── What each marker says now (design turn 8b) ─────────────────────────
+  //
+  // TDZ contract, and it is not theoretical — the e2e has caught this exact
+  // mistake twice in this file (see the `collapsedBands` note above). A hook's
+  // dependency array evaluates during render, so nothing ABOVE this point may
+  // name `foldById` or `titleOf`; every consumer is below. `searchIndex` sits
+  // higher and deliberately does its own inline pass instead.
+  //
+  // One walk of `events`, whose body is a type test — the marker lane is a
+  // rounding error next to a scan's traffic, and this memo runs on every flush.
+  const foldById = useMemo(() => {
+    const folds = new Map<string, MarkerFold>()
+    const byMarker = groupAmendments(events)
+    if (byMarker.size === 0) return folds
+    for (const e of events) {
+      if (!isMarkerOriginal(e)) continue
+      const mine = byMarker.get(e.id)
+      if (mine) folds.set(e.id, foldMarker(e, mine))
+    }
+    return folds
+  }, [events])
+
+  // The one place a marker's displayed text is decided. Every consumer calls
+  // this rather than `eventTitle` so a corrected finding never shows the words
+  // the operator retracted — and so the amendment row itself reads as the
+  // correction it is rather than as a second finding.
+  const titleOf = useCallback((e: RedLogEvent): string => {
+    if (isMarkerAmendment(e)) {
+      const d = e.data as Record<string, unknown>
+      const original = eventsMapRef.current.get(String(d.markerId))
+      const fields = AMENDABLE_FIELDS.filter((f) => d[f] !== undefined)
+        .map((f) => t(`marker.field.${f}`)).join('、')
+      const of = original ? eventTitle(original) : String(d.markerId ?? '')
+      return t('marker.amendmentRow', { title: of, fields })
+    }
+    const fold = foldById.get(e.id)
+    if (!fold) return eventTitle(e)
+    return `${fold.effective.severity.toUpperCase()}: ${fold.effective.title}`
+  }, [foldById, t])
+
+  // The hover suffix that says a finding has been corrected. Empty for
+  // everything else, so it composes into an existing title without a branch.
+  const amendSuffix = useCallback((e: RedLogEvent): string => {
+    const fold = foldById.get(e.id)
+    return fold ? ` · ${t('marker.amendedTimes', { count: fold.amendCount })}` : ''
+  }, [foldById, t])
+
   const badgesById = useMemo(() => {
     const m = new Map<string, EventBadge[]>()
     for (const e of events) {
@@ -2347,7 +2426,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
       const fields = [
-        eventTitle(e),
+        titleOf(e),
         String(d?.command ?? ''),
         String(d?.url ?? ''),
         String(d?.host ?? ''),
@@ -2360,7 +2439,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         items.push({
           kind: e.agentType === 'marker' ? 'marker' : 'event',
           event: e,
-          label: eventTitle(e),
+          label: titleOf(e),
           sub: e.agentType,
           score: best,
           ts: e.timestamp
@@ -3270,7 +3349,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                   // the shape. Clusters keep their own sizing — the popup
                   // lists members individually, so per-event emphasis there
                   // would fight the count glyph.
-                  const marks = single ? dotShape(evt) : { shape: 'circle' as DotShape, scale: 1 }
+                  const marks = single ? dotShape(evt, foldById.get(evt.id)?.effective.severity) : { shape: 'circle' as DotShape, scale: 1 }
                   const dot = single
                     ? Math.round(9 * marks.scale)
                     : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
@@ -3338,7 +3417,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                       data-timeline-event
                       tabIndex={isTabStop ? 0 : -1}
                       aria-label={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} ${eventTitle(evt)}${shapeTitle(evt, t)}`
+                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
                         : t('timeline.events', { count: c.events.length })}
                       aria-pressed={sel || undefined}
                       className="absolute cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 rounded"
@@ -3358,7 +3437,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${eventTitle(evt)}${badgeTitle}${shapeTitle(evt, t)}${ioTitle(ioMark(evt), t)}`
+                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
                         : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
@@ -3498,7 +3577,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
                           <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
-                          <span title={eventTitle(evt)} className="text-redlog-text text-xs truncate">{eventTitle(evt)}</span>
+                          <span title={titleOf(evt)} className="text-redlog-text text-xs truncate">{titleOf(evt)}</span>
                         </button>
                       ))}
                       {overflow > 0 && (
@@ -3551,7 +3630,22 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                       {operatorLabel(evt.operatorId)}
                     </span>
                   )}
-                  <span title={eventTitle(evt)} className="text-redlog-text-dim truncate">{eventTitle(evt)}</span>
+                  <span title={`${titleOf(evt)}${amendSuffix(evt)}`} className="text-redlog-text-dim truncate">{titleOf(evt)}</span>
+                  {/* Rendered only for a marker that HAS been corrected (§22:
+                      a noun does not appear before its data exists) — most
+                      markers never are, and the row is already dense. Never
+                      truncated: a count that reads 「已修訂 1…」 is worse than no
+                      count, and never in danger red, which would make an
+                      ordinary correction read as an alarm. */}
+                  {foldById.get(evt.id) && (
+                    <span
+                      data-testid="marker-amend-count"
+                      className="text-redlog-text-dim font-mono tabular-nums shrink-0"
+                      title={t('marker.amendedTimesHint')}
+                    >
+                      {t('marker.amendedTimes', { count: foldById.get(evt.id)!.amendCount })}
+                    </span>
+                  )}
                 </div>
               )
             })}
@@ -3601,7 +3695,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             <div className="flex items-center gap-2">
             </div>
           </div>
-          <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{eventTitle(selectedEvent)}</p>
+          <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{titleOf(selectedEvent)}</p>
           {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
               to the title so the operator sees every flag at once (the dot
               overlay only shows the first). Empty when the event has none. */}
@@ -3657,9 +3751,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                       onClick={() => { setSelectedEvent(cev); setDetailOpen(true); scrollToEvent(cev) }}
                       className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: cc, backgroundColor: `${cc}18`, border: `1px solid ${cc}40` }}
-                      title={eventTitle(cev)}
+                      title={titleOf(cev)}
                     >
-                      ◂ {eventTitle(cev)}
+                      ◂ {titleOf(cev)}
                     </button>
                   )
                 })}
@@ -3690,9 +3784,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                       onClick={() => { setSelectedEvent(ev); setDetailOpen(true); scrollToEvent(ev) }}
                       className="text-xs px-1.5 py-0.5 rounded font-mono truncate max-w-[280px] hover:brightness-125 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
                       style={{ color: ec, backgroundColor: `${ec}18`, border: `1px solid ${ec}40` }}
-                      title={eventTitle(ev)}
+                      title={titleOf(ev)}
                     >
-                      ▸ {eventTitle(ev)}
+                      ▸ {titleOf(ev)}
                     </button>
                   )
                 })}

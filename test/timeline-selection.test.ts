@@ -87,6 +87,16 @@ describe('state skipping', () => {
     expect(carriesState(ev('loot', 0))).toBe(true)
     expect(carriesState(ev('shell', 0, { exitCode: 0 }))).toBe(false)
   })
+
+  it('does not stop on a marker amendment — a correction is not a second finding', () => {
+    // Two ways it would otherwise trip: the marker lane is in the list above,
+    // and an amendment that raises severity also matches the `severity` test.
+    // Amending one marker three times would put three extra stops in the
+    // skip-to-what-changed walk, which is the walk that exists to skip noise.
+    expect(carriesState(ev('marker', 0, { title: 'a finding', severity: 'info' }))).toBe(true)
+    expect(carriesState(ev('marker', 0, { subtype: 'amended', markerId: 'm1', title: 'corrected' }))).toBe(false)
+    expect(carriesState(ev('marker', 0, { subtype: 'amended', markerId: 'm1', severity: 'critical' }))).toBe(false)
+  })
 })
 
 describe('ends and empty states', () => {
