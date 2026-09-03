@@ -3,6 +3,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
+import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -14,15 +15,46 @@ const TYPE_COLORS: Record<string, string> = {
   system: 'text-redlog-text-dim'
 }
 
-function eventSummary(e: RedLogEvent): string {
+function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
   const d = e.data
   if (e.agentType === 'shell') return `$ ${(d.command as string)?.slice(0, 120) || ''}`
   if (e.agentType === 'screenshot') return `Screenshot (${d.trigger})`
   if (e.agentType === 'clipboard') return `Clipboard: ${(d.content as string)?.slice(0, 80) || ''}`
-  if (e.agentType === 'marker') return `[${d.severity}] ${d.title}`
+  if (e.agentType === 'marker') {
+    if (isMarkerAmendment(e)) return `↻ ${amendedFields(e).join(' · ')}`
+    const eff = fold?.effective
+    return `[${eff?.severity ?? d.severity}] ${eff?.title ?? d.title}`
+  }
   if (e.agentType === 'file_transfer') return `${d.direction}: ${d.filename || d.localPath || d.remotePath}`
   if (e.agentType === 'loot') return `Loot: ${d.type} (${d.confidence})`
   return `${e.agentType}: ${d.subtype || JSON.stringify(d).slice(0, 60)}`
+}
+
+/** Fold every marker in a result page against the amendments fetched for it. */
+function buildFolds(rows: RedLogEvent[], amendments: RedLogEvent[]): Map<string, MarkerFold> {
+  const byMarker = groupAmendments(amendments)
+  const out = new Map<string, MarkerFold>()
+  if (byMarker.size === 0) return out
+  for (const e of rows) {
+    if (e.agentType !== 'marker' || isMarkerAmendment(e)) continue
+    const mine = byMarker.get(e.id)
+    if (mine) out.set(e.id, foldMarker(e, mine))
+  }
+  return out
+}
+
+/** Compose rather than replace: the hover has to reveal the full DISPLAYED
+ *  value (§9), and for a corrected marker it also carries the title the search
+ *  actually matched on — otherwise a hit on the old wording looks like a
+ *  mismatch. */
+function hoverTitle(
+  e: RedLogEvent,
+  fold: MarkerFold | undefined,
+  t: (k: string, v?: Record<string, string | number>) => string
+): string {
+  const shown = eventSummary(e, fold)
+  if (!fold) return shown
+  return `${shown}\n${t('search.amendedOriginalTitle', { title: String(e.data.title ?? '') })}`
 }
 
 interface SearchPanelProps {
@@ -32,6 +64,7 @@ interface SearchPanelProps {
 export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.Element {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<RedLogEvent[]>([])
+  const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
   // Type-filter chips: null = show all, non-null = only that agentType. Audit
@@ -69,8 +102,38 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       return
     }
     setSearching(true)
-    window.redlog.events.search(q, 200).then((r) => {
-      setResults(r)
+    window.redlog.events.search(q, 200).then(async (r) => {
+      // `searchEvents` is a LIKE over each row's own bytes, so a marker
+      // corrected since it was written matches its OLD title only, and the new
+      // one matches the amendment row alone. Showing that bare correction —
+      // with the finding itself missing from the results — reads as the finding
+      // having been deleted, which for this product is the worst possible lie.
+      // So an amendment hit is resolved back to the marker it names.
+      const markerIds = new Set(r.filter((e) => e.agentType === 'marker' && !isMarkerAmendment(e)).map((e) => e.id))
+      const orphaned = r.filter(isMarkerAmendment)
+        .map((e) => String((e.data as Record<string, unknown>).markerId ?? ''))
+        .filter((id) => id && !markerIds.has(id))
+      let rows = r
+      if (orphaned.length > 0) {
+        const originals = (await window.redlog.events.getById?.([...new Set(orphaned)])) ?? []
+        for (const o of originals) markerIds.add(o.id)
+        // The correction stays out of the list; the finding takes its place at
+        // the position the correction held, so result order still tracks the hit.
+        const seen = new Set<string>()
+        rows = r.flatMap((e) => {
+          if (!isMarkerAmendment(e)) return [e]
+          const id = String((e.data as Record<string, unknown>).markerId ?? '')
+          const original = originals.find((o) => o.id === id)
+          if (!original || seen.has(id)) return []
+          seen.add(id)
+          return [original]
+        })
+      }
+      const amendments = markerIds.size > 0
+        ? (await window.redlog.marker.amendments?.([...markerIds])) ?? []
+        : []
+      setFolds(buildFolds(rows, amendments))
+      setResults(rows)
       setSearching(false)
       setSearched(true)
     })
@@ -99,6 +162,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       <div className="relative mb-3 shrink-0">
         <input
           value={query}
+          data-testid="search-input"
           onChange={(e) => onChange(e.target.value)}
           placeholder={t('search.placeholder')}
           autoFocus
@@ -167,9 +231,21 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                   <span className={`font-mono font-bold w-12 shrink-0 ${TYPE_COLORS[e.agentType] || 'text-redlog-text-dim'}`}>
                     {e.agentType.slice(0, 6)}
                   </span>
-                  <span title={eventSummary(e)} className="text-redlog-text font-mono flex-1 min-w-0 truncate">
-                    {eventSummary(e)}
+                  <span
+                    title={hoverTitle(e, folds.get(e.id), t)}
+                    className="text-redlog-text font-mono flex-1 min-w-0 truncate"
+                  >
+                    {eventSummary(e, folds.get(e.id))}
                   </span>
+                  {folds.get(e.id) && (
+                    <span
+                      data-testid="marker-amend-count"
+                      className="text-redlog-text-dim font-mono tabular-nums shrink-0 ml-1"
+                      title={t('marker.amendedTimesHint')}
+                    >
+                      {t('marker.amendedTimes', { count: folds.get(e.id)!.amendCount })}
+                    </span>
+                  )}
                   <span className="text-redlog-text-faint shrink-0 ml-2">
                     {formatTime(e.timestamp, { seconds: true })}
                   </span>

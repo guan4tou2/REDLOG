@@ -145,6 +145,7 @@ interface RedLogAPI {
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
+    getById: (ids: string[]) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
   }
@@ -156,6 +157,10 @@ interface RedLogAPI {
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
+    /** Append a correction. Never mutates the marker — see core/marker-amend.ts. */
+    amend: (markerId: string, changes: { title?: string; severity?: string; notes?: string }) =>
+      Promise<{ ok: true; event: RedLogEvent } | { ok: false; error: string; detail?: string }>
+    amendments: (ids: string[]) => Promise<RedLogEvent[]>
     onShortcut: (cb: () => void) => () => void
   }
   screenshot: {

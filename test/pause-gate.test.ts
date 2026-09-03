@@ -82,6 +82,26 @@ describeDB('pause gate (v0.9.5)', () => {
     expect(insert('screenshot', { trigger: 'manual' }, { bypassPause: true })).not.toBeNull()
   })
 
+  it('publishes a pause-exempt row only when the publisher says bypassPause', async () => {
+    // The second half of the exemption, and the half that was missing. A marker
+    // is exempt at INSERT, so it reaches the chain while paused — but the
+    // publish gate is separate, and a producer that publishes plainly leaves the
+    // row invisible in the timeline until the next reload. The operator writes a
+    // marker, sees nothing, and writes it again. Both marker producers in
+    // src/main/index.ts pass bypassPause for this reason.
+    const seen: string[] = []
+    const onEvent = (e: { data?: Record<string, unknown> }): number => seen.push(String(e.data?.title))
+    bus.on('event', onEvent)
+    bus.pause()
+    const quiet = insert('marker', { title: 'plain publish', severity: 'info' })!
+    bus.publish(quiet)
+    const loud = insert('marker', { title: 'bypassing publish', severity: 'info' })!
+    bus.publish(loud, { bypassPause: true })
+    await Promise.resolve()   // fanout is deferred via queueMicrotask
+    expect(seen).toEqual(['bypassing publish'])
+    bus.off('event', onEvent)
+  })
+
   it('resumes cleanly and leaves no gap in the hash chain', () => {
     insert('shell', { subtype: 'command_end', command: 'before' })
     bus.pause()

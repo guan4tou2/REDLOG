@@ -191,3 +191,33 @@ export function maskText(text: string, spans: RedactionResult['redacted'], char 
   parts.push(text.slice(cursor))
   return parts.join('')
 }
+
+/** Detect secrets across several string fields of one event payload and record
+ *  the spans on `data.redactions`, tagged with the field they came from.
+ *
+ *  This is the shape layer 4 requires: `sanitize()` skips any event whose
+ *  `data.redactions` is empty and any field with no span (src/core/sanitize.ts),
+ *  so a producer that never attaches spans writes text that can never be masked
+ *  at export — the operator watches the sanitize run report success while the
+ *  secret ships in the bundle. Detecting is therefore part of writing, not an
+ *  optional extra a producer can skip.
+ *
+ *  Mutates and returns `data` so a producer can wrap its payload inline. The raw
+ *  bytes stay in place on purpose: the hash chain closes over the true text and
+ *  only the export is rewritten (docs/redaction-design.md). */
+export function redactFields(
+  data: Record<string, unknown>,
+  fields: readonly string[],
+  rules?: RedactionRules
+): Record<string, unknown> {
+  rules ??= effectiveRules()
+  for (const field of fields) {
+    const value = data[field]
+    if (typeof value !== 'string' || !value) continue
+    const { redacted } = redact(value, rules)
+    if (redacted.length === 0) continue
+    const spans = (data.redactions as unknown[] | undefined) ?? []
+    data.redactions = [...spans, ...redacted.map((r) => ({ ...r, field }))]
+  }
+  return data
+}

@@ -90,6 +90,17 @@ Defaults: `title` → `"Untitled"`, `severity` → `"info"`, `category` → `"ex
 
 **Response:** `201` with the created event.
 
+There is no REST route for amending a marker, and `POST /api/events` refuses
+`agent_type: "marker"` with `data.subtype: "amended"` (403). A correction says
+an operator changed what a finding claims; routing a forged one through
+validation would make it well-formed rather than refused. Amendments are written
+from the app's Inspector.
+
+REST and MCP consumers receive raw rows, so a marker read over the API carries
+what it said when it was written. To show what it says now, fetch the marker's
+amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
+`data.markerId` = the marker id) and apply them in insertion order.
+
 ---
 
 ### QuickMarks

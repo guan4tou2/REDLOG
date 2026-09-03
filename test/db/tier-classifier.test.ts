@@ -31,6 +31,12 @@ describe('classifyTier — v0.13 two-tier assignment', () => {
   it('screenshot / marker / loot / cleanup / pivot / file_transfer → chained', () => {
     expect(classifyTier('screenshot', {})).toBe('chained')
     expect(classifyTier('marker', {})).toBe('chained')
+    // An amendment (design turn 8b) is the row a reviewer asks for on its own —
+    // "who changed this finding from info to critical, and when". It is also the
+    // one that must not be swept: the logged tier is age-pruned after 30 days,
+    // so a logged amendment would let a marker silently revert to what it used
+    // to say, which is a change of record with no record of the change.
+    expect(classifyTier('marker', { subtype: 'amended' })).toBe('chained')
     expect(classifyTier('loot', { subtype: 'credential_detected' })).toBe('chained')
     expect(classifyTier('cleanup', { subtype: 'history_clear' })).toBe('chained')
     expect(classifyTier('pivot', { subtype: 'socks_up' })).toBe('chained')

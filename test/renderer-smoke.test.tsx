@@ -67,7 +67,20 @@ function makeEvent(agentType: string): Record<string, unknown> {
   }
 }
 
-const EVENTS = AGENT_TYPES.map(makeEvent)
+const EVENTS_BASE = AGENT_TYPES.map(makeEvent)
+// One marker amendment rides in the shared fixture as a tripwire. An amendment
+// carries `title` and `severity` under the SAME names as a marker, so any
+// consumer that reads `data.title` without first asking what kind of row it has
+// renders a correction as a second finding — 'HIGH: undefined' on the track,
+// '⚑ undefined' in the transcript. Six such sites are guarded; this row is what
+// makes a seventh show up as a broken render instead of shipping.
+const MARKER_EVENT = EVENTS_BASE.find((e) => e.agentType === 'marker')!
+const AMENDMENT: Record<string, unknown> = {
+  ...makeEvent('marker'),
+  id: 'evt-amendment',
+  data: { subtype: 'amended', markerId: MARKER_EVENT.id, severity: 'critical' }
+}
+const EVENTS = [...EVENTS_BASE, AMENDMENT]
 
 const unsub = (): void => {}
 
@@ -106,9 +119,15 @@ function installBridge(): void {
       query: async () => EVENTS,
       getCount: async () => EVENTS.length,
       search: async () => EVENTS,
+      getById: async (ids: string[]) => EVENTS.filter((e) => ids.includes(e.id as string)),
       onNew: () => unsub
     },
-    marker: { create: async () => EVENTS[0], onShortcut: () => unsub },
+    marker: {
+      create: async () => EVENTS[0],
+      amend: async () => ({ ok: true, event: AMENDMENT }),
+      amendments: async () => [AMENDMENT],
+      onShortcut: () => unsub
+    },
     screenshot: { capture: async () => '/tmp/x.jpg', read: async () => null },
     scope: {
       getViolations: async () => [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }],

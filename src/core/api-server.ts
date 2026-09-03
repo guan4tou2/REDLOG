@@ -331,6 +331,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const data = body.data || {}
+      // A marker is the one operator-authored, authoritative type an outside
+      // tool may report — and an amendment claims to be an operator changing
+      // what a finding says. Validating a forged one would only make it
+      // well-formed; any token holder could still re-title someone else's
+      // finding, and the chain would record it as the operator's own words.
+      // Amendments are written from the Inspector or not at all. The E2E seed
+      // door stays open so specs can plant amendment history.
+      if (!e2eSeed && agentType === 'marker' && (data as Record<string, unknown>).subtype === 'amended') {
+        noteDbError('api-external-rejected', new Error('marker amendment rejected via external API'))
+        json(res, 403, { error: 'marker amendments are written only from the app' })
+        return
+      }
       let targetId = body.target_id || body.targetId || undefined
 
       // v0.9.5: bail before ANY derivation while paused. The insertEvent gate
