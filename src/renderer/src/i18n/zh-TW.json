@@ -989,5 +989,8 @@
   "timeline.title.scopeRecomputed": "{{recomputed}} 重算 · {{flagged}} 新標 · {{cleared}} 解除",
   "timeline.title.scopeCleared": "已解除：{{target}}",
   "timeline.detail.causeNotLoaded": "來源尚未載入，跳至 {{time}}",
-  "sidebar.http_history": "HTTP"
+  "sidebar.http_history": "HTTP",
+  "settings.disclosure": "頁面顯示",
+  "settings.showAllPages": "一次顯示所有頁面",
+  "settings.showAllPagesHint": "預設只顯示已經有資料的頁面；其餘在 ⌘K 始終可達。勾選後一律全部顯示（僅此專案）。"
 }

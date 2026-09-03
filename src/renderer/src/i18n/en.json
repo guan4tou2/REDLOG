@@ -989,5 +989,8 @@
   "timeline.title.scopeRecomputed": "{{recomputed}} re-judged · {{flagged}} newly flagged · {{cleared}} withdrawn",
   "timeline.title.scopeCleared": "Withdrawn: {{target}}",
   "timeline.detail.causeNotLoaded": "source not loaded — jump to {{time}}",
-  "sidebar.http_history": "HTTP"
+  "sidebar.http_history": "HTTP",
+  "settings.disclosure": "Pages",
+  "settings.showAllPages": "Show every page at once",
+  "settings.showAllPagesHint": "By default only pages with data in them are listed; the rest stay reachable from ⌘K. Ticking this shows them all (this project only)."
 }
