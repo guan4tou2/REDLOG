@@ -109,3 +109,34 @@ export function amendMarker(
   if (!event) return { ok: false, error: 'invalid-changes', detail: 'insert refused (duplicate window)' }
   return { ok: true, event }
 }
+
+/** The markers in an export slice whose corrections must travel with it. */
+export function markerIdsIn(events: readonly RedLogEvent[]): string[] {
+  return events
+    .filter((e) => e.agentType === 'marker' && ((e.data ?? {}) as Record<string, unknown>).subtype !== 'amended')
+    .map((e) => e.id)
+}
+
+/**
+ * Attach a slice's corrections to it, whatever window it was cut from.
+ *
+ * A correction is always written after the window its marker lives in, so a
+ * plain time filter exports a finding with the wording the operator has since
+ * retracted and nothing in the file says otherwise. That is the same failure as
+ * shipping a violation that was later withdrawn: an export that misstates the
+ * operator's own conclusion.
+ *
+ * They travel under their own key rather than mixed into `events`, so a reader
+ * can tell what fell inside the window from what was pulled in for context —
+ * and rows already inside it are not duplicated.
+ */
+export function sliceWithAmendments(
+  slice: readonly RedLogEvent[],
+  amendments: readonly RedLogEvent[]
+): { events: RedLogEvent[]; amendments: RedLogEvent[] } {
+  const inWindow = new Set(slice.map((e) => e.id))
+  return {
+    events: [...slice],
+    amendments: amendments.filter((a) => !inWindow.has(a.id))
+  }
+}
