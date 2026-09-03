@@ -186,6 +186,29 @@ describe.skipIf(!available)('running a scope recompute', () => {
       expect(events!.getEventCount()).toBe(before)
     })
 
+    it('does not mistake an in-scope verdict for a standing violation', async () => {
+      // Every verdict is written under the same subtype, including `in_scope` —
+      // the adherence counter needs the positive proof. Counting one as a
+      // standing violation would turn a newly-excluded host into a "regrade" of
+      // something that was never flagged, and the banner's 新標 would read 0
+      // while three commands had just been marked out of scope.
+      const e = shell('evil.example')
+      events!.insertEvent('system', {
+        subtype: 'scope_violation', target: 'evil.example', action: 'curl evil.example',
+        source: 'shell', distance: 'in_scope', authority: 'unknown', severity: 'clean',
+        _causes: [e.id]
+      }, { ...IDS, targetId: 'evil.example' })
+      expect(runner!.countActiveScopeViolations(), 'in_scope counted as a violation').toBe(0)
+      expect(runner!.queryScopeViolationRows()).toHaveLength(0)
+
+      await runner!.runScopeRecompute({
+        before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS
+      })
+      const [summary] = rowsOfSubtype('scope_recomputed')
+      expect(summary.newly_flagged).toBe(1)
+      expect(summary.regraded).toBe(0)
+    })
+
     it('leaves the chain verifying', async () => {
       shell('evil.example'); dns('evil.example.')
       await runner!.runScopeRecompute({

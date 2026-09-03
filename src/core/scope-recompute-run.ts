@@ -113,6 +113,12 @@ export function readExistingViolations(): ExistingViolation[] {
       if (typeof d.violation_id === 'string') clearedIds.add(d.violation_id)
       continue
     }
+    // `in_scope` verdicts are written to this subtype too — the adherence
+    // counter needs the positive proof — but they are not violations, and
+    // treating one as a standing record would turn a newly-excluded host into a
+    // "regrade" of something that was never flagged. Floor-independent: no
+    // floor ever makes in_scope reportable.
+    if (d.distance === 'in_scope') continue
     const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
     const sourceEventId = typeof causes[0] === 'string' ? (causes[0] as string) : null
     violations.push({
@@ -387,6 +393,7 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
   for (const r of rows) {
     let d: Record<string, unknown>
     try { d = JSON.parse(r.data) } catch { continue }
+    if (d.distance === 'in_scope') continue   // an adherence record, not a violation
     const v = byId.get(r.id)
     if (v?.supersededBy) continue          // a newer record replaced it
     out.push({
