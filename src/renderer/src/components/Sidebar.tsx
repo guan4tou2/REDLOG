@@ -8,6 +8,9 @@ import { useI18n } from '../i18n'
 interface SidebarProps {
   active: string
   onNavigate: (view: string) => void
+  /** §22: the views to render. Undefined shows everything — the shape a test
+   *  harness or an older caller gets, and the safe direction. */
+  visibleViews?: ReadonlySet<SidebarViewId>
 }
 
 interface NavItem {
@@ -31,7 +34,7 @@ const NAV_ICON_STROKE = 1.5
 import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sidebarOrder'
 import { isMac } from '../lib/platform'
 
-export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
+export default function Sidebar({ active, onNavigate, visibleViews }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const { t } = useI18n()
@@ -71,7 +74,12 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
-  const items = DEFAULT_ORDER.map((id) => itemMap[id]).filter(Boolean)
+  // A hidden row is not-advertised, never unreachable: ⌘K lists every view and
+  // its chord still works, which is what makes hiding safe rather than lossy.
+  const items = DEFAULT_ORDER
+    .filter((id) => visibleViews === undefined || visibleViews.has(id))
+    .map((id) => itemMap[id])
+    .filter(Boolean)
 
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 

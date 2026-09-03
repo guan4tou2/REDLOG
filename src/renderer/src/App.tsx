@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Sidebar from './components/Sidebar'
 import TranscriptView from './components/TranscriptView'
 import StatusBar from './components/StatusBar'
@@ -24,6 +24,8 @@ import { toast } from './components/Toast'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
 import { DEFAULT_ORDER, type SidebarViewId, NUMBERED_SLOTS } from './lib/sidebarOrder'
+import { computeVisibility, shouldRefetch, EMPTY_SIGNALS, type VisibilitySignals } from './lib/visibility'
+import { storedShowAllPages, SHOW_ALL_PAGES_EVENT } from './lib/showAllPages'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
@@ -45,6 +47,14 @@ type View = SidebarViewId | 'settings'
 // is pinned separately in the sidebar and documented as ⌘9 in the `?` sheet,
 // so it keeps the slot; the ninth sidebar entry has no number, which the
 // operator controls by reordering.
+/** What the renderer assumes when the main process cannot answer: everything
+ *  visible. Hiding a page because a probe failed would be the worst reading of
+ *  silence available. */
+const ALL_DISCLOSED: VisibilitySignals = {
+  evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
+  screenshotSeen: true, markSeen: true, httpFlowSeen: true, loggedEver: true
+}
+
 const SETTINGS_SHORTCUT_INDEX = 9
 
 function currentShortcutOrder(): View[] {
@@ -75,13 +85,64 @@ export default function App(): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [recordingOn, setRecordingOn] = useState(true)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
+  // §22. `null` means "not asked yet" and is NOT the same as "nothing yet":
+  // rendering the day-one sidebar while the answer is in flight would flash a
+  // four-row nav on a mature project, and show its operator a first-run screen.
+  const [visSignals, setVisSignals] = useState<VisibilitySignals | null>(null)
+  const [showAllPages, setShowAllPages] = useState(false)
   const { t } = useI18n()
 
+  // TDZ contract (this file and Timeline.tsx have both been bitten): the memo
+  // sits immediately after the state block, and every effect that reads it is
+  // BELOW. A dep array evaluates during render, so a hook above this line
+  // naming `visibility` crashes only in the bundled build — vitest transforms
+  // the source and never sees it.
+  const visibility = useMemo(
+    () => computeVisibility(visSignals ?? EMPTY_SIGNALS, showAllPages),
+    [visSignals, showAllPages]
+  )
+
   useEffect(() => {
-    window.redlog.project.active().then((p) => {
+    void Promise.all([
+      window.redlog.project.active(),
+      // Optional-called: an older preload has no such namespace, and the
+      // renderer must degrade to showing everything rather than to showing a
+      // day-one sidebar on a full engagement.
+      window.redlog.visibility?.signals?.().catch(() => null) ?? Promise.resolve(null)
+    ]).then(([p, signals]) => {
       if (p) setProject(p)
+      setVisSignals((signals as VisibilitySignals | null) ?? ALL_DISCLOSED)
     })
   }, [])
+
+  // Re-probe only when a row arrives that could open a gate still closed, and
+  // only after the batch settles: a scan produces hundreds of rows a second,
+  // and the disclosure model must not sit on the hot path of capture.
+  useEffect(() => {
+    if (!project || visibility.complete) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsub = window.redlog.events.onNewBatch?.((batch: unknown[]) => {
+      if (!shouldRefetch(visSignals ?? EMPTY_SIGNALS, batch as Parameters<typeof shouldRefetch>[1])) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        void window.redlog.visibility?.signals?.()
+          .then((sig) => { if (sig) setVisSignals(sig as VisibilitySignals) })
+          .catch(() => { /* a probe failure only delays a page appearing */ })
+      }, 500)
+    }) ?? (() => {})
+    return () => { if (timer) clearTimeout(timer); unsub() }
+  }, [project, visibility.complete, visSignals])
+
+  // 5c is per project: switching projects reloads the same origin, so a global
+  // key would turn disclosure off permanently for every later engagement after
+  // one tick.
+  useEffect(() => {
+    if (!project) return
+    setShowAllPages(storedShowAllPages(project.id))
+    const onChange = (): void => setShowAllPages(storedShowAllPages(project.id))
+    window.addEventListener(SHOW_ALL_PAGES_EVENT, onChange)
+    return () => window.removeEventListener(SHOW_ALL_PAGES_EVENT, onChange)
+  }, [project])
 
   useEffect(() => {
     if (!project) return
@@ -266,7 +327,11 @@ export default function App(): JSX.Element {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar active={view} onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); setView(v as View) }} />
+        <Sidebar
+          active={view}
+          visibleViews={visibility.views}
+          onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); setView(v as View) }}
+        />
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
