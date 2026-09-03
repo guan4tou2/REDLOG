@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
-import { isHousekeeping, isHookSource } from '../src/renderer/src/lib/housekeeping'
+import { isHousekeeping, isHookSource, isEvidence } from '../src/renderer/src/lib/housekeeping'
 import type { RedLogEvent } from '../src/core/db/events'
 
 // The same question is asked twice — once in JS for what is rendered, once in
@@ -53,6 +53,19 @@ describe('housekeeping', () => {
     expect(isHookSource(undefined)).toBe(false)
   })
 
+  it('separates "the app did this" from "the operator did this"', () => {
+    // Strictly narrower than !isHousekeeping, and the gap is what makes the
+    // first-run screen possible: an IP verdict is a conclusion worth showing on
+    // the timeline, and it lands within seconds of opening any project.
+    const verdict = ev('system', { subtype: 'ip_verdict', kind: 'unknown' })
+    expect(isHousekeeping(verdict)).toBe(false)
+    expect(isEvidence(verdict), 'a verdict is not the operator having done something').toBe(false)
+    expect(isEvidence(ev('shell', { subtype: 'session_end', castPath: '/x' }))).toBe(false)
+    expect(isEvidence(ev('shell', { subtype: 'command_start', command: 'nmap -sV 10.0.0.5' }))).toBe(true)
+    expect(isEvidence(ev('dns', { subtype: 'dns_query', query_name: 'a.example' }))).toBe(true)
+    expect(isEvidence(ev('marker', { title: 'a finding' }))).toBe(true)
+  })
+
   it('agrees with the SQL twin on every fixture', () => {
     const sql = fs.readFileSync(path.join(__dirname, '../src/core/db/events.ts'), 'utf-8')
     const block = sql.slice(sql.indexOf('const HOUSEKEEPING_SQL'), sql.indexOf('const HOUSEKEEPING_SQL') + 900)
@@ -63,5 +76,12 @@ describe('housekeeping', () => {
       expect(block, `SQL is missing the ${rule} rule`).toContain(rule)
     }
     expect(block).toContain("agent_type = 'terminal'")
+
+    // The evidence predicate has a SQL twin too, and it is the one the
+    // first-run screen and the sidebar both depend on.
+    const evidence = sql.slice(sql.indexOf('export const EVIDENCE_SQL'), sql.indexOf('export const HTTP_FLOW_SUBTYPES'))
+    expect(evidence).toContain("agent_type NOT IN ('system', 'cleanup')")
+    expect(evidence).toContain('session_end')
+    expect(evidence).toContain('shell-preexec-hook.sh')
   })
 })

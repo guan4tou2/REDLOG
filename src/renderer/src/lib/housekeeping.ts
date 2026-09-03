@@ -27,3 +27,25 @@ export function isHousekeeping(e: RedLogEvent): boolean {
   if (e.agentType === 'shell' && (s === 'command_start' || s === 'command') && isHookSource(e.data?.command)) return true
   return false
 }
+
+/**
+ * Did the OPERATOR do this, as opposed to the app?
+ *
+ * Strictly narrower than `!isHousekeeping`, and the difference is the whole
+ * point: `system.ip_verdict` is a conclusion about the engagement, so the
+ * timeline shows it — but the alert runtime emits one within seconds of opening
+ * any project, before anything has been captured. A first-run screen keyed on
+ * "not housekeeping" therefore dismisses itself immediately, on a project where
+ * nothing has happened.
+ *
+ * The SQL twin is EVIDENCE_SQL in src/core/db/events.ts.
+ */
+export function isEvidence(e: RedLogEvent): boolean {
+  if (e.agentType === 'system' || e.agentType === 'cleanup') return false
+  const s = e.data?.subtype as string | undefined
+  if (e.agentType === 'shell' && (s === 'session_start' || s === 'session_end')) return false
+  if (e.agentType === 'terminal' && s === 'session_start') return false
+  if (e.agentType === 'shell' && (s === 'command_start' || s === 'command' || s === 'command_end')
+      && isHookSource(e.data?.command)) return false
+  return true
+}
