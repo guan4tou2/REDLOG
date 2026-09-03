@@ -696,6 +696,54 @@ export function queryEventById(id: string): RedLogEvent | null {
   return logged ? rowToEvent({ ...logged, tier: 'logged' }) : null
 }
 
+/** Every amendment addressed at any of `markerIds`, oldest first.
+ *
+ *  Both tables are queried even though `marker` is chained and the logged arm is
+ *  expected to come back empty: "which table is this type in" is a fact about
+ *  today's classifier, and a reader that hard-codes it silently returns half an
+ *  answer the day that changes. The union projects its tier literally because
+ *  `rowToEvent` defaults a missing hint to `chained` — a logged row would
+ *  otherwise arrive claiming a hash chain it was never part of.
+ *
+ *  `ORDER BY created_at, _row` is insertion order, not wall clock: the fold's
+ *  "the latest correction wins" must mean the one written last, and wall clock
+ *  regresses on an NTP correction. */
+export function queryMarkerAmendments(markerIds: string[]): RedLogEvent[] {
+  if (markerIds.length === 0) return []
+  const db = getDB()
+  const out: RedLogEvent[] = []
+  // SQLITE_MAX_VARIABLE_NUMBER is 999 by default and the ids bind twice (once
+  // per arm), so chunk well under half of it.
+  for (let i = 0; i < markerIds.length; i += 400) {
+    const chunk = markerIds.slice(i, i + 400)
+    const holes = chunk.map(() => '?').join(',')
+    const where = `WHERE agent_type = 'marker'
+                     AND json_extract(data, '$.subtype') = 'amended'
+                     AND json_extract(data, '$.markerId') IN (${holes})`
+    const chained = `
+      SELECT rowid AS _row,
+             id, timestamp, engagement_id, session_id, operator_id, agent_type,
+             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+             monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+      FROM events ${where}
+    `
+    const logged = `
+      SELECT rowid AS _row,
+             id, timestamp, engagement_id, session_id, operator_id, agent_type,
+             hostname, source_ip, target_id, data,
+             NULL AS hash, NULL AS prev_hash, created_at,
+             NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+             'logged' AS tier
+      FROM events_logged ${where}
+    `
+    const rows = db.prepare(
+      `SELECT * FROM (${chained} UNION ALL ${logged}) ORDER BY created_at ASC, _row ASC`
+    ).all(...chunk, ...chunk) as Array<Record<string, unknown>>
+    for (const r of rows) out.push(rowToEvent(r))
+  }
+  return out
+}
+
 export function queryByFlowId(flowId: string): RedLogEvent[] {
   const db = getDB()
   const pattern = `%"flow_id":"${flowId}"%`

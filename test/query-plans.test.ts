@@ -53,6 +53,21 @@ describeDB('query plans', () => {
     expect(p, 'must not fall back to a full table scan').not.toContain('SCAN events')
   })
 
+  it('reading a marker\'s amendments narrows on agent_type before touching JSON', () => {
+    // json_extract cannot be indexed here, so the only thing standing between
+    // this and a full-table JSON parse per row is the agent_type predicate
+    // resolving first. Asserted as the ABSENCE of a scan rather than by naming
+    // an index: SQLite may legitimately prefer a different one as indexes are
+    // added, and a green-to-red flip for a change that made nothing slower
+    // teaches the team to delete the assertion.
+    const p = plan(
+      `SELECT id FROM events WHERE agent_type = 'marker'
+         AND json_extract(data, '$.subtype') = 'amended'
+         AND json_extract(data, '$.markerId') IN (?)`, 'x'
+    )
+    expect(p, 'must not fall back to a full table scan').not.toContain('SCAN events')
+  })
+
   it('the chain prev-row lookup is index-driven, not an OR fallback', () => {
     // v0.9.8. The equivalent OR form
     //   created_at < ? OR (created_at = ? AND rowid < ?)
