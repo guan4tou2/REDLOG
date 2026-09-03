@@ -91,6 +91,12 @@ export default function App(): JSX.Element {
   // four-row nav on a mature project, and show its operator a first-run screen.
   const [visSignals, setVisSignals] = useState<VisibilitySignals | null>(null)
   const [showAllPages, setShowAllPages] = useState(false)
+  // Latched, not derived. `visibility.firstRun` goes false the instant the
+  // first row lands — which is the exact moment the screen exists to show. Read
+  // straight, the strip would be unmounted before the operator saw it light up,
+  // and the answer to "is this being recorded" would be a flicker. It clears
+  // when they leave the screen.
+  const [firstRunActive, setFirstRunActive] = useState(false)
   const { t } = useI18n()
 
   // TDZ contract (this file and Timeline.tsx have both been bitten): the memo
@@ -133,6 +139,16 @@ export default function App(): JSX.Element {
     }) ?? (() => {})
     return () => { if (timer) clearTimeout(timer); unsub() }
   }, [project, visibility.complete, visSignals])
+
+  useEffect(() => {
+    if (visSignals === null) return
+    if (visibility.firstRun) setFirstRunActive(true)
+  }, [visSignals, visibility.firstRun])
+
+  // Navigating anywhere else is the operator saying they are done with it.
+  useEffect(() => {
+    if (view !== 'dashboard' && firstRunActive && !visibility.firstRun) setFirstRunActive(false)
+  }, [view, firstRunActive, visibility.firstRun])
 
   // 5c is per project: switching projects reloads the same origin, so a global
   // key would turn disclosure off permanently for every later engagement after
@@ -336,7 +352,7 @@ export default function App(): JSX.Element {
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
-            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={visibility.firstRun} />}
+            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={firstRunActive} />}
             {view === 'terminal' && <TerminalView />}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior

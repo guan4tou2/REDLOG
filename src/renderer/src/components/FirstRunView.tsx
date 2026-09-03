@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
-import { isHousekeeping } from '../lib/housekeeping'
+import { isEvidence } from '../lib/housekeeping'
 import { eventTitle } from './Timeline'
 import { EmptyState } from './EmptyState'
 import { Button } from './Button'
@@ -46,7 +46,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     let timer: ReturnType<typeof setTimeout> | null = null
     const load = (): void => {
       void window.redlog.events.query({ limit: 20, excludeHousekeeping: true })
-        .then((r: RedLogEvent[]) => setRows((r ?? []).filter((e) => !isHousekeeping(e)).slice(0, 8)))
+        // `isEvidence`, not `!isHousekeeping`: an IP verdict lands within
+        // seconds of opening any project and would light this strip before the
+        // operator had done anything.
+        .then((r: RedLogEvent[]) => setRows((r ?? []).filter(isEvidence).slice(0, 8)))
         .catch(() => { /* the strip simply stays empty */ })
     }
     load()
