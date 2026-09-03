@@ -9,7 +9,7 @@ import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
@@ -22,7 +22,8 @@ import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
-import { configureRedaction } from '../core/redaction'
+import { configureRedaction, redactFields } from '../core/redaction'
+import { amendMarker, markerIdsIn, sliceWithAmendments } from '../core/marker-amend'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
@@ -186,6 +187,14 @@ function toggleRecording(): boolean {
   return recording
 }
 
+// The two marker fields an operator types by hand, and therefore the two that
+// can carry a pasted credential. Layer 4 can only mask a field that carries
+// detection spans (src/core/sanitize.ts skips an event whose `data.redactions`
+// is empty), so every marker producer runs `redactFields` over these before the
+// insert — otherwise `redlog-cli sanitize` reports success on a marker note and
+// ships the secret anyway.
+const MARKER_TEXT_FIELDS = ['title', 'notes'] as const
+
 // Opens the marker dialog in the main window — shared by the global shortcut,
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
 // operator is about to type a title and notes.
@@ -204,7 +213,7 @@ function triggerInstantMark(): { ok: boolean; id?: string } {
   if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
   try {
     const at = new Date()
-    const event = insertEvent('marker', {
+    const event = insertEvent('marker', redactFields({
       title: `HUD mark ${at.toLocaleTimeString()}`,
       notes: '',
       severity: 'info',
@@ -212,8 +221,8 @@ function triggerInstantMark(): { ok: boolean; id?: string } {
       // Distinguishes an un-annotated instant mark from one the operator
       // filled in, so a reviewer knows a bare title is intentional.
       source: 'hud-instant'
-    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-    if (event) eventBus.publish(event)
+    }, MARKER_TEXT_FIELDS), { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    if (event) eventBus.publish(event, { bypassPause: true })
     return { ok: !!event, id: event?.id }
   } catch (e) {
     noteDbError('hud-instant-mark', e)
@@ -1284,6 +1293,16 @@ app.whenReady().then(() => {
     return readCastRange(full, off, len)
   })
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
+  // `queryEventById` has existed since v0.6.96 with no way to reach it from the
+  // renderer. The Timeline pages newest-first, 200 rows at a time, and an
+  // amendment is by construction newer than the marker it corrects — so on any
+  // fresh timeline the correction is on screen while its marker is thousands of
+  // rows back. Without a way to fetch it, the Inspector draws the red
+  // 「chain broken」 chip on the ordinary default path.
+  ipcMain.handle('events:getById', (_e, ids: string[]) =>
+    activeProject && Array.isArray(ids)
+      ? ids.slice(0, 200).map((id) => queryEventById(String(id))).filter((e): e is RedLogEvent => e !== null)
+      : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
   ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
@@ -1350,15 +1369,45 @@ app.whenReady().then(() => {
   ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
     if (!activeProject) return null
     const config = loadConfig(getProjectPath(activeProject))
-    const event = insertEvent('marker', {
+    // The payload is rebuilt field by field rather than spread, so an untrusted
+    // renderer cannot smuggle `_causes` or a forged subtype into a chained row.
+    // That cost `atTimestamp` for a while: the Timeline's 〈在此落標記〉 sends it
+    // (EventMarker.tsx) and this handler silently dropped it, so an in-app
+    // marker always landed at wall-clock while an e2e seeding over REST — the
+    // one path that did carry it — stayed green.
+    const at = data.atTimestamp
+    const event = insertEvent('marker', redactFields({
       title: data.title,
       notes: data.notes,
       severity: data.severity ?? 'info',
-      category: data.category ?? 'custom'
-    }, { engagementId: config.engagement.id, operatorId: config.operator.id })
-    if (event) eventBus.publish(event)
+      category: data.category ?? 'custom',
+      ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {})
+    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id })
+    // `marker` is pause-exempt at insert (PAUSE_EXEMPT_AGENT_TYPES) because §10
+    // promises that an explicit "write this down" records while recording is
+    // paused. The default publish gate would then drop the fanout, leaving the
+    // row in the chain but absent from the timeline until the next reload — so
+    // the operator writes a marker, sees nothing, and writes it again.
+    if (event) eventBus.publish(event, { bypassPause: true })
     return event
   })
+
+  ipcMain.handle('marker:amend', (_e, markerId: string, changes: Record<string, unknown>) => {
+    if (!activeProject) return { ok: false, error: 'no-active-project' }
+    const config = loadConfig(getProjectPath(activeProject))
+    const result = amendMarker(String(markerId), changes ?? {}, {
+      engagementId: config.engagement.id,
+      operatorId: config.operator.id
+    })
+    // Same reason as marker:create — an amendment records while paused, so its
+    // fanout must not be dropped or the operator writes a correction and sees
+    // the old text stare back.
+    if (result.ok) eventBus.publish(result.event, { bypassPause: true })
+    return result
+  })
+
+  ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
+    activeProject && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
 
   // --- Screenshots ---
   ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) => screenshotAgent.captureNow('manual', causeEventId))
@@ -1619,9 +1668,16 @@ app.whenReady().then(() => {
     if (to <= from) return null
     const all = queryEvents({ limit: 100000, since: from })
     const slice = all.filter((e) => e.timestamp >= from && e.timestamp <= to)
+    // A correction is always written after the window its marker lives in, so a
+    // plain window filter exports the finding with the wording the operator has
+    // since retracted, and nothing in the file says so. Pulled in regardless of
+    // the window, under their own key so a reader can see they were fetched for
+    // context rather than because they fell inside it.
+    const markerIds = markerIdsIn(slice)
+    const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds) : []
     return sliceExport(
       `timeline-${new Date(from).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
-      { window: { fromMs: from, toMs: to }, events: slice }
+      { window: { fromMs: from, toMs: to }, ...sliceWithAmendments(slice, amendments) }
     )
   })
 

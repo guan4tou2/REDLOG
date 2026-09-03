@@ -23,7 +23,7 @@ To make the timeline both **usable inside RedLog** and **portable to Ghostwriter
 | `comments` | string | Free-form notes / caveats |
 | `sha256` | string | SHA-256 of a payload / dropped file / screenshot |
 | `bytes` | number | Byte size of a transfer / payload |
-| `severity` | string | `info` / `low` / `medium` / `high` / `critical` — for `marker` and `loot` |
+| `severity` | string | `marker`: `info` / `important` / `critical` (the vocabulary the marker dialog writes). `loot`: `info` / `low` / `medium` / `high` / `critical` |
 
 ## Standard `agent_type` values
 
@@ -42,6 +42,32 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 - `c2_checkin` — C2 beacon / callback
 - `cleanup` — anti-forensics actions (T1070.\*, T1564.001) — RedLog auto-detects (see below)
 - `marker` — human-created finding notes / severity marks
+
+  **`subtype: 'amended'`** — a correction to an earlier marker (design turn 8b).
+  Chained, like the marker itself. Carries `markerId` (the marker it revises)
+  and `_causes: [markerId]`, plus ONLY the fields that changed, flat, under the
+  marker's own names: `title`, `severity`, `notes`. Never `atTimestamp`,
+  `category` or anything in the envelope — those are the record, not a
+  description of it. What a marker says now is the fold over (marker,
+  amendments in insertion order); the marker row is never modified, and
+  amending an amendment is refused, so the fold is a list, not a tree.
+
+  Two conventions worth stating once, because both features that write
+  correcting rows rely on them:
+  - **Absence means the old meaning.** A row without the newer field reads
+    exactly as it did before that field existed, so no migration is needed.
+  - **`_causes[0]` may point outside any loaded window.** A correction is
+    always newer than what it corrects, and readers page newest-first — a
+    cause that is merely not loaded is not a broken chain, and must not be
+    drawn as one.
+
+  Redaction is keyed `(event id, field)`, so masking a note on the marker does
+  NOT mask the same text in an amendment that restated it. Both ids have to be
+  listed when sanitizing.
+
+  `/api/events` refuses `marker` + `subtype: 'amended'` with 403: validating a
+  forged correction would only make it well-formed, and any token holder could
+  still re-title another operator's finding.
 - `loot` — credential/secret detections (auto from output, or explicit via `redlog_loot_scan`)
 - `scanner` — mitmproxy / port scan / vuln scan output (open agent_type)
 

@@ -11,6 +11,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let api: typeof import('../src/core/api-server')
 let LootDetector: typeof import('../src/core/loot-detector').LootDetector
+let getEventCount: typeof import('../src/core/db/events').getEventCount
 let dbAvailable = false
 try {
   const dbMod = await import('../src/core/db/index')
@@ -18,6 +19,7 @@ try {
   closeDB = dbMod.closeDB
   api = await import('../src/core/api-server')
   LootDetector = (await import('../src/core/loot-detector')).LootDetector
+  getEventCount = (await import('../src/core/db/events')).getEventCount
   dbAvailable = true
 } catch {
   // native module unavailable — skip
@@ -105,5 +107,28 @@ describeDB('api-server', () => {
     const r = await fetch(`${base}/api/events/count`, { headers: authHeaders })
     expect(r.status).toBe(200)
     expect(typeof (await r.json()).count).toBe('number')
+  })
+
+  it('accepts a marker but refuses a marker amendment', async () => {
+    // A marker is operator-authored and authoritative, and an amendment claims
+    // to be an operator changing what a finding says. Validating a forged one
+    // would only make it well-formed — any token holder could still re-title
+    // someone else's finding and have the chain record it as their words.
+    const marker = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_type: 'marker', data: { title: 'posted by a tool', severity: 'info' } })
+    })
+    expect(marker.status).toBe(201)
+    const markerId = (await marker.json()).id as string
+
+    const before = getEventCount()
+    const forged = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_type: 'marker', data: { subtype: 'amended', markerId, title: 'forged' } })
+    })
+    expect(forged.status).toBe(403)
+    expect(getEventCount(), 'a refused amendment must write nothing').toBe(before)
   })
 })
