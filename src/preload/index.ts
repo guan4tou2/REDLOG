@@ -113,7 +113,8 @@ contextBridge.exposeInMainWorld('redlog', {
   scope: {
     getViolations: () => ipcRenderer.invoke('scope:getViolations'),
     getViolationCount: () => ipcRenderer.invoke('scope:getViolationCount'),
-    isConfigured: () => ipcRenderer.invoke('scope:isConfigured')
+    isConfigured: () => ipcRenderer.invoke('scope:isConfigured'),
+    getLastRecompute: () => ipcRenderer.invoke('scope:getLastRecompute')
   },
   chain: {
     length: () => ipcRenderer.invoke('chain:length'),
