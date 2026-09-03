@@ -13,6 +13,7 @@ import {
   type Operator
 } from './db/operators'
 import { eventBus } from './event-bus'
+import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
 import { extractTarget, extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
