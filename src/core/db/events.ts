@@ -155,12 +155,24 @@ function ensureLastHash(): string | null {
   return cachedLastHash
 }
 
-/** Test-only: reset the prev-hash cache. Callers that manipulate the events
- *  table outside insertEvent (rebuild flows, tests that mutate via raw SQL)
- *  must call this so the next insertEvent re-reads the true head hash. */
-export function _resetLastHashCache(): void {
+/**
+ * Forget the cached chain head so the next insert re-reads it from the table.
+ *
+ * Required by anything that changes what is in `events` outside insertEvent —
+ * rebuild flows, tests mutating via raw SQL, and crucially any ROLLBACK of a
+ * transaction that contained inserts. insertEvent advances the cache after each
+ * successful INSERT and only resets it when that INSERT itself throws, so a
+ * rollback triggered by anything else leaves the cache pointing at a hash that
+ * is no longer in the table — and the next insert anywhere in the app chains
+ * onto a row that does not exist.
+ */
+export function invalidateChainHeadCache(): void {
   cachedLastHash = SENTINEL_UNSEEDED
 }
+
+/** Long-standing name for the same thing; kept so existing callers and tests
+ *  are untouched. */
+export const _resetLastHashCache = invalidateChainHeadCache
 
 // v0.6.97 C: row-count cache. getEventCount is called on every StatusBar tick
 // (5s poll) and every dashboard render — pre-v0.6.97 that was a full
