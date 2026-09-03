@@ -225,11 +225,118 @@ export interface ScopePolicyConfig {
 
 const DEFAULT_ALERT_FLOOR: ScopeDistance[] = ['excluded', 'adjacent_subnet', 'adjacent_domain']
 
+/** The scope in force, as a value rather than as policy state. Everything that
+ *  needs to reproduce a verdict — the live path, and the recompute that
+ *  re-judges stored rows after the allowlist changes — takes one of these, so
+ *  the two cannot answer the same question differently. */
+export interface ScopeSnapshot {
+  targets: string[]
+  excludeTargets: string[]
+  alertFloor: ScopeDistance[]
+}
+
+/** The prefix/domain indexes the adjacency rungs need. Derived from `targets`
+ *  alone, so a caller re-judging thousands of rows builds them once. */
+export interface ScopeIndexes {
+  subnets: Set<string>
+  domains: Set<string>
+}
+
+export function buildScopeIndexes(targets: readonly string[]): ScopeIndexes {
+  const subnets = new Set<string>()
+  const domains = new Set<string>()
+  for (const t of targets) {
+    if (t.includes('/')) {
+      const [net] = t.split('/')
+      const sub = subnetOf(net, 24)
+      if (sub) subnets.add(sub)
+    } else if (isIPv4(t)) {
+      const sub = subnetOf(t, 24)
+      if (sub) subnets.add(sub)
+    } else {
+      const dom = domainFor(t)
+      if (dom) domains.add(registrableDomain(dom))
+    }
+  }
+  return { subnets, domains }
+}
+
+/**
+ * Where a target sits relative to the scope. Pure, and the single definition —
+ * `ScopePolicy` delegates to it, so a stored row re-judged later gets byte-for-
+ * byte the verdict the live path would have produced.
+ *
+ * CASE IS SIGNIFICANT. `matchesDomain` compares exactly, with no lowercasing,
+ * so a caller that normalises case before classifying gets a DIFFERENT verdict
+ * from the live path. Normalise only when grouping candidates, never before
+ * this call.
+ */
+export function classifyScopeTarget(
+  target: string,
+  scope: Pick<ScopeSnapshot, 'targets' | 'excludeTargets'>,
+  indexes?: ScopeIndexes
+): { distance: ScopeDistance; authority: Authority; severity: Severity } {
+  // No scope configured → everything is in-scope by default (opt-in model).
+  if (scope.targets.length === 0 && scope.excludeTargets.length === 0) {
+    return { distance: 'in_scope', authority: 'unknown', severity: 'clean' }
+  }
+
+  // Rung 1 (strongest): explicit exclude match.
+  const isExcluded = scope.excludeTargets.some((ex) =>
+    isIPv4(target) ? matchesCIDR(target, ex) : matchesDomain(target, ex)
+  )
+  if (isExcluded) return { distance: 'excluded', authority: 'fact', severity: 'critical' }
+
+  // Rung 4 (floor): explicit include match.
+  const isInScope = scope.targets.some((t) =>
+    isIPv4(target) ? matchesCIDR(target, t) : matchesDomain(target, t)
+  )
+  if (isInScope) return { distance: 'in_scope', authority: 'fact', severity: 'clean' }
+
+  const idx = indexes ?? buildScopeIndexes(scope.targets)
+
+  // Rung 2 (inferred adjacency): same /24 as any scope target.
+  if (isIPv4(target)) {
+    const sub = subnetOf(target, 24)
+    if (sub && idx.subnets.has(sub)) {
+      return { distance: 'adjacent_subnet', authority: 'inferred', severity: 'warning' }
+    }
+  }
+
+  // Rung 3 (inferred adjacency): same registrable domain.
+  if (!isIPv4(target)) {
+    const reg = registrableDomain(target)
+    if (idx.domains.has(reg)) {
+      return { distance: 'adjacent_domain', authority: 'inferred', severity: 'warning' }
+    }
+  }
+
+  // Residual bucket. Off-profile by definition — but authority is
+  // 'inferred' because we're inferring "you probably didn't mean this"
+  // from silence, not from a rule.
+  return { distance: 'unrelated', authority: 'inferred', severity: 'notice' }
+}
+
+/** Whether a distance actually produces a violation record. `in_scope` never
+ *  does; everything else is opt-in through the floor. This is the emit gate
+ *  `evaluate` applies, exported so a recompute can ask the same question
+ *  without constructing a signal. */
+export function isReportable(distance: ScopeDistance, alertFloor: readonly ScopeDistance[]): boolean {
+  return distance !== 'in_scope' && alertFloor.includes(distance)
+}
+
+/** The floor the app actually runs with. Two settings, and `unrelated` is in
+ *  neither — off-profile traffic is noticed, not alarmed about. */
+export function alertFloorFor(warnOnViolation: boolean | undefined): ScopeDistance[] {
+  return warnOnViolation === false
+    ? (['excluded'] as ScopeDistance[])
+    : ([...DEFAULT_ALERT_FLOOR] as ScopeDistance[])
+}
+
 export class ScopePolicy implements Policy {
   readonly name = 'scope'
   private cfg: ScopePolicyConfig = { targets: [], excludeTargets: [], alertFloor: DEFAULT_ALERT_FLOOR }
-  private scopeSubnets = new Set<string>()  // /24s covered by CIDR targets
-  private scopeDomains = new Set<string>()  // registrable domains covered
+  private indexes: ScopeIndexes = { subnets: new Set(), domains: new Set() }
 
   /** Operator has drawn a boundary (targets configured). Excludes alone
    *  don't count as configured — an exclude-only scope makes no sense. */
@@ -239,7 +346,16 @@ export class ScopePolicy implements Policy {
     if (next.targets) this.cfg.targets = next.targets
     if (next.excludeTargets) this.cfg.excludeTargets = next.excludeTargets
     if (next.alertFloor) this.cfg.alertFloor = next.alertFloor
-    this.rebuildIndexes()
+    this.indexes = buildScopeIndexes(this.cfg.targets)
+  }
+
+  /** The scope in force, as a value the recompute can carry across a save. */
+  snapshot(): ScopeSnapshot {
+    return {
+      targets: [...this.cfg.targets],
+      excludeTargets: [...this.cfg.excludeTargets],
+      alertFloor: [...this.cfg.alertFloor]
+    }
   }
 
   evaluate(signal: Signal): Verdict[] {
@@ -247,68 +363,12 @@ export class ScopePolicy implements Policy {
     const verdict = this.classify(signal)
     // in_scope always emits so AdherenceCounter can tally. Non-in-scope
     // emits only if included in alertFloor.
-    if (verdict.distance !== 'in_scope' && !this.cfg.alertFloor.includes(verdict.distance)) return []
+    if (verdict.distance !== 'in_scope' && !isReportable(verdict.distance, this.cfg.alertFloor)) return []
     return [{ kind: 'scope', signal, ...verdict }]
   }
 
-  private rebuildIndexes(): void {
-    this.scopeSubnets.clear()
-    this.scopeDomains.clear()
-    for (const t of this.cfg.targets) {
-      if (t.includes('/')) {
-        // CIDR — index by /24 for adjacent-subnet detection
-        const [net] = t.split('/')
-        const sub = subnetOf(net, 24)
-        if (sub) this.scopeSubnets.add(sub)
-      } else if (isIPv4(t)) {
-        const sub = subnetOf(t, 24)
-        if (sub) this.scopeSubnets.add(sub)
-      } else {
-        const dom = domainFor(t)
-        if (dom) this.scopeDomains.add(registrableDomain(dom))
-      }
-    }
-  }
-
   private classify(s: TargetHitSignal): ScopeVerdict {
-    const target = s.target
-    // No scope configured → everything is in-scope by default (opt-in model).
-    if (this.cfg.targets.length === 0 && this.cfg.excludeTargets.length === 0) {
-      return { distance: 'in_scope', authority: 'unknown', severity: 'clean' }
-    }
-
-    // Rung 1 (strongest): explicit exclude match.
-    const isExcluded = this.cfg.excludeTargets.some((ex) =>
-      isIPv4(target) ? matchesCIDR(target, ex) : matchesDomain(target, ex)
-    )
-    if (isExcluded) return { distance: 'excluded', authority: 'fact', severity: 'critical' }
-
-    // Rung 4 (floor): explicit include match.
-    const isInScope = this.cfg.targets.some((t) =>
-      isIPv4(target) ? matchesCIDR(target, t) : matchesDomain(target, t)
-    )
-    if (isInScope) return { distance: 'in_scope', authority: 'fact', severity: 'clean' }
-
-    // Rung 2 (inferred adjacency): same /24 as any scope target.
-    if (isIPv4(target)) {
-      const sub = subnetOf(target, 24)
-      if (sub && this.scopeSubnets.has(sub)) {
-        return { distance: 'adjacent_subnet', authority: 'inferred', severity: 'warning' }
-      }
-    }
-
-    // Rung 3 (inferred adjacency): same registrable domain.
-    if (!isIPv4(target)) {
-      const reg = registrableDomain(target)
-      if (this.scopeDomains.has(reg)) {
-        return { distance: 'adjacent_domain', authority: 'inferred', severity: 'warning' }
-      }
-    }
-
-    // Residual bucket. Off-profile by definition — but authority is
-    // 'inferred' because we're inferring "you probably didn't mean this"
-    // from silence, not from a rule.
-    return { distance: 'unrelated', authority: 'inferred', severity: 'notice' }
+    return classifyScopeTarget(s.target, this.cfg, this.indexes)
   }
 }
 
