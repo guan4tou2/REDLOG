@@ -848,7 +848,7 @@
   "capture.group.commands": "指令",
   "capture.group.traffic": "流量",
   "capture.group.artifacts": "畫面與檔案",
-  "sidebar.search": "搜尋 (⌘/)",
+  "sidebar.search": "搜尋",
   "search.placeholder": "搜尋指令、目標、剪貼簿、戰利品...",
   "search.hint": "輸入至少 2 個字元以跨所有事件搜尋",
   "search.noResults": "「{{query}}」沒有結果",
@@ -988,5 +988,6 @@
   "timeline.badge.cleared": "之後已解除",
   "timeline.title.scopeRecomputed": "{{recomputed}} 重算 · {{flagged}} 新標 · {{cleared}} 解除",
   "timeline.title.scopeCleared": "已解除：{{target}}",
-  "timeline.detail.causeNotLoaded": "來源尚未載入，跳至 {{time}}"
+  "timeline.detail.causeNotLoaded": "來源尚未載入，跳至 {{time}}",
+  "sidebar.http_history": "HTTP"
 }

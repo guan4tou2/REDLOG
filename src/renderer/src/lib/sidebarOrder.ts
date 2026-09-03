@@ -24,11 +24,31 @@ export type SidebarViewId =
 // `search` between them because finding evidence afterwards is a core use
 // rather than a detour.
 //
-// Ten entries, eight numbered slots (⌘9 is Settings), so the last two —
-// `loot` and `marks` — carry no chord. That is a real cost and it is taken
-// deliberately: both are reachable from the sidebar and from ⌘K, and neither
-// is somewhere an operator jumps mid-keystroke the way they jump to the
+// Eleven entries, eight numbered slots (⌘9 is Settings), so the last three —
+// `scope`, `loot` and `marks` — carry no chord. That is a real cost and it is
+// taken deliberately: all three are reachable from the sidebar and from ⌘K, and
+// none is somewhere an operator jumps mid-keystroke the way they jump to the
 // timeline or to search.
 export const DEFAULT_ORDER: SidebarViewId[] = [
   'dashboard', 'timeline', 'search', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
 ]
+
+/** ⌘1..⌘8 belong to views; ⌘9 is pinned to Settings, which sits outside this
+ *  list. */
+export const NUMBERED_SLOTS = 8
+
+/**
+ * The number a view wears, or null when it has no chord.
+ *
+ * Derived from the view's position in DEFAULT_ORDER, never from where it
+ * happens to be rendered. Those were the same thing while every row was always
+ * shown, and the sidebar printed the rendered index — which is why it has been
+ * printing 9, 10 and 11 beside three rows that have no chord at all, and a
+ * second "9" beside Settings' own. Once rows can be hidden the two diverge
+ * completely: the chord would keep opening the timeline while the row beside it
+ * claimed a different number.
+ */
+export function shortcutNumberFor(id: SidebarViewId): number | null {
+  const i = DEFAULT_ORDER.indexOf(id)
+  return i >= 0 && i < NUMBERED_SLOTS ? i + 1 : null
+}

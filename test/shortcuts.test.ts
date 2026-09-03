@@ -13,10 +13,15 @@ import {
   formatAccelerator,
   timelineShortcuts
 } from '../src/renderer/src/lib/shortcuts'
+import { DEFAULT_ORDER, NUMBERED_SLOTS, shortcutNumberFor } from '../src/renderer/src/lib/sidebarOrder'
+import en from '../src/renderer/src/i18n/en.json'
+import zhTW from '../src/renderer/src/i18n/zh-TW.json'
 
-const SIDEBAR_ORDER = [
-  'dashboard', 'timeline', 'transcript', 'terminal', 'screenshots', 'targets', 'scope', 'loot'
-]
+// The real order, not a copy of it. The stale eight-item fixture that used to
+// live here omitted `search` and `http_history` entirely, which is how
+// `sidebar.http_history` — a key that exists in neither catalogue — reached ⌘K
+// and the shortcut panel and rendered as its own key name to the operator.
+const SIDEBAR_ORDER = DEFAULT_ORDER.slice(0, NUMBERED_SLOTS)
 
 // The renderer and main bundles share no module graph (ARCHITECTURE.md), so
 // the quick-mark accelerator is written down twice on purpose. This test is
@@ -184,5 +189,55 @@ describe('platform detection', () => {
     // Settings legitimately branches on the OS for OS-specific features
     // (macOS location services, Windows WSL) rather than for a keyboard glyph.
     expect(offenders.filter((f) => !f.endsWith('Settings.tsx'))).toEqual([])
+  })
+})
+
+describe('every nav label resolves, in both languages', () => {
+  // The shortcut table and ⌘K both build their label key from the VIEW ID
+  // (`sidebar.${view}`), so a view whose key does not exist renders the key
+  // itself — `sidebar.http_history` — into the operator's command palette.
+  // i18n-keys.test.ts cannot see it, because the key is built dynamically.
+  it('has a catalogue entry for every numbered view', () => {
+    const rows = appShortcuts(DEFAULT_ORDER.slice(0, NUMBERED_SLOTS), true)
+      .filter((r) => r.scope === 'nav')
+    expect(rows.length).toBeGreaterThan(0)
+    for (const r of rows) {
+      expect(en, `missing in en: ${r.label}`).toHaveProperty(r.label)
+      expect(zhTW, `missing in zh-TW: ${r.label}`).toHaveProperty(r.label)
+    }
+  })
+
+  it('has one for every view in the order, numbered or not — ⌘K lists them all', () => {
+    for (const view of DEFAULT_ORDER) {
+      const key = `sidebar.${view === 'screenshots' ? 'screens' : view}`
+      expect(en, `missing in en: ${key}`).toHaveProperty(key)
+      expect(zhTW, `missing in zh-TW: ${key}`).toHaveProperty(key)
+    }
+  })
+
+  it('keeps chords out of the labels themselves', () => {
+    // `sidebar.search` used to read "Search (⌘/)" — a chord baked into a label
+    // that every surface then printed its own hint beside.
+    for (const view of DEFAULT_ORDER) {
+      const key = `sidebar.${view === 'screenshots' ? 'screens' : view}`
+      expect((en as Record<string, string>)[key]).not.toMatch(/⌘|Ctrl\+/)
+      expect((zhTW as Record<string, string>)[key]).not.toMatch(/⌘|Ctrl\+/)
+    }
+  })
+})
+
+describe('the number a view wears', () => {
+  it('comes from the fixed order, not from where it is rendered', () => {
+    expect(shortcutNumberFor('dashboard')).toBe(1)
+    expect(shortcutNumberFor('targets')).toBe(NUMBERED_SLOTS)
+  })
+
+  it('is null for the views past the numbered run', () => {
+    // Three rows used to print 9, 10 and 11 — chords that open nothing, next to
+    // a Settings row that prints its own 9.
+    for (const view of DEFAULT_ORDER.slice(NUMBERED_SLOTS)) {
+      expect(shortcutNumberFor(view), `${view} should carry no chord`).toBeNull()
+    }
+    expect(DEFAULT_ORDER.slice(NUMBERED_SLOTS)).toEqual(['scope', 'loot', 'marks'])
   })
 })

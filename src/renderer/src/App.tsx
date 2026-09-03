@@ -23,7 +23,7 @@ import { ConfirmDialogContainer, confirm as confirmDialog } from './components/C
 import { toast } from './components/Toast'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
-import { DEFAULT_ORDER, type SidebarViewId } from './lib/sidebarOrder'
+import { DEFAULT_ORDER, type SidebarViewId, NUMBERED_SLOTS } from './lib/sidebarOrder'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
 import { Image } from 'lucide-react'
@@ -48,7 +48,7 @@ type View = SidebarViewId | 'settings'
 const SETTINGS_SHORTCUT_INDEX = 9
 
 function currentShortcutOrder(): View[] {
-  return DEFAULT_ORDER.slice(0, SETTINGS_SHORTCUT_INDEX - 1) as View[]
+  return DEFAULT_ORDER.slice(0, NUMBERED_SLOTS) as View[]
 }
 
 function viewForShortcut(num: number): View | null {
