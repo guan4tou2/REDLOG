@@ -181,6 +181,9 @@ contextBridge.exposeInMainWorld('redlog', {
   operators: {
     list: () => ipcRenderer.invoke('operators:list')
   },
+  visibility: {
+    signals: () => ipcRenderer.invoke('visibility:signals')
+  },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),
     toggle: (): Promise<boolean> => ipcRenderer.invoke('recording:toggle'),
