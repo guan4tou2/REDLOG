@@ -25,6 +25,7 @@ import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } fro
 import { useI18n } from './i18n'
 import { DEFAULT_ORDER, type SidebarViewId, NUMBERED_SLOTS } from './lib/sidebarOrder'
 import { computeVisibility, shouldRefetch, EMPTY_SIGNALS, type VisibilitySignals } from './lib/visibility'
+import { FirstRunView } from './components/FirstRunView'
 import { storedShowAllPages, SHOW_ALL_PAGES_EVENT } from './lib/showAllPages'
 import { appShortcuts } from './lib/shortcuts'
 import logoUrl from './assets/logo.svg'
@@ -335,13 +336,13 @@ export default function App(): JSX.Element {
 
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
-            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} />}
+            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={visibility.firstRun} />}
             {view === 'terminal' && <TerminalView />}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} focusTarget={focusTarget ?? undefined} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} focusTarget={focusTarget ?? undefined} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {/* v0.11.2 (design note T5): the same events read vertically. The
                 Timeline answers "when did this happen and what did it cause";
                 this answers "what did I type and what came back", which is the
@@ -800,7 +801,7 @@ function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) => void }
   )
 }
 
-function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
+function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean }): JSX.Element {
   const [eventCount, setEventCount] = useState(0)
   const [lootCount, setLootCount] = useState(0)
   const [chainLen, setChainLen] = useState(0)
@@ -895,6 +896,27 @@ function DashboardView({ onNavigate }: { onNavigate: (v: string) => void }): JSX
           ))}
         </div>
       </div>
+    )
+  }
+
+  // §22 / turn 9a. Nothing has been captured yet, so the dashboard's three
+  // empty stat cards and ten-source checklist have nothing to describe. Same
+  // view id, so every route and every spec that says `dashboard` still works.
+  if (firstRun) {
+    return (
+      <FirstRunView
+        onNavigate={onNavigate}
+        renderCaptureCard={() => (
+          capture
+            ? <CaptureHealthCard
+                capture={capture}
+                onNavigate={onNavigate}
+                onRefresh={() => refreshCaptureRef.current()}
+                tierSplit={{ chained: eventCount, logged: loggedCount, lastLoggedTs: latestLoggedTs }}
+              />
+            : <></>
+        )}
+      />
     )
   }
 

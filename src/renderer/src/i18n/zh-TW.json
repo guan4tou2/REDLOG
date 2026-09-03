@@ -992,5 +992,15 @@
   "sidebar.http_history": "HTTP",
   "settings.disclosure": "頁面顯示",
   "settings.showAllPages": "一次顯示所有頁面",
-  "settings.showAllPagesHint": "預設只顯示已經有資料的頁面；其餘在 ⌘K 始終可達。勾選後一律全部顯示（僅此專案）。"
+  "settings.showAllPagesHint": "預設只顯示已經有資料的頁面；其餘在 ⌘K 始終可達。勾選後一律全部顯示（僅此專案）。",
+  "firstRun.title": "先跑一個指令",
+  "firstRun.hint": "在下面的終端機打一個帶目標的指令。右邊會即時顯示它被記了下來。",
+  "firstRun.recording": "正在記錄",
+  "firstRun.openTimeline": "打開時間軸",
+  "firstRun.waitingTitle": "還沒有任何紀錄",
+  "firstRun.waitingHint": "跑一個指令——例如 nmap -sV 10.0.0.5——它會出現在這裡。",
+  "firstRun.stuckTitle": "指令跑了，但沒有東西進來",
+  "firstRun.stuckWhy": "內建終端機的擷取掛勾需要 python3 與 curl。缺其中之一時指令照跑，但不會被記錄。",
+  "firstRun.stuckAction": "檢查擷取來源",
+  "firstRun.moreSources": "其他擷取來源"
 }
