@@ -14,8 +14,9 @@ import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
-  AMENDABLE_FIELDS, type MarkerFold
+  AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
 } from '../lib/markerFold'
+import { MarkerDetail } from './MarkerDetail'
 import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
@@ -588,6 +589,20 @@ function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
  *    important marker  larger circle
  *    everything else   circle
  */
+// A switch rather than a code→key lookup table, so every key appears inside a
+// literal t() call: test/i18n-keys.test.ts can only see those, and a table of
+// key STRINGS would leave all four unchecked — which is exactly how a key that
+// renders as `marker.amendErr.notFound` to the operator gets shipped.
+function amendErrorWhy(code: string, t: (k: string) => string): string | undefined {
+  switch (code) {
+    case 'not-found': return t('marker.amendErr.notFound')
+    case 'not-a-marker': return t('marker.amendErr.notAMarker')
+    case 'invalid-changes': return t('marker.amendErr.invalidChanges')
+    case 'no-active-project': return t('marker.amendErr.noActiveProject')
+    default: return undefined
+  }
+}
+
 type DotShape = 'circle' | 'diamond' | 'ring'
 function dotShape(e: RedLogEvent, effectiveSeverity?: string): { shape: DotShape; scale: number } {
   const sub = e.data?.subtype as string | undefined
@@ -2563,6 +2578,36 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     toast(t('toast.copied'), 'success')
   }, [selectedEvent, t])
 
+  // Write a correction. No confirm dialog and no undo toast: the spec makes
+  // this first-level with no undo, because an undo that quietly removed the
+  // amendment would be an edit wearing another name. Amend again instead.
+  const handleAmend = useCallback(async (markerId: string, changes: Partial<MarkerValues>) => {
+    const res = await window.redlog.marker.amend?.(markerId, changes)
+    if (res?.ok) {
+      toast(t('marker.amendSaved'), 'success')
+      return
+    }
+    // §9: what happened, why, one action — never the raw error as the headline.
+    const why = amendErrorWhy(res?.error ?? 'invalid-changes', t)
+    toast(t('marker.amendFailed'), {
+      type: 'error',
+      why,
+      detail: res && 'detail' in res ? res.detail : undefined,
+      action: { label: t('marker.amendRetry'), onClick: () => void handleAmend(markerId, changes) }
+    })
+  }, [t])
+
+  // A marker is almost always older than the correction that names it, and the
+  // panel pages newest-first 200 rows at a time — so the row this amendment
+  // revises is usually not loaded. Fetch it by id rather than telling the
+  // operator the chain is broken.
+  const resolveOriginal = useCallback(async (markerId: string) => {
+    const known = eventsMapRef.current.get(markerId)
+    if (known) { setSelectedEvent(known); setDetailOpen(true); scrollToEvent(known); return }
+    const [fetched] = (await window.redlog.events.getById?.([markerId])) ?? []
+    if (fetched) { setSelectedEvent(fetched); setDetailOpen(true) }
+  }, [scrollToEvent])
+
   if (loading && events.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -3733,6 +3778,25 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                 {(causes as unknown[]).filter((c): c is string => typeof c === 'string').map((cid) => {
                   const cev = eventsMapRef.current.get(cid)
                   if (!cev) {
+                    // Two very different situations wore the same red chip. A
+                    // cause the panel simply has not paged in yet is normal —
+                    // an amendment is always newer than the marker it names, so
+                    // this is the DEFAULT path for one — while 「chain broken」 is
+                    // the app's most serious claim and must stay rare enough to
+                    // be believed. Offer to fetch it instead.
+                    if (isMarkerAmendment(selectedEvent)) {
+                      return (
+                        <button
+                          key={cid}
+                          type="button"
+                          onClick={() => void resolveOriginal(cid)}
+                          className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
+                          title={cid}
+                        >
+                          {t('timeline.detail.causeUnpaged')}
+                        </button>
+                      )
+                    }
                     return (
                       <span
                         key={cid}
@@ -3838,6 +3902,22 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           )}
           {selectedEvent.agentType === 'browser' && (
             <BrowserConsoleDetail data={selectedEvent.data as Record<string, unknown>} />
+          )}
+          {selectedEvent.agentType === 'marker' && (
+            <MarkerDetail
+              key={selectedEvent.id}
+              event={selectedEvent}
+              fold={foldById.get(selectedEvent.id)}
+              linkedScreenshots={(effectsById.get(selectedEvent.id) ?? [])
+                .map((id) => eventsMapRef.current.get(id))
+                .filter((e): e is RedLogEvent => !!e && e.agentType === 'screenshot')}
+              tz={tz}
+              projectTz={projectTz}
+              operatorLabel={operatorLabel}
+              onAmend={(id, changes) => void handleAmend(id, changes)}
+              onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
+              onResolveOriginal={(id) => void resolveOriginal(id)}
+            />
           )}
           {/* Replay this command: only for shell.command_end from a builtin
               terminal — pulls the stdout window out of the session's .cast
