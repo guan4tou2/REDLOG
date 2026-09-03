@@ -22,7 +22,7 @@ import { LootDetector } from '../core/loot-detector'
 import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
-import { configureRedaction } from '../core/redaction'
+import { configureRedaction, redactFields } from '../core/redaction'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
@@ -186,6 +186,14 @@ function toggleRecording(): boolean {
   return recording
 }
 
+// The two marker fields an operator types by hand, and therefore the two that
+// can carry a pasted credential. Layer 4 can only mask a field that carries
+// detection spans (src/core/sanitize.ts skips an event whose `data.redactions`
+// is empty), so every marker producer runs `redactFields` over these before the
+// insert — otherwise `redlog-cli sanitize` reports success on a marker note and
+// ships the secret anyway.
+const MARKER_TEXT_FIELDS = ['title', 'notes'] as const
+
 // Opens the marker dialog in the main window — shared by the global shortcut,
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
 // operator is about to type a title and notes.
@@ -204,7 +212,7 @@ function triggerInstantMark(): { ok: boolean; id?: string } {
   if (!activeProject || !currentEngagementId || !currentOperatorId) return { ok: false }
   try {
     const at = new Date()
-    const event = insertEvent('marker', {
+    const event = insertEvent('marker', redactFields({
       title: `HUD mark ${at.toLocaleTimeString()}`,
       notes: '',
       severity: 'info',
@@ -212,8 +220,8 @@ function triggerInstantMark(): { ok: boolean; id?: string } {
       // Distinguishes an un-annotated instant mark from one the operator
       // filled in, so a reviewer knows a bare title is intentional.
       source: 'hud-instant'
-    }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-    if (event) eventBus.publish(event)
+    }, MARKER_TEXT_FIELDS), { engagementId: currentEngagementId, operatorId: currentOperatorId })
+    if (event) eventBus.publish(event, { bypassPause: true })
     return { ok: !!event, id: event?.id }
   } catch (e) {
     noteDbError('hud-instant-mark', e)
@@ -1350,13 +1358,26 @@ app.whenReady().then(() => {
   ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
     if (!activeProject) return null
     const config = loadConfig(getProjectPath(activeProject))
-    const event = insertEvent('marker', {
+    // The payload is rebuilt field by field rather than spread, so an untrusted
+    // renderer cannot smuggle `_causes` or a forged subtype into a chained row.
+    // That cost `atTimestamp` for a while: the Timeline's 〈在此落標記〉 sends it
+    // (EventMarker.tsx) and this handler silently dropped it, so an in-app
+    // marker always landed at wall-clock while an e2e seeding over REST — the
+    // one path that did carry it — stayed green.
+    const at = data.atTimestamp
+    const event = insertEvent('marker', redactFields({
       title: data.title,
       notes: data.notes,
       severity: data.severity ?? 'info',
-      category: data.category ?? 'custom'
-    }, { engagementId: config.engagement.id, operatorId: config.operator.id })
-    if (event) eventBus.publish(event)
+      category: data.category ?? 'custom',
+      ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {})
+    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id })
+    // `marker` is pause-exempt at insert (PAUSE_EXEMPT_AGENT_TYPES) because §10
+    // promises that an explicit "write this down" records while recording is
+    // paused. The default publish gate would then drop the fanout, leaving the
+    // row in the chain but absent from the timeline until the next reload — so
+    // the operator writes a marker, sees nothing, and writes it again.
+    if (event) eventBus.publish(event, { bypassPause: true })
     return event
   })
 
