@@ -259,6 +259,38 @@ const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
 // which was fetching 200 rows and filtering to ~30 client-side, then setting
 // `allLoaded=true` because <200 came back — operators saw an empty timeline
 // with more history they couldn't reach.
+/**
+ * What counts as the operator having DONE something, as opposed to the app
+ * talking to itself.
+ *
+ * A new, positive predicate rather than a widening of HOUSEKEEPING_SQL, which
+ * the Timeline mirrors — `system.ip_verdict` must stay visible there, and it is
+ * exactly the row that makes the negative version useless here: the alert
+ * runtime starts on every project open and the IP policy emits its first
+ * verdict unconditionally (even offline, as `unknown`), so a chained
+ * non-housekeeping row lands on a virgin project within seconds. Defining
+ * evidence as "not housekeeping" would dismiss the first-run screen before
+ * anything had been captured, and unlock a search page with nothing to find.
+ *
+ * `shell.session_end` is excluded for the same reason: a pty exiting, or an
+ * orphaned session being recovered at startup, is the app tidying up.
+ */
+export const EVIDENCE_SQL = `
+  agent_type NOT IN ('system', 'cleanup')
+  AND NOT (agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('session_start','session_end'))
+  AND NOT (agent_type = 'terminal' AND json_extract(data,'$.subtype') = 'session_start')
+  AND NOT (
+    agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command','command_end')
+    AND json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%'
+  )
+`
+
+/** The subtypes the HTTP history page actually renders. Exported so a caller
+ *  asking "does this project have HTTP traffic" cannot drift from what that
+ *  page queries and unlock an empty screen — `scanner:connection` is a scanner
+ *  row and is NOT one of these. */
+export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as const
+
 const HOUSEKEEPING_SQL = `
   NOT (
     (agent_type = 'system' AND json_extract(data,'$.subtype') IN ('api_started','session_start'))

@@ -62,6 +62,11 @@ export function initDB(projectDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(agent_type, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_events_engagement ON events(engagement_id);
     CREATE INDEX IF NOT EXISTS idx_events_target ON events(target_id);
+    -- (agent_type, target_id): answers "are there two distinct command-derived
+    -- targets yet" in two index seeks. idx_events_target orders by target_id
+    -- alone, so the same question there walks every row of the first target
+    -- before it can emit a second.
+    CREATE INDEX IF NOT EXISTS idx_events_type_target ON events(agent_type, target_id);
     -- v0.6.95 P0-4b: every insertEvent looks up the previous row hash via
     -- ORDER BY created_at DESC, rowid DESC LIMIT 1. Without this index the
     -- query degrades to a table scan at 100k+ events, adding O(N) latency

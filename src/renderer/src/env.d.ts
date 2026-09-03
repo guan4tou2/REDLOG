@@ -222,6 +222,21 @@ interface RedLogAPI {
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
   }
+  visibility: {
+    /** §22 disclosure signals, or null with no project open. Optional-called
+     *  everywhere: an older preload has no such namespace, and the renderer
+     *  must degrade to showing everything rather than to showing nothing. */
+    signals: () => Promise<{
+      evidenceSeen: boolean
+      transcriptSeen: boolean
+      targetCount: 0 | 1 | 2
+      lootSeen: boolean
+      screenshotSeen: boolean
+      markSeen: boolean
+      httpFlowSeen: boolean
+      loggedEver: boolean
+    } | null>
+  }
   recording: {
     get: () => Promise<boolean>
     toggle: () => Promise<boolean>

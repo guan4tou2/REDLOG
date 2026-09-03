@@ -25,6 +25,7 @@ import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../c
 import { configureRedaction, redactFields } from '../core/redaction'
 import { amendMarker, markerIdsIn, sliceWithAmendments } from '../core/marker-amend'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
+import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
 import { exportBundle } from '../core/bundle-export'
@@ -534,6 +535,7 @@ function startProject(project: ProjectMeta): void {
   })
 
   invalidateViolationCount()
+  resetVisibilitySignalsCache()
   recomputePending = null
   const scopeTargets = snapshotScope(config).targets
   // v0.12.0: one configure call for the whole alert subsystem. Drops correlation/
@@ -1537,6 +1539,10 @@ app.whenReady().then(() => {
   ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
+
+  // §22: which nouns this engagement has the data for. Read-only, and the
+  // flags are monotonic, so a mature project costs no queries at all.
+  ipcMain.handle('visibility:signals', () => (activeProject ? getVisibilitySignals() : null))
 
   // --- Evidence Chain ---
   ipcMain.handle('chain:length', () => activeProject ? getChainLength() : 0)
