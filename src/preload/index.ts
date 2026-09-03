@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('redlog', {
     readCastRange: (castRel: string, off: number, len: number) =>
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
+    getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
     onNew: (cb: (event: unknown) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
       ipcRenderer.on('events:new', handler)
@@ -90,6 +91,9 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),
+    amend: (markerId: string, changes: Record<string, unknown>) =>
+      ipcRenderer.invoke('marker:amend', markerId, changes),
+    amendments: (ids: string[]) => ipcRenderer.invoke('marker:amendments', ids) as Promise<RedLogEvent[]>,
     onShortcut: (cb: () => void) => {
       const handler = () => cb()
       ipcRenderer.on('shortcut:marker', handler)

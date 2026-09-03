@@ -9,7 +9,7 @@ import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
   createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
 } from '../core/db/findings'
@@ -23,6 +23,7 @@ import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
+import { amendMarker } from '../core/marker-amend'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
@@ -1292,6 +1293,16 @@ app.whenReady().then(() => {
     return readCastRange(full, off, len)
   })
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
+  // `queryEventById` has existed since v0.6.96 with no way to reach it from the
+  // renderer. The Timeline pages newest-first, 200 rows at a time, and an
+  // amendment is by construction newer than the marker it corrects — so on any
+  // fresh timeline the correction is on screen while its marker is thousands of
+  // rows back. Without a way to fetch it, the Inspector draws the red
+  // 「chain broken」 chip on the ordinary default path.
+  ipcMain.handle('events:getById', (_e, ids: string[]) =>
+    activeProject && Array.isArray(ids)
+      ? ids.slice(0, 200).map((id) => queryEventById(String(id))).filter((e): e is RedLogEvent => e !== null)
+      : [])
   // Four-layer redaction, layer 3 — reveal action logs a chained event so
   // the audit trail shows raw secret bytes were viewed, by whom, when.
   ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
@@ -1380,6 +1391,23 @@ app.whenReady().then(() => {
     if (event) eventBus.publish(event, { bypassPause: true })
     return event
   })
+
+  ipcMain.handle('marker:amend', (_e, markerId: string, changes: Record<string, unknown>) => {
+    if (!activeProject) return { ok: false, error: 'no-active-project' }
+    const config = loadConfig(getProjectPath(activeProject))
+    const result = amendMarker(String(markerId), changes ?? {}, {
+      engagementId: config.engagement.id,
+      operatorId: config.operator.id
+    })
+    // Same reason as marker:create — an amendment records while paused, so its
+    // fanout must not be dropped or the operator writes a correction and sees
+    // the old text stare back.
+    if (result.ok) eventBus.publish(result.event, { bypassPause: true })
+    return result
+  })
+
+  ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
+    activeProject && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
 
   // --- Screenshots ---
   ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) => screenshotAgent.captureNow('manual', causeEventId))
