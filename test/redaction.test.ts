@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  redact, maskText, shannonEntropy,
+  redact, maskText, shannonEntropy, redactFields,
   configureRedaction, getRules, DEFAULT_RULES,
   registerRedactionRules, unregisterRedactionRules
 } from '../src/core/redaction'
@@ -131,5 +131,60 @@ describe('plugin rules registry', () => {
     expect(eff.denylist).toContain('KEEP_X')
     expect(eff.denylist).not.toContain('DROP_X')
     unregisterRedactionRules('p1')
+  })
+})
+
+describe('redactFields', () => {
+  // The contract layer 4 depends on: `sanitize()` skips an event whose
+  // `data.redactions` is empty, and skips a field with no span of its own. A
+  // producer that does not attach spans therefore writes text that can never be
+  // masked at export — and the operator watches the sanitize run report success.
+  //
+  // The stand-in is assembled at runtime and is ≥16 chars because that is what
+  // TOKEN_RE will even consider a candidate; a short denylist entry is never
+  // reached, which is itself worth knowing when writing a producer.
+  const SECRET = 'placeholder' + '-' + '0123456789abcdef'
+
+  beforeEach(() => configureRedaction({ ...DEFAULT_RULES, denylist: [SECRET] }))
+
+  it('tags each span with the field it came from', () => {
+    const data = redactFields({ title: `creds ${SECRET}`, notes: `also ${SECRET}` }, ['title', 'notes'])
+    const spans = data.redactions as Array<{ field: string; start: number; end: number }>
+    expect(spans.map((s) => s.field).sort()).toEqual(['notes', 'title'])
+    // Offsets are per field, not into some concatenation of them.
+    const title = spans.find((s) => s.field === 'title')!
+    expect(`creds ${SECRET}`.slice(title.start, title.end)).toBe(SECRET)
+  })
+
+  it('leaves the raw bytes in place — the chain closes over the true text', () => {
+    const data = redactFields({ title: `creds ${SECRET}` }, ['title'])
+    expect(data.title).toBe(`creds ${SECRET}`)
+  })
+
+  it('attaches nothing when a field holds no secret, so sanitize stays a no-op', () => {
+    const data = redactFields({ title: 'nmap scan', notes: '' }, ['title', 'notes'])
+    expect(data.redactions).toBeUndefined()
+  })
+
+  it('appends to spans a producer already attached rather than replacing them', () => {
+    const prior = { pattern: 'denylist', hint: 'x', start: 0, end: 1, field: 'output' }
+    const data = redactFields({ output: 'x', notes: SECRET, redactions: [prior] }, ['notes'])
+    const spans = data.redactions as Array<{ field: string }>
+    expect(spans).toHaveLength(2)
+    expect(spans[0]).toEqual(prior)
+  })
+
+  it('ignores absent and non-string fields', () => {
+    const data = redactFields({ notes: 42, severity: 'info' }, ['title', 'notes', 'severity'])
+    expect(data.redactions).toBeUndefined()
+  })
+
+  it('masks what it detected — the round trip a bundle export performs', () => {
+    const data = redactFields({ notes: `pw is ${SECRET} ok` }, ['notes'])
+    const spans = (data.redactions as Array<{ field: string; start: number; end: number; pattern: 'denylist' | 'entropy'; hint: string }>)
+      .filter((s) => s.field === 'notes')
+    const masked = maskText(data.notes as string, spans)
+    expect(masked).toBe(`pw is ${'\u2022'.repeat(SECRET.length)} ok`)
+    expect(masked).not.toContain(SECRET)
   })
 })
