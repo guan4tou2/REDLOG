@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { DEFAULT_ORDER } from '../lib/sidebarOrder'
+import { DEFAULT_ORDER, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
 import { formatTime } from '../lib/time'
 import { toast } from './Toast'
@@ -41,8 +41,8 @@ interface Item {
   run: () => void
 }
 
-// ⌘9 is Settings', so the sidebar's numbered run stops at eight.
-const NUMBERED_VIEWS = 8
+// ⌘9 is Settings', so the sidebar's numbered run stops at eight — read from
+// sidebarOrder so the palette cannot advertise a chord the sidebar does not.
 // Same detection App uses; read defensively because this module is imported
 // in tests where the preload bridge may be absent.
 
@@ -134,7 +134,7 @@ export function CommandPalette({
         // pinned outside the reorderable run — the ninth sidebar row has no
         // chord, and claiming one here would advertise a key that does
         // something else.
-        hint: i < NUMBERED_VIEWS ? `${MOD}${i + 1}` : undefined,
+        hint: i < NUMBERED_SLOTS ? `${MOD}${i + 1}` : undefined,
         run: () => onNavigate(view)
       })
     }

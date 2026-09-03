@@ -848,7 +848,7 @@
   "capture.group.commands": "Commands",
   "capture.group.traffic": "Traffic",
   "capture.group.artifacts": "Screen & files",
-  "sidebar.search": "Search (⌘/)",
+  "sidebar.search": "Search",
   "search.placeholder": "Search commands, targets, clipboard, loot...",
   "search.hint": "Type at least 2 characters to search across all events",
   "search.noResults": "No results for \"{{query}}\"",
@@ -988,5 +988,6 @@
   "timeline.badge.cleared": "withdrawn later",
   "timeline.title.scopeRecomputed": "{{recomputed}} re-judged · {{flagged}} newly flagged · {{cleared}} withdrawn",
   "timeline.title.scopeCleared": "Withdrawn: {{target}}",
-  "timeline.detail.causeNotLoaded": "source not loaded — jump to {{time}}"
+  "timeline.detail.causeNotLoaded": "source not loaded — jump to {{time}}",
+  "sidebar.http_history": "HTTP"
 }
