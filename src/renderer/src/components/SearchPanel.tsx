@@ -162,6 +162,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       <div className="relative mb-3 shrink-0">
         <input
           value={query}
+          data-testid="search-input"
           onChange={(e) => onChange(e.target.value)}
           placeholder={t('search.placeholder')}
           autoFocus
