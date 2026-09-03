@@ -68,6 +68,34 @@ describeDB('query plans', () => {
     expect(p, 'must not fall back to a full table scan').not.toContain('SCAN events')
   })
 
+  it("the recompute's candidate scan narrows on agent_type before parsing rows", () => {
+    // Phase A exists so a scope save does not JSON-parse every row in the
+    // project on the main thread while capture continues. json_extract cannot
+    // be indexed, so the agent_type predicate resolving first is the whole
+    // cost bound. Asserted as the absence of a scan rather than by naming an
+    // index — a later index can legitimately win the plan.
+    for (const table of ['events', 'events_logged']) {
+      const p = plan(
+        `SELECT json_extract(data, '$.detectedTarget') AS k, COUNT(*) AS n
+         FROM ${table}
+         WHERE agent_type = ? AND json_extract(data, '$.subtype') IN (?)
+           AND json_extract(data, '$.detectedTarget') IS NOT NULL
+         GROUP BY k`, 'shell', 'command_start'
+      )
+      expect(p, `${table} candidate scan fell back to a full table scan`).not.toContain(`SCAN ${table}`)
+    }
+  })
+
+  it('reading standing violations stays inside the system bucket', () => {
+    const p = plan(
+      `SELECT id, timestamp, data FROM events
+       WHERE agent_type = 'system'
+         AND json_extract(data, '$.subtype') IN ('scope_violation','scope_cleared')
+       ORDER BY created_at ASC, rowid ASC`
+    )
+    expect(p).not.toContain('SCAN events')
+  })
+
   it('the chain prev-row lookup is index-driven, not an OR fallback', () => {
     // v0.9.8. The equivalent OR form
     //   created_at < ? OR (created_at = ? AND rowid < ?)
