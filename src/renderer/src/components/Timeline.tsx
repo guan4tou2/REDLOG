@@ -17,6 +17,7 @@ import {
   AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
 } from '../lib/markerFold'
 import { MarkerDetail } from './MarkerDetail'
+import { isHookSource, isHousekeeping } from '../lib/housekeeping'
 import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
@@ -136,7 +137,9 @@ function firstStringArg(input: Record<string, unknown>, cap: number): string {
   return keys.length ? `{${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ', …' : ''}}` : ''
 }
 
-function eventTitle(event: RedLogEvent): string {
+/** Exported for the first-run strip, which is a preview of this timeline and
+ *  must name rows the same way it does. */
+export function eventTitle(event: RedLogEvent): string {
   const d = event.data
   switch (event.agentType) {
     case 'shell':
@@ -361,23 +364,6 @@ interface PluginEventType {
 //   • command_start whose command IS just sourcing the shell hook (the "silent"
 //     hook install runs as a real preexec, so the hook itself logs it as a
 //     command; that's plumbing, not a user command)
-function isHookSource(cmd: unknown): boolean {
-  return typeof cmd === 'string' && /shell-preexec-hook\.sh/.test(cmd)
-}
-function isHousekeeping(e: RedLogEvent): boolean {
-  const s = e.data?.subtype as string | undefined
-  if (e.agentType === 'system' && (s === 'api_started' || s === 'session_start')) return true
-  // shell.session_start is redundant with session_end (which has the full
-  // castPath + duration), and it fires before there's anything to replay.
-  // session_end is kept visible so operators can click it and use the
-  // "▶ Replay entire session" button — critical when the session ssh'd
-  // into a remote host and the local command_end row only shows `ssh`.
-  if (e.agentType === 'shell' && s === 'session_start') return true
-  if (e.agentType === 'terminal' && s === 'session_start') return true
-  if (e.agentType === 'shell' && (s === 'command_start' || s === 'command') && isHookSource(e.data?.command)) return true
-  return false
-}
-
 // A shell command_start is only interesting on its own if no command_end ever
 // arrives (still-running command). When the pair completes, the end has all the
 // signal (exit code + duration), so hide the redundant start. Match on pid+cmd.
@@ -766,7 +752,7 @@ function walkFocusChain(
   return visited
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -3795,7 +3781,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               <span className="text-xs font-mono text-redlog-text-dim px-1.5 py-0.5 rounded bg-redlog-elevated/60" title={selectedEvent.operatorId}>
                 {operatorLabel(selectedEvent.operatorId)}
               </span>
-              <TierBadge tier={selectedEvent.tier} variant="detail" />
+              <TierBadge tier={selectedEvent.tier} variant="detail" show={tierChip} />
             </div>
             <div className="flex items-center gap-2">
             </div>
@@ -4695,7 +4681,15 @@ const TIER_TOOLTIPS = {
   logged: 'Logged tier — supporting evidence. Not hash-chained, not signed, not covered by the OTS anchor. Retention policy deletes rows past keepDays. See docs/DESIGN-two-tier-chain.md.'
 } as const
 
-function TierBadge({ tier, variant }: { tier?: 'chained' | 'logged'; variant: 'row' | 'detail' }): JSX.Element {
+function TierBadge({ tier, variant, show = true }: {
+  tier?: 'chained' | 'logged'
+  variant: 'row' | 'detail'
+  /** §22: a project that has only ever had one tier gains nothing from being
+   *  told which one. Gates the DETAIL chip only — the row spacer stays
+   *  unconditional, so the densest view on screen does not reflow sideways the
+   *  moment the first logged row lands. */
+  show?: boolean
+}): JSX.Element | null {
   // Rows written before v0.13.0 have no tier field; treat them as chained
   // (the historical default) so the migration doesn't paint them a different
   // colour than what the audit chain actually contains.
@@ -4721,6 +4715,7 @@ function TierBadge({ tier, variant }: { tier?: 'chained' | 'logged'; variant: 'r
     )
   }
   // Detail-panel chip: icon + label, matches the surrounding badge stack.
+  if (!show) return null
   return (
     <span
       className={`text-xs font-mono px-1.5 py-0.5 rounded ${

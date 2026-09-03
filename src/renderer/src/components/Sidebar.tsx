@@ -8,6 +8,9 @@ import { useI18n } from '../i18n'
 interface SidebarProps {
   active: string
   onNavigate: (view: string) => void
+  /** §22: the views to render. Undefined shows everything — the shape a test
+   *  harness or an older caller gets, and the safe direction. */
+  visibleViews?: ReadonlySet<SidebarViewId>
 }
 
 interface NavItem {
@@ -28,10 +31,10 @@ const NAV_ICON_STROKE = 1.5
 
 // Shared with App.tsx's ⌘1..9 shortcut handler so the printed number and the
 // key that works can never disagree. See src/renderer/src/lib/sidebarOrder.ts.
-import { DEFAULT_ORDER } from '../lib/sidebarOrder'
+import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sidebarOrder'
 import { isMac } from '../lib/platform'
 
-export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Element {
+export default function Sidebar({ active, onNavigate, visibleViews }: SidebarProps): JSX.Element {
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
   const { t } = useI18n()
@@ -71,23 +74,32 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }
 
-  const items = DEFAULT_ORDER.map((id) => itemMap[id]).filter(Boolean)
+  // A hidden row is not-advertised, never unreachable: ⌘K lists every view and
+  // its chord still works, which is what makes hiding safe rather than lossy.
+  const items = DEFAULT_ORDER
+    .filter((id) => visibleViews === undefined || visibleViews.has(id))
+    .map((id) => itemMap[id])
+    .filter(Boolean)
 
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 
   return (
     <nav className="w-[186px] bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden">
       <div className="space-y-0.5">
-        {items.map((item, index) => {
+        {items.map((item) => {
           const isActive = active === item.id
+          // The view's own number, never its position in what happens to be
+          // rendered — a hidden row must not renumber the ones below it.
+          const chord = shortcutNumberFor(item.id as SidebarViewId)
+          const chordLabel = chord ? ` · ${isMac ? '⌘' : 'Ctrl+'}${chord}` : ''
           return (
             <button
               key={item.id}
               // Stable hook for e2e — see e2e/helpers.ts openView().
               data-view-btn={item.id}
               onClick={() => onItemClick(item.id)}
-              title={`${item.label} · ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
-              aria-label={`${item.label} — ${isMac ? '⌘' : 'Ctrl+'}${index + 1}`}
+              title={`${item.label}${chordLabel}`}
+              aria-label={`${item.label}${chordLabel.replace(' · ', ' — ')}`}
               aria-current={isActive ? 'page' : undefined}
               className={`w-full h-[var(--row-h)] rounded-md flex items-center gap-2 px-2 transition-colors duration-150 text-left relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 ${
                 isActive
@@ -114,12 +126,14 @@ export default function Sidebar({ active, onNavigate }: SidebarProps): JSX.Eleme
                   the number was a property of the current arrangement rather
                   than of the view, so showing it would have taught the wrong
                   thing. */}
-                <span
-                  className={`text-xs font-mono tabular-nums ${isActive ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
-                  aria-hidden
-                >
-                  {index + 1}
-                </span>
+                {chord !== null && (
+                  <span
+                    className={`text-xs font-mono tabular-nums ${isActive ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
+                    aria-hidden
+                  >
+                    {chord}
+                  </span>
+                )}
               </span>
             </button>
           )

@@ -172,6 +172,10 @@ function installBridge(): void {
         ]
       })
     },
+    visibility: { signals: async () => ({
+      evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
+      screenshotSeen: true, markSeen: true, httpFlowSeen: true, loggedEver: true
+    }) },
     recording: { get: async () => true, toggle: async () => true, onChange: () => unsub },
     pivots: {
       getActive: async () => [{ via: '10.0.0.5', tool: 'ligolo-ng', route: '10.10.20.0/24', ts: Date.now() }],
