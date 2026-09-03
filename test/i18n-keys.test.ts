@@ -17,13 +17,24 @@ const load = (loc: string): Record<string, string> =>
 // Only literal `t('some.key')` calls can be checked statically. Dynamic keys
 // (`t(\`sidebar.${view}\`)`) are excluded here and covered where they are built
 // — appShortcuts' labels, for instance, are checked in shortcuts.test.ts.
+//
+// One exception is scanned too: a `reasonKey: 'a.b'` literal. Those are keys
+// that reach `t()` through a variable, so the scanner below would never see
+// them — and a badge whose key is missing renders the key itself to the
+// operator, which is the failure this whole file exists to catch.
 function usedKeys(): Map<string, string[]> {
   const out = new Map<string, string[]>()
   for (const file of glob.sync('src/renderer/src/**/*.tsx', { cwd: ROOT, absolute: true })) {
     const src = fs.readFileSync(file, 'utf-8')
-    for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'/g)) {
-      const rel = repoRelative(ROOT, file)
-      out.set(m[1], [...(out.get(m[1]) ?? []), rel])
+    const patterns = [
+      /\bt\(\s*'([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'/g,
+      /\breasonKey:\s*'([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+)'/g
+    ]
+    for (const re of patterns) {
+      for (const m of src.matchAll(re)) {
+        const rel = repoRelative(ROOT, file)
+        out.set(m[1], [...(out.get(m[1]) ?? []), rel])
+      }
     }
   }
   return out

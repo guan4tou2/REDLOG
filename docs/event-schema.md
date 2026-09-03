@@ -41,6 +41,32 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 - `credential_use` — every attempted / successful credential use
 - `c2_checkin` — C2 beacon / callback
 - `cleanup` — anti-forensics actions (T1070.\*, T1564.001) — RedLog auto-detects (see below)
+  **`system` / `scope_recomputed`** and **`system` / `scope_cleared`** (design
+  turn 8a). Both chained. When the allowlist changes, RedLog re-judges the rows
+  the live path was eligible to judge and appends the result; nothing already
+  written is modified.
+
+  - `scope_recomputed` is the summary and the anchor every row of a run cites:
+    the scope fingerprint before and after, the file's sha256, the alert floor,
+    what was scanned, and the counts. `newly_flagged` beside
+    `newly_flagged_written` is deliberate — writes are capped per run, and
+    truncation the operator cannot see would make the banner claim a smaller
+    number than the engagement holds.
+  - `scope_cleared` records that a violation no longer holds:
+    `violation_id`, the distance before and after, and `_causes:
+    [violationId, recomputeId]`. Its own subtype rather than a violation at
+    distance `in_scope`, so every `scope_violation` row keeps meaning "a
+    violation was judged".
+  - `scope_violation` gains optional fields on the retroactive form: `judged:
+    'retroactive'`, `recompute_id`, `source_ts`, `source_tier`,
+    `source_sanitized`, and `regrade_of` when it supersedes an earlier verdict
+    at a different rung. Their ABSENCE is what makes every row already on disk
+    read as judged-at-the-time, with no migration.
+
+  Withdrawals are computed from the violation RECORDS rather than by rescanning,
+  because the logged tier — where most of the eligible corpus lives — is pruned
+  after `retention.loggedTier.keepDays`.
+
 - `marker` — human-created finding notes / severity marks
 
   **`subtype: 'amended'`** — a correction to an earlier marker (design turn 8b).

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { loadConfig, saveConfig, loadScopeFile } from '../src/core/config'
+import { loadConfig, saveConfig, loadScopeFile, snapshotScope, type RedLogConfig } from '../src/core/config'
 
 let tmpDir: string
 
@@ -95,5 +95,54 @@ describe('loadScopeFile', () => {
 
   it('returns empty array for nonexistent file', () => {
     expect(loadScopeFile('/nonexistent/scope.txt')).toEqual([])
+  })
+})
+
+describe('snapshotScope — the scope actually in force', () => {
+  // `config.scope.targets` is not the boundary the policy sees: a project can
+  // point at a Burp or ZAP scope file, and what is enforced is the
+  // concatenation. That merge used to be written out by hand at three call
+  // sites, which is three chances for "the scope" to mean three things.
+  let dir: string
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-scope-')) })
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
+
+  const cfg = (scope: Record<string, unknown>): RedLogConfig =>
+    ({ scope } as unknown as RedLogConfig)
+
+  it('merges the scope file into the targets, deduped and in order', () => {
+    const file = path.join(dir, 'scope.txt')
+    fs.writeFileSync(file, 'b.example\n# a comment\na.example\nb.example\n')
+    const s = snapshotScope(cfg({ targets: ['a.example'], excludeTargets: ['x.example'], scopeFile: file }))
+    expect(s.targets).toEqual(['a.example', 'b.example'])
+    expect(s.excludeTargets).toEqual(['x.example'])
+    // The count is what the FILE listed, before deduping against the config
+    // list — it describes the file, not the merge.
+    expect(s.scopeFileEntries).toBe(3)
+  })
+
+  it('hashes the file contents, so editing it on disk moves the boundary', () => {
+    // The path alone cannot say the scope changed — an operator editing the
+    // file changes what is enforced without touching config.yaml.
+    const file = path.join(dir, 'scope.txt')
+    fs.writeFileSync(file, 'a.example\n')
+    const before = snapshotScope(cfg({ targets: [], scopeFile: file })).scopeFileSha256
+    fs.writeFileSync(file, 'a.example\nb.example\n')
+    const after = snapshotScope(cfg({ targets: [], scopeFile: file })).scopeFileSha256
+    expect(before).toBeTruthy()
+    expect(after).not.toBe(before)
+  })
+
+  it('treats a missing or unreadable file as contributing nothing', () => {
+    const s = snapshotScope(cfg({ targets: ['a.example'], scopeFile: path.join(dir, 'nope.txt') }))
+    expect(s.targets).toEqual(['a.example'])
+    expect(s.scopeFileSha256).toBeNull()
+    expect(s.scopeFileEntries).toBe(0)
+  })
+
+  it('handles a project with no scope block at all', () => {
+    expect(snapshotScope({} as RedLogConfig)).toMatchObject({
+      targets: [], excludeTargets: [], scopeFile: null, scopeFileSha256: null
+    })
   })
 })

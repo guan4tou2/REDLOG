@@ -12,6 +12,7 @@ let closeDB: typeof import('../src/core/db/index').closeDB
 let api: typeof import('../src/core/api-server')
 let LootDetector: typeof import('../src/core/loot-detector').LootDetector
 let getEventCount: typeof import('../src/core/db/events').getEventCount
+let queryEvents: typeof import('../src/core/db/events').queryEvents
 let dbAvailable = false
 try {
   const dbMod = await import('../src/core/db/index')
@@ -20,6 +21,7 @@ try {
   api = await import('../src/core/api-server')
   LootDetector = (await import('../src/core/loot-detector')).LootDetector
   getEventCount = (await import('../src/core/db/events')).getEventCount
+  queryEvents = (await import('../src/core/db/events')).queryEvents
   dbAvailable = true
 } catch {
   // native module unavailable — skip
@@ -107,6 +109,27 @@ describeDB('api-server', () => {
     const r = await fetch(`${base}/api/events/count`, { headers: authHeaders })
     expect(r.status).toBe(200)
     expect(typeof (await r.json()).count).toBe('number')
+  })
+
+  it('records a command that names a target, and the scope dispatch it triggers', async () => {
+    // The path that was broken and that nothing here covered: posting a shell
+    // command with a detectable target runs the scope-signal dispatch and the
+    // credential producer. Both live past the insert, so an exception there
+    // returns 500 and silently stops capture — which only the e2e noticed.
+    const r = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_type: 'shell',
+        data: { subtype: 'command_start', command: 'mysql -h db.example -u root -p placeholderpw' }
+      })
+    })
+    expect(r.status, await r.text()).toBe(201)
+
+    // And the derived row it produces: a credential use, masked.
+    const creds = queryEvents({ limit: 50, tier: 'all' }).filter((e) => e.agentType === 'credential_use')
+    expect(creds.length, 'no credential_use event was produced').toBeGreaterThan(0)
+    expect(JSON.stringify(creds[0].data)).not.toContain('placeholderpw')
   })
 
   it('accepts a marker but refuses a marker amendment', async () => {

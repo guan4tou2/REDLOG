@@ -15,6 +15,38 @@ path: src/renderer
 
 date: 2026-08-24T02:30:00Z
 
+### 2026-09-04 · 8a 範圍回溯落地
+
+允許清單存檔後會重算既有事件：不動任何既有列，另寫鏈上 `system.scope_recomputed`
+（摘要與錨點）、回溯 `system.scope_violation`（帶 `judged:'retroactive'`）與
+`system.scope_cleared`（撤回既有違規）。範圍頁有三數橫幅（重算／新標／解除），回溯列
+帶琥珀「事後判定」chip，時間軸上也有對應徽章。
+
+**命名裁決：** 設計稿寫 `scope.recomputed`，實際存的 subtype 是 `scope_recomputed`
+（snake_case）。所有 `system` subtype 都是 snake_case,`classifyTier` 以
+`agent_type:subtype` 為鍵。設計稿散文維持原寫法。
+
+**幾個必須寫下來的判斷：**
+- **撤回由「違規紀錄」算，不是重掃語料。** 語料大半在 logged tier,30 天後被清；
+  重掃式的撤回會讓那些違規永遠掛著。
+- **候選目標用 SQL 從 `data` 推導，不是 `target_id`。** DNS producer 存的是帶結尾點的
+  FQDN，當初判定的是去點形式，而網域比對是精確比對——用 `target_id` 分組會去判定
+  live 路徑從來沒看過的目標。實測分歧已寫成測試。
+- **`unrelated` 不在任何出貨中的 alert floor。** 否則第一次存檔就會替操作員碰過的每個
+  主機寫一筆違規。
+- **不 hash alert floor。** 關掉通知只是縮小回報範圍，不是移動邊界。
+- **三道閘：** 未設定範圍時跳過（`ListField` 的「刪掉唯一目標再重打」會經過該狀態兩次，
+  否則每次要寫約一千筆永久簽章列）、2 秒尾端去抖動（Settings 每 350ms 自動存檔）、
+  專案切換時放棄排程中的工作。
+
+**同時修掉：** 範圍頁本來讀的是記憶體中的違規紀錄（上限 500 筆、切專案歸零、從未由 DB
+補種），所以回溯列根本不可能顯示，已撤回的違規也會一直被計入。現已改由鏈供應，計數
+做快取、只在三種 scope subtype 落地時失效——StatusBar 與側欄每筆事件都會問一次。
+
+**已知取捨：** retention 的 body pinning 仍用 `matchTarget`（子字串比對，`evil` 會命中
+`a.evil.example`），與 policy matcher 不同。回溯必須用 policy matcher（與當初判定一致才
+有意義）；兩者的分歧已寫成測試記錄，不在本次統一。
+
 ### 2026-09-03 · 8b 標記修訂落地（部分）
 
 `marker` 事件已上修訂模型：鏈上 `marker` + `data.subtype='amended'`（帶 `markerId` 與
@@ -65,7 +97,7 @@ append-only trigger 本來就不允許，這正是把修訂做成新事件而非
 - **18 泳道** — 設計稿只做單色化；repo 進一步按擷取組分帶（`183b9ac`）。
 
 **設計新增、repo 未做（待裁決）**
-- **8a 範圍回溯**：允許清單存檔後重算既有事件，不改事件、另寫 `scope.recomputed`；橫幅三數（重算／新標／解除）；回溯標記的違規列帶琥珀 chip。
+- **8a 範圍回溯**：~~待做~~ → **已完成**（見下方 2026-09-04 條目）。
 - **8b 標記修訂**：~~待做~~ → **部分完成**（見下方 2026-09-03 條目）。
 - **9a 首次執行單一路徑**：一個畫面一件事（內建終端機打指令 → 時間軸亮起），2e 九來源降為第二步。
 - **9b 漸進揭露（§22）**：名詞在其資料存在前不出現；第一天側欄四格；`visibility.ts` 由資料推導、不存使用者狀態；⌘ 編號不因隱藏改變。
