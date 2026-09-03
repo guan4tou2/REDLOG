@@ -23,7 +23,7 @@ import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
-import { amendMarker } from '../core/marker-amend'
+import { amendMarker, markerIdsIn, sliceWithAmendments } from '../core/marker-amend'
 import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
@@ -1668,9 +1668,16 @@ app.whenReady().then(() => {
     if (to <= from) return null
     const all = queryEvents({ limit: 100000, since: from })
     const slice = all.filter((e) => e.timestamp >= from && e.timestamp <= to)
+    // A correction is always written after the window its marker lives in, so a
+    // plain window filter exports the finding with the wording the operator has
+    // since retracted, and nothing in the file says so. Pulled in regardless of
+    // the window, under their own key so a reader can see they were fetched for
+    // context rather than because they fell inside it.
+    const markerIds = markerIdsIn(slice)
+    const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds) : []
     return sliceExport(
       `timeline-${new Date(from).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
-      { window: { fromMs: from, toMs: to }, events: slice }
+      { window: { fromMs: from, toMs: to }, ...sliceWithAmendments(slice, amendments) }
     )
   })
 
