@@ -28,6 +28,17 @@ describe('classifyTier — v0.13 two-tier assignment', () => {
     expect(classifyTier('agent', { subtype: 'compact_summary' })).toBe('chained')
   })
 
+  it('the scope recompute rows are chained — a prunable one would rewrite history', () => {
+    // `scope_recomputed` is the anchor every retroactive row cites; a pruned
+    // anchor leaves them dangling. `scope_cleared` is the ONLY record that a
+    // chained violation was withdrawn — prune it and the violation silently
+    // becomes active again a month later, which is a change of record with no
+    // record of the change.
+    expect(classifyTier('system', { subtype: 'scope_recomputed' })).toBe('chained')
+    expect(classifyTier('system', { subtype: 'scope_cleared' })).toBe('chained')
+    expect(classifyTier('system', { subtype: 'scope_violation' })).toBe('chained')
+  })
+
   it('screenshot / marker / loot / cleanup / pivot / file_transfer → chained', () => {
     expect(classifyTier('screenshot', {})).toBe('chained')
     expect(classifyTier('marker', {})).toBe('chained')

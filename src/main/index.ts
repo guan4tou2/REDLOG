@@ -7,7 +7,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, loadScopeFile, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
@@ -453,11 +453,7 @@ function startProject(project: ProjectMeta): void {
     intervalSec: config.screenshot.intervalSec ?? 0
   })
 
-  let scopeTargets = config.scope.targets
-  if (config.scope.scopeFile) {
-    const loaded = loadScopeFile(config.scope.scopeFile)
-    if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
-  }
+  const scopeTargets = snapshotScope(config).targets
   // v0.12.0: one configure call for the whole alert subsystem. Drops correlation/
   // burst history on every project open (resetOnProjectSwitch) so a stale
   // Combined verdict from the previous engagement can't fire when the new
@@ -1122,11 +1118,7 @@ app.whenReady().then(() => {
     logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
     applyDock()
-    let targets = newConfig.scope.targets
-    if (newConfig.scope.scopeFile) {
-      const loaded = loadScopeFile(newConfig.scope.scopeFile)
-      if (loaded.length > 0) targets = [...targets, ...loaded]
-    }
+    const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, {
       engagementId: newConfig.engagement.id,
       operatorId: newConfig.operator.id
