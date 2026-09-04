@@ -1,6 +1,6 @@
 # RedLog Docs
 
-Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
+Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links inside each for cross-references. Downloads on the [releases page](https://github.com/guan4tou2/REDLOG/releases/latest).
 
 ## What RedLog is (and isn't)
 
@@ -10,6 +10,7 @@ Wiki-style index for **v0.11.7**. Every page is self-contained; follow the links
 
 ## Start here
 
+- **[交接 2026-09](HANDOVER-2026-09.md)** — **read this first if you are picking the work up.** Where `main` stands, what the last eight PRs decided and why, what is still open (with the reason each was deferred), and the traps in this codebase that cost real time: the native-module ABI swap, the temporal-dead-zone crash that only appears in the bundled build, the two-tier event tables, and the source-scanning guard tests.
 - **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to MCP tool usage.
 
 ## Product & planning

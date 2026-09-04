@@ -1,5 +1,12 @@
 # Roadmap
 
+> **Stale as a status document (2026-09-04).** This was written against v0.9.3;
+> `main` is v0.14.3 and five releases of work have landed since, none of it
+> reflected below. The positioning section still holds. For what is actually
+> open right now — and why each item was deferred — see
+> [`HANDOVER-2026-09.md`](HANDOVER-2026-09.md). Rewrite this page against the
+> current tree before planning from it.
+
 Written 2026-08-08 against v0.9.3. Sources: `AUDIT-2026-08-08.md`,
 `timeline-io-visibility.md`, `WINDOWS_COMPAT_AUDIT.md`, and the open items
 CHANGELOG entries deferred.
