@@ -38,7 +38,11 @@ mac:
       arch:
         - arm64
 win:
-  icon: resources/icon-256.png
+  # A real multi-size .ico, not a single PNG. Handed one PNG, electron-builder
+  # downscales it to fill every slot, and the 16px slot — the one Windows shows
+  # in the taskbar and Explorer all day — comes out as mush. resources/icon.ico
+  # renders each size from the right master instead (tools/make-icons.py).
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch:

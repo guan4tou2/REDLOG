@@ -369,13 +369,21 @@ shell/
 docs/
   agent-integration.md       comprehensive agent integration guide
   codex-tools.json           OpenAI function calling definitions
-resources/
-  icon.svg                   vector source (1024×1024)
+design/
+  assets/redlog-mark.svg     the mark, 1024×1024 — source of truth
+  assets/redlog-mark-small.svg  ≤16px variant, ring collapsed to a dot
+tools/
+  make-icons.py              regenerates all of resources/ from those two
+  redlog-verify.py           offline evidence-bundle verifier
+resources/                   generated — edit the masters, not these
+  icon.svg / icon-small.svg  copies of the masters
   icon.icns                  macOS app icon
+  icon.ico                   Windows, 16–256, each size its own render
   icon-{16..1024}.png        all standard sizes
-  logo.svg                   horizontal wordmark
-  tray-iconTemplate.png      macOS menu bar icon
-  tray-iconTemplate@2x.png   Retina variant
+  tray-icon.svg              menu bar glyph: ring and dot, no plate
+  tray-iconTemplate.png      menu bar, idle (+@2x)
+  tray-icon-rec.png          menu bar, recording (+@2x)
+  tray-icon-paused.png       menu bar, paused (+@2x)
 ```
 
 ## Data Model
