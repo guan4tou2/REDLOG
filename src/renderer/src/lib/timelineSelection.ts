@@ -24,7 +24,9 @@ export type SelectionMove =
 export interface SelectionContext<L extends string = string> {
   events: RedLogEvent[]
   hiddenLanes: ReadonlySet<L>
-  pluginTypes: ReadonlySet<string> | Map<string, unknown> | undefined
+  /** Whatever the plugin registry hands back; only passed through to `laneOf`,
+   *  never inspected here. */
+  pluginTypes: readonly unknown[] | ReadonlySet<string> | Map<string, unknown> | undefined
   laneOrder: readonly L[]
   /** Lane of an event. Injected so this module needs no lane taxonomy. */
   laneOf: (e: RedLogEvent) => L

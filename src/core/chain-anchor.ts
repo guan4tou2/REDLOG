@@ -1001,7 +1001,9 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     // `tool_result` rows average 3.8 KB and reach 107 KB, that was the entire
     // cost of the sample: 3.7 s for 100 rows. verifyRowHash has short-
     // circuited since v0.7.1; only this path was left behind.
-    const { matched, attemptLabels } = verifyRowHash(row, parsedData)
+    // The sampler's SELECT omits `signature` — it verifies the hash, not the
+    // signature — so the row is a WalkRow minus that one column.
+    const { matched, attemptLabels } = verifyRowHash({ signature: null, ...row }, parsedData)
     if (!matched) {
       return {
         ok: false,

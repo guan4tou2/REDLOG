@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "target": "ES2022",
     "composite": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -8,8 +9,9 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "outDir": "./out",
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/renderer/src/**/*"]
+  "include": ["src/core/**/*", "src/renderer/src/**/*", "src/renderer/src/**/*.json"]
 }
