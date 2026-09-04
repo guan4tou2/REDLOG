@@ -20,7 +20,7 @@ The workflow has two phases:
 1. Run tests on each runner (against Node ABI — the default `npm ci` install)
 2. Build renderer + main via `electron-vite build`
 3. Package with `electron-builder --publish never` — it rebuilds native modules (better-sqlite3, node-pty) against the target Electron ABI automatically during packaging, using prebuilt binaries where available:
-   - **macOS**: `dmg` and `zip` for x64 + arm64
+   - **macOS**: `dmg` and `zip` for arm64 only — `electron-builder.yml` has said Apple Silicon only since v0.9.4, and says why in its own comment
    - **Windows**: `nsis` installer + `portable` .exe for x64
 4. Upload the installers as workflow artifacts
 
