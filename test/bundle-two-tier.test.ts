@@ -64,7 +64,7 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
     expect(logged).toHaveLength(2)   // dns + scanner
   })
 
-  it('manifest bundleVersion === 2 and tiers has correct counts', () => {
+  it('manifest bundleVersion === 3 and tiers has correct counts', () => {
     events.insertEvent('shell', { subtype: 'command_start', command: 'a' }, { operatorId })
     events.insertEvent('shell', { subtype: 'command_end', command: 'a', duration_sec: 1 }, { operatorId })
     events.insertEvent('dns', { subtype: 'dns_query', query_name: 'x.test' }, { operatorId })
@@ -73,7 +73,9 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
 
     const { outDir: bundleDir } = exportBundle('test-engagement', { outRoot: outDir })
     const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, 'manifest.json'), 'utf-8'))
-    expect(manifest.bundleVersion).toBe(2)
+    // v3 dropped quickmarks.json; the tier split it was introduced for is
+    // unchanged.
+    expect(manifest.bundleVersion).toBe(3)
     expect(manifest.tiers).toBeDefined()
     expect(manifest.tiers.chained).toBe(2)
     expect(manifest.tiers.logged).toBe(3)

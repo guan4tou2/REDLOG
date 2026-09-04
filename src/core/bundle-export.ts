@@ -4,7 +4,6 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents } from './db/events'
-import { listQuickMarks } from './db/findings'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
@@ -145,12 +144,6 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   }
   fs.closeSync(loggedFd)
   files.push({ path: 'events_logged.jsonl', ...sha256File(eventsLoggedPath) })
-
-  // 2. quickmarks.json
-  files.push(writeAndHash(
-    path.join(bundleDir, 'quickmarks.json'),
-    JSON.stringify(listQuickMarks(), null, 2)
-  ))
 
   // 3. chain_anchors.json — includes calendar receipts (verifiable off-machine)
   files.push(writeAndHash(
@@ -298,6 +291,11 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       'The verifier below walks `events.jsonl` only; the logged tier is present',
       'for completeness but is not part of the audit-verified chain.',
       '',
+      "Bundles before v3 also carried `quickmarks.json`. Those rows are the",
+      "operator's private bookmarks — never chained, never signed, editable in",
+      'place, and never checked by this verifier. They are deliberately not',
+      'included here; nothing in this bundle depends on them.',
+      '',
       '## Verify (macOS / Linux)',
       '',
       '```',
@@ -341,7 +339,13 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     // on `bundleVersion === 1` need to update; the bundled
     // `redlog-verify.py` accepts both versions and ignores the logged
     // tier when it's absent (v1 bundles have no events_logged.jsonl).
-    bundleVersion: 2,
+    // v3: `quickmarks.json` is gone. It shipped here for two years as a
+    // sibling of events.jsonl while being none of the things this bundle
+    // claims: not chained, not signed, not anchored, not attributed to an
+    // operator, editable in place, and never opened by the bundled verifier.
+    // Those rows are private bookmarks and now stay on the operator's machine.
+    // Consumers keying on `bundleVersion` should expect it absent from v3.
+    bundleVersion: 3,
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
     engagementId,

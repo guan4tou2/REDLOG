@@ -235,7 +235,7 @@ interface RedLogAPI {
       targetCount: 0 | 1 | 2
       lootSeen: boolean
       screenshotSeen: boolean
-      markSeen: boolean
+      bookmarkSeen: boolean
       httpFlowSeen: boolean
       loggedEver: boolean
     } | null>

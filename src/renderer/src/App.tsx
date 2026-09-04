@@ -53,7 +53,7 @@ type View = SidebarViewId | 'settings'
  *  silence available. */
 const ALL_DISCLOSED: VisibilitySignals = {
   evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
-  screenshotSeen: true, markSeen: true, httpFlowSeen: true, loggedEver: true
+  screenshotSeen: true, bookmarkSeen: true, httpFlowSeen: true, loggedEver: true
 }
 
 const SETTINGS_SHORTCUT_INDEX = 9
@@ -379,7 +379,7 @@ export default function App(): JSX.Element {
             {view === 'targets' && <TargetView onOpenInTimeline={(ts, target) => { setFocusEvent({ id: '', ts }); setFocusTarget(target ?? null); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'marks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
+            {view === 'bookmarks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'http_history' && <HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}
           </ErrorBoundary>

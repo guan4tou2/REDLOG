@@ -207,8 +207,8 @@ function changeText(changes: MarkerFold['history'][number]['changes'], t: Transl
 }
 
 /** What an amendment cannot touch, and one line each on why. Rows appear only
- *  when the field is actually present — a marker has no `url`, so inventing an
- *  empty row for one would describe a field that does not exist. */
+ *  when the field is actually present, so a marker dropped without a URL shows
+ *  no URL row rather than an empty one. */
 function ImmutableBlock({ event, linkedScreenshots, tz, projectTz, operatorLabel }: MarkerDetailProps): JSX.Element {
   const { t } = useI18n()
   const data = d(event)
@@ -220,6 +220,9 @@ function ImmutableBlock({ event, linkedScreenshots, tz, projectTz, operatorLabel
   ]
   if (typeof at === 'number' && at > 0) {
     rows.push({ label: t('marker.readonly.atTimestamp'), why: t('marker.readonly.atTimestampWhy'), value: formatTs(at, tz, projectTz, 'full') })
+  }
+  if (typeof data.url === 'string' && data.url) {
+    rows.push({ label: t('marker.readonly.url'), why: t('marker.readonly.urlWhy'), value: data.url })
   }
   if (typeof data.category === 'string') {
     rows.push({ label: t('marker.readonly.category'), why: t('marker.readonly.categoryWhy'), value: t(`marker.category.${data.category}`) })
