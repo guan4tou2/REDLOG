@@ -333,7 +333,13 @@ it('同一 ConfirmDialog 不同時有實心 accent 與實心 danger', ...)
 - 快捷鍵表分散硬寫在監聽器、側欄、儀表板與 `?` 面板四處，已經漂移過一次（Settings 鎖定 ⌘9 那次）。須從單一來源（`lib/shortcuts.ts`）產生
 - ✓ **已修**（2026-09-04）Timeline 的 `eventCompare` 同毫秒 tiebreak 是死碼——`padMonoNs` 寫出 `bootMs-ns` 形式，`BigInt()` 必定丟例外，所以同毫秒事件實際以 UUID 排序。比較器抽到 `lib/eventOrder.ts`，時間軸與標記 fold 共用同一份，兩邊不再對「誰先發生」給出兩個答案
 - ✓ **已修**（2026-09-04）`marker.atTimestamp` 的 i18n 用單大括號 `{time}`，而插值只認 `{{var}}`，所以時間軸右鍵落標記的對話框對每位操作員都顯示字面的「指向 {time}」
-- ✓ **已修**（2026-09-04）`preload/index.ts` 用了三次 `RedLogEvent` 型別卻整檔沒有 import 它。型別在打包時被抹掉所以跑得起來，`build` 也不做型別檢查——與害擷取靜默停止的那個缺 import 是同一類。**repo 沒有 typecheck script，`tsconfig.node.json` 目前也是紅的**（include 漏了 `src/core`、target 太低導致 Map 迭代報錯），補上它是接住這類錯誤唯一的守衛，尚未做
+- ✓ **已修**（2026-09-04）`preload/index.ts` 用了三次 `RedLogEvent` 型別卻整檔沒有 import 它。型別在打包時被抹掉所以跑得起來，`build` 也不做型別檢查——與害擷取靜默停止的那個缺 import 是同一類
+- ✓ **已補**（2026-09-04）**`npm run typecheck` 進 CI**，在 vitest 之前跑。過程中修掉 367 個既有型別錯誤，其中三個是真的行為缺陷：
+  - `env.d.ts` 的 `declare global { interface Window { redlog } }` 在一個沒有頂層 import/export 的 `.d.ts`（也就是 global script）裡是**啞的**，所以整份 bridge 型別從來沒生效過——單這一項就是 252 個錯誤，也代表 `window.redlog.*` 的每一次呼叫這幾年都沒有型別
+  - `send()` 只吃一個 payload，但 `overlay:passThrough` 送的是 `(on, opacity)`，第二個被靜默丟掉——HUD 從來收不到設定的穿透透明度
+  - `ErrorBoundary` 呼叫的是 `window.redlog.openExternal`，而它其實在 `app` 底下；樂觀鏈把它吞掉，所以〈開啟 GitHub issue〉按鈕一直沒有作用
+  - 另外還有一個是我自己在 8a 留下的：範圍重算排程器比較的是 `activeProject` **物件**而型別寫 string，專案改名會產生新物件，排隊中的重算會被當成換專案而靜默丟棄
+- **未修，已記錄**：`env.d.ts` 仍是手抄的 preload 鏡像。真正的修法是讓它推導自 preload（`typeof api`），這樣漂移不可能發生；但那會把 `env.d.ts` 從 global script 變成 module，連帶影響每個裸用 `ProjectMeta` / `HookInfo` 等全域型別的檔案，屬於另一次重構
 - **未修，已記錄**：`docs/SPEC-SCOPE-AWARE-LIFECYCLE.md` 的狀態宣告曾說 Part A/B/C 全部出貨，點名的模組一個都不存在（2026-09-04 已改寫該段為實際狀況；規格本身仍待實作）
 
 ---

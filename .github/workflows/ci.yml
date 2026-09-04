@@ -38,6 +38,14 @@ jobs:
         # See release.yml — npm install (not npm ci) to tolerate lockfile drift.
         run: npm install --no-audit --no-fund
 
+      - name: Typecheck
+        # The guard vitest cannot be: a name used but never imported typechecks
+        # as an error and runs as a ReferenceError. One such import went missing
+        # in the scope-recompute work and stopped capture for three commits —
+        # the unit suite never touched that path, and the e2e caught it later.
+        # Before Vitest, because a type error makes every test result suspect.
+        run: npm run typecheck
+
       - name: Vitest
         run: npm test
 

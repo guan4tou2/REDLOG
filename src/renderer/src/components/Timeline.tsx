@@ -2422,7 +2422,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         case 'nav-first':
         case 'nav-last': {
           e.preventDefault()
-          const next = nextSelection<LaneId>(action, selectedEvent, {
+          const next = nextSelection<string>(action, selectedEvent, {
             events,
             hiddenLanes,
             pluginTypes,
@@ -2543,7 +2543,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // Operator / host → drop the value into the filter query (feature 1 dim path
   // picks it up automatically).
   const activatePaletteItem = useCallback((item: PaletteItem) => {
-    if (item.kind === 'event' || item.kind === 'marker') {
+    if ('event' in item) {
       setSelectedEvent(item.event)
       setDetailOpen(true)
       scrollToEvent(item.event)
@@ -2737,7 +2737,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                 const isSel = i === paletteIndex
                 return (
                   <button
-                    key={item.kind === 'event' || item.kind === 'marker' ? item.event.id : `${item.kind}-${item.value}`}
+                    key={'event' in item ? item.event.id : `${item.kind}-${item.value}`}
                     onMouseEnter={() => setPaletteIndex(i)}
                     onClick={() => activatePaletteItem(item)}
                     className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}

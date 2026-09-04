@@ -135,7 +135,7 @@ function FatalScreen({ error, label, projectName, onRetry, onGoHome }: {
             <Button
               level="primary"
               onClick={() => {
-                void window.redlog?.openExternal?.(
+                void window.redlog?.app?.openExternal?.(
                   issueUrl(REPO, `${label ?? 'View'} crashed: ${error.message.slice(0, 80)}`, diagnostics)
                 )
               }}
