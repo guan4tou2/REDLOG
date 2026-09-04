@@ -103,7 +103,16 @@ amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 
 ---
 
-### QuickMarks
+### QuickMarks (private bookmarks)
+
+> These rows are the operator's private bookmarks, not evidence. They are **not
+> hash-chained, not signed, not attributed to an operator, not redacted, and not
+> included in the evidence bundle** (removed in bundleVersion 3). They are
+> readable by any bearer token and by any plugin holding the capability, and
+> they can be edited and deleted in place.
+>
+> For something that belongs in the record, write a `marker` event — chained,
+> signed, amendable but never rewritable. See **Markers** above.
 
 #### `GET /api/quickmarks`
 
@@ -111,7 +120,11 @@ amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 
 #### `POST /api/quickmarks`
 
-**Body:** `{ title, url?, note?, context? }`
+**Body:** `{ title, url?, note? }`
+
+`context` is ignored. The app fills it from its own browser connector and the
+detail pane labels it as auto-captured, so accepting a caller-supplied one would
+let any token holder put chosen provenance on screen.
 
 **Response:** `201` with the created quickmark.
 

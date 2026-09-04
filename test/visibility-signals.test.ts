@@ -114,15 +114,15 @@ describe.skipIf(!available)('visibility signals', () => {
       expect(sig().httpFlowSeen).toBe(true)
     })
 
-    it('標記 waits for a quickmark, not for a marker event', () => {
+    it('書籤 waits for a bookmark row, not for a marker event', () => {
       // Two different stores. The page lists only the table — and `marker` is
       // externally postable, so keying on the event would let an outside tool
       // unlock an empty page.
       ins('marker', { title: 'a finding', severity: 'info' })
-      expect(sig().markSeen).toBe(false)
+      expect(sig().bookmarkSeen).toBe(false)
       vis!.resetVisibilitySignalsCache()
       findings!.createQuickMark({ title: 'bookmark', url: 'https://x', note: '' })
-      expect(sig().markSeen).toBe(true)
+      expect(sig().bookmarkSeen).toBe(true)
     })
 
     it('逐字稿 waits for a finished command or an agent turn', () => {

@@ -153,3 +153,34 @@ describeDB('evidence bundle export', () => {
     expect(a.manifest.chainHead).toEqual(b.manifest.chainHead)
   })
 })
+
+describeDB('private bookmarks stay out of the bundle', () => {
+  // They shipped here for two years beside events.jsonl while being none of the
+  // things this bundle claims — not chained, not signed, not anchored, not
+  // attributed to an operator, editable in place — and the bundled verifier
+  // never opened the file. The recipient had no way to tell one had been edited.
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-bm-'))
+    initDB(dir)
+  })
+  afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+
+  it('writes no bookmark file, and leaks no bookmark text anywhere in the bundle', async () => {
+    const findings = await import('../src/core/db/findings')
+    findings.createQuickMark({ title: 'a private note', url: 'https://internal.example/admin', note: 'BOOKMARK-CANARY-9182' })
+    ins('shell', { subtype: 'command_end', command: 'id', exitCode: 0 })
+
+    const out = exportBundle('eng', { outRoot: path.join(dir, 'exports') })
+    const names = fs.readdirSync(out.outDir)
+    expect(names).not.toContain('quickmarks.json')
+    expect(names).not.toContain('bookmarks.json')
+    expect(out.manifest.files.map((f) => f.path)).not.toContain('quickmarks.json')
+
+    // And not under some other name: read every file in the bundle.
+    const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]))
+    for (const f of walk(out.outDir)) {
+      expect(fs.readFileSync(f, 'utf-8'), `canary found in ${path.basename(f)}`).not.toContain('BOOKMARK-CANARY-9182')
+    }
+  })
+})

@@ -769,7 +769,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         title: String(body.title ?? 'Untitled'),
         url: body.url as string | undefined,
         note: String(body.note ?? ''),
-        context: (body.context ?? {}) as Record<string, unknown>
+        // Deliberately NOT `body.context`. The detail pane renders that object
+        // under a heading reading 「自動擷取的情境」, so accepting a caller-supplied
+        // one lets any token holder put chosen `browserUrl` / `externalIP`
+        // strings on screen labelled as provenance. Externally created
+        // bookmarks get none.
+        context: {}
       })
       json(res, 201, mark)
       return

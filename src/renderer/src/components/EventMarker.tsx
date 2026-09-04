@@ -23,11 +23,22 @@ interface EventMarkerProps {
 export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
+  const [url, setUrl] = useState('')
   const [severity, setSeverity] = useState<string>('info')
   const [category, setCategory] = useState<string>('custom')
   const [withScreenshot, setWithScreenshot] = useState(true)
   const [saving, setSaving] = useState(false)
   const { t } = useI18n()
+
+  // Prefilled once from the browser connector, then left alone. A poll would
+  // fight the operator: they open the dialog BECAUSE of the page they are on,
+  // and a later refresh would overwrite what they came to record. Silent on
+  // failure — no connector is the normal case.
+  useEffect(() => {
+    void window.redlog.cdp?.getTab?.()
+      .then((tab) => { if (tab?.url) setUrl(tab.url) })
+      .catch(() => { /* no browser connected */ })
+  }, [])
 
   // The dialog used to focus itself once and stop there, so Tab walked out
   // into the page behind it (§4). Trap it, and take Escape at the window
@@ -49,6 +60,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
     const markerEvent = await window.redlog.marker.create({
       title: title.trim() || t('marker.defaultTitle', { time: ts }),
       notes, severity, category,
+      ...(url.trim() ? { url: url.trim() } : {}),
       ...(atTimestamp ? { atTimestamp } : {})
     })
     // Screenshot is opt-out — if the operator is looking at sensitive UI they
@@ -99,6 +111,15 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSave()}
           className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-sm text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
+        />
+
+        <input
+          type="text"
+          placeholder={t('marker.fieldUrlPlaceholder')}
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          aria-label={t('marker.fieldUrl')}
+          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text font-mono placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
         />
 
         <div className="flex gap-1">
