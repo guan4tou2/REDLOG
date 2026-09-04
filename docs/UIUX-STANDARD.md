@@ -258,13 +258,15 @@
     - **`in_scope` 判定也寫成 `scope_violation` 列**（遵循度統計需要正面證據），不能算成既有違規，否則新標會變成改判。
     - 三道閘：未設定範圍時跳過、2 秒尾端去抖動、專案切換時放棄排程中的工作。
 - **標記修訂**（8b）—— 可改標題、嚴重度、備註；時間戳、URL、截圖、來源事件不可改。儲存寫入 `marker.amended`（前後值 + operator）。標記列顯示「已修訂 N 次」，Inspector 原始分頁列修訂紀錄。第一級（無確認框）、無復原——復原就是再修一次
-  - ✓ **部分實作**（PR #26）。存的是 `marker` + `subtype:'amended'`，只夾帶變更欄位（不存前值——前值由 fold
+  - ✓ **已實作**（PR #26 + 2026-09-04 的書籤裁決）。存的是 `marker` + `subtype:'amended'`，只夾帶變更欄位（不存前值——前值由 fold
     自原列推導，重複存會出現兩個真相）。差異：
-    - **marker 事件沒有 `url` 欄位**（只有 title/notes/severity/category + 選填 `atTimestamp`）；`url` 屬 `quickmarks` 表。
+    - **`url` 已補上**（2026-09-04）：`marker` 事件現在有 `url`，開啟對話框時由瀏覽器連接器帶入一次、
+      可改，且**不可修訂**——它是標記指向的位置，`atTimestamp` 的網頁類比。
     - **截圖不是 marker 的欄位**，是另一筆鏈上事件以 `_causes` 指回標記。
     - 「來源事件」目前沒有產生者會設，所以那一列只在真的有值時出現。
-    - ▲ 側欄「標記」頁背後是 `quickmarks` 表，**至今仍可 UPDATE／DELETE**。待裁決：把它也改成附加式修訂，
-      或明確標成「書籤表，不是紀錄」。
+    - ✓ **已裁決**（2026-09-04）：側欄那一頁背後的表是**書籤**，不是紀錄。已改名為「書籤」，並從證據包
+      與所有交付匯出移除。它保留 UPDATE／DELETE——那對書籤是正確的，而且是操作員把貼錯的憑證從機器上
+      移除的唯一途徑。理由見 `docs/design-project-sync.md` 的 2026-09-04 條目。
 
 ## 21. 規則測試（進 CI，沿用 `test/lane-colours.test.ts` 的作法）
 
@@ -311,7 +313,7 @@ it('同一 ConfirmDialog 不同時有實心 accent 與實心 danger', ...)
 > | 目標 | 由**指令**推導出的目標 ≥1（上鏈） | proxy addon 對每筆 HTTP／DNS、連線監控對每個 socket 都會蓋 `target_id`——跨型別去算，一次瀏覽器開頁就會解鎖，正好與 9b 的規則相反 |
 > | 範圍 | 同上，≥2 | |
 > | 戰利品／截圖 | 自己那一型的上鏈列 | `loot:getCount` 是記憶體計數器、重啟歸零，不是資料 |
-> | 標記 | 一筆 `quickmarks` 列 | 該頁只列這張表；`marker` 事件是另一個儲存區，而且可由外部 POST |
+> | 書籤 | 一筆書籤列 | 該頁只列這張表。標記是另一回事（鏈上事件），2026-09-04 之後也是另一個名詞 |
 > | HTTP | logged 層的 `http_request_start` / `http_response` | 該頁只查 logged 層。上鏈的 `scanner:connection` 會解鎖一張永遠空的頁 |
 > | 層級字符 | 任一 logged 列，或 `system.retention_pruned_logged` 稽核列 | 稽核列比它描述的資料活得久，所以 logged 層被清空後字符不會消失 |
 > | 錨定／跳板節點 | 無需程式碼 | 儀表板 ⚓ 子行與 HUD 膠囊本來就以資料為條件 |

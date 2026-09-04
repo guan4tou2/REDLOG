@@ -26,7 +26,7 @@ export interface VisibilitySignals {
   targetCount: 0 | 1 | 2
   lootSeen: boolean
   screenshotSeen: boolean
-  markSeen: boolean
+  bookmarkSeen: boolean
   httpFlowSeen: boolean
   loggedEver: boolean
 }
@@ -37,7 +37,7 @@ export const EMPTY_VISIBILITY_SIGNALS: VisibilitySignals = {
   targetCount: 0,
   lootSeen: false,
   screenshotSeen: false,
-  markSeen: false,
+  bookmarkSeen: false,
   httpFlowSeen: false,
   loggedEver: false
 }
@@ -114,10 +114,10 @@ export function getVisibilitySignals(): VisibilitySignals {
   if (next.targetCount < 2) next.targetCount = Math.max(next.targetCount, countTargets()) as 0 | 1 | 2
   if (!next.lootSeen) next.lootSeen = exists(`events WHERE agent_type = 'loot'`)
   if (!next.screenshotSeen) next.screenshotSeen = exists(`events WHERE agent_type = 'screenshot'`)
-  // The 標記 page lists the quickmarks table and nothing else. A `marker` event
-  // is a different store — and it is on the externally-postable allowlist, so
+  // The 書籤 page lists this table and nothing else. A `marker` event is the
+  // other store entirely, and it is on the externally-postable allowlist, so
   // keying on it would let an outside tool unlock an empty page.
-  if (!next.markSeen) next.markSeen = exists('quickmarks')
+  if (!next.bookmarkSeen) next.bookmarkSeen = exists('quickmarks')
   if (!next.httpFlowSeen) {
     next.httpFlowSeen = exists(
       `events_logged WHERE agent_type = 'scanner' AND json_extract(data,'$.subtype') IN (${holes})`,

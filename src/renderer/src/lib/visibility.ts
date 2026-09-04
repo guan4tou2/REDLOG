@@ -44,8 +44,8 @@ export interface VisibilitySignals {
   targetCount: 0 | 1 | 2
   lootSeen: boolean
   screenshotSeen: boolean
-  /** A quickmarks row — the table the 標記 page actually lists. */
-  markSeen: boolean
+  /** A bookmarks row — the table that page lists. */
+  bookmarkSeen: boolean
   /** A logged-tier HTTP flow — what the HTTP page actually queries. */
   httpFlowSeen: boolean
   /** The engagement has ever had a logged-tier row. */
@@ -58,7 +58,7 @@ export const EMPTY_SIGNALS: VisibilitySignals = {
   targetCount: 0,
   lootSeen: false,
   screenshotSeen: false,
-  markSeen: false,
+  bookmarkSeen: false,
   httpFlowSeen: false,
   loggedEver: false
 }
@@ -84,8 +84,9 @@ export const DAY_ONE: readonly SidebarViewId[] = ['dashboard', 'timeline', 'term
  * queries. A chained `scanner:connection` row from the connection monitor would
  * otherwise unlock a permanently empty page.
  *
- * `marks` waits for a quickmarks row, not a marker event: those are two
- * different stores, and the page lists only the former.
+ * `bookmarks` waits for a bookmarks row. Markers are a different store — the
+ * chained event lane — and after the 2026-09-04 ruling they are a different
+ * noun as well.
  *
  * `search` waits for evidence rather than for nothing, so it never opens onto a
  * corpus with nothing findable in it.
@@ -100,7 +101,7 @@ export const UNLOCK: Record<SidebarViewId, (s: VisibilitySignals) => boolean> = 
   scope: (s) => s.targetCount >= 2,
   loot: (s) => s.lootSeen,
   screenshots: (s) => s.screenshotSeen,
-  marks: (s) => s.markSeen,
+  bookmarks: (s) => s.bookmarkSeen,
   http_history: (s) => s.httpFlowSeen
 }
 

@@ -150,7 +150,11 @@ redlog-cli chain verify --full
 ## Retention & export
 
 - All anchors stay in `<project>/timeline.db` for the life of the project.
-- **Evidence bundle** (`redlog-cli export bundle`) — produces a self-contained directory with `events.jsonl`, `quickmarks.json`, `chain_anchors.json`, `operators.json`, `screenshots/`, `casts/`, `manifest.json` (SHA-256 per file + chain head + latest anchor + signing operator), `manifest.sha256`, and **`manifest.hmac`** (HMAC-SHA-256 of `manifest.json` keyed by the primary operator's `token_hash`; verifiable by anyone with that operator's token via `sha256(token) == token_hash`). Off-machine tampering flips both the SHA and the HMAC.
+- **Evidence bundle** (`redlog-cli export bundle`) — produces a self-contained directory with `events.jsonl`, `chain_anchors.json`, `operators.json`, `screenshots/`, `casts/`, `manifest.json` (SHA-256 per file + chain head + latest anchor + signing operator), `manifest.sha256`, and **`manifest.hmac`** (HMAC-SHA-256 of `manifest.json` keyed by the primary operator's `token_hash`; verifiable by anyone with that operator's token via `sha256(token) == token_hash`). Off-machine tampering flips both the SHA and the HMAC. **The bundle carried
+`quickmarks.json` until bundleVersion 3.** Those rows were private bookmarks —
+never chained, never signed, editable in place, and never opened by the bundled
+verifier — so the tampering they permitted was on-machine and pre-export, which
+is exactly what the SHA and the HMAC cannot see. They are no longer included.
 - Standard `.ots` bundles per anchor via `redlog-cli chain export-ots <id> --out anchor.ots`.
 
 ## Clock hardening

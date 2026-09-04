@@ -26,23 +26,40 @@ function getTagColor(title: string): typeof TAG_COLORS[0] {
   return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length]
 }
 
+const PINNED_KEY = 'redlog-bookmarks-pinned'
+const LEGACY_PINNED_KEY = 'redlog-marks-pinned'
+
+/** Read the pin set, carrying over the pre-rename key once so nobody loses
+ *  their pins to a vocabulary change. */
+function readPinned(): string[] {
+  try {
+    const current = localStorage.getItem(PINNED_KEY)
+    if (current !== null) return JSON.parse(current) as string[]
+    const legacy = localStorage.getItem(LEGACY_PINNED_KEY)
+    if (legacy === null) return []
+    localStorage.setItem(PINNED_KEY, legacy)
+    localStorage.removeItem(LEGACY_PINNED_KEY)
+    return JSON.parse(legacy) as string[]
+  } catch { return [] }
+}
+
 export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
   const [marks, setMarks] = useState<QuickMark[]>([])
   const [selected, setSelected] = useState<QuickMark | null>(null)
   const [creating, setCreating] = useState(false)
   const [browserTab, setBrowserTab] = useState<BrowserTabInfo | null>(null)
   const [search, setSearch] = useState('')
-  // Pinned mark ids — persisted to localStorage. Chain-immutable events can't
-  // be reordered in the DB, so pin state is a UI overlay: pinned float to the
-  // top of the list, keeping their timestamp intact.
-  const [pinned, setPinned] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('redlog-marks-pinned') || '[]')) } catch { return new Set() }
-  })
+  // Pinned bookmark ids, in localStorage rather than in the row. The old
+  // comment here said chain-immutable events cannot be reordered — these rows
+  // are neither chained nor events. The real reason is that a pin is one
+  // operator's view of their own list, not a fact about the bookmark: pinned
+  // float to the top and keep their timestamp.
+  const [pinned, setPinned] = useState<Set<string>>(() => new Set(readPinned()))
   const togglePin = useCallback((id: string) => {
     setPinned((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
-      localStorage.setItem('redlog-marks-pinned', JSON.stringify([...next]))
+      localStorage.setItem(PINNED_KEY, JSON.stringify([...next]))
       return next
     })
   }, [])
@@ -110,7 +127,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
-              {t('marks.title', { count: marks.length })}
+              {t('bookmarks.title', { count: marks.length })}
             </span>
             {marks.length > 0 && (
               <button
@@ -120,16 +137,16 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
                   else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
                 }}
                 className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-                title={t('marks.exportHint')}
+                title={t('bookmarks.exportHint')}
               >
-                {t('marks.export')}
+                {t('bookmarks.export')}
               </button>
             )}
             <button
               onClick={quickCapture}
               className="px-2 py-1 text-xs bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"
             >
-              {t('marks.capture')}
+              {t('bookmarks.capture')}
             </button>
           </div>
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
@@ -137,8 +154,8 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${browserTab?.connected ? 'bg-green-400' : 'bg-redlog-elevated-hover'}`} />
             {browserTab?.connected
-              ? <span title={browserTab.url ?? undefined} className="truncate">{browserTab.url || t('marks.connected')}</span>
-              : <span>{t('marks.cdpDisconnected')}</span>
+              ? <span title={browserTab.url ?? undefined} className="truncate">{browserTab.url || t('bookmarks.connected')}</span>
+              : <span>{t('bookmarks.cdpDisconnected')}</span>
             }
           </div>
         </div>
@@ -149,12 +166,12 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('marks.searchPlaceholder')}
+              placeholder={t('bookmarks.searchPlaceholder')}
               className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40 placeholder-redlog-muted"
             />
           </div>
         )}
-        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('marks.title', { count: filteredMarks.length })}>
+        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: filteredMarks.length })}>
           {filteredMarks.map((m, i) => {
             const tagColor = getTagColor(m.title)
             const isPinned = pinned.has(m.id)
@@ -188,13 +205,13 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
             marks.length === 0 ? (
               <EmptyState
                 icon={Flag}
-                title={t('marks.empty')}
-                reason={t('marks.emptyReason')}
-                action={{ label: t('marks.quickCapture'), onClick: () => setCreating(true) }}
+                title={t('bookmarks.empty')}
+                reason={t('bookmarks.emptyReason')}
+                action={{ label: t('bookmarks.quickCapture'), onClick: () => setCreating(true) }}
               />
             ) : (
               <div className="p-4 text-xs text-redlog-text-faint text-center">
-                {t('marks.noSearchMatches', { query: search })}
+                {t('bookmarks.noSearchMatches', { query: search })}
               </div>
             )
           )}
@@ -221,8 +238,8 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
         )}
         {!selected && !creating && (
           <div className="flex flex-col items-center justify-center h-full text-redlog-text-faint text-sm gap-2">
-            <span>{t('marks.placeholder')}</span>
-            <span className="text-xs text-redlog-muted">{t('marks.placeholderSub')}</span>
+            <span>{t('bookmarks.placeholder')}</span>
+            <span className="text-xs text-redlog-muted">{t('bookmarks.placeholderSub')}</span>
           </div>
         )}
       </div>
@@ -252,46 +269,46 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
 
   return (
     <div className="space-y-3 max-w-xl">
-      <h3 className="text-sm font-semibold text-redlog-text">{initial ? t('marks.editMark') : t('marks.quickCapture')}</h3>
+      <h3 className="text-sm font-semibold text-redlog-text">{initial ? t('bookmarks.editMark') : t('bookmarks.quickCapture')}</h3>
 
       {!initial && browserTab?.connected && (
         <div className="bg-green-500/10 border border-green-500/20 rounded px-3 py-2 text-xs text-green-400">
-          {t('marks.autoCaptured', { title: browserTab.title || '' })}
+          {t('bookmarks.autoCaptured', { title: browserTab.title || '' })}
         </div>
       )}
       {!initial && !browserTab?.connected && (
         <div className="bg-redlog-elevated border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text-dim">
-          {t('marks.cdpHint', { port: String(browserTab?.port ?? DEFAULT_CDP_PORT) })}
+          {t('bookmarks.cdpHint', { port: String(browserTab?.port ?? DEFAULT_CDP_PORT) })}
         </div>
       )}
 
       <div>
-        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldTitle')}</label>
+        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldTitle')}</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)}
-          placeholder={t('marks.fieldTitlePlaceholder')}
+          placeholder={t('bookmarks.fieldTitlePlaceholder')}
           className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none" />
       </div>
 
       <div>
-        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldUrl')}</label>
+        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldUrl')}</label>
         <input value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://..."
           className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none font-mono text-xs" />
       </div>
 
       <div>
-        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldNote')}</label>
+        <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldNote')}</label>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={4}
-          placeholder={t('marks.fieldNotePlaceholder')}
+          placeholder={t('bookmarks.fieldNotePlaceholder')}
           className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text outline-none resize-y" />
       </div>
 
       <div className="flex gap-2 pt-1">
         <Button level="primary" onClick={submit}>
-          {initial ? t('marks.update') : t('marks.save')}
+          {initial ? t('bookmarks.update') : t('bookmarks.save')}
         </Button>
         <button onClick={onCancel} className="px-3 py-1.5 bg-redlog-elevated text-redlog-text-dim text-xs rounded hover:bg-redlog-elevated-hover">
-          {t('marks.cancel')}
+          {t('bookmarks.cancel')}
         </button>
       </div>
     </div>
@@ -314,7 +331,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
   }
 
   const handleDelete = async (): Promise<void> => {
-    const ok = await confirm(t('confirm.deleteMark'), t('confirm.deleteMarkDesc'), true)
+    const ok = await confirm(t('confirm.deleteBookmark'), t('confirm.deleteBookmarkDesc'), true)
     if (!ok) return
     await window.redlog.quickmarks.delete(mark.id)
     onDelete()
@@ -329,7 +346,7 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
             <button
               onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.url as string) }}
               className="text-xs text-blue-400 font-mono mt-1 break-all text-left hover:text-blue-300 hover:underline transition-colors cursor-pointer"
-              title={t('marks.openUrl')}
+              title={t('bookmarks.openUrl')}
             >
               {mark.url} ↗
             </button>
@@ -342,8 +359,8 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
           {onOpenInTimeline && (
             <button onClick={() => onOpenInTimeline(mark.createdAt)} className="px-2 py-1 text-xs bg-redlog-elevated text-cyan-400 rounded hover:bg-redlog-elevated-hover">{t('loot.openInTimeline')}</button>
           )}
-          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover">{t('marks.edit')}</button>
-          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-redlog-elevated text-red-400 rounded hover:bg-redlog-elevated-hover">{t('marks.delete')}</button>
+          <button onClick={() => setEditing(true)} className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover">{t('bookmarks.edit')}</button>
+          <button onClick={handleDelete} className="px-2 py-1 text-xs bg-redlog-elevated text-red-400 rounded hover:bg-redlog-elevated-hover">{t('bookmarks.delete')}</button>
         </div>
       </div>
 
@@ -357,28 +374,28 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
           aria-pressed={!!isPinned}
         >
           <span>{isPinned ? '★' : '☆'}</span>
-          <span>{isPinned ? t('marks.unpin') : t('marks.pin')}</span>
+          <span>{isPinned ? t('bookmarks.unpin') : t('bookmarks.pin')}</span>
         </button>
       )}
 
       {mark.note && (
         <div>
-          <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.fieldNote')}</label>
+          <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldNote')}</label>
           <div className="mt-1 text-xs text-redlog-text whitespace-pre-wrap bg-redlog-surface rounded p-3 border border-redlog-border">{mark.note}</div>
         </div>
       )}
 
       {Object.keys(mark.context).length > 0 && (
         <div>
-          <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('marks.autoContext')}</label>
+          <label className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.autoContext')}</label>
           <div className="mt-1 bg-redlog-surface rounded p-3 border border-redlog-border space-y-1">
             {mark.context.browserUrl && (
               <div className="text-xs">
-                <span className="text-redlog-text-dim">{t('marks.browserUrl')}</span>{' '}
+                <span className="text-redlog-text-dim">{t('bookmarks.browserUrl')}</span>{' '}
                 <button
                   onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
                   className="text-blue-400 font-mono hover:text-blue-300 hover:underline transition-colors cursor-pointer"
-                  title={t('marks.openUrl')}
+                  title={t('bookmarks.openUrl')}
                 >
                   {mark.context.browserUrl} ↗
                 </button>
@@ -386,13 +403,13 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
             )}
             {mark.context.browserTitle && (
               <div className="text-xs">
-                <span className="text-redlog-text-dim">{t('marks.pageTitle')}</span>{' '}
+                <span className="text-redlog-text-dim">{t('bookmarks.pageTitle')}</span>{' '}
                 <span className="text-redlog-text">{mark.context.browserTitle}</span>
               </div>
             )}
             {mark.context.externalIP && (
               <div className="text-xs">
-                <span className="text-redlog-text-dim">{t('marks.ipLabel')}</span>{' '}
+                <span className="text-redlog-text-dim">{t('bookmarks.ipLabel')}</span>{' '}
                 <span className="text-redlog-text font-mono">{mark.context.externalIP}</span>
               </div>
             )}

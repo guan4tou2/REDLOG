@@ -25,6 +25,9 @@ export type MarkerSeverity = (typeof MARKER_SEVERITIES)[number]
  *  what turn 8b opened, and the envelope (time, operator, hash) is the record
  *  itself. Moving any of them would be moving evidence rather than correcting a
  *  description of it. */
+// `url` is deliberately absent: it is where the mark POINTS, the web analogue
+// of `atTimestamp`, and moving it is moving the evidence rather than correcting
+// a description of it. docs/UIUX-STANDARD.md §20 rules it immutable.
 export const AMENDABLE_FIELDS = ['title', 'severity', 'notes'] as const
 export type AmendableField = (typeof AMENDABLE_FIELDS)[number]
 

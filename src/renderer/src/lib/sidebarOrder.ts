@@ -18,19 +18,19 @@
 
 export type SidebarViewId =
   | 'dashboard' | 'timeline' | 'transcript' | 'terminal' | 'screenshots'
-  | 'targets' | 'scope' | 'loot' | 'marks' | 'search' | 'http_history'
+  | 'targets' | 'scope' | 'loot' | 'bookmarks' | 'search' | 'http_history'
 
 // `transcript` sits next to `timeline` — same events, read the other way, and
 // `search` between them because finding evidence afterwards is a core use
 // rather than a detour.
 //
 // Eleven entries, eight numbered slots (⌘9 is Settings), so the last three —
-// `scope`, `loot` and `marks` — carry no chord. That is a real cost and it is
+// `scope`, `loot` and `bookmarks` — carry no chord. That is a real cost and it is
 // taken deliberately: all three are reachable from the sidebar and from ⌘K, and
 // none is somewhere an operator jumps mid-keystroke the way they jump to the
 // timeline or to search.
 export const DEFAULT_ORDER: SidebarViewId[] = [
-  'dashboard', 'timeline', 'search', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'marks'
+  'dashboard', 'timeline', 'search', 'transcript', 'http_history', 'terminal', 'screenshots', 'targets', 'scope', 'loot', 'bookmarks'
 ]
 
 /** ⌘1..⌘8 belong to views; ⌘9 is pinned to Settings, which sits outside this

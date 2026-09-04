@@ -25,6 +25,9 @@ export const MARKER_SEVERITIES = ['info', 'important', 'critical'] as const
 /** The three fields turn 8b opens. Everything else about a marker is the record
  *  rather than a description of it: `atTimestamp` is where the operator pointed,
  *  and the envelope (time, operator, hash) is what makes the row evidence. */
+// `url` is deliberately absent: it is where the mark POINTS, the web analogue
+// of `atTimestamp`, and moving it is moving the evidence rather than correcting
+// a description of it. docs/UIUX-STANDARD.md §20 rules it immutable.
 export const AMENDABLE_FIELDS = ['title', 'severity', 'notes'] as const
 
 export type AmendError =

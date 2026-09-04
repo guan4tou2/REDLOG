@@ -238,6 +238,6 @@ describe('the number a view wears', () => {
     for (const view of DEFAULT_ORDER.slice(NUMBERED_SLOTS)) {
       expect(shortcutNumberFor(view), `${view} should carry no chord`).toBeNull()
     }
-    expect(DEFAULT_ORDER.slice(NUMBERED_SLOTS)).toEqual(['scope', 'loot', 'marks'])
+    expect(DEFAULT_ORDER.slice(NUMBERED_SLOTS)).toEqual(['scope', 'loot', 'bookmarks'])
   })
 })
