@@ -218,6 +218,15 @@ append-only trigger 本來就不允許，這正是把修訂做成新事件而非
 - 新增原生右鍵選單子系統（`src/main/context-menu.ts`），規範新增右鍵互動規則，並標記它與時間軸「右鍵落標記」的衝突。
 - 產出 `docs/UIUX-STANDARD.md`（規範摘要 + 三期檢查表）與三張分期 PR 模板。
 
+### 2026-09-04 · 標誌原稿取回
+
+`assets/redlog-mark.svg` 與 `assets/redlog-mark-small.svg` 從設計專案取回，放在 repo 的
+[`design/assets/`](../design/assets/)。取回不等於套用：出貨的圖示仍是舊標，已在
+`UIUX-STANDARD.md` §16 與 `HANDOVER-2026-09.md` 第 7 項記為分歧與待辦。
+
+設計稿本體（`RedLog 設計規範.dc.html`，畫板 1a–9b）**沒有**複製進 repo。它在設計專案裡著作與編輯，
+複製一份只會多出一個會漂的真相；repo 這邊有的是從它萃取的文字規範全文（22 節）。要看畫面就開設計專案。
+
 ## Screen map
 
 | 專案畫面 | 依據的 repo 檔案 |
