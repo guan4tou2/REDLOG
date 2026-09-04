@@ -1,33 +1,29 @@
 # Spec — Scope-Aware Sanitize + Retention + Artifact Rotation
 
-> **Implementation status (2026-08-13).**
-> - ✅ **Part C — artifact lifecycle (G1, G2, G4):** shipped. `config.io` gains
->   `warmDays` + `maxBytes` (G1); `artifact-pin.ts` pin score (G4);
->   `artifact-gc.ts` `planArtifactRotation` — age-or-size, refcount-gated,
->   pin-ordered (G2); `io-store` warm compress (gzip, original-digest-preserving)
->   + transparent read/verify; `retention.ts` `sweepIoLifecycle` wires it, with
->   marker/loot `_causes` pinning; `redlog-verify.py` + bundle-export handle warm
->   bodies. 42 unit tests (A4/A5/A6/A7).
-> - ✅ **Part B — decision core + scope wiring (G3 partial):** `classifyTarget`
->   (pure, side-effect-free scope verdict) and `planScopeSanitize` (Part B
->   planner incl. io-sidecar coverage + `unknown` flagging, A1/A2) shipped and
->   unit-tested; the classifier is wired into retention so scope-priority eviction
->   is **live** (A5 fully). 8 more tests.
-> - ✅ **Part B execution (G3 complete):** shipped. `scope-sanitize.ts`
->   `runScopeSanitize` applies the plan — whole-body placeholder for out-of-scope
->   inline fields (`sanitized_events`) **and** io sidecar bodies (new
->   `sanitized_io` table), refcount-safe (a body cited by any kept in-scope event
->   is never sanitized), appending one chained `system.sanitized` with
->   `io_replacements`. `bundle-export` serves the redacted bodies under their
->   original names; `redlog-verify.py` reads the swap and reports them
->   *sanitized*, never *tampered* (A1/A6). `internal` vs `client-deliverable`
->   export profiles wired through `exportBundle` + the `data:exportBundle` IPC
->   (§9). `unknown` targets are never auto-sanitized unless the operator opts in
->   (A2). Pure placeholder + DB round-trip tests added.
+> **Implementation status (rechecked 2026-09-04). NOT implemented.**
 >
-> **The full spec (Parts A/B/C) is now implemented.** The one deliberate scope
-> boundary: the CLI/HTTP export path stays internal-profile; the client-
-> deliverable profile is exposed through the app (IPC) export.
+> This block previously said Parts A, B and C were all shipped and named the
+> modules that did it. None of them exist. Rechecked symbol by symbol against
+> `main` @ `ddb9f00`:
+>
+> | 這份文件宣稱的 | 現況 |
+> |---|---|
+> | `artifact-pin.ts` · `artifact-gc.ts` · `planArtifactRotation` | 不存在 |
+> | `retention.ts` `sweepIoLifecycle` | 不存在 |
+> | `scope-sanitize.ts` · `runScopeSanitize` · `planScopeSanitize` | 不存在 |
+> | `classifyTarget`（純範圍判定） | 不存在。`classifyScopeTarget`（`core/alert/policies.ts`，2026-09-04 由 8a 抽出）是另一個東西：它判定「距離」給告警與範圍回溯用，不做 sanitize 決策 |
+> | `sanitized_io` 資料表 · `io_replacements` 欄位 | 不存在。實際有的是 `sanitized_events`，只處理 inline 欄位 |
+> | `config.io` 的 `warmDays` / `maxBytes` | 不存在。`config.httpBodies.maxBytes` 是另一回事——`core/body-eviction.ts` 的大小上限驅逐，以範圍為釘選 |
+> | 匯出的 `internal` / `client-deliverable` 兩種 profile | 不存在 |
+>
+> **為什麼要留著這份文件**：底下的規格本身仍然成立，Part C 的 artifact 生命週期
+> 也仍是真實需求。刪掉它會連問題陳述一起丟掉。但這段狀態宣告在
+> `docs/README.md`、`ALERT-ROLES.md`、`DECOMPOSITION-BACKLOG.md` 等八份文件引用
+> 之下，會讓讀的人以為 scope-aware sanitize 與 artifact rotation 已經在跑。
+>
+> 目前真正落地的、與本規格相鄰的東西：`core/body-eviction.ts` + `retention.ts`
+> 的 `sweepBodyStore`（以範圍為釘選的 body 驅逐）、`core/sanitize.ts`
+> （inline 欄位的 layer-4 置換）、`core/scope-recompute.ts`（範圍回溯，8a）。
 
 Written 2026-08-13. Unifies three previously-separate storage concerns into one
 mechanism: **the hash chain is a small, immutable WORM spine; every heavy capture
