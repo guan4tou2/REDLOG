@@ -164,7 +164,17 @@ repo 這份是它的鏡像加實作狀態註記。要改規範本身，去設計
 「file source doesn't exist」警告。這比換標早很多，換標只是又碰了同一個檔。
 移掉那一行是包裝行為的變更（等於宣告不再隨 app 出貨 stdio MCP bridge），要人決定。
 
-### 10. 八個守衛測試 import 一個沒宣告的相依
+### 10. 三處寫死的 `#0a0a0a` 是換色之前的視窗底色
+
+`src/main/windows.ts` 的 `backgroundColor` 與 Windows `titleBarOverlay.color` 都寫死 `#0a0a0a`，
+但 tokens 早就把視窗底色改成 `#121214`（`tailwind.config.js` 裡那段註解就在講這次換色）。
+後果：載入時會閃一下比較暗的底，而 Windows 上那條原生標題列色帶跟它旁邊的標題列**永遠**差一階。
+（Project Picker 也有同一個字面值，這次順手改掉了，因為新標的切角是透明的、看得出來。）
+
+**為什麼沒一起改**：那是配色修正，不是換標。混進同一個 PR 會讓兩件事都難 review——
+這正是換標本身被拆成獨立 PR 的理由。
+
+### 11. 八個守衛測試 import 一個沒宣告的相依
 
 `fast-glob` 出現在八個 source-scanning 守衛測試裡，但 `package.json` 從頭到尾沒有它——
 它能 resolve 只是因為 tailwindcss 把它 hoist 到了 `node_modules` 根目錄。
