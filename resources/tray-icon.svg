@@ -1,26 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" width="22" height="22">
-  <!-- Tray icon — monochrome for macOS menu bar (Template image) -->
-  <path d="
-    M 3 3
-    L 3 19
-    L 6 19
-    L 6 13
-    L 10 13
-    L 15 19
-    L 19 19
-    L 13.5 12.5
-    Q 17 11.5 17 8
-    Q 17 4.5 13.5 3.5
-    Q 12.5 3 10 3
-    Z
-    M 6 6
-    L 10 6
-    Q 12 6 13 7
-    Q 14 8 14 8.5
-    Q 14 9.5 13 10.5
-    Q 12 11 10 11
-    L 6 11
-    Z
-  " fill="#000"/>
-  <circle cx="18" cy="4" r="2.5" fill="#000"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="RedLog">
+  <title>RedLog</title>
+  <g>
+    <circle cx="8.0" cy="8.0" r="5.0" fill="none" stroke="#000000" stroke-width="2.0"/>
+    <circle cx="8.0" cy="8.0" r="2.0" fill="#000000"/>
+  </g>
 </svg>
