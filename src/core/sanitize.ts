@@ -94,7 +94,11 @@ export function sanitize(input: SanitizeInput): SanitizeResult {
       if (typeof val !== 'string' || !val) continue
       const fieldSpans = spans.filter((s) => s.field === field)
       if (fieldSpans.length === 0) continue
-      const masked = maskText(val, fieldSpans)
+      const masked = maskText(val, fieldSpans.map((s) => ({
+        start: s.start, end: s.end,
+        pattern: (s.pattern === 'entropy' ? 'entropy' : 'denylist') as 'entropy' | 'denylist',
+        hint: s.hint ?? ''
+      })))
       const sha = crypto.createHash('sha256').update(masked).digest('hex')
       planned.push({ eventId, field, spanCount: fieldSpans.length, replacementSha256: sha })
       toWrite.push({

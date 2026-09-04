@@ -51,9 +51,9 @@ let primaryOperatorName = ''
 let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
 
 let lootDetectorRef: {
-  scan: (text: string, targetId?: string, source?: string) => Array<{ type: string; value: string; confidence: string }>
-  findMatches?: (text: string) => Array<{ type: string; value: string; line: string; confidence: string }>
-  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: string }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => void
+  scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => Array<{ type: string; value: string; confidence: 'high' | 'medium' | 'low' }>
+  findMatches?: (text: string) => Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>
+  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => void
 } | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 
@@ -291,7 +291,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
         return
       }
-      const data = body.data || {}
+      const data = (body.data || {}) as Record<string, unknown>
       // A marker is the one operator-authored, authoritative type an outside
       // tool may report — and an amendment claims to be an operator changing
       // what a finding says. Validating a forged one would only make it
@@ -304,7 +304,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 403, { error: 'marker amendments are written only from the app' })
         return
       }
-      let targetId = body.target_id || body.targetId || undefined
+      let targetId = (body.target_id || body.targetId || undefined) as string | undefined
 
       // v0.9.5: bail before ANY derivation while paused. The insertEvent gate
       // would drop the main row anyway, but the normalisation below runs first
@@ -343,7 +343,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }
 
       let lootValues: string[] = []
-      let pendingLootMatches: Array<{ type: string; value: string; line: string; confidence: string }> = []
+      let pendingLootMatches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }> = []
       let pivot: ReturnType<typeof detectPivot> = null
       let pivotClose: ReturnType<typeof detectPivot> = null
       let cleanup: ReturnType<typeof detectCleanup> = null
@@ -699,7 +699,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         notes: body.notes || '',
         severity: body.severity || 'info',
         category: body.category || 'external'
-      }, { engagementId, operatorId: operator.id, targetId: body.target_id || body.targetId })
+      }, { engagementId, operatorId: operator.id, targetId: (body.target_id || body.targetId) as string | undefined })
       if (event) eventBus.publish(event)
       json(res, 201, event)
       return
@@ -712,7 +712,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 503, { error: 'Loot detector not available' })
         return
       }
-      const findings = lootDetectorRef.scan(body.text || '', body.targetId || undefined, body.source || undefined)
+      const findings = lootDetectorRef.scan(String(body.text ?? ''), body.targetId as string | undefined, body.source as string | undefined)
       json(res, 200, { findings })
       return
     }
@@ -766,10 +766,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const mark = createQuickMark({
-        title: body.title || 'Untitled',
-        url: body.url,
-        note: body.note || '',
-        context: body.context || {}
+        title: String(body.title ?? 'Untitled'),
+        url: body.url as string | undefined,
+        note: String(body.note ?? ''),
+        context: (body.context ?? {}) as Record<string, unknown>
       })
       json(res, 201, mark)
       return

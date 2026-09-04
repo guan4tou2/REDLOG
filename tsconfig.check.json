@@ -1,0 +1,21 @@
+{
+  // The typecheck guard (`npm run typecheck`). One project over everything,
+  // because the thing it exists to catch — a name used but never imported —
+  // crosses the main/preload/renderer boundaries that the build's separate
+  // projects draw. `noEmit`: this compiles nothing, electron-vite still builds.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*"]
+}

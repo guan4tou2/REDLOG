@@ -34,6 +34,8 @@ interface RedLogEvent {
   createdAt: number
   monotonicNs?: string | null
   ntpOffsetMs?: number | null
+  /** v0.13.0 two-tier. Absent on rows written before it existed. */
+  tier?: 'chained' | 'logged'
 }
 
 interface QuickMarkContext {
@@ -96,6 +98,7 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    openExternal: (url: string) => Promise<void>
   }
   ui: {
     contextMenu: (
@@ -261,9 +264,35 @@ interface RedLogAPI {
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
     moveToCorner?: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
+    autosize?: (height: number, width?: number) => void
+    quickMark?: () => void
+    instantMark?: () => Promise<{ ok: boolean; id?: string }>
+    mouseEnter?: () => void
+    mouseLeave?: () => void
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
+  }
+  hooks: {
+    detect: () => Promise<HookInfo[]>
+    install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
+    uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
+  }
+  plugins: {
+    list: () => Promise<unknown[]>
+    eventTypes: () => Promise<PluginEventType[]>
+    reload: () => Promise<unknown>
+    openFolder: () => Promise<void>
+    setEnabled: (id: string, enabled: boolean) => Promise<unknown>
+    grant: (id: string) => Promise<unknown>
+    revoke: (id: string) => Promise<unknown>
+  }
+  pivots: {
+    getActive: () => Promise<unknown[]>
+    onChanged: (cb: (pivots: unknown[]) => void) => () => void
+  }
+  clock: {
+    getStatus: () => Promise<{ offsetMs: number | null; lastQuery: unknown }>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
@@ -297,7 +326,7 @@ interface CaptureHealthInfo {
   lastEventAt: number | null
   checkedAt: number
   lastDbError?: { source: string; at: number; message: string }
-  lastSampleBroken?: { at: number; eventId: string; reason: string }
+  lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
 }
 
@@ -327,6 +356,8 @@ interface CalendarReceiptInfo {
   upgraded?: boolean
   upgradedAt?: number | null
   upgradedBytes?: number
+  /** Present once the calendar returns a browsable receipt. */
+  url?: string
 }
 
 interface ChainAnchorInfo {
@@ -344,12 +375,31 @@ interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null }
-  screenshot?: { quality?: number }
+  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string }
+  screenshot?: { quality?: number; intervalSec?: number }
+  overlay?: {
+    showMarkButton?: boolean
+    showInDock?: boolean
+    flashOnExposed?: boolean
+    scale?: number
+    emphasizeExternalIp?: boolean
+    passThrough?: boolean
+    passThroughOpacity?: number
+  }
 }
 
-declare global {
-  interface Window {
-    redlog: RedLogAPI
-  }
+/** A plugin-registered event type, as `plugins:eventTypes` returns it. */
+interface PluginEventType {
+  agentType: string
+  label?: string
+  lane?: string
+  pluginId?: string
+}
+
+// This file is a GLOBAL script (no top-level import/export), so the Window
+// augmentation belongs at the top level. Wrapped in `declare global` it is
+// silently inert here — which is why 252 call sites typecheck as
+// "Property 'redlog' does not exist on type 'Window'".
+interface Window {
+  redlog: RedLogAPI
 }

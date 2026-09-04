@@ -21,8 +21,8 @@ interface ConfigState {
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
-  screenshot: { quality: number }
-  overlay?: { showMarkButton: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
+  screenshot: { quality: number; intervalSec?: number }
+  overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
@@ -312,7 +312,7 @@ export default function Settings(): JSX.Element {
                   const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
                   await window.redlog.cdp.setPort(port)
                   const cdpTab = await window.redlog.cdp.getTab()
-                  if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title, url: cdpTab.url }), 'success')
+                  if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title ?? '', url: cdpTab.url ?? '' }), 'success')
                   else {
                     toast(t('settings.cdpNotConnectedTitle'), {
                       type: 'error',
@@ -802,10 +802,10 @@ function Field({ label, value, onChange, type = 'text' }: {
 
 function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   hooks: HookInfo[]
-  setHooks: (h: HookInfo[]) => void
+  setHooks: (h: HookInfo[] | ((prev: HookInfo[]) => HookInfo[])) => void
   hookLoading: string | null
   setHookLoading: (id: string | null) => void
-  t: (key: string) => string
+  t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
   const [expanded, setExpanded] = useState<string | null>(null)
 
@@ -1256,7 +1256,7 @@ interface FullVerifyResult {
 // Chain state: anchors, the two-tier counter, and verification. Read-only —
 // building the evidence pack itself moved to the shell's export control (§10),
 // because it is an action and this page is where you look at the chain.
-function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
+function IntegrityPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
   const [busy, setBusy] = useState(false)
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null)
@@ -1480,7 +1480,7 @@ function IntegrityPanel({ t }: { t: (key: string) => string }): JSX.Element {
 function AgentsPanel({
   t, config, setConfig
 }: {
-  t: (key: string) => string
+  t: (key: string, vars?: Record<string, string | number>) => string
   config: ConfigState
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
@@ -1668,7 +1668,7 @@ const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
   { value: 1.15, labelKey: 'settings.uiScale.large' },
   { value: 1.3, labelKey: 'settings.uiScale.xlarge' }
 ]
-function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
+function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [scale, setScale] = useState<number>(() => {
     const raw = parseFloat(localStorage.getItem(UI_SCALE_KEY) || '')
     return Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1
@@ -1701,7 +1701,7 @@ function UiScaleControl({ t }: { t: (key: string) => string }): JSX.Element {
 /** §22's escape hatch. Per project, because switching projects reloads the same
  *  origin — a global preference would turn disclosure off for every future
  *  engagement after one tick here. */
-function ShowAllPagesControl({ t }: { t: (key: string) => string }): JSX.Element {
+function ShowAllPagesControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [on, setOn] = useState(false)
   useEffect(() => {
