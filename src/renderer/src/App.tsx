@@ -28,7 +28,7 @@ import { computeVisibility, shouldRefetch, EMPTY_SIGNALS, type VisibilitySignals
 import { FirstRunView } from './components/FirstRunView'
 import { storedShowAllPages, SHOW_ALL_PAGES_EVENT } from './lib/showAllPages'
 import { appShortcuts } from './lib/shortcuts'
-import logoUrl from './assets/logo.svg'
+import markUrl from './assets/mark-small.svg'
 import { Image } from 'lucide-react'
 import { EmptyState } from './components/EmptyState'
 import { formatTime } from './lib/time'
@@ -295,7 +295,11 @@ export default function App(): JSX.Element {
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
-          <img src={logoUrl} alt="" className="w-4 h-4 rounded" />
+          {/* 16px, so this is the small master: the ring has already collapsed
+              to a solid dot, because at this size a 1.15px stroke is a smudge.
+              No rounding — the mark carries its own cut corners and a
+              border-radius would shave them off. */}
+          <img src={markUrl} alt="" className="w-4 h-4" />
           <span className="text-red-500 font-bold text-xs tracking-[0.2em]">{t('app.title')}</span>
           {/* Take the version out of the drag zone so users reporting bugs can
               actually copy it — audit finding P2 #36. */}

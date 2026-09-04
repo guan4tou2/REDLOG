@@ -1,7 +1,7 @@
 # 交接 — 2026-09-04
 
 這一輪從「設計專案與 repo 對帳」開始，做完了設計稿 turn 8–9 的五項提案，順帶清掉一批既有缺陷。
-八個 PR（#25–#32）已併入 `main` @ `952e968`。
+九個 PR（#25–#33）已併入 `main`，之後又換掉了整組標誌（`feat/new-mark`）。
 
 這份文件寫的是**接手的人需要知道、但從 diff 看不出來的事**：每個決定的理由、還開著什麼、
 以及這個 codebase 有哪些會咬人的地方。規範本身在 [`UIUX-STANDARD.md`](UIUX-STANDARD.md)，
@@ -12,7 +12,7 @@
 ## 現在的狀態
 
 ```
-main @ 952e968 · v0.14.3
+main · v0.14.3
 分支：只有 main（本機與遠端）
 開著的 PR：0
 封存 tag：archive/ux-design-and-tickets（見下方「已關閉的方向」）
@@ -26,7 +26,9 @@ npx electron-rebuild -f -w better-sqlite3 && npx playwright test
 npm rebuild better-sqlite3     # 換回 Node ABI，否則下次 npm test 會整批 skip
 ```
 
-目前基準：typecheck 乾淨 · unit **1055 passed (98 files)** · e2e **89 passed, 1 skipped**。
+目前基準：typecheck 乾淨 · unit **1087 passed (99 files)** · e2e **89 passed, 1 skipped**。
+圖示另外有一個不進 CI 的檢查（要 `rsvg-convert`）：`python3 tools/make-icons.py --check`。
+CI 擋得住的部分在 `test/mark-assets.test.ts`，它讀的是磁碟上的位元組。
 
 ---
 
@@ -42,6 +44,8 @@ npm rebuild better-sqlite3     # 換回 Node ABI，否則下次 npm test 會整�
 | #30 | 四個安靜的缺陷 | 包含一份宣稱自己已出貨的規格文件 |
 | #31 | **typecheck 進 CI** | 367 → 0，其中三個是活的 bug |
 | #32 | **書籤裁決** | quickmarks 本來就不是紀錄，是產品一直宣稱它是 |
+| #33 | 這份交接 | — |
+| — | **換標** | 規範說舊標「已被取代」說了八個月，出貨的圖示一直都還是舊的 |
 
 ### 三個核心決定，展開來說
 
@@ -129,25 +133,44 @@ scope-aware sanitize 與 artifact rotation 都還沒做。文件現在誠實了�
 `docs/UIUX-STANDARD.md` **刻意沒有被覆寫**——那份 22 節是著作處，整份寫回會蓋掉設計側內容。
 repo 這份是它的鏡像加實作狀態註記。要改規範本身，去設計專案改，再同步回來。
 
-### 7. 出貨的圖示還是舊標
-
-設計端在 §16 定案了新標——切角矩形、中空環、實心點——原稿已放在 `design/assets/`。
-但 `resources/icon.svg`、`resources/logo.svg`、`resources/tray-icon.svg` 與
-`src/renderer/src/assets/logo.svg` 都還是舊標（漸層底、漸層 R、斜線、外光暈），
-`.icns` / `.ico` / 系統列 PNG 也都是從舊標產生的。
-
-**為什麼還沒做**：換標不是替換四個 SVG。`.icns`、`.ico` 與六個尺寸的 PNG 要重新產生，
-macOS 系統列那組是 Template 圖（純黑加 alpha，系統自己反白），錄製中／暫停兩個狀態各有一張，
-不能直接餵新標的紅色。還要在三個平台實際看過 16px 與 Dock 尺寸——那正是舊標壞掉的地方，
-所以這步不能只看 SVG 檔就算數。整件事跟這一輪的行為變更無關，混在一起 review 只會兩邊都看不清。
-
-`docs/UIUX-STANDARD.md` §16 已標上 ▲ 分歧，寫明規範描述的是設計端定案、不是現在裝起來會看到的東西。
-
 ### 6. `env.d.ts` 仍是手抄的 preload 鏡像
 
 #31 把它補正了，但它仍會漂。真正的修法是讓它推導自 preload（`typeof api`），這樣漂移不可能發生；
 代價是 `env.d.ts` 會從 global script 變成 module，連帶影響每個裸用 `ProjectMeta` / `HookInfo` 等
 全域型別的檔案。屬於另一次重構。
+
+### 7. §4 的單一字標仍未實作
+
+第三期檢查表把「單一字標 `REDL(●)G` 取代『R 方塊 + REDLOG』並列」打勾了，但標題列
+（`App.tsx`）與 Project Picker 兩處都還是「圖片 + 純文字 REDLOG」，而且那串字用的是
+`text-red-500`（tailwind 設定裡是 `#cf5459`），不是規範要的 `#d75f63`。勾已改回未勾。
+
+**為什麼還沒做**：那是一個新元件——環要以 em 表示、`box-sizing: border-box`、隨字級縮放，
+還要換掉兩個畫面的識別區塊。跟換標同一個 PR 做會讓兩邊都難 review。換標這輪只把**圖片**
+換成新標，圖片本身在字標落地後會整個消失。
+
+### 8. Linux 只拿到一張 256px 圖示
+
+`electron-builder.yml` 的 `linux.icon` 指向單一 PNG。要給 Linux 真正的多尺寸圖示集，
+它得指向一個**目錄**，裡面的檔名是 `<N>.png` 或 `<N>x<N>.png`——`icon-256.png` 不符合那個規則。
+每個 panel／launcher 都會自己把 256 縮下去，正是 `RING_MIN_PX` 要避免的糊法。
+
+**為什麼還沒做**：得多開一個目錄放同樣的 PNG 副本，而 Linux 目前根本不在 release CI 的建置與
+上傳清單裡——那條路徑從來沒產出過 artifact。先量再修。
+
+### 9. `extraResources` 指向一個不存在的目錄
+
+`electron-builder.yml` 有 `- from: mcp`，但 repo 裡沒有 `mcp/`。每次打包都會印一行
+「file source doesn't exist」警告。這比換標早很多，換標只是又碰了同一個檔。
+移掉那一行是包裝行為的變更（等於宣告不再隨 app 出貨 stdio MCP bridge），要人決定。
+
+### 10. 八個守衛測試 import 一個沒宣告的相依
+
+`fast-glob` 出現在八個 source-scanning 守衛測試裡，但 `package.json` 從頭到尾沒有它——
+它能 resolve 只是因為 tailwindcss 把它 hoist 到了 `node_modules` 根目錄。
+Tailwind 一升版或 hoisting 一變，這一整族守衛會同時紅掉，而且錯誤訊息會指向 import 而不是原因。
+把它加進 `devDependencies` 就好。
+
 
 ---
 
