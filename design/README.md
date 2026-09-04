@@ -8,17 +8,26 @@
 
 | 檔案 | 是什麼 | 現況 |
 |---|---|---|
-| `redlog-mark.svg` | 1024×1024 app 圖示原稿。切角 22%、環外徑 45%、環寬 16%、內點 30%（`UIUX-STANDARD.md` §16） | **尚未套用** |
-| `redlog-mark-small.svg` | ≤256px 變體，環收成實心點；16px 用它 | **尚未套用** |
+| `redlog-mark.svg` | 1024×1024 app 圖示原稿。切角 22%、環外徑 45%（皆為邊長），環寬 16%、內點 30%（皆為環外徑） | **已套用** |
+| `redlog-mark-small.svg` | 小尺寸變體，環收成實心點 | **已套用** |
 
-**▲ 分歧，已知**：`resources/icon.svg`、`resources/logo.svg`、`tray-icon.svg` 與
-`src/renderer/src/assets/logo.svg` 目前仍是**舊標**——圓角方形漸層底、漸層 R、斜線、外光暈。
-§16 明說那一版已由上面的字標取代，理由是「漸層、外光暈與斜線在 16px 下全部糊成一團，且與 §1
-『去飽和、不發光』的整體方向相反」。
+這兩個檔是唯一的真相。`resources/` 與 `src/renderer/src/assets/` 底下的每一個圖示都由
+[`../tools/make-icons.py`](../tools/make-icons.py) 從它們產生，`test/mark-assets.test.ts` 斷言副本
+逐位元組相同。**不要手改產出**——改這裡，再跑一次腳本。
 
-換過去不只是替換檔案：`.icns` / `.ico` 由原稿產生，`electron-builder` 的設定、系統列圖示與
-renderer 內嵌的 logo 都要一起動，並且要在三個平台目視確認。所以這裡只放原稿，不動打包路徑——
-接手的人請把它當成一項待辦，別當成「已經套用」。
+```bash
+python3 tools/make-icons.py          # 重新產生
+python3 tools/make-icons.py --check  # 只檢查有沒有過期
+```
+
+需要 `rsvg-convert`（`brew install librsvg`）；`.icns` 另外需要 macOS 的 `iconutil`。
+
+## 產出對不上原稿的地方
+
+換標時有四件事不能照原稿直接放大縮小，理由都寫在 `UIUX-STANDARD.md` §16 的分歧清單裡，
+這裡只列結論：環收成點的門檻是 **32px**（不是規範寫的 16 或 256）；**系統列不用本標誌**，
+而是只有環與點、沒有底板的另一組圖；系統列的環寬與內點**對齊像素**（16.7%／33.3%）；
+Windows 與 Linux 的系統列圖是**彩色**的，因為 `setTemplateImage` 只有 macOS 有作用。
 
 ## 沒有放進來的
 

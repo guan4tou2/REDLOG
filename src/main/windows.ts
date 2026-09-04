@@ -16,7 +16,11 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
     minWidth: 800,
     minHeight: 500,
     show: false,
-    icon: join(__dirname, '../../resources/icon-256.png'),
+    // Windows wants an .ico here: it picks the 16px representation for the title
+    // bar and the 32px one for the taskbar, and a single 256px PNG has to be
+    // downscaled into both — which is where a thin ring stops being a ring.
+    // macOS ignores this field entirely; Linux wants the PNG.
+    icon: join(__dirname, '../../resources', isWin ? 'icon.ico' : 'icon-256.png'),
     backgroundColor: '#0a0a0a',
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     ...(isMac
