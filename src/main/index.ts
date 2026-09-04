@@ -177,9 +177,12 @@ function stopOverlayMouseTracking(): void {
 // Timers and pty callbacks keep firing while the app tears down, and a
 // destroyed BrowserWindow is still non-null — send through here so a quit
 // mid-poll can't raise "Object has been destroyed".
-function send(win: BrowserWindow | null, channel: string, payload?: unknown): void {
+// Rest args, not one payload: `overlay:passThrough` sends (on, opacity) and the
+// second was being dropped silently, so the HUD never received the configured
+// pass-through opacity and fell back to its default.
+function send(win: BrowserWindow | null, channel: string, ...payload: unknown[]): void {
   if (!win || win.isDestroyed()) return
-  try { win.webContents.send(channel, payload) } catch { /* window tearing down */ }
+  try { win.webContents.send(channel, ...payload) } catch { /* window tearing down */ }
 }
 
 function toggleRecording(): boolean {
@@ -442,8 +445,8 @@ function scheduleScopeRecompute(before: ScopeSnapshot, configChangedId: string |
   if (!activeProject) return
   // Coalesce to the EARLIEST before-state of the burst: a→b→c is one boundary
   // move from a to c, and comparing c against b would report the wrong delta.
-  if (!recomputePending || recomputePending.projectId !== activeProject) {
-    recomputePending = { projectId: activeProject, before, configChangedId }
+  if (!recomputePending || recomputePending.projectId !== activeProject.id) {
+    recomputePending = { projectId: activeProject.id, before, configChangedId }
   } else if (configChangedId) {
     recomputePending.configChangedId = configChangedId
   }
@@ -455,7 +458,10 @@ async function runPendingRecompute(): Promise<void> {
   const job = recomputePending
   recomputeTimer = null
   if (!job || recomputeRunning) return
-  if (!activeProject || activeProject !== job.projectId) { recomputePending = null; return }
+  // By id, not by object: renaming a project replaces `activeProject` with a
+  // fresh object for the same engagement, and a reference test would read that
+  // as a project switch and drop the queued recompute.
+  if (!activeProject || activeProject.id !== job.projectId) { recomputePending = null; return }
   recomputePending = null
   recomputeRunning = true
   try {
