@@ -4,7 +4,7 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatFreshness } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
 import { toast } from './Toast'
-import logoUrl from '../assets/logo.svg'
+import markUrl from '../assets/mark.svg'
 import { Button } from './Button'
 
 interface ProjectPickerProps {
@@ -138,8 +138,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // recent projects on the right — and a stacked single-column fallback
   // below that so narrow windows behave like the old picker.
   const hasRecent = projects.length > 0
+  // bg-redlog-bg, not the literal #0a0a0a this used to hardcode: the token moved
+  // to #121214 when the palette got its cool cast, and the mark's cut corners are
+  // transparent now, so the picker showing a different window colour from the
+  // title bar is something you can actually see.
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0a]" data-testid="project-picker">
+    <div className="h-full flex flex-col bg-redlog-bg" data-testid="project-picker">
       {/* Draggable title bar zone */}
       <div
         className="h-10 shrink-0"
@@ -150,7 +154,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         {/* Header — spans both columns. Centered anchor for identity so the
             wider layout still feels intentional and not empty. */}
         <div className="text-center space-y-2">
-          <img src={logoUrl} alt="RedLog" className="w-14 h-14 mx-auto mb-2 rounded-xl" />
+          <img src={markUrl} alt="" className="w-14 h-14 mx-auto mb-2" />
 
           <h1 className="text-redlog-text font-bold text-xl tracking-[0.15em]">{t('app.title')}</h1>
           <p className="text-redlog-text-faint text-xs font-mono">{t('app.subtitle')}</p>
