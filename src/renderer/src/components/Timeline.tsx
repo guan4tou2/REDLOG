@@ -18,6 +18,7 @@ import {
 } from '../lib/markerFold'
 import { MarkerDetail } from './MarkerDetail'
 import { isHookSource, isHousekeeping } from '../lib/housekeeping'
+import { compareMonotonicNs } from '../lib/eventOrder'
 import { isMac } from '../lib/platform'
 
 const MIN_LANE_H = 36
@@ -377,13 +378,10 @@ interface PluginEventType {
 // event id (uuid) for a stable final tiebreak.
 function eventCompare(a: RedLogEvent, b: RedLogEvent): number {
   if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
-  const am = a.monotonicNs, bm = b.monotonicNs
-  if (am && bm && am !== bm) {
-    try {
-      const ai = BigInt(am), bi = BigInt(bm)
-      return ai < bi ? -1 : ai > bi ? 1 : 0
-    } catch { /* fall through to id */ }
-  }
+  // Was `BigInt(monotonicNs)` inline, which threw on the boot prefix every time
+  // and silently ordered same-millisecond events by UUID instead.
+  const mono = compareMonotonicNs(a.monotonicNs, b.monotonicNs)
+  if (mono !== 0) return mono
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
