@@ -129,6 +129,20 @@ scope-aware sanitize 與 artifact rotation 都還沒做。文件現在誠實了�
 `docs/UIUX-STANDARD.md` **刻意沒有被覆寫**——那份 22 節是著作處，整份寫回會蓋掉設計側內容。
 repo 這份是它的鏡像加實作狀態註記。要改規範本身，去設計專案改，再同步回來。
 
+### 7. 出貨的圖示還是舊標
+
+設計端在 §16 定案了新標——切角矩形、中空環、實心點——原稿已放在 `design/assets/`。
+但 `resources/icon.svg`、`resources/logo.svg`、`resources/tray-icon.svg` 與
+`src/renderer/src/assets/logo.svg` 都還是舊標（漸層底、漸層 R、斜線、外光暈），
+`.icns` / `.ico` / 系統列 PNG 也都是從舊標產生的。
+
+**為什麼還沒做**：換標不是替換四個 SVG。`.icns`、`.ico` 與六個尺寸的 PNG 要重新產生，
+macOS 系統列那組是 Template 圖（純黑加 alpha，系統自己反白），錄製中／暫停兩個狀態各有一張，
+不能直接餵新標的紅色。還要在三個平台實際看過 16px 與 Dock 尺寸——那正是舊標壞掉的地方，
+所以這步不能只看 SVG 檔就算數。整件事跟這一輪的行為變更無關，混在一起 review 只會兩邊都看不清。
+
+`docs/UIUX-STANDARD.md` §16 已標上 ▲ 分歧，寫明規範描述的是設計端定案、不是現在裝起來會看到的東西。
+
 ### 6. `env.d.ts` 仍是手抄的 preload 鏡像
 
 #31 把它補正了，但它仍會漂。真正的修法是讓它推導自 preload（`typeof api`），這樣漂移不可能發生；

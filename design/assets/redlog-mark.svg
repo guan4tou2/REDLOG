@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="RedLog">
+  <title>RedLog</title>
+  
+  <path d="M225 0 H1024 V799 L799 1024 H0 V225 Z" fill="#d75f63"></path>
+  
+  <circle cx="512" cy="512" r="193.5" fill="none" stroke="#16090a" stroke-width="73.7"></circle>
+  <circle cx="512" cy="512" r="69.1" fill="#16090a"></circle>
+</svg>
