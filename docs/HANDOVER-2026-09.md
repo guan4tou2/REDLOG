@@ -160,7 +160,7 @@ repo 這份是它的鏡像加實作狀態註記。要改規範本身，去設計
 
 ### 9. `extraResources` 指向一個不存在的目錄
 
-`electron-builder.yml` 有 `- from: mcp`，但 repo 裡沒有 `mcp/`。每次打包都會印一行
+`electron-builder.yml` 有 `- from: mcp`，但 `mcp/` 在 `ddc2606`（2026-08-23）就被刪了，沒有任何建置步驟會重建它。每次打包都會印一行
 「file source doesn't exist」警告。這比換標早很多，換標只是又碰了同一個檔。
 移掉那一行是包裝行為的變更（等於宣告不再隨 app 出貨 stdio MCP bridge），要人決定。
 
