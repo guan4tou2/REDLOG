@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { RedLogEvent } from '../core/db/events'
 
 contextBridge.exposeInMainWorld('redlog', {
   platform: process.platform,

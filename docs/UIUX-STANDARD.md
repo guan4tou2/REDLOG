@@ -331,8 +331,10 @@ it('同一 ConfirmDialog 不同時有實心 accent 與實心 danger', ...)
 - `v0.14.0` per-row tier glyph 的已上鏈列用 `zinc-700` (`#3f3f46`) 於 `#0a0a0a`，約 **1.7:1**，遠低於 3:1。依例外報告原則：已上鏈是預設不畫字符，只有 logged 列畫 `⌇`，用 `#9a9aa4`
 - CDP 設定指引裡的 `--remote-debugging-port=9222` 是硬寫的，使用者改過埠號後照抄會失敗——指令中的路徑與埠號必須是當前專案的實際值
 - 快捷鍵表分散硬寫在監聽器、側欄、儀表板與 `?` 面板四處，已經漂移過一次（Settings 鎖定 ⌘9 那次）。須從單一來源（`lib/shortcuts.ts`）產生
-- **未修，已記錄**：Timeline 的 `eventCompare` 同毫秒 tiebreak 是死碼——`padMonoNs` 寫出 `bootMs-ns` 形式，`BigInt()` 直接丟例外，所以同毫秒事件實際以 UUID 排序。修它會重排整個面板上所有同毫秒配對，與標記修訂無關，另案處理
-- **未修，已記錄**：`marker.atTimestamp` 的 i18n 用單大括號 `{time}`，而插值只認 `{{var}}`，對每位操作員都是字面渲染
+- ✓ **已修**（2026-09-04）Timeline 的 `eventCompare` 同毫秒 tiebreak 是死碼——`padMonoNs` 寫出 `bootMs-ns` 形式，`BigInt()` 必定丟例外，所以同毫秒事件實際以 UUID 排序。比較器抽到 `lib/eventOrder.ts`，時間軸與標記 fold 共用同一份，兩邊不再對「誰先發生」給出兩個答案
+- ✓ **已修**（2026-09-04）`marker.atTimestamp` 的 i18n 用單大括號 `{time}`，而插值只認 `{{var}}`，所以時間軸右鍵落標記的對話框對每位操作員都顯示字面的「指向 {time}」
+- ✓ **已修**（2026-09-04）`preload/index.ts` 用了三次 `RedLogEvent` 型別卻整檔沒有 import 它。型別在打包時被抹掉所以跑得起來，`build` 也不做型別檢查——與害擷取靜默停止的那個缺 import 是同一類。**repo 沒有 typecheck script，`tsconfig.node.json` 目前也是紅的**（include 漏了 `src/core`、target 太低導致 Map 迭代報錯），補上它是接住這類錯誤唯一的守衛，尚未做
+- **未修，已記錄**：`docs/SPEC-SCOPE-AWARE-LIFECYCLE.md` 的狀態宣告曾說 Part A/B/C 全部出貨，點名的模組一個都不存在（2026-09-04 已改寫該段為實際狀況；規格本身仍待實作）
 
 ---
 
