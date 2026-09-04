@@ -152,7 +152,7 @@ describe('every list view uses the shared contract', () => {
   }
 
   const FILE_FOR: Record<string, string> = {
-    marks: 'FindingsView.tsx',
+    bookmarks: 'FindingsView.tsx',
     loot: 'LootPanel.tsx',
     search: 'SearchPanel.tsx',
     targets: 'TargetView.tsx',

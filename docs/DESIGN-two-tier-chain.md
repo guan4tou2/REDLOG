@@ -544,7 +544,6 @@ bundle-2026-08-18T14-30-00/
 ├── manifest.hmac                 ← primary operator's HMAC over manifest
 ├── events.jsonl                  ← chained tier, unchanged
 ├── events_logged.jsonl           ← NEW: logged tier, in insertion order
-├── quickmarks.json
 ├── chain_anchors.json
 ├── operators.json
 ├── screenshots/

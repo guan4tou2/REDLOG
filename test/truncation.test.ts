@@ -75,7 +75,7 @@ describe('empty states', () => {
       ['App.tsx', 'screenshots'],
       ['components/LootPanel.tsx', 'loot'],
       ['components/TargetView.tsx', 'targets'],
-      ['components/FindingsView.tsx', 'marks'],
+      ['components/FindingsView.tsx', 'bookmarks'],
       ['components/TranscriptView.tsx', 'transcript']
     ] as const
     const missing = VIEWS.filter(([file]) => {

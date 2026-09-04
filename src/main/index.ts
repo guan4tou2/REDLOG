@@ -194,13 +194,14 @@ function toggleRecording(): boolean {
   return recording
 }
 
-// The two marker fields an operator types by hand, and therefore the two that
-// can carry a pasted credential. Layer 4 can only mask a field that carries
+// The marker fields an operator types or pastes, and therefore the ones that can
+// carry a credential — a URL with a session token in its query string is the
+// case this list exists for as much as a password in a note. Layer 4 can only mask a field that carries
 // detection spans (src/core/sanitize.ts skips an event whose `data.redactions`
 // is empty), so every marker producer runs `redactFields` over these before the
 // insert — otherwise `redlog-cli sanitize` reports success on a marker note and
 // ships the secret anyway.
-const MARKER_TEXT_FIELDS = ['title', 'notes'] as const
+const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
 
 // Opens the marker dialog in the main window — shared by the global shortcut,
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
@@ -1473,7 +1474,13 @@ app.whenReady().then(() => {
       notes: data.notes,
       severity: data.severity ?? 'info',
       category: data.category ?? 'custom',
-      ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {})
+      ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {}),
+      // Where the mark points, the web analogue of `atTimestamp`. Same
+      // omit-when-absent shape as that field, for the same reason: this rebuild
+      // is what silently ate `atTimestamp` for several releases.
+      ...(typeof data.url === 'string' && data.url.trim()
+        ? { url: data.url.trim().slice(0, 2048) }
+        : {})
     }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id })
     // `marker` is pause-exempt at insert (PAUSE_EXEMPT_AGENT_TYPES) because §10
     // promises that an explicit "write this down" records while recording is
@@ -1731,8 +1738,7 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     const config = loadConfig(projectDir)
     const events = queryEvents({ limit: 100000 })
-    const marks = listQuickMarks()
-    const data = { config, quickmarks: marks, events, exportedAt: new Date().toISOString() }
+    const data = { config, events, exportedAt: new Date().toISOString() }
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -1754,7 +1760,22 @@ app.whenReady().then(() => {
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2))
     return filePath
   }
-  ipcMain.handle('data:exportMarks', () => activeProject ? sliceExport('marks', listQuickMarks()) : null)
+  // Not `sliceExport`: that writes into <project>/exports/ beside the evidence
+  // bundle and the scope-filtered export, where a file called
+  // `redlog-marks-*.json` reads as part of the delivery. Bookmarks are the
+  // operator's own notes — they get their own directory and say what they are.
+  ipcMain.handle('data:exportMarks', () => {
+    if (!activeProject) return null
+    const outDir = path.join(getProjectPath(activeProject), 'bookmarks')
+    fs.mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const filePath = path.join(outDir, `redlog-bookmarks-${ts}.json`)
+    fs.writeFileSync(filePath, JSON.stringify({
+      _note: 'Private bookmarks. Not chained, not signed, not attributed to an operator, editable in place, and not covered by `redlog-cli sanitize`. Not evidence.',
+      bookmarks: listQuickMarks()
+    }, null, 2))
+    return filePath
+  })
   ipcMain.handle('data:exportLoot', () => activeProject ? sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })) : null)
   // All three subtypes, not just violations: an export showing a violation
   // without the record that withdrew it misstates the operator's own
@@ -1947,12 +1968,14 @@ app.whenReady().then(() => {
       if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
     }
     const events = queryScopeFilteredEvents(scopeTargets)
-    const marks = listQuickMarks()
+    // Bookmarks are NOT included, and this is the export where that mattered
+    // most: the events went through the scope filter and the bookmark rows did
+    // not, so a "scope-filtered" file shipped URLs for hosts the operator had
+    // deliberately excluded.
     const data = {
       engagement: config.engagement,
       operator: config.operator,
       scope: config.scope,
-      quickmarks: marks,
       events,
       exportedAt: new Date().toISOString(),
       filtered: true,

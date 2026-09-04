@@ -87,7 +87,7 @@ DB so `session_end` still writes, then unwinds every monitor and calls `closeDB(
 | `operators` | `token_hash` (sha256 of the bearer token) + `signer_pub_key`. |
 | `chain_anchors` | OpenTimestamps anchors + calendar receipts. |
 | `sanitized_events` | Layer-4 redaction: `(source_event_id, field) → replacement`. Never an UPDATE on `events`. |
-| `quickmarks` | Bookmarks. Not chained. |
+| `quickmarks` | Private bookmarks — the 書籤 page. Not chained, not signed, not attributed, editable in place, and **not in the evidence bundle** (removed in bundleVersion 3). Not evidence. |
 | `event_annotations` | Created but currently unused — no read/write path exists. |
 
 Indexes: `timestamp`, `agent_type`, `engagement_id`, `target_id`,
@@ -240,7 +240,7 @@ writes `system.chain_sample_broken`).
 `bundle-export.ts` streams to `<projectDir>/exports/bundle-<ts>/`:
 
 `events.jsonl` (sanitized replacements applied **to the export only**),
-`quickmarks.json`, `chain_anchors.json`, `operators.json` (public fields +
+`chain_anchors.json`, `operators.json` (public fields +
 pubkey, no token hashes), `screenshots/`, `casts/`, optional
 `agent-transcripts/` (**off by default** — raw agent chat may contain pasted
 secrets), a self-contained `redlog-verify.py` + `verify.sh` / `verify.cmd`,

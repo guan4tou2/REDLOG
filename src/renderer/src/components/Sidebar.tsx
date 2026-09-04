@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
-  Ban, Gem, Flag, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon
+  Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon
 } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -69,7 +69,7 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
     targets: { id: 'targets', label: t('sidebar.targets'), icon: Crosshair },
     scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger' },
     loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400' },
-    marks: { id: 'marks', label: t('sidebar.marks'), icon: Flag },
+    bookmarks: { id: 'bookmarks', label: t('sidebar.bookmarks'), icon: Bookmark },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
   }

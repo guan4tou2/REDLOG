@@ -43,7 +43,7 @@ describe('what each noun waits for', () => {
   it('戰利品, 截圖, 標記 and HTTP each after their own first row', () => {
     expect(viewsOf(S({ lootSeen: true }))).toContain('loot')
     expect(viewsOf(S({ screenshotSeen: true }))).toContain('screenshots')
-    expect(viewsOf(S({ markSeen: true }))).toContain('marks')
+    expect(viewsOf(S({ bookmarkSeen: true }))).toContain('bookmarks')
     expect(viewsOf(S({ httpFlowSeen: true }))).toContain('http_history')
   })
 
@@ -65,7 +65,7 @@ describe('what each noun waits for', () => {
     expect(viewsOf(proxyTrafficOnly)).not.toContain('scope')
 
     const markerEventButNoQuickmark = S({ evidenceSeen: true })
-    expect(viewsOf(markerEventButNoQuickmark), 'a marker EVENT is not a quickmark').not.toContain('marks')
+    expect(viewsOf(markerEventButNoQuickmark), 'a marker EVENT is not a bookmark').not.toContain('bookmarks')
   })
 })
 
@@ -74,7 +74,7 @@ describe('monotonic', () => {
     const steps: Array<Partial<VisibilitySignals>> = [
       { evidenceSeen: true }, { targetCount: 1 }, { targetCount: 2 },
       { transcriptSeen: true }, { lootSeen: true }, { screenshotSeen: true },
-      { markSeen: true }, { httpFlowSeen: true }, { loggedEver: true }
+      { bookmarkSeen: true }, { httpFlowSeen: true }, { loggedEver: true }
     ]
     let s = EMPTY_SIGNALS
     let seen = new Set(viewsOf(s))
@@ -124,7 +124,7 @@ describe('when to look again', () => {
   it('says no once everything is open', () => {
     const s = S({
       evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
-      screenshotSeen: true, markSeen: true, httpFlowSeen: true, loggedEver: true
+      screenshotSeen: true, bookmarkSeen: true, httpFlowSeen: true, loggedEver: true
     })
     expect(shouldRefetch(s, [row('shell', 'command_start')])).toBe(false)
   })
