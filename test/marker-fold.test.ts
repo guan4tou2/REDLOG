@@ -251,13 +251,14 @@ describe('the vocabulary that spans the bundle boundary', () => {
     expect(coreList).toEqual([...MARKER_SEVERITIES])
   })
 
-  it('leaves Timeline.tsx eventCompare alone', () => {
-    // compareAmendments deliberately diverges from it. Adopting the fixed
-    // comparator in Timeline would re-order every same-millisecond pair on the
-    // panel — cluster popovers, insert position, the pagination anchor — which
-    // is a behaviour change unrelated to amendments.
+  it('shares one monotonic comparator with the timeline', () => {
+    // These used to disagree: Timeline's tiebreak did BigInt() on a stamp that
+    // carries a boot prefix, so it threw every time and ordered ties by UUID.
+    // Two answers to "which happened first" is one too many.
     const tl = fs.readFileSync(path.join(__dirname, '../src/renderer/src/components/Timeline.tsx'), 'utf-8')
-    expect(tl).toContain('function eventCompare')
-    expect(tl).not.toContain('compareAmendments')
+    const fold = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/markerFold.ts'), 'utf-8')
+    expect(tl).toContain('compareMonotonicNs')
+    expect(fold).toContain('compareMonotonicNs')
+    expect(tl, 'the dead BigInt tiebreak is back').not.toMatch(/BigInt\(am\)|BigInt\(a\.monotonicNs\)/)
   })
 })

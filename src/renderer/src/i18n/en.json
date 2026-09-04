@@ -122,7 +122,7 @@
   "timeline.shellEvent": "Shell event",
   "timeline.scanner": "Scanner",
   "timeline.laneExternalOnly": "{lane} — no built-in producer; populated only by external agents posting via /api/events",
-  "marker.atTimestamp": "for {time}",
+  "marker.atTimestamp": "for {{time}}",
   "timeline.rightClickHint": "Right-click empty timeline area to drop a marker at that moment",
   "timeline.exportSlice": "Export slice",
   "timeline.exportSliceHint": "Export the events in the current visible time window (from the minimap viewport) as JSON",

@@ -122,7 +122,7 @@
   "timeline.shellEvent": "Shell 事件",
   "timeline.scanner": "掃描",
   "timeline.laneExternalOnly": "{lane} — 沒有內建擷取來源；只有外部 agent 透過 /api/events 送才會出現",
-  "marker.atTimestamp": "指向 {time}",
+  "marker.atTimestamp": "指向 {{time}}",
   "timeline.rightClickHint": "在時間軸空白處右鍵可在該時間點下標記",
   "timeline.exportSlice": "匯出切片",
   "timeline.exportSliceHint": "把當前 minimap 可見時間範圍內的事件匯出成 JSON",

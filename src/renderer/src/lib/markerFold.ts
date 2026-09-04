@@ -12,6 +12,7 @@
 // validates the shape of an amendment; it does not fold.
 
 import type { RedLogEvent } from '../../../core/db/events'
+import { compareMonotonicNs } from './eventOrder'
 
 /** The severity vocabulary a marker actually uses (EventMarker.tsx). Duplicated
  *  in src/core/marker-amend.ts because main cannot import this file; a test
@@ -82,43 +83,21 @@ export function amendedFields(e: RedLogEvent): AmendableField[] {
 }
 
 /**
- * Chain order for two amendments — deliberately NOT Timeline's `eventCompare`.
+ * Chain order for two amendments.
  *
- * Two reasons. Wall clock is the wrong key: it regresses on an NTP correction,
- * which is why the DB pages by `created_at`, and "the latest correction wins"
- * must mean the one written last, not the one whose clock read highest. And
- * Timeline's BigInt tiebreak is dead code: `padMonoNs` writes
- * `${bootEpochMs}-${paddedNs}`, so `BigInt(monotonicNs)` throws on the hyphen
- * and every same-millisecond pair silently falls back to comparing UUIDs.
- * Ported as-is, "latest wins" would have meant "highest random id wins".
+ * Deliberately not keyed on wall clock, which is where this differs from
+ * Timeline's display order: `timestamp` regresses on an NTP correction — which
+ * is why the DB pages by `created_at` — and "the latest correction wins" has to
+ * mean the one written last, not the one whose clock read highest.
  *
- * So: boot epoch, then in-process nanoseconds, then created_at, then id. Fixing
- * Timeline's comparator instead would re-order every same-millisecond pair on
- * the whole panel — cluster popovers, insert position, the pagination anchor —
- * which is a behaviour change unrelated to amendments. Tracked separately.
+ * The monotonic comparison itself is shared with the timeline (lib/eventOrder),
+ * so the two cannot disagree about which of two events came first.
  */
 export function compareAmendments(a: RedLogEvent, b: RedLogEvent): number {
-  const am = splitMono(a.monotonicNs)
-  const bm = splitMono(b.monotonicNs)
-  if (am && bm) {
-    if (am.boot !== bm.boot) return am.boot < bm.boot ? -1 : 1
-    if (am.ns !== bm.ns) return am.ns < bm.ns ? -1 : 1
-  }
+  const mono = compareMonotonicNs(a.monotonicNs, b.monotonicNs)
+  if (mono !== 0) return mono
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-}
-
-function splitMono(mono: string | null | undefined): { boot: bigint; ns: bigint } | null {
-  if (!mono) return null
-  const dash = mono.indexOf('-')
-  try {
-    // Rows written before the boot prefix landed carry the padded ns alone;
-    // treat them as boot 0 so they sort ahead of prefixed rows from later runs.
-    if (dash < 0) return { boot: 0n, ns: BigInt(mono) }
-    return { boot: BigInt(mono.slice(0, dash)), ns: BigInt(mono.slice(dash + 1)) }
-  } catch {
-    return null
-  }
 }
 
 /** Group amendment rows by the marker each one names, in chain order. Rows that
