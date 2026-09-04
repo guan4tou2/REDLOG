@@ -9,7 +9,10 @@ const basePath = join(__dirname, '../../resources')
 // file for its `@2x` neighbour and builds a proper HiDPI image; a buffer has no
 // filename to look beside. The old code handed the 32px Retina asset straight to
 // `createFromBuffer`, which has no way to know it is a 2x asset, so it became a
-// 32-POINT image that macOS then squeezed into a 22pt menu bar.
+// 32-POINT image that macOS then squeezed into a 22pt menu bar. Measured, under
+// Electron: createFromBuffer(the @2x file) gives 32x32 with scale factors [1];
+// createFromPath(the 1x file) gives 16x16 with [1, 2]. The second form keeps
+// working inside app.asar, which is where these live once packaged.
 function loadIcon(name: string): Electron.NativeImage {
   const p = join(basePath, name)
   if (existsSync(p)) {
