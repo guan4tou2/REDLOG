@@ -6,12 +6,11 @@ directories:
 files:
   - out/**/*
   - resources/**/*
-# Ship the stdio MCP bridge + hook scripts alongside the app so the packaged
-# build can point at them (HTTP MCP needs none of this, but stdio + hook
-# install do).
+# Ship the hook scripts alongside the app so the packaged build can point at
+# them when it installs a hook. (The stdio MCP bridge that used to ride along
+# here was removed in 2026-08 — `mcp/` no longer exists and every build was
+# printing "file source doesn't exist" for it.)
 extraResources:
-  - from: mcp
-    to: mcp
   - from: hooks
     to: hooks
   - from: shell

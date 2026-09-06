@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
-  Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Flag,
+  Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Bookmark, ArrowLeftRight,
   Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon
 } from 'lucide-react'
 import { useI18n } from '../i18n'
@@ -47,9 +47,13 @@ interface Item {
 // in tests where the preload bridge may be absent.
 
 
+// One icon per view id, the same ones the sidebar draws — a view that fell
+// back to the dashboard gauge here (search, HTTP, bookmarks did) told the
+// operator they were about to open the dashboard.
 const NAV_ICONS: Record<string, LucideIcon> = {
   dashboard: Gauge, terminal: ChevronRight, timeline: Rows3, transcript: AlignLeft,
-  screenshots: Image, targets: Crosshair, scope: Ban, loot: Gem, marks: Flag
+  screenshots: Image, targets: Crosshair, scope: Ban, loot: Gem, bookmarks: Bookmark,
+  search: Search, http_history: ArrowLeftRight
 }
 
 const SECTION_KEY: Record<Section, string> = {

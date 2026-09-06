@@ -164,7 +164,15 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         // card → jump to timeline" flow still lands on a real event id.
         <div className="space-y-2" {...listNav.containerProps} aria-label={t('loot.title', { count: visibleList.length })}>
           {visibleList.length === 0 && (
-            <p className="text-redlog-text-faint text-xs">{t('loot.noMatches')}</p>
+            // Same three-part shape as the no-loot state (§5-4): what would be
+            // here, why it is not, and the one action that changes that. A
+            // filter that hides every hit used to leave a single grey line.
+            <EmptyState
+              icon={Gem}
+              title={t('loot.noMatches')}
+              reason={t('loot.noMatchesReason')}
+              action={{ label: t('loot.clearFilter'), onClick: () => { setTypeFilter(null); setDedupOn(false) } }}
+            />
           )}
           {visibleList.map((le, i) => {
             const rowProps = listNav.itemProps(i)

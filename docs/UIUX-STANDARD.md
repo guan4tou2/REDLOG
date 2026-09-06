@@ -378,7 +378,7 @@ it('同一 ConfirmDialog 不同時有實心 accent 與實心 danger', ...)
   - `ErrorBoundary` 呼叫的是 `window.redlog.openExternal`，而它其實在 `app` 底下；樂觀鏈把它吞掉，所以〈開啟 GitHub issue〉按鈕一直沒有作用
   - 另外還有一個是我自己在 8a 留下的：範圍重算排程器比較的是 `activeProject` **物件**而型別寫 string，專案改名會產生新物件，排隊中的重算會被當成換專案而靜默丟棄
 - **未修，已記錄**：`env.d.ts` 仍是手抄的 preload 鏡像。真正的修法是讓它推導自 preload（`typeof api`），這樣漂移不可能發生；但那會把 `env.d.ts` 從 global script 變成 module，連帶影響每個裸用 `ProjectMeta` / `HookInfo` 等全域型別的檔案，屬於另一次重構
-- **未修，已記錄**：`docs/SPEC-SCOPE-AWARE-LIFECYCLE.md` 的狀態宣告曾說 Part A/B/C 全部出貨，點名的模組一個都不存在（2026-09-04 已改寫該段為實際狀況；規格本身仍待實作）
+- **未修，已記錄**：`docs/archive/SPEC-SCOPE-AWARE-LIFECYCLE.md` 的狀態宣告曾說 Part A/B/C 全部出貨，點名的模組一個都不存在（2026-09-04 已改寫該段為實際狀況；規格本身仍待實作）
 
 ---
 
