@@ -103,13 +103,9 @@ export function initDB(projectDir: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_quickmarks_ts ON quickmarks(created_at);
 
-    CREATE TABLE IF NOT EXISTS event_annotations (
-      id TEXT PRIMARY KEY,
-      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-      note TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_annotation_event ON event_annotations(event_id);
+    -- (event_annotations removed v0.15: created in an early version but never
+    --  given a read or write path — dead schema. Existing DBs keep the empty
+    --  table harmlessly; new DBs no longer create it.)
 
     CREATE TABLE IF NOT EXISTS operators (
       id TEXT PRIMARY KEY,
