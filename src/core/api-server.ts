@@ -471,12 +471,16 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    if (route === '/api/quickmarks' && req.method === 'GET') {
-      json(res, 200, { quickmarks: listBookmarks() })
+    // F4 part B: /api/bookmarks is the current route; /api/quickmarks is kept
+    // as a deprecated alias so installed integrations keep working. The GET
+    // response key follows the route (`bookmarks` vs the legacy `quickmarks`).
+    if ((route === '/api/bookmarks' || route === '/api/quickmarks') && req.method === 'GET') {
+      const list = listBookmarks()
+      json(res, 200, route === '/api/bookmarks' ? { bookmarks: list } : { quickmarks: list })
       return
     }
 
-    if (route === '/api/quickmarks' && req.method === 'POST') {
+    if ((route === '/api/bookmarks' || route === '/api/quickmarks') && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const mark = createBookmark({
