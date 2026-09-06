@@ -167,7 +167,7 @@ RedLog 開已遷移的專案會找不到表、那頁變空。若有混用版本�
 
 ## 7. Linux 多尺寸圖示 + 寫死的視窗底色 — 小,外觀/打包
 
-**狀態:已實作 → 見 PR #36(視窗底色 + 圖示目錄)。殘留:Linux 是否真的進 release matrix 仍待量。** `windows.ts` 三處已改 `#121214`;`resources/icons/<N>x<N>.png` 已產出、`electron-builder.yml` `linux.icon` 指向目錄。但「Linux 進 release CI」尚未驗證(見 §7a 步驟 3),在確認前圖示是否真的出貨仍是先量再修。
+**狀態:已實作 → 見 PR #36(視窗底色 + 圖示目錄)+ PR #45(release matrix)。殘留:Linux leg 綠了才升為必需。** `windows.ts` 三處已改 `#121214`;`resources/icons/<N>x<N>.png` 已產出、`electron-builder.yml` `linux.icon` 指向目錄;PR #45 把 `ubuntu-latest` 加進 release build matrix,打包 AppImage + deb。因 `release` job `needs: build`,Linux leg 以 `continue-on-error` 設為 best-effort——失敗絕不擋 mac/win 出貨,實際能否打包要等一次 tag release 才量得到,綠了再拿掉那兩個 flag 升為必需。
 
 **問題。** (a) `electron-builder.yml` `linux.icon: resources/icon-256.png` 是單張,每個 panel 自己縮糊
 (正是 `RING_MIN_PX` 要避免的);(b) `src/main/windows.ts` 三處寫死 `#0a0a0a`(`backgroundColor`
@@ -213,8 +213,7 @@ transcript 走 ingest。
 
 | 順位 | 項目 | 大小 | 為何這個順位 / 卡在哪 |
 |---|---|---|---|
-| 1 | Linux 進 release matrix(§7a) | S | 圖示已產出,但 Linux 是否真的出 artifact 未量,先量再修 |
-| 2 | Plugin-kernel 完成路徑(§8-2/3/4) | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
+| 1 | Plugin-kernel 完成路徑(§8-2/3/4)+ pcap/透明代理 | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
 
 每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。

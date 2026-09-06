@@ -133,7 +133,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 **F1. 視窗底色 `#0a0a0a`→`#121214` · ✅ 已實作(PR #36)· P1 · S** — `windows.ts` 兩處,載入不再閃暗底。
 **F2. 單一字標 `REDL(●)G` · ✅ 已實作(PR #36)· P2 · M** — `Wordmark` 即時文字元件,環為錄製指示、em-based、#d75f63;換掉標題列與 Picker 的圖片+純文字。
-**F3. Linux 多尺寸圖示 · ✅ 圖示已實作(PR #36)· P2 · S** — `resources/icons/<N>x<N>.png` + `linux.icon` 指向目錄 + make-icons 同步 + guard。**續作(需 CI 驗證)**:把 ubuntu-latest 加進 release matrix——`release` job `needs: build`,未驗證的 Linux build 若失敗會連 mac/win release 一起擋,故此開關要在 CI 上翻並盯,不能盲改。
+**F3. Linux 多尺寸圖示 + release matrix · ✅ 已實作(圖示 PR #36 · matrix PR #45)· P2 · S** — `resources/icons/<N>x<N>.png` + `linux.icon` 指向目錄 + make-icons 同步 + guard;PR #45 把 `ubuntu-latest` 加進 release build matrix(AppImage + deb),以 `continue-on-error` 設為 best-effort,失敗不擋 mac/win。**續作**:一次 tag release 觀察 Linux leg 真的綠,再拿掉 `continue-on-error` 升為必需。
 **F4. QuickMark→Bookmark 改名 · ✅ 已實作(PR #40)· P2 · M** — 內部改名(型別/IPC/component/SQL `ALTER TABLE … RENAME`)+ 外部契約與別名(`/api/bookmarks`、CLI `bookmark`、`read:bookmarks`,舊路由/動詞/能力保留別名)全數落地。原計畫的兩段(part A 內部、part B 外部)在同一分支依序完成。
 - 設計:`DESIGN-OPEN-ITEMS §5–7`。
 
@@ -155,7 +155,7 @@ D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ 
 → D2 已做:`env.d.ts` 改為 `typeof api` 推導,preload 具名 export `api: RedLogAPI`;獨立 PR #37 完成,漂移在型別層即不可能。
 
 **M4 — 外掛化 + 外觀(P2)· 外觀達成,外掛化首步達成**
-F2 字標 ✅ · F3 Linux 圖示 ✅(release matrix 待 CI 驗證) · F4 改名 ✅(PR #40) · E1 外掛化 Option A ✅(#41) + Option B ✅(#44)
+F2 字標 ✅ · F3 Linux 圖示 + release matrix ✅(#36 + #45,best-effort leg) · F4 改名 ✅(PR #40) · E1 外掛化 Option A ✅(#41) + Option B ✅(#44)
 → E1 已完整外掛化:工具知識現在只活在 bundled pack,core 只留通用 strategy 庫;載入順序在測試 setup + 啟動路徑解掉。**仍待獨立 PR:E2 starter pack 預裝 + E3 manifest 雙版本讀取。**
 
 **B4 pcap / 透明代理**:獨立評估,先過「接受 root 成本」的定位決策再排。
