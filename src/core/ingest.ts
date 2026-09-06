@@ -19,6 +19,7 @@
 import { insertEvent, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
 import { eventBus } from './event-bus'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
+import { socketCausesFor, noteCommandPid } from './socket-attribution'
 import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
 import { extractTargetWithProvenance } from './target-extractor'
@@ -102,7 +103,7 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 2. Causal links from fields the producer already sent (flow_id,
   //    terminal_id + pid).
-  const causeIds = resolveIncomingCauses(agentType, data)
+  const causeIds = [...resolveIncomingCauses(agentType, data), ...socketCausesFor(agentType, data)]
   if (causeIds.length > 0) {
     const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
     data._causes = [...new Set([...existing, ...causeIds])]
@@ -127,6 +128,11 @@ export function ingest(input: IngestInput): IngestResult {
   // 6. Publish — once, here, for every producer.
   eventBus.publish(event, { bypassPause: input.bypassPause })
   noteStartEvent(agentType, data, event.id)
+  // Record pid → this command_start so later traffic on that pid's sockets can
+  // cite it (docs/DESIGN-traffic-attribution.md §2.3).
+  if (agentType === 'shell' && data.subtype === 'command_start') {
+    noteCommandPid(data.pid as number | undefined, event.id)
+  }
 
   // 7. Scope dispatch, after the insert so the violation cites this row.
   if (alertRuntimeRef) {
