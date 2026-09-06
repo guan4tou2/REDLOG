@@ -18,6 +18,13 @@ extraResources:
   # 🔴 plugin isolation runner — forked into a utilityProcess for trusted plugins
   - from: resources/plugin-runner.js
     to: plugin-runner.js
+  # Bundled plugin packs (loader.ts bundledRoot() reads <resources>/plugins).
+  # Ships the declarative packs the app depends on — builtin-tools (E1 Option B:
+  # the tool→target extraction table core no longer hardcodes) and c2-tailers.
+  # Without this the packaged build finds no bundled plugins and target
+  # extraction (and scope monitoring that rides on it) silently goes dark.
+  - from: plugins
+    to: plugins
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools

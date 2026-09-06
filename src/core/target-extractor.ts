@@ -2,13 +2,17 @@ const URL_RE = /https?:\/\/([^/:?\s]+)/
 const IP_RE = /\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:\/\d{1,2})?)\b/
 const DOMAIN_RE = /\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]{2,})+)\b/
 
-// The tool knowledge is a declarative table of (command → strategy); the
-// EXTRACTION MECHANISMS are generic, named strategies (E1, docs/DESIGN-E1-
-// target-extractor-plugins.md). Core no longer carries bespoke per-tool code —
-// only this data table and the shared strategy library — and a plugin extends
-// or overrides it with the same {cmd, strategy, param} shape (or a plain
-// {cmd, extract} regex for the simple cases). Behaviour is identical to the
-// previous hand-written PATTERNS; target-extractor.test.ts is the guard.
+// The EXTRACTION MECHANISMS are generic, named strategies that live in core (a
+// shared library); the TOOL KNOWLEDGE — which command targets which host — is
+// declarative data that lives OUTSIDE core, in the bundled `builtin-tools` pack
+// (E1 Option B, docs/DESIGN-E1-target-extractor-plugins.md). Core no longer
+// carries any per-tool table at all: at startup `initPlugins()` registers the
+// pack's rows through the same `registerTargetExtractors` path any plugin uses,
+// so built-ins and third-party extractors are one uniform list. Disabling the
+// pack removes the built-in rows; a plugin can override them (user source wins
+// over bundled). The only host recognition left in core is the generic
+// "command carries an explicit URL" fallback. target-extractor.test.ts loads
+// the bundled pack in setup and is the behaviour guard.
 
 /** A named extraction mechanism: given the full command, return a host or null.
  *  `param` carries a flag name for the flag-based strategies. */
@@ -52,43 +56,6 @@ export const STRATEGIES: Record<string, Strategy> = {
   ligoloConnect: (a) => a.match(/-connect\s+([^\s:]+)/)?.[1] ?? null
 }
 
-interface BuiltinRow { cmd: RegExp; strategy: string; param?: string }
-
-const BUILTIN_ROWS: BuiltinRow[] = [
-  { cmd: /^ssh\s/, strategy: 'sshHost' },
-  { cmd: /^scp\s/, strategy: 'afterAt' },
-  { cmd: /^rsync\s/, strategy: 'afterAt' },
-  { cmd: /^nmap\s/, strategy: 'lastIpOrDomain' },
-  { cmd: /^masscan\s/, strategy: 'lastIpOrDomain' },
-  { cmd: /^rustscan\s/, strategy: 'rustscanTarget' },
-  { cmd: /^curl\s/, strategy: 'urlHost' },
-  { cmd: /^wget\s/, strategy: 'urlHost' },
-  { cmd: /^httpie?\s|^http\s/, strategy: 'urlHost' },
-  { cmd: /^sqlmap\s/, strategy: 'urlFromFlag', param: '-u' },
-  { cmd: /^ffuf\s/, strategy: 'urlFromFlag', param: '-u' },
-  { cmd: /^gobuster\s/, strategy: 'urlFromFlag', param: '-u' },
-  { cmd: /^feroxbuster\s/, strategy: 'urlFromFlag', param: '-u' },
-  { cmd: /^dirb\s/, strategy: 'urlHost' },
-  { cmd: /^nikto\s/, strategy: 'flagValue', param: '-h' },
-  { cmd: /^wpscan\s/, strategy: 'urlFromFlag', param: '--url' },
-  { cmd: /^nuclei\s/, strategy: 'urlFromFlag', param: '-u' },
-  { cmd: /^hydra\s/, strategy: 'lastIpOrDomain' },
-  { cmd: /^crackmapexec\s|^cme\s|^netexec\s|^nxc\s/, strategy: 'lastIpOrDomain' },
-  { cmd: /^evil-winrm\s/, strategy: 'flagValue', param: '-i' },
-  { cmd: /^impacket-|^python3?\s.*impacket/, strategy: 'impacketHost' },
-  { cmd: /^nc\s|^ncat\s|^socat\s/, strategy: 'firstIpOrDomain' },
-  { cmd: /^ping\s/, strategy: 'lastIpOrDomain' },
-  { cmd: /^traceroute\s/, strategy: 'lastIpOrDomain' },
-  { cmd: /^dig\s/, strategy: 'digTarget' },
-  { cmd: /^ldapsearch\s/, strategy: 'ldapHost' },
-  { cmd: /^bloodhound-python\s|^bloodhound\s/, strategy: 'flagValue', param: '-d' },
-  { cmd: /^set\s+RHOSTS?\s/i, strategy: 'rhosts' },
-  { cmd: /^proxychains4?\s/, strategy: 'proxychainsTarget' },
-  { cmd: /^sshuttle\s/, strategy: 'sshuttleHost' },
-  { cmd: /^chisel\s/, strategy: 'chiselHost' },
-  { cmd: /ligolo|(^|\s)agent\s+.*-connect/, strategy: 'ligoloConnect' }
-]
-
 function hostFromUrl(url: string): string | null {
   try {
     return new URL(url.startsWith('http') ? url : `http://${url}`).hostname
@@ -112,8 +79,10 @@ function lastIPOrDomain(args: string): string | null {
   return null
 }
 
-// Plugin-contributed extractors (🟢 declarative). Each is a cmd matcher plus a
-// single-capture-group regex whose group 1 (or full match) is the host.
+// Registered extractors (🟢 declarative) — both the bundled `builtin-tools`
+// pack and any third-party plugin land here. Each is a cmd matcher plus either
+// a named strategy or a single-capture-group regex whose group 1 (or full
+// match) is the host.
 interface ExternalExtractor {
   cmd: RegExp
   /** Either a regex (single capture group) or a named strategy — exactly one. */
@@ -126,6 +95,10 @@ interface ExternalExtractor {
   extractorName: string
   /** v0.9.1: optional human description (not used at match time). */
   description?: string
+  /** E1 Option B: 'user' extractors override 'bundled' ones (the built-in
+   *  pack), so an engagement can teach RedLog a tool the pack gets wrong.
+   *  Matches the loader's same-id "user wins over bundled" rule. */
+  source: 'bundled' | 'user'
 }
 const externalPatterns: ExternalExtractor[] = []
 
@@ -139,7 +112,8 @@ export function registerTargetExtractors(
     param?: string
     name?: string
     description?: string
-  }>
+  }>,
+  source: 'bundled' | 'user' = 'user'
 ): number {
   let added = 0
   extractors.forEach((e, i) => {
@@ -148,10 +122,13 @@ export function registerTargetExtractors(
       // A strategy plugin gets the same mechanism the built-ins use; otherwise
       // fall back to the single-capture-group regex. A row with neither is skipped.
       if (e.strategy && STRATEGIES[e.strategy]) {
-        externalPatterns.push({ cmd: new RegExp(e.cmd), strategy: e.strategy, param: e.param, pluginId, extractorName, description: e.description })
+        // `flags` applies to the cmd matcher for strategy rows (the strategy
+        // owns its own value extraction) — e.g. the built-in RHOSTS row needs
+        // a case-insensitive cmd match.
+        externalPatterns.push({ cmd: new RegExp(e.cmd, e.flags), strategy: e.strategy, param: e.param, pluginId, extractorName, description: e.description, source })
         added++
       } else if (e.extract) {
-        externalPatterns.push({ cmd: new RegExp(e.cmd), extract: new RegExp(e.extract, e.flags), pluginId, extractorName, description: e.description })
+        externalPatterns.push({ cmd: new RegExp(e.cmd), extract: new RegExp(e.extract, e.flags), pluginId, extractorName, description: e.description, source })
         added++
       }
     } catch { /* bad regex — skip */ }
@@ -198,9 +175,12 @@ export function extractTargetWithProvenance(command: string): {
   extractorName?: string
 } {
   const trimmed = command.trim()
-  // Plugin extractors take precedence — they let an engagement teach RedLog
-  // about bespoke tooling the built-in list doesn't know.
+  // User-source (third-party plugin) extractors take precedence over the
+  // bundled built-in pack — they let an engagement teach RedLog a tool the
+  // pack gets wrong, or one it doesn't know. A user extractor only "wins" when
+  // it actually yields a host (a non-match falls through, exactly as before).
   for (const p of externalPatterns) {
+    if (p.source !== 'user') continue
     if (!p.cmd.test(trimmed)) continue
     if (p.strategy) {
       const host = STRATEGIES[p.strategy]?.(trimmed, p.param) ?? null
@@ -210,11 +190,16 @@ export function extractTargetWithProvenance(command: string): {
       if (m) return { host: m[1] ?? m[0], pluginId: p.pluginId, extractorName: p.extractorName }
     }
   }
-  for (const row of BUILTIN_ROWS) {
-    if (row.cmd.test(trimmed)) {
-      const fn = STRATEGIES[row.strategy]
-      return { host: fn ? fn(trimmed, row.param) : null }
-    }
+  // Bundled built-in pack: the FIRST row whose cmd matches wins, and its
+  // result is returned even when the strategy yields null — a matched built-in
+  // is authoritative for that command and short-circuits the URL fallback
+  // below (byte-identical to the pre-Option-B in-core BUILTIN_ROWS loop). No
+  // provenance fields — event shape stays identical for built-in matches.
+  for (const p of externalPatterns) {
+    if (p.source !== 'bundled') continue
+    if (!p.cmd.test(trimmed)) continue
+    if (p.strategy) return { host: STRATEGIES[p.strategy]?.(trimmed, p.param) ?? null }
+    if (p.extract) { const m = trimmed.match(p.extract); return { host: m ? (m[1] ?? m[0]) : null } }
   }
   // Fallback: only when the command carries an explicit URL scheme (http:// or
   // https://). Was previously calling extractUrlHost() unconditionally, which

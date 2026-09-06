@@ -31,7 +31,7 @@ export function applyContributions(p: LoadedPlugin): void {
   if (c.lootPatterns?.length) registerLootPatterns(id, c.lootPatterns)
   if (c.redaction) registerRedactionRules(id, c.redaction)
   if (c.commandTags?.length) registerCommandTags(id, c.commandTags)
-  if (c.targetExtractors?.length) registerTargetExtractors(id, c.targetExtractors)
+  if (c.targetExtractors?.length) registerTargetExtractors(id, c.targetExtractors, p.source)
   if (c.eventTypes?.length) registerEventTypes(id, c.eventTypes)
   if (c.capture?.length) {
     registerCapturePlugins(
