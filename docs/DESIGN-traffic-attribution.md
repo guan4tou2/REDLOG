@@ -10,6 +10,12 @@
 shell、C2）要靠 **socket → pid → 指令** 的關聯才能歸因，而那條鏈目前只做了一半。
 本筆記把現況、缺口與建議實作寫清楚。
 
+> **實作狀態(2026-09-07 更新):** socket→pid→指令 對照器已在 PR #36 落地並接進 `ingest()`;
+> §2.3 的三來源歸因已生效。pcap producer 與透明代理已於 PR #46 以 out-of-process producer pack
+> 出貨(`plugins/pcap-capture/`、`plugins/transparent-proxy/`)——第四類 SYN 掃描現在可經 pcap
+> 現形並以 `syn_only` 誠實標示。特權執行(tcpdump/iptables/pf)在操作員側跑;純解析有單元測試。
+> 下方分析為背景,仍成立。
+
 相關：[`DESIGN-traffic-capture.md`](DESIGN-traffic-capture.md)（截取管線）、
 [`DESIGN-core-and-capture.md` §2.1](DESIGN-core-and-capture.md)（非 HTTP 流量的決策）、
 [`event-schema.md`](event-schema.md)（`scanner` / `dns` / `http_navigation` 鍵）。

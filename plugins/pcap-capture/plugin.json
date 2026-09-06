@@ -1,0 +1,25 @@
+{
+  "id": "pcap-capture",
+  "name": "Packet Capture (pcap)",
+  "version": "1.0.0",
+  "description": "Bundled producer (docs/DESIGN-traffic-attribution.md §1, the fourth traffic class): make the packets the connection monitor structurally cannot see — nmap -sS SYN scans, masscan, UDP scans, any half-open probe that never completes a handshake — visible on the RedLog timeline. Shells out to tcpdump (needs root / CAP_NET_RAW, which RedLog itself does not hold), folds packets into flow summaries, and POSTs them to the local API as scanner.packet_flow events. Runs out-of-process — no capture code runs inside RedLog. Attribution (which command opened the flow) is added by RedLog's ingest via the source port. Remove or disable it if you don't want packet capture.",
+  "author": "RedLog",
+  "redlogApi": 1,
+  "contributes": {
+    "capture": [
+      {
+        "id": "pcap-tcpdump",
+        "name": "tcpdump → scanner.packet_flow",
+        "description": "Capture on an interface with tcpdump and land per-flow summaries (five-tuple, byte/packet counts, TCP flags, and a syn_only flag for half-open scans) on the timeline. Requires elevation.",
+        "agentType": "scanner",
+        "requires": ["tcpdump", "node"],
+        "hookFile": "hooks/pcap-capture.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Find your capture interface", "command": "ip -o link 2>/dev/null || ifconfig -l" },
+          { "label": "Capture (elevated — tcpdump needs root/CAP_NET_RAW; adjust the interface)", "command": "sudo \"{hookFile}\" eth0" }
+        ]
+      }
+    ]
+  }
+}
