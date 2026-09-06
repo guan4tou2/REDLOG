@@ -3262,7 +3262,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                   <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
                   <button
                     onClick={() => toggleBand(BAND_OF[id])}
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-redlog-text-faint hover:text-redlog-text text-[10px] shrink-0"
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-redlog-text-faint hover:text-redlog-text text-xs shrink-0"
                     title={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
                     aria-label={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
                   >▾</button>
@@ -4326,7 +4326,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isRequest && hasFullReqBody && !loadedReqBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(reqBodyRef, inlineReqBody, setLoadedReqBody, setLoadingReq)}
           disabled={loadingReq}
         >
@@ -4355,7 +4355,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isResponse && hasFullRespBody && !loadedRespBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(respBodyRef, inlineRespBody, setLoadedRespBody, setLoadingResp)}
           disabled={loadingResp}
         >
@@ -4375,7 +4375,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isWs && hasFullWsBody && !loadedWsBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(wsBodyRef, inlineWsBody, setLoadedWsBody, setLoadingWs)}
           disabled={loadingWs}
         >
@@ -4395,7 +4395,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isTcp && hasFullTcpBody && !loadedTcpBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(tcpBodyRef, inlineTcpBody, setLoadedTcpBody, setLoadingTcp)}
           disabled={loadingTcp}
         >
@@ -4485,7 +4485,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
         />
       )}
       {pairedLoading && (
-        <p className="text-[11px] text-zinc-500 font-mono px-2">loading paired event...</p>
+        <p className="text-xs text-zinc-500 font-mono px-2">loading paired event...</p>
       )}
       {pairedData && (() => {
         const pSub = String(pairedData.subtype ?? '')
@@ -4508,7 +4508,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           : [['status', pairedData.status], ['content_type', pairedData.content_type], ['duration_ms', pairedData.duration_ms]]
         return (
           <div className="mt-2 pt-2 border-t border-zinc-700/40 space-y-1.5">
-            <span className="text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider px-1">{pLabel}</span>
+            <span className="text-xs font-mono font-semibold text-zinc-400 uppercase tracking-wider px-1">{pLabel}</span>
             <MetadataGrid entries={pMeta} />
             {pHeadersText && (
               <CollapsibleStream label={t('timeline.detail.httpHeaders')} content={pHeadersText} accent="zinc" />
