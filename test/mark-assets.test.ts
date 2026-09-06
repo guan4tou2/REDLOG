@@ -324,22 +324,29 @@ describe('the menu bar set', () => {
 describe('the render sites', () => {
   const APP = text('src', 'renderer', 'src', 'App.tsx')
   const PICKER = text('src', 'renderer', 'src', 'components', 'ProjectPicker.tsx')
+  const WORDMARK = text('src', 'renderer', 'src', 'components', 'Wordmark.tsx')
 
-  it('picks the variant that matches the size it renders at', () => {
-    // 16 CSS px in the title bar, 56 in the picker. RING_MIN_PX in
-    // tools/make-icons.py puts the boundary at 32.
-    expect(APP).toContain("assets/mark-small.svg")
-    expect(PICKER).toContain("assets/mark.svg")
-    expect(PICKER, 'the picker renders at 56px and must not use the small one')
-      .not.toContain('mark-small.svg')
+  // §4/§16: the in-app identity is the single wordmark REDL(●)G rendered as
+  // live text, NOT the SVG mark. The SVG masters are for OS-level icons only
+  // (app icon / Dock / tray / favicon). So the header and the picker render
+  // <Wordmark/>, and neither imports the mark SVG as an in-app <img> anymore.
+  it('renders the single wordmark component, not the SVG mark <img>', () => {
+    for (const [name, src] of [['App.tsx', APP], ['ProjectPicker.tsx', PICKER]] as const) {
+      expect(src, `${name} should render <Wordmark/>`).toMatch(/<Wordmark\b/)
+      expect(src, `${name} must not render the mark SVG as an in-app image`).not.toMatch(/<img[^>]*src=\{markUrl\}/)
+    }
   })
 
-  it('does not round off the corners the mark deliberately leaves square', () => {
-    for (const [name, src] of [['App.tsx', APP], ['ProjectPicker.tsx', PICKER]] as const) {
-      const img = /<img[^>]*src=\{markUrl\}[^>]*>/.exec(src)
-      expect(img, `no mark <img> found in ${name}`).not.toBeNull()
-      expect(img![0], `${name} rounds the mark`).not.toMatch(/\brounded(-[a-z0-9]+)?\b/)
-    }
+  it('the wordmark is the brand red, never the danger red or the old text-red-500', () => {
+    expect(WORDMARK).toContain('#d75f63')
+    expect(WORDMARK).not.toContain('#ff4d4f')     // danger red
+    expect(WORDMARK).not.toMatch(/text-red-500/)   // the old picker/title colour
+  })
+
+  it('the ring is em-based and border-box so it scales with the type (§4)', () => {
+    expect(WORDMARK).toContain('0.72em')       // outer diameter
+    expect(WORDMARK).toContain('0.115em')      // ring width
+    expect(WORDMARK).toMatch(/boxSizing:\s*'border-box'/)
   })
 })
 
