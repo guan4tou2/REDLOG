@@ -29,7 +29,7 @@ import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visib
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
 import { exportBundle } from '../core/bundle-export'
-import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks } from '../core/retention'
+import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
 import { exportHar } from '../core/har-export'
 import {
@@ -649,6 +649,16 @@ function startProject(project: ProjectMeta): void {
     if (evicted.evicted > 0 || evicted.shortfallBytes > 0) {
       console.log(`[retention] evicted ${evicted.evicted} body file(s) under disk pressure` +
         (evicted.shortfallBytes > 0 ? ` (still ${evicted.shortfallBytes} bytes over budget; in-scope bodies kept)` : ''))
+    }
+    // §3b: same scope-pinned size-pressure eviction for the cast + screenshot
+    // stores. Off by default (budget 0); when set, out-of-scope recordings go
+    // before in-scope evidence instead of purely by age.
+    for (const kind of ['cast', 'screenshot'] as const) {
+      const ev = sweepArtifactStore(kind, config, { engagementId, operatorId })
+      if (ev.evicted > 0 || ev.shortfallBytes > 0) {
+        console.log(`[retention] evicted ${ev.evicted} ${kind} file(s) under disk pressure` +
+          (ev.shortfallBytes > 0 ? ` (still ${ev.shortfallBytes} bytes over budget; in-scope ${kind}s kept)` : ''))
+      }
     }
     // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see loggedTierTimer below.
