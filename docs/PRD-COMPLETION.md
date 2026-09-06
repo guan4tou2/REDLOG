@@ -113,14 +113,14 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
   **獨立 PR**(module 化波及每個裸用全域型別的檔)。
 - 設計:`DESIGN-OPEN-ITEMS §4`。相依:無。
 
-**D3. ingest() 完成 + 去全域狀態 · P2 · M**
-- 為什麼:ingest 只接兩扇門,且自身用模組全域注入(複製了 api-server 的味道)。
-- 驗收:需要 enrichment 的 producer 都走 ingest(no-op 型別不強接);`configureIngest` 的全域改為
-  顯式傳入或至少單一 owner;測試不再靠設定全域殘留。
-- 設計:`DESIGN-plugin-kernel §5`。相依:D1 不擋。
+**D3. ingest() 完成 + 去全域狀態 · ✅ 大致已滿足 · P2 · M**
+- ingest 已上熱路徑(需要 enrichment 的 producer:`/api/events`、builtin-terminal 經 hook、PS transcript;其餘型別對 ingest 是 no-op,不強接——PR #36)。
+- 「去全域狀態」:`configureIngest` 已是單一 owner(`startProject`);ingest 測試不設全域、以 `_resetIngest` 為 seam,不靠殘留。此為 core/main 的 DI 慣例,與 api-server/capture-health 一致;不值得為邊際測試性churn 熱路徑。
+- 續作(若要):把三個 ref 改成每呼叫 deps 覆寫——低價值,獨立處理。
 
-**D4. 清死碼 · P2 · S**
-- `event_annotations` 表無讀寫路徑;plugin 兩個「capture」概念重疊。驗收:移除或合併,附說明。
+**D4. 清死碼 · ✅ 部分實作(PR #36)· P2 · S**
+- ✅ `event_annotations` 死表已移除(0 引用)。
+- 續作:plugin 兩個「capture」概念(hooks-manager 的 `PluginManifest` vs `contributes.capture`)其實是協作的兩層、非死碼,合併與否是設計取捨,留待評估。
 
 ### 主題 E — 外掛化完成(大架構,分階段)
 
@@ -150,9 +150,9 @@ D1 的續作(lane 可見性 + 互動測試)延到 M3 的 D 系列。
 A2 scope-aware sanitize(匯出遮蔽 ✅;rotation 排序為續作) · B3 依工具分流量 ✅
 → 已達成:匯出遮蔽 out-of-scope 內容、流量透過 socket→pid 對得到指令。
 
-**M3 — 架構健康(P1/P2)**
-D2 env.d.ts 推導 · D3 ingest 完成 · D4 清死碼
-→ 達成後:契約不漂、管線單一、無死碼。
+**M3 — 架構健康(P1/P2)· 部分達成**
+D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ · **D2 env.d.ts 推導 → 建議獨立 PR**
+→ D2 未做:它把 `env.d.ts` 從 global script 變 module,波及每個裸用 `RedLogEvent`/`ProjectMeta` 等全域型別的 renderer 檔,是機械但廣的改動,硬塞進這條已 14 commit 的分支會讓 diff 難 review。建議從 `main` 開新分支專做。
 
 **M4 — 外掛化 + 外觀(P2)**
 E1–E3 外掛化 · F2 字標 · F3/F4 圖示與改名(先過決策)
