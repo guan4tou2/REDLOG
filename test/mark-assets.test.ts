@@ -350,6 +350,22 @@ describe('the render sites', () => {
   })
 })
 
+describe('the Linux icon set', () => {
+  // electron-builder's Linux icon is a DIRECTORY of <N>x<N>.png so each panel
+  // picks its size instead of downscaling one 256 into mush (RING_MIN_PX).
+  const SIZES = [16, 32, 64, 128, 256, 512, 1024]
+  it('has a png for every app size, matching resources/icon-<N>.png', () => {
+    for (const n of SIZES) {
+      const dir = read('resources', 'icons', `${n}x${n}.png`)
+      const flat = read('resources', `icon-${n}.png`)
+      expect(dir.equals(flat), `resources/icons/${n}x${n}.png must equal icon-${n}.png`).toBe(true)
+    }
+  })
+  it('is what electron-builder packs for Linux', () => {
+    expect(text('electron-builder.yml')).toContain('icon: resources/icons')
+  })
+})
+
 describe('the Windows icon', () => {
   it('carries every size Windows asks for, each as its own render', () => {
     const ico = read('resources', 'icon.ico')
