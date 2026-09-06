@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { detectPivot } from '../src/core/pivot-detector'
 import { extractTarget } from '../src/core/target-extractor'
+import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from './helpers/builtin-extractors'
+
+// Two cases below call extractTarget on built-in tools (proxychains, sshuttle),
+// which since E1 Option B live in the bundled pack — load it as startup does.
+beforeAll(() => { loadBuiltinTargetExtractors() })
+afterAll(() => { unloadBuiltinTargetExtractors() })
 
 describe('detectPivot', () => {
   it('ligolo-ng agent connect', () => {

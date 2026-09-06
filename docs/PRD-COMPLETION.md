@@ -124,7 +124,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 ### 主題 E — 外掛化完成(大架構,分階段)
 
-**E1. 內建 target extractor 宣告化(Option A)· ✅ 已實作(PR #41)· P2 · M** — `STRATEGIES` 註冊表 + 宣告式 `BUILTIN_ROWS {cmd, strategy, param}`,外掛以同形狀擴充/覆寫。**續作(Option B)**:把整包搬進 `plugins/builtin-tools/`、核心不再直接認工具——有 provenance／載入順序／覆寫優先權待解,需獨立 PR。
+**E1. 內建 target extractor 宣告化 + 外掛化 · ✅ 已實作(Option A #41 · Option B #44)· P2 · M** — Option A:`STRATEGIES` 註冊表 + 宣告式資料。Option B:整張工具→策略表搬進 bundled pack `plugins/builtin-tools/`,core 不再有 per-tool 資料;`initPlugins()` 註冊該 pack,precedence 以 source 決定(user 蓋 bundled),`plugins/` 進 `extraResources` 才隨包出貨(順帶修好 c2-tailers 從沒打包的漏),停用即移除內建。
 **E2. Starter pack 預裝 · P2 · M** — 三個擷取 producer 宣告成預裝可移除外掛,首次執行仍成立。
 **E3. manifest schemaVersion 雙版本讀取 + 健康度讀 manifest · P2 · M**
 - 設計全在 `DESIGN-plugin-kernel §5`。相依:E 之間有序;不擋 A–D。
@@ -155,8 +155,8 @@ D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ 
 → D2 已做:`env.d.ts` 改為 `typeof api` 推導,preload 具名 export `api: RedLogAPI`;獨立 PR #37 完成,漂移在型別層即不可能。
 
 **M4 — 外掛化 + 外觀(P2)· 外觀達成,外掛化首步達成**
-F2 字標 ✅ · F3 Linux 圖示 ✅(release matrix 待 CI 驗證) · F4 改名 ✅(PR #40) · E1 宣告化 Option A ✅(PR #41)
-→ E1 Option A 已讓工具知識變成宣告式資料表 + 共用 strategy 庫,外掛能以同形狀擴充;**E1 Option B(整包搬出核心)+ E2 starter pack 預裝 + E3 manifest 雙版本讀取仍待獨立 PR**——E1 Option B 會讓 core 的 extractTarget 測試與「總是可用」行為需要那包在測試/啟動時載入,是有含義的重構,非純搬移。
+F2 字標 ✅ · F3 Linux 圖示 ✅(release matrix 待 CI 驗證) · F4 改名 ✅(PR #40) · E1 外掛化 Option A ✅(#41) + Option B ✅(#44)
+→ E1 已完整外掛化:工具知識現在只活在 bundled pack,core 只留通用 strategy 庫;載入順序在測試 setup + 啟動路徑解掉。**仍待獨立 PR:E2 starter pack 預裝 + E3 manifest 雙版本讀取。**
 
 **B4 pcap / 透明代理**:獨立評估,先過「接受 root 成本」的定位決策再排。
 
