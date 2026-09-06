@@ -13,7 +13,7 @@ import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
 import { HttpHistoryPanel } from './components/HttpHistoryPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { QuickMarksView } from './components/FindingsView'
+import { BookmarksView } from './components/BookmarksView'
 import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
 import { CommandPalette } from './components/CommandPalette'
@@ -380,7 +380,7 @@ export default function App(): JSX.Element {
             {view === 'targets' && <TargetView onOpenInTimeline={(ts, target) => { setFocusEvent({ id: '', ts }); setFocusTarget(target ?? null); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'bookmarks' && <QuickMarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
+            {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'http_history' && <HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'settings' && <Settings />}
           </ErrorBoundary>

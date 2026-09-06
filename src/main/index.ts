@@ -11,8 +11,8 @@ import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } fr
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
-  createQuickMark, updateQuickMark, getQuickMark, listQuickMarks, deleteQuickMark
-} from '../core/db/findings'
+  createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
+} from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
@@ -207,7 +207,7 @@ const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
 // Opens the marker dialog in the main window — shared by the global shortcut,
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
 // operator is about to type a title and notes.
-function triggerQuickMark(): void {
+function triggerBookmark(): void {
   send(mainWindow, 'shortcut:marker')
   mainWindow?.show()
   mainWindow?.focus()
@@ -573,7 +573,7 @@ function startProject(project: ProjectMeta): void {
       if (ev) eventBus.publish(ev)
       return { ok: !!ev }
     },
-    listFindings: () => listQuickMarks(),
+    listFindings: () => listBookmarks(),
     getConfig: () => ({ engagement: config.engagement, scope: config.scope, redaction: config.redaction }),
     fetch: async (a) => {
       const r = await fetch(String(a.url), { method: String(a.method ?? 'GET') })
@@ -1001,7 +1001,7 @@ function startProject(project: ProjectMeta): void {
     applyOverlayPassThrough()
     if (tray) {
       tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerQuickMark)
+      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark)
       setTrayRecording(tray, !eventBus.paused)
     }
   }
@@ -1122,7 +1122,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerQuickMark)
+  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark)
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
@@ -1608,10 +1608,10 @@ app.whenReady().then(() => {
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
 
-  // --- QuickMarks ---
-  ipcMain.handle('quickmarks:list', () => activeProject ? listQuickMarks() : [])
-  ipcMain.handle('quickmarks:get', (_e, id: string) => activeProject ? getQuickMark(id) : null)
-  ipcMain.handle('quickmarks:create', async (_e, data: { title: string; url?: string; note?: string }) => {
+  // --- Bookmarks ---
+  ipcMain.handle('bookmarks:list', () => activeProject ? listBookmarks() : [])
+  ipcMain.handle('bookmarks:get', (_e, id: string) => activeProject ? getBookmark(id) : null)
+  ipcMain.handle('bookmarks:create', async (_e, data: { title: string; url?: string; note?: string }) => {
     if (!activeProject) return null
     const browser = await getActiveBrowserTab()
     const context = {
@@ -1619,15 +1619,15 @@ app.whenReady().then(() => {
       browserTitle: browser.title || undefined,
       externalIP: alertRuntime.ipStatus().externalIP || undefined
     }
-    return createQuickMark({
+    return createBookmark({
       title: data.title || browser.title || 'Untitled',
       url: data.url || browser.url || undefined,
       note: data.note,
       context
     })
   })
-  ipcMain.handle('quickmarks:update', (_e, id: string, data) => activeProject ? updateQuickMark(id, data) : false)
-  ipcMain.handle('quickmarks:delete', (_e, id: string) => activeProject ? deleteQuickMark(id) : false)
+  ipcMain.handle('bookmarks:update', (_e, id: string, data) => activeProject ? updateBookmark(id, data) : false)
+  ipcMain.handle('bookmarks:delete', (_e, id: string) => activeProject ? deleteBookmark(id) : false)
 
   // --- Saved Timeline views ---
   // A "view" is a named snapshot of Timeline UI state — zoom, time window,
@@ -1635,7 +1635,7 @@ app.whenReady().then(() => {
   // engagement can jump back to "the credential-dump moment" or "the day-2
   // recon window" without redoing the zoom + filter dance every time.
   //
-  // Modelled on the QuickMarks IPC pattern (small JSON payload, list/save/delete)
+  // Modelled on the Bookmarks IPC pattern (small JSON payload, list/save/delete)
   // but kept as a flat JSON file rather than a SQLite table — cheap, easy to
   // hand-edit, and there's no query pattern beyond "list all".
   const viewsFile = (): string | null => {
@@ -1798,7 +1798,7 @@ app.whenReady().then(() => {
     const filePath = path.join(outDir, `redlog-bookmarks-${ts}.json`)
     fs.writeFileSync(filePath, JSON.stringify({
       _note: 'Private bookmarks. Not chained, not signed, not attributed to an operator, editable in place, and not covered by `redlog-cli sanitize`. Not evidence.',
-      bookmarks: listQuickMarks()
+      bookmarks: listBookmarks()
     }, null, 2))
     return filePath
   })
@@ -2095,7 +2095,7 @@ app.whenReady().then(() => {
   })
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
-  globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerQuickMark)
+  globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerBookmark)
   // §8: the way back out of click-through. Without it, turning pass-through on
   // makes the control that turns it off unclickable — the HUD is ghosted, so
   // the button is behind it — and the only escape is Settings, which the
@@ -2106,7 +2106,7 @@ app.whenReady().then(() => {
     applyOverlayPassThrough()
     send(mainWindow, 'overlay:passThroughChanged', false)
   })
-  ipcMain.on('overlay:quickMark', triggerQuickMark)
+  ipcMain.on('overlay:quickMark', triggerBookmark)
   ipcMain.handle('overlay:instantMark', () => triggerInstantMark())
 
   // --- Updates ---

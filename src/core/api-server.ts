@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
-import { createQuickMark, listQuickMarks } from './db/findings'
+import { createBookmark, listBookmarks } from './db/bookmarks'
 import {
   ensurePrimaryOperator,
   resolveOperatorByToken,
@@ -472,14 +472,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/quickmarks' && req.method === 'GET') {
-      json(res, 200, { quickmarks: listQuickMarks() })
+      json(res, 200, { quickmarks: listBookmarks() })
       return
     }
 
     if (route === '/api/quickmarks' && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const mark = createQuickMark({
+      const mark = createBookmark({
         title: String(body.title ?? 'Untitled'),
         url: body.url as string | undefined,
         note: String(body.note ?? ''),

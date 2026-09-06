@@ -117,7 +117,7 @@ export function getVisibilitySignals(): VisibilitySignals {
   // The 書籤 page lists this table and nothing else. A `marker` event is the
   // other store entirely, and it is on the externally-postable allowlist, so
   // keying on it would let an outside tool unlock an empty page.
-  if (!next.bookmarkSeen) next.bookmarkSeen = exists('quickmarks')
+  if (!next.bookmarkSeen) next.bookmarkSeen = exists('bookmarks')
   if (!next.httpFlowSeen) {
     next.httpFlowSeen = exists(
       `events_logged WHERE agent_type = 'scanner' AND json_extract(data,'$.subtype') IN (${holes})`,

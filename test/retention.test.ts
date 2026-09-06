@@ -13,7 +13,7 @@ let closeDB: typeof import('../src/core/db/index').closeDB
 let sweepRetention: typeof import('../src/core/retention').sweepRetention
 let sweepBookmarks: typeof import('../src/core/retention').sweepBookmarks
 let getDB: typeof import('../src/core/db/index').getDB
-let findings: typeof import('../src/core/db/findings')
+let findings: typeof import('../src/core/db/bookmarks')
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let castIndex: typeof import('../src/core/cast-index')
 
@@ -23,7 +23,7 @@ try {
   const r = await import('../src/core/retention')
   const e = await import('../src/core/db/events')
   initDB = d.initDB; closeDB = d.closeDB; getDB = d.getDB; sweepRetention = r.sweepRetention; sweepBookmarks = r.sweepBookmarks; queryEvents = e.queryEvents
-  findings = await import('../src/core/db/findings')
+  findings = await import('../src/core/db/bookmarks')
   castIndex = await import('../src/core/cast-index')
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
@@ -59,20 +59,20 @@ describeDB('retention sweep', () => {
   })
 
   it('bookmarks: keepDays 0 keeps everything, >0 prunes old and audits count only', () => {
-    // Two bookmarks: one old, one fresh. createQuickMark stamps created_at=now,
+    // Two bookmarks: one old, one fresh. createBookmark stamps created_at=now,
     // so age the old one by rewriting its created_at directly.
-    const oldBm = findings.createQuickMark({ title: 'old', note: 'AKIA-secret' })
-    const freshBm = findings.createQuickMark({ title: 'fresh' })
-    getDB().prepare('UPDATE quickmarks SET created_at = ? WHERE id = ?')
+    const oldBm = findings.createBookmark({ title: 'old', note: 'AKIA-secret' })
+    const freshBm = findings.createBookmark({ title: 'fresh' })
+    getDB().prepare('UPDATE bookmarks SET created_at = ? WHERE id = ?')
       .run(Date.now() - 40 * 86400_000, oldBm.id)
 
     // Default (0): nothing pruned.
     expect(sweepBookmarks({ keepDays: 0 }, OPTS)).toBe(0)
-    expect(findings.listQuickMarks()).toHaveLength(2)
+    expect(findings.listBookmarks()).toHaveLength(2)
 
     // 30d: the 40d-old one goes, the fresh one stays.
     expect(sweepBookmarks({ keepDays: 30 }, OPTS)).toBe(1)
-    const left = findings.listQuickMarks()
+    const left = findings.listBookmarks()
     expect(left).toHaveLength(1)
     expect(left[0].id).toBe(freshBm.id)
 
