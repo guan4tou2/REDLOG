@@ -786,6 +786,29 @@ export function startApiServer(port = 6660): Promise<number> {
 }
 
 export function onApiProjectOpen(): void {
+  // Per-project token isolation (docs/DESIGN-OPEN-ITEMS.md §2). Each engagement
+  // carries its own API secret under its project dir; it is mirrored to the
+  // global ~/.redlog/api-token so the shell hook and CLI — which read that path
+  // on every call — pick up the current project's token on a switch. A token
+  // from one engagement therefore does not authenticate against another, and a
+  // finished engagement's token can be revoked without touching the others.
+  // Only one project is served at a time, so this is secret hygiene, not
+  // concurrent isolation. Falls back to the bootstrap token if the project dir
+  // is unavailable.
+  try {
+    const projTokenPath = path.join(getProjectDir(), 'api-token')
+    let token = ''
+    if (fs.existsSync(projTokenPath)) {
+      token = fs.readFileSync(projTokenPath, 'utf-8').trim()
+    }
+    if (!token) {
+      token = generateToken()
+      fs.writeFileSync(projTokenPath, token, { mode: 0o600 })
+    }
+    primaryToken = token
+    fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
+    fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
+  } catch { /* keep the bootstrap token from startApiServer */ }
   ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, primaryToken)
   projectOpen = true
 }
