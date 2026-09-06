@@ -3,6 +3,10 @@ import path from 'path'
 import fs from 'fs'
 import { resetSession, assertEventsAppendOnly } from './events'
 
+function hasRows(db: import('better-sqlite3').Database, table: string): boolean {
+  try { return ((db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number }).c) > 0 } catch { return false }
+}
+
 let db: Database.Database | null = null
 let currentDbPath: string | null = null
 let currentProjectDir: string | null = null
@@ -93,7 +97,7 @@ export function initDB(projectDir: string): Database.Database {
     -- call, and verifyLatestAnchor pays it twice.
     CREATE INDEX IF NOT EXISTS idx_events_hashed ON events(created_at) WHERE hash IS NOT NULL;
 
-    CREATE TABLE IF NOT EXISTS quickmarks (
+    CREATE TABLE IF NOT EXISTS bookmarks (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       url TEXT,
@@ -101,7 +105,7 @@ export function initDB(projectDir: string): Database.Database {
       context TEXT NOT NULL DEFAULT '{}',
       created_at INTEGER NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_quickmarks_ts ON quickmarks(created_at);
+    CREATE INDEX IF NOT EXISTS idx_bookmarks_ts ON bookmarks(created_at);
 
     -- (event_annotations removed v0.15: created in an early version but never
     --  given a read or write path — dead schema. Existing DBs keep the empty
@@ -198,6 +202,19 @@ export function initDB(projectDir: string): Database.Database {
   // signed rows carry base64 raw 64-byte Ed25519 sig over the same canonical
   // JSON string used for the hash.
   if (!colNames.has('signature')) db.exec('ALTER TABLE events ADD COLUMN signature TEXT')
+  // F4: rename the quickmarks table to bookmarks (the product calls them
+  // bookmarks since PR #32). A project written by an older build has
+  // `quickmarks`; rename it in place so its rows carry over. Guarded so it runs
+  // once — after the CREATE TABLE bookmarks above, both could exist only if a
+  // new build already made `bookmarks`, in which case the old one is stale.
+  {
+    const tbls = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map((t) => t.name))
+    if (tbls.has('quickmarks') && !hasRows(db, 'bookmarks')) {
+      db.exec('DROP TABLE IF EXISTS bookmarks')
+      db.exec('ALTER TABLE quickmarks RENAME TO bookmarks')
+      db.exec('CREATE INDEX IF NOT EXISTS idx_bookmarks_ts ON bookmarks(created_at)')
+    }
+  }
   // v0.15: envelope columns on both tiers. Nullable; a legacy row simply has
   // no raw_ref and hashes under the shapes it was written with.
   for (const table of ['events', 'events_logged']) {

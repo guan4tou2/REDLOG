@@ -17,7 +17,7 @@ describe('browser launcher args', () => {
     expect(args.some((a) => a.startsWith('--proxy'))).toBe(false)
   })
 
-  it('enables CDP on the configured port so QuickMarks can read the tab', () => {
+  it('enables CDP on the configured port so Bookmarks can read the tab', () => {
     const args = buildArgs({ ...DEFAULT_BROWSER, cdpPort: 9333 }, PROFILE)
     expect(args).toContain('--remote-debugging-port=9333')
   })

@@ -98,7 +98,7 @@ export function createTray(
   mainWindow: BrowserWindow,
   overlayWindow: BrowserWindow | null,
   onToggleRecording?: () => boolean,
-  onQuickMark?: () => void
+  onBookmark?: () => void
 ): Tray {
   const tray = new Tray(getTemplateIcon())
 
@@ -113,11 +113,11 @@ export function createTray(
       }
     ]
 
-    if (onQuickMark) {
+    if (onBookmark) {
       items.push({
         label: '⚑ Quick Mark',
         accelerator: QUICK_MARK_ACCELERATOR,
-        click: () => onQuickMark()
+        click: () => onBookmark()
       })
     }
 

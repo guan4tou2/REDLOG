@@ -22,7 +22,7 @@ import IPStatusCard from '../src/renderer/src/components/IPStatusCard'
 import { TargetView } from '../src/renderer/src/components/TargetView'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 import { LootPanel } from '../src/renderer/src/components/LootPanel'
-import { QuickMarksView } from '../src/renderer/src/components/FindingsView'
+import { BookmarksView } from '../src/renderer/src/components/BookmarksView'
 
 const AGENT_TYPES = [
   'shell', 'dns', 'screenshot', 'clipboard', 'file_transfer',
@@ -142,7 +142,7 @@ function installBridge(): void {
       upgrade: async () => ({ upgraded: 0, scanned: 0 })
     },
     loot: { getCount: async () => 2 },
-    quickmarks: {
+    bookmarks: {
       list: async () => [{ id: 'q1', title: 'Mark', url: 'https://example.com', note: '', context: {}, createdAt: Date.now() }],
       get: async () => null,
       create: async () => ({ id: 'q1', title: 'Mark', url: null, note: '', context: {}, createdAt: Date.now() }),
@@ -226,7 +226,7 @@ describe('renderer views render without throwing', () => {
     ['TargetView', () => <TargetView />],
     ['ScopeStatus', () => <ScopeStatus />],
     ['LootPanel', () => <LootPanel />],
-    ['QuickMarksView', () => <QuickMarksView />],
+    ['BookmarksView', () => <BookmarksView />],
     ['OverlayApp', () => <OverlayApp />]
   ]
 

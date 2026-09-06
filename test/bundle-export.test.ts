@@ -167,8 +167,8 @@ describeDB('private bookmarks stay out of the bundle', () => {
   afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   it('writes no bookmark file, and leaks no bookmark text anywhere in the bundle', async () => {
-    const findings = await import('../src/core/db/findings')
-    findings.createQuickMark({ title: 'a private note', url: 'https://internal.example/admin', note: 'BOOKMARK-CANARY-9182' })
+    const findings = await import('../src/core/db/bookmarks')
+    findings.createBookmark({ title: 'a private note', url: 'https://internal.example/admin', note: 'BOOKMARK-CANARY-9182' })
     ins('shell', { subtype: 'command_end', command: 'id', exitCode: 0 })
 
     const out = exportBundle('eng', { outRoot: path.join(dir, 'exports') })
