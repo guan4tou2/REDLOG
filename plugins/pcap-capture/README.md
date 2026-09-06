@@ -1,0 +1,57 @@
+# pcap-capture
+
+Makes the one class of traffic RedLog's connection monitor **structurally
+cannot see** visible on the timeline: half-open probes that never complete a
+handshake — `nmap -sS` SYN scans, `masscan`, UDP scans. The socket table only
+lists *established* connections, so those scans otherwise leave a command on the
+timeline and no packets. This closes that gap by reading raw packets with
+`tcpdump`.
+
+## Why it's a separate, out-of-process producer
+
+Packet capture needs root / `CAP_NET_RAW`. RedLog deliberately does **not** run
+with those privileges, and no capture code runs inside it. So this ships as a
+producer you run yourself, elevated — exactly like the shell hooks and the
+mitmproxy addon. It POSTs flow summaries to RedLog's local API; RedLog stores
+and attributes them.
+
+## Run it
+
+```bash
+# find your interface
+ip -o link            # Linux
+ifconfig -l           # macOS
+
+# capture (elevated)
+sudo ./hooks/pcap-capture.sh eth0
+```
+
+Ctrl-C to stop. It captures nothing while RedLog is closed (a flow with nowhere
+to attribute is not evidence). Its own loopback POSTs to the API are excluded
+from capture.
+
+## What lands on the timeline
+
+One `scanner.packet_flow` event per flow (5-tuple), carrying:
+
+- `src` / `src_port` / `dst` / `dst_port` / `proto` / `ip_version`
+- `packets`, `bytes`, `first_ts`, `last_ts`, `tcp_flags`
+- `handshake` — did the flow ever complete a TCP handshake
+- **`syn_only`** — a half-open probe the connection monitor is blind to; the
+  event carries a `note` saying so, so filtering to `syn_only` explains why
+  these have no matching `scanner.connection`
+- `local_port` — the local source port, which RedLog's ingest resolves to the
+  owning command (`local_port → pid → command`), so a SYN scan links back to the
+  `nmap` that produced it
+
+## Honest gaps
+
+- **Attribution** depends on RedLog's socket→pid→command table having seen the
+  command; a scan from a process RedLog never saw a `command_start` for lands as
+  an unattributed flow (kept, not dropped).
+- **macOS** can capture, but per-process attribution there is weaker (the socket
+  table doesn't hand out pids without `lsof`/root — same limitation the
+  connection monitor documents).
+- Capture is **text-mode** tcpdump, not a stored binary `.pcap`. It records the
+  flow structure RedLog reasons about, not every byte; deep-packet forensics
+  still wants a real pcap alongside.
