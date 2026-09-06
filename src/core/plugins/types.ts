@@ -127,8 +127,21 @@ export const ALL_CAPABILITIES: Capability[] = [
   'read:events', 'write:events', 'read:findings', 'read:config', 'net:outbound'
 ]
 
+/** 🟢 A declarative mapper: how a producer's raw payload becomes envelope
+ *  fields. See src/core/mappers.ts for the path syntax. */
+export interface MapperContribution {
+  id: string
+  version: string
+  agentType: string
+  fields: Record<string, string | string[]>
+  tsSource?: string
+  keepExtra?: boolean
+}
+
 export interface PluginContributes {
   // 🟢 declarative
+  /** raw → envelope field mappings (docs/DESIGN-plugin-kernel.md §2). */
+  mappers?: MapperContribution[]
   lootPatterns?: LootPatternContribution[]
   redaction?: RedactionContribution
   commandTags?: CommandTagContribution[]
@@ -146,6 +159,18 @@ export interface PluginContributes {
   tailers?: string
 }
 
+/** What role a plugin plays (docs/DESIGN-plugin-kernel.md §2). `pack` is a
+ *  bundle of several roles — the bundled starter pack is one. The kernel uses
+ *  it to decide which plugins are capture *sources* for the health card. */
+export type PluginKind = 'producer' | 'mapper' | 'enrichment' | 'exporter' | 'pack'
+
+/** How the kernel decides a producer plugin is alive. */
+export interface PluginHealthProbe {
+  /** Alive if an event with `source = <plugin id>` (or any of `emits`)
+   *  landed within this many seconds. Default 300. */
+  lastEventWithinSec?: number
+}
+
 export interface PluginManifest {
   id: string
   name: string
@@ -155,6 +180,13 @@ export interface PluginManifest {
   homepage?: string
   /** PLUGIN_API_VERSION this plugin was written against */
   redlogApi: number
+  /** Envelope schema version this plugin emits (docs/DESIGN-plugin-kernel.md
+   *  §3). Defaults to the current ENVELOPE_SCHEMA_VERSION. */
+  schemaVersion?: number
+  kind?: PluginKind
+  /** agent_types a producer plugin lands on the timeline. */
+  emits?: string[]
+  health?: PluginHealthProbe
   contributes: PluginContributes
   /** 🔴 capabilities the privileged code needs; ignored for purely declarative plugins */
   capabilities?: Capability[]

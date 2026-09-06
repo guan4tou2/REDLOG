@@ -41,7 +41,15 @@ export function initDB(projectDir: string): Database.Database {
       prev_hash TEXT,
       created_at INTEGER NOT NULL,
       monotonic_ns TEXT,
-      ntp_offset_ms INTEGER
+      ntp_offset_ms INTEGER,
+      -- Envelope (docs/DESIGN-plugin-kernel.md §3-4). raw_ref points at the
+      -- verbatim producer bytes in <project>/raw/; mapper names the
+      -- (id,version) that derived data; source is the producer id.
+      raw_ref TEXT,
+      mapper TEXT,
+      schema_version INTEGER,
+      ts_source INTEGER,
+      source TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
@@ -165,7 +173,12 @@ export function initDB(projectDir: string): Database.Database {
       source_ip     TEXT,
       target_id     TEXT,
       data          TEXT NOT NULL DEFAULT '{}',
-      created_at    INTEGER NOT NULL
+      created_at    INTEGER NOT NULL,
+      raw_ref       TEXT,
+      mapper        TEXT,
+      schema_version INTEGER,
+      ts_source     INTEGER,
+      source        TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_events_logged_ts         ON events_logged(timestamp);
     CREATE INDEX IF NOT EXISTS idx_events_logged_type_ts    ON events_logged(agent_type, timestamp DESC);
@@ -189,6 +202,18 @@ export function initDB(projectDir: string): Database.Database {
   // signed rows carry base64 raw 64-byte Ed25519 sig over the same canonical
   // JSON string used for the hash.
   if (!colNames.has('signature')) db.exec('ALTER TABLE events ADD COLUMN signature TEXT')
+  // v0.15: envelope columns on both tiers. Nullable; a legacy row simply has
+  // no raw_ref and hashes under the shapes it was written with.
+  for (const table of ['events', 'events_logged']) {
+    const have = new Set((db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name))
+    if (!have.has('raw_ref')) db.exec(`ALTER TABLE ${table} ADD COLUMN raw_ref TEXT`)
+    if (!have.has('mapper')) db.exec(`ALTER TABLE ${table} ADD COLUMN mapper TEXT`)
+    if (!have.has('schema_version')) db.exec(`ALTER TABLE ${table} ADD COLUMN schema_version INTEGER`)
+    if (!have.has('ts_source')) db.exec(`ALTER TABLE ${table} ADD COLUMN ts_source INTEGER`)
+    if (!have.has('source')) db.exec(`ALTER TABLE ${table} ADD COLUMN source TEXT`)
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events_logged_source_ts ON events_logged(source, timestamp DESC)')
   const opCols = db.prepare("PRAGMA table_info(operators)").all() as Array<{ name: string }>
   const opColNames = new Set(opCols.map(c => c.name))
   // Public key mirrored into the DB so verify never touches disk to walk the
