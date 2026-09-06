@@ -62,7 +62,7 @@ import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregist
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
-import { checkForUpdates } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
 import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
@@ -893,8 +893,17 @@ function startProject(project: ProjectMeta): void {
 
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
-  startAnchorLoop()
-  startNtpLoop()
+  // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
+  // anchoring, NTP sync, and the update check. Capture and the local API are
+  // untouched. Record the mode so a timeline that lacks anchors is explained
+  // by a choice, not a failure.
+  const airgap = config.network?.offline === true
+  setUpdaterAirgap(airgap)
+  insertEvent('system', { subtype: 'opsec_airgap', enabled: airgap, description: airgap ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF' }, { engagementId, operatorId })
+  if (!airgap) {
+    startAnchorLoop()
+    startNtpLoop()
+  }
 
   // v0.6.89 P1-A: read-path sampling verify. On open, take a big (100)
   // sample immediately so the operator sees an early signal if the chain
@@ -1111,19 +1120,23 @@ app.whenReady().then(() => {
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:create', (_e, name: string, initialConfig?: Partial<RedLogConfig>) => {
     const project = createProject(name)
-    if (initialConfig) {
-      const projectDir = getProjectPath(project)
-      const config = loadConfig(projectDir)
-      const merged = {
-        ...config,
-        engagement: { ...config.engagement, ...initialConfig.engagement },
-        operator: { ...config.operator, ...initialConfig.operator },
-        network: { ...config.network, ...initialConfig.network },
-        scope: { ...config.scope, ...initialConfig.scope },
-        screenshot: { ...config.screenshot, ...initialConfig.screenshot }
-      }
-      saveConfig(projectDir, merged)
+    // The engagement is the project. Every new project used to inherit the
+    // template's `default` / "Default Engagement", so the dashboard of a
+    // project called Review-Engagement announced a different name, and every
+    // event carried `engagement_id: default` — the same id for every project
+    // on the box. Seed both from what the operator just typed; the advanced
+    // setup (or a later edit) still overrides.
+    const projectDir = getProjectPath(project)
+    const config = loadConfig(projectDir)
+    const merged = {
+      ...config,
+      engagement: { ...config.engagement, id: project.id, name: project.name, ...initialConfig?.engagement },
+      operator: { ...config.operator, ...initialConfig?.operator },
+      network: { ...config.network, ...initialConfig?.network },
+      scope: { ...config.scope, ...initialConfig?.scope },
+      screenshot: { ...config.screenshot, ...initialConfig?.screenshot }
     }
+    saveConfig(projectDir, merged)
     startProject(project)
     return project
   })

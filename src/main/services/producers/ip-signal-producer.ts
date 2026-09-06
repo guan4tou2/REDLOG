@@ -104,13 +104,18 @@ export interface IPProducerConfig {
   providers: string[]
   confirmations: number
   ipMode: IPMode
+  /** OPSEC air-gap: skip the external-IP lookup entirely (no DNS, no HTTP
+   *  egress). Internal IP is still reported (local, no egress); the verdict
+   *  decays to `unknown` because there is no external address to classify. */
+  offline?: boolean
 }
 
 const DEFAULT_CONFIG: IPProducerConfig = {
   checkIntervalSec: 10,
   providers: [...DEFAULT_IP_PROVIDERS],
   confirmations: DEFAULT_CONFIRMATIONS,
-  ipMode: 'auto'
+  ipMode: 'auto',
+  offline: false
 }
 
 /** Live state the producer exposes to callers that need to render "what's
@@ -166,6 +171,7 @@ export class IPSignalProducer {
       this.cfg.confirmations = next.confirmations
     }
     if (next.ipMode) this.cfg.ipMode = next.ipMode
+    if (next.offline !== undefined) this.cfg.offline = next.offline
     // Re-arm the timer if it's running so the new interval takes effect.
     if (this.timer) { this.stop(); this.start() }
   }
@@ -188,6 +194,10 @@ export class IPSignalProducer {
   }
 
   private fetchExternalIP(): Promise<string> {
+    // Air-gap: never touch the network. The catch in check() turns this into
+    // a stale read, and IPPolicy renders that as `unknown` with the internal
+    // IP still shown — the honest state for "I chose not to look".
+    if (this.cfg.offline) return Promise.reject(new Error('offline (air-gap)'))
     if (this.cfg.ipMode === 'dns') return getExternalIPviaDNS()
     if (this.cfg.ipMode === 'http') return getExternalIPviaHTTP(this.cfg.providers)
     return getExternalIPviaDNS().catch(() => getExternalIPviaHTTP(this.cfg.providers))

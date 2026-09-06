@@ -124,7 +124,8 @@ export class AlertRuntime {
       checkIntervalSec: cfg.network?.checkInterval ?? 10,
       providers: cfg.network?.providers ?? [],
       confirmations: cfg.network?.confirmations ?? 3,
-      ipMode: (cfg.network?.ipMode ?? 'auto') as 'dns' | 'http' | 'auto'
+      ipMode: (cfg.network?.ipMode ?? 'auto') as 'dns' | 'http' | 'auto',
+      offline: cfg.network?.offline === true
     })
   }
 
