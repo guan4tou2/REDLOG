@@ -11,6 +11,7 @@ import fs from 'fs'
 import path from 'path'
 import { getProjectDir, getDB } from './db/index'
 import { insertEvent } from './db/events'
+import { deleteQuickMarksOlderThan } from './db/findings'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
@@ -264,6 +265,31 @@ export function sweepRetention(config: {
 // { sha256, size, file } attestation and the chain keeps verifying — an
 // evicted body reads back as "content no longer on disk", not as a fact that
 // was erased. See body-eviction.ts for why that makes this safe.
+/** Age-based cleanup of the bookmarks (書籤) table. Bookmarks are a private
+ *  notepad — not chained, not attributed — but they hold pasted secrets and
+ *  the captured external IP, so permanent retention is the wrong default.
+ *  `0` = keep forever. Respects pause (a paused RedLog prunes nothing). */
+export function sweepBookmarks(
+  cfg: { keepDays?: number } | undefined,
+  opts: { engagementId: string; operatorId: string }
+): number {
+  if (!opts.operatorId || eventBus.paused) return 0
+  const keepDays = cfg?.keepDays ?? 0
+  if (keepDays <= 0) return 0
+  const cutoff = Date.now() - keepDays * DAY_MS
+  let deleted = 0
+  try { deleted = deleteQuickMarksOlderThan(cutoff) } catch (e) { noteDbError('retention-bookmarks', e); return 0 }
+  if (deleted > 0) {
+    // Content is never in the audit row — only the fact that N notes aged out.
+    const ev = insertEvent('system', {
+      subtype: 'bookmarks_pruned', count: deleted, keep_days: keepDays,
+      description: `Pruned ${deleted} bookmark(s) older than ${keepDays}d`
+    }, { engagementId: opts.engagementId, operatorId: opts.operatorId })
+    if (ev) eventBus.publish(ev)
+  }
+  return deleted
+}
+
 export function sweepBodyStore(
   config: {
     httpBodies?: { maxBytes?: number }

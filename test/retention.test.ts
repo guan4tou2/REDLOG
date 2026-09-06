@@ -11,6 +11,9 @@ import os from 'os'
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let sweepRetention: typeof import('../src/core/retention').sweepRetention
+let sweepBookmarks: typeof import('../src/core/retention').sweepBookmarks
+let getDB: typeof import('../src/core/db/index').getDB
+let findings: typeof import('../src/core/db/findings')
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let castIndex: typeof import('../src/core/cast-index')
 
@@ -19,7 +22,8 @@ try {
   const d = await import('../src/core/db/index')
   const r = await import('../src/core/retention')
   const e = await import('../src/core/db/events')
-  initDB = d.initDB; closeDB = d.closeDB; sweepRetention = r.sweepRetention; queryEvents = e.queryEvents
+  initDB = d.initDB; closeDB = d.closeDB; getDB = d.getDB; sweepRetention = r.sweepRetention; sweepBookmarks = r.sweepBookmarks; queryEvents = e.queryEvents
+  findings = await import('../src/core/db/findings')
   castIndex = await import('../src/core/cast-index')
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
@@ -52,6 +56,31 @@ describeDB('retention sweep', () => {
     castIndex.closeCastIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('bookmarks: keepDays 0 keeps everything, >0 prunes old and audits count only', () => {
+    // Two bookmarks: one old, one fresh. createQuickMark stamps created_at=now,
+    // so age the old one by rewriting its created_at directly.
+    const oldBm = findings.createQuickMark({ title: 'old', note: 'AKIA-secret' })
+    const freshBm = findings.createQuickMark({ title: 'fresh' })
+    getDB().prepare('UPDATE quickmarks SET created_at = ? WHERE id = ?')
+      .run(Date.now() - 40 * 86400_000, oldBm.id)
+
+    // Default (0): nothing pruned.
+    expect(sweepBookmarks({ keepDays: 0 }, OPTS)).toBe(0)
+    expect(findings.listQuickMarks()).toHaveLength(2)
+
+    // 30d: the 40d-old one goes, the fresh one stays.
+    expect(sweepBookmarks({ keepDays: 30 }, OPTS)).toBe(1)
+    const left = findings.listQuickMarks()
+    expect(left).toHaveLength(1)
+    expect(left[0].id).toBe(freshBm.id)
+
+    // One audit row, count only, no bookmark content.
+    const audits = queryEvents({ limit: 500 }).filter((e) => e.agentType === 'system' && e.data?.subtype === 'bookmarks_pruned')
+    expect(audits).toHaveLength(1)
+    expect(audits[0].data.count).toBe(1)
+    expect(JSON.stringify(audits[0].data)).not.toContain('AKIA-secret')
   })
 
   it('keeps everything forever when keepDays is 0 (the default)', () => {
