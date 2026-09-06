@@ -13,6 +13,7 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
+import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
   AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
@@ -1931,35 +1932,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // ceiling near 6 (nothing to gain); a dense burst raises it as far as that
   // burst needs. Virtualisation (v0.11.1) means a wider track costs no extra
   // DOM, which is what makes this affordable.
-  const maxZoom = useMemo(() => {
-    let tightest = Infinity
-    // v0.12.2: inline displayTs and short-circuit once we hit the ceiling.
-    // 99%+ of events are non-marker (their displayTs === timestamp); the
-    // function call was O(N) overhead across every lane's gap loop. Once
-    // tightest × neededTrackW would exceed MAX_TRACK_W we've already found
-    // the ceiling — no tighter gap can raise it.
-    const CEILING_GAP = timeSpan > 0 ? (timeSpan * CLUSTER_PX) / MAX_TRACK_W : 0
-    outer: for (const lane of LANES) {
-      const evs = laneEvents[lane]
-      for (let i = 1; i < evs.length; i++) {
-        const a = evs[i - 1]
-        const b = evs[i]
-        const at = (a.agentType === 'marker' && typeof a.data?.atTimestamp === 'number' && a.data.atTimestamp > 0)
-          ? a.data.atTimestamp as number : a.timestamp
-        const bt = (b.agentType === 'marker' && typeof b.data?.atTimestamp === 'number' && b.data.atTimestamp > 0)
-          ? b.data.atTimestamp as number : b.timestamp
-        const d = bt - at
-        if (d > 0 && d < tightest) {
-          tightest = d
-          if (CEILING_GAP > 0 && tightest <= CEILING_GAP) break outer
-        }
-      }
-    }
-    if (!Number.isFinite(tightest) || timeSpan <= 0) return 6
-    // Track width at which `tightest` maps to CLUSTER_PX.
-    const neededTrackW = (timeSpan / tightest) * CLUSTER_PX
-    return Math.max(6, Math.min(MAX_TRACK_W / MIN_BASE_TRACK_W, neededTrackW / MIN_BASE_TRACK_W))
-  }, [laneEvents, timeSpan])
+  const maxZoom = useMemo(() => computeMaxZoom({
+    // Per-lane ascending display timestamps — markers sort by their `atTimestamp`.
+    laneTimestamps: LANES.map((lane) => laneEvents[lane].map(displayTs)),
+    timeSpan,
+    clusterPx: CLUSTER_PX,
+    maxTrackW: MAX_TRACK_W,
+    minBaseTrackW: MIN_BASE_TRACK_W
+  }), [laneEvents, timeSpan])
   // The wheel handler is bound once and reads this through a ref rather than
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
@@ -1969,22 +1949,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     visibleRows.forEach((rowKey, li) => {
       const evs = rowEvents[rowKey]
       if (!evs || !evs.length) return
-      let bucket: RedLogEvent[] = []
-      let curBi = NaN
-      const flush = (): void => {
-        if (!bucket.length) return
+      for (const bucket of bucketByPixel(evs, (e) => toX(displayTs(e)), CLUSTER_PX)) {
         const x = bucket.reduce((a, e) => a + toX(displayTs(e)), 0) / bucket.length
         const colorLane = toLane(bucket[0].agentType, bucket[0].data?.subtype as string | undefined, pluginTypes)
         out.push({ key: `${rowKey}-${bucket[0].id}`, lane: colorLane, li, x, y: li * laneH + laneH / 2, events: bucket })
-        bucket = []
       }
-      for (const e of evs) {
-        const bi = Math.floor(toX(displayTs(e)) / CLUSTER_PX)
-        if (bucket.length && bi !== curBi) flush()
-        curBi = bi
-        bucket.push(e)
-      }
-      flush()
     })
     return out
   }, [visibleRows, rowEvents, toX, laneH, pluginTypes])
