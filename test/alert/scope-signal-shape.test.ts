@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 
 // The dispatch surface: which stored rows a scope verdict was ever produced
 // for, and what string was judged.
@@ -12,6 +12,13 @@ import { describe, it, expect } from 'vitest'
 
 import { extractTarget } from '../../src/core/target-extractor'
 import { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL } from '../../src/core/alert/scope-signal'
+import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from '../helpers/builtin-extractors'
+
+// One case drives extractTarget on a built-in tool (`curl example.com`, no
+// scheme), which since E1 Option B lives in the bundled pack — load it as
+// startup does.
+beforeAll(() => { loadBuiltinTargetExtractors() })
+afterAll(() => { unloadBuiltinTargetExtractors() })
 
 /** Mirror of tailer-host.ts extractTargetFromToolInput. */
 function extractTargetFromToolInput(raw: string): string | null {

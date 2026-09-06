@@ -1,8 +1,14 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest'
 import {
   extractTarget, registerTargetExtractors, unregisterTargetExtractors,
   extractTargetWithProvenance, listExternalTargetExtractors
 } from '../src/core/target-extractor'
+import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from './helpers/builtin-extractors'
+
+// E1 Option B: built-ins are the bundled pack now, not in core — load it the
+// way the plugin runtime does at startup so these behaviour guards still hold.
+beforeAll(() => { loadBuiltinTargetExtractors() })
+afterAll(() => { unloadBuiltinTargetExtractors() })
 
 describe('extractTarget', () => {
   it('extracts host from ssh command', () => {
