@@ -81,11 +81,16 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
   能跳到那道 `sqlmap`,反之亦然;macOS 無 pid 時 UI 標「本機無法歸因」;純函式 + 測試。
 - 設計:`DESIGN-traffic-attribution §2.3`。相依:無(在既有 `causes-resolver` 旁)。
 
-**B4. pcap 側錄 + 透明代理 · P2 · L · 需決策**
-- 為什麼:補 SYN 掃描與加密非 HTTP 流量的物理盲點。
-- 驗收(若做):flow 摘要進連線泳道、原始 pcap 當 sidecar 輪替、明文憑證走 sanitize 閘;透明代理
-  有 per-app bypass 且 bypass 記一筆事件。
-- **決策待辦**:接受 root/`CAP_NET_RAW` + Windows npcap 的安裝成本嗎?這是定位邊界問題,PM 決定。
+**B4. pcap 側錄 + 透明代理 · ✅ 已實作(PR #46)· P2 · L**
+- 為什麼:補 SYN 掃描與不吃 `HTTP_PROXY` 工具的物理盲點。
+- 做法:兩個 out-of-process producer pack(`plugins/pcap-capture/`、`plugins/transparent-proxy/`),
+  沿 RedLog 一貫的「producer POST 到本機 API、特權在操作員側跑、RedLog 不持有 root」模型。
+  pcap 讀 tcpdump 文字輸出、折成 `scanner.packet_flow`(含 `syn_only` 誠實標示),attribution
+  靠 `local_port` 走既有 ingest;透明代理沿用既有 mitmproxy addon + iptables/pf 重導。
+- 已驗收:flow 摘要走 scanner 泳道、SYN 掃描現形且誠實標示、attribution 接既有 socket→pid。
+  純解析/分類有單元測試;**特權執行路徑(tcpdump/iptables/pf)本質上要操作員在自己硬體上跑,
+  無法在 CI 沙箱驗證**——pack 只宣告 hook + preflight 誠實擋。
+- 決策已採納(root/`CAP_NET_RAW` 成本)。Windows pcap(npcap)與原始 pcap sidecar 輪替為後續。
 - 設計:`DESIGN-traffic-attribution §1`、`DESIGN-core-and-capture §2.1`。
 
 ### 主題 C — 檢視與上手(多數已完善)
@@ -158,7 +163,7 @@ D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ 
 F2 字標 ✅ · F3 Linux 圖示 + release matrix ✅(#36 + #45,best-effort leg) · F4 改名 ✅(PR #40) · E1 外掛化 Option A ✅(#41) + Option B ✅(#44)
 → E1 已完整外掛化:工具知識現在只活在 bundled pack,core 只留通用 strategy 庫;載入順序在測試 setup + 啟動路徑解掉。**仍待獨立 PR:E2 starter pack 預裝 + E3 manifest 雙版本讀取。**
 
-**B4 pcap / 透明代理**:獨立評估,先過「接受 root 成本」的定位決策再排。
+**B4 pcap / 透明代理**:✅ 已實作(PR #46,out-of-process producer pack;特權路徑操作員側驗證)。
 
 ---
 
