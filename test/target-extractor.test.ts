@@ -229,3 +229,24 @@ describe('extractTarget', () => {
     })
   })
 })
+
+
+describe('E1: plugins can use a named strategy, not just a regex', () => {
+  afterEach(() => unregisterTargetExtractors('p1'))
+  it('a strategy-based extractor gets the same mechanism as the built-ins', () => {
+    // A bespoke scanner whose target is the last IP/domain — a single capture
+    // group could not express "last, skipping flags", but the strategy can.
+    registerTargetExtractors('p1', [{ cmd: '^myscanner\\s', strategy: 'lastIpOrDomain', name: 'myscanner' }])
+    const r = extractTargetWithProvenance('myscanner --aggressive -p1-65535 10.10.11.24')
+    expect(r.host).toBe('10.10.11.24')
+    expect(r.pluginId).toBe('p1')
+  })
+  it('a plain {cmd,extract} regex extractor still works', () => {
+    registerTargetExtractors('p1', [{ cmd: '^zap\\s', extract: '--target (\\S+)' }])
+    expect(extractTargetWithProvenance('zap --target app.example.com').host).toBe('app.example.com')
+  })
+  it('an unknown strategy is skipped, not crashed', () => {
+    const n = registerTargetExtractors('p1', [{ cmd: '^x\\s', strategy: 'nope' }])
+    expect(n).toBe(0)
+  })
+})

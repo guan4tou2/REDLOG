@@ -71,9 +71,16 @@ export interface CommandTagContribution {
 export interface TargetExtractorContribution {
   /** JS RegExp source matched against the command's first token(s) */
   cmd: string
-  /** JS RegExp source with one capture group; group 1 (or full match) is the host */
-  extract: string
+  /** JS RegExp source with one capture group; group 1 (or full match) is the
+   *  host. Optional when `strategy` is given. */
+  extract?: string
   flags?: string
+  /** A named built-in extraction strategy (E1) — the same mechanisms the
+   *  built-in extractors use (e.g. 'lastIpOrDomain', 'urlFromFlag'). Lets a
+   *  plugin express logic a single regex cannot. Ignored if `extract` is set. */
+  strategy?: string
+  /** Flag name for the flag-based strategies (e.g. '-u' for urlFromFlag). */
+  param?: string
   /** v0.9.1: per-extractor identifier within the plugin. Stamped on
    *  matched shell events as `extractor_name` for audit traceability
    *  — "this target was flagged by `bugbounty-lexicon`'s `nuclei-plus`
