@@ -216,6 +216,15 @@ export interface RedLogConfig {
        *  project-open sweep still runs. Default `24`. */
       sweepIntervalHours?: number
     }
+    /** Bookmarks (the 書籤 page) are a private notepad, not chained evidence —
+     *  yet they store pasted credentials and the captured external IP, so
+     *  permanent retention is the wrong default once you accept they are not
+     *  a record. Age-based cleanup on project open. `0` (default) = keep
+     *  forever, matching the other keep-days; a `system.bookmarks_pruned`
+     *  audit row (count only, no content) records each sweep. */
+    bookmarks?: {
+      keepDays?: number
+    }
   }
 }
 
@@ -319,6 +328,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
     loggedTier: {
       keepDays: 30,
       sweepIntervalHours: 24
+    },
+    bookmarks: {
+      keepDays: 0
     }
   }
 }

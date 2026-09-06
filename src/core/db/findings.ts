@@ -72,3 +72,12 @@ export function deleteQuickMark(id: string): boolean {
   return result.changes > 0
 }
 
+/** Retention: delete bookmarks created before `cutoffMs`. Returns the count.
+ *  The bookmarks table is not chained, so this is a plain DELETE — the
+ *  audit trail is the `system.bookmarks_pruned` row the caller appends. */
+export function deleteQuickMarksOlderThan(cutoffMs: number): number {
+  const db = getDB()
+  const result = db.prepare('DELETE FROM quickmarks WHERE created_at < ?').run(cutoffMs)
+  return result.changes
+}
+

@@ -29,7 +29,7 @@ import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visib
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
 import { exportBundle } from '../core/bundle-export'
-import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
+import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
 import { exportHar } from '../core/har-export'
 import {
@@ -641,6 +641,8 @@ function startProject(project: ProjectMeta): void {
     if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
     }
+    const bookmarksPruned = sweepBookmarks(config.retention?.bookmarks, { engagementId, operatorId })
+    if (bookmarksPruned > 0) console.log(`[retention] pruned ${bookmarksPruned} bookmark(s)`)
     // Size-pressure eviction of the body store, after the age sweep — whatever
     // aged out has already gone, so this only reaches live-but-cold bodies.
     const evicted = sweepBodyStore(config, { engagementId, operatorId })
