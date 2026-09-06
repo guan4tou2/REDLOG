@@ -1,7 +1,14 @@
+/// <reference path="../renderer/src/env.d.ts" />
 import { contextBridge, ipcRenderer } from 'electron'
 import type { RedLogEvent } from '../core/db/events'
 
-contextBridge.exposeInMainWorld('redlog', {
+// Single source of truth: the bridge is typed against the RedLogAPI contract
+// declared in the renderer's env.d.ts. Before this, env.d.ts was a hand-copied
+// mirror of this object and drifted (a method added here but not there, or a
+// signature that disagreed, went unnoticed — the renderer just saw `any`).
+// Now `tsc` checks this literal against the contract, so the two cannot
+// diverge without a typecheck error.
+const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
@@ -26,8 +33,8 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   ip: {
     getStatus: () => ipcRenderer.invoke('ip:getStatus'),
-    onStatus: (cb: (status: unknown) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, s: unknown) => cb(s)
+    onStatus: (cb: (status: IPStatus) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, s: IPStatus) => cb(s)
       ipcRenderer.on('ip:status', handler)
       return () => ipcRenderer.removeListener('ip:status', handler)
     }
@@ -61,8 +68,8 @@ contextBridge.exposeInMainWorld('redlog', {
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
-    onNew: (cb: (event: unknown) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, event: unknown) => cb(event)
+    onNew: (cb: (event: RedLogEvent) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, event: RedLogEvent) => cb(event)
       ipcRenderer.on('events:new', handler)
       return () => ipcRenderer.removeListener('events:new', handler)
     },
@@ -71,8 +78,8 @@ contextBridge.exposeInMainWorld('redlog', {
     // this channel each frame (~16 ms), collapsing burst traffic (mitmproxy
     // scans, cast replay) from N IPC hops to one. `events:new` still fires
     // per-event for backward compat with subscribers that don't care to batch.
-    onNewBatch: (cb: (events: unknown[]) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, events: unknown[]) => cb(events)
+    onNewBatch: (cb: (events: RedLogEvent[]) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, events: RedLogEvent[]) => cb(events)
       ipcRenderer.on('events:new-batch', handler)
       return () => ipcRenderer.removeListener('events:new-batch', handler)
     },
@@ -136,7 +143,7 @@ contextBridge.exposeInMainWorld('redlog', {
   },
   views: {
     list: () => ipcRenderer.invoke('views:list'),
-    save: (data: { name: string; state: Record<string, unknown> }) => ipcRenderer.invoke('views:save', data),
+    save: (data: { name: string; state: SavedTimelineViewState }) => ipcRenderer.invoke('views:save', data),
     delete: (id: string) => ipcRenderer.invoke('views:delete', id)
   },
   cdp: {
@@ -243,4 +250,6 @@ contextBridge.exposeInMainWorld('redlog', {
     },
     moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => ipcRenderer.send('overlay:moveToCorner', corner)
   }
-})
+}
+
+contextBridge.exposeInMainWorld('redlog', api)

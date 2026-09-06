@@ -112,6 +112,7 @@ interface RedLogAPI {
     delete: (id: string) => Promise<boolean>
     active: () => Promise<{ id: string; name: string; createdAt: number } | null>
     close: () => Promise<boolean>
+    rename: (id: string, name: string) => Promise<{ ok: boolean; name?: string; error?: string }>
   }
   ip: {
     getStatus: () => Promise<IPStatus>
@@ -151,6 +152,7 @@ interface RedLogAPI {
     getById: (ids: string[]) => Promise<RedLogEvent[]>
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
+    logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
   }
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
@@ -168,6 +170,7 @@ interface RedLogAPI {
   }
   screenshot: {
     capture: (causeEventId?: string) => Promise<string | null>
+    deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
   }
   scope: {
     getViolations: () => Promise<Array<{
@@ -289,10 +292,10 @@ interface RedLogAPI {
   }
   pivots: {
     getActive: () => Promise<unknown[]>
-    onChanged: (cb: (pivots: unknown[]) => void) => () => void
+    onChange: (cb: (pivots: Array<{ via: string; tool: string; route?: string; ts: number }>) => void) => () => void
   }
   clock: {
-    getStatus: () => Promise<{ offsetMs: number | null; lastQuery: unknown }>
+    status: () => Promise<{ offsetMs: number | null; lastQuery: unknown }>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
