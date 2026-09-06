@@ -198,9 +198,15 @@ transcript 走 ingest。
 1. **內建 target extractor 宣告化 + 外掛化(E1 Option A #41、Option B #44)已實作。** Option A 立起 `STRATEGIES` 註冊表 + 宣告式資料;Option B 把整張工具→策略表搬進 bundled pack `plugins/builtin-tools/plugin.json`,`target-extractor.ts` 不再有任何 per-tool 資料,啟動時 `initPlugins()` 經 `registerTargetExtractors` 註冊該 pack;precedence 以 source 決定(user 蓋 bundled)、載入順序在測試 setup 與啟動路徑都解掉、`plugins/` 加進 `extraResources` 才會隨包出貨(連帶修好 c2-tailers 從沒打包的舊漏)。停用該 pack 即移除內建。
 2. **Starter pack 預裝。** 把 shell hook + 內建終端機 + 代理 tailer + mitmproxy 宣告成一包預裝、
    可移除的 producer 外掛,首次執行仍成立。
-3. **pcap producer + 透明代理 + socket→pid→指令 對照器**(見 [`DESIGN-traffic-attribution.md`](DESIGN-traffic-attribution.md))。
-   這三樣是**核心/producer**,不是加值外掛,因為它們決定「能不能記到」。
-4. **manifest schemaVersion 雙版本讀取** + 擷取健康度改讀 manifest 而非寫死清單。
+3. **pcap producer + 透明代理 + socket→pid→指令 對照器 — 已實作。**
+   socket→pid→指令 對照器早於 PR #36(`socket-attribution.ts`)落地並接進 `ingest()`。
+   pcap producer(`plugins/pcap-capture/`)與透明代理(`plugins/transparent-proxy/`)於
+   PR #46 以 out-of-process producer pack 出貨:pcap 讓 `nmap -sS` 這類半開掃描(連線監視
+   器結構上看不到的)以 `scanner.packet_flow` 事件現形、`syn_only` 誠實標示,attribution 靠
+   `local_port` 走既有 ingest 對照;透明代理沿用既有 mitmproxy addon,經 iptables/pf 重導攔
+   下不吃 `HTTP_PROXY` 的工具。特權執行(tcpdump/iptables)在操作員側跑,pack 只宣告 hook +
+   誠實 preflight;純解析/分類邏輯有單元測試(`pcap-parse.js` / `test/pcap-parse.test.ts`)。
+4. **manifest schemaVersion 雙版本讀取** + 擷取健康度改讀 manifest 而非寫死清單。**(仍待做)**
 
 排序見那份文件的 §5。**紅線不變:不做報告產出、不做多人中央架構。**
 
@@ -211,9 +217,12 @@ transcript 走 ingest。
 原始九項中的 §1、§2、§4、§5、§6、§7(視窗底色+圖示)、§8-1(E1 Option A)已於
 2026-09-06 隨 PR #36/#37/#40/#41 出貨並在上方各節標「已實作 → 見 X」。**還開著的殘留:**
 
+§8-3(pcap producer + 透明代理 + socket→pid 對照器)已於 PR #36/#46 出貨。**還開著的殘留:**
+
 | 順位 | 項目 | 大小 | 為何這個順位 / 卡在哪 |
 |---|---|---|---|
-| 1 | Plugin-kernel 完成路徑(§8-2/3/4)+ pcap/透明代理 | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
+| 1 | §8-2 Starter pack 預裝 | M | 把既有 producer(shell/終端/proxy/mitm/pcap/透明代理)宣告成一包預裝可移除 pack |
+| 2 | §8-4 manifest schemaVersion 雙版本 + 健康度讀 manifest | M | capture-health 現在寫死 ~8 個 producer;改讀 capture 貢獻 |
 
 每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。

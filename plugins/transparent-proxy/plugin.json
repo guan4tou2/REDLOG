@@ -1,0 +1,25 @@
+{
+  "id": "transparent-proxy",
+  "name": "Transparent Proxy",
+  "version": "1.0.0",
+  "description": "Bundled producer (docs/DESIGN-traffic-attribution.md §2.1): capture HTTP/S from tools that don't honour HTTP_PROXY, without configuring each one. Sets up an OS-level redirect (iptables on Linux, pf on macOS) of this host's outbound 80/443 into mitmproxy's transparent mode, running RedLog's existing mitmproxy addon — so captured request/response events are identical to the regular-proxy path, just reached transparently. Invasive and privileged (rewrites nat rules, needs root); runs out-of-process with an explicit teardown. Disable/remove it if you don't want transparent interception.",
+  "author": "RedLog",
+  "redlogApi": 1,
+  "contributes": {
+    "capture": [
+      {
+        "id": "mitmproxy-transparent",
+        "name": "mitmproxy transparent → scanner.http",
+        "description": "Redirect local 80/443 into mitmproxy transparent mode + RedLog's addon, capturing tools that ignore proxy env vars. Requires root; always tear down when done.",
+        "agentType": "scanner",
+        "requires": ["mitmdump"],
+        "hookFile": "hooks/transparent-proxy.sh",
+        "installMethod": "manual",
+        "manualSteps": [
+          { "label": "Start transparent capture (elevated — rewrites nat rules for THIS host)", "command": "sudo \"{hookFile}\" up 8080" },
+          { "label": "Stop and remove the redirect rules (also happens on Ctrl-C)", "command": "sudo \"{hookFile}\" down 8080" }
+        ]
+      }
+    ]
+  }
+}
