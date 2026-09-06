@@ -610,7 +610,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/export/bundle' && req.method === 'POST') {
       try {
-        const bundle = exportBundle(engagementId)
+        // PRD A2: mask out-of-scope events in the bundle when scope is known.
+        const scopeTargets = configLoaderRef?.getTargets?.() ?? []
+        const bundle = exportBundle(engagementId, { scope: { targets: scopeTargets } })
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
       } catch (e) {
         const err = e as Error

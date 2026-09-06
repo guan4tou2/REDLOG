@@ -14,13 +14,14 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
+let mod: typeof import('../src/core/db/index')
 
 let dbAvailable = false
 try {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const b = await import('../src/core/bundle-export')
-  initDB = d.initDB; closeDB = d.closeDB; insertEventRaw = e.insertEvent; exportBundle = b.exportBundle
+  initDB = d.initDB; closeDB = d.closeDB; insertEventRaw = e.insertEvent; exportBundle = b.exportBundle; mod = d
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
 
@@ -182,6 +183,32 @@ describeDB('private bookmarks stay out of the bundle', () => {
     for (const f of walk(out.outDir)) {
       expect(fs.readFileSync(f, 'utf-8'), `canary found in ${path.basename(f)}`).not.toContain('BOOKMARK-CANARY-9182')
     }
+  })
+
+  const insT = (data: Record<string, unknown>, targetId: string): void => {
+    insertEventRaw('shell', data, { engagementId: 'eng', operatorId: 'op', targetId })
+  }
+
+  it('masks out-of-scope events content in the bundle when scope is supplied (A2)', () => {
+    insT({ subtype: 'command_end', command: 'curl https://in.example.com', output: 'IN-SCOPE-BODY' }, 'in.example.com')
+    insT({ subtype: 'command_end', command: 'curl https://out.evil.com', output: 'OUT-OF-SCOPE-SECRET' }, 'out.evil.com')
+
+    const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'a2'), scope: { targets: ['*.example.com'] } })
+    const lines = fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const inRow = lines.find((r) => r.target_id === 'in.example.com')
+    const outRow = lines.find((r) => r.target_id === 'out.evil.com')
+    expect(JSON.parse(inRow.data).output).toBe('IN-SCOPE-BODY')            // untouched
+    expect(JSON.parse(outRow.data).output).toBe('[redacted: out of scope]') // masked
+    expect(manifest.sanitizedOutOfScope).toBe(1)
+  })
+
+  it('does not mask anything when no scope is supplied (A2 default is safe)', () => {
+    insT({ subtype: 'command_end', command: 'curl https://out.evil.com', output: 'STILL-HERE' }, 'out.evil.com')
+    const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'a2b') })
+    const lines = fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const row = lines.find((r) => r.target_id === 'out.evil.com')
+    expect(JSON.parse(row.data).output).toBe('STILL-HERE')
+    expect(manifest.sanitizedOutOfScope).toBe(0)
   })
 
   // The offline verifier (tools/redlog-verify.py) is what a recipient runs.
