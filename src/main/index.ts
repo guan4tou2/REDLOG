@@ -1722,7 +1722,8 @@ app.whenReady().then(() => {
     if (!activeProject) return { ok: false, error: 'no-active-project' }
     try {
       const cfg = loadConfig(getProjectPath(activeProject))
-      const bundle = exportBundle(cfg.engagement.id)
+      // PRD A2: mask out-of-scope events' captured content in the bundle.
+      const bundle = exportBundle(cfg.engagement.id, { scope: { targets: snapshotScope(cfg).targets } })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
     } catch (e) {
       return { ok: false, error: (e as Error)?.message ?? String(e) }

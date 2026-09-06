@@ -7,6 +7,7 @@ import { queryEvents } from './db/events'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
+import { scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 
 interface ManifestFile {
   path: string
@@ -31,6 +32,9 @@ interface ManifestPayload {
    *  captured bytes (four-layer redaction, layer 4). Every one has a paired
    *  system.sanitized event in events.jsonl proving the swap was audited. */
   sanitized: { events: number; totalInDb: number }
+  /** PRD A2: how many events had content fields masked because their target
+   *  was out of scope (0 when no scope was supplied). */
+  sanitizedOutOfScope: number
   /** v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.7.2): row
    *  counts per tier. `chained` matches chainHead.eventCount — that IS the
    *  count the OTS anchor covers. `logged` is the events_logged row count
@@ -52,6 +56,13 @@ function writeAndHash(dest: string, contents: string | Buffer): ManifestFile {
 
 export interface ExportBundleOpts {
   outRoot?: string
+  /** PRD A2: the engagement scope. When present, out-of-scope events have
+   *  their captured content fields masked in the exported bundle (source DB
+   *  and chain hash untouched). Omit to skip scope masking entirely — the safe
+   *  default when the caller cannot supply scope. */
+  scope?: ScopeForSanitize
+  /** Turn scope masking off even when `scope` is supplied. Default on. */
+  maskOutOfScope?: boolean
   /** v0.7.2 F: include the raw Claude Code (and future OpenCode / Codex)
    *  transcripts from `<projectDir>/agent-transcripts/` in the bundle.
    *  DEFAULT FALSE. The sidecar `.jsonl` files are verbatim copies of the
@@ -94,17 +105,27 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // the original bytes; auditors verifying the chain need the source DB or
   // the paired system.sanitized event to reconcile.
   let sanitizedRowsWritten = 0
+  let outOfScopeMasked = 0
+  const scope = opts.maskOutOfScope === false ? undefined : opts.scope
   for (const row of rowIter) {
     const eventId = row.id as string
     const replacements = getSanitizedFields(eventId)
+    let data: Record<string, unknown> | null = null
     if (Object.keys(replacements).length > 0) {
       try {
-        const data = JSON.parse(row.data as string) as Record<string, unknown>
+        data = JSON.parse(row.data as string) as Record<string, unknown>
         for (const [field, value] of Object.entries(replacements)) data[field] = value
-        row.data = JSON.stringify(data)
         sanitizedRowsWritten++
-      } catch { /* leave row as-is if data isn't parseable */ }
+      } catch { data = null }
     }
+    if (scope) {
+      try {
+        if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
+        const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
+        if (scopeRepl) { for (const [f, v] of Object.entries(scopeRepl)) data[f] = v; outOfScopeMasked++ }
+      } catch { /* leave row as-is */ }
+    }
+    if (data) row.data = JSON.stringify(data)
     fs.writeSync(fd, JSON.stringify(row) + '\n')
   }
   fs.closeSync(fd)
@@ -131,14 +152,22 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   for (const row of loggedIter) {
     const eventId = row.id as string
     const replacements = getSanitizedFields(eventId)
+    let data: Record<string, unknown> | null = null
     if (Object.keys(replacements).length > 0) {
       try {
-        const data = JSON.parse(row.data as string) as Record<string, unknown>
+        data = JSON.parse(row.data as string) as Record<string, unknown>
         for (const [field, value] of Object.entries(replacements)) data[field] = value
-        row.data = JSON.stringify(data)
         sanitizedRowsWritten++
+      } catch { data = null }
+    }
+    if (scope) {
+      try {
+        if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
+        const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
+        if (scopeRepl) { for (const [f, v] of Object.entries(scopeRepl)) data[f] = v; outOfScopeMasked++ }
       } catch { /* leave row as-is */ }
     }
+    if (data) row.data = JSON.stringify(data)
     fs.writeSync(loggedFd, JSON.stringify(row) + '\n')
     loggedRowCount++
   }
@@ -363,6 +392,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       createdAt: lastAnchor.createdAt
     } : null,
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
+    sanitizedOutOfScope: outOfScopeMasked,
     tiers: {
       // chained = chainHead.eventCount when the head exists; both are
       // definitionally the count the OTS anchor covers.
