@@ -47,7 +47,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 ### 主題 A — 紀錄完整性與可信
 
-**A1. 書籤 retention 清理 · P0 · S**
+**A1. 書籤 retention 清理 · ✅ 已實作(PR #36)· P0 · S**
 - 為什麼:書籤存貼上憑證 + 擷取到的外部 IP,永久留存;裁決「書籤是便條本不是紀錄」後更站不住。
 - 驗收:`retention.bookmarks.keepDays` 預設 0(不改既有);>0 時開專案掃、刪超期書籤、寫一筆
   `system.bookmarks_pruned`(數量,不含內容);單元測試涵蓋。
@@ -60,7 +60,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
   測試涵蓋 in/out 兩路。**破壞性:匯出內容改變,要 CHANGELOG + 覆寫選項。**
 - 設計:`DESIGN-OPEN-ITEMS §3`。相依:無。
 
-**A3. 每專案 token 隔離 · P1 · S**
+**A3. 每專案 token 隔離 · ✅ 已實作(PR #36)· P1 · S**
 - 為什麼:全域一把 token 跨所有客戶交戰;每場交戰換一把 secret 是安全衛生。**(價值中低:同一時間
   只服務一個開啟中的專案,不是並發隔離。)**
 - 驗收:每專案自己的 token 檔;鏡像到 `~/.redlog/api-token` 讓 hook 不改;跨專案 token 互不通用(401);測試涵蓋。
@@ -98,7 +98,8 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 ### 主題 D — 架構健康(設計債,威脅可維護性)
 
-**D1. Timeline 純函式接縫 + 首批互動測試 · P0 · M–L**
+**D1. Timeline 純函式接縫(density-zoom + clustering)· ✅ 首批已實作(PR #36)· P0 · M–L**
+- 續作:再抽 lane 可見性解析與 palette filter,並補真正的互動測試(zoom/cluster/minimap)。
 - 為什麼:`Timeline.tsx` 近 5000 行、65 useState、**零互動測試**,是唯一「零測試的 5000 行」,
   回歸最容易藏。這是降低系統性風險 CP 值最高的一項,勝過任何新功能。
 - 驗收:cluster bucketing、lane 可見性解析、時間域/minimap binning、⌘K palette filter 至少抽出
@@ -129,7 +130,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 ### 主題 F — 收尾/外觀
 
-**F1. 視窗底色 `#0a0a0a`→`#121214` · P1 · S** — 一行三處(`windows.ts`),載入不再閃暗底。
+**F1. 視窗底色 `#0a0a0a`→`#121214` · ✅ 已實作(PR #36)· P1 · S** — `windows.ts` 兩處,載入不再閃暗底。
 **F2. 單一字標 `REDL(●)G` · P2 · M** — 即時文字元件,非 SVG;換掉標題列與 Picker 的圖片+純文字。
 **F3. Linux 多尺寸圖示 · P2 · S · 需決策** — 先確認 Linux 是否真的進 release CI(目前沒產出過 artifact)。
 **F4. QuickMark→Bookmark 內部改名 · P2 · M · 需決策(SQL 表名)** — 拆兩 PR,外部契約要別名期。
@@ -139,9 +140,10 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 ## 3. 里程碑(實作順序)
 
-**M1 — 隱私與可信收尾(P0/P1,零或小契約衝擊)**
-A1 書籤 retention · F1 視窗底色 · A3 每專案 token · D1 Timeline 接縫+測試
-→ 達成後:沒有永久留存的憑證便條、沒有零測試的巨檔、每交戰獨立 secret。
+**M1 — 隱私與可信收尾 · ✅ 已達成(PR #36)**
+A1 書籤 retention · F1 視窗底色 · A3 每專案 token · D1 Timeline 接縫+測試(首批)
+→ 已達成:沒有永久留存的憑證便條、Timeline 有首批單元測試、每交戰獨立 secret。
+D1 的續作(lane 可見性 + 互動測試)延到 M3 的 D 系列。
 
 **M2 — 證據深度與 OPSEC(P1)**
 A2 scope-aware sanitize/rotation(帶破壞性宣告) · B3 依工具分流量
@@ -161,12 +163,14 @@ E1–E3 外掛化 · F2 字標 · F3/F4 圖示與改名(先過決策)
 
 ## 4. 需要產品決策的點(擋住對應需求)
 
-| 決策 | 影響 | 誰決定 |
+**四項決策於 2026-09-06 全部採納(✅ accepted),對應需求解鎖:**
+
+| 決策 | 裁決 | 對需求的影響 |
 |---|---|---|
-| SQL 表名 `quickmarks`→`bookmarks` 改不改 | 舊版開已遷移專案會空頁;有混版工作流就別改 | 產品(F4) |
-| Linux 是否進 release 出貨 | 決定 F3 值不值得做 | 產品(F3) |
-| 接受 pcap 的 root/npcap 安裝成本嗎 | 決定 B4 是否在定位內 | 產品(B4) |
-| A2 匯出依範圍遮蔽的破壞性變更可接受嗎 | 既有匯出流程的輸出會變 | 產品(A2) |
+| SQL 表名 `quickmarks`→`bookmarks` | ✅ 改 | F4 含 `ALTER TABLE` migration;無混版工作流的前提下進行 |
+| Linux 進 release 出貨 | ✅ 是 | F3 值得做,Linux 進 release matrix |
+| 接受 pcap 的 root/npcap 成本 | ✅ 接受 | B4 進入定位內,可排期 |
+| A2 匯出依範圍遮蔽的破壞性變更 | ✅ 接受 | A2 直接做,CHANGELOG 標破壞性 + 提供覆寫 |
 
 ---
 
