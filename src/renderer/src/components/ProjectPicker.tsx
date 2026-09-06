@@ -41,8 +41,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     const orig = projects.find((p) => p.id === id)?.name
     if (name === orig) return
-    const updated = await (window.redlog.project as { rename?: (id: string, n: string) => Promise<ProjectMeta | null> }).rename?.(id, name)
-    if (updated) setProjects((prev) => prev.map((p) => p.id === id ? updated : p))
+    const res = await window.redlog.project.rename(id, name)
+    if (res.ok) setProjects((prev) => prev.map((p) => p.id === id ? { ...p, name: res.name ?? name } : p))
   }
 
   // The whole UI runs on the preload bridge. If it's missing (e.g. the page was

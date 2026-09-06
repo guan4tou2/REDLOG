@@ -1261,7 +1261,7 @@ function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): J
                       if (!ok) return
                       const fp = s.data.filePath as string | undefined
                       if (!fp) return
-                      const res = await (window.redlog.screenshot as unknown as { deleteFile: (id: string, p: string) => Promise<{ ok: boolean; error?: string }> }).deleteFile(s.id, fp)
+                      const res = await window.redlog.screenshot.deleteFile(s.id, fp)
                       if (res.ok) {
                         setDeletedIds((prev) => { const n = new Set(prev); n.add(s.id); return n })
                         toast(t('screenshots.deletedToast'), 'success')
