@@ -399,3 +399,130 @@ function pinnedFiles(scopeTargets: string[]): Set<string> {
   }
   return pinned
 }
+
+// ── Scope-pinned size-pressure eviction for casts + screenshots ─────────────
+//
+// docs/DESIGN-OPEN-ITEMS §3b. `sweepBodyStore` already evicts HTTP bodies
+// coldest-first with scope as the pin. Casts and screenshots had only the
+// age-based `sweepDir` (all-or-nothing past a cutoff, order irrelevant), so a
+// disk filling with out-of-scope recordings could push in-scope evidence out
+// only by aging — never by relevance. This gives them the same store-budget
+// eviction: when `casts/` or `screenshots/` exceeds its byte cap, the coldest
+// UNPINNED files go first and files whose referencing event is in scope are
+// pinned and kept. Same safety model as body-eviction: the event row and its
+// castSha256 / sha256 attestation stay, only the on-disk file is dropped, so
+// the chain keeps verifying and the file reads back as "content no longer on
+// disk" rather than as evidence that was silently erased.
+
+/** Basenames of cast/screenshot files pinned by an in-scope reference. A file
+ *  is pinned if ANY event that points at it carries an in-scope target. Empty
+ *  scope pins nothing (no declared scope → no "in-scope" to protect), and
+ *  eviction falls back to purely coldest-first, which is the safe order anyway.
+ *  Keyed on basename because `readdir` yields basenames. */
+function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]): Set<string> {
+  const pinned = new Set<string>()
+  if (scopeTargets.length === 0) return pinned
+  let db: ReturnType<typeof getDB>
+  try { db = getDB() } catch { return pinned }
+  // Casts and screenshots live only in the chained `events` table (the
+  // shell/screenshot agents write there), so — unlike bodies — no
+  // events_logged pass is needed.
+  const query = kind === 'cast'
+    ? `SELECT target_id, json_extract(data,'$.castPath') AS p, NULL AS fn FROM events
+         WHERE agent_type = 'shell'
+           AND json_extract(data,'$.subtype') = 'session_end'
+           AND json_extract(data,'$.castPath') IS NOT NULL`
+    : `SELECT target_id,
+              json_extract(data,'$.filePath') AS p,
+              json_extract(data,'$.filename') AS fn FROM events
+         WHERE agent_type = 'screenshot'
+           AND (json_extract(data,'$.filePath') IS NOT NULL OR json_extract(data,'$.filename') IS NOT NULL)`
+  let rows: Array<Record<string, unknown>> = []
+  try { rows = db.prepare(query).all() as Array<Record<string, unknown>> } catch { return pinned }
+  for (const row of rows) {
+    const target = row.target_id as string | null
+    if (!target) continue
+    if (!scopeTargets.some((p) => matchTarget(target, p))) continue
+    const p = row.p as string | null
+    if (p) pinned.add(path.basename(p))
+    const fn = row.fn as string | null
+    if (fn) pinned.add(path.basename(fn))
+  }
+  return pinned
+}
+
+export function sweepArtifactStore(
+  kind: 'cast' | 'screenshot',
+  config: {
+    terminal?: { castStoreMaxBytes?: number }
+    screenshots?: { maxBytes?: number }
+    scope?: { targets?: string[] }
+  },
+  opts: { engagementId: string; operatorId: string }
+): { evicted: number; freedBytes: number; shortfallBytes: number } {
+  const none = { evicted: 0, freedBytes: 0, shortfallBytes: 0 }
+  if (!opts.operatorId) return none
+  const budget = kind === 'cast'
+    ? (config.terminal?.castStoreMaxBytes ?? 0)
+    : (config.screenshots?.maxBytes ?? 0)
+  if (budget <= 0) return none  // unbounded is the default; opt in to bound it
+
+  let projectDir: string
+  try { projectDir = getProjectDir() } catch { return none }
+  const dir = path.join(projectDir, kind === 'cast' ? 'casts' : 'screenshots')
+  if (!fs.existsSync(dir)) return none
+
+  const matcher = kind === 'cast'
+    ? (n: string): boolean => n.endsWith('.cast')
+    : (n: string): boolean => /\.(jpg|jpeg|png)$/i.test(n)
+  let names: string[]
+  try { names = fs.readdirSync(dir).filter(matcher) } catch { return none }
+  const stat = new Map<string, { sizeBytes: number; mtimeMs: number }>()
+  for (const n of names) {
+    try { const s = fs.statSync(path.join(dir, n)); stat.set(n, { sizeBytes: s.size, mtimeMs: s.mtimeMs }) }
+    catch { /* vanished mid-scan */ }
+  }
+
+  const pinned = pinnedArtifactFiles(kind, config.scope?.targets ?? [])
+  const entries: BodyEntry[] = []
+  for (const [file, s] of stat) {
+    entries.push({ file, sizeBytes: s.sizeBytes, mtimeMs: s.mtimeMs, pinned: pinned.has(file) })
+  }
+
+  const plan = planEviction(entries, budget)
+  if (plan.evict.length === 0 && plan.shortfallBytes === 0) return none
+
+  let evicted = 0
+  let freedBytes = 0
+  for (const file of plan.evict) {
+    try {
+      fs.unlinkSync(path.join(dir, file))
+      evicted++
+      freedBytes += stat.get(file)?.sizeBytes ?? 0
+      // A cast's transcript lives in a second place (the search index). Drop it
+      // with the file — the same "an index that outlives its file is a lie"
+      // rule the age-based sweepDir follows.
+      if (kind === 'cast') {
+        try { pruneCast(file) } catch (e) { noteDbError('artifact-evict-cast-index', e) }
+      }
+    } catch { /* already gone — fine */ }
+  }
+
+  const subtype = kind === 'cast' ? 'cast_evicted' : 'screenshot_evicted'
+  try {
+    const ev = insertEvent('system', {
+      subtype,
+      count: evicted,
+      freed_bytes: freedBytes,
+      total_bytes: plan.totalBytes,
+      budget_bytes: budget,
+      shortfall_bytes: plan.shortfallBytes,
+      description: plan.shortfallBytes > 0
+        ? `Evicted ${evicted} ${kind} file(s) under disk pressure; still ${plan.shortfallBytes} bytes over budget after evicting everything unpinned — pinned (in-scope) ${kind}s were kept.`
+        : `Evicted ${evicted} ${kind} file(s) under disk pressure (freed ${freedBytes} bytes; in-scope ${kind}s kept).`
+    }, opts)
+    if (ev) eventBus.publish(ev)
+  } catch (e) { noteDbError('artifact-eviction', e) }
+
+  return { evicted, freedBytes, shortfallBytes: plan.shortfallBytes }
+}

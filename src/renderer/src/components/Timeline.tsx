@@ -688,7 +688,7 @@ function computeBadges(
   if (d.recovered_from_spool === true) {
     b.push({ icon: '📮', reason: 'recovered from shell hook spool', key: 'spool' })
   }
-  if (evt.agentType === 'system' && (sub === 'screenshot_deleted' || sub === 'cast_pruned' || sub === 'screenshot_pruned')) {
+  if (evt.agentType === 'system' && (sub === 'screenshot_deleted' || sub === 'cast_pruned' || sub === 'screenshot_pruned' || sub === 'cast_evicted' || sub === 'screenshot_evicted')) {
     b.push({ icon: '🗑️', reason: `evidence removed (${sub})`, key: 'evidence' })
   }
   if (evt.agentType === 'system' && sub === 'anchor_failed') {
