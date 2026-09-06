@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -64,17 +64,31 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: npx electron-builder --win --publish never
 
+      # Linux is a best-effort leg while it proves out (docs/DESIGN-OPEN-ITEMS
+      # §7a). `release` needs the whole `build` job, so a hard Linux failure
+      # would block the mac/win release that has shipped for releases. Keep it
+      # non-blocking with continue-on-error until it's reliably green, then
+      # promote it to required by removing these two flags.
+      - name: Package Linux (AppImage + deb, x64)
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: npx electron-builder --linux --publish never
+
       - name: Upload installers
         uses: actions/upload-artifact@v5
+        continue-on-error: ${{ matrix.os == 'ubuntu-latest' }}
         with:
           name: redlog-${{ matrix.os }}
           path: |
             dist/*.dmg
             dist/*.zip
             dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
             dist/*.blockmap
             dist/latest*.yml
-          if-no-files-found: error
+          # mac/win must produce artifacts; Linux is best-effort until proven.
+          if-no-files-found: ${{ matrix.os == 'ubuntu-latest' && 'warn' || 'error' }}
           retention-days: 14
 
   release:
