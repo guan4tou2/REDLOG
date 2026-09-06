@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Sidebar from './components/Sidebar'
+import { Wordmark } from './components/Wordmark'
 import TranscriptView from './components/TranscriptView'
 import StatusBar from './components/StatusBar'
 import IPStatusCard from './components/IPStatusCard'
@@ -28,7 +29,6 @@ import { computeVisibility, shouldRefetch, EMPTY_SIGNALS, type VisibilitySignals
 import { FirstRunView } from './components/FirstRunView'
 import { storedShowAllPages, SHOW_ALL_PAGES_EVENT } from './lib/showAllPages'
 import { appShortcuts } from './lib/shortcuts'
-import markUrl from './assets/mark-small.svg'
 import { Image } from 'lucide-react'
 import { EmptyState } from './components/EmptyState'
 import { formatTime } from './lib/time'
@@ -295,12 +295,9 @@ export default function App(): JSX.Element {
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className={`flex items-center gap-2 ${isMac ? 'pl-16' : ''}`}>
-          {/* 16px, so this is the small master: the ring has already collapsed
-              to a solid dot, because at this size a 1.15px stroke is a smudge.
-              No rounding — the mark carries its own cut corners and a
-              border-radius would shave them off. */}
-          <img src={markUrl} alt="" className="w-4 h-4" />
-          <span className="text-red-500 font-bold text-xs tracking-[0.2em]">{t('app.title')}</span>
+          {/* Title-bar size is small, so the ring collapses to a solid dot
+              (§4). Single wordmark — the old image + plain-text pair is gone. */}
+          <Wordmark className="text-xs" dotOnly />
           {/* Take the version out of the drag zone so users reporting bugs can
               actually copy it — audit finding P2 #36. */}
           <span

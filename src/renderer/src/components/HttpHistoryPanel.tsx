@@ -145,7 +145,7 @@ function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }
             })()
             const sc = f.status !== null ? STATUS_COLORS[String(f.status)[0]] : undefined
             return (
-              <li key={f.flowId} className="flex items-center gap-2 px-2 py-1 text-[11px] font-mono">
+              <li key={f.flowId} className="flex items-center gap-2 px-2 py-1 text-xs font-mono">
                 <span className="text-redlog-text-dim shrink-0 w-12">{f.method}</span>
                 <span className={`shrink-0 w-8 tabular-nums ${sc ?? 'text-redlog-text-faint'}`}>{f.status ?? '—'}</span>
                 <span className="text-redlog-text truncate flex-1" title={f.url}>{path}</span>
@@ -264,12 +264,12 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
         style={{ paddingLeft: `${depth * 16 + 4}px` }}
         onClick={handleClick}
       >
-        <span className="w-3 text-[10px] text-redlog-text-faint flex-shrink-0">
+        <span className="w-3 text-xs text-redlog-text-faint flex-shrink-0">
           {hasChildren ? (expanded ? '▾' : '▸') : '·'}
         </span>
         <span
           title={node.fullPath}
-          className={`text-[11px] font-mono truncate ${depth === 0 ? 'text-redlog-accent font-semibold' : 'text-redlog-text'}`}
+          className={`text-xs font-mono truncate ${depth === 0 ? 'text-redlog-accent font-semibold' : 'text-redlog-text'}`}
         >
           {depth === 0 ? node.name : '/' + node.name}
         </span>
@@ -508,19 +508,19 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             onClick={() => setViewMode('activity')}
             data-http-view="activity"
             aria-pressed={viewMode === 'activity'}
-            className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'activity' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'activity' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewActivity')}</button>
           <button
             onClick={() => setViewMode('flows')}
             data-http-view="flows"
             aria-pressed={viewMode === 'flows'}
-            className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'flows' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewFlows')}</button>
           <button
             onClick={() => setViewMode('sitemap')}
             data-http-view="sitemap"
             aria-pressed={viewMode === 'sitemap'}
-            className={`text-[10px] font-mono px-2 py-0.5 rounded ${viewMode === 'sitemap' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${viewMode === 'sitemap' ? 'bg-redlog-elevated-hover text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{t('httpHistory.viewSitemap')}</button>
         </div>
 
@@ -537,13 +537,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       <div className="flex items-center gap-1.5 px-3 py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
         <button
           onClick={() => setMethodFilter(null)}
-          className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${!methodFilter ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+          className={`text-xs font-mono px-1.5 py-0.5 rounded ${!methodFilter ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
         >{t('httpHistory.filterAll')}</button>
         {methods.map(m => (
           <button
             key={m}
             onClick={() => setMethodFilter(methodFilter === m ? null : m)}
-            className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${methodFilter === m ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-1.5 py-0.5 rounded ${methodFilter === m ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{m}</button>
         ))}
         <span className="w-px h-3 bg-redlog-elevated-hover/60 mx-1" />
@@ -551,7 +551,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           <button
             key={s}
             onClick={() => setStatusFilter(statusFilter === s ? null : s)}
-            className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{s}xx</button>
         ))}
       </div>
@@ -574,7 +574,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         </div>
       ) : viewMode === 'flows' ? (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-[11px] font-mono">
+          <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
                 <th className="px-2 py-1.5 font-medium w-16">{t('httpHistory.colMethod')}</th>
@@ -632,7 +632,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 )
               })}
               {visibleCount < filtered.length && (
-                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-[10px]">Loading more...</td></tr>
+                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-xs">Loading more...</td></tr>
               )}
             </tbody>
           </table>

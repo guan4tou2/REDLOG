@@ -11,13 +11,13 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 
 ## Download
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.11.7**:
+Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.14.3**:
 
 | Platform | File |
 |----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.11.7-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.7/RedLog-0.11.7-arm64.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.11.7.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.7/RedLog.Setup.0.11.7.exe) |
-| Windows (portable) | [`RedLog.0.11.7.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.11.7/RedLog.0.11.7.exe) |
+| macOS (Apple Silicon) | [`RedLog-0.14.3-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.14.3/RedLog-0.14.3-arm64.dmg) |
+| Windows (installer) | [`RedLog.Setup.0.14.3.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.14.3/RedLog.Setup.0.14.3.exe) |
+| Windows (portable) | [`RedLog.0.14.3.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.14.3/RedLog.0.14.3.exe) |
 
 macOS builds are **Apple Silicon only** as of v0.9.4 — Intel Macs should build from source (`npm install && npm run build && npx electron-builder --mac`).
 
@@ -41,8 +41,8 @@ notice and choose **Open Anyway**.
 
 <table>
 <tr>
-<td width="50%"><a href="docs/screenshots/dashboard.jpg"><img src="docs/screenshots/dashboard.jpg" alt="Dashboard" /></a><br/><b>Dashboard</b> — capture health, safe-IP status, session counters, engagement metadata, keyboard shortcuts</td>
-<td width="50%"><a href="docs/screenshots/timeline.jpg"><img src="docs/screenshots/timeline.jpg" alt="Timeline" /></a><br/><b>Attack Timeline</b> — swim-lane view across Shell / Agent / HTTP / DNS / Pivot / Screenshots / Loot / Marks / System with cluster popups, per-command replay, and full-session `.cast` replay</td>
+<td width="50%"><a href="docs/screenshots/dashboard.jpg"><img src="docs/screenshots/dashboard.jpg" alt="Dashboard" /></a><br/><b>Dashboard</b> — capture health as an exception report, external / internal IP with the live pivot topology, session counters, engagement metadata</td>
+<td width="50%"><a href="docs/screenshots/timeline.jpg"><img src="docs/screenshots/timeline.jpg" alt="Timeline" /></a><br/><b>Attack Timeline</b> — 18 lanes banded into commands / traffic / artifacts / signals, density minimap, cluster popups, per-command and full-session <code>.cast</code> replay</td>
 </tr>
 </table>
 
@@ -112,7 +112,7 @@ npx electron-builder --mac    # or --win / --linux
 
 ### Timeline & UI
 
-- **Swim-lane Timeline** — 18 lanes: shell, agent, http_navigation, scanner, browser, dns, pivot, screenshot, clipboard, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, process, system. Empty lanes auto-collapse — only what this engagement touched
+- **Swim-lane Timeline** — 18 lanes (shell, agent, http_navigation, scanner, browser, dns, pivot, screenshot, clipboard, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, process, system) banded into four collapsible groups: commands / traffic / artifacts / signals. Empty lanes auto-collapse — only what this engagement touched
 - **Housekeeping filter** — RedLog's own lifecycle (api_started, session_start, terminal-pane open/close, the "silent" hook auto-source) stays in the DB for the record but is hidden from the timeline
 - **Command pair collapse** — a `shell.command_start` disappears once its matching `command_end` lands (same pid+cmd); still-running commands keep showing
 - **Cursor-anchored zoom** — trackpad pinch and wheel zoom stay locked to what's under the cursor
@@ -269,6 +269,8 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 
 ### More reading
 
+- [操作者手冊 (User guide, zh-TW)](docs/USER-GUIDE.md) — first engagement in ten minutes: what to wire up, what each screen answers, how to export
+- [Docs index](docs/README.md) — every page, grouped
 - [Agent integration](docs/agent-integration.md) — full REST + MCP + hook reference
 - [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
 - [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
@@ -294,13 +296,13 @@ Electron Main Process
         ├── PivotDetector      auto-detects tunnels from shell (ssh -D/-L/-R, chisel, ligolo, …)
         ├── TechniqueTagger    auto-detects cleanup (T1070) + file-transfer (T1105/T1041)
         ├── EvidenceChain      SHA-256 chain + OpenTimestamps anchor (hourly + on-demand)
-        └── APIServer          localhost HTTP + MCP (18 tools) + REST
+        └── APIServer          localhost HTTP: REST + MCP (streamable HTTP) for agents
 
 Renderer (React 18 + Tailwind CSS 3)
   ├── ProjectPicker         create (with advanced scope setup) / open / delete
   ├── Sidebar               navigation with live badges (loot, violations)
   ├── Dashboard             stats + engagement info + keyboard shortcuts
-  ├── Timeline              custom swim-lane timeline (18 lanes, dynamic height)
+  ├── Timeline              custom swim-lane timeline (18 lanes in 4 bands, dynamic height)
   ├── ScreenshotsView       thumbnail grid with lightbox
   ├── TargetView            auto-cataloged targets with evidence drilldown
   ├── ScopeStatus           violation log
@@ -317,8 +319,6 @@ Hooks
   ├── claude-code-hook.sh   Claude Code PostToolUse hook
   ├── shell-preexec-hook.sh zsh/bash preexec integration
   └── codex-wrapper.sh      Shell wrapper for Codex/GPT
-
-MCP Server
 ```
 
 ## Project Structure
@@ -361,7 +361,6 @@ hooks/
   claude-code-hook.sh        Claude Code PostToolUse → RedLog
   shell-preexec-hook.sh      zsh/bash preexec → RedLog
   codex-wrapper.sh           shell wrapper for any agent
-mcp/
 cli/
   redlog-cli.js              CLI tool for external integration
 shell/

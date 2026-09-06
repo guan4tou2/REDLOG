@@ -21,13 +21,13 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
     // downscaled into both — which is where a thin ring stops being a ring.
     // macOS ignores this field entirely; Linux wants the PNG.
     icon: join(__dirname, '../../resources', isWin ? 'icon.ico' : 'icon-256.png'),
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#121214',
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     ...(isMac
       ? {}
       : {
           titleBarOverlay: {
-            color: '#0a0a0a',
+            color: '#121214',
             symbolColor: '#a1a1aa',
             height: 40
           }

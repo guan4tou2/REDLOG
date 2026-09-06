@@ -107,7 +107,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                     <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
                       {formatTime(e.timestamp, { seconds: true })}
                     </span>
-                    <span className="text-redlog-text-dim truncate" title={eventTitle(e)}>{eventTitle(e)}</span>
+                    <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
                   </li>
                 ))}
               </ul>

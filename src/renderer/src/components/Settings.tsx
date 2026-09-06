@@ -556,10 +556,19 @@ export default function Settings(): JSX.Element {
 
         {(tab === 'hooks' || tab === 'captureControl') && (
           <>
-            <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
-            {isWindows && <WslPanel t={t} />}
-            <AgentsPanel t={t} config={config} setConfig={setConfig} />
-                        {tab === 'captureControl' && <FieldGroup title={t('settings.clipboardGroup')}>
+            {/* The hook list belongs to the Hooks page only. It used to head
+                the Capture-control page as well, so switching between the two
+                left the top of the screen identical and the operator with no
+                sign that the click had done anything — the groups that differ
+                were below the fold. */}
+            {tab === 'hooks' && (
+              <>
+                <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
+                {isWindows && <WslPanel t={t} />}
+                <AgentsPanel t={t} config={config} setConfig={setConfig} />
+              </>
+            )}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.clipboardGroup')}>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -800,6 +809,17 @@ function Field({ label, value, onChange, type = 'text' }: {
   )
 }
 
+// Built-in hooks describe themselves in English in hooks-manager (main
+// process, no locale). The interface is Chinese, so each built-in id has a
+// translated line here; a plugin-contributed hook keeps its author's text,
+// because inventing a translation for a string we do not own would be worse
+// than showing it as written.
+function hookDescription(hook: HookInfo, t: (key: string) => string): string {
+  const key = `settings.hookDesc.${hook.id}`
+  const localized = t(key)
+  return localized === key ? hook.description : localized
+}
+
 function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
   hooks: HookInfo[]
   setHooks: (h: HookInfo[] | ((prev: HookInfo[]) => HookInfo[])) => void
@@ -905,16 +925,21 @@ function HooksPanel({ hooks, setHooks, hookLoading, setHookLoading, t }: {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-redlog-text-dim mt-0.5">{hook.description}</p>
+                    <p className="text-xs text-redlog-text-dim mt-0.5">{hookDescription(hook, t)}</p>
                   </div>
                   {hook.available && hook.installMethod !== 'manual' && (
+                    // Enabling a hook is a secondary verb, not the one thing
+                    // the page exists for, and there are several of them in a
+                    // row — so no primary fill (§4: one per screen), and never
+                    // the danger fill it used to wear: danger red reports a
+                    // state, it does not invite a click.
                     <button
                       disabled={hookLoading === hook.id}
                       onClick={() => handleToggle(hook)}
-                      className={`px-3 py-1 text-xs rounded ml-3 transition-colors ${
+                      className={`px-3 py-1 text-xs rounded ml-3 shrink-0 transition-colors ${
                         hook.installed
                           ? 'bg-redlog-elevated text-redlog-text-dim hover:bg-red-900/30 hover:text-red-400'
-                          : 'bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover'
+                          : 'bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover'
                       } ${hookLoading === hook.id ? 'opacity-50' : ''}`}
                     >
                       {hookLoading === hook.id ? '...' : hook.installed ? t('settings.hookDisable') : t('settings.hookEnable')}

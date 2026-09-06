@@ -19,6 +19,7 @@ interface NavItem {
   icon: LucideIcon
   badge?: number
   badgeColor?: string
+  badgeLabel?: string
 }
 
 // Lucide, 1.5px stroke, 16px (UIUX-STANDARD §4). These used to be the Unicode
@@ -53,9 +54,15 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
   // use. Only danger fills, and a count is not danger — two solid blocks on
   // one sidebar is exactly the competition "one solid red per screen" exists
   // to prevent.
-  const badge = (count: number, tone: string): JSX.Element | null =>
+  // `label` names what the count counts, so a screen reader (and the tooltip)
+  // says "1 violation" rather than a bare digit that could be a shortcut.
+  const badge = (count: number, tone: string, label: string): JSX.Element | null =>
     count > 0 ? (
-      <span className={`min-w-[18px] h-[18px] rounded-full ${tone} text-xs font-semibold tabular-nums flex items-center justify-center px-1`}>
+      <span
+        className={`min-w-[18px] h-[18px] rounded-full ${tone} text-xs font-semibold tabular-nums flex items-center justify-center px-1`}
+        title={label}
+        aria-label={label}
+      >
         {count > 99 ? '99+' : count}
       </span>
     ) : null
@@ -67,8 +74,8 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
     transcript: { id: 'transcript', label: t('sidebar.transcript'), icon: AlignLeft },
     screenshots: { id: 'screenshots', label: t('sidebar.screens'), icon: Image },
     targets: { id: 'targets', label: t('sidebar.targets'), icon: Crosshair },
-    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger' },
-    loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400' },
+    scope: { id: 'scope', label: t('sidebar.scope'), icon: Ban, badge: scopeViolations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel: t('sidebar.violationsBadge', { count: scopeViolations }) },
+    loot: { id: 'loot', label: t('sidebar.loot'), icon: Gem, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', { count: lootCount }) },
     bookmarks: { id: 'bookmarks', label: t('sidebar.bookmarks'), icon: Bookmark },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
     http_history: { id: 'http_history', label: t('sidebar.httpHistory'), icon: ArrowLeftRight }
@@ -120,20 +127,22 @@ export default function Sidebar({ active, onNavigate, visibleViews }: SidebarPro
                 {item.label}
               </span>
               <span className="ml-auto flex items-center gap-2 shrink-0">
-                {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-elevated text-redlog-text-dim')}
+                {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-elevated text-redlog-text-dim', item.badgeLabel ?? String(item.badge))}
               {/* §5.3: the number is printed, not hidden in a tooltip. It can
                   be, now that the order is fixed — while rows could be dragged
                   the number was a property of the current arrangement rather
                   than of the view, so showing it would have taught the wrong
-                  thing. */}
-                {chord !== null && (
-                  <span
-                    className={`text-xs font-mono tabular-nums ${isActive ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
-                    aria-hidden
-                  >
-                    {chord}
-                  </span>
-                )}
+                  thing.
+
+                  The column is reserved even on a row with no chord. Without
+                  the placeholder, a count badge on such a row slid into the
+                  number column, and a red "1" beside 範圍 read as ⌘1. */}
+                <span
+                  className={`inline-block w-3 text-right text-xs font-mono tabular-nums ${isActive ? 'text-redlog-accent/70' : 'text-redlog-text-faint'}`}
+                  aria-hidden
+                >
+                  {chord ?? ''}
+                </span>
               </span>
             </button>
           )

@@ -4,6 +4,7 @@ import os from 'os'
 import { getDB } from './index'
 import { monotonicNs, getNtpOffsetMs } from '../clock'
 import { signEvent } from '../signing'
+import { storeRaw, type RawRef } from '../raw-store'
 
 export interface RedLogEvent {
   id: string
@@ -41,6 +42,54 @@ export interface RedLogEvent {
  *  and drifts when a third tier lands. */
 export type EventTier = 'chained' | 'logged'
 export type EventTierFilter = EventTier | 'all'
+
+/** The envelope schema version new rows are written under (docs/
+ *  DESIGN-plugin-kernel.md §3). Bumped when the envelope's shape changes;
+ *  a row records the version it was written under and is never backfilled. */
+export const ENVELOPE_SCHEMA_VERSION = 1
+
+/** Envelope metadata a producer (through `ingest`) may attach to an event:
+ *  the verbatim bytes it sent, which mapper normalised them, the producer id,
+ *  and the producer's own timestamp. `raw` is stored to the raw sidecar and
+ *  its sha256 is folded into the hashed `data`, so the chain attests the bytes
+ *  without carrying them. All fields optional — a producer that already speaks
+ *  the envelope shape (the identity mapper) can omit `raw`. */
+export interface EnvelopeInput {
+  raw?: Buffer | string
+  rawEncoding?: 'json' | 'bytes'
+  mapper?: { id: string; version: string }
+  source?: string
+  tsSource?: number | null
+  schemaVersion?: number
+}
+
+interface StoredEnvelope {
+  rawRef: RawRef | null
+  mapper: { id: string; version: string } | null
+  source: string | null
+  tsSource: number | null
+  schemaVersion: number
+}
+
+/** Store the raw bytes (if any) and fold their digest into `data` so the hash
+ *  covers them. Returns the column values for the envelope. Pure except for
+ *  the raw-store write. */
+function prepareEnvelope(data: Record<string, unknown>, env: EnvelopeInput | undefined): StoredEnvelope {
+  if (!env) return { rawRef: null, mapper: null, source: null, tsSource: null, schemaVersion: ENVELOPE_SCHEMA_VERSION }
+  let rawRef: RawRef | null = null
+  if (env.raw !== undefined) {
+    rawRef = storeRaw(env.raw, { encoding: env.rawEncoding })
+    // Fold into data BEFORE hashing so the chain closes over the raw digest.
+    data._raw = rawRef
+  }
+  return {
+    rawRef,
+    mapper: env.mapper ?? null,
+    source: env.source ?? null,
+    tsSource: env.tsSource ?? null,
+    schemaVersion: env.schemaVersion ?? ENVELOPE_SCHEMA_VERSION
+  }
+}
 
 // ─── v0.13.0 two-tier classifier ────────────────────────────────────────────
 //
@@ -360,7 +409,7 @@ export const PAUSE_EXEMPT_AGENT_TYPES: ReadonlySet<string> = new Set(['system', 
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
 ): RedLogEvent | null {
   // Pause enforcement stays at the front door for BOTH tiers. See the
   // block comment below (previously the head of this function) for why
@@ -384,7 +433,7 @@ export function insertEvent(
 function insertChainedEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
 ): RedLogEvent | null {
   // v0.9.5: pause means "do not record", not "do not display". Before this the
   // gate lived only on eventBus.publish(), so a paused RedLog still wrote every
@@ -474,6 +523,10 @@ function insertChainedEvent(
   const hostname = os.hostname()
   const paddedMono = padMonoNs(monotonicNs())
 
+  // Envelope: store raw bytes (if any) and fold their digest into `data`
+  // before the anomaly stamp and the hash, so the chain covers the raw sha256.
+  const env = prepareEnvelope(data, opts?.envelope)
+
   // v0.6.88 P2-A: tag the event before hashing so the anomaly is part of
   // the chain (a later attacker can't strip it without a hash mismatch).
   const anomaly = detectClockAnomaly(now, paddedMono, hostname)
@@ -515,13 +568,16 @@ function insertChainedEvent(
 
   try {
     db.prepare(`
-      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.id, event.timestamp, event.engagementId, event.sessionId,
       event.operatorId, event.agentType, event.hostname, event.sourceIP,
       event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
-      event.monotonicNs, event.ntpOffsetMs, event.signature
+      event.monotonicNs, event.ntpOffsetMs, event.signature,
+      env.rawRef ? JSON.stringify(env.rawRef) : null,
+      env.mapper ? JSON.stringify(env.mapper) : null,
+      env.schemaVersion, env.tsSource, env.source
     )
   } catch (e) {
     // v0.6.95 P0-4b: any INSERT failure invalidates the cached prev-hash —
@@ -569,7 +625,7 @@ function insertChainedEvent(
 function insertLoggedEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string }
+  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
 ): RedLogEvent | null {
   if (!opts?.operatorId) {
     throw new Error(`insertEvent (logged): operatorId is required (agent_type=${agentType}). ` +
@@ -577,6 +633,7 @@ function insertLoggedEvent(
   }
   const db = getDB()
   const now = Date.now()
+  const env = prepareEnvelope(data, opts.envelope)
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: now,
@@ -601,12 +658,15 @@ function insertLoggedEvent(
     db.prepare(`
       INSERT INTO events_logged
         (id, timestamp, engagement_id, session_id, operator_id, agent_type,
-         hostname, source_ip, target_id, data, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         hostname, source_ip, target_id, data, created_at, raw_ref, mapper, schema_version, ts_source, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.id, event.timestamp, event.engagementId, event.sessionId,
       event.operatorId, event.agentType, event.hostname, event.sourceIP,
-      event.targetId, JSON.stringify(event.data), event.createdAt
+      event.targetId, JSON.stringify(event.data), event.createdAt,
+      env.rawRef ? JSON.stringify(env.rawRef) : null,
+      env.mapper ? JSON.stringify(env.mapper) : null,
+      env.schemaVersion, env.tsSource, env.source
     )
   } catch (e) {
     // Logged-tier writes should fail loud — there's no chain cache to

@@ -49,7 +49,21 @@ async function fetchLatest(): Promise<{ version: string; url: string } | null> {
  * builds; a `manual` check (from the Settings button) also reports "up to date"
  * and connection failures.
  */
+// OPSEC air-gap. When set, the GitHub update check is suppressed — a manual
+// check reports "disabled in air-gap", the silent startup check no-ops.
+let airgap = false
+export function setUpdaterAirgap(v: boolean): void { airgap = v }
+
 export async function checkForUpdates(opts: { manual?: boolean } = {}): Promise<void> {
+  if (airgap) {
+    if (opts.manual) {
+      try {
+        const { dialog } = await import('electron')
+        await dialog.showMessageBox({ type: 'info', message: 'Update check is disabled in air-gap mode.', detail: 'Turn off Settings ▸ Network ▸ Air-gap to check for updates.' })
+      } catch { /* no window */ }
+    }
+    return
+  }
   const manual = opts.manual ?? false
   if (!app.isPackaged && !manual) return
 

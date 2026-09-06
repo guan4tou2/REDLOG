@@ -191,7 +191,12 @@ def main() -> int:
     w.put(RENDERER_ASSETS / 'mark-small.svg', dot)
 
     for size in APP_PNG_SIZES:
-        w.put(RESOURCES / f'icon-{size}.png', render(master_for(size), size))
+        png_bytes = render(master_for(size), size)
+        w.put(RESOURCES / f'icon-{size}.png', png_bytes)
+        # electron-builder's Linux icon set wants a directory of <N>x<N>.png,
+        # so each panel/launcher picks the right size instead of downscaling a
+        # single 256 into mush. Same bytes, the name Linux expects.
+        w.put(RESOURCES / 'icons' / f'{size}x{size}.png', png_bytes)
 
     w.put(RESOURCES / 'icon.ico',
           build_ico([(s, render(master_for(s), s)) for s in ICO_SIZES]))

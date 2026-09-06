@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
+import en from '../i18n/en.json'
 import { toast } from './Toast'
 import { useContributeExport } from '../lib/exportScope'
 import { LoadingSpinner } from './Feedback'
@@ -12,6 +13,7 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
+import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
   AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
@@ -140,16 +142,38 @@ function firstStringArg(input: Record<string, unknown>, cap: number): string {
 
 /** Exported for the first-run strip, which is a preview of this timeline and
  *  must name rows the same way it does. */
-export function eventTitle(event: RedLogEvent): string {
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+// English fallback for the `eventTitle.*` keys when no translator is passed.
+// The strings are the en.json entries; keeping the lookup here rather than a
+// second copy means a caller without `t` (search indexing, tests) still gets
+// the same English the interface shows in the en locale.
+const enTitles = en as Record<string, string>
+const englishTitle: Translate = (key, vars) => {
+  const tpl = enTitles[key] ?? key
+  return vars ? tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] ?? `{{${k}}}`)) : tpl
+}
+
+/**
+ * One line per event, for the lane label, the event list and the first-run
+ * strip. Commands, URLs, hostnames and hashes are shown as captured; the
+ * static words around them — "terminal opened", "Screenshot", "Recording
+ * paused" — go through `t` so a Chinese interface does not read half in
+ * English. Pass no `t` to get English regardless of locale, which is what
+ * the search index does so a query matches the same text in every locale.
+ */
+export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): string {
   const d = event.data
   switch (event.agentType) {
     case 'shell':
       if (d.subtype === 'command_start') return `$ ${(d.command as string).slice(0, 100)}`
       if (d.subtype === 'command_end') return `$ ${(d.command as string).slice(0, 80)} → exit ${d.exit_code}`
       if (d.subtype === 'command' && d.command) return `$ ${(d.command as string).slice(0, 100)}`
-      if (d.subtype === 'session_start') return `▸ terminal opened`
-      if (d.subtype === 'session_end') return `▪ terminal closed${d.exitCode != null ? ` (exit ${d.exitCode})` : ''}`
-      return 'Shell event'
+      if (d.subtype === 'session_start') return t('eventTitle.terminalOpened')
+      if (d.subtype === 'session_end') {
+        return d.exitCode != null ? t('eventTitle.terminalClosedExit', { code: String(d.exitCode) }) : t('eventTitle.terminalClosed')
+      }
+      return t('eventTitle.shellEvent')
     case 'dns': {
       // v0.6.92 W-project: mitmproxy DNS mode fills query_name/query_type +
       // (on response) response_code + answers[]. Fall back to older
@@ -200,7 +224,7 @@ export function eventTitle(event: RedLogEvent): string {
           return `[${d.duration_ms ?? '?'} ms] ${method} ${url} → ${d.status ?? '?'}`.trim()
         case 'http_request_dropped': {
           const age = d.age_sec != null ? `${d.age_sec}s` : '?'
-          return `[dropped after ${age}] ${method} ${url}`.trim()
+          return `[${t('eventTitle.droppedAfter', { age })}] ${method} ${url}`.trim()
         }
         case 'http_error':
           return `[err] ${method} ${url}: ${d.error || 'unknown'}`.trim()
@@ -214,7 +238,7 @@ export function eventTitle(event: RedLogEvent): string {
           return `[TCP ${tcpDir}] ${d.host || ''}:${d.port || '?'} (${formatBytes(d.size as number ?? 0)})`.trim()
         }
         case 'cookie_change':
-          return `[cookie] ${d.domain || '?'} ${d.cookie_name || '?'} rotated`.trim()
+          return t('eventTitle.cookieRotated', { domain: String(d.domain || '?'), name: String(d.cookie_name || '?') }).trim()
         case 'connection': {
           // Connection-level capture (§2.1): who connected where, no payload.
           const proto = (d.proto as string || 'tcp').toUpperCase()
@@ -223,16 +247,16 @@ export function eventTitle(event: RedLogEvent): string {
         case 'connection_end': {
           const proto = (d.proto as string || 'tcp').toUpperCase()
           const dur = d.duration_sec != null ? ` (${d.duration_sec}s)` : ''
-          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'} closed${dur}`.trim()
+          return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'} ${t('eventTitle.connectionClosed')}${dur}`.trim()
         }
         default:
           return `[${d.subtype || 'req'}] ${method} ${url}`.trim()
       }
     }
     case 'screenshot':
-      return `Screenshot (${d.trigger})`
+      return t('eventTitle.screenshot', { trigger: String(d.trigger ?? '') })
     case 'clipboard':
-      return `Clipboard: ${(d.content as string)?.slice(0, 60) || ''}...`
+      return t('eventTitle.clipboard', { preview: (d.content as string)?.slice(0, 60) || '' })
     case 'file_transfer': {
       // v0.6.92 W-project: file-watcher emits subtype file_created/modified/
       // deleted + `path` + `size`. Shell hooks + external agents keep the
@@ -251,11 +275,11 @@ export function eventTitle(event: RedLogEvent): string {
       return `🔑 ${d.subtype || 'cred'}: ${detail}`.trim()
     }
     case 'c2_checkin':
-      return `C2 beacon ← ${d.dest_ip || d.dest_host || ''} ${d.bytes ? `(${d.bytes}B)` : ''}`.trim()
+      return t('eventTitle.c2Beacon', { host: String(d.dest_ip || d.dest_host || ''), bytes: d.bytes ? `(${d.bytes}B)` : '' }).trim()
     case 'pivot':
-      return `Pivot [${d.tool}] ${d.subtype || ''}${d.via ? ` → ${d.via}` : ''}${d.route ? ` (${d.route})` : ''}`.trim()
+      return t('eventTitle.pivot', { tool: String(d.tool ?? ''), rest: `${d.subtype || ''}${d.via ? ` → ${d.via}` : ''}${d.route ? ` (${d.route})` : ''}` }).trim()
     case 'cleanup':
-      return `⚠ Cleanup [${d.tool}] ${d.subtype || ''}${d.target ? ` → ${d.target}` : ''}`.trim()
+      return t('eventTitle.cleanup', { tool: String(d.tool ?? ''), rest: `${d.subtype || ''}${d.target ? ` → ${d.target}` : ''}` }).trim()
     case 'marker': {
       // An amendment carries `title` and `severity` under the SAME names as a
       // marker, so this branch has to ask what kind of row it is before reading
@@ -270,7 +294,9 @@ export function eventTitle(event: RedLogEvent): string {
     }
     case 'loot': {
       const m = (d.matches as Array<{ type: string; confidence: string }>)?.[0]
-      return m ? `Loot: ${m.type.replace(/_/g, ' ')} (${m.confidence})` : `Loot: ${d.count ?? 0} detected`
+      return m
+        ? t('eventTitle.lootMatch', { type: m.type.replace(/_/g, ' '), confidence: m.confidence })
+        : t('eventTitle.lootCount', { count: Number(d.count ?? 0) })
     }
     case 'agent': {
       // v0.9.2 U1: operator-friendly one-line for AI-agent turns. Old default
@@ -288,8 +314,8 @@ export function eventTitle(event: RedLogEvent): string {
       ).replace(/\s+/g, ' ').trim()
       const cap = 100
       const body = raw.length > cap ? raw.slice(0, cap) + '…' : raw
-      if (sub === 'user_message') return body ? `❯ user: ${body}` : `❯ user`
-      if (sub === 'assistant_message') return body ? `◂ asst: ${body}` : `◂ asst`
+      if (sub === 'user_message') return body ? `${t('eventTitle.agentUser')}: ${body}` : t('eventTitle.agentUser')
+      if (sub === 'assistant_message') return body ? `${t('eventTitle.agentAssistant')}: ${body}` : t('eventTitle.agentAssistant')
       if (sub === 'tool_call') {
         const name = String(d.tool_name ?? 'tool')
         // For tool_call, tool_input isn't in `preview` — surface the tool
@@ -298,35 +324,37 @@ export function eventTitle(event: RedLogEvent): string {
         const hint = input ? firstStringArg(input, 60) : ''
         return hint ? `⚙ ${name}: ${hint}` : `⚙ ${name}`
       }
-      if (sub === 'tool_result') return body ? `↩ result: ${body}` : `↩ result`
-      if (sub === 'thinking') return body ? `💭 ${body}` : `💭 thinking`
-      if (sub === 'compact_summary') return `⇉ context compacted`
-      if (sub === 'tool_interrupted') return body ? `⏹ interrupted: ${body}` : `⏹ tool interrupted`
-      if (sub === 'away_summary') return body ? `⌛ away: ${body}` : `⌛ away summary`
-      if (sub === 'transcript_snapshot') return `📸 snapshot (${d.turns_emitted ?? '?'} turns)`
-      if (sub === 'session_end') return `▪ session ended (${d.turns_emitted ?? '?'} turns)`
-      if (sub === 'transcript_compacted') return `⇉ transcript reset`
-      if (sub === 'transcript_schema_drift') return `⚠ schema drift: ${d.unknown_type ?? '?'}`
-      if (sub === 'transcript_parent_missing') return `⚠ parent-missing buffer full`
-      if (sub === 'transcript_tool_gap') return `⚠ tool gap: ${d.tool_calls_seen ?? '?'} seen, ${d.tool_calls_emitted ?? 0} emitted`
+      if (sub === 'tool_result') return body ? `${t('eventTitle.agentResult')}: ${body}` : t('eventTitle.agentResult')
+      if (sub === 'thinking') return body ? `💭 ${body}` : t('eventTitle.agentThinking')
+      if (sub === 'compact_summary') return t('eventTitle.agentCompacted')
+      if (sub === 'tool_interrupted') return body ? `${t('eventTitle.agentInterrupted')}: ${body}` : t('eventTitle.agentInterrupted')
+      if (sub === 'away_summary') return body ? `${t('eventTitle.agentAway')}: ${body}` : t('eventTitle.agentAway')
+      if (sub === 'transcript_snapshot') return t('eventTitle.agentSnapshot', { turns: String(d.turns_emitted ?? '?') })
+      if (sub === 'session_end') return t('eventTitle.agentSessionEnd', { turns: String(d.turns_emitted ?? '?') })
+      if (sub === 'transcript_compacted') return t('eventTitle.agentTranscriptReset')
+      if (sub === 'transcript_schema_drift') return t('eventTitle.agentSchemaDrift', { type: String(d.unknown_type ?? '?') })
+      if (sub === 'transcript_parent_missing') return t('eventTitle.agentParentMissing')
+      if (sub === 'transcript_tool_gap') return t('eventTitle.agentToolGap', { seen: String(d.tool_calls_seen ?? '?'), emitted: Number(d.tool_calls_emitted ?? 0) })
       return `agent: ${sub}`
     }
     case 'system':
-      if (d.subtype === 'scope_violation') return `⚠ Scope violation: ${d.target || d.command || ''}`
-      if (d.subtype === 'ip_transition') return `⇋ ${d.description || 'IP transition'}`
-      if (d.subtype === 'opsec_state_changed') return `⇋ OPSEC: ${d.description || 'state changed'}`
-      if (d.subtype === 'recording_paused') return `⏸ Recording paused`
-      if (d.subtype === 'recording_resumed') return `⏺ Recording resumed`
-      if (d.subtype === 'config_changed') return `⚙ ${d.description || 'Config changed'}`
+      if (d.subtype === 'scope_violation') return t('eventTitle.scopeViolation', { target: String(d.target || d.command || '') })
+      if (d.subtype === 'ip_transition') return `⇋ ${d.description || t('eventTitle.ipTransition')}`
+      if (d.subtype === 'opsec_state_changed') return t('eventTitle.opsecChanged', { description: String(d.description || t('eventTitle.opsecChangedDefault')) })
+      if (d.subtype === 'recording_paused') return t('eventTitle.recordingPaused')
+      if (d.subtype === 'recording_resumed') return t('eventTitle.recordingResumed')
+      if (d.subtype === 'config_changed') return `⚙ ${d.description || t('eventTitle.configChanged')}`
       // Both carry their own `description`, so this adds no new English to a
       // function that has no translator; the Inspector composes the localized
       // line where `t` is in scope.
       if (d.subtype === 'scope_recomputed') return `⟲ ${d.description || ''}`.trim()
       if (d.subtype === 'scope_cleared') return `✓ ${d.description || ''}`.trim()
-      if (d.subtype === 'browser_launched') return `▸ Browser (${d.proxy ? `proxy ${d.proxy}` : 'no proxy'})`
-      if (d.subtype === 'secret_revealed') return `👁 Secret revealed: ${(d.fields as string[])?.join(', ') || 'unknown fields'}`
-      if (d.subtype === 'connection_capture_started') return `⇄ Connection capture on — established connections only, no SYN scans`
-      if (d.subtype === 'connection_monitor_saturated') return `⇄ ${d.count ?? '?'} connections in one poll — recording the count, not each`
+      if (d.subtype === 'browser_launched') {
+        return t('eventTitle.browserLaunched', { proxy: d.proxy ? t('eventTitle.browserProxy', { proxy: String(d.proxy) }) : t('eventTitle.browserNoProxy') })
+      }
+      if (d.subtype === 'secret_revealed') return t('eventTitle.secretRevealed', { fields: (d.fields as string[])?.join(', ') || t('eventTitle.secretRevealedUnknown') })
+      if (d.subtype === 'connection_capture_started') return t('eventTitle.connectionCaptureOn')
+      if (d.subtype === 'connection_monitor_saturated') return t('eventTitle.connectionSaturated', { count: String(d.count ?? '?') })
       return `${event.agentType}: ${d.subtype || ''}`
     default:
       return `${event.agentType}: ${d.subtype || ''}`
@@ -1765,11 +1793,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       const original = eventsMapRef.current.get(String(d.markerId))
       const fields = AMENDABLE_FIELDS.filter((f) => d[f] !== undefined)
         .map((f) => t(`marker.field.${f}`)).join('、')
-      const of = original ? eventTitle(original) : String(d.markerId ?? '')
+      const of = original ? eventTitle(original, t) : String(d.markerId ?? '')
       return t('marker.amendmentRow', { title: of, fields })
     }
     const fold = foldById.get(e.id)
-    if (!fold) return eventTitle(e)
+    if (!fold) return eventTitle(e, t)
     return `${fold.effective.severity.toUpperCase()}: ${fold.effective.title}`
   }, [foldById, t])
 
@@ -1904,35 +1932,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // ceiling near 6 (nothing to gain); a dense burst raises it as far as that
   // burst needs. Virtualisation (v0.11.1) means a wider track costs no extra
   // DOM, which is what makes this affordable.
-  const maxZoom = useMemo(() => {
-    let tightest = Infinity
-    // v0.12.2: inline displayTs and short-circuit once we hit the ceiling.
-    // 99%+ of events are non-marker (their displayTs === timestamp); the
-    // function call was O(N) overhead across every lane's gap loop. Once
-    // tightest × neededTrackW would exceed MAX_TRACK_W we've already found
-    // the ceiling — no tighter gap can raise it.
-    const CEILING_GAP = timeSpan > 0 ? (timeSpan * CLUSTER_PX) / MAX_TRACK_W : 0
-    outer: for (const lane of LANES) {
-      const evs = laneEvents[lane]
-      for (let i = 1; i < evs.length; i++) {
-        const a = evs[i - 1]
-        const b = evs[i]
-        const at = (a.agentType === 'marker' && typeof a.data?.atTimestamp === 'number' && a.data.atTimestamp > 0)
-          ? a.data.atTimestamp as number : a.timestamp
-        const bt = (b.agentType === 'marker' && typeof b.data?.atTimestamp === 'number' && b.data.atTimestamp > 0)
-          ? b.data.atTimestamp as number : b.timestamp
-        const d = bt - at
-        if (d > 0 && d < tightest) {
-          tightest = d
-          if (CEILING_GAP > 0 && tightest <= CEILING_GAP) break outer
-        }
-      }
-    }
-    if (!Number.isFinite(tightest) || timeSpan <= 0) return 6
-    // Track width at which `tightest` maps to CLUSTER_PX.
-    const neededTrackW = (timeSpan / tightest) * CLUSTER_PX
-    return Math.max(6, Math.min(MAX_TRACK_W / MIN_BASE_TRACK_W, neededTrackW / MIN_BASE_TRACK_W))
-  }, [laneEvents, timeSpan])
+  const maxZoom = useMemo(() => computeMaxZoom({
+    // Per-lane ascending display timestamps — markers sort by their `atTimestamp`.
+    laneTimestamps: LANES.map((lane) => laneEvents[lane].map(displayTs)),
+    timeSpan,
+    clusterPx: CLUSTER_PX,
+    maxTrackW: MAX_TRACK_W,
+    minBaseTrackW: MIN_BASE_TRACK_W
+  }), [laneEvents, timeSpan])
   // The wheel handler is bound once and reads this through a ref rather than
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
@@ -1942,22 +1949,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     visibleRows.forEach((rowKey, li) => {
       const evs = rowEvents[rowKey]
       if (!evs || !evs.length) return
-      let bucket: RedLogEvent[] = []
-      let curBi = NaN
-      const flush = (): void => {
-        if (!bucket.length) return
+      for (const bucket of bucketByPixel(evs, (e) => toX(displayTs(e)), CLUSTER_PX)) {
         const x = bucket.reduce((a, e) => a + toX(displayTs(e)), 0) / bucket.length
         const colorLane = toLane(bucket[0].agentType, bucket[0].data?.subtype as string | undefined, pluginTypes)
         out.push({ key: `${rowKey}-${bucket[0].id}`, lane: colorLane, li, x, y: li * laneH + laneH / 2, events: bucket })
-        bucket = []
       }
-      for (const e of evs) {
-        const bi = Math.floor(toX(displayTs(e)) / CLUSTER_PX)
-        if (bucket.length && bi !== curBi) flush()
-        curBi = bi
-        bucket.push(e)
-      }
-      flush()
     })
     return out
   }, [visibleRows, rowEvents, toX, laneH, pluginTypes])
@@ -2840,10 +2836,13 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >×</button>
         </div>
       )}
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-redlog-border/80 shrink-0">
-        <span className="text-xs font-semibold text-redlog-text tracking-wide">{t('timeline.title')}</span>
-        <span className="text-xs text-redlog-text-faint font-mono tabular-nums">
+      {/* Header. `flex-wrap` so that on a narrow window the controls drop to
+          a second row instead of squeezing: without it the title broke into
+          three lines and the lane chips on the right were clipped at 1440px,
+          which is a common laptop width. Title and count never shrink. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2 border-b border-redlog-border/80 shrink-0">
+        <span className="text-xs font-semibold text-redlog-text tracking-wide shrink-0 whitespace-nowrap">{t('timeline.title')}</span>
+        <span className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0 whitespace-nowrap">
           {t('timeline.events', { count: events.length })}
         </span>
         {!allLoaded && (
@@ -2897,7 +2896,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           title={collapseAgentTurns
             ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
             : t('timeline.collapseAgent.hint')}
-          className={`ml-2 px-2 h-5 flex items-center gap-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
+          className={`ml-2 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
         >
           <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
           <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
@@ -2923,7 +2922,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               setCompressGaps((v) => !v)
             }}
             title={t('timeline.compressGaps.hint')}
-            className={`ml-1 px-2 h-5 flex items-center gap-1 text-xs rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
+            className={`ml-1 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
           >
             <span>⋯</span>
             <span className="font-mono">{t('timeline.compressGaps.label')}</span>
@@ -3263,7 +3262,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                   <span title={laneLabels[id]} className="text-redlog-text-dim truncate">{laneLabels[id]}</span>
                   <button
                     onClick={() => toggleBand(BAND_OF[id])}
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-redlog-text-faint hover:text-redlog-text text-[10px] shrink-0"
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-redlog-text-faint hover:text-redlog-text text-xs shrink-0"
                     title={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
                     aria-label={t('timeline.band.collapseHint', { band: t(`timeline.band.${BAND_OF[id]}`) })}
                   >▾</button>
@@ -4327,7 +4326,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isRequest && hasFullReqBody && !loadedReqBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(reqBodyRef, inlineReqBody, setLoadedReqBody, setLoadingReq)}
           disabled={loadingReq}
         >
@@ -4356,7 +4355,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isResponse && hasFullRespBody && !loadedRespBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(respBodyRef, inlineRespBody, setLoadedRespBody, setLoadingResp)}
           disabled={loadingResp}
         >
@@ -4376,7 +4375,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isWs && hasFullWsBody && !loadedWsBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(wsBodyRef, inlineWsBody, setLoadedWsBody, setLoadingWs)}
           disabled={loadingWs}
         >
@@ -4396,7 +4395,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
       )}
       {isTcp && hasFullTcpBody && !loadedTcpBody && (
         <button
-          className="text-[11px] text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
+          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
           onClick={() => loadFullBody(tcpBodyRef, inlineTcpBody, setLoadedTcpBody, setLoadingTcp)}
           disabled={loadingTcp}
         >
@@ -4486,7 +4485,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
         />
       )}
       {pairedLoading && (
-        <p className="text-[11px] text-zinc-500 font-mono px-2">loading paired event...</p>
+        <p className="text-xs text-zinc-500 font-mono px-2">loading paired event...</p>
       )}
       {pairedData && (() => {
         const pSub = String(pairedData.subtype ?? '')
@@ -4509,7 +4508,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           : [['status', pairedData.status], ['content_type', pairedData.content_type], ['duration_ms', pairedData.duration_ms]]
         return (
           <div className="mt-2 pt-2 border-t border-zinc-700/40 space-y-1.5">
-            <span className="text-[11px] font-mono font-semibold text-zinc-400 uppercase tracking-wider px-1">{pLabel}</span>
+            <span className="text-xs font-mono font-semibold text-zinc-400 uppercase tracking-wider px-1">{pLabel}</span>
             <MetadataGrid entries={pMeta} />
             {pHeadersText && (
               <CollapsibleStream label={t('timeline.detail.httpHeaders')} content={pHeadersText} accent="zinc" />

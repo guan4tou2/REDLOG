@@ -51,6 +51,11 @@ export interface ManifestParse {
 }
 
 /** Parse + validate a raw plugin.json object. Rejects anything malformed or unsafe. */
+const PLUGIN_KINDS = new Set(['producer', 'mapper', 'enrichment', 'exporter', 'pack'])
+function isPluginKind(v: unknown): v is NonNullable<PluginManifest['kind']> {
+  return typeof v === 'string' && PLUGIN_KINDS.has(v)
+}
+
 export function validateManifest(raw: unknown, dir: string): ManifestParse {
   if (typeof raw !== 'object' || raw === null) return { ok: false, error: 'manifest is not an object' }
   const m = raw as Record<string, unknown>
@@ -69,6 +74,15 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   }
 
   const contributes = m.contributes as PluginContributes
+  if (contributes.mappers !== undefined) {
+    if (!Array.isArray(contributes.mappers)) return { ok: false, error: 'contributes.mappers must be an array' }
+    for (const mp of contributes.mappers) {
+      if (typeof mp?.id !== 'string' || typeof mp.version !== 'string' || typeof mp.agentType !== 'string'
+        || typeof mp.fields !== 'object' || mp.fields === null) {
+        return { ok: false, error: 'mapper needs id, version, agentType and fields' }
+      }
+    }
+  }
 
   // Capabilities must be from the known set.
   let capabilities: Capability[] | undefined
@@ -100,6 +114,10 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
     author: typeof m.author === 'string' ? m.author : undefined,
     homepage: typeof m.homepage === 'string' ? m.homepage : undefined,
     redlogApi: m.redlogApi,
+    schemaVersion: typeof m.schemaVersion === 'number' ? m.schemaVersion : undefined,
+    kind: isPluginKind(m.kind) ? m.kind : undefined,
+    emits: Array.isArray(m.emits) ? m.emits.filter((e): e is string => typeof e === 'string') : undefined,
+    health: typeof m.health === 'object' && m.health !== null ? (m.health as PluginManifest['health']) : undefined,
     contributes,
     capabilities,
     signature: typeof m.signature === 'string' ? m.signature : undefined,

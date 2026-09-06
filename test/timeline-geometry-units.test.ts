@@ -10,6 +10,12 @@ import path from 'path'
 const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
 )
+// The density-zoom + clustering geometry was extracted to a pure, unit-tested
+// module (see test/timeline-geometry.test.ts). These guards now follow the
+// formula into the lib and assert Timeline delegates to it.
+const GEO = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineGeometry.ts'), 'utf-8'
+)
 
 describe('track width (V8)', () => {
   it('treats 2000px as a floor, not a fixed width', () => {
@@ -42,8 +48,10 @@ describe('zoom ceiling (V13)', () => {
     // no amount of zooming could separate it: the popup lists 50 and the rest
     // were unreachable through the UI entirely.
     expect(SRC).toMatch(/const maxZoom = useMemo/)
-    expect(SRC, 'the ceiling should come from the tightest gap between events')
-      .toMatch(/neededTrackW = \(timeSpan \/ tightest\) \* CLUSTER_PX/)
+    expect(SRC, 'Timeline delegates the ceiling to the extracted lib')
+      .toMatch(/computeMaxZoom\(/)
+    expect(GEO, 'the ceiling should come from the tightest gap between events')
+      .toMatch(/neededTrackW = \(timeSpan \/ tightest\) \* clusterPx/)
   })
 
   it('leaves no zoom call site pinned to the old constant', () => {
@@ -54,7 +62,7 @@ describe('zoom ceiling (V13)', () => {
   })
 
   it('keeps 6 as the floor, so a sparse project is unchanged', () => {
-    expect(SRC).toMatch(/return Math\.max\(6, Math\.min\(MAX_TRACK_W \/ MIN_BASE_TRACK_W/)
+    expect(GEO).toMatch(/return Math\.max\(6, Math\.min\(maxTrackW \/ minBaseTrackW/)
   })
 })
 

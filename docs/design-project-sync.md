@@ -267,3 +267,18 @@ append-only trigger 本來就不允許，這正是把修訂做成新事件而非
 | 1b Project Picker | `src/renderer/src/components/ProjectPicker.tsx` |
 | 1b / 1c HUD Overlay | `src/renderer/src/OverlayApp.tsx`, `src/renderer/src/lib/hud.ts` |
 | 1c 全部改良畫面 | 以上各檔為基準，套用 1a 規範 |
+
+### 2026-09-06 · repo→設計回寫(第二次雙向)
+
+repo 端把 code 與 `UIUX-STANDARD.md` 逐節對照後,經 claude-in-chrome 在設計專案「UI/UX統一標準建立」
+的對話送出三點對帳,設計側全部反映並寫回其 `UIUX-STANDARD.md` 與設計稿 `.dc.html`:
+
+- **§4 單一字標**:repo 已實作(F2,`Wordmark` 元件),設計稿 §16／§22 狀態註記從「未實作」翻成已實作。
+- **§2 13px 下限**:repo 已把 HttpHistoryPanel(12 處)與 Timeline(6 處)從 10–11px 拉到 13px。
+- **§23 分歧裁定**:設計側新增 §23,對五處既存分歧各給裁定。**一項反向指令回到 repo**——搜尋頁不作為
+  最終狀態,列為第三期末項,待 ⌘K 涵蓋 host 聚合後刪除(見下方 backlog)。
+
+repo 這份鏡像同步加了 §23。**方向仍是各取所長**:規範本體以設計專案為著作處,repo 加實作狀態註記。
+
+**新增 backlog(設計指令)**:⌘K 加上 host 聚合後,移除獨立的搜尋頁(§10 / §23 的裁定)。
+
