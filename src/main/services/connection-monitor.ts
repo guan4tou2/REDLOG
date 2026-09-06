@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import { eventBus } from '../../core/event-bus'
 import { insertEvent } from '../../core/db/events'
+import { notePortPid, socketCausesFor } from '../../core/socket-attribution'
 import { noteDbError } from '../../core/capture-health'
 import {
   parseSs, parseNetstatBsd, parseNetstatWin,
@@ -172,7 +173,11 @@ function toConnMap(m: Map<string, Tracked>): Map<string, Connection> {
 
 function emitOpen(c: Connection): void {
   try {
-    const ev = insertEvent('scanner', {
+    // Register this socket's owner so HTTP/DNS traffic on the same ephemeral
+    // port can be attributed to the command that opened it, and cite the
+    // command on this connection row too (best-effort; pid is undefined on macOS).
+    notePortPid(c.localPort, c.pid)
+    const data: Record<string, unknown> = {
       subtype: 'connection',
       proto: c.proto,
       remote_addr: c.remoteAddr,
@@ -180,7 +185,10 @@ function emitOpen(c: Connection): void {
       local_port: c.localPort,
       detectedTarget: c.remoteAddr,
       ...(c.pid ? { pid: c.pid } : {})
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
+    }
+    const causes = socketCausesFor('scanner', data)
+    if (causes.length > 0) data._causes = causes
+    const ev = insertEvent('scanner', data, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
     if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('connection-monitor', e) }
 }
