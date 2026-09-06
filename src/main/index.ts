@@ -56,6 +56,7 @@ import { startProxyBypassDetector, stopProxyBypassDetector } from './services/pr
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
+import { configureIngest } from '../core/ingest'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
@@ -612,6 +613,15 @@ function startProject(project: ProjectMeta): void {
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
+  // The unified ingest() pipeline (used by /api/events and, going forward, the
+  // in-process producers) needs the same collaborators the api-server had: the
+  // loot detector, the alert runtime for scope dispatch, and the cast probe for
+  // bracketing built-in-terminal output.
+  configureIngest({
+    lootDetector,
+    alertRuntime: { dispatchTargetHit: (input) => alertRuntime.dispatchTargetHit(input) },
+    castProbe: getCastPosition
+  })
 
   // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
   // Both default to 0 (keep forever) so existing installs see no behaviour

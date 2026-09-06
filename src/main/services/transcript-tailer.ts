@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'fs'
 import path from 'path'
 import { homedir } from 'os'
 import { insertEvent } from '../../core/db/events'
+import { ingest } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 import { parseStartTranscript, type TranscriptCommand } from '../../core/start-transcript'
@@ -113,16 +114,23 @@ const OUTPUT_CAP = 100 * 1024  // parity with the shell hook's per-stream cap
 
 function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | null): void {
   try {
-    const ev = insertEvent('shell', {
-      subtype: 'command_end',
-      source: 'start-transcript',
-      command: cmd.command,
-      cwd: cmd.cwd,
-      ...(cmd.output ? { output_preview: cmd.output.slice(0, OUTPUT_CAP) } : {}),
-      ...(host ? { hostname: host } : {}),
-      transcript: path.basename(sourcePath)
-    }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
+    // Through ingest() so a PowerShell transcript command gets the same
+    // target extraction / scope dispatch / companion pipeline a command that
+    // arrived via the shell hook does. ingest() inserts + publishes.
+    ingest({
+      agentType: 'shell',
+      data: {
+        subtype: 'command_end',
+        source: 'start-transcript',
+        command: cmd.command,
+        cwd: cmd.cwd,
+        ...(cmd.output ? { output_preview: cmd.output.slice(0, OUTPUT_CAP) } : {}),
+        ...(host ? { hostname: host } : {}),
+        transcript: path.basename(sourcePath)
+      },
+      engagementId: cfg.engagementId,
+      operatorId: cfg.operatorId
+    })
   } catch (e) { noteDbError('transcript-tailer', e) }
 }
 

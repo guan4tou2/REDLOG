@@ -29,6 +29,7 @@ import { exportBundle } from './bundle-export'
 import { exportHar } from './har-export'
 import { getCaptureHealth, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
+import { ingest } from './ingest'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
@@ -322,16 +323,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
 
-      // v0.6.89 _causes wiring: resolve upstream event id from linker fields
-      // that already exist on the payload (flow_id for http_*, terminal_id+pid
-      // for shell command_end). The api-server keeps two small in-memory maps
-      // (populated on the "start" side, consumed on the "end" side) so we don't
-      // have to hit the DB per row. See causesResolver.ts for the shared cache.
-      const causeIds = resolveIncomingCauses(agentType, data)
-      if (causeIds.length > 0) {
-        const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
-        data._causes = [...new Set([...existing, ...causeIds])]
-      }
+      // Causal links, enrichment, redaction, insert, publish, scope and
+      // companions all run inside ingest() below (docs/DESIGN-plugin-kernel.md
+      // §3) — the same pipeline the in-process producers use.
       // v0.6.88 P0-B: strip any caller-supplied operator id from body/data.
       // The operator was already resolved from the Bearer token above
       // (`operator.id`) — accepting a body field would let any token holder
@@ -342,306 +336,26 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         for (const k of forgedFields) { delete body[k]; delete data[k] }
       }
 
-      let lootValues: string[] = []
-      let pendingLootMatches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }> = []
-      let pivot: ReturnType<typeof detectPivot> = null
-      let pivotClose: ReturnType<typeof detectPivot> = null
-      let cleanup: ReturnType<typeof detectCleanup> = null
-      let fileXfer: ReturnType<typeof detectFileTransfer> = null
-
-      if (agentType === 'shell' && data.command) {
-        const cmd = data.command as string
-        const isStart = data.subtype === 'command_start'
-        // A command_end for a foreground pivot (ssh -D running until Ctrl-C, etc.)
-        // is our closest signal that the tunnel actually shut down. The near-zero
-        // duration guard skips backgrounded `-fN`/`&` variants that exit instantly
-        // while the tunnel keeps running — we can't tell those from a live pivot.
-        const isEnd = data.subtype === 'command_end' && Number(data.duration_sec ?? 0) >= 2
-        if (isEnd) pivotClose = detectPivot(cmd)
-        // Stamp fields contributed by commandTag plugins (e.g. the bundled
-        // mitre-common-tools plugin). Zero-config by default — no core patterns.
-        // Downstream tagging (ELK/Splunk on the SIEM side) can replace this
-        // entirely by disabling the plugin.
-        // v0.9.6 (T2): bracket this command's output by byte range in the
-        // session's .cast. The bytes stay on disk — only the reference enters
-        // the chain, which is the v0.6.47 invariant (in-chain stdout blew up
-        // on TUI output and made the hash cover ANSI noise). What changes is
-        // that the operator can now SEE that output exists, and how much,
-        // without clicking through to a replay.
-        const termId = typeof data.terminalId === 'string' ? data.terminalId : null
-        if (termId && data.source === 'builtin-terminal' && castProbe) {
-          const pos = castProbe(termId)
-          if (pos) {
-            if (isStart) {
-              castOffsetAtStart.set(termId, pos.offset)
-            } else if (data.subtype === 'command_end') {
-              const from = castOffsetAtStart.get(termId)
-              castOffsetAtStart.delete(termId)
-              // No matching start (hook installed mid-session, or RedLog
-              // restarted between the pair) → record that we can't bracket it
-              // rather than guessing a window.
-              data.io = from === undefined
-                ? { stream: 'cast', ref: pos.castPath, unbracketed: true, truncated: pos.truncated }
-                : { stream: 'cast', ref: pos.castPath, off: from, len: Math.max(0, pos.offset - from), truncated: pos.truncated }
-            }
-          }
-        }
-
-        if (isStart) {
-          const tagStamp = tagCommand(cmd)
-          for (const [k, v] of Object.entries(tagStamp)) {
-            if (data[k] === undefined) data[k] = v
-          }
-          cleanup = detectCleanup(cmd)
-          fileXfer = detectFileTransfer(cmd)
-        }
-
-        // v0.9.1: extractTargetWithProvenance stamps plugin attribution
-        // when a plugin-contributed extractor was the one that matched.
-        // Built-in matches leave the two extra fields unset → shell-event
-        // shape stays byte-identical for the built-in path.
-        const detectedResult = extractTargetWithProvenance(cmd)
-        const detected = detectedResult.host
-        if (detected) {
-          data.detectedTarget = detected
-          if (detectedResult.pluginId) {
-            data.extractor_plugin_id = detectedResult.pluginId
-            data.extractor_name = detectedResult.extractorName
-          }
-          if (!targetId) targetId = detected
-        }
-
-        // Scope alarm dispatch moved to AFTER the shell event insert so
-        // the emitted scope_violation event's `_causes` can point at the
-        // shell command_start event id. See below, after `insertEvent(...)`.
-
-        // Internal-network pivots (ligolo-ng, chisel, ssh -D/-L/-R, sshuttle,
-        // proxychains, socat) get a first-class `pivot` event so the timeline
-        // records the intermediate node / route, not just the raw command.
-        if (isStart) pivot = detectPivot(cmd)
-
-        if (!isStart && lootDetectorRef) {
-          // v0.6.89: `redlog-run` wrapper now sends stdout/stderr as separate
-          // fields. Scan both (plus the legacy `output` field for backward
-          // compat with older CLI helpers). Any of them may be undefined.
-          const textToScan = [cmd, data.stdout, data.stderr, data.output]
-            .filter((s): s is string => typeof s === 'string' && s.length > 0)
-            .join('\n')
-          if (textToScan) {
-            // v0.6.89 `_causes`: find matches now (so redaction denylist gets
-            // fed) but defer the emit() until after the shell event is
-            // inserted — the loot event's `_causes` must point at the
-            // command_end that produced the stdout. Falls back to `scan()`
-            // (which emits without cause) if the detector is an older shape
-            // that pre-dates the split.
-            if (lootDetectorRef.findMatches) {
-              const matches = lootDetectorRef.findMatches(textToScan)
-              pendingLootMatches = matches
-              lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
-            } else {
-              const matches = lootDetectorRef.scan(textToScan, targetId, cmd)
-              lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
-            }
-          }
-        }
-      }
-
-      if (agentType === 'scanner') {
-        extractBodyToSidecar(data, 'request_body')
-        extractBodyToSidecar(data, 'response_body')
-        extractBodyToSidecar(data, 'ws_body')
-        extractBodyToSidecar(data, 'tcp_body')
-      }
-
-      // Credential-use detection for HTTP requests: when we see auth headers
-      // or login-form bodies, emit a companion credential_use event so the
-      // dedicated lane lights up without relying on external agents.
-      let detectedCred: { method: string; target: string; detail: string } | null = null
-      if (agentType === 'scanner' && data.subtype === 'http_request_start') {
-        const reqHeaders = data.request_headers as string[][] | Record<string, string> | undefined
-        const headerList: [string, string][] = Array.isArray(reqHeaders)
-          ? reqHeaders as [string, string][]
-          : reqHeaders ? Object.entries(reqHeaders) : []
-        for (const [name, value] of headerList) {
-          const ln = name.toLowerCase()
-          if (ln === 'authorization') {
-            const scheme = (value as string).split(' ')[0]?.toLowerCase() ?? ''
-            if (scheme === 'basic') detectedCred = { method: 'basic_auth', target: String(data.host ?? ''), detail: 'Basic auth header' }
-            else if (scheme === 'bearer') detectedCred = { method: 'bearer_token', target: String(data.host ?? ''), detail: 'Bearer token' }
-            else if (scheme === 'ntlm') detectedCred = { method: 'ntlm', target: String(data.host ?? ''), detail: 'NTLM auth' }
-            else if (scheme === 'negotiate') detectedCred = { method: 'negotiate', target: String(data.host ?? ''), detail: 'Kerberos/Negotiate' }
-            else detectedCred = { method: scheme || 'auth_header', target: String(data.host ?? ''), detail: `Authorization: ${scheme}` }
-            break
-          }
-          if (ln === 'cookie' && /(?:session|token|auth|jwt|sid)[\s]*=/i.test(value as string)) {
-            detectedCred = { method: 'session_cookie', target: String(data.host ?? ''), detail: 'Session cookie' }
-          }
-          if (ln === 'x-api-key' || ln === 'api-key') {
-            detectedCred = { method: 'api_key', target: String(data.host ?? ''), detail: `${name} header` }
-          }
-        }
-        if (!detectedCred) {
-          const bodyPreview = typeof data.request_body_preview === 'string' ? data.request_body_preview : ''
-          if (bodyPreview && /password|passwd|pass_?word|pwd|credential/i.test(bodyPreview)) {
-            detectedCred = { method: 'form_login', target: String(data.host ?? ''), detail: 'Password in request body' }
-          }
-        }
-      }
-
-      const baseRules = getRules()
-      const perEventRules = lootValues.length > 0
-        ? { ...baseRules, denylist: [...baseRules.denylist, ...lootValues] }
-        : baseRules
-
-      // Four-layer redaction (see docs/redaction-design.md): DETECT spans here,
-      // but leave the raw bytes in data[field] so the hash chain closes over the
-      // true text. The UI masks by default (layer 3) and `redlog-cli sanitize`
-      // does the actual byte replacement at export time (layer 4).
-      // v0.6.89: also redact new `stdout`/`stderr` fields so masked spans
-      // land on them consistently with the existing `output` handling.
-      for (const field of ['output', 'output_preview', 'command', 'stdout', 'stderr', 'request_body_preview', 'response_preview', 'ws_preview', 'tcp_preview']) {
-        if (typeof data[field] === 'string' && data[field]) {
-          const result = redact(data[field] as string, perEventRules)
-          if (result.redacted.length > 0) {
-            const redactions = (data.redactions as unknown[] | undefined) ?? []
-            data.redactions = [...redactions, ...result.redacted.map((r) => ({ ...r, field }))]
-          }
-        }
-      }
-
-      const event = insertEvent(agentType, data, {
-        engagementId,
-        operatorId: operator.id,
-        targetId
+      // One pipeline for every producer. What was ~300 lines inline here —
+      // shell tagging / pivot / cleanup / file-transfer / target extraction /
+      // loot scan / scanner body sidecar / HTTP-cred detection / redaction /
+      // insert / publish / scope dispatch / companion events — now lives in
+      // ingest(), so a command means the same thing whether it arrives here or
+      // from an in-process producer. `identity` mapper: the posted body IS the
+      // envelope's {agent_type, data}.
+      const result = ingest({
+        agentType, data, operatorId: operator.id, engagementId, targetId,
+        envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
       })
-      if (!event) { json(res, 409, { error: 'Duplicate event (dedup window)' }); return }
-      eventBus.publish(event)
-      // v0.6.89 `_causes`: if this was a "start" event that later "end" events
-      // will want to cite (shell.command_start, scanner.http_request_start),
-      // cache its id in the in-memory resolver so the matching end event can
-      // stamp `_causes: [thisId]` when it arrives.
-      noteStartEvent(agentType, data, event.id)
-
-      // v0.12.0: dispatch the scope check to the alert runtime. Runs AFTER the
-      // event insert so the resulting scope_violation carries the source event
-      // id in `_causes`. `source` differentiates shell / http / dns / scanner
-      // / agent_tool lanes for the CombinedPolicy correlation and for the
-      // adherence report breakdown.
-      if (alertRuntimeRef) {
-        const hit = scopeSignalFor(agentType, data)
-        if (hit) alertRuntimeRef.dispatchTargetHit({ ...hit, sourceEventId: event.id })
+      if (!result.event) {
+        // A paused recording is already answered 200 above; the only way to
+        // reach here with no event is the 2 s dedup window.
+        json(res, 409, { error: 'Duplicate event (dedup window)' })
+        return
       }
-      // v0.6.89 `_causes` for loot: emit the loot event NOW that we have the
-      // shell command_end's id — so `_causes: [event.id]` points at the exact
-      // command whose stdout produced the match. See loot-detector.emit().
-      if (pendingLootMatches.length > 0 && lootDetectorRef?.emit) {
-        lootDetectorRef.emit(pendingLootMatches, { targetId, source: data.command as string, causeEventId: event.id })
-      }
-
-      // Emit the companion pivot event (best-effort; never blocks the shell event).
-      if (pivot) {
-        try {
-          const pv = insertEvent('pivot', {
-            subtype: pivot.subtype, tool: pivot.tool, via: pivot.via, route: pivot.route,
-            socks_port: pivot.socksPort, forward: pivot.forward, mitre_ttp: pivot.mitreTtp,
-            command: data.command, description: `Pivot via ${pivot.tool}${pivot.via ? ` → ${pivot.via}` : ''}${pivot.route ? ` (${pivot.route})` : ''}`,
-            // v0.6.89: pivot is a companion to the shell command_start that
-            // triggered detectPivot — that's the event we just inserted above.
-            _causes: [event.id]
-          }, { engagementId, operatorId: operator.id, targetId: pivot.via ?? targetId })
-          if (pv) eventBus.publish(pv)
-        } catch { /* pivot event is additive; ignore failures */ }
-      }
-      // Anti-forensics / cleanup — first-class event so log-clearing or timestomp
-      // never hides in a plain shell row (NIST SP 800-86 requires tracking these).
-      if (cleanup) {
-        try {
-          const cv = insertEvent('cleanup', {
-            subtype: cleanup.subtype, tool: cleanup.tool,
-            target: cleanup.target, mitre_ttp: cleanup.mitreTtp,
-            command: data.command,
-            description: `Cleanup [${cleanup.tool}] ${cleanup.subtype}${cleanup.target ? ` → ${cleanup.target}` : ''}`,
-            _causes: [event.id]
-          }, { engagementId, operatorId: operator.id, targetId })
-          if (cv) eventBus.publish(cv)
-        } catch { /* additive */ }
-      }
-      // File transfer detected in a shell command — companion event so the
-      // dedicated file_transfer lane shows ingress/exfil independent of shell noise.
-      if (fileXfer) {
-        try {
-          const fv = insertEvent('file_transfer', {
-            subtype: fileXfer.direction, tool: fileXfer.tool,
-            url: fileXfer.url, localPath: fileXfer.localPath, remotePath: fileXfer.remotePath,
-            mitre_ttp: fileXfer.mitreTtp,
-            command: data.command,
-            description: `${fileXfer.direction === 'download' ? '↓' : '↑'} ${fileXfer.tool}: ${fileXfer.url || fileXfer.remotePath || fileXfer.localPath || ''}`.trim(),
-            _causes: [event.id]
-          }, { engagementId, operatorId: operator.id, targetId })
-          if (fv) eventBus.publish(fv)
-        } catch { /* additive */ }
-      }
-      // Closed foreground pivot — a separate event so the audit trail shows both
-      // ends of the tunnel, not only when it opened.
-      if (pivotClose) {
-        try {
-          const pv = insertEvent('pivot', {
-            subtype: 'closed', tool: pivotClose.tool, via: pivotClose.via,
-            route: pivotClose.route, forward: pivotClose.forward,
-            command: data.command, exit_code: data.exit_code,
-            duration_sec: data.duration_sec,
-            description: `Pivot closed [${pivotClose.tool}]${pivotClose.via ? ` → ${pivotClose.via}` : ''}`,
-            _causes: [event.id]
-          }, { engagementId, operatorId: operator.id, targetId: pivotClose.via ?? targetId })
-          if (pv) eventBus.publish(pv)
-        } catch { /* additive */ }
-      }
-
-      // Credential-use companion event for HTTP requests carrying auth.
-      if (detectedCred) {
-        try {
-          const ce = insertEvent('credential_use', {
-            subtype: detectedCred.method,
-            url: data.url,
-            host: data.host,
-            description: `${detectedCred.detail} → ${detectedCred.target}`,
-            mitre_ttp: 'T1078',
-            _causes: [event.id]
-          }, { engagementId, operatorId: operator.id, targetId: detectedCred.target || targetId })
-          if (ce) eventBus.publish(ce)
-        } catch { /* additive */ }
-      }
-
-      // Command-line credential use (§4d): -p/--password, user:pass@host in a
-      // URL argument. Derived from the command text that was going to be
-      // captured anyway, and the secret is masked before it reaches the event
-      // — the fact of the credential use is evidence, the secret is liability.
-      if ((agentType === 'shell' || agentType === 'terminal') && typeof data.command === 'string' && data.command) {
-        for (const cred of detectCredentialUse(data.command as string)) {
-          try {
-            const ce = insertEvent('credential_use', {
-              subtype: cred.kind,
-              masked: cred.masked,
-              // No raw command here — it carries the plaintext secret. The
-              // parent shell event (linked via _causes) holds the command,
-              // subject to the normal redaction layers; this event records
-              // only the masked fact.
-              ...(cred.destHost ? { host: cred.destHost } : {}),
-              ...(cred.userContext ? { user_context: cred.userContext } : {}),
-              ...(cred.scheme ? { scheme: cred.scheme } : {}),
-              description: `credential in command (${cred.kind})`,
-              mitre_ttp: 'T1078',
-              _causes: [event.id]
-            }, { engagementId, operatorId: operator.id, targetId: cred.destHost || targetId })
-            if (ce) eventBus.publish(ce)
-          } catch { /* additive */ }
-        }
-      }
-
-      json(res, 201, event)
+      json(res, 201, result.event)
       return
     }
-
     if (route === '/api/events' && req.method === 'GET') {
       const agentType = url.searchParams.get('agent_type') || undefined
       const limit = parseInt(url.searchParams.get('limit') || '100')
