@@ -195,7 +195,7 @@ RedLog 開已遷移的專案會找不到表、那頁變空。若有混用版本�
 transcript 走 ingest。
 
 **尚待設計/實作的完成路徑:**
-1. **內建 target extractor 宣告化(E1 Option A)已實作 → 見 PR #41。** `target-extractor.ts` 已改為 `STRATEGIES` 註冊表 + 宣告式 `BUILTIN_ROWS {cmd, strategy, param}`,外掛以同形狀擴充/覆寫。**Option B(把整包搬進 `plugins/builtin-tools/`、核心不再直接認工具)仍未實作**——有 provenance／載入順序／覆寫優先權的待解問題,需獨立 PR。
+1. **內建 target extractor 宣告化 + 外掛化(E1 Option A #41、Option B #44)已實作。** Option A 立起 `STRATEGIES` 註冊表 + 宣告式資料;Option B 把整張工具→策略表搬進 bundled pack `plugins/builtin-tools/plugin.json`,`target-extractor.ts` 不再有任何 per-tool 資料,啟動時 `initPlugins()` 經 `registerTargetExtractors` 註冊該 pack;precedence 以 source 決定(user 蓋 bundled)、載入順序在測試 setup 與啟動路徑都解掉、`plugins/` 加進 `extraResources` 才會隨包出貨(連帶修好 c2-tailers 從沒打包的舊漏)。停用該 pack 即移除內建。
 2. **Starter pack 預裝。** 把 shell hook + 內建終端機 + 代理 tailer + mitmproxy 宣告成一包預裝、
    可移除的 producer 外掛,首次執行仍成立。
 3. **pcap producer + 透明代理 + socket→pid→指令 對照器**(見 [`DESIGN-traffic-attribution.md`](DESIGN-traffic-attribution.md))。
@@ -215,7 +215,6 @@ transcript 走 ingest。
 |---|---|---|---|
 | 1 | Linux 進 release matrix(§7a) | S | 圖示已產出,但 Linux 是否真的出 artifact 未量,先量再修 |
 | 2 | Plugin-kernel 完成路徑(§8-2/3/4) | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
-| 3 | E1 **Option B**(§8-1 尾) | M | 把內建 pack 整包搬出核心;有 provenance／載入順序／覆寫優先權待解 |
 
 每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。

@@ -1,6 +1,6 @@
 # 設計:內建 target extractor 外掛化(E1)
 
-寫於 2026-09-06。狀態:**設計 / 未實作**。E1 的目標是「core 不再硬編工具知識」——把
+寫於 2026-09-06。狀態:**已實作**(Option A → PR #41;Option B → PR #44)。E1 的目標是「core 不再硬編工具知識」——把
 `src/core/target-extractor.ts` 的 30 條內建 extractor 從核心移出。實作前先把一個**會咬人的
 發現**寫清楚,並定出安全路徑,避免弄壞 target/scope 這條大家都依賴的管線。
 
