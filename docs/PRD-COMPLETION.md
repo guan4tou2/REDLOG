@@ -124,7 +124,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 ### 主題 E — 外掛化完成(大架構,分階段)
 
-**E1. 內建 target extractor 搬成 🟢 pack · P2 · M** — 核心不再直接認工具。
+**E1. 內建 target extractor 宣告化(Option A)· ✅ 已實作(PR #41)· P2 · M** — `STRATEGIES` 註冊表 + 宣告式 `BUILTIN_ROWS {cmd, strategy, param}`,外掛以同形狀擴充/覆寫。**續作(Option B)**:把整包搬進 `plugins/builtin-tools/`、核心不再直接認工具——有 provenance／載入順序／覆寫優先權待解,需獨立 PR。
 **E2. Starter pack 預裝 · P2 · M** — 三個擷取 producer 宣告成預裝可移除外掛,首次執行仍成立。
 **E3. manifest schemaVersion 雙版本讀取 + 健康度讀 manifest · P2 · M**
 - 設計全在 `DESIGN-plugin-kernel §5`。相依:E 之間有序;不擋 A–D。
@@ -134,7 +134,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 **F1. 視窗底色 `#0a0a0a`→`#121214` · ✅ 已實作(PR #36)· P1 · S** — `windows.ts` 兩處,載入不再閃暗底。
 **F2. 單一字標 `REDL(●)G` · ✅ 已實作(PR #36)· P2 · M** — `Wordmark` 即時文字元件,環為錄製指示、em-based、#d75f63;換掉標題列與 Picker 的圖片+純文字。
 **F3. Linux 多尺寸圖示 · ✅ 圖示已實作(PR #36)· P2 · S** — `resources/icons/<N>x<N>.png` + `linux.icon` 指向目錄 + make-icons 同步 + guard。**續作(需 CI 驗證)**:把 ubuntu-latest 加進 release matrix——`release` job `needs: build`,未驗證的 Linux build 若失敗會連 mac/win release 一起擋,故此開關要在 CI 上翻並盯,不能盲改。
-**F4. QuickMark→Bookmark 改名 · ⏸ 待獨立 PR · P2 · M** — SQL 表名決策已採納(✅ 改)。拆兩 PR:(a) 內部改名(型別/IPC/component/SQL migration),(b) 外部契約 + 別名(REST/CLI/外掛能力)。**F4 動到 #36 剛改的書籤 retention 程式,合併順序有關,故應在 #36/#37 併入 main 後從 main 開分支做。**
+**F4. QuickMark→Bookmark 改名 · ✅ 已實作(PR #40)· P2 · M** — 內部改名(型別/IPC/component/SQL `ALTER TABLE … RENAME`)+ 外部契約與別名(`/api/bookmarks`、CLI `bookmark`、`read:bookmarks`,舊路由/動詞/能力保留別名)全數落地。原計畫的兩段(part A 內部、part B 外部)在同一分支依序完成。
 - 設計:`DESIGN-OPEN-ITEMS §5–7`。
 
 ---
@@ -151,12 +151,12 @@ A2 scope-aware sanitize(匯出遮蔽 ✅;rotation 排序為續作) · B3 依工�
 → 已達成:匯出遮蔽 out-of-scope 內容、流量透過 socket→pid 對得到指令。
 
 **M3 — 架構健康(P1/P2)· 部分達成**
-D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ · **D2 env.d.ts 推導 → 建議獨立 PR**
-→ D2 未做:它把 `env.d.ts` 從 global script 變 module,波及每個裸用 `RedLogEvent`/`ProjectMeta` 等全域型別的 renderer 檔,是機械但廣的改動,硬塞進這條已 14 commit 的分支會讓 diff 難 review。建議從 `main` 開新分支專做。
+D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ · **D2 env.d.ts 推導 · ✅ 已實作(PR #37)**
+→ D2 已做:`env.d.ts` 改為 `typeof api` 推導,preload 具名 export `api: RedLogAPI`;獨立 PR #37 完成,漂移在型別層即不可能。
 
-**M4 — 外掛化 + 外觀(P2)· 外觀部分達成**
-F2 字標 ✅ · F3 Linux 圖示 ✅(release matrix 待 CI 驗證) · **F4 改名 → 待獨立 PR(併 main 後)** · **E1–E3 外掛化 → 待獨立 PR(有測試/載入含義,見下)**
-→ E1(內建 target extractor 搬成 pack)會讓 core 不再硬編工具知識,但也讓 core 的 extractTarget 單元測試與「總是可用」的行為需要那包在測試/啟動時載入——這是個有含義的重構,不是純搬移,值得獨立設計。
+**M4 — 外掛化 + 外觀(P2)· 外觀達成,外掛化首步達成**
+F2 字標 ✅ · F3 Linux 圖示 ✅(release matrix 待 CI 驗證) · F4 改名 ✅(PR #40) · E1 宣告化 Option A ✅(PR #41)
+→ E1 Option A 已讓工具知識變成宣告式資料表 + 共用 strategy 庫,外掛能以同形狀擴充;**E1 Option B(整包搬出核心)+ E2 starter pack 預裝 + E3 manifest 雙版本讀取仍待獨立 PR**——E1 Option B 會讓 core 的 extractTarget 測試與「總是可用」行為需要那包在測試/啟動時載入,是有含義的重構,非純搬移。
 
 **B4 pcap / 透明代理**:獨立評估,先過「接受 root 成本」的定位決策再排。
 

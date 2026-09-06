@@ -14,7 +14,7 @@
 
 ## 1. 書籤 retention 清理 — 小,隱私後果,先做
 
-**狀態:設計 / 未實作。**
+**狀態:已實作 → 見 PR #36。** `config.retention.bookmarks.keepDays`、`deleteBookmarksOlderThan`、`sweepBookmarks` + `system.bookmarks_pruned` 稽核列已落地,下方為原始設計存查。
 
 **問題。** `src/core/retention.ts` 會清 casts、screenshots、agent 逐字稿、http bodies、
 `events_logged`,但 `quickmark` 這個字在裡面出現 **0 次**。書籤(quickmarks)會注入貼上的
@@ -39,7 +39,7 @@
 
 ## 2. 每專案 token 隔離 — 小,安全,誠實看待價值
 
-**狀態:設計 / 未實作。價值中低,原因見下。**
+**狀態:已實作 → 見 PR #36。** 每專案 token + 全域 `~/.redlog/api-token` 鏡像已落地。價值中低的分析仍成立,存查於下。
 
 **問題。** token 是全域一份(`~/.redlog/api-token`),跨所有專案共用。多客戶交戰用同一把
 secret。
@@ -68,8 +68,7 @@ hook/CLI 不改也能運作(它們每次呼叫都讀檔,所以切專案自動換
 
 ## 3. Scope-aware sanitize + artifact rotation — 中大,證據性
 
-**狀態:設計 / 未實作。** 取代 `SPEC-SCOPE-AWARE-LIFECYCLE.md`(該 spec 的宣稱已於 2026-09-04
-更正為「未實作」,規格本身仍成立)。
+**狀態:部分已實作。** (a) 匯出時的 scope-aware sanitize **已實作 → 見 PR #36**(`scope-sanitize.ts`、`bundle-export` 的 `maskOutOfScope` + manifest `sanitizedOutOfScope`)。(b) artifact rotation 依範圍排序(casts/screenshots 先淘汰 out-of-scope)**仍未實作**。取代 `SPEC-SCOPE-AWARE-LIFECYCLE.md`(該 spec 的宣稱已於 2026-09-04 更正為「未實作」,規格本身仍成立)。
 
 **問題。** 兩件事沒做:(a) 匯出時的 sanitize 目前是全域 allow/deny + entropy,不看**範圍**——
 一個明確標為 out-of-scope 的主機,它的 body 與截圖不會因為出範圍而被優先遮蔽或排除;(b)
@@ -98,7 +97,7 @@ out-of-scope 的無關資料同等對待。
 
 ## 4. `env.d.ts` 推導自 preload — 中,防漂
 
-**狀態:設計 / 未實作。**
+**狀態:已實作 → 見 PR #37。** `env.d.ts` 已改為 `typeof api` 推導,preload 具名 export `api: RedLogAPI`。下方設計存查。
 
 **問題。** `src/renderer/src/env.d.ts`(405 行)手抄 preload 的 `window.redlog` 契約,24 namespace、
 約 100 method,會漂(交接文件與審計都記過)。#31 補正過一次,但手抄的本質沒變。
@@ -122,7 +121,7 @@ out-of-scope 的無關資料同等對待。
 
 ## 5. 內部識別字改名 QuickMark → Bookmark — 中,機械性,有外部契約
 
-**狀態:設計 / 未實作。** #32 只改了使用者可見的一半。
+**狀態:已實作 → 見 PR #40。** 內部改名(型別、IPC、component、SQL 表 `ALTER TABLE … RENAME`)與外部別名(`/api/bookmarks`、CLI `bookmark`、`read:bookmarks` + 舊路由/動詞/能力別名)皆落地。下方別名策略存查。
 
 **問題。** 程式碼、IPC、REST、CLI、外掛能力字串仍是 `quickmark`/`findings`。
 
@@ -150,8 +149,7 @@ RedLog 開已遷移的專案會找不到表、那頁變空。若有混用版本�
 
 ## 6. §4 單一字標 `REDL(●)G` — 中,外觀
 
-**狀態:設計 / 未實作。** 規範 §4 定義好了,標題列與 Project Picker 仍是「圖片 + 純文字 REDLOG」,
-且文字用 `text-red-500`(`#cf5459`)不是規範的 `#d75f63`。
+**狀態:已實作 → 見 PR #36。** `components/Wordmark.tsx`(即時文字、em 環、`#d75f63`、<16px 收成實心點)已取代圖片 + 純文字識別區塊。下方設計存查。
 
 **決定。** 做一個即時文字元件(**不是 SVG**——規範 §16 明說手排向量字標壞過三處),環以 em 表示、
 `box-sizing: border-box`、隨字級縮放:外徑 `0.72em`、環寬 `0.115em`、內點 `0.216em`、上移 `0.02em`,
@@ -169,7 +167,7 @@ RedLog 開已遷移的專案會找不到表、那頁變空。若有混用版本�
 
 ## 7. Linux 多尺寸圖示 + 寫死的視窗底色 — 小,外觀/打包
 
-**狀態:設計 / 未實作。**
+**狀態:已實作 → 見 PR #36(視窗底色 + 圖示目錄)。殘留:Linux 是否真的進 release matrix 仍待量。** `windows.ts` 三處已改 `#121214`;`resources/icons/<N>x<N>.png` 已產出、`electron-builder.yml` `linux.icon` 指向目錄。但「Linux 進 release CI」尚未驗證(見 §7a 步驟 3),在確認前圖示是否真的出貨仍是先量再修。
 
 **問題。** (a) `electron-builder.yml` `linux.icon: resources/icon-256.png` 是單張,每個 panel 自己縮糊
 (正是 `RING_MIN_PX` 要避免的);(b) `src/main/windows.ts` 三處寫死 `#0a0a0a`(`backgroundColor`
@@ -197,9 +195,7 @@ RedLog 開已遷移的專案會找不到表、那頁變空。若有混用版本�
 transcript 走 ingest。
 
 **尚待設計/實作的完成路徑:**
-1. **內建 target extractor 搬成一包 🟢 pack。** 現在 30 幾條 regex 寫在 `target-extractor.ts` 核心;
-   搬成內建 `plugins/builtin-tools/`,核心不再直接認工具。契約:純內部,`registerTargetExtractors`
-   已存在。
+1. **內建 target extractor 宣告化(E1 Option A)已實作 → 見 PR #41。** `target-extractor.ts` 已改為 `STRATEGIES` 註冊表 + 宣告式 `BUILTIN_ROWS {cmd, strategy, param}`,外掛以同形狀擴充/覆寫。**Option B(把整包搬進 `plugins/builtin-tools/`、核心不再直接認工具)仍未實作**——有 provenance／載入順序／覆寫優先權的待解問題,需獨立 PR。
 2. **Starter pack 預裝。** 把 shell hook + 內建終端機 + 代理 tailer + mitmproxy 宣告成一包預裝、
    可移除的 producer 外掛,首次執行仍成立。
 3. **pcap producer + 透明代理 + socket→pid→指令 對照器**(見 [`DESIGN-traffic-attribution.md`](DESIGN-traffic-attribution.md))。
@@ -212,17 +208,15 @@ transcript 走 ingest。
 
 ## 排序(價值 ÷ 風險)
 
-| 順位 | 項目 | 大小 | 為何這個順位 |
-|---|---|---|---|
-| 1 | 書籤 retention(§1) | S | 隱私後果,純新增,零契約 |
-| 2 | 視窗底色 `#121214`(§7b) | S | 一行三處,立刻可做 |
-| 3 | Scope-aware sanitize/rotation(§3) | M–L | 證據性,但匯出行為變更要 CHANGELOG |
-| 4 | 每專案 token(§2) | S | 安全衛生;價值中低但便宜 |
-| 5 | 單一字標(§6) | M | 規範已定,純新增元件 |
-| 6 | `env.d.ts` 推導(§4) | M | 防漂,但波及面廣,獨立 PR |
-| 7 | QuickMark→Bookmark 改名(§5) | M | 機械性,要別名期,拆兩 PR |
-| 8 | Linux 多尺寸圖示(§7a) | S | 先確認 Linux 是否出貨 |
-| 9 | Plugin-kernel 完成(§8) | L | 分階段,見專屬文件 |
+原始九項中的 §1、§2、§4、§5、§6、§7(視窗底色+圖示)、§8-1(E1 Option A)已於
+2026-09-06 隨 PR #36/#37/#40/#41 出貨並在上方各節標「已實作 → 見 X」。**還開著的殘留:**
 
-每一項落地後,把該節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
+| 順位 | 項目 | 大小 | 為何這個順位 / 卡在哪 |
+|---|---|---|---|
+| 1 | Scope-aware **rotation**(§3b) | M | sanitize 已出貨;還缺 casts/screenshots 依範圍排序淘汰 |
+| 2 | Linux 進 release matrix(§7a) | S | 圖示已產出,但 Linux 是否真的出 artifact 未量,先量再修 |
+| 3 | Plugin-kernel 完成路徑(§8-2/3/4) | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
+| 4 | E1 **Option B**(§8-1 尾) | M | 把內建 pack 整包搬出核心;有 provenance／載入順序／覆寫優先權待解 |
+
+每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。
