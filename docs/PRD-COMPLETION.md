@@ -53,7 +53,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
   `system.bookmarks_pruned`(數量,不含內容);單元測試涵蓋。
 - 設計:`DESIGN-OPEN-ITEMS §1`。相依:無。
 
-**A2. Scope-aware sanitize + artifact rotation · ✅ 匯出遮蔽已實作(PR #36)· P1 · M–L**
+**A2. Scope-aware sanitize + artifact rotation · ✅ 已實作(匯出遮蔽 PR #36 · rotation 排序 PR #43)· P1 · M–L**
 - 續作:artifact rotation 依範圍排序(in-scope 已 pin)、覆寫的 UI 開關。
 - 為什麼:匯出遮蔽與 artifact 輪替目前不看範圍,out-of-scope 的 client 資料與 in-scope 證據同等對待。
 - 驗收:匯出時 out-of-scope 事件的 body/preview 預設遮蔽(可覆寫),manifest 記
@@ -147,7 +147,7 @@ A1 書籤 retention · F1 視窗底色 · A3 每專案 token · D1 Timeline 接�
 D1 的續作(lane 可見性 + 互動測試)延到 M3 的 D 系列。
 
 **M2 — 證據深度與 OPSEC · ✅ 大致達成(PR #36)**
-A2 scope-aware sanitize(匯出遮蔽 ✅;rotation 排序為續作) · B3 依工具分流量 ✅
+A2 scope-aware sanitize(匯出遮蔽 ✅ PR #36;rotation 排序 ✅ PR #43) · B3 依工具分流量 ✅
 → 已達成:匯出遮蔽 out-of-scope 內容、流量透過 socket→pid 對得到指令。
 
 **M3 — 架構健康(P1/P2)· 部分達成**

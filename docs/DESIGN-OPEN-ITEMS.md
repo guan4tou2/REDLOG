@@ -68,7 +68,7 @@ hook/CLI 不改也能運作(它們每次呼叫都讀檔,所以切專案自動換
 
 ## 3. Scope-aware sanitize + artifact rotation — 中大,證據性
 
-**狀態:部分已實作。** (a) 匯出時的 scope-aware sanitize **已實作 → 見 PR #36**(`scope-sanitize.ts`、`bundle-export` 的 `maskOutOfScope` + manifest `sanitizedOutOfScope`)。(b) artifact rotation 依範圍排序(casts/screenshots 先淘汰 out-of-scope)**仍未實作**。取代 `SPEC-SCOPE-AWARE-LIFECYCLE.md`(該 spec 的宣稱已於 2026-09-04 更正為「未實作」,規格本身仍成立)。
+**狀態:已實作。** (a) 匯出時的 scope-aware sanitize → 見 PR #36(`scope-sanitize.ts`、`bundle-export` 的 `maskOutOfScope` + manifest `sanitizedOutOfScope`)。(b) artifact rotation 依範圍排序 → 見 PR #43:`retention.ts` `sweepArtifactStore`(casts/screenshots 各有 store 位元組預算 `terminal.castStoreMaxBytes` / `screenshots.maxBytes`,超標時 out-of-scope 的先淘汰、in-scope 的 pin 住,`cast_evicted`/`screenshot_evicted` 稽核 + Timeline「evidence removed」徽章)。取代 `SPEC-SCOPE-AWARE-LIFECYCLE.md`(該 spec 的宣稱已於 2026-09-04 更正為「未實作」,規格本身仍成立)。
 
 **問題。** 兩件事沒做:(a) 匯出時的 sanitize 目前是全域 allow/deny + entropy,不看**範圍**——
 一個明確標為 out-of-scope 的主機,它的 body 與截圖不會因為出範圍而被優先遮蔽或排除;(b)
@@ -213,10 +213,9 @@ transcript 走 ingest。
 
 | 順位 | 項目 | 大小 | 為何這個順位 / 卡在哪 |
 |---|---|---|---|
-| 1 | Scope-aware **rotation**(§3b) | M | sanitize 已出貨;還缺 casts/screenshots 依範圍排序淘汰 |
-| 2 | Linux 進 release matrix(§7a) | S | 圖示已產出,但 Linux 是否真的出 artifact 未量,先量再修 |
-| 3 | Plugin-kernel 完成路徑(§8-2/3/4) | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
-| 4 | E1 **Option B**(§8-1 尾) | M | 把內建 pack 整包搬出核心;有 provenance／載入順序／覆寫優先權待解 |
+| 1 | Linux 進 release matrix(§7a) | S | 圖示已產出,但 Linux 是否真的出 artifact 未量,先量再修 |
+| 2 | Plugin-kernel 完成路徑(§8-2/3/4) | L | starter pack 預裝、pcap/透明代理/socket→pid 對照、manifest 雙版本讀取 |
+| 3 | E1 **Option B**(§8-1 尾) | M | 把內建 pack 整包搬出核心;有 provenance／載入順序／覆寫優先權待解 |
 
 每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。

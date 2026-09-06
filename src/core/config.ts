@@ -102,12 +102,25 @@ export interface RedLogConfig {
      *  chain regardless — only the file is deleted, and a
      *  `system.cast_pruned` event is appended per deletion. */
     castKeepDays?: number
+    /** Size-pressure cap for the whole `casts/` store, bytes. When the store
+     *  exceeds this, the coldest UNPINNED recordings are evicted until under
+     *  it — recordings of an in-scope target are pinned and never evicted
+     *  (retention.ts `sweepArtifactStore`). Distinct from `maxCastBytes`, which
+     *  truncates a SINGLE runaway recording. 0 (default) = unbounded. The event
+     *  and its castSha256 attestation always survive; only the .cast file goes,
+     *  and its search-index entry is pruned with it. */
+    castStoreMaxBytes?: number
   }
   screenshots?: {
     /** v0.6.87 B2: screenshot .jpg auto-delete after N days on project open.
      *  `0` (default) = keep forever. Event row + sha256 stays; a
      *  `system.screenshot_pruned` audit event is appended per deletion. */
     keepDays?: number
+    /** Size-pressure cap for the whole `screenshots/` store, bytes. Same model
+     *  as `httpBodies.maxBytes` and `terminal.castStoreMaxBytes`: coldest
+     *  UNPINNED shots evicted first, in-scope shots pinned. 0 (default) =
+     *  unbounded. The event + sha256 survive; only the .jpg goes. */
+    maxBytes?: number
   }
   /** Captured HTTP request/response bodies (http-body-store.ts). */
   httpBodies?: {
@@ -269,10 +282,12 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024,
-    castKeepDays: 0
+    castKeepDays: 0,
+    castStoreMaxBytes: 0
   },
   screenshots: {
-    keepDays: 0
+    keepDays: 0,
+    maxBytes: 0
   },
   httpBodies: {
     keepDays: 0,
