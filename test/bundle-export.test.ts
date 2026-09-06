@@ -232,5 +232,7 @@ describeDB('private bookmarks stay out of the bundle', () => {
     const tampered = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
     expect(tampered.status).toBe(1)
     expect(tampered.stdout + tampered.stderr).toMatch(/MISMATCH|sha256 differs/)
-  })
+  }, 30000) // spawns python3 twice; the interpreter cold-start alone exceeds the
+  // 5s default on Windows CI runners (observed ~6s), so the test timed out there
+  // while asserting nothing wrong. Wall-clock budget, not a logic change.
 })
