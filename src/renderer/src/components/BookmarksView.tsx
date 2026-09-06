@@ -43,9 +43,9 @@ function readPinned(): string[] {
   } catch { return [] }
 }
 
-export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
-  const [marks, setMarks] = useState<QuickMark[]>([])
-  const [selected, setSelected] = useState<QuickMark | null>(null)
+export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
+  const [marks, setMarks] = useState<Bookmark[]>([])
+  const [selected, setSelected] = useState<Bookmark | null>(null)
   const [creating, setCreating] = useState(false)
   const [browserTab, setBrowserTab] = useState<BrowserTabInfo | null>(null)
   const [search, setSearch] = useState('')
@@ -93,7 +93,7 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
   })
 
   const refresh = useCallback(() => {
-    window.redlog.quickmarks.list().then(setMarks)
+    window.redlog.bookmarks.list().then(setMarks)
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
@@ -220,16 +220,16 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
 
       <div className="flex-1 overflow-auto p-4">
         {creating && (
-          <QuickMarkForm
+          <BookmarkForm
             browserTab={browserTab}
             onSave={() => { setCreating(false); refresh() }}
             onCancel={() => setCreating(false)}
           />
         )}
         {selected && !creating && (
-          <QuickMarkDetail
+          <BookmarkDetail
             mark={selected}
-            onUpdate={() => { refresh(); window.redlog.quickmarks.get(selected.id).then((m) => m && setSelected(m)) }}
+            onUpdate={() => { refresh(); window.redlog.bookmarks.get(selected.id).then((m) => m && setSelected(m)) }}
             onDelete={() => { setSelected(null); refresh() }}
             onOpenInTimeline={onOpenInTimeline}
             isPinned={pinned.has(selected.id)}
@@ -247,11 +247,11 @@ export function QuickMarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: n
   )
 }
 
-function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
+function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   browserTab: BrowserTabInfo | null
   onSave: () => void
   onCancel: () => void
-  initial?: QuickMark
+  initial?: Bookmark
 }): JSX.Element {
   const [title, setTitle] = useState(initial?.title ?? browserTab?.title ?? '')
   const [url, setUrl] = useState(initial?.url ?? browserTab?.url ?? '')
@@ -260,9 +260,9 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
 
   const submit = async (): Promise<void> => {
     if (initial) {
-      await window.redlog.quickmarks.update(initial.id, { title, url, note })
+      await window.redlog.bookmarks.update(initial.id, { title, url, note })
     } else {
-      await window.redlog.quickmarks.create({ title: title || 'Untitled', url: url || undefined, note })
+      await window.redlog.bookmarks.create({ title: title || 'Untitled', url: url || undefined, note })
     }
     onSave()
   }
@@ -315,8 +315,8 @@ function QuickMarkForm({ browserTab, onSave, onCancel, initial }: {
   )
 }
 
-function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin }: {
-  mark: QuickMark
+function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin }: {
+  mark: Bookmark
   onUpdate: () => void
   onDelete: () => void
   onOpenInTimeline?: (ts: number) => void
@@ -327,13 +327,13 @@ function QuickMarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned,
   const { t } = useI18n()
 
   if (editing) {
-    return <QuickMarkForm browserTab={null} initial={mark} onSave={() => { setEditing(false); onUpdate() }} onCancel={() => setEditing(false)} />
+    return <BookmarkForm browserTab={null} initial={mark} onSave={() => { setEditing(false); onUpdate() }} onCancel={() => setEditing(false)} />
   }
 
   const handleDelete = async (): Promise<void> => {
     const ok = await confirm(t('confirm.deleteBookmark'), t('confirm.deleteBookmarkDesc'), true)
     if (!ok) return
-    await window.redlog.quickmarks.delete(mark.id)
+    await window.redlog.bookmarks.delete(mark.id)
     onDelete()
   }
 

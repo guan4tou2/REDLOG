@@ -145,6 +145,14 @@ describe('privileged trust gate', () => {
     revoke('tool-plugin')
   })
 
+  it('bookmarks.list is a current alias of the deprecated findings.list (F4 part B)', () => {
+    // Both methods work; each needs its own capability. Old plugins keep
+    // read:findings + findings.list; new ones use read:bookmarks + bookmarks.list.
+    expect(methodAllowed('findings.list', ['read:findings'])).toBe(true)
+    expect(methodAllowed('bookmarks.list', ['read:bookmarks'])).toBe(true)
+    expect(methodAllowed('bookmarks.list', ['read:findings'])).toBe(false) // must hold its own cap
+  })
+
   it('capability gate maps ctx methods to caps and denies unknowns', () => {
     expect(methodAllowed('events.query', ['read:events'])).toBe(true)
     expect(methodAllowed('events.append', ['read:events'])).toBe(false)

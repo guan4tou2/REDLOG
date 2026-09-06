@@ -6,7 +6,7 @@ import os from 'os'
 export interface BrowserConfig {
   binary: string        // '' = auto-detect
   proxy: string         // e.g. http://127.0.0.1:8080 — '' disables the flag
-  cdpPort: number       // remote debugging port, so QuickMarks can read the tab
+  cdpPort: number       // remote debugging port, so Bookmarks can read the tab
   isolateProfile: boolean
   ignoreCertErrors: boolean
   startUrl: string

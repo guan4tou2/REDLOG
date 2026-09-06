@@ -112,7 +112,7 @@ Usage:
   redlog-cli loot <text>
   redlog-cli screenshot
   redlog-cli recording [status|pause|resume|toggle]
-  redlog-cli quickmark [list|add <title> [--url <url>] [--note <text>]]
+  redlog-cli bookmark [list|add <title> [--url <url>] [--note <text>]]  (alias: quickmark)
   redlog-cli replay <event_id>
   redlog-cli status
   redlog-cli health
@@ -283,24 +283,29 @@ Examples:
       break
     }
 
+    case 'bookmark':
+    case 'bookmarks':
+    // `quickmark`/`quickmarks` are the pre-F4 names, kept as deprecated aliases.
     case 'quickmark':
     case 'quickmarks': {
+      // Both verbs hit /api/bookmarks (the /api/quickmarks route still works
+      // server-side as an alias, but the CLI uses the current one).
       const sub = positional[0] || 'list'
       if (sub === 'list') {
-        const res = await request('GET', '/api/quickmarks')
+        const res = await request('GET', '/api/bookmarks')
         if (res.status === 200) {
-          const list = res.data.quickmarks || []
-          if (list.length === 0) console.log('(no quickmarks)')
+          const list = res.data.bookmarks || res.data.quickmarks || []
+          if (list.length === 0) console.log('(no bookmarks)')
           for (const m of list) console.log(`${m.id}  ${m.title}${m.url ? '  ' + m.url : ''}`)
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       } else if (sub === 'add' || sub === 'create') {
         const title = positional[1]
-        if (!title) { console.error('Usage: redlog-cli quickmark add <title> [--url <url>] [--note <text>]'); process.exit(1) }
-        const res = await request('POST', '/api/quickmarks', { title, url: flags.url, note: flags.note })
-        if (res.status === 201) console.log(`Quickmark created: ${res.data.id}`)
+        if (!title) { console.error('Usage: redlog-cli bookmark add <title> [--url <url>] [--note <text>]'); process.exit(1) }
+        const res = await request('POST', '/api/bookmarks', { title, url: flags.url, note: flags.note })
+        if (res.status === 201) console.log(`Bookmark created: ${res.data.id}`)
         else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       } else {
-        console.error('Usage: redlog-cli quickmark [list|add <title> [--url <url>] [--note <text>]]'); process.exit(1)
+        console.error('Usage: redlog-cli bookmark [list|add <title> [--url <url>] [--note <text>]]'); process.exit(1)
       }
       break
     }
