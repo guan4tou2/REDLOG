@@ -6,12 +6,11 @@ directories:
 files:
   - out/**/*
   - resources/**/*
-# Ship the stdio MCP bridge + hook scripts alongside the app so the packaged
-# build can point at them (HTTP MCP needs none of this, but stdio + hook
-# install do).
+# Ship the hook scripts alongside the app so the packaged build can point at
+# them when it installs a hook. (The stdio MCP bridge that used to ride along
+# here was removed in 2026-08 — `mcp/` no longer exists and every build was
+# printing "file source doesn't exist" for it.)
 extraResources:
-  - from: mcp
-    to: mcp
   - from: hooks
     to: hooks
   - from: shell
@@ -57,7 +56,11 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
 linux:
-  icon: resources/icon-256.png
+  # A DIRECTORY of NxN.png (electron-builder's Linux icon-set format) instead of
+  # a single 256px file every panel/launcher had to downscale itself — the
+  # mushy result RING_MIN_PX exists to avoid. tools/make-icons.py regenerates
+  # resources/icon-<N>.png; these are the same renders named <N>x<N>.png.
+  icon: resources/icons
   target:
     - target: AppImage
       arch:

@@ -29,7 +29,7 @@ import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visib
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
 import { exportBundle } from '../core/bundle-export'
-import { sweepRetention, sweepLoggedTier, sweepBodyStore } from '../core/retention'
+import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
 import { exportHar } from '../core/har-export'
 import {
@@ -56,13 +56,14 @@ import { startProxyBypassDetector, stopProxyBypassDetector } from './services/pr
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
+import { configureIngest } from '../core/ingest'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
-import { checkForUpdates } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
 import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
@@ -612,6 +613,15 @@ function startProject(project: ProjectMeta): void {
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
+  // The unified ingest() pipeline (used by /api/events and, going forward, the
+  // in-process producers) needs the same collaborators the api-server had: the
+  // loot detector, the alert runtime for scope dispatch, and the cast probe for
+  // bracketing built-in-terminal output.
+  configureIngest({
+    lootDetector,
+    alertRuntime: { dispatchTargetHit: (input) => alertRuntime.dispatchTargetHit(input) },
+    castProbe: getCastPosition
+  })
 
   // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
   // Both default to 0 (keep forever) so existing installs see no behaviour
@@ -631,6 +641,8 @@ function startProject(project: ProjectMeta): void {
     if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
       console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
     }
+    const bookmarksPruned = sweepBookmarks(config.retention?.bookmarks, { engagementId, operatorId })
+    if (bookmarksPruned > 0) console.log(`[retention] pruned ${bookmarksPruned} bookmark(s)`)
     // Size-pressure eviction of the body store, after the age sweep — whatever
     // aged out has already gone, so this only reaches live-but-cold bodies.
     const evicted = sweepBodyStore(config, { engagementId, operatorId })
@@ -893,8 +905,17 @@ function startProject(project: ProjectMeta): void {
 
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
-  startAnchorLoop()
-  startNtpLoop()
+  // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
+  // anchoring, NTP sync, and the update check. Capture and the local API are
+  // untouched. Record the mode so a timeline that lacks anchors is explained
+  // by a choice, not a failure.
+  const airgap = config.network?.offline === true
+  setUpdaterAirgap(airgap)
+  insertEvent('system', { subtype: 'opsec_airgap', enabled: airgap, description: airgap ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF' }, { engagementId, operatorId })
+  if (!airgap) {
+    startAnchorLoop()
+    startNtpLoop()
+  }
 
   // v0.6.89 P1-A: read-path sampling verify. On open, take a big (100)
   // sample immediately so the operator sees an early signal if the chain
@@ -1111,19 +1132,23 @@ app.whenReady().then(() => {
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:create', (_e, name: string, initialConfig?: Partial<RedLogConfig>) => {
     const project = createProject(name)
-    if (initialConfig) {
-      const projectDir = getProjectPath(project)
-      const config = loadConfig(projectDir)
-      const merged = {
-        ...config,
-        engagement: { ...config.engagement, ...initialConfig.engagement },
-        operator: { ...config.operator, ...initialConfig.operator },
-        network: { ...config.network, ...initialConfig.network },
-        scope: { ...config.scope, ...initialConfig.scope },
-        screenshot: { ...config.screenshot, ...initialConfig.screenshot }
-      }
-      saveConfig(projectDir, merged)
+    // The engagement is the project. Every new project used to inherit the
+    // template's `default` / "Default Engagement", so the dashboard of a
+    // project called Review-Engagement announced a different name, and every
+    // event carried `engagement_id: default` — the same id for every project
+    // on the box. Seed both from what the operator just typed; the advanced
+    // setup (or a later edit) still overrides.
+    const projectDir = getProjectPath(project)
+    const config = loadConfig(projectDir)
+    const merged = {
+      ...config,
+      engagement: { ...config.engagement, id: project.id, name: project.name, ...initialConfig?.engagement },
+      operator: { ...config.operator, ...initialConfig?.operator },
+      network: { ...config.network, ...initialConfig?.network },
+      scope: { ...config.scope, ...initialConfig?.scope },
+      screenshot: { ...config.screenshot, ...initialConfig?.screenshot }
     }
+    saveConfig(projectDir, merged)
     startProject(project)
     return project
   })
@@ -1697,7 +1722,8 @@ app.whenReady().then(() => {
     if (!activeProject) return { ok: false, error: 'no-active-project' }
     try {
       const cfg = loadConfig(getProjectPath(activeProject))
-      const bundle = exportBundle(cfg.engagement.id)
+      // PRD A2: mask out-of-scope events' captured content in the bundle.
+      const bundle = exportBundle(cfg.engagement.id, { scope: { targets: snapshotScope(cfg).targets } })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
     } catch (e) {
       return { ok: false, error: (e as Error)?.message ?? String(e) }

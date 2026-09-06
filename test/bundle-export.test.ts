@@ -14,13 +14,14 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
+let mod: typeof import('../src/core/db/index')
 
 let dbAvailable = false
 try {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const b = await import('../src/core/bundle-export')
-  initDB = d.initDB; closeDB = d.closeDB; insertEventRaw = e.insertEvent; exportBundle = b.exportBundle
+  initDB = d.initDB; closeDB = d.closeDB; insertEventRaw = e.insertEvent; exportBundle = b.exportBundle; mod = d
   dbAvailable = true
 } catch { /* better-sqlite3 not built for this Node */ }
 
@@ -183,4 +184,55 @@ describeDB('private bookmarks stay out of the bundle', () => {
       expect(fs.readFileSync(f, 'utf-8'), `canary found in ${path.basename(f)}`).not.toContain('BOOKMARK-CANARY-9182')
     }
   })
+
+  const insT = (data: Record<string, unknown>, targetId: string): void => {
+    insertEventRaw('shell', data, { engagementId: 'eng', operatorId: 'op', targetId })
+  }
+
+  it('masks out-of-scope events content in the bundle when scope is supplied (A2)', () => {
+    insT({ subtype: 'command_end', command: 'curl https://in.example.com', output: 'IN-SCOPE-BODY' }, 'in.example.com')
+    insT({ subtype: 'command_end', command: 'curl https://out.evil.com', output: 'OUT-OF-SCOPE-SECRET' }, 'out.evil.com')
+
+    const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'a2'), scope: { targets: ['*.example.com'] } })
+    const lines = fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const inRow = lines.find((r) => r.target_id === 'in.example.com')
+    const outRow = lines.find((r) => r.target_id === 'out.evil.com')
+    expect(JSON.parse(inRow.data).output).toBe('IN-SCOPE-BODY')            // untouched
+    expect(JSON.parse(outRow.data).output).toBe('[redacted: out of scope]') // masked
+    expect(manifest.sanitizedOutOfScope).toBe(1)
+  })
+
+  it('does not mask anything when no scope is supplied (A2 default is safe)', () => {
+    insT({ subtype: 'command_end', command: 'curl https://out.evil.com', output: 'STILL-HERE' }, 'out.evil.com')
+    const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'a2b') })
+    const lines = fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const row = lines.find((r) => r.target_id === 'out.evil.com')
+    expect(JSON.parse(row.data).output).toBe('STILL-HERE')
+    expect(manifest.sanitizedOutOfScope).toBe(0)
+  })
+
+  // The offline verifier (tools/redlog-verify.py) is what a recipient runs.
+  // Before the manifest-file check it walked only the event chain, so a
+  // swapped screenshot passed "chain intact". These two tests pin the fix:
+  // an untouched bundle verifies, a tampered evidence file fails.
+  it('the python verifier passes a clean bundle and fails a tampered evidence file', () => {
+    seedFile('screenshots', 'shot.jpg', 'REAL-IMAGE-BYTES')
+    const { outDir } = exportBundle('eng')
+    const child = require('node:child_process') as typeof import('node:child_process')
+    const verifier = path.join(outDir, 'redlog-verify.py')
+    if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape
+
+    const clean = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
+    if (clean.error) return // python3 unavailable on this runner — skip
+    expect(clean.status, clean.stdout + clean.stderr).toBe(0)
+    expect(clean.stdout).toMatch(/Manifest files\s+:\s+\d+ verified/)
+
+    // Swap the bytes of a listed evidence file without touching the manifest.
+    fs.writeFileSync(path.join(outDir, 'screenshots', 'shot.jpg'), 'SWAPPED-IMAGE')
+    const tampered = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
+    expect(tampered.status).toBe(1)
+    expect(tampered.stdout + tampered.stderr).toMatch(/MISMATCH|sha256 differs/)
+  }, 30000) // spawns python3 twice; the interpreter cold-start alone exceeds the
+  // 5s default on Windows CI runners (observed ~6s), so the test timed out there
+  // while asserting nothing wrong. Wall-clock budget, not a logic change.
 })

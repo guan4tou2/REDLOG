@@ -43,6 +43,14 @@ export interface RedLogConfig {
     confirmations: number
     /** how to fetch the external IP: quiet DNS, HTTP echo, or DNS→HTTP fallback */
     ipMode: 'dns' | 'http' | 'auto'
+    /** OPSEC air-gap. When true RedLog makes NO outbound network requests of
+     *  its own: OpenTimestamps anchoring, NTP time-sync, the GitHub update
+     *  check and the external-IP lookup are all suppressed. Capture and the
+     *  local API (127.0.0.1) are unaffected. The chain still hashes + signs;
+     *  it just is not anchored to a public calendar until you leave air-gap.
+     *  Default false. Set it before an engagement that requires egress
+     *  containment or must not be attributable by periodic third-party calls. */
+    offline: boolean
     /** macOS gates the Wi-Fi SSID behind Location Services; opt in to request it
         so the HUD can show the real network name instead of a generic "Wi-Fi". */
     showWifiName: boolean
@@ -208,6 +216,15 @@ export interface RedLogConfig {
        *  project-open sweep still runs. Default `24`. */
       sweepIntervalHours?: number
     }
+    /** Bookmarks (the 書籤 page) are a private notepad, not chained evidence —
+     *  yet they store pasted credentials and the captured external IP, so
+     *  permanent retention is the wrong default once you accept they are not
+     *  a record. Age-based cleanup on project open. `0` (default) = keep
+     *  forever, matching the other keep-days; a `system.bookmarks_pruned`
+     *  audit row (count only, no content) records each sweep. */
+    bookmarks?: {
+      keepDays?: number
+    }
   }
 }
 
@@ -227,6 +244,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     providers: [],
     confirmations: 3,
     ipMode: 'auto',
+    offline: false,
     showWifiName: false,
     vpnAdapters: DEFAULT_VPN_ADAPTERS
   },
@@ -310,6 +328,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
     loggedTier: {
       keepDays: 30,
       sweepIntervalHours: 24
+    },
+    bookmarks: {
+      keepDays: 0
     }
   }
 }

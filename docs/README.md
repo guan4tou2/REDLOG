@@ -10,6 +10,7 @@ Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links
 
 ## Start here
 
+- **[操作者手冊](USER-GUIDE.md)** — for the person *using* RedLog rather than building it: the first ten minutes, what each screen answers, how to wire the three capture sources that matter, how to export. 繁體中文, like the interface.
 - **[交接 2026-09](HANDOVER-2026-09.md)** — **read this first if you are picking the work up.** Where `main` stands, what the last eight PRs decided and why, what is still open (with the reason each was deferred), and the traps in this codebase that cost real time: the native-module ABI swap, the temporal-dead-zone crash that only appears in the bundled build, the two-tier event tables, and the source-scanning guard tests.
 - **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to MCP tool usage.
 
@@ -21,6 +22,10 @@ Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links
 - **[Audit 2026-08-08](AUDIT-2026-08-08.md)** — standing defect list from a full-tree review: correctness, trust-model gaps, presentation, test coverage, doc drift. Each item tagged verified/reported.
 - **[UX & complexity audit 2026-08-10](UX-AUDIT-2026-08.md)** — persona-driven review of the renderer: where breadth has outrun the solo operator (Timeline 3,875 lines / Settings 2,681 lines), the first-run friction gap, and a prioritized backlog. Companion to the correctness audit above.
 - **[Core purpose and capture coverage](DESIGN-core-and-capture.md)** — the 2026-08-21 review that moved the core from *defensibility* to *knowability*, and what that does to capture: four gaps (non-HTTP traffic, remote commands, Windows output, queryable tool output), the point/span timeline model, and the purple-team activity record. Read alongside `PRODUCT-POSITIONING.md`, which it revised.
+- **[完善需求 PRD](PRD-COMPLETION.md)** — PM-level requirements consolidating every finding (red-team review, design debt, open items, plugin-kernel) into prioritized epics with acceptance criteria, a definition of "done", milestones, and the product decisions that gate specific work. Read this before picking up implementation. 繁體中文.
+- **[Open items design](DESIGN-OPEN-ITEMS.md)** — 2026-09-06 work plan: every open item from the handover (bookmark retention, per-project token, scope-aware sanitize, env.d.ts derivation, QuickMark→Bookmark rename, single wordmark, Linux icons) turned into an executable design with problem / decision / steps / contract impact / status, ordered by value ÷ risk. Each is marked NOT-implemented until it ships. 繁體中文.
+- **[Plugin kernel](DESIGN-plugin-kernel.md)** — 2026-09-06 design note: a minimal core (store, chain, pause gate, redaction, schema + tiering, health, attribution, UI) with capture and normalization as plugins, and why a unified format does not distort the record — the envelope is unified, the raw bytes are kept verbatim and hashed onto the chain. 繁體中文.
+- **[Traffic attribution](DESIGN-traffic-attribution.md)** — 2026-09-06 design note answering "can traffic be recorded per tool?": what each tool actually emits, which of it RedLog sees today, and the socket→pid→command correlation that would let an nmap probe and a browser request land on their own command rows. 繁體中文.
 - **[UI/UX 標準](UIUX-STANDARD.md)** — the rule book UI code lands against, extracted from `src/renderer` itself: colour tokens, type scale, density, the component contract, UX principles, Timeline/HUD rules, and the three-phase checklist the PR templates in `.github/pull_request_template/` check against. Written and maintained in the Claude Design project — see [design-project-sync.md](design-project-sync.md) for the screen-to-source map and the last sync. The two app-icon masters it names live at [`design/assets/`](../design/assets/) — pulled in, not yet shipped (§16 ▲ 分歧).
 - **[Timeline UX deep-dive 2026-08-10](UX-TIMELINE-2026-08.md)** — the F2 deep-dive: why the timeline feels unintuitive (invisible, overloaded, context-dependent gestures), what it is *not* (lanes/data are fine), and the T1–T6 simplification plan.
 - **[UX backlog — ticket specs](UX-BACKLOG-TICKETS.md)** — every finding (F1–F7, T1–T6) broken out into an independently implementable ticket: problem, proposed solution, acceptance criteria, pure test seam, effort, priority order.
@@ -28,22 +33,20 @@ Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links
 - **[Dev requirements — capture onboarding](DEV-REQUIREMENTS-capture-onboarding.md)** — spec + acceptance criteria for the Capture Readiness onboarding, and the red→green→integrate→cover TDD process every UX change should copy.
 - **[Timeline I/O visibility](timeline-io-visibility.md)** — design note (proposed). Which sources capture input/output today, where the gaps are, and the `io_ref` sidecar + transcript-view proposal that closes them.
 
-## Subsystem decomposition (salvaged from PR #8)
+## Subsystem decomposition (archived)
 
 A framework and eleven applications of it, written 2026-08-11 → 08-15 and never
-merged — while code that cites them shipped anyway (`src/core/alert/` names
-`ALERT-ROLES.md` three times). Recovered as documentation only. Each page turns
-an open-ended subsystem into a small, provably-complete set of roles with a
-per-item template, so "add another one" is filling in a row rather than a fresh
-design.
+merged. **Moved to [`archive/`](archive/README.md) on 2026-09-06** — they are
+proposals, not descriptions of the code, and sat beside the live docs at equal
+weight for three weeks. The three pages shipped code does cite stay here.
 
-- **[Method](DECOMPOSITION-METHOD.md)** — how a subsystem gets decomposed, and the test for "provably complete".
-- **[Backlog](DECOMPOSITION-BACKLOG.md)** — the gaps the eleven decompositions named, still open.
+- **[Method](archive/DECOMPOSITION-METHOD.md)** — how a subsystem gets decomposed, and the test for "provably complete".
+- **[Backlog](archive/DECOMPOSITION-BACKLOG.md)** — the gaps the eleven decompositions named, still open.
 - **[Design principles](DESIGN-PRINCIPLES.md)** — the durable laws. **§1 is superseded** by `DESIGN-core-and-capture.md`; the header says how.
 - **[Alert roles](ALERT-ROLES.md)** — self alarm vs target alarm, and the authority tiers that stop an inference reading as a fact. Cited by `src/core/alert/`.
-- **[Capture source taxonomy](CAPTURE-SOURCE-TAXONOMY.md)** · **[Detector roles](DETECTOR-ROLES.md)** · **[Plugin roles](PLUGIN-ROLES.md)** · **[Event type vocabulary](EVENT-TYPE-VOCABULARY.md)** — the four member catalogues.
-- **[Control plane faces](CONTROL-PLANE-FACES.md)** · **[Delivery targets](DELIVERY-TARGETS.md)** · **[Off-chain content stores](OFF-CHAIN-CONTENT-STORES.md)** · **[Timeline elements](TIMELINE-ELEMENTS.md)** — the four surface catalogues.
-- **[I/O sidecar](SPEC-IO-SIDECAR.md)** · **[Scope-aware lifecycle](SPEC-SCOPE-AWARE-LIFECYCLE.md)** · **[Timeline axis](SPEC-TIMELINE-AXIS.md)** · **[AI-era plugins](SPEC-AI-ERA-PLUGINS.md)** — four specs. Unbuilt; read as proposals, not as descriptions of the code.
+- **[Capture source taxonomy](archive/CAPTURE-SOURCE-TAXONOMY.md)** · **[Detector roles](archive/DETECTOR-ROLES.md)** · **[Plugin roles](archive/PLUGIN-ROLES.md)** · **[Event type vocabulary](archive/EVENT-TYPE-VOCABULARY.md)** — the four member catalogues.
+- **[Control plane faces](archive/CONTROL-PLANE-FACES.md)** · **[Delivery targets](archive/DELIVERY-TARGETS.md)** · **[Off-chain content stores](archive/OFF-CHAIN-CONTENT-STORES.md)** · **[Timeline elements](archive/TIMELINE-ELEMENTS.md)** — the four surface catalogues.
+- **[I/O sidecar](archive/SPEC-IO-SIDECAR.md)** · **[Scope-aware lifecycle](archive/SPEC-SCOPE-AWARE-LIFECYCLE.md)** · **[Timeline axis](archive/SPEC-TIMELINE-AXIS.md)** · **[AI-era plugins](archive/SPEC-AI-ERA-PLUGINS.md)** — four specs. Unbuilt; read as proposals, not as descriptions of the code.
 - **[Testing](TESTING.md)** — the test strategy the suite assumes: what belongs in a unit test, what needs the app in the loop, and why.
 
 ## Integrations

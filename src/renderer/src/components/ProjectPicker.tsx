@@ -3,8 +3,8 @@ import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatFreshness } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
+import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
-import markUrl from '../assets/mark.svg'
 import { Button } from './Button'
 
 interface ProjectPickerProps {
@@ -154,9 +154,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         {/* Header — spans both columns. Centered anchor for identity so the
             wider layout still feels intentional and not empty. */}
         <div className="text-center space-y-2">
-          <img src={markUrl} alt="" className="w-14 h-14 mx-auto mb-2" />
-
-          <h1 className="text-redlog-text font-bold text-xl tracking-[0.15em]">{t('app.title')}</h1>
+          <Wordmark className="text-4xl" />
           <p className="text-redlog-text-faint text-xs font-mono">{t('app.subtitle')}</p>
         </div>
 
