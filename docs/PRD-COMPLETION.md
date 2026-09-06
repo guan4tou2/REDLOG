@@ -132,9 +132,9 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 ### 主題 F — 收尾/外觀
 
 **F1. 視窗底色 `#0a0a0a`→`#121214` · ✅ 已實作(PR #36)· P1 · S** — `windows.ts` 兩處,載入不再閃暗底。
-**F2. 單一字標 `REDL(●)G` · P2 · M** — 即時文字元件,非 SVG;換掉標題列與 Picker 的圖片+純文字。
-**F3. Linux 多尺寸圖示 · P2 · S · 需決策** — 先確認 Linux 是否真的進 release CI(目前沒產出過 artifact)。
-**F4. QuickMark→Bookmark 內部改名 · P2 · M · 需決策(SQL 表名)** — 拆兩 PR,外部契約要別名期。
+**F2. 單一字標 `REDL(●)G` · ✅ 已實作(PR #36)· P2 · M** — `Wordmark` 即時文字元件,環為錄製指示、em-based、#d75f63;換掉標題列與 Picker 的圖片+純文字。
+**F3. Linux 多尺寸圖示 · ✅ 圖示已實作(PR #36)· P2 · S** — `resources/icons/<N>x<N>.png` + `linux.icon` 指向目錄 + make-icons 同步 + guard。**續作(需 CI 驗證)**:把 ubuntu-latest 加進 release matrix——`release` job `needs: build`,未驗證的 Linux build 若失敗會連 mac/win release 一起擋,故此開關要在 CI 上翻並盯,不能盲改。
+**F4. QuickMark→Bookmark 改名 · ⏸ 待獨立 PR · P2 · M** — SQL 表名決策已採納(✅ 改)。拆兩 PR:(a) 內部改名(型別/IPC/component/SQL migration),(b) 外部契約 + 別名(REST/CLI/外掛能力)。**F4 動到 #36 剛改的書籤 retention 程式,合併順序有關,故應在 #36/#37 併入 main 後從 main 開分支做。**
 - 設計:`DESIGN-OPEN-ITEMS §5–7`。
 
 ---
@@ -154,9 +154,9 @@ A2 scope-aware sanitize(匯出遮蔽 ✅;rotation 排序為續作) · B3 依工�
 D4 死表移除 ✅ · D3 已大致滿足(單一 owner + 測試不靠殘留)✅ · **D2 env.d.ts 推導 → 建議獨立 PR**
 → D2 未做:它把 `env.d.ts` 從 global script 變 module,波及每個裸用 `RedLogEvent`/`ProjectMeta` 等全域型別的 renderer 檔,是機械但廣的改動,硬塞進這條已 14 commit 的分支會讓 diff 難 review。建議從 `main` 開新分支專做。
 
-**M4 — 外掛化 + 外觀(P2)**
-E1–E3 外掛化 · F2 字標 · F3/F4 圖示與改名(先過決策)
-→ 達成後:plugin-kernel 願景落地、識別一致。
+**M4 — 外掛化 + 外觀(P2)· 外觀部分達成**
+F2 字標 ✅ · F3 Linux 圖示 ✅(release matrix 待 CI 驗證) · **F4 改名 → 待獨立 PR(併 main 後)** · **E1–E3 外掛化 → 待獨立 PR(有測試/載入含義,見下)**
+→ E1(內建 target extractor 搬成 pack)會讓 core 不再硬編工具知識,但也讓 core 的 extractTarget 單元測試與「總是可用」的行為需要那包在測試/啟動時載入——這是個有含義的重構,不是純搬移,值得獨立設計。
 
 **B4 pcap / 透明代理**:獨立評估,先過「接受 root 成本」的定位決策再排。
 
