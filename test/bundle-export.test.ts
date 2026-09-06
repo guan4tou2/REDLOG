@@ -183,4 +183,27 @@ describeDB('private bookmarks stay out of the bundle', () => {
       expect(fs.readFileSync(f, 'utf-8'), `canary found in ${path.basename(f)}`).not.toContain('BOOKMARK-CANARY-9182')
     }
   })
+
+  // The offline verifier (tools/redlog-verify.py) is what a recipient runs.
+  // Before the manifest-file check it walked only the event chain, so a
+  // swapped screenshot passed "chain intact". These two tests pin the fix:
+  // an untouched bundle verifies, a tampered evidence file fails.
+  it('the python verifier passes a clean bundle and fails a tampered evidence file', () => {
+    seedFile('screenshots', 'shot.jpg', 'REAL-IMAGE-BYTES')
+    const { outDir } = exportBundle('eng')
+    const child = require('node:child_process') as typeof import('node:child_process')
+    const verifier = path.join(outDir, 'redlog-verify.py')
+    if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape
+
+    const clean = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
+    if (clean.error) return // python3 unavailable on this runner — skip
+    expect(clean.status, clean.stdout + clean.stderr).toBe(0)
+    expect(clean.stdout).toMatch(/Manifest files\s+:\s+\d+ verified/)
+
+    // Swap the bytes of a listed evidence file without touching the manifest.
+    fs.writeFileSync(path.join(outDir, 'screenshots', 'shot.jpg'), 'SWAPPED-IMAGE')
+    const tampered = child.spawnSync('python3', [verifier, outDir], { encoding: 'utf-8' })
+    expect(tampered.status).toBe(1)
+    expect(tampered.stdout + tampered.stderr).toMatch(/MISMATCH|sha256 differs/)
+  })
 })

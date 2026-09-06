@@ -420,6 +420,41 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
             logged_rows = None
 
     # ---------------------------------------------------------------------
+    # Manifest file digests. `manifest["files"]` lists every artefact the
+    # bundle ships (events.jsonl, screenshots/, casts/, chain_anchors.json,
+    # operators.json, …) with a sha256. The chain protects the events; it says
+    # nothing about a screenshot or a cast that a recipient was handed as
+    # evidence. Re-hash each listed file and fail if any differs, is missing,
+    # or was not actually covered — otherwise a swapped screenshot passes
+    # "chain intact" while being a different image than the operator captured.
+    # ---------------------------------------------------------------------
+    file_entries = manifest.get("files") or []
+    files_checked = 0
+    files_bad: List[str] = []
+    files_missing: List[str] = []
+    # `manifest.json` cannot list its own digest (it would change the file),
+    # and the two verifier scripts / manifest.sha256 / manifest.hmac are
+    # signing wrappers around the manifest, not chain evidence — skip those.
+    SELF = {"manifest.json", "manifest.sha256", "manifest.hmac", "redlog-verify.py", "verify.sh", "verify.cmd"}
+    for entry in file_entries:
+        rel = entry.get("path")
+        want = entry.get("sha256")
+        if not rel or not want or rel in SELF:
+            continue
+        target_file = bundle_dir / rel
+        if not target_file.exists():
+            files_missing.append(rel)
+            continue
+        h = hashlib.sha256()
+        with target_file.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
+        files_checked += 1
+        if h.hexdigest() != want:
+            files_bad.append(rel)
+    files_ok = not files_bad and not files_missing
+
+    # ---------------------------------------------------------------------
     # Report
     # ---------------------------------------------------------------------
     print("")
@@ -457,7 +492,17 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"Logged tier      : {logged_rows} rows present in events_logged.jsonl")
         print(f"                   (not verified — supporting evidence, see README)")
 
-    if head_ok is False:
+    if file_entries:
+        if files_ok:
+            print(f"Manifest files   : {files_checked} verified (sha256 matches)")
+        else:
+            print(f"Manifest files   : MISMATCH")
+            for rel in files_missing:
+                print(f"  missing         : {rel}")
+            for rel in files_bad:
+                print(f"  sha256 differs  : {rel}")
+
+    if head_ok is False or not files_ok:
         return 1
     return 0
 
