@@ -134,12 +134,12 @@ const api: RedLogAPI = {
   loot: {
     getCount: () => ipcRenderer.invoke('loot:getCount')
   },
-  quickmarks: {
-    list: () => ipcRenderer.invoke('quickmarks:list'),
-    get: (id: string) => ipcRenderer.invoke('quickmarks:get', id),
-    create: (data: { title: string; url?: string; note?: string }) => ipcRenderer.invoke('quickmarks:create', data),
-    update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('quickmarks:update', id, data),
-    delete: (id: string) => ipcRenderer.invoke('quickmarks:delete', id)
+  bookmarks: {
+    list: () => ipcRenderer.invoke('bookmarks:list'),
+    get: (id: string) => ipcRenderer.invoke('bookmarks:get', id),
+    create: (data: { title: string; url?: string; note?: string }) => ipcRenderer.invoke('bookmarks:create', data),
+    update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('bookmarks:update', id, data),
+    delete: (id: string) => ipcRenderer.invoke('bookmarks:delete', id)
   },
   views: {
     list: () => ipcRenderer.invoke('views:list'),

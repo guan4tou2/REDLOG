@@ -47,7 +47,8 @@ export function createPluginHost(services: PluginServices): {
       case 'events.query': return services.queryEvents(args)
       case 'events.search': return services.searchEvents(args)
       case 'events.append': return services.appendEvent(pluginId, args)
-      case 'findings.list': return services.listFindings(args)
+      case 'findings.list':
+      case 'bookmarks.list': return services.listFindings(args)
       case 'config.get': return services.getConfig()
       case 'net.fetch': return services.fetch(args)
       default: throw new Error(`unknown method: ${method}`)

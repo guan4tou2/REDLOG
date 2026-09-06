@@ -12,14 +12,14 @@ import path from 'path'
 let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null
 let vis: typeof import('../src/core/visibility-signals') | null = null
-let findings: typeof import('../src/core/db/findings') | null = null
+let findings: typeof import('../src/core/db/bookmarks') | null = null
 try {
   const D = (await import('better-sqlite3')).default
   new D(':memory:').close()
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
   vis = await import('../src/core/visibility-signals')
-  findings = await import('../src/core/db/findings')
+  findings = await import('../src/core/db/bookmarks')
 } catch { /* better-sqlite3 not built for this Node ABI */ }
 
 const available = events !== null
@@ -121,7 +121,7 @@ describe.skipIf(!available)('visibility signals', () => {
       ins('marker', { title: 'a finding', severity: 'info' })
       expect(sig().bookmarkSeen).toBe(false)
       vis!.resetVisibilitySignalsCache()
-      findings!.createQuickMark({ title: 'bookmark', url: 'https://x', note: '' })
+      findings!.createBookmark({ title: 'bookmark', url: 'https://x', note: '' })
       expect(sig().bookmarkSeen).toBe(true)
     })
 

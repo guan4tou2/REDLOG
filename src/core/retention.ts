@@ -11,7 +11,7 @@ import fs from 'fs'
 import path from 'path'
 import { getProjectDir, getDB } from './db/index'
 import { insertEvent } from './db/events'
-import { deleteQuickMarksOlderThan } from './db/findings'
+import { deleteBookmarksOlderThan } from './db/bookmarks'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
@@ -278,7 +278,7 @@ export function sweepBookmarks(
   if (keepDays <= 0) return 0
   const cutoff = Date.now() - keepDays * DAY_MS
   let deleted = 0
-  try { deleted = deleteQuickMarksOlderThan(cutoff) } catch (e) { noteDbError('retention-bookmarks', e); return 0 }
+  try { deleted = deleteBookmarksOlderThan(cutoff) } catch (e) { noteDbError('retention-bookmarks', e); return 0 }
   if (deleted > 0) {
     // Content is never in the audit row — only the fact that N notes aged out.
     const ev = insertEvent('system', {

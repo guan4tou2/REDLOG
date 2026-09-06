@@ -119,12 +119,13 @@ export interface CaptureContribution {
 export type Capability =
   | 'read:events'        // query the timeline
   | 'write:events'       // append events (attributed to the plugin's operator)
-  | 'read:findings'      // read loot/findings
+  | 'read:findings'      // read loot/findings (deprecated alias of read:bookmarks)
+  | 'read:bookmarks'     // read the operator's bookmarks
   | 'read:config'        // read engagement config (scope, redaction rules)
   | 'net:outbound'       // make outbound network requests (exfil risk — flagged)
 
 export const ALL_CAPABILITIES: Capability[] = [
-  'read:events', 'write:events', 'read:findings', 'read:config', 'net:outbound'
+  'read:events', 'write:events', 'read:findings', 'read:bookmarks', 'read:config', 'net:outbound'
 ]
 
 /** 🟢 A declarative mapper: how a producer's raw payload becomes envelope

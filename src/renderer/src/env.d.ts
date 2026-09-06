@@ -38,7 +38,7 @@ interface RedLogEvent {
   tier?: 'chained' | 'logged'
 }
 
-interface QuickMarkContext {
+interface BookmarkContext {
   browserUrl?: string
   browserTitle?: string
   externalIP?: string
@@ -60,12 +60,12 @@ interface SavedTimelineView {
   state: SavedTimelineViewState
 }
 
-interface QuickMark {
+interface Bookmark {
   id: string
   title: string
   url: string | null
   note: string
-  context: QuickMarkContext
+  context: BookmarkContext
   createdAt: number
 }
 
@@ -193,11 +193,11 @@ interface RedLogAPI {
   loot: {
     getCount: () => Promise<number>
   }
-  quickmarks: {
-    list: () => Promise<QuickMark[]>
-    get: (id: string) => Promise<QuickMark | null>
-    create: (data: { title: string; url?: string; note?: string }) => Promise<QuickMark>
-    update: (id: string, data: Partial<QuickMark>) => Promise<QuickMark | null>
+  bookmarks: {
+    list: () => Promise<Bookmark[]>
+    get: (id: string) => Promise<Bookmark | null>
+    create: (data: { title: string; url?: string; note?: string }) => Promise<Bookmark>
+    update: (id: string, data: Partial<Bookmark>) => Promise<Bookmark | null>
     delete: (id: string) => Promise<boolean>
   }
   // v0.6.96 Clean-3: preload always exports views (v0.6.90 D); the `?` was

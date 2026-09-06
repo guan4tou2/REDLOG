@@ -1,23 +1,23 @@
 import crypto from 'crypto'
 import { getDB } from './index'
 
-export interface QuickMark {
+export interface Bookmark {
   id: string
   title: string
   url: string | null
   note: string
-  context: QuickMarkContext
+  context: BookmarkContext
   createdAt: number
 }
 
-export interface QuickMarkContext {
+export interface BookmarkContext {
   browserUrl?: string
   browserTitle?: string
   externalIP?: string
   lastCommand?: string
 }
 
-function rowToQuickMark(row: Record<string, unknown>): QuickMark {
+function rowToBookmark(row: Record<string, unknown>): Bookmark {
   return {
     id: row.id as string,
     title: row.title as string,
@@ -28,56 +28,56 @@ function rowToQuickMark(row: Record<string, unknown>): QuickMark {
   }
 }
 
-export function createQuickMark(data: {
+export function createBookmark(data: {
   title: string
   url?: string
   note?: string
-  context?: QuickMarkContext
-}): QuickMark {
+  context?: BookmarkContext
+}): Bookmark {
   const db = getDB()
   const id = crypto.randomUUID()
   const now = Date.now()
   db.prepare(
-    'INSERT INTO quickmarks (id, title, url, note, context, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO bookmarks (id, title, url, note, context, created_at) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(id, data.title, data.url || null, data.note || '', JSON.stringify(data.context || {}), now)
   return { id, title: data.title, url: data.url || null, note: data.note || '', context: data.context || {}, createdAt: now }
 }
 
-export function listQuickMarks(): QuickMark[] {
+export function listBookmarks(): Bookmark[] {
   const db = getDB()
-  const rows = db.prepare('SELECT * FROM quickmarks ORDER BY created_at DESC').all()
-  return rows.map((r) => rowToQuickMark(r as Record<string, unknown>))
+  const rows = db.prepare('SELECT * FROM bookmarks ORDER BY created_at DESC').all()
+  return rows.map((r) => rowToBookmark(r as Record<string, unknown>))
 }
 
-export function getQuickMark(id: string): QuickMark | null {
+export function getBookmark(id: string): Bookmark | null {
   const db = getDB()
-  const row = db.prepare('SELECT * FROM quickmarks WHERE id = ?').get(id)
-  return row ? rowToQuickMark(row as Record<string, unknown>) : null
+  const row = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(id)
+  return row ? rowToBookmark(row as Record<string, unknown>) : null
 }
 
-export function updateQuickMark(id: string, data: { title?: string; url?: string; note?: string }): QuickMark | null {
+export function updateBookmark(id: string, data: { title?: string; url?: string; note?: string }): Bookmark | null {
   const db = getDB()
-  const existing = getQuickMark(id)
+  const existing = getBookmark(id)
   if (!existing) return null
   const title = data.title ?? existing.title
   const url = data.url ?? existing.url
   const note = data.note ?? existing.note
-  db.prepare('UPDATE quickmarks SET title = ?, url = ?, note = ? WHERE id = ?').run(title, url, note, id)
+  db.prepare('UPDATE bookmarks SET title = ?, url = ?, note = ? WHERE id = ?').run(title, url, note, id)
   return { ...existing, title, url, note }
 }
 
-export function deleteQuickMark(id: string): boolean {
+export function deleteBookmark(id: string): boolean {
   const db = getDB()
-  const result = db.prepare('DELETE FROM quickmarks WHERE id = ?').run(id)
+  const result = db.prepare('DELETE FROM bookmarks WHERE id = ?').run(id)
   return result.changes > 0
 }
 
 /** Retention: delete bookmarks created before `cutoffMs`. Returns the count.
  *  The bookmarks table is not chained, so this is a plain DELETE — the
  *  audit trail is the `system.bookmarks_pruned` row the caller appends. */
-export function deleteQuickMarksOlderThan(cutoffMs: number): number {
+export function deleteBookmarksOlderThan(cutoffMs: number): number {
   const db = getDB()
-  const result = db.prepare('DELETE FROM quickmarks WHERE created_at < ?').run(cutoffMs)
+  const result = db.prepare('DELETE FROM bookmarks WHERE created_at < ?').run(cutoffMs)
   return result.changes
 }
 

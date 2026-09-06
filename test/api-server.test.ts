@@ -70,6 +70,29 @@ describeDB('api-server', () => {
     restore(PORT_PATH, savedPort)
   })
 
+  it('serves bookmarks on both /api/bookmarks and the deprecated /api/quickmarks (F4 part B)', async () => {
+    // create via the current route
+    const c = await fetch(`${base}/api/bookmarks`, {
+      method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'B1', url: 'https://x' })
+    })
+    expect(c.status).toBe(201)
+    // current route returns a `bookmarks` key
+    const nu = await (await fetch(`${base}/api/bookmarks`, { headers: authHeaders })).json()
+    expect(Array.isArray(nu.bookmarks)).toBe(true)
+    expect(nu.bookmarks.some((m: { title: string }) => m.title === 'B1')).toBe(true)
+    // legacy route still works and keeps its `quickmarks` key
+    const old = await (await fetch(`${base}/api/quickmarks`, { headers: authHeaders })).json()
+    expect(Array.isArray(old.quickmarks)).toBe(true)
+    expect(old.quickmarks.some((m: { title: string }) => m.title === 'B1')).toBe(true)
+    // create via the legacy route too
+    const c2 = await fetch(`${base}/api/quickmarks`, {
+      method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'B2' })
+    })
+    expect(c2.status).toBe(201)
+  })
+
   it('serves /api/health without auth', async () => {
     const r = await fetch(`${base}/api/health`)
     expect(r.status).toBe(200)

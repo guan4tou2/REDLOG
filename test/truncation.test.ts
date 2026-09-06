@@ -20,7 +20,7 @@ const EXEMPT: Record<string, string> = {
     'the row is a <button> that already carries title="<label> · ⌘N"',
   'src/renderer/src/components/TranscriptView.tsx':
     'the <pre> wraps rather than truncating; the class is redaction blur, and the block expands',
-  'src/renderer/src/components/FindingsView.tsx':
+  'src/renderer/src/components/BookmarksView.tsx':
     'section heading — "Marks (12)" has no tail to lose'
 }
 
@@ -75,7 +75,7 @@ describe('empty states', () => {
       ['App.tsx', 'screenshots'],
       ['components/LootPanel.tsx', 'loot'],
       ['components/TargetView.tsx', 'targets'],
-      ['components/FindingsView.tsx', 'bookmarks'],
+      ['components/BookmarksView.tsx', 'bookmarks'],
       ['components/TranscriptView.tsx', 'transcript']
     ] as const
     const missing = VIEWS.filter(([file]) => {
