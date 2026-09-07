@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from
 import { join } from 'path'
 import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
+import { isDisabled } from './plugins/state'
 
 export interface PluginManifest {
   id: string
@@ -212,7 +213,15 @@ export function unregisterCapturePlugins(pluginId: string): void {
 }
 
 function allManifests(): PluginManifest[] {
-  return [...PLUGIN_REGISTRY, ...externalCaptures]
+  // §8-2 true removability: the starter-pack IS the built-in producers, so
+  // disabling it (Settings ▸ Plugins) actually removes them — they drop out of
+  // the Hooks panel and capture-health, and come back on re-enable. Note this
+  // is orthogonal to the robustness fallback: a MISSING/bad manifest still
+  // yields the in-code STARTER_PACK_FALLBACK (see PLUGIN_REGISTRY); only an
+  // explicit DISABLE removes them. So a bad data file can never take capture
+  // dark, but an operator who wants a minimal RedLog can.
+  const builtins = isDisabled('starter-pack') ? [] : PLUGIN_REGISTRY
+  return [...builtins, ...externalCaptures]
 }
 
 // Absolute path to a manifest's hook script source. Plugin captures resolve

@@ -11,6 +11,7 @@ vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
 import { validateManifest, computeContentHash, tierOf } from '../src/core/plugins/manifest'
 import { loadPlugins } from '../src/core/plugins/loader'
 import { PLUGIN_API_VERSION } from '../src/core/plugins/types'
+import { setDisabled } from '../src/core/plugins/state'
 import { grant, isTrusted, revoke } from '../src/core/plugins/trust'
 import { applyContributions, removeContributions } from '../src/core/plugins/contributions'
 import { extractTarget, unregisterTargetExtractors } from '../src/core/target-extractor'
@@ -63,6 +64,24 @@ describe('manifest validation', () => {
     expect(validateManifest(
       { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: { mcpTools: '../../etc/passwd' } }, dir
     ).ok).toBe(false)
+  })
+
+  it('§8-2 true removability: disabling the starter-pack removes the built-in producers', () => {
+    // The built-ins (shell-zsh, mitmproxy…) come from the starter-pack; they
+    // show up in detectHooks by default.
+    const withPack = detectHooks().map((h) => h.id)
+    expect(withPack).toContain('mitmproxy')
+    expect(withPack).toContain('shell-zsh')
+
+    // Disable it → the built-in producers actually go away (not just hidden).
+    setDisabled('starter-pack', true)
+    const disabled = detectHooks().map((h) => h.id)
+    expect(disabled).not.toContain('mitmproxy')
+    expect(disabled).not.toContain('shell-zsh')
+
+    // Re-enable → they come back.
+    setDisabled('starter-pack', false)
+    expect(detectHooks().map((h) => h.id)).toContain('mitmproxy')
   })
 
   it('§8-4 forward-compat: reads one API version ahead, rejects two ahead', () => {
