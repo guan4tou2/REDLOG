@@ -53,6 +53,40 @@ describeDB('capture-health', () => {
     expect(h.recording).toBe(false)
   })
 
+  it('E3: a plugin capture producer is surfaced as informational and never tips the verdict', () => {
+    // Healthy baseline: the shell hook is installed AND fed recently.
+    mockHooks({ 'shell-zsh': true, 'pcap-capture.pcap-tcpdump': true })
+    ins('shell', { subtype: 'command_start', command: 'nmap 10.0.0.1' })
+    const h = getCaptureHealth()
+
+    // The plugin producer (namespaced id, dot) shows up as an informational,
+    // display-only source carrying its own label.
+    const plugin = h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')
+    expect(plugin).toBeTruthy()
+    expect(plugin?.informational).toBe(true)
+    expect(plugin?.label).toBe('pcap-capture.pcap-tcpdump') // mockHooks uses id as name
+    expect(plugin?.state).toBe('off')
+
+    // It is INSTALLED but has never fed — the exact shape that would tip the
+    // verdict to `partial` if it counted. It must not: verdict stays healthy.
+    expect(h.verdict).toBe('healthy')
+    // And it is excluded from the core source rows the verdict is built from.
+    const core = h.sources.filter((s) => !s.informational)
+    expect(core.every((s) => !s.id.includes('.'))).toBe(true)
+  })
+
+  it('E3: an idle plugin producer alone cannot make the verdict partial', () => {
+    // No core source fed; only an installed-but-idle plugin producer. Without
+    // the informational exclusion this would read as "wired but silent" →
+    // partial. The verdict must stay driven by the CORE sources only (here:
+    // nothing wired/fed → dark), not amber-flip on an unrun manual producer.
+    mockHooks({ 'pcap-capture.pcap-tcpdump': true })
+    ins('system', { subtype: 'startup' }) // a non-capture event, proves nothing
+    const h = getCaptureHealth()
+    expect(h.verdict).toBe('dark')
+    expect(h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')?.informational).toBe(true)
+  })
+
   it('partial when a hook is installed but nothing has fed recently', () => {
     mockHooks({ 'shell-zsh': true, 'claude-code': false })
     const h = getCaptureHealth()
