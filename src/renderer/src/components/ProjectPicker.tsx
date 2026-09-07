@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatFreshness } from '../lib/time'
@@ -199,7 +200,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             onClick={() => setShowAdvanced(true)}
             className="mt-3 text-xs text-redlog-text-faint hover:text-redlog-text-dim transition-colors flex items-center gap-1"
           >
-            <span className="text-redlog-muted">▸</span>
+            <ChevronRight size={14} className="text-redlog-muted" aria-hidden />
             {t('project.advancedSetup')}
             {(scopeTargets.length + whitelist.length + blacklist.length > 0) && (
               <span className="ml-1 text-redlog-text-dim">
