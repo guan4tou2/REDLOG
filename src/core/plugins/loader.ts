@@ -9,7 +9,7 @@ import type { LoadedPlugin, PluginStatus } from './types'
 
 // Discovery roots, in precedence order. A user plugin with the same id as a
 // bundled one wins (lets operators override a shipped plugin).
-function bundledRoot(): string {
+export function bundledRoot(): string {
   // packaged: <resources>/plugins ; dev: repo/plugins
   const packaged = join(process.resourcesPath ?? '', 'plugins')
   if (process.resourcesPath && existsSync(packaged)) return packaged
