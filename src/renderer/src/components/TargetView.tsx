@@ -9,7 +9,6 @@ import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
 
 interface TargetEntry {
   target: string
-  commands: string[]
   firstSeen: number
   lastSeen: number
   inScope: boolean | null
@@ -45,6 +44,9 @@ interface TargetViewProps {
 
 export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Element {
   const [targets, setTargets] = useState<TargetEntry[]>([])
+  // §5.4: distinguish "still loading" from "genuinely empty" so a project that
+  // has targets doesn't flash the no-targets empty state on the initial async.
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
@@ -75,41 +77,26 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   useEffect(() => { if (targets.length > 0) loadTargets() }, [scopeTargets])
 
   async function loadTargets(): Promise<void> {
-    // Include every event type that carries detectedTarget in data — not only
-    // shell (audit finding #34). Loot / http_navigation / screenshots can all
-    // reference targets and were invisible here before.
-    const events = await window.redlog.events.query({ limit: 1000 })
-    const map = new Map<string, TargetEntry>()
-    for (const evt of events) {
-      const tgt = evt.data?.detectedTarget as string | undefined
-      if (!tgt) continue
-      const existing = map.get(tgt)
-      if (existing) {
-        existing.commands.push(evt.data.command as string)
-        existing.lastSeen = Math.max(existing.lastSeen, evt.timestamp)
-        existing.firstSeen = Math.min(existing.firstSeen, evt.timestamp)
-        existing.eventCount++
-      } else {
-        map.set(tgt, {
-          target: tgt,
-          commands: [evt.data.command as string],
-          firstSeen: evt.timestamp,
-          lastSeen: evt.timestamp,
-          inScope: null,
-          eventCount: 1
-        })
-      }
-    }
-    // Classify each target as in-scope / out-of-scope based on the current
-    // scope config (audit finding #33 — before this the field was set to null
-    // and both filter chips returned empty). If scope is unset, treat every
-    // target as in-scope (no rule to violate).
-    const list = Array.from(map.values()).sort((a, b) => b.lastSeen - a.lastSeen)
-    for (const entry of list) {
-      if (scopeTargets.length === 0) { entry.inScope = true; continue }
-      entry.inScope = scopeTargets.some((p) => matchesScope(entry.target, p))
-    }
+    // Counts + first/last-seen are aggregated in SQL over the whole timeline
+    // (both tiers), covering every event type that carries detectedTarget —
+    // loot / http_navigation / screenshots, not only shell (audit finding #34).
+    // This replaced a client-side rollup over a capped 1000-row window, which
+    // dropped targets seen only in older events and truncated every count (§9).
+    const rows = await window.redlog.events.aggregateTargets()
+    // Classify each target as in-scope / out-of-scope from the current scope
+    // config (audit finding #33 — before this the field was null and both
+    // filter chips returned empty). Scope-unset means every target is in-scope
+    // (no rule to violate). `matchesScope` here is stricter than core's
+    // (proper CIDR), which is why classification stays in the renderer.
+    const list: TargetEntry[] = rows.map((r) => ({
+      target: r.target,
+      firstSeen: r.firstSeen,
+      lastSeen: r.lastSeen,
+      eventCount: r.eventCount,
+      inScope: scopeTargets.length === 0 ? true : scopeTargets.some((p) => matchesScope(r.target, p))
+    }))
     setTargets(list)
+    setLoading(false)
   }
 
   const loadEvidence = useCallback(async (target: string) => {
@@ -193,11 +180,15 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState
-          icon={Crosshair}
-          title={t('targets.empty')}
-          reason={t('targets.emptyReason')}
-        />
+        // Hold the empty state until the first aggregation resolves — otherwise
+        // a project that has targets flashes "no targets" for a frame (m9).
+        loading ? null : (
+          <EmptyState
+            icon={Crosshair}
+            title={t('targets.empty')}
+            reason={t('targets.emptyReason')}
+          />
+        )
       ) : (
         <div className="space-y-2" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
           {filtered.map((tgt, i) => {

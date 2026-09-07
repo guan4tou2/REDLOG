@@ -140,6 +140,9 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number) => Promise<RedLogEvent[]>
+    /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
+     *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
+    aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
     searchCasts?: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string

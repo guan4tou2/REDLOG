@@ -119,6 +119,20 @@ function installBridge(): void {
       query: async () => EVENTS,
       getCount: async () => EVENTS.length,
       search: async () => EVENTS,
+      aggregateTargets: async () => {
+        // Mirror the SQL rollup over the mock EVENTS so TargetView still renders
+        // real rows (the "actual target rows" test asserts example.com appears).
+        const m = new Map<string, { target: string; eventCount: number; firstSeen: number; lastSeen: number }>()
+        for (const e of EVENTS) {
+          const tgt = (e.data as { detectedTarget?: string })?.detectedTarget
+          if (!tgt) continue
+          const cur = m.get(tgt)
+          const ts = e.timestamp as number
+          if (cur) { cur.eventCount++; cur.firstSeen = Math.min(cur.firstSeen, ts); cur.lastSeen = Math.max(cur.lastSeen, ts) }
+          else m.set(tgt, { target: tgt, eventCount: 1, firstSeen: ts, lastSeen: ts })
+        }
+        return Array.from(m.values()).sort((a, b) => b.lastSeen - a.lastSeen)
+      },
       getById: async (ids: string[]) => EVENTS.filter((e) => ids.includes(e.id as string)),
       onNew: () => unsub
     },
