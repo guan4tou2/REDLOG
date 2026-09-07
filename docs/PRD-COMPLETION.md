@@ -131,7 +131,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 ### 主題 E — 外掛化完成(大架構,分階段)
 
 **E1. 內建 target extractor 宣告化 + 外掛化 · ✅ 已實作(Option A #41 · Option B #44)· P2 · M** — Option A:`STRATEGIES` 註冊表 + 宣告式資料。Option B:整張工具→策略表搬進 bundled pack `plugins/builtin-tools/`,core 不再有 per-tool 資料;`initPlugins()` 註冊該 pack,precedence 以 source 決定(user 蓋 bundled),`plugins/` 進 `extraResources` 才隨包出貨(順帶修好 c2-tailers 從沒打包的漏),停用即移除內建。
-**E2. Starter pack 預裝 · ✅ 已實作(安全版,PR #51)· P2 · M** — 內建 producer 改由 bundled `plugins/starter-pack/plugin.json` 宣告(`builtinProducers`),hooks-manager 讀它並 `~` 展開;**帶 in-code fallback**,manifest 缺失就退回,關鍵路徑不倒退。裸 id 保留。取捨:有安全網故停用 pack 不真的移除內建(核心擷取一律保證);真正可移除為更大獨立工。
+**E2. Starter pack 預裝 · ✅ 已實作(安全版,PR #51)· P2 · M** — 內建 producer 改由 bundled `plugins/starter-pack/plugin.json` 宣告(`builtinProducers`),hooks-manager 讀它並 `~` 展開;**帶 in-code fallback**,manifest 缺失就退回,關鍵路徑不倒退。裸 id 保留。**真正可移除已補(PR #60)**:`allManifests()` 讀 disabled 狀態,停用 starter-pack 真的移除內建 producer(重啟用恢復);與穩健度 fallback 正交——缺檔仍退回,只有明確停用才移除。
 **E3. manifest 前向相容 + 健康度讀 manifest · ✅ 已實作(#48 + #49 + #50)· P2 · M**
 - ✅ 健康度讀 manifest:capture 貢獻加 `emits`(宣告發出的 subtype),capture-health 據此給每個 plugin producer 真實 active/idle/off 餵食狀態,並顯示在擷取卡(唯讀、標 plugin、閒置不擾)。verdict 非對稱:活著的 plugin 計入 recording/active,但**任何 plugin 永不進 `expectedSilent`**——裝了沒跑的永不翻 amber(三個測試釘住)。
 - ✅ 前向相容(PR #50):loader 讀領先一版的 manifest——宣告式 pack 套用已知貢獻並標 `apiAhead`,程式 pack 領先版整個拒絕(不跑不懂的新程式),領先兩版拒收。bundle 驗證器本來就接受兩版。
