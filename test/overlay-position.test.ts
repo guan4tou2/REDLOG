@@ -46,3 +46,64 @@ describe('default HUD placement', () => {
     expect(x).toBeGreaterThanOrEqual(8)
   })
 })
+
+import {
+  clampHudScale, hudWindowWidth, hudWindowHeight,
+  HUD_SCALE_MIN, HUD_SCALE_MAX, HUD_MIN_W, HUD_MAX_W, HUD_MIN_H, HUD_CONTENT_CHROME
+} from '../src/core/overlay-layout'
+
+// §8 HUD sizing. The overlay is a fixed-width box the content flexes into and a
+// measured-height box. The renderer requests a size and main clamps it; these
+// assertions pin the invariant that broke once — the two must derive the size
+// from the same numbers, or the granted window is narrower than the content was
+// laid out for and the external IP (the whole point of the HUD) truncates.
+
+describe('HUD window sizing', () => {
+  it('clamps scale to the legible band, healing junk config', () => {
+    expect(clampHudScale(1)).toBe(1)
+    expect(clampHudScale(0.1)).toBe(HUD_SCALE_MIN)
+    expect(clampHudScale(9)).toBe(HUD_SCALE_MAX)
+    // a non-finite / non-positive config value falls back to 1, never NaN
+    expect(clampHudScale(NaN)).toBe(1)
+    expect(clampHudScale(0)).toBe(1)
+    expect(clampHudScale(-2)).toBe(1)
+  })
+
+  it('width stays inside the band main enforces, at every scale', () => {
+    for (const scale of [0.1, 0.75, 1, 1.25, 1.5, 1.75, 3]) {
+      for (const emph of [false, true]) {
+        const w = hudWindowWidth(scale, emph)
+        expect(w, `scale ${scale} emph ${emph}`).toBeGreaterThanOrEqual(HUD_MIN_W)
+        expect(w, `scale ${scale} emph ${emph}`).toBeLessThanOrEqual(HUD_MAX_W)
+      }
+    }
+  })
+
+  it('the request main grants back equals what the renderer asked for', () => {
+    // main re-clamps whatever it receives; because hudWindowWidth already sits
+    // in-band, that clamp is a no-op — request and grant are the same number.
+    const mainClamp = (w: number): number => Math.max(HUD_MIN_W, Math.min(HUD_MAX_W, Math.round(w)))
+    for (const scale of [0.75, 1, 1.4, 1.75]) {
+      const asked = hudWindowWidth(scale, true)
+      expect(mainClamp(asked)).toBe(asked)
+    }
+  })
+
+  it('the historical overshoot is gone: scale 1.75 no longer requests 847pt', () => {
+    // Old formula: round(440*1.75) + round(44*1.75) = 770 + 77 = 847, which
+    // main capped to 720 — so the window came back 127pt short of the layout.
+    expect(770 + 77).toBeGreaterThan(HUD_MAX_W) // the overshoot that used to escape
+    expect(hudWindowWidth(1.75, true)).toBe(HUD_MAX_W) // now capped at the source
+  })
+
+  it('emphasizeExternalIp widens the box (until the cap swallows both)', () => {
+    expect(hudWindowWidth(1, true)).toBeGreaterThan(hudWindowWidth(1, false))
+  })
+
+  it('height is measured content plus chrome, floored for jsdom/zero', () => {
+    expect(hudWindowHeight(0)).toBe(HUD_MIN_H)       // jsdom offsetHeight === 0
+    expect(hudWindowHeight(-5)).toBe(HUD_MIN_H)
+    expect(hudWindowHeight(120)).toBe(120 + HUD_CONTENT_CHROME)
+    expect(hudWindowHeight(1)).toBe(HUD_MIN_H)       // tiny content still clears the floor
+  })
+})
