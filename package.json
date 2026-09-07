@@ -34,6 +34,7 @@
     "@fontsource/noto-sans-tc": "^5.3.0",
     "@rolldown/binding-wasm32-wasi": "^1.2.4",
     "@rollup/wasm-node": "^4.62.4",
+    "@tanstack/react-virtual": "^3.14.11",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^5.5.0",

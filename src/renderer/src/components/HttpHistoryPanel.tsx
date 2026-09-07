@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
@@ -428,40 +429,37 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     return list
   }, [flows, filterText, methodFilter, statusFilter, sortCol, sortAsc])
 
-  const PAGE_SIZE = 200
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-  const sentinelRef = useRef<HTMLTableRowElement | null>(null)
-
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [filtered])
-
-  useEffect(() => {
-    const el = sentinelRef.current
-    if (!el) return
-    const obs = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) setVisibleCount(prev => Math.min(prev + PAGE_SIZE, filtered.length))
-    }, { rootMargin: '200px' })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [filtered.length, visibleCount])
-
-  const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
+  // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
+  // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size
+  // needs no per-row measurement. Infinite-scroll (which kept every loaded row
+  // mounted) is replaced by this.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 29,
+    overscan: 12
+  })
 
   // The same keys as every other list (§9). This view arrived from another
   // branch without them and the contract test did not notice, because it
   // named its five files by hand — see test/list-keyboard.test.tsx.
+  // Nav spans the whole filtered list; onScrollToIndex lets the hook reach a
+  // row the virtualizer hasn't mounted yet.
   const rowNav = useListKeyboard({
-    count: visibleRows.length,
+    count: filtered.length,
     onActivate: (i) => {
-      const f = visibleRows[i]
+      const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
       if (id) onOpenInTimeline?.(id, f.timestamp)
     },
     onJumpToTimeline: (i) => {
-      const f = visibleRows[i]
+      const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
       if (id) onOpenInTimeline?.(id, f.timestamp)
     },
-    onEscape: () => { setMethodFilter(null); setStatusFilter(null) }
+    onEscape: () => { setMethodFilter(null); setStatusFilter(null) },
+    onScrollToIndex: (i) => rowVirtualizer.scrollToIndex(i)
   })
 
   const activities = useMemo(() => groupFlows(filtered), [filtered])
@@ -576,7 +574,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           ))}
         </div>
       ) : viewMode === 'flows' ? (
-        <div className="flex-1 overflow-auto">
+        <div ref={scrollRef} className="flex-1 overflow-auto">
           <table className="w-full text-xs font-mono">
             <thead className="sticky top-0 bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
@@ -599,7 +597,16 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               </tr>
             </thead>
             <tbody {...rowNav.containerProps}>
-              {visibleRows.map((f, rowIndex) => {
+              {(() => {
+                const items = rowVirtualizer.getVirtualItems()
+                const padTop = items.length ? items[0].start : 0
+                const padBottom = items.length ? rowVirtualizer.getTotalSize() - items[items.length - 1].end : 0
+                return (
+                  <>
+                    {padTop > 0 && <tr aria-hidden="true"><td colSpan={8} style={{ height: padTop, padding: 0, border: 0 }} /></tr>}
+                    {items.map((vi) => {
+                const f = filtered[vi.index]
+                const rowIndex = vi.index
                 const statusClass = f.status !== null
                   ? STATUS_COLORS[String(f.status)[0]] ?? 'text-redlog-text-dim'
                   : 'text-redlog-text-faint'
@@ -618,6 +625,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                     key={f.flowId}
                     {...rowProps}
                     ref={(el) => rowProps.ref(el as unknown as HTMLElement | null)}
+                    style={{ height: 29 }}
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); if (eventId) onOpenInTimeline?.(eventId, f.timestamp) }}
                   >
@@ -633,10 +641,11 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                     <td className="px-2 py-1 text-redlog-text-faint text-right tabular-nums">{formatTime(f.timestamp, { seconds: true })}</td>
                   </tr>
                 )
-              })}
-              {visibleCount < filtered.length && (
-                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-xs" aria-live="polite">{t('list.loadedOfTotal', { shown: visibleCount, total: filtered.length })}</td></tr>
-              )}
+                    })}
+                    {padBottom > 0 && <tr aria-hidden="true"><td colSpan={8} style={{ height: padBottom, padding: 0, border: 0 }} /></tr>}
+                  </>
+                )
+              })()}
             </tbody>
           </table>
           {filtered.length === 0 && (
