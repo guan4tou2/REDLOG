@@ -66,8 +66,13 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   if (typeof m.name !== 'string' || !m.name.trim()) return { ok: false, error: 'missing name' }
   if (typeof m.version !== 'string' || !SEMVER_RE.test(m.version)) return { ok: false, error: 'invalid version (expect semver)' }
   if (typeof m.redlogApi !== 'number') return { ok: false, error: 'missing redlogApi' }
-  if (m.redlogApi > PLUGIN_API_VERSION) {
-    return { ok: false, error: `plugin targets API v${m.redlogApi}, this RedLog supports v${PLUGIN_API_VERSION}` }
+  // Forward-compat (§8-4): read manifests up to ONE API version ahead so a pack
+  // built for the next RedLog still loads its declarative parts here (unknown
+  // contribution keys are ignored by applyContributions). The loader flags such
+  // a plugin `apiAhead` and refuses to run a code (privileged) plugin's newer
+  // code. Two versions ahead is too far to interpret safely — reject.
+  if (m.redlogApi > PLUGIN_API_VERSION + 1) {
+    return { ok: false, error: `plugin targets API v${m.redlogApi}; this RedLog supports v${PLUGIN_API_VERSION} and reads v${PLUGIN_API_VERSION + 1} declaratively` }
   }
   if (typeof m.contributes !== 'object' || m.contributes === null) {
     return { ok: false, error: 'missing contributes block' }

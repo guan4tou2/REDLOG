@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { validateManifest, tierOf, computeContentHash } from './manifest'
 import { isTrusted } from './trust'
 import { isDisabled } from './state'
+import { PLUGIN_API_VERSION } from './types'
 import type { LoadedPlugin, PluginStatus } from './types'
 
 // Discovery roots, in precedence order. A user plugin with the same id as a
@@ -55,8 +56,16 @@ function loadOne(dir: string, source: 'bundled' | 'user'): LoadedPlugin {
 
   const manifest = parsed.manifest
   const tier = tierOf(manifest)
+  // §8-4 forward-compat: a manifest one API version ahead is read declaratively,
+  // but a code (privileged) plugin one version ahead is refused entirely — we
+  // will not run code written against an API this RedLog doesn't implement.
+  const apiAhead = manifest.redlogApi > PLUGIN_API_VERSION
+  if (apiAhead && tier === 'privileged') {
+    return errorPlugin(dir, source,
+      `plugin targets API v${manifest.redlogApi} and contributes code; this RedLog (v${PLUGIN_API_VERSION}) reads a newer manifest's declarative parts but will not run its code`)
+  }
   const contentHash = computeContentHash(manifest, dir)
-  const base: Omit<LoadedPlugin, 'status'> = { manifest, dir, source, tier, contentHash }
+  const base: Omit<LoadedPlugin, 'status'> = { manifest, dir, source, tier, contentHash, apiAhead: apiAhead || undefined }
   return { ...base, status: statusFor(base) }
 }
 
