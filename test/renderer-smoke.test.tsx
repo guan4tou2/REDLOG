@@ -8,7 +8,7 @@
 // least one event of every agent_type, which is exactly the shape that broke.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
@@ -168,7 +168,9 @@ function installBridge(): void {
           { id: 'shell-hook', installed: true, lastEventAt: Date.now(), state: 'active' },
           { id: 'claude-code', installed: true, lastEventAt: null, state: 'idle' },
           { id: 'mitmproxy', lastEventAt: null, state: 'idle' },
-          { id: 'builtin-terminal', lastEventAt: null, state: 'idle' }
+          { id: 'builtin-terminal', lastEventAt: null, state: 'idle' },
+          // E3 (#49): an informational plugin producer — display only, read-only.
+          { id: 'pcap-capture.pcap-tcpdump', label: 'pcap-capture', informational: true, lastEventAt: Date.now(), state: 'active' }
         ]
       })
     },
@@ -253,5 +255,29 @@ describe('renderer views render without throwing', () => {
     // events flowed through toLane()/laneEvents without an undefined bucket.
     const shellLabels = await findAllByText('Shell')
     expect(shellLabels.length).toBeGreaterThan(0)
+  })
+
+  // #49: the capture card lists a plugin producer read-only with its own label
+  // and a "plugin" tag. It shows in the full inventory (manage), not the
+  // compact problems view. Renders the actual UI I shipped, not just the mock.
+  it('capture card shows an informational plugin producer in the manage inventory', async () => {
+    renderView(<App />)
+    // Open the full inventory ("all sources (N)").
+    const manageBtn = await screen.findByText(/all sources/i)
+    fireEvent.click(manageBtn)
+    // The plugin producer's own label and the plugin tag both render.
+    expect(await screen.findByText('pcap-capture')).toBeTruthy()
+    const tags = screen.getAllByText('plugin')
+    expect(tags.length).toBeGreaterThan(0)
+  })
+
+  // #47: the artifact-rotation eviction budgets live in the "What gets
+  // captured" Settings tab. Switching to it must surface the controls.
+  it('Settings exposes the artifact-rotation budgets under "What gets captured"', async () => {
+    renderView(<Settings />)
+    const tab = await screen.findByText('What gets captured')
+    fireEvent.click(tab)
+    expect(await screen.findByText('Disk pressure / artifact rotation')).toBeTruthy()
+    expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
   })
 })
