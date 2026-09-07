@@ -54,7 +54,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 - 設計:`DESIGN-OPEN-ITEMS §1`。相依:無。
 
 **A2. Scope-aware sanitize + artifact rotation · ✅ 已實作(匯出遮蔽 PR #36 · rotation 排序 PR #43)· P1 · M–L**
-- 續作:artifact rotation 依範圍排序(in-scope 已 pin)、覆寫的 UI 開關。
+- 續作:~~artifact rotation 依範圍排序~~ ✅(PR #43);eviction 預算旋鈕已接進 Settings ▸ 擷取控制(PR #47),operator 可從 UI 開啟。
 - 為什麼:匯出遮蔽與 artifact 輪替目前不看範圍,out-of-scope 的 client 資料與 in-scope 證據同等對待。
 - 驗收:匯出時 out-of-scope 事件的 body/preview 預設遮蔽(可覆寫),manifest 記
   `sanitized_out_of_scope: N`;casts/screenshots 輪替時 out-of-scope 先淘汰、in-scope 後淘汰;
@@ -131,7 +131,9 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 **E1. 內建 target extractor 宣告化 + 外掛化 · ✅ 已實作(Option A #41 · Option B #44)· P2 · M** — Option A:`STRATEGIES` 註冊表 + 宣告式資料。Option B:整張工具→策略表搬進 bundled pack `plugins/builtin-tools/`,core 不再有 per-tool 資料;`initPlugins()` 註冊該 pack,precedence 以 source 決定(user 蓋 bundled),`plugins/` 進 `extraResources` 才隨包出貨(順帶修好 c2-tailers 從沒打包的漏),停用即移除內建。
 **E2. Starter pack 預裝 · P2 · M** — 三個擷取 producer 宣告成預裝可移除外掛,首次執行仍成立。
-**E3. manifest schemaVersion 雙版本讀取 + 健康度讀 manifest · P2 · M**
+**E3. manifest schemaVersion 雙版本讀取 + 健康度讀 manifest · ⏳ 安全片段已實作(PR #48)· P2 · M**
+- ✅ 安全片段:capture-health 從 registry 列出 plugin capture producer(pcap-capture、transparent-proxy、c2-tailers)作 informational source,**證明性地不進 recording verdict**(在 verdict 算完後才 append;兩個測試釘住「裝了但沒跑的 producer 永不把指示燈翻 amber」——正是 v0.9.7 警告的失敗模式)。
+- 仍待:manifest schemaVersion 雙版本讀取;per-producer「哪個 producer 在餵」健康(需 manifest 宣告 subtype)與其 UI 呈現。
 - 設計全在 `DESIGN-plugin-kernel §5`。相依:E 之間有序;不擋 A–D。
 
 ### 主題 F — 收尾/外觀

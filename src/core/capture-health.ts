@@ -27,6 +27,16 @@ export interface CaptureSource {
   /** ms epoch of the most recent event attributable to this source, or null */
   lastEventAt: number | null
   state: SourceState
+  /** E3: a plugin-contributed capture producer, enumerated from the registry
+   *  rather than the hardcoded core list. Informational sources are DISPLAY
+   *  ONLY — they are appended after the verdict is computed and never feed
+   *  `verdict`/`recording`, so a manual producer that the operator has not run
+   *  (pcap-capture, transparent-proxy, a c2 tailer…) can never tip the
+   *  recording indicator amber. See computeCaptureHealth. */
+  informational?: boolean
+  /** Human label for an informational source (the plugin's own name), since it
+   *  has no core i18n `capture.*` entry. */
+  label?: string
 }
 
 export interface CaptureHealth {
@@ -342,8 +352,28 @@ function computeCaptureHealth(now: number): CaptureHealth {
     null
   )
 
+  // E3 (safe slice): enumerate PLUGIN-contributed capture producers from the
+  // registry instead of hardcoding them. `detectHooks()` already merges plugin
+  // captures (namespaced `<pluginId>.<captureId>` — the only ids carrying a
+  // dot) with the built-ins, so we derive them here rather than maintaining a
+  // second list. These are appended AFTER `verdict`, `recording`, `anyWired`,
+  // `activeCount`, `expectedSilent` and `lastEventAt` are all computed from the
+  // core `sources`, so an installed-but-idle manual producer (pcap-capture,
+  // transparent-proxy, a c2 tailer) is DISPLAY ONLY and can never tip the
+  // recording indicator — the exact failure mode the v0.9.7 note above guards.
+  const pluginSources: CaptureSource[] = hooks
+    .filter((h) => h.id.includes('.'))
+    .map((h) => ({
+      id: h.id,
+      label: h.name,
+      installed: h.installed,
+      lastEventAt: null,
+      state: 'off' as SourceState,
+      informational: true
+    }))
+
   return {
-    verdict, recording: everFed, sources, lastEventAt, checkedAt: now,
+    verdict, recording: everFed, sources: [...sources, ...pluginSources], lastEventAt, checkedAt: now,
     lastDbError,
     lastSampleBroken,
     lastSampleOkAt: _lastSampleOkAt
