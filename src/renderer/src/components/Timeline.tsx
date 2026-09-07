@@ -4422,7 +4422,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
         />
       )}
       {pairedLoading && (
-        <p className="text-xs text-zinc-500 font-mono px-2">loading paired event...</p>
+        <p className="text-xs text-redlog-text-dim font-mono px-2">loading paired event...</p>
       )}
       {pairedData && (() => {
         const pSub = String(pairedData.subtype ?? '')
