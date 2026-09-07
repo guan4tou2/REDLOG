@@ -37,6 +37,13 @@ export interface CaptureSource {
   /** Human label for an informational source (the plugin's own name), since it
    *  has no core i18n `capture.*` entry. */
   label?: string
+  /** E3: an informational plugin producer that has posted a `producer_heartbeat`
+   *  recently — the operator has it RUNNING. This is the one case a plugin
+   *  producer becomes "expected": a running producer that has stopped feeding is
+   *  a real problem and DOES tip the verdict amber. An installed-but-never-run
+   *  producer posts no heartbeat, so it stays out of the verdict (the #48/#49
+   *  guarantee). */
+  running?: boolean
 }
 
 export interface CaptureHealth {
@@ -127,6 +134,10 @@ function getLiveSampleBroken(now: number): CaptureHealth['lastSampleBroken'] {
 
 // A source is "active" if it produced an event within this window.
 const ACTIVE_WINDOW_MS = 10 * 60 * 1000
+// E3: a plugin producer counts as "running" if it posted a heartbeat within
+// this window. Producers heartbeat roughly every 15s, so 60s tolerates a
+// missed beat or two without flapping.
+const PRODUCER_HEARTBEAT_WINDOW_MS = 60 * 1000
 
 // System events (api_started/session_start) are RedLog's own housekeeping — they
 // don't prove anything is being captured, so they never count as "recording".
@@ -332,10 +343,20 @@ function computeCaptureHealth(now: number): CaptureHealth {
           [h.agentType, ...emits]
         )
       }
-      const state: SourceState = last === null
-        ? 'off'
-        : (now - last <= ACTIVE_WINDOW_MS ? 'active' : 'idle')
-      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true }
+      // E3: is the operator running this producer right now? A running producer
+      // posts `system.producer_heartbeat` with its pluginId periodically; a
+      // recent one means "running". No stop event is needed — heartbeats age out.
+      const pluginId = h.id.split('.')[0]
+      const hbLast = lastEventFor(
+        `agent_type = 'system' AND json_extract(data,'$.subtype') = 'producer_heartbeat' AND json_extract(data,'$.producer') = ?`,
+        [pluginId]
+      )
+      const running = hbLast !== null && now - hbLast <= PRODUCER_HEARTBEAT_WINDOW_MS
+      const fedRecently = last !== null && now - last <= ACTIVE_WINDOW_MS
+      // Feeding → active. Running-but-not-feeding, or fed-before-but-stale →
+      // idle. Never run and never fed → off (not a fault).
+      const state: SourceState = fedRecently ? 'active' : (running || last !== null ? 'idle' : 'off')
+      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true, running }
     })
 
   // The verdict ASYMMETRY that keeps the trust signal honest: plugin producers
@@ -366,6 +387,11 @@ function computeCaptureHealth(now: number): CaptureHealth {
     const expected = s.installed === true || (s.installed === undefined && s.lastEventAt !== null)
     return expected && s.state !== 'active'
   })
+    // E3: a plugin producer the operator is RUNNING (recent heartbeat) but which
+    // has stopped feeding is a real problem and tips the verdict amber — the one
+    // way a plugin producer becomes "expected". Producers with no heartbeat are
+    // untouched (the installed-but-not-run guarantee holds).
+    || pluginSources.some((s) => s.running === true && s.state !== 'active')
 
   const lastDbError = getLiveDbError(now)
   const lastSampleBroken = getLiveSampleBroken(now)
