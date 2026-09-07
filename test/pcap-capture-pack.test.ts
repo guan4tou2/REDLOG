@@ -21,12 +21,16 @@ describe('pcap-capture pack', () => {
 
   it('declares a scanner capture with a hook and manual (elevated) install', () => {
     const cap = pack().manifest.contributes?.capture
-    expect(cap?.length).toBe(1)
-    expect(cap?.[0]).toMatchObject({ agentType: 'scanner', installMethod: 'manual' })
-    expect(cap?.[0].hookFile).toBe('hooks/pcap-capture.sh')
-    expect(cap?.[0].requires).toContain('tcpdump')
-    // The install step must be elevated — capture needs root/CAP_NET_RAW.
-    expect(JSON.stringify(cap?.[0].manualSteps)).toMatch(/sudo/)
+    // Two capture options: tcpdump (unix) and tshark (Windows/npcap).
+    expect(cap?.length).toBe(2)
+    const tcpdump = cap?.find((c) => c.hookFile === 'hooks/pcap-capture.sh')
+    expect(tcpdump).toMatchObject({ agentType: 'scanner', installMethod: 'manual' })
+    expect(tcpdump?.requires).toContain('tcpdump')
+    // The unix install step must be elevated — capture needs root/CAP_NET_RAW.
+    expect(JSON.stringify(tcpdump?.manualSteps)).toMatch(/sudo/)
+    const tshark = cap?.find((c) => c.hookFile === 'hooks/pcap-capture.ps1')
+    expect(tshark?.requires).toContain('tshark')
+    expect(tshark?.emits).toContain('packet_flow')
   })
 })
 
