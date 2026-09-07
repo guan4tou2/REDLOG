@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
 import { toast } from './Toast'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { useInfiniteScroll } from '../lib/useInfiniteScroll'
+import { ListFooter } from './ListFooter'
 import { formatDateTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { Flag } from 'lucide-react'
@@ -65,7 +67,10 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   }, [])
   const { t } = useI18n()
 
-  const filteredMarks = (() => {
+  // Memoized so its identity is stable across renders — the infinite-scroll
+  // window resets on list-identity change, and an IIFE rebuilding the array
+  // every render would snap it back to page 1 on every keystroke.
+  const filteredMarks = useMemo(() => {
     const list = search.trim()
       ? marks.filter((m) => {
           const q = search.toLowerCase()
@@ -80,15 +85,19 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
       if (ap !== bp) return bp - ap
       return b.createdAt - a.createdAt
     })
-  })()
+  }, [marks, search, pinned])
+
+  // §9: page the rows; nav spans the rendered window.
+  const paged = useInfiniteScroll(filteredMarks)
+  const visibleMarks = paged.visible
 
   // Every list in the app answers to the same keys (§9). Enter opens the
   // mark's detail panel; ⌘↩ takes it to the Timeline, which is the question
   // an operator asks of a finding more often than any other.
   const listNav = useListKeyboard({
-    count: filteredMarks.length,
-    onActivate: (i) => { const m = filteredMarks[i]; if (m) { setSelected(m); setCreating(false) } },
-    onJumpToTimeline: (i) => { const m = filteredMarks[i]; if (m) onOpenInTimeline?.(m.createdAt) },
+    count: visibleMarks.length,
+    onActivate: (i) => { const m = visibleMarks[i]; if (m) { setSelected(m); setCreating(false) } },
+    onJumpToTimeline: (i) => { const m = visibleMarks[i]; if (m) onOpenInTimeline?.(m.createdAt) },
     onEscape: () => setSelected(null)
   })
 
@@ -171,8 +180,8 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             />
           </div>
         )}
-        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: filteredMarks.length })}>
-          {filteredMarks.map((m, i) => {
+        <div className="flex-1 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
+          {visibleMarks.map((m, i) => {
             const tagColor = getTagColor(m.title)
             const isPinned = pinned.has(m.id)
             const rowProps = listNav.itemProps(i)
@@ -201,6 +210,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               </button>
             )
           })}
+          <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
           {filteredMarks.length === 0 && !creating && (
             marks.length === 0 ? (
               <EmptyState
