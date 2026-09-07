@@ -90,11 +90,14 @@ describe('UIUX §21 · source rules', () => {
     expect(bad).toEqual([])
   })
 
-  it('no sub-13px type outside the HUD (§2 floor)', () => {
-    // HUD/overlay has its own 11px floor and is exempt.
+  it('no sub-13px bracket type outside the HUD (§2 floor)', () => {
+    // HUD/overlay has its own 11px floor and is exempt. The regex catches every
+    // bracketed size 1–12px, not just 10–12: HttpHistoryPanel shipped `text-[9px]`
+    // badges that slipped straight past the old `1[012]` bound (m4). The `text-xs`
+    // utility (12px) is the panel's own baseline and out of scope for this rule.
     const bad = RENDERER
       .filter(({ f }) => !/Overlay|hud/i.test(f))
-      .filter(({ src }) => /text-\[1[012]px\]/.test(src))
+      .filter(({ src }) => /text-\[([1-9]|1[0-2])px\]/.test(src))
       .map((x) => x.f)
     expect(bad).toEqual([])
   })
