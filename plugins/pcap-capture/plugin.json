@@ -13,7 +13,8 @@
         "description": "Capture on an interface with tcpdump and land per-flow summaries (five-tuple, byte/packet counts, TCP flags, and a syn_only flag for half-open scans) on the timeline. Requires elevation.",
         "agentType": "scanner",
         "emits": [
-          "packet_flow"
+          "packet_flow",
+          "pcap_segment"
         ],
         "requires": [
           "tcpdump",
@@ -29,6 +30,10 @@
           {
             "label": "Capture (elevated — tcpdump needs root/CAP_NET_RAW; adjust the interface)",
             "command": "sudo \"{hookFile}\" eth0"
+          },
+          {
+            "label": "Or keep RAW packets (rotating .pcap on your disk; only the sha256 goes on the chain)",
+            "command": "sudo \"{hookFile}\" --pcap-out ~/redlog-pcap eth0"
           }
         ]
       },
@@ -38,7 +43,8 @@
         "description": "Windows/npcap capture via tshark, emitting the same per-flow summaries (syn_only flags half-open scans). Requires npcap + an elevated shell.",
         "agentType": "scanner",
         "emits": [
-          "packet_flow"
+          "packet_flow",
+          "pcap_segment"
         ],
         "requires": [
           "tshark",

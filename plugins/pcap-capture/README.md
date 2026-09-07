@@ -52,6 +52,22 @@ One `scanner.packet_flow` event per flow (5-tuple), carrying:
   owning command (`local_port → pid → command`), so a SYN scan links back to the
   `nmap` that produced it
 
+## Raw packets (optional)
+
+The default mode records flow *structure*, not every byte. For deep-packet
+forensics, run with `--pcap-out <dir>` to also keep **rotating binary `.pcap`
+segments** on your disk:
+
+```bash
+sudo ./hooks/pcap-capture.sh --pcap-out ~/redlog-pcap eth0
+```
+
+RedLog holds no packets — the `.pcap` files stay where you wrote them. What
+reaches the timeline is a `scanner.pcap_segment` integrity record per segment:
+its `pcap_file` path and `pcap_sha256`, and the **sha256 goes on the hash
+chain**. So the chain proves what each `.pcap` was; you preserve the files, and
+a later analyst can verify one against its recorded hash.
+
 ## Honest gaps
 
 - **Attribution** depends on RedLog's socket→pid→command table having seen the
@@ -60,6 +76,6 @@ One `scanner.packet_flow` event per flow (5-tuple), carrying:
 - **macOS** can capture, but per-process attribution there is weaker (the socket
   table doesn't hand out pids without `lsof`/root — same limitation the
   connection monitor documents).
-- Capture is **text-mode** tcpdump, not a stored binary `.pcap`. It records the
-  flow structure RedLog reasons about, not every byte; deep-packet forensics
-  still wants a real pcap alongside.
+- Default capture is **text-mode** tcpdump, not a stored binary `.pcap` (use
+  `--pcap-out` above for that). It records the flow structure RedLog reasons
+  about, not every byte; deep-packet forensics wants the raw pcap alongside.
