@@ -242,7 +242,17 @@ export default function App(): JSX.Element {
           e.preventDefault()
           window.redlog.recording.toggle().then((on) => {
             toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
-          }).catch(() => {})
+          }).catch((err) => {
+            // A silently-swallowed toggle is the worst failure on the most
+            // trust-sensitive action: the operator believes capture paused and
+            // it did not (or the reverse). Surface it — the dot only flips if
+            // main actually changed state, so an error here means it didn't.
+            toast(t('toast.recordingToggleFailed'), {
+              type: 'error',
+              why: t('toast.recordingToggleFailedWhy'),
+              detail: err instanceof Error ? err.message : String(err)
+            })
+          })
           return
         }
         case 'app:hudCorner': {
