@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
 import TranscriptView from './components/TranscriptView'
 import StatusBar from './components/StatusBar'
+import { ReplayDrawer } from './components/ReplayDrawer'
 import IPStatusCard from './components/IPStatusCard'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
@@ -397,6 +398,9 @@ export default function App(): JSX.Element {
         </div>
       </div>
 
+      {/* Above the status bar and outside the view-root: a session replay keeps
+          playing here when the operator switches views (§14). */}
+      <ReplayDrawer />
       <StatusBar />
       {showMarker && <EventMarker onClose={() => { setShowMarker(false); setMarkerAtTs(undefined) }} atTimestamp={markerAtTs} />}
       <CommandPalette
