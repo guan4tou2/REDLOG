@@ -111,15 +111,33 @@ export default function StatusBar(): JSX.Element {
     return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
 
+  // Toggle recording and, on failure, say so. A swallowed rejection here is
+  // the worst kind: the operator believes capture paused (or resumed) and the
+  // authoritative dot never moved. Returns null when the toggle failed, so the
+  // caller skips the confirmation toast that would otherwise lie.
+  const toggleRecordingSafely = async (): Promise<boolean | null> => {
+    try {
+      return await window.redlog.recording.toggle()
+    } catch (err) {
+      toast(t('toast.recordingToggleFailed'), {
+        type: 'error',
+        why: t('toast.recordingToggleFailedWhy'),
+        detail: err instanceof Error ? err.message : String(err)
+      })
+      return null
+    }
+  }
+
   const handleToggleRecording = async (): Promise<void> => {
-    const newState = await window.redlog.recording.toggle()
+    const newState = await toggleRecordingSafely()
+    if (newState === null) return
     // Takes effect now — a pause that waited eight seconds would keep
     // recording exactly the thing the operator paused for. The undo is a
     // second toggle, which is why this is `toastUndo` and not
     // `toastDeferred` (§10).
     toastUndo(
       newState ? t('toast.recordingResumed') : t('toast.recordingPaused'),
-      () => { void window.redlog.recording.toggle() },
+      () => { void toggleRecordingSafely() },
       {
         type: newState ? 'success' : 'warning',
         why: newState ? undefined : t('toast.recordingPausedWhy'),
@@ -130,7 +148,7 @@ export default function StatusBar(): JSX.Element {
         ...(newState ? {} : {
           action: {
             label: `${t('statusBar.resumeRecording')}  ${recordingChord}`,
-            onClick: () => { void window.redlog.recording.toggle() }
+            onClick: () => { void toggleRecordingSafely() }
           }
         })
       }
