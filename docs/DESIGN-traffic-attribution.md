@@ -114,8 +114,10 @@ resolveOwningCommand({ pid?, localPort? }, now) → commandStartEventId | null
 - 抓到 pid 但對不到指令（例如 GUI 的 Burp，不是從被 hook 的 shell 起的）：把
   `process_name` 填進事件（`ss`/`netstat` 給得到），至少顯示「這條連線屬於 `java`
   (Burp)」，即使連不到某道指令。
-- macOS 沒有 pid：事件照存五元組，UI 標「本機無法歸因（macOS 需 lsof/root）」，跟
-  SYN 掃描同樣的誠實標示原則。
+- macOS pid：**已補**（connection-table `parseLsof`/`attachLsof`）。connection-monitor 在
+  netstat 之外跑 `lsof -nP -iTCP -sTCP:ESTABLISHED -iUDP`，依 local port 把 pid + `process_name`
+  併回連線。best-effort：lsof 缺失、或別人的 socket 無 root 時,事件照存五元組、留白不猜——同
+  SYN 掃描的誠實標示原則。
 - 完全對不到：留白，不要猜。§3「兩層屬性」規定推論一律標為 suggestion，歸因是推論。
 
 ---

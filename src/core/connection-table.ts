@@ -29,9 +29,15 @@ export interface Connection {
   localPort: number
   remoteAddr: string
   remotePort: number
-  /** Owning pid when the platform's table gives it cheaply; undefined on macOS
-   *  netstat, which needs lsof (and root for other users') to attribute. */
+  /** Owning pid when the platform's table gives it cheaply, or filled from lsof
+   *  on macOS. Undefined when unattributable (e.g. lsof unavailable / another
+   *  user's socket without root). */
   pid?: number
+  /** Owning process name (from ss's `users:((...))` or lsof's COMMAND). Even
+   *  when the pid can't be mapped to a recorded command, the name lets the UI
+   *  say "this connection belongs to java (Burp)" — docs/DESIGN-traffic-
+   *  attribution §2.4. */
+  processName?: string
 }
 
 /**
@@ -125,8 +131,13 @@ export function parseSs(out: string): Connection[] {
       proto, localAddr: local.host, localPort: local.port,
       remoteAddr: peer.host, remotePort: peer.port
     }
-    const pid = /pid=(\d+)/.exec(cols.slice(5).join(' '))
+    const procCol = cols.slice(5).join(' ')
+    const pid = /pid=(\d+)/.exec(procCol)
     if (pid) conn.pid = Number(pid[1])
+    // §2.4: the command name from `users:(("nc",pid=…))`, for the same
+    // "who owns this connection" readout macOS gets from lsof.
+    const name = /users:\(\("([^"]+)"/.exec(procCol)
+    if (name) conn.processName = name[1]
     conns.push(conn)
   }
   return conns
@@ -142,6 +153,52 @@ export function parseSs(out: string): Connection[] {
  * design accepts that (the "who" comes from command correlation, not the
  * socket table).
  */
+/**
+ * macOS attribution (docs/DESIGN-traffic-attribution §2.4): BSD netstat has no
+ * pid, so we run `lsof -nP -iTCP -sTCP:ESTABLISHED -iUDP` alongside it and map
+ * the owning pid + command onto each connection by local port. lsof lines:
+ *   `nc  12345 user  3u  IPv4 0x..  0t0  TCP 10.0.0.5:54321->10.0.0.9:443 (ESTABLISHED)`
+ * The NAME column carries `local->remote`; the local port is what a connection's
+ * ephemeral source port is, which is also the socket-attribution key. Returns a
+ * map local-port → {pid, command}. A caller merges it; on any parse miss a port
+ * is simply absent (best-effort — attribution must never block capture).
+ */
+export function parseLsof(out: string): Map<number, { pid: number; command: string }> {
+  const byPort = new Map<number, { pid: number; command: string }>()
+  for (const line of out.split('\n')) {
+    const t = line.trim()
+    if (!t || t.startsWith('COMMAND')) continue
+    const cols = t.split(/\s+/)
+    if (cols.length < 9) continue
+    const command = cols[0]
+    const pid = Number(cols[1])
+    if (!Number.isInteger(pid) || pid <= 0) continue
+    // NAME is column 9 onward (may include a trailing "(ESTABLISHED)").
+    const name = cols.slice(8).join(' ')
+    // Local endpoint is before "->" (established) or the whole token (listening).
+    const endpoint = /(\S+?)->/.exec(name)?.[1] ?? name.split(/\s+/)[0]
+    if (!endpoint) continue
+    // Port is after the last ':' — works for IPv4 (host:port) and lsof's IPv6
+    // ([::1]:port); a bare "*" or missing port yields NaN and is skipped.
+    const port = Number(endpoint.slice(endpoint.lastIndexOf(':') + 1))
+    if (!Number.isInteger(port) || port <= 0) continue
+    if (!byPort.has(port)) byPort.set(port, { pid, command })
+  }
+  return byPort
+}
+
+/** Fill pid + processName on each connection that lacks a pid, from an lsof
+ *  map keyed by local port. Mutates and returns `conns` for chaining. A
+ *  connection whose port isn't in the map is left as-is (unattributable). */
+export function attachLsof(conns: Connection[], byPort: Map<number, { pid: number; command: string }>): Connection[] {
+  for (const c of conns) {
+    if (c.pid !== undefined) continue
+    const hit = byPort.get(c.localPort)
+    if (hit) { c.pid = hit.pid; c.processName = hit.command }
+  }
+  return conns
+}
+
 export function parseNetstatBsd(out: string): Connection[] {
   const conns: Connection[] = []
   for (const line of out.split('\n')) {
