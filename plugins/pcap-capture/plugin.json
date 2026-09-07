@@ -31,6 +31,31 @@
             "command": "sudo \"{hookFile}\" eth0"
           }
         ]
+      },
+      {
+        "id": "pcap-tshark",
+        "name": "tshark → scanner.packet_flow (Windows)",
+        "description": "Windows/npcap capture via tshark, emitting the same per-flow summaries (syn_only flags half-open scans). Requires npcap + an elevated shell.",
+        "agentType": "scanner",
+        "emits": [
+          "packet_flow"
+        ],
+        "requires": [
+          "tshark",
+          "node"
+        ],
+        "hookFile": "hooks/pcap-capture.ps1",
+        "installMethod": "manual",
+        "manualSteps": [
+          {
+            "label": "List capture interfaces",
+            "command": "tshark -D"
+          },
+          {
+            "label": "Capture (elevated — npcap needs Administrator; adjust the interface name)",
+            "command": "powershell -ExecutionPolicy Bypass -File \"{hookFile}\" -Interface \"Ethernet\""
+          }
+        ]
       }
     ]
   }

@@ -63,6 +63,51 @@ function parseTcpdumpLine(line) {
   }
 }
 
+// Windows has no tcpdump; the npcap-based equivalent is tshark (Wireshark's
+// CLI). Its default output isn't tcpdump-shaped, so the Windows hook runs it in
+// FIELD mode with a fixed column order and we parse that instead — same output
+// packet shape as parseTcpdumpLine, so the aggregator/classifier are shared.
+//
+//   tshark -l -n -T fields -E separator=/t \
+//     -e ip.src -e tcp.srcport -e ip.dst -e tcp.dstport \
+//     -e frame.protocols -e tcp.flags -e frame.len -e ipv6.src -e udp.srcport …
+// A representative TCP SYN row (tab-separated):
+//   10.0.0.5<TAB>54321<TAB>10.0.0.9<TAB>443<TAB>eth:ethertype:ip:tcp<TAB>0x00000002<TAB>60
+const TCP_FLAG_CHARS = [
+  [0x02, 'S'], [0x10, '.'], [0x08, 'P'], [0x01, 'F'], [0x04, 'R']
+]
+/** tshark tcp.flags is a hex bitfield (0x02 = SYN, 0x10 = ACK …). Turn it into
+ *  the same S/./P/F/R string classifyFlow reads from tcpdump's `Flags [..]`. */
+function tsharkFlagsToString(hex) {
+  const n = Number.parseInt(hex, 16)
+  if (!Number.isFinite(n)) return ''
+  let s = ''
+  for (const [bit, ch] of TCP_FLAG_CHARS) if (n & bit) s += ch
+  return s
+}
+
+/** Parse one tab-separated tshark field row into the shared packet shape, or
+ *  null if it carries no usable src/dst. Columns:
+ *  0 ip.src 1 tcp.srcport 2 ip.dst 3 tcp.dstport 4 frame.protocols 5 tcp.flags
+ *  6 frame.len 7 ipv6.src 8 udp.srcport 9 ipv6.dst 10 udp.dstport */
+function parseTsharkLine(line) {
+  const c = line.replace(/\r$/, '').split('\t')
+  if (c.length < 7) return null
+  const protocols = (c[4] || '').toLowerCase()
+  const isUdp = /\budp\b/.test(protocols)
+  const isTcp = /\btcp\b/.test(protocols)
+  const v6 = protocols.includes('ipv6') || (c[7] || '') !== ''
+  const srcHost = c[0] || c[7] || ''
+  const dstHost = c[2] || c[9] || ''
+  if (!srcHost || !dstHost) return null
+  const srcPort = Number(c[1] || c[8]) || undefined
+  const dstPort = Number(c[3] || c[10]) || undefined
+  const flags = isTcp ? tsharkFlagsToString(c[5] || '') : null
+  const proto = isTcp ? 'tcp' : isUdp ? 'udp' : 'other'
+  const length = Number(c[6]) || 0
+  return { ts: '', ipVersion: v6 ? 6 : 4, proto, flags, srcHost, srcPort, dstHost, dstPort, length }
+}
+
 // A flow is keyed by the ordered 5-tuple (src → dst), so a scan of a /24 that
 // touches 254 hosts is 254 flows, and a held-open reverse shell is one. The
 // aggregator folds packets into flows and, on flush, classifies each.
@@ -143,4 +188,4 @@ function classifyFlow(f) {
   }
 }
 
-module.exports = { parseTcpdumpLine, splitHostPort, FlowAggregator, classifyFlow }
+module.exports = { parseTcpdumpLine, parseTsharkLine, tsharkFlagsToString, splitHostPort, FlowAggregator, classifyFlow }

@@ -26,9 +26,17 @@ ifconfig -l           # macOS
 sudo ./hooks/pcap-capture.sh eth0
 ```
 
+On **Windows** the same capture runs over npcap via `tshark` — install
+Wireshark + npcap, then from an **elevated** PowerShell:
+
+```powershell
+tshark -D    # list interfaces
+powershell -ExecutionPolicy Bypass -File .\hooks\pcap-capture.ps1 -Interface "Ethernet"
+```
+
 Ctrl-C to stop. It captures nothing while RedLog is closed (a flow with nowhere
 to attribute is not evidence). Its own loopback POSTs to the API are excluded
-from capture.
+from capture (Linux/macOS filter; on Windows narrow the interface instead).
 
 ## What lands on the timeline
 
