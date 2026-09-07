@@ -80,6 +80,41 @@ describeDB('capture-health', () => {
     expect(h.verdict).not.toBe('dark')
   })
 
+  it('E3: a RUNNING plugin producer (recent heartbeat) that stopped feeding tips the verdict amber', () => {
+    // Healthy baseline from a core source, plus a plugin producer the operator
+    // is running (heartbeat) but which hasn't fed. That IS a problem.
+    mockHooks({ 'shell-zsh': true, 'pcap-capture.pcap-tcpdump': true })
+    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
+      { id: 'shell-zsh', name: 'shell-zsh', description: '', agentType: 'shell', installed: true, available: true, installMethod: 'shell-source' as const, hookFile: '' },
+      { id: 'pcap-capture.pcap-tcpdump', name: 'pcap-capture', description: '', agentType: 'scanner', emits: ['packet_flow'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
+    ])
+    ins('shell', { subtype: 'command_start', command: 'x' })          // core source fed → would be healthy
+    ins('system', { subtype: 'producer_heartbeat', producer: 'pcap-capture' }) // pcap says: I'm running
+    invalidateHooksCache()
+    const h = getCaptureHealth()
+
+    const pcap = h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')
+    expect(pcap?.running).toBe(true)
+    expect(pcap?.state).toBe('idle')   // running but not feeding
+    expect(h.verdict).toBe('partial')  // a running-but-silent producer is a fault
+  })
+
+  it('E3: WITHOUT a heartbeat, an idle plugin producer still never tips the verdict', () => {
+    // The #48/#49 guarantee: installed-but-not-run producers are invisible to
+    // the verdict. Same shape as above minus the heartbeat → stays healthy.
+    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
+      { id: 'shell-zsh', name: 'shell-zsh', description: '', agentType: 'shell', installed: true, available: true, installMethod: 'shell-source' as const, hookFile: '' },
+      { id: 'pcap-capture.pcap-tcpdump', name: 'pcap-capture', description: '', agentType: 'scanner', emits: ['packet_flow'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
+    ])
+    ins('shell', { subtype: 'command_start', command: 'x' })
+    invalidateHooksCache()
+    const h = getCaptureHealth()
+    const pcap = h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')
+    expect(pcap?.running).toBeFalsy()
+    expect(pcap?.state).toBe('off')
+    expect(h.verdict).toBe('healthy')
+  })
+
   it('E3: a plugin capture producer is surfaced as informational and never tips the verdict', () => {
     // Healthy baseline: the shell hook is installed AND fed recently.
     mockHooks({ 'shell-zsh': true, 'pcap-capture.pcap-tcpdump': true })

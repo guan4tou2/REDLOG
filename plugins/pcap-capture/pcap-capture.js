@@ -34,17 +34,25 @@ function conn() {
   } catch { return null }
 }
 
-async function post(data) {
+async function post(data, agentType = 'scanner') {
   const c = conn()
   if (!c) return false // RedLog closed → drop; nowhere to attribute it.
   try {
     const r = await fetch(`http://127.0.0.1:${c.port}/api/events`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${c.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentType: 'scanner', timestamp: Date.now(), data })
+      body: JSON.stringify({ agentType, timestamp: Date.now(), data })
     })
     return r.ok
   } catch { return false }
+}
+
+// E3: while capturing, tell RedLog we're RUNNING with a periodic heartbeat, so
+// capture-health can flag a producer that the operator started but which has
+// stopped feeding (a real problem) — as opposed to one that was never run.
+const PRODUCER_ID = 'pcap-capture'
+function heartbeat() {
+  return post({ subtype: 'producer_heartbeat', producer: PRODUCER_ID }, 'system')
 }
 
 // --tshark selects the Windows/npcap capture path (Wireshark's CLI) with a
@@ -101,5 +109,8 @@ async function flush() {
 }
 
 const timer = setInterval(flush, FLUSH_MS)
-process.on('SIGINT', () => { clearInterval(timer); td.kill('SIGINT') })
-process.on('SIGTERM', () => { clearInterval(timer); td.kill('SIGTERM') })
+heartbeat() // announce running immediately, then every 15s
+const hbTimer = setInterval(heartbeat, 15000)
+const stop = (sig) => { clearInterval(timer); clearInterval(hbTimer); td.kill(sig) }
+process.on('SIGINT', () => stop('SIGINT'))
+process.on('SIGTERM', () => stop('SIGTERM'))
