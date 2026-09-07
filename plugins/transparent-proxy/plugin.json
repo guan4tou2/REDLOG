@@ -12,12 +12,24 @@
         "name": "mitmproxy transparent → scanner.http",
         "description": "Redirect local 80/443 into mitmproxy transparent mode + RedLog's addon, capturing tools that ignore proxy env vars. Requires root; always tear down when done.",
         "agentType": "scanner",
-        "requires": ["mitmdump"],
+        "emits": [
+          "http_request_start",
+          "http_response"
+        ],
+        "requires": [
+          "mitmdump"
+        ],
         "hookFile": "hooks/transparent-proxy.sh",
         "installMethod": "manual",
         "manualSteps": [
-          { "label": "Start transparent capture (elevated — rewrites nat rules for THIS host)", "command": "sudo \"{hookFile}\" up 8080" },
-          { "label": "Stop and remove the redirect rules (also happens on Ctrl-C)", "command": "sudo \"{hookFile}\" down 8080" }
+          {
+            "label": "Start transparent capture (elevated — rewrites nat rules for THIS host)",
+            "command": "sudo \"{hookFile}\" up 8080"
+          },
+          {
+            "label": "Stop and remove the redirect rules (also happens on Ctrl-C)",
+            "command": "sudo \"{hookFile}\" down 8080"
+          }
         ]
       }
     ]

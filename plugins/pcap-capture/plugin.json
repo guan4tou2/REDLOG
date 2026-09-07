@@ -12,12 +12,24 @@
         "name": "tcpdump → scanner.packet_flow",
         "description": "Capture on an interface with tcpdump and land per-flow summaries (five-tuple, byte/packet counts, TCP flags, and a syn_only flag for half-open scans) on the timeline. Requires elevation.",
         "agentType": "scanner",
-        "requires": ["tcpdump", "node"],
+        "emits": [
+          "packet_flow"
+        ],
+        "requires": [
+          "tcpdump",
+          "node"
+        ],
         "hookFile": "hooks/pcap-capture.sh",
         "installMethod": "manual",
         "manualSteps": [
-          { "label": "Find your capture interface", "command": "ip -o link 2>/dev/null || ifconfig -l" },
-          { "label": "Capture (elevated — tcpdump needs root/CAP_NET_RAW; adjust the interface)", "command": "sudo \"{hookFile}\" eth0" }
+          {
+            "label": "Find your capture interface",
+            "command": "ip -o link 2>/dev/null || ifconfig -l"
+          },
+          {
+            "label": "Capture (elevated — tcpdump needs root/CAP_NET_RAW; adjust the interface)",
+            "command": "sudo \"{hookFile}\" eth0"
+          }
         ]
       }
     ]

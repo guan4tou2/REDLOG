@@ -131,9 +131,9 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 
 **E1. 內建 target extractor 宣告化 + 外掛化 · ✅ 已實作(Option A #41 · Option B #44)· P2 · M** — Option A:`STRATEGIES` 註冊表 + 宣告式資料。Option B:整張工具→策略表搬進 bundled pack `plugins/builtin-tools/`,core 不再有 per-tool 資料;`initPlugins()` 註冊該 pack,precedence 以 source 決定(user 蓋 bundled),`plugins/` 進 `extraResources` 才隨包出貨(順帶修好 c2-tailers 從沒打包的漏),停用即移除內建。
 **E2. Starter pack 預裝 · P2 · M** — 三個擷取 producer 宣告成預裝可移除外掛,首次執行仍成立。
-**E3. manifest schemaVersion 雙版本讀取 + 健康度讀 manifest · ⏳ 安全片段已實作(PR #48)· P2 · M**
-- ✅ 安全片段:capture-health 從 registry 列出 plugin capture producer(pcap-capture、transparent-proxy、c2-tailers)作 informational source,**證明性地不進 recording verdict**(在 verdict 算完後才 append;兩個測試釘住「裝了但沒跑的 producer 永不把指示燈翻 amber」——正是 v0.9.7 警告的失敗模式)。
-- 仍待:manifest schemaVersion 雙版本讀取;per-producer「哪個 producer 在餵」健康(需 manifest 宣告 subtype)與其 UI 呈現。
+**E3. manifest schemaVersion 雙版本讀取 + 健康度讀 manifest · ⏳ 健康度部分完成(#48 安全片段 + #49 完整)· P2 · M**
+- ✅ 健康度讀 manifest:capture 貢獻加 `emits`(宣告發出的 subtype),capture-health 據此給每個 plugin producer 真實 active/idle/off 餵食狀態,並顯示在擷取卡(唯讀、標 plugin、閒置不擾)。verdict 非對稱:活著的 plugin 計入 recording/active,但**任何 plugin 永不進 `expectedSilent`**——裝了沒跑的永不翻 amber(三個測試釘住)。
+- 仍待:**manifest schemaVersion 雙版本前向相容**(plugin `redlogApi` / bundle `bundleVersion` 雙讀;bundle 驗證器本來就接受兩版,補 plugin manifest 那半)。
 - 設計全在 `DESIGN-plugin-kernel §5`。相依:E 之間有序;不擋 A–D。
 
 ### 主題 F — 收尾/外觀
