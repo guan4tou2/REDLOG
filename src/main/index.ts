@@ -8,6 +8,7 @@ import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
+import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, type RedLogEvent } from '../core/db/events'
 import {
@@ -378,22 +379,7 @@ function broadcastIPStatus(status: IPStatusShape): void {
 // affect enforcement or attribution if silently loosened.
 function logConfigDiff(oldCfg: RedLogConfig, newCfg: RedLogConfig): string | null {
   if (!currentEngagementId || !currentOperatorId) return null
-  const changed: Record<string, { from: unknown; to: unknown }> = {}
-  const check = (path: string, from: unknown, to: unknown): void => {
-    if (JSON.stringify(from) !== JSON.stringify(to)) changed[path] = { from, to }
-  }
-  check('scope.warnOnViolation', oldCfg.scope?.warnOnViolation, newCfg.scope?.warnOnViolation)
-  check('scope.targets', oldCfg.scope?.targets, newCfg.scope?.targets)
-  check('scope.excludeTargets', oldCfg.scope?.excludeTargets, newCfg.scope?.excludeTargets)
-  check('scope.scopeFile', oldCfg.scope?.scopeFile, newCfg.scope?.scopeFile)
-  check('network.blacklist', oldCfg.network?.blacklist, newCfg.network?.blacklist)
-  check('network.whitelist', oldCfg.network?.whitelist, newCfg.network?.whitelist)
-  check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
-  check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
-  check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
-  check('clipboard.enabled', oldCfg.clipboard?.enabled, newCfg.clipboard?.enabled)
-  check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
-  check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
+  const changed = diffSecurityConfig(oldCfg, newCfg)
   if (Object.keys(changed).length === 0) return null
   try {
     const ev = insertEvent('system', {
@@ -488,24 +474,6 @@ async function runPendingRecompute(): Promise<void> {
 // Compress an OpsecStateDelta into a one-line human description for the event
 // row. Prioritized: VPN state comes first (biggest OPSEC impact), then MAC
 // (randomization signal), then DNS (leak signal), then hostname.
-function describeOpsecDelta(d: OpsecStateDelta): string {
-  const parts: string[] = []
-  if (d.vpn) {
-    const added = d.vpn.to.filter((x) => !d.vpn!.from.includes(x))
-    const removed = d.vpn.from.filter((x) => !d.vpn!.to.includes(x))
-    if (added.length) parts.push(`VPN up: ${added.join(', ')}`)
-    if (removed.length) parts.push(`VPN down: ${removed.join(', ')}`)
-  }
-  if (d.primaryMac) parts.push(`MAC ${d.primaryMac.from ?? '?'} → ${d.primaryMac.to ?? '?'}`)
-  if (d.dns) {
-    const added = d.dns.to.filter((x) => !d.dns!.from.includes(x))
-    const removed = d.dns.from.filter((x) => !d.dns!.to.includes(x))
-    if (added.length || removed.length) parts.push(`DNS ${d.dns.from.join(',') || '∅'} → ${d.dns.to.join(',') || '∅'}`)
-  }
-  if (d.hostname) parts.push(`hostname ${d.hostname.from} → ${d.hostname.to}`)
-  return parts.join('; ') || 'OPSEC state changed'
-}
-
 function startProject(project: ProjectMeta): void {
   if (activeProject) stopProject()
   activeProject = project
