@@ -402,13 +402,21 @@ Timeline(6 處)拉齊,HUD 例外照舊。
 Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈損／寫入失敗強制 dark)、對話框 focus trap
 與 ErrorBoundary 四出口。
 
+**第二輪逐項核對(同日,對剩餘 `[x]` 全掃)**——又找到兩個**真誤標**與三個 PARTIAL,已在上面各該行改標:
+
+- ✗ **「全部清單改無限捲動 + 虛擬列表 +『已載入 N／共 M』」**:無 virtualization 套件,只有 HttpHistoryPanel 有無限捲動,footer 字串不存在——三個子宣稱中兩個假。**未修**(28k 效能驗收條件實際未達,列為待辦)。
+- ✗ **「回放器改狀態列上方抽屜」**:仍內嵌 Timeline Inspector,無抽屜。**未修**(是否搬為設計決定)。
+- ▲ PARTIAL:Lucide 少數互動按鈕仍用 Unicode glyph(美化);Settings「十二頁」實為 9 頁(數目);終端機 `⌘+／⌘−` 未綁鍵、註解卻宣稱有(小功能落差)。
+
+其餘 13 項(Toast 四要件、狀態列兩層指示器、ISO 8601 匯出、`ConfirmDialog` 三級 + focus trap、清單鍵盤操作、時間軸鍵盤 + 選取框、快捷鍵集中、右鍵落標記選單、致命錯誤畫面 + 診斷清洗、刪除機密顯示、匯出下拉收斂、`--row-h` 等 density token、TierBadge)**逐一核對為真**。
+
 ## 19. 已知的既存缺陷（非設計問題）
 
 - ✓ **已修**（#28）側欄印的是**渲染位置**而非該視圖的編號。`DEFAULT_ORDER` 有 11 項、只有 8 項有快捷鍵，所以範圍／戰利品／標記一直印著 9、10、11——都是開不了任何東西的號碼——而設定列也印 9，同一畫面上兩個 9
 - ✓ **已修**（#28）⌘K 與快捷鍵面板都以 view id 組標籤鍵（`sidebar.http_history`），該鍵兩本語言檔都沒有，所以那一列直接把鍵名印給操作員。字面鍵掃描器看不到動態鍵，而 `shortcuts.test.ts` 的 fixture 是手抄的八項清單，漏掉最新兩個視圖
 - ✓ **已修**（#26）`marker:create` 丟掉 `atTimestamp`；標記事件發布時未 `bypassPause`（暫停中寫的標記進了鏈卻不顯示）；標記文字沒有 redaction spans（第四層因此永遠遮不掉標記備註裡的密碼）
 - ✓ **已修**（#28）TerminalView 的分頁清單在元件本地 state，離開再回來會再 spawn 一個 pty 並孤兒化前一個——每次進出漏一個 shell
-- `v0.14.0` per-row tier glyph 的已上鏈列用 `zinc-700` (`#3f3f46`) 於 `#0a0a0a`，約 **1.7:1**，遠低於 3:1。依例外報告原則：已上鏈是預設不畫字符，只有 logged 列畫 `⌇`，用 `#9a9aa4`
+- ✓ **已修**（2026-09-07 稽核確認）`v0.14.0` per-row tier glyph 的已上鏈列曾用 `zinc-700` (`#3f3f46`) 於 `#0a0a0a`，約 **1.7:1**，遠低於 3:1。依例外報告原則已改：已上鏈**預設不畫字符**（`TierBadge` variant=row 回傳空白 spacer，`Timeline.tsx:4637`），只有 logged 列畫 `⌇`、用 `text-redlog-text-dim`
 - CDP 設定指引裡的 `--remote-debugging-port=9222` 是硬寫的，使用者改過埠號後照抄會失敗——指令中的路徑與埠號必須是當前專案的實際值
 - 快捷鍵表分散硬寫在監聽器、側欄、儀表板與 `?` 面板四處，已經漂移過一次（Settings 鎖定 ⌘9 那次）。須從單一來源（`lib/shortcuts.ts`）產生
 - ✓ **已修**（2026-09-04）Timeline 的 `eventCompare` 同毫秒 tiebreak 是死碼——`padMonoNs` 寫出 `bootMs-ns` 形式，`BigInt()` 必定丟例外，所以同毫秒事件實際以 UUID 排序。比較器抽到 `lib/eventOrder.ts`，時間軸與標記 fold 共用同一份，兩邊不再對「誰先發生」給出兩個答案
@@ -443,7 +451,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 - [x] 次級文字一律 `text-redlog-text-dim`，不得再用 `zinc-600` / `zinc-700` 承載可讀文字
 - [x] `Timeline.tsx`：`LANE_COLORS` 全部改 `#6e6e78`；狀態色改由事件本身承載
 - [x] `lib/hud.ts`：`muted` 由 `#5f7a82` 抬到可讀值；HUD 標籤字下限 11px
-- [x] 導入 Lucide，替換側欄與元件的 Unicode 幾何符號（狀態／標記類保留符號者需個別確認）
+- [x] 導入 Lucide，替換側欄與元件的 Unicode 幾何符號（狀態／標記類保留符號者需個別確認） —— ▲ 2026-09-07 稽核：側欄與 16 檔已轉 Lucide,但少數**互動 icon 按鈕**仍用 Unicode glyph 當控制:`Settings.tsx:1842` / `ProjectPicker.tsx:348` 的 `✕`、`Timeline.tsx:2934` 的 `⏸/▶`、`:3205` 的 `▾`(事件標記／狀態類 glyph 為內容,規範豁免)。屬美化殘留
 - [x] `TierBadge`：已上鏈列不畫字符，logged 列用 `#9a9aa4`
 
 **驗收**：`vitest` 全綠 · `playwright` 全綠 · 三平台截圖人工目視 · 新增對比度與最小字級的回歸測試（沿用 `test/lane-colours.test.ts` 從原始碼解析斷言的作法）
@@ -473,7 +481,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 ## 第三期 · 結構重整（依賴第二期的行為規則）
 
 - [x] 側欄順序固定、數字上欄、移除拖曳排序（或改為釘選）
-- [x] 設定改左清單 + 右內容（五組十二頁，見 §14）；外掛／市集／發行者／撤銷清單從四層攤平到兩層；頂部搜尋框 —— ▲ 市集與發行者已整個移除
+- [x] 設定改左清單 + 右內容（五組十二頁，見 §14）；外掛／市集／發行者／撤銷清單從四層攤平到兩層；頂部搜尋框 —— ▲ 市集與發行者已整個移除。2026-09-07 稽核：結構正確,但「十二頁」數目對不上——`SettingsPage` union 實為 **9 頁**(`Settings.tsx:81-88`),檔內註解自己也彼此矛盾(`:79` 說十三、`:149` 說十二)。數目字面誤差,非功能缺陷
 - [ ] 側欄搜尋頁刪除；⌘K 命令面板（導航／模糊搜尋／動作／模式與密度／專案／最近指令） —— ▲ ⌘K 已做；搜尋頁**保留**（見 §10）
 - [x] ⌘F 頁內篩選
 - [x] 儀表板改「一屏一個問題」+ 寬屏 1400px 居中
@@ -483,10 +491,10 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 - [x] 逐字稿新預設（首行預覽 + 條件自動展開）
 - [x] 範圍頁重做（允許清單 + 排除清單 + 可展開違規）
 - [x] 目標頁改 SQL 聚合 —— ▲ 2026-09-07 稽核：此項當時**誤標完成**，前端仍 `query({ limit: 1000 })` 再以 Map 聚合（>1000 筆的目標會消失、計數截斷）；#65 才真正落地 `aggregateTargets()`（兩層 `GROUP BY json_extract(data,'$.detectedTarget')`、無上限），並補回歸測試（1100 筆不截斷）
-- [x] 全部清單改無限捲動 + 虛擬列表 +「已載入 N／共 M」
+- [ ] 全部清單改無限捲動 + 虛擬列表 +「已載入 N／共 M」 —— ✗ 2026-09-07 稽核**誤標**：無任何 virtualization 套件；**只有 HttpHistoryPanel** 有無限捲動(IntersectionObserver + `slice(0, visibleCount)`,且仍把已載入列全部掛著、非 windowing);LootPanel／BookmarksView／CastResults 一次 `.map` 全渲染;「已載入 N／共 M」footer 字串兩語言檔都不存在。28k 事件的效能驗收條件實際未達
 - [x] 匯出六處收成一個下拉
-- [x] 終端機分頁資訊、⌘+／⌘−、⌘F、可復原關閉
-- [x] 回放器改狀態列上方抽屜
+- [x] 終端機分頁資訊、⌘+／⌘−、⌘F、可復原關閉 —— ▲ 2026-09-07 稽核：分頁資訊 ✓、⌘F ✓、可復原關閉 ✓,但 **⌘+／⌘− 未綁定任何按鍵**(字級只能靠工具列 `s+`／`s-` 按鈕調);`TerminalView.tsx:30` 註解宣稱「⌘+ / ⌘- adjust it live」但無對應 keydown。小功能落差
+- [ ] 回放器改狀態列上方抽屜 —— ✗ 2026-09-07 稽核**誤標**：回放器(`ReplayCommand`／播放器)仍**內嵌在 Timeline Inspector 面板**(`Timeline.tsx:3926`),不是狀態列上方的抽屜;renderer 全域 grep 不到 drawer／抽屜。(現況內嵌未必比抽屜差,是否搬為設計決定)
 - [x] 空狀態三件套套用到全部空狀態 —— ▲ 2026-09-07 稽核：HTTP History 的空／載入狀態當時仍寫死英文（`No HTTP traffic captured yet` 等），同檔他處卻已用 `httpHistory.empty`；#64 已在地化三處。該面板為子面板內狀態，維持置中單行、不套完整三件套（子面板非整屏空狀態，刻意）
 - [x] 外掛信任流程改逐一信任 + 權限清單 + 指紋 —— ▲ 無 registry／市集
 - [x] 卡片左側色塊改版（影響所有卡片） —— ▲ 2026-09-07 稽核：儀表板兩張卡（`StatCard`、`CaptureHealthCard`）當時仍是頂部 2px 色條，`CaptureHealthCard` 還依 verdict 換底色（違反 §4「底色永遠 surface」，amber 底色另違 §1）；#66 改左側圓角色塊、底色恆 surface，危險 `dark` 保留紅框（§1 允許 danger）
