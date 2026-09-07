@@ -11,7 +11,15 @@
 # closed (the events would have nowhere to attribute).
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
-iface="${1:?interface required, e.g. eth0 (see: ip -o link / ifconfig)}"
+# Raw mode: --pcap-out <dir> <iface> — keep rotating .pcap segments (only their
+# sha256 goes on the chain). Same preflight, different reader invocation.
+raw_out=""
+if [ "${1:-}" = "--pcap-out" ]; then
+  raw_out="${2:?--pcap-out needs a directory}"
+  iface="${3:?interface required after the output dir}"
+else
+  iface="${1:?interface required, e.g. eth0 (see: ip -o link / ifconfig)}"
+fi
 
 # ── Honest preflight: say exactly why it can't capture, don't fail obscurely ──
 if ! command -v tcpdump >/dev/null 2>&1; then
@@ -35,7 +43,14 @@ if [ "$(id -u)" -ne 0 ]; then
   fi
 fi
 
-# Don't capture our own loopback POSTs to the API (avoids a feedback loop).
+# Raw mode: hand the reader the output dir + interface; no BPF filter (the raw
+# .pcap is the whole point). Loopback POSTs are tiny and harmless in a raw dump.
+if [ -n "$raw_out" ]; then
+  echo "[redlog pcap-capture] raw capture on $iface → $raw_out (Ctrl-C to stop)…" >&2
+  exec node "$here/pcap-capture.js" --pcap-out "$raw_out" "$iface"
+fi
+
+# Summary mode: don't capture our own loopback POSTs to the API (feedback loop).
 api_port="$(cat "$HOME/.redlog/api-port" 2>/dev/null || echo '')"
 filter=()
 if [ -n "$api_port" ]; then
