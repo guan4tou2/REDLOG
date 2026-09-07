@@ -10,6 +10,7 @@ vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 })
 
 import { validateManifest, computeContentHash, tierOf } from '../src/core/plugins/manifest'
 import { loadPlugins } from '../src/core/plugins/loader'
+import { PLUGIN_API_VERSION } from '../src/core/plugins/types'
 import { grant, isTrusted, revoke } from '../src/core/plugins/trust'
 import { applyContributions, removeContributions } from '../src/core/plugins/contributions'
 import { extractTarget, unregisterTargetExtractors } from '../src/core/target-extractor'
@@ -62,6 +63,36 @@ describe('manifest validation', () => {
     expect(validateManifest(
       { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: { mcpTools: '../../etc/passwd' } }, dir
     ).ok).toBe(false)
+  })
+
+  it('§8-4 forward-compat: reads one API version ahead, rejects two ahead', () => {
+    const base = { id: 'ok', name: 'x', version: '1.0.0', contributes: {} }
+    // Current and one-ahead both validate; two-ahead is too far to interpret.
+    expect(validateManifest({ ...base, redlogApi: PLUGIN_API_VERSION }, tmp).ok).toBe(true)
+    expect(validateManifest({ ...base, redlogApi: PLUGIN_API_VERSION + 1 }, tmp).ok).toBe(true)
+    expect(validateManifest({ ...base, redlogApi: PLUGIN_API_VERSION + 2 }, tmp).ok).toBe(false)
+  })
+
+  it('§8-4 forward-compat: a declarative plugin one version ahead loads active + apiAhead', () => {
+    writePlugin('ahead-decl', {
+      id: 'ahead-decl', name: 'Ahead', version: '1.0.0', redlogApi: PLUGIN_API_VERSION + 1,
+      contributes: { lootPatterns: [{ type: 'x', pattern: 'X-[0-9]+', confidence: 'high' }] }
+    })
+    const p = loadPlugins().find((x) => x.manifest.id === 'ahead-decl')!
+    expect(p.status).toBe('active')      // known declarative parts still apply
+    expect(p.apiAhead).toBe(true)        // flagged for the UI
+    expect(p.tier).toBe('declarative')
+  })
+
+  it('§8-4 forward-compat: a CODE plugin one version ahead is refused (its code is not run)', () => {
+    const dir = writePlugin('ahead-code', {
+      id: 'ahead-code', name: 'Ahead Code', version: '1.0.0', redlogApi: PLUGIN_API_VERSION + 1,
+      contributes: { mcpTools: 'code/tools.js' }
+    }, { 'code/tools.js': 'exports.tools = []\n' })
+    expect(dir).toBeTruthy()
+    const p = loadPlugins().find((x) => x.manifest.id === 'ahead-code')!
+    expect(p.status).toBe('error')       // newer code is not trusted to match this API
+    expect(p.error).toMatch(/will not run its code/)
   })
 
   it('classifies tier by whether it contributes code', () => {
