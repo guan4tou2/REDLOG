@@ -282,3 +282,13 @@ repo 這份鏡像同步加了 §23。**方向仍是各取所長**:規範本體�
 
 **新增 backlog(設計指令)**:⌘K 加上 host 聚合後,移除獨立的搜尋頁(§10 / §23 的裁定)。
 
+
+### 2026-09-07 · 讀設計專案 UIUX-STANDARD.md 的落差盤點
+
+透過 DesignSync 讀設計專案（834552e9）的 `docs/UIUX-STANDARD.md` 與 `github.md`，對照 repo 現況：
+
+- **設計端已反映 2026-09-07 的三面對帳**：設計稿新增 **§24**，對三個新 UI 面各給裁定——(1) 磁碟壓力預算欄 `0` 必須顯示「全留」而非 0、淘汰邏輯一句寫在欄旁、寫 `system.artifact_rotated`、用量進度條;(2) plugin producer 唯讀列、閒置不算 problem、側欄徽章不計 idle、只有「該 emit 卻心跳斷」才進〈需要注意〉;(3) 匯出遮蔽覆寫用「將原樣輸出範圍外內容（N 筆）」、琥珀非危險紅、N=0 整條隱藏、寫 `evidence.exported`。**這些是設計端對已出貨 UI 的細化裁定，屬未來調整項，非阻擋項。**
+- **設計端的 Phase-1 狀態已過時**：設計稿 §22 仍寫「第一期 tokens 尚未実作」，但 repo 的 `tailwind.config.js` 早已落地整張 §1 token 表（`bg #121214`、`text-dim #9a9aa4`、`lane #6e6e78`、`danger #ff4d4f`、`on-accent/on-danger`、Noto Sans TC/JetBrains Mono 家族）、fontSize 下限 13/15/17、`index.css` 密度變數與捲軸、`Timeline` LANE_COLORS 統一。**待回寫設計端：Phase-1 token/density/fontSize 實際上已做，只差字型「打包」（.woff2 檔）與 Lucide 圖示替換兩項。**
+- **§21 規則測試補上**：設計稿 §21 要求的 `test/design-rules.test.ts`（對比度、無 <13px、無 text-white、危險紅不上數字，全由原始碼解析）repo 先前沒有，本次補上並綠。順帶抓到並修掉一處自造違規——擷取卡 plugin 標記用了 `text-[10px]`（#49 加的），改回 `text-xs`。
+
+**待回寫設計端（下次溝通）**：Phase-1 token/density/fontSize 已實作(設計 §22 請更新)、§21 測試已存在。字型打包與 Lucide 替換仍為 Phase-1 殘留。
