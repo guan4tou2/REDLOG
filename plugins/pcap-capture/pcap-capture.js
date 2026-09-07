@@ -18,7 +18,7 @@ const { spawn } = require('child_process')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { parseTcpdumpLine, FlowAggregator } = require('./pcap-parse.js')
+const { parseTcpdumpLine, parseTsharkLine, FlowAggregator } = require('./pcap-parse.js')
 
 const FLUSH_MS = 3000
 const portFile = path.join(os.homedir(), '.redlog', 'api-port')
@@ -47,17 +47,34 @@ async function post(data) {
   } catch { return false }
 }
 
-const iface = process.argv[2]
+// --tshark selects the Windows/npcap capture path (Wireshark's CLI) with a
+// field parser; the default is tcpdump. Both feed the same aggregator.
+const useTshark = process.argv.includes('--tshark')
+const iface = process.argv.filter((a) => a !== '--tshark')[2]
 if (!iface) {
-  process.stderr.write('usage: pcap-capture.js <interface> [bpf filter]\n')
+  process.stderr.write('usage: pcap-capture.js [--tshark] <interface> [bpf filter]\n')
   process.exit(2)
 }
-const filter = process.argv.slice(3)
+const filter = process.argv.filter((a) => a !== '--tshark').slice(3)
 
-// -nn no name/port resolution, -tttt absolute human ts, -l line-buffered, -q
-// quieter. We ask for a text firehose and do the structure ourselves.
-const args = ['-nn', '-tttt', '-l', '-q', '-i', iface, ...filter]
-const td = spawn('tcpdump', args)
+const [cmd, args, parseLine] = useTshark
+  ? [
+      'tshark',
+      // Field mode: fixed column order matching parseTsharkLine.
+      ['-i', iface, '-l', '-n', '-T', 'fields', '-E', 'separator=/t',
+        '-e', 'ip.src', '-e', 'tcp.srcport', '-e', 'ip.dst', '-e', 'tcp.dstport',
+        '-e', 'frame.protocols', '-e', 'tcp.flags', '-e', 'frame.len',
+        '-e', 'ipv6.src', '-e', 'udp.srcport', '-e', 'ipv6.dst', '-e', 'udp.dstport',
+        ...(filter.length ? ['-f', filter.join(' ')] : [])],
+      parseTsharkLine
+    ]
+  : [
+      'tcpdump',
+      // -nn no name/port resolution, -tttt absolute human ts, -l line-buffered.
+      ['-nn', '-tttt', '-l', '-q', '-i', iface, ...filter],
+      parseTcpdumpLine
+    ]
+const td = spawn(cmd, args)
 
 const agg = new FlowAggregator()
 let carry = ''
@@ -66,12 +83,12 @@ let posted = 0
 td.stdout.on('data', (buf) => {
   const lines = (carry + buf.toString('utf8')).split('\n')
   carry = lines.pop() || ''
-  for (const line of lines) agg.add(parseTcpdumpLine(line))
+  for (const line of lines) agg.add(parseLine(line))
 })
 
-td.stderr.on('data', (b) => process.stderr.write(`[tcpdump] ${b}`))
+td.stderr.on('data', (b) => process.stderr.write(`[${cmd}] ${b}`))
 td.on('exit', (code) => {
-  process.stderr.write(`\n[redlog pcap-capture] tcpdump exited (${code})\n`)
+  process.stderr.write(`\n[redlog pcap-capture] ${cmd} exited (${code})\n`)
   flush().finally(() => process.exit(code ?? 0))
 })
 
