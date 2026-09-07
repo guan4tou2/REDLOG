@@ -653,10 +653,14 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
 
   return (
     <section>
-      <div className={`rounded-lg border p-4 shadow-card relative overflow-hidden ${
-        dark ? 'bg-red-950/30 border-red-900/50' : partial ? 'bg-amber-950/20 border-amber-900/40' : 'bg-redlog-surface border-redlog-border'
+      {/* §4: card ground is always surface — state is carried by the left
+          colour block, the headline, and (for the danger 'dark' verdict only,
+          which §1 lets fill/accent with danger) a red-tinted border. The old
+          amber/red background washes broke §4 and, for amber, §1. */}
+      <div className={`rounded-lg border p-4 pl-5 shadow-card relative overflow-hidden bg-redlog-surface ${
+        dark ? 'border-red-900/60' : 'border-redlog-border'
       }`}>
-        <span className={`absolute top-0 left-0 right-0 h-[2px] ${barColor}`} />
+        <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${barColor}`} />
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
           <div className="flex items-center gap-3">
@@ -1114,8 +1118,10 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
   const valueColor = tone === 'red' ? 'text-red-400' : tone === 'green' ? 'text-emerald-400'
     : tone === 'amber' ? 'text-amber-400' : tone === 'cyan' ? 'text-cyan-400' : 'text-redlog-text'
   return (
-    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
-      <span className={`absolute top-0 left-0 right-0 h-[2px] ${bar}`} />
+    <div className="rounded-lg bg-redlog-surface border border-redlog-border p-4 pl-5 shadow-card transition-shadow hover:shadow-card-hover relative overflow-hidden">
+      {/* §4: state rides a left colour block, not a top bar; the card ground
+          stays surface regardless of tone. */}
+      <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${bar}`} />
       <p className="text-xs text-redlog-text-dim uppercase tracking-wider font-medium">{label}</p>
       <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
       {sub && <p className="text-xs text-redlog-text-faint mt-0.5">{sub}</p>}
