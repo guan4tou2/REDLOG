@@ -46,6 +46,7 @@
   "capture.processMonitor": "Process spawn/exit",
   "capture.fileWatcher": "File watcher",
   "capture.notInstalled": "not installed",
+  "capture.pluginTag": "plugin",
   "capture.state.active": "active",
   "capture.state.idle": "idle",
   "capture.state.absent": "off",

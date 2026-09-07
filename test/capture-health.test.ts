@@ -53,6 +53,33 @@ describeDB('capture-health', () => {
     expect(h.recording).toBe(false)
   })
 
+  it('E3: a plugin producer that declares `emits` gets a real active/idle feed readout', () => {
+    // pcap-capture emits scanner.packet_flow. detectHooks carries agentType + emits.
+    invalidateHooksCache()
+    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
+      { id: 'shell-zsh', name: 'shell-zsh', description: '', agentType: 'shell', installed: true, available: true, installMethod: 'shell-source' as const, hookFile: '' },
+      { id: 'pcap-capture.pcap-tcpdump', name: 'pcap-capture', description: '', agentType: 'scanner', emits: ['packet_flow'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' },
+      { id: 'transparent-proxy.mitmproxy-transparent', name: 'transparent-proxy', description: '', agentType: 'scanner', emits: ['http_request_start', 'http_response'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
+    ])
+    // pcap has fed a packet_flow just now; the transparent proxy never fed.
+    ins('scanner', { subtype: 'packet_flow', src: '10.0.0.5', dst: '10.0.0.9', syn_only: true })
+    const h = getCaptureHealth()
+
+    const pcap = h.sources.find((s) => s.id === 'pcap-capture.pcap-tcpdump')
+    expect(pcap?.informational).toBe(true)
+    expect(pcap?.state).toBe('active')       // fed within the window
+    expect(pcap?.lastEventAt).not.toBeNull()
+
+    const tproxy = h.sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
+    expect(tproxy?.state).toBe('off')        // declared emits, but never fed
+    expect(tproxy?.lastEventAt).toBeNull()
+
+    // A live plugin producer counts as recording (capture IS happening), and an
+    // idle sibling still can't drag the verdict down.
+    expect(h.recording).toBe(true)
+    expect(h.verdict).not.toBe('dark')
+  })
+
   it('E3: a plugin capture producer is surfaced as informational and never tips the verdict', () => {
     // Healthy baseline: the shell hook is installed AND fed recently.
     mockHooks({ 'shell-zsh': true, 'pcap-capture.pcap-tcpdump': true })

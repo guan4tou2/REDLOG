@@ -546,7 +546,11 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // a hook that was never installed is a setup step, and the banner above
   // already covers the nothing-is-wired case.
   const isProblem = (s: CaptureSourceInfo): boolean =>
-    s.state === 'absent' || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null))
+    // E3: plugin producers are optional/manual — an idle or unrun one is never
+    // a fault to nag about, so they stay out of the compact "problems" view
+    // (they're still listed in `manage`, read-only, with honest live state).
+    !s.informational &&
+    (s.state === 'absent' || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null)))
   const problems = capture.sources.filter(isProblem)
   const healthy = capture.sources.filter((s) => s.state === 'active')
   const shown = manage ? capture.sources : problems
@@ -670,13 +674,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span title={SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
-                {SOURCE_LABEL[s.id] ?? s.id}
+              <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
+                {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
+                {s.informational && <span className="ml-1.5 text-redlog-text-faint text-[10px] uppercase tracking-wide">{t('capture.pluginTag')}</span>}
               </span>
               <span className="text-redlog-text-faint text-xs">
                 {s.state === 'off'
                   ? t('capture.state.off')
-                  : s.installed === false ? t('capture.notInstalled') : stateLabel(s.state)}
+                  // A plugin producer isn't "installed" in the hook sense — it's
+                  // run on demand — so report its live state, not "not installed".
+                  : (!s.informational && s.installed === false) ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {!manage && s.installed !== false && s.state !== 'off' && (
                 <span className={`text-xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>
