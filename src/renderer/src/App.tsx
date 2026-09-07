@@ -1123,7 +1123,9 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
           stays surface regardless of tone. */}
       <span className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${bar}`} />
       <p className="text-xs text-redlog-text-dim uppercase tracking-wider font-medium">{label}</p>
-      <p className={`text-lg font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
+      {/* §4/PHASE1-TOKENS: the StatCard headline number is the "value size"
+          (xl = 22px), not a heading (lg = 19px) — it was on text-lg. */}
+      <p className={`text-xl font-mono mt-1.5 font-semibold tabular-nums ${valueColor}`}>{value}</p>
       {sub && <p className="text-xs text-redlog-text-faint mt-0.5">{sub}</p>}
     </div>
   )
