@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseSs, parseNetstatBsd, parseNetstatWin,
+  parseSs, parseNetstatBsd, parseNetstatWin, parseLsof, attachLsof,
   diffConns, indexConns, connKey, isCapturable,
   type Connection
 } from '../src/core/connection-table'
@@ -10,13 +10,46 @@ import {
 // different place per OS — so this is where the real risk is, and it can all
 // be tested without a socket.
 
+describe('macOS lsof attribution (§2.4)', () => {
+  const LSOF = [
+    'COMMAND     PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME',
+    'nc        12345 op      3u  IPv4 0x1a2b3c4d5e6f0011      0t0  TCP 10.0.0.5:54321->10.0.0.9:443 (ESTABLISHED)',
+    'java       6789 op     50u  IPv4 0x00aa11bb22cc33dd      0t0  TCP 10.0.0.5:60000->93.184.216.34:80 (ESTABLISHED)',
+    'firefox    2222 op     70u  IPv6 0x99887766             0t0  UDP [::1]:53000->[::1]:53'
+  ].join('\n')
+
+  it('maps local port → owning pid + command, IPv4 and IPv6', () => {
+    const m = parseLsof(LSOF)
+    expect(m.get(54321)).toEqual({ pid: 12345, command: 'nc' })
+    expect(m.get(60000)).toEqual({ pid: 6789, command: 'java' })
+    expect(m.get(53000)).toEqual({ pid: 2222, command: 'firefox' })
+    expect(m.has(443)).toBe(false) // remote port is not a key
+  })
+
+  it('skips the header and malformed lines without throwing', () => {
+    expect(parseLsof('COMMAND PID USER\ngarbage line\n').size).toBe(0)
+    expect(() => parseLsof('')).not.toThrow()
+  })
+
+  it('attachLsof fills pid + processName only where a pid was missing', () => {
+    const conns: Connection[] = [
+      { proto: 'tcp', localAddr: '10.0.0.5', localPort: 54321, remoteAddr: '10.0.0.9', remotePort: 443 },
+      { proto: 'tcp', localAddr: '10.0.0.5', localPort: 99999, remoteAddr: '10.0.0.9', remotePort: 22, pid: 1 } // already attributed
+    ]
+    attachLsof(conns, parseLsof(LSOF))
+    expect(conns[0]).toMatchObject({ pid: 12345, processName: 'nc' })
+    expect(conns[1].pid).toBe(1)              // not overwritten
+    expect(conns[1].processName).toBeUndefined() // and not touched
+  })
+})
+
 describe('parsing the Linux ss table', () => {
   it('reads an established outbound TCP connection with its pid', () => {
     const out = 'tcp   0 0 10.0.0.5:52341 10.10.11.24:445 users:(("nc",pid=1234,fd=3))'
     const [c] = parseSs(out)
     expect(c).toMatchObject({
       proto: 'tcp', localAddr: '10.0.0.5', localPort: 52341,
-      remoteAddr: '10.10.11.24', remotePort: 445, pid: 1234
+      remoteAddr: '10.10.11.24', remotePort: 445, pid: 1234, processName: 'nc'
     })
   })
 
