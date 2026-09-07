@@ -19,6 +19,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { parseTcpdumpLine, parseTsharkLine, FlowAggregator } = require('./pcap-parse.js')
+const { pcapSegmentEvent } = require('./pcap-sidecar.js')
 
 const FLUSH_MS = 3000
 const portFile = path.join(os.homedir(), '.redlog', 'api-port')
@@ -53,6 +54,62 @@ async function post(data, agentType = 'scanner') {
 const PRODUCER_ID = 'pcap-capture'
 function heartbeat() {
   return post({ subtype: 'producer_heartbeat', producer: PRODUCER_ID }, 'system')
+}
+
+// --pcap-out <dir>: RAW mode. Instead of text summaries, tcpdump writes rotating
+// binary .pcap segments to <dir> (the operator's disk); we hash each completed
+// segment and POST an integrity record (path + sha256) so the chain proves what
+// the raw file was. This is mutually exclusive with the summary/tshark path.
+const pcapOutIdx = process.argv.indexOf('--pcap-out')
+if (pcapOutIdx !== -1) {
+  const outDir = process.argv[pcapOutIdx + 1]
+  const rawIface = process.argv.filter((a, i) => a !== '--pcap-out' && i !== pcapOutIdx + 1)[2]
+  if (!outDir || !rawIface) {
+    process.stderr.write('usage: pcap-capture.js --pcap-out <dir> <interface>\n')
+    process.exit(2)
+  }
+  try { fs.mkdirSync(outDir, { recursive: true }) } catch { /* exists */ }
+  // -G 300 -W 12: 5-minute segments, keep the last 12 (an hour). strftime name
+  // so segments sort and never collide.
+  const td = spawn('tcpdump', ['-i', rawIface, '-w', path.join(outDir, 'redlog-%Y%m%d-%H%M%S.pcap'), '-G', '300', '-W', '12'])
+  td.stderr.on('data', (b) => process.stderr.write(`[tcpdump] ${b}`))
+  const recorded = new Set()
+  heartbeat() // raw mode is running too
+  const hbTimer = setInterval(heartbeat, 15000)
+  // When tcpdump opens the NEXT segment, the previous one is complete → hash it.
+  async function sweep() {
+    let files
+    try { files = fs.readdirSync(outDir).filter((f) => f.endsWith('.pcap')).sort() } catch { return }
+    // All but the newest (still being written) are complete.
+    for (const f of files.slice(0, -1)) {
+      if (recorded.has(f)) continue
+      recorded.add(f)
+      const ev = pcapSegmentEvent(path.join(outDir, f))
+      if (ev) await post(ev)
+    }
+  }
+  const sweepTimer = setInterval(sweep, 5000)
+  const finish = (sig) => {
+    clearInterval(sweepTimer)
+    clearInterval(hbTimer)
+    td.kill(sig)
+  }
+  td.on('exit', async () => {
+    clearInterval(sweepTimer)
+    clearInterval(hbTimer)
+    // Hash every segment on exit, including the last (now closed) one.
+    try {
+      for (const f of fs.readdirSync(outDir).filter((x) => x.endsWith('.pcap')).sort()) {
+        if (recorded.has(f)) continue
+        const ev = pcapSegmentEvent(path.join(outDir, f))
+        if (ev) await post(ev)
+      }
+    } catch { /* dir gone */ }
+    process.exit(0)
+  })
+  process.on('SIGINT', () => finish('SIGINT'))
+  process.on('SIGTERM', () => finish('SIGTERM'))
+  return
 }
 
 // --tshark selects the Windows/npcap capture path (Wireshark's CLI) with a
