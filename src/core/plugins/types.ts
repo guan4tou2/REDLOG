@@ -110,6 +110,12 @@ export interface CaptureContribution {
   name: string
   description: string
   agentType: string
+  /** E3: the event subtypes this producer emits under `agentType`, e.g.
+   *  `["packet_flow"]` for pcap or `["c2_checkin","c2_task"]` for a c2 tailer.
+   *  Lets capture-health tell one `scanner` producer's feed from another's, so
+   *  a plugin producer shows real active/idle state — without it a producer is
+   *  listed but its feed can't be attributed. Optional. */
+  emits?: string[]
   /** CLI commands that must exist for this to be "available" (any-of) */
   requires?: string[]
   /** manifest-relative path to the hook script */

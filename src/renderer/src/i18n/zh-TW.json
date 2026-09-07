@@ -46,6 +46,7 @@
   "capture.processMonitor": "程序 spawn/exit",
   "capture.fileWatcher": "檔案監控",
   "capture.notInstalled": "未安裝",
+  "capture.pluginTag": "外掛",
   "capture.state.active": "運作中",
   "capture.state.idle": "閒置",
   "capture.state.absent": "關閉",
