@@ -29,6 +29,11 @@ export interface ListKeyboardOptions {
   onEscape?: () => void
   /** Turn the whole thing off while a modal is up. */
   enabled?: boolean
+  /** Virtualized lists only: the selected row may not be mounted, so its ref is
+   *  null and scrollIntoView/focus can't reach it. Given this, the hook asks the
+   *  virtualizer to scroll the index into view, then focuses once it renders.
+   *  Omitted for the plain lists, which keep every row mounted. */
+  onScrollToIndex?: (index: number) => void
 }
 
 export interface ListKeyboard {
@@ -51,7 +56,7 @@ export interface ListKeyboard {
 }
 
 export function useListKeyboard(opts: ListKeyboardOptions): ListKeyboard {
-  const { count, onActivate, onJumpToTimeline, onEscape, enabled = true } = opts
+  const { count, onActivate, onJumpToTimeline, onEscape, enabled = true, onScrollToIndex } = opts
   const [index, setIndex] = useState(-1)
   const rows = useRef<Array<HTMLElement | null>>([])
 
@@ -65,11 +70,19 @@ export function useListKeyboard(opts: ListKeyboardOptions): ListKeyboard {
   // arrowing down a long list scrolls by a row instead of jumping.
   useEffect(() => {
     if (index < 0) return
-    // Optional-called: `scrollIntoView` is absent under jsdom, and a list that
-    // cannot be exercised in a test is a list whose keyboard rots.
-    rows.current[index]?.scrollIntoView?.({ block: 'nearest' })
-    rows.current[index]?.focus({ preventScroll: true })
-  }, [index])
+    const row = rows.current[index]
+    if (row) {
+      // Optional-called: `scrollIntoView` is absent under jsdom, and a list that
+      // cannot be exercised in a test is a list whose keyboard rots.
+      row.scrollIntoView?.({ block: 'nearest' })
+      row.focus({ preventScroll: true })
+    } else if (onScrollToIndex) {
+      // Virtualized: the row isn't mounted. Scroll it into the window, then
+      // focus on the next frame once the virtualizer has rendered it.
+      onScrollToIndex(index)
+      requestAnimationFrame(() => rows.current[index]?.focus({ preventScroll: true }))
+    }
+  }, [index, onScrollToIndex])
 
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!enabled || count === 0) return

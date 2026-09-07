@@ -404,7 +404,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 
 **第二輪逐項核對(同日,對剩餘 `[x]` 全掃)**——又找到兩個**真誤標**與三個 PARTIAL,已在上面各該行改標:
 
-- ◐ **「全部清單改無限捲動 + 虛擬列表 +『已載入 N／共 M』」**:當時三個子宣稱兩個假。**無限捲動 + footer 已於 #72 補齊**(共用 `useInfiniteScroll` + `ListFooter`,套 loot/bookmarks/casts/http);**虛擬列表(true windowing)仍未做**(已載入列仍掛 DOM,對這些數百列的清單足夠;要 windowing 再引 `@tanstack/react-virtual`)。
+- ✓ **「全部清單改無限捲動 + 虛擬列表 +『已載入 N／共 M』」**:當時三個子宣稱兩個假,現皆補齊。**無限捲動 + footer**(#72,共用 `useInfiniteScroll` + `ListFooter`,套 loot/bookmarks/casts);**虛擬列表**(#75,HttpHistoryPanel 流量表用 `@tanstack/react-virtual` 卸載式 windowing,鍵盤 nav 用 `useListKeyboard.onScrollToIndex` 驅動)。捲動手感需真機驗。
 - ✓ **「回放器改狀態列上方抽屜」**:已於 #74 抽到 app 級 `ReplayDrawer`(狀態列上方、切畫面不中斷播放)。§14 的「56px」傳輸列與 xterm 播放器衝突,抽屜取播放器高度、此分歧已記於該項。
 - ▲ PARTIAL:Lucide 少數互動按鈕仍用 Unicode glyph(美化);Settings「十二頁」實為 9 頁(數目);終端機 `⌘+／⌘−` 未綁鍵、註解卻宣稱有(小功能落差)。
 
@@ -491,7 +491,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 - [x] 逐字稿新預設（首行預覽 + 條件自動展開）
 - [x] 範圍頁重做（允許清單 + 排除清單 + 可展開違規）
 - [x] 目標頁改 SQL 聚合 —— ▲ 2026-09-07 稽核：此項當時**誤標完成**，前端仍 `query({ limit: 1000 })` 再以 Map 聚合（>1000 筆的目標會消失、計數截斷）；#65 才真正落地 `aggregateTargets()`（兩層 `GROUP BY json_extract(data,'$.detectedTarget')`、無上限），並補回歸測試（1100 筆不截斷）
-- [~] 全部清單改無限捲動 + 虛擬列表 +「已載入 N／共 M」 —— ▲ 2026-09-07:**無限捲動 + footer 已補齊**(#72):共用 `lib/useInfiniteScroll.ts`(每頁 200 + IntersectionObserver sentinel)與 `ListFooter`(「已載入 N／共 M」),套上 LootPanel／BookmarksView／CastResults,HttpHistoryPanel 換用同一 footer 字串。**仍缺「虛擬列表(true windowing)」**——已載入列仍掛在 DOM、非卸載式 windowing(loot/bookmarks 通常數百列,infinite-scroll 已足;若日後真要 windowing 再引 `@tanstack/react-virtual`)。Timeline 不列入:它以 `beforeCreatedAt` 分頁 DB 抓取(每次 200)、且是空間泳道視圖非列清單
+- [x] 全部清單改無限捲動 + 虛擬列表 +「已載入 N／共 M」 —— ✓ 2026-09-07:兩塊都到位。**無限捲動 + footer**(#72):共用 `lib/useInfiniteScroll.ts` + `ListFooter`,套 LootPanel／BookmarksView／CastResults(這些數百列的清單,infinite-scroll 是對的層級)。**虛擬列表(true windowing)**(#75):HttpHistoryPanel 的流量表(可達上萬列、單列等高)改用 `@tanstack/react-virtual` —— spacer-row 技法只掛視窗內 ~30 列;`useListKeyboard` 加 optional `onScrollToIndex`,鍵盤選到未掛載的列時先捲入視窗再聚焦(其餘 5 個清單不受影響)。**注意**:虛擬捲動的實際位移／手感 jsdom 無法目視,結構與型別有測試,捲動行為需真機驗。Timeline 不列入:它以 `beforeCreatedAt` 分頁 DB 抓取(每次 200)、是空間泳道視圖非列清單
 - [x] 匯出六處收成一個下拉
 - [x] 終端機分頁資訊、⌘+／⌘−、⌘F、可復原關閉 —— ▲ 2026-09-07 稽核：分頁資訊 ✓、⌘F ✓、可復原關閉 ✓,但 **⌘+／⌘− 未綁定任何按鍵**(字級只能靠工具列 `s+`／`s-` 按鈕調);`TerminalView.tsx:30` 註解宣稱「⌘+ / ⌘- adjust it live」但無對應 keydown。小功能落差
 - [x] 回放器改狀態列上方抽屜 —— ✓ 2026-09-07(#74):工作階段回放抽出成 `SessionReplayPlayer` + app 級 `replayStore`(`useSyncExternalStore`)+ `ReplayDrawer`,渲染在 view-root 之外、狀態列上方——**切畫面不中斷播放**(§14 的核心價值)。Inspector 的〈回放工作階段〉改開這個抽屜、就地只留「▾ 正在下方回放」指標;指令級(文字)回放仍就地。**與 §14 的分歧**:§14 寫「高 56px」的傳輸列,但真 asciinema 播放器需要終端機在畫面上,故抽屜取播放器高度(~400px);56px 塞不下 xterm。**注意**:xterm 播放本身無法在 CI 目視,結構與 store 契約有測試(`replay-store.test.ts`),播放行為需真機驗
