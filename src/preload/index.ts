@@ -158,7 +158,7 @@ const api: RedLogAPI = {
   },
   data: {
     exportJson: () => ipcRenderer.invoke('data:exportJson'),
-    exportBundle: () => ipcRenderer.invoke('data:exportBundle'),
+    exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
     exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
     exportLoot: () => ipcRenderer.invoke('data:exportLoot'),

@@ -220,7 +220,7 @@ interface RedLogAPI {
   }
   data: {
     exportJson: () => Promise<string | null>
-    exportBundle?: () => Promise<{ outDir: string; manifest: unknown } | null>
+    exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ outDir: string; manifest: unknown } | null>
     exportScopeFiltered?: () => Promise<string | null>
     exportMarks?: () => Promise<string | null>
     exportLoot?: () => Promise<string | null>
