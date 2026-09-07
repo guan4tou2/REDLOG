@@ -72,6 +72,10 @@ contextBridge.exposeInMainWorld('redlog', {
       ipcRenderer.send('overlay:setExpanded', expanded),
     autosize: (height: number, width?: number) => ipcRenderer.send('overlay:autosize', height, width),
     hide: () => ipcRenderer.send('overlay:hide'),
+    // §8: turn pass-through ON from the HUD's own action row. Turning it off is
+    // ⌘⇧P / the menu bar — once on, the HUD is click-through, so this button
+    // can only enable it (main owns the exits).
+    setPassThrough: (on: boolean) => ipcRenderer.send('overlay:setPassThrough', on),
     /** Opens the full marker dialog in the main window (raises + focuses it). */
     quickMark: () => ipcRenderer.send('overlay:quickMark'),
     /** Drops a timestamped marker without touching window focus. */

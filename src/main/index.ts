@@ -147,6 +147,16 @@ function applyOverlayPassThrough(): void {
   send(overlayWindow, 'overlay:passThrough', overlayPassThrough, overlayPassThroughOpacity)
 }
 
+// §8: the single runtime toggle for pass-through, shared by the HUD action-row
+// button (on), the ⌘⇧P shortcut and the menu bar (off) — so every entry point
+// applies the same state and keeps the Settings checkbox in sync.
+function setOverlayPassThrough(on: boolean): void {
+  if (overlayPassThrough === on) return
+  overlayPassThrough = on
+  applyOverlayPassThrough()
+  send(mainWindow, 'overlay:passThroughChanged', on)
+}
+
 function startOverlayMouseTracking(): void {
   if (overlayPassThrough) return
   if (overlayTrackingInterval) clearInterval(overlayTrackingInterval)
@@ -980,7 +990,7 @@ function startProject(project: ProjectMeta): void {
     applyOverlayPassThrough()
     if (tray) {
       tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark)
+      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!overlayPassThrough))
       setTrayRecording(tray, !eventBus.paused)
     }
   }
@@ -1101,7 +1111,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark)
+  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!overlayPassThrough))
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
@@ -2087,14 +2097,12 @@ app.whenReady().then(() => {
   // makes the control that turns it off unclickable — the HUD is ghosted, so
   // the button is behind it — and the only escape is Settings, which the
   // operator has to know exists.
-  globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => {
-    if (!overlayPassThrough) return
-    overlayPassThrough = false
-    applyOverlayPassThrough()
-    send(mainWindow, 'overlay:passThroughChanged', false)
-  })
+  globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => setOverlayPassThrough(false))
   ipcMain.on('overlay:quickMark', triggerBookmark)
   ipcMain.handle('overlay:instantMark', () => triggerInstantMark())
+  // §8: the HUD action-row button turns pass-through ON (it can't turn it off —
+  // once on, the HUD is click-through). The exits are ⌘⇧P and the menu bar.
+  ipcMain.on('overlay:setPassThrough', (_e, on: boolean) => setOverlayPassThrough(!!on))
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))

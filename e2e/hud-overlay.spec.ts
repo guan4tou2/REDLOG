@@ -179,7 +179,7 @@ test.describe.serial('HUD size stability', () => {
       }, scale)
       await hud2.waitForTimeout(500)
       await hud2.evaluate(() => {
-        const el = Array.from(document.querySelectorAll('div')).find((d) => d.textContent?.trim() === '\u25bc') as HTMLElement | undefined
+        const el = Array.from(document.querySelectorAll('button, div')).find((d) => d.textContent?.trim() === '\u25bc') as HTMLElement | undefined
         el?.click()
       })
       await hud2.waitForTimeout(400)
@@ -201,7 +201,7 @@ test.describe.serial('HUD size stability', () => {
     // compact-size check below for a reason that has nothing to do with what
     // it is testing.
     await hud2.evaluate(() => {
-      const el = Array.from(document.querySelectorAll('div')).find((d) => d.textContent?.trim() === '\u25b2') as HTMLElement | undefined
+      const el = Array.from(document.querySelectorAll('button, div')).find((d) => d.textContent?.trim() === '\u25b2') as HTMLElement | undefined
       el?.click()
     })
     await main2.evaluate(async () => {

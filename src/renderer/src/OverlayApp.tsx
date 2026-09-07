@@ -98,16 +98,42 @@ export default function OverlayApp(): JSX.Element {
   }, [])
 
 
+  // §8: an exposed external IP forces the HUD open and holds it — the topology
+  // and last-check must be on screen for the one condition allowed to override
+  // the operator's own preferences. The auto-collapse guard below keeps it open.
+  useEffect(() => {
+    if (status?.ipSafety === 'exposed' && !expanded) {
+      setExpanded(true)
+      window.redlog.overlay?.setExpanded?.(true)
+    }
+  }, [status?.ipSafety])
+
+  // §8: a 3-second hint the instant pass-through turns on, so the operator who
+  // just ghosted the HUD sees the click-free way back out (⌘⇧P / menu bar)
+  // before the chrome they would otherwise click is gone.
+  const [ptHint, setPtHint] = useState(false)
+  const ptHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ptWas = useRef(passThrough)
+  useEffect(() => {
+    if (passThrough && !ptWas.current) {
+      setPtHint(true)
+      if (ptHintTimer.current) clearTimeout(ptHintTimer.current)
+      ptHintTimer.current = setTimeout(() => setPtHint(false), 3000)
+    }
+    ptWas.current = passThrough
+  }, [passThrough])
+
   // Auto-collapse the expanded HUD after 8s of inactivity — but reset the
   // timer while the pointer is on the overlay so a reviewer reading the
   // topology chain / Reveal button doesn't get it yanked out from under
   // them (audit finding P1 #15). `interactive` flips true when the mouse
-  // enters the overlay window (main-process tracker).
+  // enters the overlay window (main-process tracker). An exposed IP holds it
+  // open (§8) — never auto-collapse while the address is out.
   useEffect(() => {
-    if (!expanded || interactive || pinned) return
+    if (!expanded || interactive || pinned || status?.ipSafety === 'exposed') return
     timerRef.current = setTimeout(() => collapse(), 8000)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [expanded, interactive, pinned])
+  }, [expanded, interactive, pinned, status?.ipSafety])
 
   const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded?.(false) }
   const toggleExpand = (): void => {
@@ -158,6 +184,7 @@ export default function OverlayApp(): JSX.Element {
   const alarm = safety === 'exposed' && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
   const BTN_CLIP = 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)'
+  const ptChord = navigator.platform?.includes('Mac') ? '⌘⇧P' : 'Ctrl+Shift+P'
 
   const bracket = (pos: React.CSSProperties): JSX.Element => (
     <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...pos }} />
@@ -165,6 +192,7 @@ export default function OverlayApp(): JSX.Element {
   const iconBtn: React.CSSProperties = {
     color: CYAN, fontSize: fs(10), cursor: 'pointer', width: 18, height: 16,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 0, fontFamily: 'inherit', appearance: 'none', outline: 'none',
     background: interactive ? 'rgba(34,211,238,0.10)' : 'transparent',
     border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
     transition: 'background 0.12s, border-color 0.12s'
@@ -204,8 +232,12 @@ export default function OverlayApp(): JSX.Element {
               a fixed-position icon in the corner competed with the more
               important expand button for glances. */}
           <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag, ...dimStyle }}>
-            <div onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</div>
-            <div onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</div>
+            {/* Real <button>s, not onClick divs: keyboard-reachable and
+                announced as controls, matching the mark/pin buttons below
+                (§21 — icon-only controls must be focusable; the focus ring is
+                the .hudBtn rule in the <style> block). */}
+            <button type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
+            <button type="button" className="hudBtn" onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
           </div>
 
           {/* measured content — window auto-sizes to this */}
@@ -331,6 +363,8 @@ export default function OverlayApp(): JSX.Element {
                 {showMark && (
                   <>
                     <button
+                      type="button"
+                      className="hudBtn"
                       onClick={() => { void doInstantMark() }}
                       style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: justMarked ? HUD.green : CYAN, background: justMarked ? hexA(HUD.green, 0.18) : hexA(CYAN, 0.09), border: `1px solid ${justMarked ? HUD.green : CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${justMarked ? HUD.green : CYAN}55`, transition: 'background 0.12s, color 0.12s' }}
                       title={t('overlay.markQuickHint')}
@@ -338,6 +372,8 @@ export default function OverlayApp(): JSX.Element {
                       {justMarked ? `✓ ${t('overlay.marked').toUpperCase()}` : `⚡ ${t('overlay.markQuick').toUpperCase()}`}
                     </button>
                     <button
+                      type="button"
+                      className="hudBtn"
                       onClick={() => window.redlog.overlay?.quickMark?.()}
                       style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                       title={`${t('overlay.markDetailHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
@@ -355,7 +391,24 @@ export default function OverlayApp(): JSX.Element {
                     v0.9.3 layout gave MARK the full width for good reason.
                     The label lives in the tooltip; the filled/hollow square
                     carries the state, and the border colour reinforces it. */}
+                {/* Pass-through (§8): the discoverable way IN to ghost mode —
+                    the action row, not just Settings. Once on, the HUD is
+                    click-through so this button can't turn it off; the way
+                    back out is ⌘⇧P or the menu bar (both wired in main), and
+                    a 3s hint says so the moment it activates. */}
                 <button
+                  type="button"
+                  className="hudBtn"
+                  onClick={() => window.redlog.overlay?.setPassThrough?.(true)}
+                  style={{ padding: `${px(6)}px ${px(11)}px`, fontSize: fs(11), fontWeight: 700, color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)', clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
+                  title={`${t('overlay.passThrough')} — ${t('overlay.passThroughHint')}`}
+                  aria-label={t('overlay.passThrough')}
+                >
+                  ◌
+                </button>
+                <button
+                  type="button"
+                  className="hudBtn"
                   onClick={() => setPinned((p) => !p)}
                   style={{ padding: `${px(6)}px ${px(11)}px`, fontSize: fs(11), fontWeight: 700, color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
                   title={`${t('overlay.keepOpen')} — ${pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}`}
@@ -370,6 +423,17 @@ export default function OverlayApp(): JSX.Element {
           </div>
         </div>
 
+        {/* §8 pass-through hint — opaque and outside the dimmed chrome so it
+            stays readable exactly when everything else has just gone ghost.
+            Auto-hides after 3s (ptHint effect). */}
+        {ptHint && (
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 6, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 30 }}>
+            <span style={{ padding: '3px 10px', fontSize: fs(9.5), fontWeight: 600, letterSpacing: '0.04em', color: '#d6f7fd', background: 'rgba(7,12,17,0.92)', border: `1px solid ${hexA(CYAN, 0.6)}`, clipPath: BTN_CLIP, boxShadow: `0 0 8px ${hexA(CYAN, 0.3)}` }}>
+              {t('overlay.passThroughActive', { chord: ptChord })}
+            </span>
+          </div>
+        )}
+
         {/* L-brackets on all four (now square) corners — no chamfered triangles. */}
         {bracket({ top: 4, left: 4, borderTop: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
         {bracket({ top: 4, right: 4, borderTop: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
@@ -377,6 +441,9 @@ export default function OverlayApp(): JSX.Element {
         {bracket({ bottom: 4, right: 4, borderBottom: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
 
         <style>{`
+          /* §21: every HUD control shows a focus ring. The buttons carry their
+             own backgrounds, so the ring is a cyan glow, not the OS outline. */
+          .hudBtn:focus-visible { box-shadow: 0 0 0 2px ${hexA(CYAN, 0.65)}; border-radius: 2px; }
           @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
           @keyframes blinkRec { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
           @keyframes alarm {

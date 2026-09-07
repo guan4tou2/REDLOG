@@ -273,6 +273,8 @@ interface RedLogAPI {
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
     instantMark?: () => Promise<{ ok: boolean; id?: string }>
+    /** §8: turn HUD click-through ON from the action row (main owns the exits). */
+    setPassThrough?: (on: boolean) => void
     mouseEnter?: () => void
     mouseLeave?: () => void
   }
