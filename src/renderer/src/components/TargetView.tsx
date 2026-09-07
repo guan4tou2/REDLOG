@@ -5,7 +5,7 @@ import { formatTime } from '../lib/time'
 import { toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
-import { Crosshair } from 'lucide-react'
+import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
 
 interface TargetEntry {
   target: string
@@ -253,7 +253,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                         >+ 範圍</button>
                       </>
                     )}
-                    <span className="text-redlog-text-faint text-xs">{selected === tgt.target ? '▾' : '▸'}</span>
+                    {selected === tgt.target
+                      ? <ChevronDown size={14} className="text-redlog-text-faint" aria-hidden />
+                      : <ChevronRight size={14} className="text-redlog-text-faint" aria-hidden />}
                   </div>
                 </div>
                 <div className="mt-1 text-redlog-text-dim text-xs">
