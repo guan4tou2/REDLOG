@@ -206,7 +206,7 @@ transcript 走 ingest。
    `local_port` 走既有 ingest 對照;透明代理沿用既有 mitmproxy addon,經 iptables/pf 重導攔
    下不吃 `HTTP_PROXY` 的工具。特權執行(tcpdump/iptables)在操作員側跑,pack 只宣告 hook +
    誠實 preflight;純解析/分類邏輯有單元測試(`pcap-parse.js` / `test/pcap-parse.test.ts`)。
-4. **manifest schemaVersion 雙版本讀取** + 擷取健康度改讀 manifest。**(健康度部分已完成:PR #48 安全片段 + PR #49 完整版——manifest capture 貢獻加 `emits` 宣告發出的 subtype,capture-health 據此給每個 plugin producer 真實 active/idle 餵食狀態並顯示在擷取卡,verdict 非對稱保證不變[plugin 只能讓畫面變好不變壞]。仍待:manifest schemaVersion 雙版本前向相容。)**
+4. **manifest 前向相容 + 擷取健康度改讀 manifest — 已完成。** 健康度:PR #48 安全片段 + #49 完整版(`emits` 宣告 + per-producer 餵食狀態 + 擷取卡呈現,verdict 非對稱)。前向相容:PR #50 讓 loader 讀「領先一個 API 版本」的 manifest——宣告式的 pack 仍套用其已知貢獻(未知 key 本來就忽略)並標 `apiAhead`,程式(privileged)pack 領先版則整個拒絕(不跑不懂的新程式),領先兩版拒收。
 
 排序見那份文件的 §5。**紅線不變:不做報告產出、不做多人中央架構。**
 
@@ -217,12 +217,11 @@ transcript 走 ingest。
 原始九項中的 §1、§2、§4、§5、§6、§7(視窗底色+圖示)、§8-1(E1 Option A)已於
 2026-09-06 隨 PR #36/#37/#40/#41 出貨並在上方各節標「已實作 → 見 X」。**還開著的殘留:**
 
-§8-3(pcap producer + 透明代理 + socket→pid 對照器)已於 PR #36/#46 出貨。**還開著的殘留:**
+§8-1/8-3/8-4 已出貨(#36/#41/#44/#46/#48/#49/#50)。**還開著的只剩一項(選用):**
 
 | 順位 | 項目 | 大小 | 為何這個順位 / 卡在哪 |
 |---|---|---|---|
 | 1 | §8-2 Starter pack 預裝 | M | 把既有 producer(shell/終端/proxy/mitm/pcap/透明代理)宣告成一包預裝可移除 pack |
-| 2 | §8-4 殘餘:manifest schemaVersion 雙版本前向相容 | S | 健康度讀 manifest 已完成(#48 安全片段 + #49 emits/餵食健康/UI);剩 plugin manifest `redlogApi` 雙版本讀 |
 
 每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。
