@@ -8,6 +8,8 @@ export interface PluginManifest {
   name: string
   description: string
   agentType: string
+  /** E3: event subtypes this producer emits under agentType (see CaptureContribution.emits). */
+  emits?: string[]
   requires: string[]
   hookFile: string
   installMethod: 'claude-settings' | 'shell-source' | 'manual'
@@ -32,6 +34,8 @@ export interface PluginInfo {
   name: string
   description: string
   agentType: string
+  /** E3: event subtypes this producer emits under agentType, for feed health. */
+  emits?: string[]
   installed: boolean
   available: boolean
   installMethod: 'claude-settings' | 'shell-source' | 'manual'
@@ -363,6 +367,7 @@ export function detectHooks(): PluginInfo[] {
       name: plugin.name,
       description: plugin.description,
       agentType: plugin.agentType,
+      emits: plugin.emits,
       installed: checkInstalled(plugin),
       available: checkAvailable(plugin),
       installMethod: plugin.installMethod,

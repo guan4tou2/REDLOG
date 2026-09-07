@@ -42,6 +42,7 @@ export function applyContributions(p: LoadedPlugin): void {
         name: cap.name,
         description: cap.description,
         agentType: cap.agentType,
+        emits: cap.emits,
         requires: cap.requires,
         hookFile: cap.hookFile,
         installMethod: cap.installMethod,

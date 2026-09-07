@@ -312,12 +312,45 @@ function computeCaptureHealth(now: number): CaptureHealth {
     mk('file-watcher', fileWatcherLast, { configPath: 'fileWatcher.enabled' })
   ]
 
-  const activeCount = sources.filter((s) => s.state === 'active').length
+  // E3: PLUGIN-contributed capture producers, enumerated from the registry
+  // rather than a second hardcoded list. detectHooks() already merges them with
+  // the built-ins (their namespaced `<pluginId>.<captureId>` ids are the only
+  // ones carrying a dot). When a producer's manifest declares `emits`, we give
+  // it a REAL feed readout — the last event of its agentType with one of those
+  // subtypes — so a live pcap/transparent-proxy/c2 tailer shows `active`, a
+  // stale one `idle`, an unrun one `off` (not a fault: a manual producer that
+  // simply isn't running).
+  const pluginSources: CaptureSource[] = hooks
+    .filter((h) => h.id.includes('.'))
+    .map((h) => {
+      const emits = h.emits ?? []
+      let last: number | null = null
+      if (emits.length > 0) {
+        const placeholders = emits.map(() => '?').join(',')
+        last = lastEventFor(
+          `agent_type = ? AND json_extract(data,'$.subtype') IN (${placeholders})`,
+          [h.agentType, ...emits]
+        )
+      }
+      const state: SourceState = last === null
+        ? 'off'
+        : (now - last <= ACTIVE_WINDOW_MS ? 'active' : 'idle')
+      return { id: h.id, label: h.name, installed: h.installed, lastEventAt: last, state, informational: true }
+    })
+
+  // The verdict ASYMMETRY that keeps the trust signal honest: plugin producers
+  // may only make the picture BETTER, never worse. A feeding one counts toward
+  // `active`/`recording`/`wired` (it IS capture happening) — but no plugin
+  // producer ever feeds `expectedSilent`, so an installed-but-idle or
+  // ran-once-then-stopped manual producer can NEVER tip the indicator amber.
+  // That is the guarantee test/capture-health pins.
+  const activeCount = [...sources, ...pluginSources].filter((s) => s.state === 'active').length
   // "recording" = at least one source has fed a real event ever (not just recently).
-  const everFed = sources.some((s) => s.lastEventAt !== null)
-  // A source is "wired" if installed, or (for non-hook sources) has ever fed.
+  const everFed = sources.some((s) => s.lastEventAt !== null) || pluginSources.some((s) => s.lastEventAt !== null)
+  // A source is "wired" if installed, or (for non-hook / plugin sources) has ever fed.
   const anyWired = sources.some((s) => s.state !== 'off' && s.installed === true)
     || sources.some((s) => s.state !== 'off' && s.installed === undefined && s.lastEventAt !== null)
+    || pluginSources.some((s) => s.lastEventAt !== null)
   // v0.6.96 Ops-3: a source is EXPECTED to feed if it's installed OR it has
   // ever fed. When such a source is currently idle (not active), the overall
   // verdict should tip to `partial` even if some OTHER source is still
@@ -347,30 +380,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
   else if (expectedSilent) verdict = 'partial'  // v0.6.96 Ops-3
   else verdict = 'healthy'
 
-  const lastEventAt = sources.reduce<number | null>(
+  const lastEventAt = [...sources, ...pluginSources].reduce<number | null>(
     (acc, s) => (s.lastEventAt !== null && (acc === null || s.lastEventAt > acc) ? s.lastEventAt : acc),
     null
   )
-
-  // E3 (safe slice): enumerate PLUGIN-contributed capture producers from the
-  // registry instead of hardcoding them. `detectHooks()` already merges plugin
-  // captures (namespaced `<pluginId>.<captureId>` — the only ids carrying a
-  // dot) with the built-ins, so we derive them here rather than maintaining a
-  // second list. These are appended AFTER `verdict`, `recording`, `anyWired`,
-  // `activeCount`, `expectedSilent` and `lastEventAt` are all computed from the
-  // core `sources`, so an installed-but-idle manual producer (pcap-capture,
-  // transparent-proxy, a c2 tailer) is DISPLAY ONLY and can never tip the
-  // recording indicator — the exact failure mode the v0.9.7 note above guards.
-  const pluginSources: CaptureSource[] = hooks
-    .filter((h) => h.id.includes('.'))
-    .map((h) => ({
-      id: h.id,
-      label: h.name,
-      installed: h.installed,
-      lastEventAt: null,
-      state: 'off' as SourceState,
-      informational: true
-    }))
 
   return {
     verdict, recording: everFed, sources: [...sources, ...pluginSources], lastEventAt, checkedAt: now,

@@ -12,11 +12,19 @@
         "name": "Sliver → c2_checkin",
         "description": "Follow a Sliver session/beacon JSON log; each object becomes a scanner.c2_checkin event.",
         "agentType": "scanner",
-        "requires": ["node"],
+        "emits": [
+          "c2_checkin"
+        ],
+        "requires": [
+          "node"
+        ],
         "hookFile": "hooks/sliver-tail.sh",
         "installMethod": "manual",
         "manualSteps": [
-          { "label": "Point the tailer at your Sliver JSON log (adjust the path)", "command": "\"{hookFile}\" ~/.sliver/logs/sliver.json" }
+          {
+            "label": "Point the tailer at your Sliver JSON log (adjust the path)",
+            "command": "\"{hookFile}\" ~/.sliver/logs/sliver.json"
+          }
         ]
       },
       {
@@ -24,11 +32,20 @@
         "name": "Generic C2 → timeline",
         "description": "Follow any C2 log emitted in the RedLog-C2 JSONL contract ({kind:'checkin'|'task'|'pivot', ...}); see README.",
         "agentType": "scanner",
-        "requires": ["node"],
+        "emits": [
+          "c2_checkin",
+          "c2_task"
+        ],
+        "requires": [
+          "node"
+        ],
         "hookFile": "hooks/generic-tail.sh",
         "installMethod": "manual",
         "manualSteps": [
-          { "label": "Have your framework append RedLog-C2 JSONL to a file, then follow it", "command": "\"{hookFile}\" /path/to/c2-events.jsonl" }
+          {
+            "label": "Have your framework append RedLog-C2 JSONL to a file, then follow it",
+            "command": "\"{hookFile}\" /path/to/c2-events.jsonl"
+          }
         ]
       }
     ]
