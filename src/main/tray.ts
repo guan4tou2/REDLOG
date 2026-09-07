@@ -1,7 +1,7 @@
 import { Tray, Menu, nativeImage, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import { QUICK_MARK_ACCELERATOR } from '../core/shortcuts'
+import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 
 const basePath = join(__dirname, '../../resources')
 
@@ -98,7 +98,8 @@ export function createTray(
   mainWindow: BrowserWindow,
   overlayWindow: BrowserWindow | null,
   onToggleRecording?: () => boolean,
-  onBookmark?: () => void
+  onBookmark?: () => void,
+  onTogglePassThrough?: () => void
 ): Tray {
   const tray = new Tray(getTemplateIcon())
 
@@ -144,6 +145,17 @@ export function createTray(
         mainWindow.webContents.send('overlay:visibilityChanged', overlayWindow.isVisible())
       }
     })
+
+    if (onTogglePassThrough) {
+      // §8: the menu bar is one of the two click-free ways out of HUD
+      // pass-through (⌘⇧P is the other) — the HUD itself is click-through
+      // while ghosted, so its own toggle can't turn it back off.
+      items.push({
+        label: 'Toggle HUD Click-through',
+        accelerator: HUD_PASSTHROUGH_ACCELERATOR,
+        click: () => onTogglePassThrough()
+      })
+    }
 
     items.push({ type: 'separator' })
     items.push({ label: 'Quit', role: 'quit' })
