@@ -4,7 +4,7 @@ import { insertEvent } from '../../core/db/events'
 import { notePortPid, socketCausesFor } from '../../core/socket-attribution'
 import { noteDbError } from '../../core/capture-health'
 import {
-  parseSs, parseNetstatBsd, parseNetstatWin,
+  parseSs, parseNetstatBsd, parseNetstatWin, parseLsof, attachLsof,
   diffConns, indexConns, isCapturable,
   type Connection
 } from '../../core/connection-table'
@@ -184,7 +184,10 @@ function emitOpen(c: Connection): void {
       remote_port: c.remotePort,
       local_port: c.localPort,
       detectedTarget: c.remoteAddr,
-      ...(c.pid ? { pid: c.pid } : {})
+      ...(c.pid ? { pid: c.pid } : {}),
+      // §2.4: the owning process name, even when the pid can't be tied to a
+      // recorded command — "this connection belongs to java (Burp)".
+      ...(c.processName ? { process_name: c.processName } : {})
     }
     const causes = socketCausesFor('scanner', data)
     if (causes.length > 0) data._causes = causes
@@ -225,12 +228,17 @@ function emitSaturated(count: number): void {
 function snapshot(): Promise<Connection[]> {
   if (process.platform === 'linux') return run('ss', ['-tunpH', 'state', 'established'], parseSs)
   if (process.platform === 'darwin') {
-    // Two calls: BSD netstat filters protocol, not state, so we take tcp and
-    // udp and let the parser drop non-established rows.
-    return Promise.all([
+    // Two netstat calls: BSD netstat filters protocol, not state, so we take
+    // tcp and udp and let the parser drop non-established rows. netstat gives
+    // no pid, so we also run lsof and attach the owning pid + command by local
+    // port — best-effort: if lsof is missing or refuses (another user's socket
+    // without root), the connection is still recorded, just unattributed.
+    const conns = Promise.all([
       run('netstat', ['-n', '-p', 'tcp'], parseNetstatBsd),
       run('netstat', ['-n', '-p', 'udp'], parseNetstatBsd)
     ]).then(([a, b]) => [...a, ...b])
+    const lsof = runLsof().catch(() => new Map<number, { pid: number; command: string }>())
+    return Promise.all([conns, lsof]).then(([c, m]) => attachLsof(c, m))
   }
   if (process.platform === 'win32') return run('netstat', ['-no'], parseNetstatWin)
   return Promise.resolve([])
@@ -241,6 +249,22 @@ function run(cmd: string, args: string[], parse: (out: string) => Connection[]):
     execFile(cmd, args, { maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
       if (err) { reject(err); return }
       try { resolve(parse(stdout)) } catch (e) { reject(e as Error) }
+    })
+  })
+}
+
+/** macOS pid attribution via lsof. Separate from `run` because it yields a
+ *  port→owner map, not connections. Rejects on failure so the caller can treat
+ *  it as best-effort (lsof absent, or another user's socket without root). */
+function runLsof(): Promise<Map<number, { pid: number; command: string }>> {
+  return new Promise((resolve, reject) => {
+    execFile('lsof', ['-nP', '-iTCP', '-sTCP:ESTABLISHED', '-iUDP'], { maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      // lsof exits non-zero when SOME sockets are inaccessible even though it
+      // printed the ones it could — so parse stdout regardless of the code and
+      // only reject when there is genuinely nothing to parse.
+      const map = parseLsof(stdout || '')
+      if (map.size === 0 && err) { reject(err); return }
+      resolve(map)
     })
   })
 }
