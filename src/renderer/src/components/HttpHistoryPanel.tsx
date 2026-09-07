@@ -278,7 +278,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
         </span>
         <span className="flex-shrink-0 flex items-center gap-1 ml-auto">
           {methodArr.map(m => (
-            <span key={m} className={`text-[9px] font-mono px-1 rounded ${
+            <span key={m} className={`text-xs font-mono px-1 rounded ${
               m === 'GET' ? 'text-green-500/70 bg-green-900/20'
                 : m === 'POST' ? 'text-amber-500/70 bg-amber-900/20'
                   : m === 'PUT' || m === 'PATCH' ? 'text-blue-500/70 bg-blue-900/20'
@@ -287,11 +287,11 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
             }`}>{m}</span>
           ))}
           {statusArr.length > 0 && statusArr.length <= 3 && statusArr.map(s => (
-            <span key={s} className={`text-[9px] font-mono ${STATUS_COLORS[String(s)[0]] ?? 'text-redlog-text-dim'}`}>
+            <span key={s} className={`text-xs font-mono ${STATUS_COLORS[String(s)[0]] ?? 'text-redlog-text-dim'}`}>
               {s}
             </span>
           ))}
-          <span className="text-[9px] text-redlog-text-faint font-mono min-w-[24px] text-right">
+          <span className="text-xs text-redlog-text-faint font-mono min-w-[24px] text-right">
             {uniqueFlowCount}
           </span>
         </span>
