@@ -934,6 +934,44 @@ export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] 
   })
 }
 
+/** One target's rollup for the Targets page (UIUX-STANDARD §9 / §14-4c). */
+export interface TargetAggregate {
+  target: string
+  eventCount: number
+  firstSeen: number
+  lastSeen: number
+}
+
+/**
+ * Per-target counts + first/last-seen, computed in SQL over BOTH tiers — the
+ * whole timeline. The Targets page used to `query({ limit: 1000 })` and roll
+ * these up in a client-side Map, so on any engagement past 1000 events a target
+ * that appeared only in older rows silently vanished and every count/firstSeen
+ * was a truncated-window value — wrong numbers on the page an operator uses to
+ * decide what was touched. `detectedTarget` lives in the JSON `data` blob;
+ * rows without one are excluded. Ordered newest-touched first (was the client
+ * sort on lastSeen). Scope classification stays in the renderer, which has the
+ * project's scope patterns and the stricter CIDR match.
+ */
+export function aggregateTargets(): TargetAggregate[] {
+  const db = getDB()
+  const sql = `
+    SELECT target,
+           COUNT(*)       AS eventCount,
+           MIN(timestamp) AS firstSeen,
+           MAX(timestamp) AS lastSeen
+    FROM (
+      SELECT json_extract(data, '$.detectedTarget') AS target, timestamp FROM events
+      UNION ALL
+      SELECT json_extract(data, '$.detectedTarget') AS target, timestamp FROM events_logged
+    )
+    WHERE target IS NOT NULL AND target != ''
+    GROUP BY target
+    ORDER BY lastSeen DESC
+  `
+  return db.prepare(sql).all() as TargetAggregate[]
+}
+
 export function matchTarget(target: string, pattern: string): boolean {
   const t = target.toLowerCase()
   const p = pattern.toLowerCase()
