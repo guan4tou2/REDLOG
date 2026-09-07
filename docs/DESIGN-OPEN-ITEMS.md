@@ -196,7 +196,7 @@ transcript 走 ingest。
 
 **尚待設計/實作的完成路徑:**
 1. **內建 target extractor 宣告化 + 外掛化(E1 Option A #41、Option B #44)已實作。** Option A 立起 `STRATEGIES` 註冊表 + 宣告式資料;Option B 把整張工具→策略表搬進 bundled pack `plugins/builtin-tools/plugin.json`,`target-extractor.ts` 不再有任何 per-tool 資料,啟動時 `initPlugins()` 經 `registerTargetExtractors` 註冊該 pack;precedence 以 source 決定(user 蓋 bundled)、載入順序在測試 setup 與啟動路徑都解掉、`plugins/` 加進 `extraResources` 才會隨包出貨(連帶修好 c2-tailers 從沒打包的舊漏)。停用該 pack 即移除內建。
-2. **Starter pack 預裝 — 已實作(安全版)→ PR #51。** 內建 producer(shell zsh/bash/PowerShell/WSL、Codex、mitmproxy)改由 bundled `plugins/starter-pack/plugin.json` 宣告(放在 `builtinProducers`,loader 不重複註冊),hooks-manager 讀它、`~` 展開成家目錄。**帶 fallback**:manifest 缺失/毀損就退回 in-code 的 `STARTER_PACK_FALLBACK`,關鍵擷取路徑永不因少一個資料檔而全暗。裸 id 保留(capture-health/UI 不受影響)。取捨:因這道安全網,停用該 pack 不會真的「移除」內建 producer——核心擷取一律保證可用;真正可移除是更大的獨立工。
+2. **Starter pack 預裝 — 已實作(安全版)→ PR #51。** 內建 producer(shell zsh/bash/PowerShell/WSL、Codex、mitmproxy)改由 bundled `plugins/starter-pack/plugin.json` 宣告(放在 `builtinProducers`,loader 不重複註冊),hooks-manager 讀它、`~` 展開成家目錄。**帶 fallback**:manifest 缺失/毀損就退回 in-code 的 `STARTER_PACK_FALLBACK`,關鍵擷取路徑永不因少一個資料檔而全暗。裸 id 保留(capture-health/UI 不受影響)。**真正可移除已補(PR #60)**:`allManifests()` 讀 `isDisabled('starter-pack')`——停用該 pack 會真的把內建 producer 從 detectHooks/健康度/UI 移除(重啟用即恢復)。這跟穩健度 fallback 正交:manifest 缺失/毀損仍退回 in-code 版(擷取永不因資料檔全暗),只有明確停用才移除。
 3. **pcap producer + 透明代理 + socket→pid→指令 對照器 — 已實作。**
    socket→pid→指令 對照器早於 PR #36(`socket-attribution.ts`)落地並接進 `ingest()`。
    pcap producer(`plugins/pcap-capture/`)與透明代理(`plugins/transparent-proxy/`)於
