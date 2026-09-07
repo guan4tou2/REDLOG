@@ -22,6 +22,13 @@ interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
   screenshot: { quality: number; intervalSec?: number }
+  // Size-pressure eviction budgets (bytes; 0 = unbounded). Distinct from the
+  // SINGULAR `screenshot` above, which is capture cadence/quality. These drive
+  // sweepBodyStore / sweepArtifactStore (src/core/retention.ts): coldest
+  // out-of-scope files are evicted first, in-scope evidence is pinned.
+  screenshots?: { maxBytes?: number }
+  terminal?: { castStoreMaxBytes?: number }
+  httpBodies?: { maxBytes?: number }
   overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
@@ -709,8 +716,34 @@ export default function Settings(): JSX.Element {
                 {t('settings.qualityHint')}
               </p>
             </FieldGroup>}
-                        
-            
+
+            {/* Size-pressure eviction budgets. The rotation LOGIC shipped in
+                #43 (retention.ts); these are the knobs that switch it on. All
+                in MB (operators think in MB; config stores bytes). 0 = keep
+                everything. When a store is over budget the coldest out-of-scope
+                files are evicted first and in-scope evidence is pinned. */}
+            {tab === 'captureControl' && <FieldGroup title={t('settings.rotationGroup')}>
+              <p className="text-xs text-redlog-text-faint">{t('settings.rotationHint')}</p>
+              <Field
+                label={t('settings.rotationHttpBodies')}
+                value={String(config.httpBodies?.maxBytes ? Math.round(config.httpBodies.maxBytes / 1024 / 1024) : 0)}
+                onChange={(v) => setConfig({ ...config, httpBodies: { ...config.httpBodies, maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } })}
+                type="number"
+              />
+              <Field
+                label={t('settings.rotationCastStore')}
+                value={String(config.terminal?.castStoreMaxBytes ? Math.round(config.terminal.castStoreMaxBytes / 1024 / 1024) : 0)}
+                onChange={(v) => setConfig({ ...config, terminal: { ...config.terminal, castStoreMaxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } })}
+                type="number"
+              />
+              <Field
+                label={t('settings.rotationScreenshots')}
+                value={String(config.screenshots?.maxBytes ? Math.round(config.screenshots.maxBytes / 1024 / 1024) : 0)}
+                onChange={(v) => setConfig({ ...config, screenshots: { ...config.screenshots, maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } })}
+                type="number"
+              />
+            </FieldGroup>}
+
             {tab === 'integrity' && <IntegrityPanel t={t} />}
                       </>
         )}
