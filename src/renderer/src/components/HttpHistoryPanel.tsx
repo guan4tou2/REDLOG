@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
@@ -264,8 +265,10 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
         style={{ paddingLeft: `${depth * 16 + 4}px` }}
         onClick={handleClick}
       >
-        <span className="w-3 text-xs text-redlog-text-faint flex-shrink-0">
-          {hasChildren ? (expanded ? '▾' : '▸') : '·'}
+        <span className="w-3 text-xs text-redlog-text-faint flex-shrink-0 flex items-center">
+          {hasChildren
+            ? (expanded ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />)
+            : '·'}
         </span>
         <span
           title={node.fullPath}
