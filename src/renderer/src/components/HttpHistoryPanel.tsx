@@ -635,13 +635,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 )
               })}
               {visibleCount < filtered.length && (
-                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-xs">Loading more...</td></tr>
+                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-xs">{t('httpHistory.loadingMore')}</td></tr>
               )}
             </tbody>
           </table>
           {filtered.length === 0 && (
             <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
-              {flows.length === 0 ? 'No HTTP traffic captured yet' : 'No flows match the current filters'}
+              {flows.length === 0 ? t('httpHistory.empty') : t('httpHistory.noMatch')}
             </div>
           )}
         </div>
@@ -649,7 +649,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
         <div className="flex-1 overflow-auto py-1">
           {sitemapTree.size === 0 ? (
             <div className="flex items-center justify-center py-12 text-redlog-text-faint text-sm">
-              {flows.length === 0 ? 'No HTTP traffic captured yet' : 'No flows match the current filters'}
+              {flows.length === 0 ? t('httpHistory.empty') : t('httpHistory.noMatch')}
             </div>
           ) : (
             Array.from(sitemapTree.values())
