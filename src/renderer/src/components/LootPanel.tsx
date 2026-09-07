@@ -6,6 +6,8 @@ import { Gem } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { useInfiniteScroll } from '../lib/useInfiniteScroll'
+import { ListFooter } from './ListFooter'
 
 export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
   const [lootEvents, setLootEvents] = useState<Array<{
@@ -66,7 +68,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   // on a fresh launch even when historical loot events exist. That gave a
   // "戰利品 (0)" header with 2 rows visible. Now the count is exactly the
   // matches the operator sees, post-filter, post-dedup.
-  const visibleList = useMemo(() => {
+  const fullList = useMemo(() => {
     let list = lootEvents.map((le) => ({
       ...le,
       matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
@@ -86,17 +88,23 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     return list
   }, [lootEvents, typeFilter, dedupOn])
 
+  // §9: page the rows so a large haul doesn't mount all at once. `visibleList`
+  // stays the name the render uses; it's now the windowed slice.
+  const paged = useInfiniteScroll(fullList)
+  const visibleList = paged.visible
+
   // Same keys as every other list (§9). ⌘↩ and Enter both go to the Timeline
   // here: a loot row has no detail panel of its own, so "activate" and "show
-  // me where this came from" are the same request.
+  // me where this came from" are the same request. Nav spans the rendered rows.
   const listNav = useListKeyboard({
     count: visibleList.length,
     onActivate: (i) => { const le = visibleList[i]; if (le) onOpenInTimeline?.(le.id, le.timestamp) },
     onJumpToTimeline: (i) => { const le = visibleList[i]; if (le) onOpenInTimeline?.(le.id, le.timestamp) }
   })
+  // Header counts the whole haul, not just the loaded window.
   const visibleMatchCount = useMemo(
-    () => visibleList.reduce((n, le) => n + le.matches.length, 0),
-    [visibleList]
+    () => fullList.reduce((n, le) => n + le.matches.length, 0),
+    [fullList]
   )
 
   if (loading) {
@@ -162,7 +170,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         // header count, so what you see and what the header says can never
         // disagree. Each source event keeps its own grouping so the "click
         // card → jump to timeline" flow still lands on a real event id.
-        <div className="space-y-2" {...listNav.containerProps} aria-label={t('loot.title', { count: visibleList.length })}>
+        <div className="space-y-2" {...listNav.containerProps} aria-label={t('loot.title', { count: paged.total })}>
           {visibleList.length === 0 && (
             // Same three-part shape as the no-loot state (§5-4): what would be
             // here, why it is not, and the one action that changes that. A
@@ -220,6 +228,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             </div>
             )
           })}
+          <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
         </div>
       )}
     </div>
