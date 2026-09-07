@@ -867,6 +867,8 @@
   "export.view": "This view — {{view}}",
   "export.slice": "The visible time range",
   "export.bundle": "Evidence bundle (with verifier)",
+  "export.maskScope": "Out-of-scope content masked (recommended)",
+  "export.maskScopeOff": "Including out-of-scope content raw — client data outside your engagement scope",
   "export.preview": "{{count}} events · about {{size}}",
   "export.done": "Exported {{label}}",
   "export.failed": "Could not export {{label}}",

@@ -1728,12 +1728,19 @@ app.whenReady().then(() => {
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
 
   // --- Evidence bundle ---
-  ipcMain.handle('data:exportBundle', () => {
+  ipcMain.handle('data:exportBundle', (_e, opts?: { maskOutOfScope?: boolean }) => {
     if (!activeProject) return { ok: false, error: 'no-active-project' }
     try {
       const cfg = loadConfig(getProjectPath(activeProject))
-      // PRD A2: mask out-of-scope events' captured content in the bundle.
-      const bundle = exportBundle(cfg.engagement.id, { scope: { targets: snapshotScope(cfg).targets } })
+      // PRD A2: mask out-of-scope events' captured content in the bundle by
+      // DEFAULT. The operator can override (opts.maskOutOfScope === false) to
+      // ship the raw out-of-scope content — a deliberate, audited choice the
+      // ExportMenu surfaces with a warning. `true`/undefined both mask.
+      const maskOutOfScope = opts?.maskOutOfScope !== false
+      const bundle = exportBundle(cfg.engagement.id, {
+        scope: { targets: snapshotScope(cfg).targets },
+        maskOutOfScope
+      })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
     } catch (e) {
       return { ok: false, error: (e as Error)?.message ?? String(e) }

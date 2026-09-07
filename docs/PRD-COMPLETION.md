@@ -54,7 +54,7 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 - 設計:`DESIGN-OPEN-ITEMS §1`。相依:無。
 
 **A2. Scope-aware sanitize + artifact rotation · ✅ 已實作(匯出遮蔽 PR #36 · rotation 排序 PR #43)· P1 · M–L**
-- 續作:~~artifact rotation 依範圍排序~~ ✅(PR #43);eviction 預算旋鈕已接進 Settings ▸ 擷取控制(PR #47),operator 可從 UI 開啟。
+- 續作:~~artifact rotation 依範圍排序~~ ✅(#43);~~eviction 預算旋鈕接進 Settings~~ ✅(#47);~~匯出遮蔽的覆寫 UI 開關~~ ✅(#54,ExportMenu 加「遮蔽範圍外內容(建議)」勾選,取消才原樣輸出、標警示)。
 - 為什麼:匯出遮蔽與 artifact 輪替目前不看範圍,out-of-scope 的 client 資料與 in-scope 證據同等對待。
 - 驗收:匯出時 out-of-scope 事件的 body/preview 預設遮蔽(可覆寫),manifest 記
   `sanitized_out_of_scope: N`;casts/screenshots 輪替時 out-of-scope 先淘汰、in-scope 後淘汰;
