@@ -51,6 +51,11 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const viewExport = useViewExport()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  // A2: out-of-scope content is masked in the evidence bundle by default. The
+  // operator can opt to include it raw — a deliberate choice (client data
+  // RedLog wasn't authorised to hand over), so it defaults ON and warns when
+  // turned off.
+  const [maskScope, setMaskScope] = useState(true)
   const panel = useRef<HTMLDivElement | null>(null)
   useFocusTrap(panel, open)
 
@@ -138,12 +143,26 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             <Option
               label={t('export.bundle')}
               onPick={() => void run(t('export.bundle'), async () => {
-                const api = window.redlog.data as { exportBundle?: () => Promise<{ ok: boolean; zipPath?: string }> }
+                const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ ok: boolean; zipPath?: string }> }
                 if (!api.exportBundle) return null
-                const r = await api.exportBundle()
+                const r = await api.exportBundle({ maskOutOfScope: maskScope })
                 return r.ok ? (r.zipPath ?? null) : null
               })}
             />
+            {/* A2 override. Checked = out-of-scope captured content is redacted
+                in the bundle. Unchecked ships it raw — labelled as a warning
+                because it hands over client data outside the engagement scope. */}
+            <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={maskScope}
+                onChange={(e) => setMaskScope(e.target.checked)}
+                className="mt-0.5 accent-red-600"
+              />
+              <span className={maskScope ? 'text-redlog-text-dim' : 'text-amber-500'}>
+                {maskScope ? t('export.maskScope') : t('export.maskScopeOff')}
+              </span>
+            </label>
           </div>
         </>
       )}
