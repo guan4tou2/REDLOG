@@ -14,6 +14,7 @@ import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
+import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
   AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
@@ -435,46 +436,6 @@ function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): void {
   sorted.splice(lo, 0, evt)
 }
 
-/** v0.9.3 U3: per-turn agent subtypes that get hidden when the operator
- *  toggles "collapse agent sessions". `transcript_snapshot` and
- *  `session_end` deliberately stay visible — they ARE the session-level
- *  view. Housekeeping (schema_drift / parent_missing / transcript_
- *  compacted) also stays visible since operators need to see anomalies. */
-const COLLAPSIBLE_AGENT_SUBTYPES = new Set([
-  'user_message',
-  'assistant_message',
-  'tool_call',
-  'tool_result',
-  'thinking',
-  'compact_summary',
-  'tool_interrupted',
-  'away_summary'
-])
-
-function isCollapsibleAgentTurn(e: RedLogEvent): boolean {
-  return e.agentType === 'agent'
-    && COLLAPSIBLE_AGENT_SUBTYPES.has(String(e.data?.subtype ?? ''))
-}
-
-function filterAgentTurns(events: RedLogEvent[], collapse: boolean): RedLogEvent[] {
-  if (!collapse) return events
-  return events.filter((e) => !isCollapsibleAgentTurn(e))
-}
-
-function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
-  const closed = new Set<string>()
-  for (const e of events) {
-    if (e.agentType !== 'shell' || e.data?.subtype !== 'command_end') continue
-    const key = `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
-    closed.add(key)
-  }
-  return events.filter((e) => {
-    if (e.agentType !== 'shell' || e.data?.subtype !== 'command_start') return true
-    const key = `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
-    return !closed.has(key)
-  })
-}
-
 function formatTimeLabel(date: Date): string {
   return formatTime(date.getTime())
 }
@@ -504,30 +465,6 @@ function axisLabel(
   return `${date} ${time}`
 }
 
-// v0.6.91 W1/W3: simple case-insensitive substring "score". Higher = better.
-// Earlier match position wins, then shorter-target-vs-query wins as tiebreak.
-// Deliberately not a real fuzzy matcher (no gap tolerance) — the palette and
-// filter both aim at literal identifiers (command names, hosts, subtypes) so
-// the extra false-positive noise of a subsequence matcher isn't worth it.
-function fuzzyScore(target: string, q: string): number {
-  if (!q) return 0
-  if (!target) return -1
-  const idx = target.toLowerCase().indexOf(q.toLowerCase())
-  if (idx < 0) return -1
-  return 1000 - idx - Math.max(0, target.length - q.length) * 0.05
-}
-
-// Human-readable duration used by the follow-mode badge — "5s / 3m / 1h".
-// Bounded at "24h+" so an operator staring at a stale panel doesn't see
-// "8734h behind" which reads as broken UI.
-/** Compact duration for a compressed gap label — "2h", "45m". */
-function formatGap(ms: number): string {
-  const min = Math.round(ms / 60000)
-  if (min < 60) return `${min}m`
-  const h = Math.floor(min / 60)
-  const rem = min % 60
-  return rem ? `${h}h${rem}m` : `${h}h`
-}
 
 function formatBehind(ms: number): string {
   if (ms < 0) return '0s'
