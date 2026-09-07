@@ -686,7 +686,7 @@
   "overlay.markDetailHint": "開啟標記對話框以填寫標題、備註與嚴重度（會叫出主視窗）",
   "overlay.passThrough": "滑鼠穿透",
   "overlay.passThroughHint": "讓點擊穿過 HUD；用 ⌘⇧P 或選單列退出",
-  "overlay.passThroughActive": "穿透已開啟 · {chord} 或選單列退出",
+  "overlay.passThroughActive": "穿透已開啟 · {{chord}} 或選單列退出",
   "overlay.keepOpen": "固定展開",
   "overlay.keepOpenOnHint": "保持展開中。點擊以恢復閒置 8 秒後自動收合。",
   "overlay.keepOpenOffHint": "閒置 8 秒後會自動收合。點擊以固定展開。",

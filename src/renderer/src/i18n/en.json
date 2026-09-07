@@ -686,7 +686,7 @@
   "overlay.markDetailHint": "Open the marker dialog to add a title, notes and severity (raises the main window)",
   "overlay.passThrough": "Click-through",
   "overlay.passThroughHint": "Let clicks pass through the HUD; exit with ⌘⇧P or the menu bar",
-  "overlay.passThroughActive": "Click-through on · exit with {chord} or the menu bar",
+  "overlay.passThroughActive": "Click-through on · exit with {{chord}} or the menu bar",
   "overlay.keepOpen": "keep open",
   "overlay.keepOpenOnHint": "Staying open. Click to let it auto-collapse after 8s again.",
   "overlay.keepOpenOffHint": "Auto-collapses after 8s of inactivity. Click to keep it open.",
