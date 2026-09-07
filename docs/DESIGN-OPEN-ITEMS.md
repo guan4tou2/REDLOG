@@ -206,7 +206,7 @@ transcript 走 ingest。
    `local_port` 走既有 ingest 對照;透明代理沿用既有 mitmproxy addon,經 iptables/pf 重導攔
    下不吃 `HTTP_PROXY` 的工具。特權執行(tcpdump/iptables)在操作員側跑,pack 只宣告 hook +
    誠實 preflight;純解析/分類邏輯有單元測試(`pcap-parse.js` / `test/pcap-parse.test.ts`)。
-4. **manifest schemaVersion 雙版本讀取** + 擷取健康度改讀 manifest 而非寫死清單。**(仍待做)**
+4. **manifest schemaVersion 雙版本讀取** + 擷取健康度改讀 manifest 而非寫死清單。**(部分:健康度安全片段已於 PR #48 落地——capture-health 現在從 registry 列出 plugin capture producer 作 informational source,且證明性地不進 verdict[測試釘住];manifest schemaVersion 雙版本與「per-producer 餵食健康 + UI 呈現」仍待做。)**
 
 排序見那份文件的 §5。**紅線不變:不做報告產出、不做多人中央架構。**
 
@@ -222,7 +222,7 @@ transcript 走 ingest。
 | 順位 | 項目 | 大小 | 為何這個順位 / 卡在哪 |
 |---|---|---|---|
 | 1 | §8-2 Starter pack 預裝 | M | 把既有 producer(shell/終端/proxy/mitm/pcap/透明代理)宣告成一包預裝可移除 pack |
-| 2 | §8-4 manifest schemaVersion 雙版本 + 健康度讀 manifest | M | capture-health 現在寫死 ~8 個 producer;改讀 capture 貢獻 |
+| 2 | §8-4 殘餘:manifest schemaVersion 雙版本 + per-producer 餵食健康 + UI | M | 健康度已 registry-aware 且安全(#48);剩 schemaVersion 雙讀與「哪個 producer 在餵」需 manifest 宣告 subtype |
 
 每一項落地後,把對應節改標「已實作 → 見 X」並把設計搬進實作文件,別讓這份變成下一個
 「看起來要做、其實沒做」的漂移源。
