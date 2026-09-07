@@ -220,6 +220,12 @@ export default function OverlayApp(): JSX.Element {
             background: 'rgba(7,12,17,0.65)',
             backdropFilter: 'blur(16px) saturate(1.5)',
             overflow: 'hidden',
+            // Vertically centre the measured content: the window autosizes to
+            // content + fixed chrome, and with the content anchored to the top
+            // that chrome all fell below it (the HUD read "偏上"). Centring
+            // splits it evenly. In the expanded state the content fills the
+            // panel, so this is a no-op there.
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
             fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
           }}
         >
