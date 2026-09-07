@@ -231,4 +231,9 @@ export interface LoadedPlugin {
   contentHash: string
   /** populated when status === 'error' */
   error?: string
+  /** §8-4: the manifest targets one API version ahead of this RedLog. Its
+   *  declarative contributions still apply (unknown keys ignored); a code
+   *  plugin one version ahead is refused (status 'error') instead. UI can badge
+   *  it "built for a newer RedLog — reading known parts". */
+  apiAhead?: boolean
 }
