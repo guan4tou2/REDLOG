@@ -90,7 +90,8 @@ plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程�
 - 已驗收:flow 摘要走 scanner 泳道、SYN 掃描現形且誠實標示、attribution 接既有 socket→pid。
   純解析/分類有單元測試;**特權執行路徑(tcpdump/iptables/pf)本質上要操作員在自己硬體上跑,
   無法在 CI 沙箱驗證**——pack 只宣告 hook + preflight 誠實擋。
-- 決策已採納(root/`CAP_NET_RAW` 成本)。Windows pcap(npcap)與原始 pcap sidecar 輪替為後續。
+- 決策已採納(root/`CAP_NET_RAW` 成本)。**續作已補**:Windows pcap(npcap/tshark,PR #57)、
+  原始 pcap sidecar(`--pcap-out` 輪替 .pcap,只 sha256 上鏈,PR #59)、producer 心跳(PR #58)。
 - 設計:`DESIGN-traffic-attribution §1`、`DESIGN-core-and-capture §2.1`。
 
 ### 主題 C — 檢視與上手(多數已完善)
