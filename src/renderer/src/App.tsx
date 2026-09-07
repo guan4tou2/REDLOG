@@ -676,7 +676,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
               <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
                 {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
-                {s.informational && <span className="ml-1.5 text-redlog-text-faint text-[10px] uppercase tracking-wide">{t('capture.pluginTag')}</span>}
+                {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
               </span>
               <span className="text-redlog-text-faint text-xs">
                 {s.state === 'off'
