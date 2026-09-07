@@ -635,7 +635,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                 )
               })}
               {visibleCount < filtered.length && (
-                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-xs">{t('httpHistory.loadingMore')}</td></tr>
+                <tr ref={sentinelRef}><td colSpan={8} className="text-center py-2 text-redlog-text-faint text-xs" aria-live="polite">{t('list.loadedOfTotal', { shown: visibleCount, total: filtered.length })}</td></tr>
               )}
             </tbody>
           </table>

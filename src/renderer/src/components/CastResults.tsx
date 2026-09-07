@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { Terminal, ChevronRight, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
+import { useInfiniteScroll } from '../lib/useInfiniteScroll'
+import { ListFooter } from './ListFooter'
 
 // Search hits inside terminal recordings (docs/DESIGN-core-and-capture.md
 // §2.4).
@@ -80,6 +82,8 @@ function CastRow({ hit, onOpenAt }: { hit: CastHit; onOpenAt?: (tMs: number) => 
 
 export function CastResults({ hits, pending, onOpenAt }: Props): JSX.Element | null {
   const { t } = useI18n()
+  // §9: page the hits (before the early return — hooks run unconditionally).
+  const paged = useInfiniteScroll(hits)
   if (hits.length === 0 && pending === 0) return null
 
   return (
@@ -102,9 +106,10 @@ export function CastResults({ hits, pending, onOpenAt }: Props): JSX.Element | n
       )}
 
       <div className="space-y-1">
-        {hits.map((h) => (
+        {paged.visible.map((h) => (
           <CastRow key={`${h.castRel}:${h.off}`} hit={h} onOpenAt={onOpenAt} />
         ))}
+        <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
       </div>
 
       {hits.length > 0 && (

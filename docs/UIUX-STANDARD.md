@@ -404,7 +404,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 
 **第二輪逐項核對(同日,對剩餘 `[x]` 全掃)**——又找到兩個**真誤標**與三個 PARTIAL,已在上面各該行改標:
 
-- ✗ **「全部清單改無限捲動 + 虛擬列表 +『已載入 N／共 M』」**:無 virtualization 套件,只有 HttpHistoryPanel 有無限捲動,footer 字串不存在——三個子宣稱中兩個假。**未修**(28k 效能驗收條件實際未達,列為待辦)。
+- ◐ **「全部清單改無限捲動 + 虛擬列表 +『已載入 N／共 M』」**:當時三個子宣稱兩個假。**無限捲動 + footer 已於 #72 補齊**(共用 `useInfiniteScroll` + `ListFooter`,套 loot/bookmarks/casts/http);**虛擬列表(true windowing)仍未做**(已載入列仍掛 DOM,對這些數百列的清單足夠;要 windowing 再引 `@tanstack/react-virtual`)。
 - ✗ **「回放器改狀態列上方抽屜」**:仍內嵌 Timeline Inspector,無抽屜。**未修**(是否搬為設計決定)。
 - ▲ PARTIAL:Lucide 少數互動按鈕仍用 Unicode glyph(美化);Settings「十二頁」實為 9 頁(數目);終端機 `⌘+／⌘−` 未綁鍵、註解卻宣稱有(小功能落差)。
 
@@ -491,7 +491,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 - [x] 逐字稿新預設（首行預覽 + 條件自動展開）
 - [x] 範圍頁重做（允許清單 + 排除清單 + 可展開違規）
 - [x] 目標頁改 SQL 聚合 —— ▲ 2026-09-07 稽核：此項當時**誤標完成**，前端仍 `query({ limit: 1000 })` 再以 Map 聚合（>1000 筆的目標會消失、計數截斷）；#65 才真正落地 `aggregateTargets()`（兩層 `GROUP BY json_extract(data,'$.detectedTarget')`、無上限），並補回歸測試（1100 筆不截斷）
-- [ ] 全部清單改無限捲動 + 虛擬列表 +「已載入 N／共 M」 —— ✗ 2026-09-07 稽核**誤標**：無任何 virtualization 套件；**只有 HttpHistoryPanel** 有無限捲動(IntersectionObserver + `slice(0, visibleCount)`,且仍把已載入列全部掛著、非 windowing);LootPanel／BookmarksView／CastResults 一次 `.map` 全渲染;「已載入 N／共 M」footer 字串兩語言檔都不存在。28k 事件的效能驗收條件實際未達
+- [~] 全部清單改無限捲動 + 虛擬列表 +「已載入 N／共 M」 —— ▲ 2026-09-07:**無限捲動 + footer 已補齊**(#72):共用 `lib/useInfiniteScroll.ts`(每頁 200 + IntersectionObserver sentinel)與 `ListFooter`(「已載入 N／共 M」),套上 LootPanel／BookmarksView／CastResults,HttpHistoryPanel 換用同一 footer 字串。**仍缺「虛擬列表(true windowing)」**——已載入列仍掛在 DOM、非卸載式 windowing(loot/bookmarks 通常數百列,infinite-scroll 已足;若日後真要 windowing 再引 `@tanstack/react-virtual`)。Timeline 不列入:它以 `beforeCreatedAt` 分頁 DB 抓取(每次 200)、且是空間泳道視圖非列清單
 - [x] 匯出六處收成一個下拉
 - [x] 終端機分頁資訊、⌘+／⌘−、⌘F、可復原關閉 —— ▲ 2026-09-07 稽核：分頁資訊 ✓、⌘F ✓、可復原關閉 ✓,但 **⌘+／⌘− 未綁定任何按鍵**(字級只能靠工具列 `s+`／`s-` 按鈕調);`TerminalView.tsx:30` 註解宣稱「⌘+ / ⌘- adjust it live」但無對應 keydown。小功能落差
 - [ ] 回放器改狀態列上方抽屜 —— ✗ 2026-09-07 稽核**誤標**：回放器(`ReplayCommand`／播放器)仍**內嵌在 Timeline Inspector 面板**(`Timeline.tsx:3926`),不是狀態列上方的抽屜;renderer 全域 grep 不到 drawer／抽屜。(現況內嵌未必比抽屜差,是否搬為設計決定)
