@@ -3,6 +3,7 @@ import { useI18n } from './i18n'
 import { HUD, hexA } from './lib/hud'
 import { usePivots } from './lib/usePivots'
 import { formatTime } from './lib/time'
+import { hudWindowWidth, hudWindowHeight } from '../../core/overlay-layout'
 
 // HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
 // cyan frame identity, calmer state accents, angular corner brackets that frame
@@ -47,8 +48,11 @@ export default function OverlayApp(): JSX.Element {
     const el = contentRef.current
     if (!el) return
     const h = el.offsetHeight
-    const w = Math.round(440 * scale) + (emphasizeIp ? Math.round(44 * scale) : 0)
-    if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })?.autosize?.(h + 18, w)
+    // Width tracks the clamped scale (the panel renders at the clamped scale,
+    // not the raw config value) and stays inside the same band main enforces —
+    // see hudWindowWidth. Height is measured; hudWindowHeight adds the chrome.
+    if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })
+      ?.autosize?.(hudWindowHeight(h), hudWindowWidth(scale, emphasizeIp))
   })
 
   useEffect(() => {

@@ -16,6 +16,7 @@ import {
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
+import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../core/overlay-layout'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -1283,9 +1284,9 @@ app.whenReady().then(() => {
     try { disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea }
     catch { disp = screen.getPrimaryDisplay().workArea }
     const maxH = disp.height - 20
-    const h = Math.max(46, Math.min(maxH, Math.round(Number(height) || 46)))
+    const h = Math.max(HUD_MIN_H, Math.min(maxH, Math.round(Number(height) || HUD_MIN_H)))
     const w = width != null
-      ? Math.max(380, Math.min(720, Math.round(Number(width))))
+      ? Math.max(HUD_MIN_W, Math.min(HUD_MAX_W, Math.round(Number(width))))
       : cur.width
     let x = cur.x
     let y = cur.y
