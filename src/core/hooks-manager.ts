@@ -2,6 +2,7 @@ import { execSync, spawnSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { bundledRoot } from './plugins/loader'
 
 export interface PluginManifest {
   id: string
@@ -51,7 +52,13 @@ function resolveDir(primary: string, fallback: string): string {
   return existsSync(primary) ? primary : fallback
 }
 
-const PLUGIN_REGISTRY: PluginManifest[] = [
+// §8-2: the built-in producers are DECLARED in the bundled starter-pack
+// manifest (plugins/starter-pack/plugin.json). This array is the FALLBACK — if
+// that manifest is missing or unreadable in some build, hooks-manager uses this
+// copy so capture can never go dark for want of a data file. The two must stay
+// in sync; a parity test guards that. Kept as code, not deleted, precisely so
+// the critical path has no single point of failure.
+export const STARTER_PACK_FALLBACK: PluginManifest[] = [
   // v0.7.3 A: retired. The `hooks/claude-code-hook.sh` script is now a
   // no-op stub (see the file header for the transition rationale); its
   // former per-Bash `claude_code_bash` event ingest is subsumed by
@@ -136,6 +143,50 @@ const PLUGIN_REGISTRY: PluginManifest[] = [
     installMethod: 'manual'
   }
 ]
+
+/** §8-2: read the built-in producers from the bundled starter-pack manifest.
+ *  `~` in installTarget is expanded to the home dir (a static JSON can't call
+ *  homedir()). Returns null on ANY problem — missing file, bad JSON, or a
+ *  malformed/empty list — so the caller falls back to the in-code copy and the
+ *  critical capture path never depends on a data file being present. */
+function loadStarterPack(): PluginManifest[] | null {
+  try {
+    const file = join(bundledRoot(), 'starter-pack', 'plugin.json')
+    if (!existsSync(file)) return null
+    const raw = JSON.parse(readFileSync(file, 'utf-8')) as { builtinProducers?: unknown }
+    const list = raw.builtinProducers
+    if (!Array.isArray(list) || list.length === 0) return null
+    const home = homedir()
+    const out: PluginManifest[] = []
+    for (const e of list as Array<Record<string, unknown>>) {
+      if (typeof e.id !== 'string' || typeof e.hookFile !== 'string' || typeof e.agentType !== 'string'
+        || typeof e.installMethod !== 'string') return null
+      const installTarget = typeof e.installTarget === 'string'
+        ? e.installTarget.replace(/^~(?=\/|$)/, home)
+        : undefined
+      out.push({
+        id: e.id,
+        name: typeof e.name === 'string' ? e.name : e.id,
+        description: typeof e.description === 'string' ? e.description : '',
+        agentType: e.agentType,
+        requires: Array.isArray(e.requires) ? (e.requires as string[]) : [],
+        hookFile: e.hookFile,
+        installMethod: e.installMethod as PluginManifest['installMethod'],
+        installTarget,
+        shellRcFile: typeof e.shellRcFile === 'string' ? e.shellRcFile : undefined,
+        claudeSettingsMatcher: typeof e.claudeSettingsMatcher === 'string' ? e.claudeSettingsMatcher : undefined
+      })
+    }
+    return out
+  } catch { return null }
+}
+
+// The active registry: the starter-pack manifest when it loads, else the
+// in-code fallback. Computed once at module load (the built-in set is static
+// for a run). Bare ids are preserved — these ARE the built-ins, not namespaced
+// plugin captures — so everything downstream (capture-health, the UI) that
+// keys on `shell-zsh`/`mitmproxy` is unaffected.
+const PLUGIN_REGISTRY: PluginManifest[] = loadStarterPack() ?? STARTER_PACK_FALLBACK
 
 // Capture integrations contributed by plugins (🟢). Registered at load time and
 // merged with the built-in registry, so plugin captures appear in the Hooks
