@@ -642,7 +642,7 @@
   "plugins.status.disabled": "已停用",
   "plugins.status.error": "錯誤",
   "plugins.consentTitle": "信任這個外掛在 RedLog 內執行程式碼？",
-  "plugins.consentBody": "「{name}」帶有 RedLog 會在隔離程序中執行的程式碼。只信任來源可靠的外掛。",
+  "plugins.consentBody": "「{{name}}」帶有 RedLog 會在獨立程序中執行的程式碼——該程序與證據鏈、簽章金鑰隔離，但不與你的電腦隔離：它以你帳號的權限存取檔案、網路與 shell，並非作業系統層級的沙箱。只信任你信得過來源的外掛。",
   "plugins.consentWarn": "信任會綁定外掛目前的程式碼。程式碼一旦變更，信任即撤銷，直到你重新審查。",
   "plugins.grantRun": "信任並執行",
   "settings.exportScopeJson": "匯出範圍內 JSON",
