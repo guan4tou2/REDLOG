@@ -1189,20 +1189,27 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [detailPanelPx])
 
+  // Known operator ids, held in a ref so the onNew guard below reads the
+  // CURRENT set. It used to read the `operatorNames` state, which the []-dep
+  // effect captured empty on first render — so `!operatorNames[id]` was always
+  // true and every incoming event fired an operators.list() IPC + a full
+  // TimelinePanel re-render, bypassing the events:new-batch throttle during a
+  // 200 evt/s capture.
+  const knownOperatorsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const load = (): void => {
       window.redlog.operators.list().then((ops) => {
         const map: Record<string, string> = {}
         ops.forEach((op) => { map[op.id] = op.name })
+        knownOperatorsRef.current = new Set(Object.keys(map))
         setOperatorNames(map)
       }).catch(() => {})
     }
     load()
     const unsub = window.redlog.events.onNew((e) => {
-      if (e.operatorId && !operatorNames[e.operatorId]) load()
+      if (e.operatorId && !knownOperatorsRef.current.has(e.operatorId)) load()
     })
     return unsub
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const operatorLabel = (id: string): string => operatorNames[id] || id
