@@ -642,7 +642,7 @@
   "plugins.status.disabled": "DISABLED",
   "plugins.status.error": "ERROR",
   "plugins.consentTitle": "Trust this plugin to run code inside RedLog?",
-  "plugins.consentBody": "\"{name}\" ships code that RedLog will execute in an isolated process. Only trust plugins from a source you trust.",
+  "plugins.consentBody": "\"{{name}}\" ships code that RedLog will run in a separate process — walled off from the evidence log, signing keys, and hash chain, but not from your computer: it runs with your account's access to files, network, and shell. This is not an OS sandbox. Only trust plugins whose source you trust.",
   "plugins.consentWarn": "Trust is pinned to the plugin's current code. If the code changes, trust is revoked until you review it again.",
   "plugins.grantRun": "Trust & run",
   "settings.exportScopeJson": "Export Scope-Only JSON",
