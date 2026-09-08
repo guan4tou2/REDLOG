@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { replayStore } from '../lib/replayStore'
 import { useI18n } from '../i18n'
 import en from '../i18n/en.json'
@@ -2837,25 +2837,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >+</button>
         </div>
 
-        {/* v0.9.3 U3: collapse-agent-turns chip. Off by default (existing
-            operators don't lose visibility on upgrade). When on, per-turn
-            agent subtypes are dropped from the render pipeline — the
-            hidden count is shown so the empty agent lane doesn't look
-            like a bug. Same visual weight as the other filter chips. */}
-        <button
-          onClick={() => setCollapseAgentTurns((v) => !v)}
-          title={collapseAgentTurns
-            ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
-            : t('timeline.collapseAgent.hint')}
-          className={`ml-2 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
-        >
-          <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
-          <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
-          {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-            <span className="font-mono tabular-nums text-xs text-lime-400/80">−{hiddenAgentTurnCount}</span>
-          )}
-        </button>
-
         {/* v0.11.6 (AUDIT V7): idle-gap compression. Only offered when there is
             something to compress — a chip that never does anything is noise.
             The count is on the chip because a compressed axis is not
@@ -3118,8 +3099,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             // real event lands they auto-reappear (populatedLanes shifts).
             if (externalOnly && empty) return null
             return (
+              <Fragment key={id}>
               <button
-                key={id}
                 onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
                 disabled={empty}
                 className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
@@ -3135,6 +3116,26 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               >
                 {laneLabels[id]}
               </button>
+              {/* Condense-chat rides next to the AI lane it acts on — it hides
+                  that lane's per-turn events (keeping snapshot + session_end).
+                  Sits here, not with the zoom/idle density controls, because it
+                  filters ONE lane rather than the whole view. */}
+              {id === 'agent' && (
+                <button
+                  onClick={() => setCollapseAgentTurns((v) => !v)}
+                  title={collapseAgentTurns
+                    ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+                    : t('timeline.collapseAgent.hint')}
+                  className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]'}`}
+                >
+                  <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
+                  <span>{t('timeline.collapseAgent.label')}</span>
+                  {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
+                    <span className="tabular-nums text-lime-400/80">−{hiddenAgentTurnCount}</span>
+                  )}
+                </button>
+              )}
+              </Fragment>
             )
           })}
         </div>
