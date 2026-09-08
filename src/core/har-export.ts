@@ -1,5 +1,7 @@
 import { queryEvents, type RedLogEvent } from './db/events'
 import { readBody, type BodyRef } from './http-body-store'
+import { redactEventsForExport } from './redact-export'
+import type { ScopeForSanitize } from './scope-sanitize'
 
 interface HarEntry {
   startedDateTime: string
@@ -121,14 +123,17 @@ export function exportHar(opts?: {
   before?: number
   targetId?: string
   limit?: number
+  /** When set, out-of-scope hosts' bodies are masked; the layer-4 sanitize
+   *  swap applies regardless (see redact-export.ts). */
+  scope?: ScopeForSanitize
 }): string {
-  const events = queryEvents({
+  const events = redactEventsForExport(queryEvents({
     agentType: 'scanner',
     tier: 'logged',
     limit: opts?.limit ?? 50000,
     since: opts?.since,
     ...(opts?.targetId ? { targetId: opts.targetId } : {})
-  })
+  }), opts?.scope)
 
   const requests = new Map<string, RedLogEvent>()
   const responses = new Map<string, RedLogEvent>()

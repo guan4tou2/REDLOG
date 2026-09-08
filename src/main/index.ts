@@ -16,6 +16,7 @@ import {
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
+import { redactEventsForExport } from '../core/redact-export'
 import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../core/overlay-layout'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -1435,7 +1436,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('har:export', (_e, opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => {
     if (!activeProject) return null
-    return exportHar(opts)
+    return exportHar({ ...opts, scope: scopeForActiveProject() })
   })
 
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
@@ -1761,7 +1762,7 @@ app.whenReady().then(() => {
     if (!activeProject) return null
     const projectDir = getProjectPath(activeProject)
     const config = loadConfig(projectDir)
-    const events = queryEvents({ limit: 100000 })
+    const events = redactEventsForExport(queryEvents({ limit: 100000 }), scopeForActiveProject())
     const data = { config, events, exportedAt: new Date().toISOString() }
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -1774,6 +1775,15 @@ app.whenReady().then(() => {
   // as the full export so the operator has one place to look. Each returns a
   // path or null (no active project). Callers open the containing dir via
   // shell.openPath after a successful save.
+  // The active project's scope, shaped for redact-export. The layer-4 sanitize
+  // swap applies regardless of scope; passing this also masks out-of-scope
+  // bodies. Undefined only when no project is open (nothing to export anyway).
+  const scopeForActiveProject = (): { targets: string[]; excludeTargets?: string[] } | undefined => {
+    if (!activeProject) return undefined
+    const cfg = loadConfig(getProjectPath(activeProject))
+    return { targets: snapshotScope(cfg).targets, excludeTargets: cfg.scope?.excludeTargets }
+  }
+
   const sliceExport = (name: string, payload: unknown): string | null => {
     if (!activeProject) return null
     const projectDir = getProjectPath(activeProject)
@@ -1800,14 +1810,14 @@ app.whenReady().then(() => {
     }, null, 2))
     return filePath
   })
-  ipcMain.handle('data:exportLoot', () => activeProject ? sliceExport('loot', queryEvents({ agentType: 'loot', limit: 10000 })) : null)
+  ipcMain.handle('data:exportLoot', () => activeProject ? sliceExport('loot', redactEventsForExport(queryEvents({ agentType: 'loot', limit: 10000 }), scopeForActiveProject())) : null)
   // All three subtypes, not just violations: an export showing a violation
   // without the record that withdrew it misstates the operator's own
   // conclusion, and the recompute summary is what says under which boundary the
   // retroactive rows were judged.
   ipcMain.handle('data:exportViolations', () => activeProject
-    ? sliceExport('scope-violations', queryEvents({ agentType: 'system', limit: 10000 })
-        .filter((e) => SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))))
+    ? sliceExport('scope-violations', redactEventsForExport(queryEvents({ agentType: 'system', limit: 10000 })
+        .filter((e) => SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))), scopeForActiveProject()))
     : null)
   // v0.6.87 C2: Timeline slice export. Renderer picks a time window (usually
   // the current visible viewport in Timeline) and gets a filtered JSON slice
@@ -1828,9 +1838,10 @@ app.whenReady().then(() => {
     // context rather than because they fell inside it.
     const markerIds = markerIdsIn(slice)
     const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds) : []
+    const scope = scopeForActiveProject()
     return sliceExport(
       `timeline-${new Date(from).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
-      { window: { fromMs: from, toMs: to }, ...sliceWithAmendments(slice, amendments) }
+      { window: { fromMs: from, toMs: to }, ...sliceWithAmendments(redactEventsForExport(slice, scope), redactEventsForExport(amendments, scope)) }
     )
   })
 
@@ -1991,7 +2002,10 @@ app.whenReady().then(() => {
       const loaded = loadScopeFile(config.scope.scopeFile)
       if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
     }
-    const events = queryScopeFilteredEvents(scopeTargets)
+    const events = redactEventsForExport(
+      queryScopeFilteredEvents(scopeTargets),
+      { targets: scopeTargets, excludeTargets: config.scope?.excludeTargets }
+    )
     // Bookmarks are NOT included, and this is the export where that mattered
     // most: the events went through the scope filter and the bookmark rows did
     // not, so a "scope-filtered" file shipped URLs for hosts the operator had
