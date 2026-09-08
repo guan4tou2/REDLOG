@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
+import { usePersistentState } from '../lib/usePersistentState'
 import { toast, toastDeferred } from './Toast'
 import { raiseIssue, clearIssue } from '../lib/issues'
 import { confirm as confirmDialog } from './ConfirmDialog'
@@ -1727,13 +1728,16 @@ const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
   { value: 1.3, labelKey: 'settings.uiScale.xlarge' }
 ]
 function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [scale, setScale] = useState<number>(() => {
-    const raw = parseFloat(localStorage.getItem(UI_SCALE_KEY) || '')
-    return Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1
+  const [scale, setScale] = usePersistentState<number>(UI_SCALE_KEY, 1, {
+    parse: (raw) => {
+      const parsed = parseFloat(raw || '')
+      return Number.isFinite(parsed) && parsed >= 0.9 && parsed <= 1.5 ? parsed : 1
+    }
   })
   useEffect(() => {
     document.body.style.setProperty('--app-zoom', String(scale))
-    localStorage.setItem(UI_SCALE_KEY, String(scale))
+    // usePersistentState already mirrors `scale` into UI_SCALE_KEY; this effect
+    // only carries the side-effects that must ride the same value change.
     // A bigger zoom means fewer rows on screen, so it implies tight density —
     // unless the operator has picked a density themselves (§3).
     applyDensity(resolveDensity(scale, storedDensity()))
