@@ -59,6 +59,7 @@ const api: RedLogAPI = {
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
+    distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
     // Recordings are searched separately from events — see casts:search in
     // main. `status` is not optional decoration: a project whose recordings
     // are still being indexed returns fewer hits than it will in a minute,

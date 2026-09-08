@@ -10,7 +10,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -1371,6 +1371,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
   ipcMain.handle('events:aggregateTargets', () => activeProject ? aggregateTargets() : [])
+  ipcMain.handle('events:distinctHosts', () => activeProject ? distinctHosts() : [])
 
   // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
   // §2.4). Separate from events:search because the two answer different
