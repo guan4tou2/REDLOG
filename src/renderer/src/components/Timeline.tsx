@@ -11,6 +11,7 @@ import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
 import { usePersistentState } from '../lib/usePersistentState'
+import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
@@ -760,6 +761,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     if (!collapseAgentTurns) return 0
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
+  // A tool_call and its tool_result are two separate chained events (each
+  // independently hashed + timestamped, so the chain records real call→return
+  // latency and order). That makes the exchange easy to audit but splits it
+  // across two dots. This index maps tool_use_id → each half in the loaded set
+  // so the detail panel can show the other half inline (see pairedToolHalf).
+  // Keyed on rawEvents so it still finds a result the agent-turn collapse hides;
+  // a partner not yet paged in is simply absent — a graceful no-op.
+  const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   // §6: the Inspector is a separate layer from the selection. They used to be
   // the same state, so an operator could not walk the timeline by keyboard
@@ -3891,7 +3900,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               on click without another expand. tool_call renders the
               parsed input JSON; tool_result its output stream. */}
           {selectedEvent.agentType === 'agent' && (
-            <AgentTurnDetail data={selectedEvent.data as Record<string, unknown>} />
+            <AgentTurnDetail
+              data={selectedEvent.data as Record<string, unknown>}
+              paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
+            />
           )}
           {/* v0.11.2 (T6): scanner and browser events carried their payloads
               all along — mitmproxy sends request params and a 2 KB
@@ -4069,8 +4081,15 @@ function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, 
 
 /** v0.9.2 U1: renders the payload of one `agent.*` event in the detail
  *  panel. Reuses CollapsibleStream + MetadataGrid so operators get the
- *  same expand/copy affordances they already know from shell events. */
-function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+ *  same expand/copy affordances they already know from shell events.
+ *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
+ *  other half so both the request and its return read in one panel. */
+function AgentTurnDetail(
+  { data, paired }: {
+    data: Record<string, unknown>
+    paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
+  }
+): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isMessage = subtype === 'user_message' || subtype === 'assistant_message'
@@ -4099,6 +4118,18 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
   const outputText = typeof data.output === 'string' ? (data.output as string) : ''
   const outputBytes = typeof data.output_length === 'number' ? (data.output_length as number) : outputText.length
 
+  // The paired half (v0.15): a selected tool_call pairs with its result's
+  // output; a selected tool_result pairs with its call's input. Extracted the
+  // same way as the primary event's own fields so the inline pair reads
+  // identically to selecting the other dot directly.
+  const pairedResultOut = paired?.kind === 'result' && typeof paired.data.output === 'string'
+    ? (paired.data.output as string) : ''
+  const pairedResultBytes = paired?.kind === 'result' && typeof paired.data.output_length === 'number'
+    ? (paired.data.output_length as number) : pairedResultOut.length
+  const pairedCallInput = paired?.kind === 'call'
+    ? (paired.data.tool_input as Record<string, unknown> | undefined) : undefined
+  const pairedCallStr = pairedCallInput ? safePretty(pairedCallInput) : ''
+
   return (
     <div className="mt-2 space-y-1.5">
       {(isMessage || isThinking) && bodyText.length > 0 && (
@@ -4115,6 +4146,28 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
         <CollapsibleStream
           label={t('timeline.detail.agentToolInput', { name: String(data.tool_name ?? 'tool') })}
           content={toolInputStr}
+          accent="zinc"
+          startOpen={false}
+        />
+      )}
+      {/* v0.15: the tool_call's paired result, inline — startOpen so the
+          operator reads the return without hunting for its separate dot. */}
+      {isToolCall && paired?.kind === 'result' && pairedResultOut.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolOutput')}
+          content={pairedResultOut}
+          bytes={pairedResultBytes}
+          truncated={paired.data.truncated === true}
+          accent="emerald"
+          startOpen={true}
+        />
+      )}
+      {/* v0.15: the tool_result's paired call input, inline above its output —
+          so a selected result shows what was asked. */}
+      {isToolResult && paired?.kind === 'call' && pairedCallStr.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolInput', { name: String(paired.data.tool_name ?? 'tool') })}
+          content={pairedCallStr}
           accent="zinc"
           startOpen={false}
         />
