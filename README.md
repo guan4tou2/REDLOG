@@ -18,6 +18,8 @@ Grab the latest installer from the [**releases page**](https://github.com/guan4t
 | macOS (Apple Silicon) | [`RedLog-0.15.0-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.15.0/RedLog-0.15.0-arm64.dmg) |
 | Windows (installer) | [`RedLog.Setup.0.15.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.15.0/RedLog.Setup.0.15.0.exe) |
 | Windows (portable) | [`RedLog.0.15.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.15.0/RedLog.0.15.0.exe) |
+| Linux (AppImage) | [`RedLog-0.15.0.AppImage`](https://github.com/guan4tou2/REDLOG/releases/download/v0.15.0/RedLog-0.15.0.AppImage) |
+| Linux (Debian/Ubuntu) | [`redlog_0.15.0_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.15.0/redlog_0.15.0_amd64.deb) |
 
 macOS builds are **Apple Silicon only** as of v0.9.4 — Intel Macs should build from source (`npm install && npm run build && npx electron-builder --mac`).
 
