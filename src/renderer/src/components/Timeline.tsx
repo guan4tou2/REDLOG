@@ -10,6 +10,7 @@ import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
+import { usePersistentState } from '../lib/usePersistentState'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
@@ -722,12 +723,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // agent lane. Per-project persisted; default off (existing operators
   // don't lose visibility on upgrade). Toggle chip in the header + `?`
   // cheatsheet lists it.
-  const [collapseAgentTurns, setCollapseAgentTurns] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-collapse-agent') === '1' } catch { return false }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-collapse-agent', collapseAgentTurns ? '1' : '0') } catch { /* ignore */ }
-  }, [collapseAgentTurns])
+  const [collapseAgentTurns, setCollapseAgentTurns] = usePersistentState<boolean>(
+    'redlog-timeline-collapse-agent', false,
+    { parse: (raw) => raw === '1', serialize: (v) => (v ? '1' : '0') }
+  )
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
@@ -1012,12 +1011,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // newest event visible while enabled. On by default; the header badge
   // reflects "🔴 LIVE" vs "⏸ Xm behind" state. `now` state ticks every second
   // just so the "behind" label refreshes without waiting for a new event.
-  const [followMode, setFollowMode] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-follow-mode') !== '0' } catch { return true }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-follow-mode', followMode ? '1' : '0') } catch { /* ignore */ }
-  }, [followMode])
+  const [followMode, setFollowMode] = usePersistentState<boolean>(
+    'redlog-timeline-follow-mode', true,
+    { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
+  )
   const [atRightEdge, setAtRightEdge] = useState(true)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -1029,25 +1026,18 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // and system.recording_paused/resumed pairs. Toggle persisted; default on
   // because it's the primary visual anchor when reviewing a multi-terminal
   // engagement.
-  const [sessionDividers, setSessionDividers] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-session-dividers') !== '0' } catch { return true }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-session-dividers', sessionDividers ? '1' : '0') } catch { /* ignore */ }
-  }, [sessionDividers])
+  const [sessionDividers, setSessionDividers] = usePersistentState<boolean>(
+    'redlog-timeline-session-dividers', true,
+    { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
+  )
 
   // v0.6.91 S7: timezone picker. `projectTz` is filled from
   // config.engagement.timezone when the panel mounts; if unset or invalid,
   // the "Project" option falls back to Local (via formatTs).
-  const [tz, setTz] = useState<TzMode>(() => {
-    try {
-      const raw = localStorage.getItem('redlog-timeline-tz')
-      return raw === 'utc' || raw === 'project' ? raw : 'local'
-    } catch { return 'local' }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-tz', tz) } catch { /* ignore */ }
-  }, [tz])
+  const [tz, setTz] = usePersistentState<TzMode>(
+    'redlog-timeline-tz', 'local',
+    { parse: (raw) => (raw === 'utc' || raw === 'project' ? raw : 'local') }
+  )
   const [projectTz, setProjectTz] = useState<string | null>(null)
   useEffect(() => {
     window.redlog.config?.get?.().then((c) => {
