@@ -843,6 +843,8 @@
   "dashboard.findInPage": "篩選目前畫面上的內容",
   "palette.timelineScoped": "在已載入的時間軸內搜尋（泳道、operator、host）",
   "palette.sectionOperator": "Operator",
+  "palette.sectionHost": "主機",
+  "palette.hostHits": "{{count}} 筆",
   "palette.operatorPrimary": "主要",
   "settings.categories": "設定分類",
   "settings.searchPages": "搜尋設定…",

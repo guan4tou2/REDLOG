@@ -1089,7 +1089,17 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       if (name) setFilterQuery(name)
     }
     window.addEventListener('redlog:filter-operator', onFilterOperator)
-    return () => window.removeEventListener('redlog:filter-operator', onFilterOperator)
+    // §10: ⌘K host search lands the operator on the Timeline filtered to that
+    // host — the filter box already matches `data.host`, so it's the same path.
+    const onFilterHost = (e: Event): void => {
+      const host = (e as CustomEvent<string>).detail
+      if (host) setFilterQuery(host)
+    }
+    window.addEventListener('redlog:filter-host', onFilterHost)
+    return () => {
+      window.removeEventListener('redlog:filter-operator', onFilterOperator)
+      window.removeEventListener('redlog:filter-host', onFilterHost)
+    }
   }, [])
   useEffect(() => {
     if (paletteOpen) {

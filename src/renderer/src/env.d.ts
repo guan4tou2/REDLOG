@@ -143,6 +143,8 @@ interface RedLogAPI {
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
+    /** §10: distinct hosts across the timeline for ⌘K host search. */
+    distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
     searchCasts?: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string
