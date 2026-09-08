@@ -66,4 +66,22 @@ describe('i18n keys', () => {
       .map((k) => `${k}: en[${vars(en[k])}] vs zh-TW[${vars(zh[k])}]`)
     expect(mismatched).toEqual([])
   })
+
+  it('uses no single-brace {var} placeholders (I18nContext only expands {{var}})', () => {
+    // `interpolate()` in I18nContext.tsx replaces ONLY `{{name}}`. A lone
+    // `{name}` is never substituted, so the operator reads the literal braces —
+    // the bug class that hit `{chord}`, `{name}` and six timeline/settings keys.
+    // A single-brace token that looks like a placeholder is always a mistake:
+    // real UI copy has no reason to print `{word}` verbatim.
+    const single = /(?<!\{)\{[a-zA-Z_]\w*\}(?!\})/
+    const offenders: string[] = []
+    for (const loc of ['en', 'zh-TW']) {
+      const dict = load(loc)
+      for (const [k, v] of Object.entries(dict)) {
+        const m = v.match(single)
+        if (m) offenders.push(`${loc} ${k}: "${m[0]}" (did you mean {{${m[0].slice(1, -1)}}}?)`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
 })
