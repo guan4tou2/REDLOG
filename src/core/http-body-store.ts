@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { isInsideDir } from './paths'
 import crypto from 'crypto'
 import { getProjectDir } from './db/index'
 
@@ -55,7 +56,10 @@ export function readBody(ref: BodyRef): string | null {
   try {
     const dir = bodiesDir()
     const filePath = path.join(dir, ref.file)
-    if (!filePath.startsWith(dir)) return null
+    // isInsideDir, not startsWith: a bare prefix check passes a sibling dir that
+    // shares the prefix (…/http-bodies-evil/x). ref.file comes from the renderer
+    // via httpBody:read.
+    if (!isInsideDir(dir, filePath)) return null
     if (!fs.existsSync(filePath)) return null
     const raw = fs.readFileSync(filePath)
     if (ref.encoding === 'base64') {

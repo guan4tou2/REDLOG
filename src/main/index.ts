@@ -258,6 +258,29 @@ function loadWindowState(): { bounds?: Electron.Rectangle; isMaximized?: boolean
   try { return JSON.parse(fs.readFileSync(WINDOW_STATE_PATH, 'utf-8')) } catch { return null }
 }
 
+/** True for an http(s) URL whose host is not loopback, link-local (incl. the
+ *  169.254.169.254 cloud-metadata endpoint) or an RFC1918 private range. Gate
+ *  for the plugin `net.fetch` egress (SSRF). Hostname-only — does not resolve
+ *  DNS, so a name pointing at a private IP is not caught, but the literal
+ *  metadata/loopback/private targets an attacker reaches for are. */
+function isPublicHttpUrl(u: string): boolean {
+  let url: URL
+  try { url = new URL(u) } catch { return false }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+  const h = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h === '0.0.0.0') return false
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2])
+    if (a === 0 || a === 127) return false                 // this-host / loopback
+    if (a === 10) return false                             // 10/8
+    if (a === 169 && b === 254) return false               // link-local + metadata
+    if (a === 172 && b >= 16 && b <= 31) return false       // 172.16/12
+    if (a === 192 && b === 168) return false                // 192.168/16
+  }
+  return true
+}
+
 function saveWindowState(win: BrowserWindow): void {
   try {
     const isMaximized = win.isMaximized()
@@ -556,6 +579,12 @@ function startProject(project: ProjectMeta): void {
     listFindings: () => listBookmarks(),
     getConfig: () => ({ engagement: config.engagement, scope: config.scope, redaction: config.redaction }),
     fetch: async (a) => {
+      // SSRF guard: a plugin's controlled egress must not reach loopback,
+      // link-local (incl. the 169.254.169.254 cloud-metadata endpoint) or
+      // RFC1918 private hosts, nor non-http(s) schemes.
+      if (!isPublicHttpUrl(String(a.url))) {
+        return { status: 0, body: '', error: 'blocked: non-public or non-http(s) URL' }
+      }
       const r = await fetch(String(a.url), { method: String(a.method ?? 'GET') })
       return { status: r.status, body: (await r.text()).slice(0, 10_000) }
     }
@@ -1746,10 +1775,20 @@ app.whenReady().then(() => {
   ipcMain.handle('data:revealPath', async (_e, target: string) => {
     if (typeof target !== 'string' || !target) return false
     try {
+      // Containment: `target` comes from the renderer, and shell.openPath on a
+      // directory opens it — a macOS `.app` bundle IS a directory, so an
+      // unconstrained path is a renderer→app-launch primitive. Only reveal
+      // inside the app's own roots: the active project dir, or ~/.redlog (where
+      // the tokens dir lives). Everything RedLog reveals is under one of these.
+      const resolved = path.resolve(target)
+      const redlogHome = path.join(homedir(), '.redlog')
+      const projectDir = activeProject ? getProjectPath(activeProject) : null
+      const allowed = (projectDir && isInsideDir(projectDir, resolved)) || isInsideDir(redlogHome, resolved)
+      if (!allowed) return false
       // If `target` is a file, open its parent directory; if it's a directory,
       // open it directly. shell.openPath returns an empty string on success.
-      const stat = fs.existsSync(target) ? fs.statSync(target) : null
-      const toOpen = stat && stat.isFile() ? path.dirname(target) : target
+      const stat = fs.existsSync(resolved) ? fs.statSync(resolved) : null
+      const toOpen = stat && stat.isFile() ? path.dirname(resolved) : resolved
       const err = await shell.openPath(toOpen)
       return err === ''
     } catch {
