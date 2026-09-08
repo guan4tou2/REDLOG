@@ -3092,12 +3092,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
             const externalOnly = EXTERNAL_ONLY_LANES.has(id)
-            // v0.6.97 F: external-only lanes (credential_use, c2_checkin)
-            // stay hidden on an internal engagement — pre-v0.6.97 they
-            // rendered dimmed with a tooltip, but on a laptop-only pentest
-            // they'll never populate and just clutter the chip row. Once a
-            // real event lands they auto-reappear (populatedLanes shifts).
-            if (externalOnly && empty) return null
+            // A lane that has captured nothing is hidden from the chip row
+            // rather than shown dimmed: an empty chip is noise, and the lane
+            // reappears the instant a real event lands (populatedLanes shifts).
+            // v0.6.97 did this only for external-only lanes (credential_use,
+            // c2_checkin); v0.15 extends it to every not-yet-captured lane. A
+            // populated lane the operator toggled OFF still renders (struck
+            // through) so it can be restored — that's `hidden`, not `empty`.
+            if (empty) return null
             return (
               <Fragment key={id}>
               <button
