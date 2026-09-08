@@ -843,6 +843,8 @@
   "dashboard.findInPage": "Filter what is on screen",
   "palette.timelineScoped": "Search within the loaded timeline (lanes, operators, hosts)",
   "palette.sectionOperator": "Operators",
+  "palette.sectionHost": "Hosts",
+  "palette.hostHits": "{{count}} events",
   "palette.operatorPrimary": "primary",
   "settings.categories": "Settings categories",
   "settings.searchPages": "Search settings…",

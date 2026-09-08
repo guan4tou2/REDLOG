@@ -934,6 +934,36 @@ export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] 
   })
 }
 
+/** One host's rollup for ⌘K host search (UIUX-STANDARD §10). */
+export interface HostAggregate {
+  host: string
+  count: number
+  lastSeen: number
+}
+
+/**
+ * Distinct `data.host` values across both tiers, with a hit count and last-seen.
+ * §10: "host 只存在於事件的 data.host JSON 裡… 要讓它全域可搜,需要 DB 端的
+ * distinct-host 聚合——那與 §9 目標頁改 SQL 聚合是同一件事." This is that
+ * aggregation, shaped for the command palette: busiest hosts first, capped.
+ */
+export function distinctHosts(limit = 500): HostAggregate[] {
+  const db = getDB()
+  const sql = `
+    SELECT host, COUNT(*) AS count, MAX(timestamp) AS lastSeen
+    FROM (
+      SELECT json_extract(data, '$.host') AS host, timestamp FROM events
+      UNION ALL
+      SELECT json_extract(data, '$.host') AS host, timestamp FROM events_logged
+    )
+    WHERE host IS NOT NULL AND host != ''
+    GROUP BY host
+    ORDER BY count DESC, lastSeen DESC
+    LIMIT ?
+  `
+  return db.prepare(sql).all(limit) as HostAggregate[]
+}
+
 /** One target's rollup for the Targets page (UIUX-STANDARD §9 / §14-4c). */
 export interface TargetAggregate {
   target: string

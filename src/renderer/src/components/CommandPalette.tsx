@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Bookmark, ArrowLeftRight,
-  Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon
+  Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon,
+  Globe
 } from 'lucide-react'
 import { useI18n } from '../i18n'
+import type { HostAggregate } from '../../../core/db/events'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { DEFAULT_ORDER, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
@@ -29,7 +31,7 @@ import { MOD } from '../lib/platform'
 // In-page filtering is ⌘F, the convention every other desktop app has already
 // taught.
 
-type Section = 'nav' | 'action' | 'view' | 'project' | 'operator' | 'search'
+type Section = 'nav' | 'action' | 'view' | 'project' | 'operator' | 'host' | 'search'
 
 interface Item {
   id: string
@@ -62,6 +64,7 @@ const SECTION_KEY: Record<Section, string> = {
   view: 'palette.sectionView',
   project: 'palette.sectionProject',
   operator: 'palette.sectionOperator',
+  host: 'palette.sectionHost',
   search: 'palette.sectionSearch'
 }
 
@@ -93,6 +96,7 @@ export function CommandPalette({
   const [events, setEvents] = useState<RedLogEvent[]>([])
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [operators, setOperators] = useState<OperatorInfo[]>([])
+  const [hosts, setHosts] = useState<HostAggregate[]>([])
   const panel = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLInputElement | null>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -111,6 +115,8 @@ export function CommandPalette({
     // loaded timeline — `operators:list` is a plain registry read, which is
     // why this half could land ahead of host search.
     window.redlog.operators.list().then(setOperators).catch(() => {})
+    // §10 host search: distinct hosts, aggregated in SQL (#65's pattern).
+    window.redlog.events.distinctHosts?.().then(setHosts).catch(() => {})
   }, [open])
 
   // Event search is the only part that costs anything, so it is the only part
@@ -206,6 +212,18 @@ export function CommandPalette({
       })
     }
 
+    // §10: host search. Selecting one lands on the Timeline filtered to that
+    // host — the after-action question "what happened on this host". The
+    // busiest hosts sort first (the aggregation orders by count).
+    for (const h of hosts) {
+      out.push({
+        id: `host:${h.host}`, section: 'host', icon: Globe,
+        label: h.host,
+        hint: t('palette.hostHits', { count: h.count }),
+        run: () => { onNavigate('timeline'); setTimeout(() => window.dispatchEvent(new CustomEvent('redlog:filter-host', { detail: h.host })), 0) }
+      })
+    }
+
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
       const label = String(d?.command ?? d?.title ?? d?.url ?? d?.description ?? e.agentType)
@@ -217,15 +235,17 @@ export function CommandPalette({
     }
 
     if (!q) {
-      // With no query, the search section is empty and the rest is a menu.
-      return out.filter((i) => i.section !== 'search')
+      // With no query, the search + host sections stay hidden and the rest is a
+      // menu. Hosts can number in the hundreds — they belong behind a query,
+      // like event search, not in the empty menu.
+      return out.filter((i) => i.section !== 'search' && i.section !== 'host')
     }
     return out
       .map((i) => ({ i, s: i.section === 'search' ? 900 : score(i.label, q) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.i)
-  }, [query, events, projects, operators, recording, t, onNavigate, onOpenEvent])
+  }, [query, events, projects, operators, hosts, recording, t, onNavigate, onOpenEvent])
 
   useEffect(() => { setCursor(0) }, [query])
 
