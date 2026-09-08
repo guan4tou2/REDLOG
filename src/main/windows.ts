@@ -7,6 +7,21 @@ import { defaultOverlayBounds } from '../core/overlay-layout'
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
 
+// The app is a local SPA: it never opens sub-windows and never navigates away
+// from its own content (external links go through the app:openExternal IPC,
+// which is http/https-allowlisted). So deny every window-open and every
+// navigation to a foreign origin. Without this, a captured link inside evidence
+// data (an HTTP body, an agent transcript) could load attacker content
+// in-window; with no CSP that would be unconstrained. Applied to both windows.
+function hardenNavigation(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (e, url) => {
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    const ok = url.startsWith('file://') || (!!devUrl && url.startsWith(devUrl))
+    if (!ok) e.preventDefault()
+  })
+}
+
 export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
     // Default sized to the dashboard's "寬屏 1400px 居中" layout (§22) so the
@@ -48,6 +63,7 @@ export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindo
   // selection). Without this the app has no context menu at all, which is one
   // of the loudest "this is a web page" tells on the desktop.
   attachContextMenu(win.webContents, { dev: is.dev })
+  hardenNavigation(win)
 
   win.on('ready-to-show', () => {
     if (isWin) {
@@ -96,6 +112,7 @@ export function createOverlayWindow(saved?: { x: number; y: number } | null): Br
   // always-on-top windows (and over fullscreen apps, via visibleOnFullScreen).
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  hardenNavigation(win)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/overlay.html')
