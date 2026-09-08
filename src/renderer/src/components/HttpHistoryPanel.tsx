@@ -406,10 +406,21 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     return Array.from(s).sort()
   }, [flows])
 
+  // Debounce the filter text: `filtered` (a sort), `activities` (groupFlows) and
+  // `sitemapTree` (buildSitemapTree) all derive from it, so recomputing them on
+  // every keystroke — even in `flows` view where the tree/activity aren't shown —
+  // is wasted work on thousands of rows. The input stays bound to `filterText`
+  // for responsiveness; the heavy derivation waits on the debounced value.
+  const [filterTextDebounced, setFilterTextDebounced] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setFilterTextDebounced(filterText), 150)
+    return () => clearTimeout(id)
+  }, [filterText])
+
   const filtered = useMemo(() => {
     let list = flows
-    if (filterText) {
-      const q = filterText.toLowerCase()
+    if (filterTextDebounced) {
+      const q = filterTextDebounced.toLowerCase()
       list = list.filter(f =>
         f.url.toLowerCase().includes(q) ||
         f.host.toLowerCase().includes(q) ||
@@ -427,7 +438,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return list
-  }, [flows, filterText, methodFilter, statusFilter, sortCol, sortAsc])
+  }, [flows, filterTextDebounced, methodFilter, statusFilter, sortCol, sortAsc])
 
   // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
   // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size
