@@ -63,6 +63,12 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
 linux:
+  # The .deb target needs a package maintainer and package.json's `author` is a
+  # bare name with no email, so electron-builder refused to build the deb (the
+  # AppImage, which needs no maintainer, shipped fine). Set it here from the
+  # repo's public git author identity — change the address if you want a
+  # different maintainer on the package.
+  maintainer: Guan4Tou2 <mole30608@gmail.com>
   # A DIRECTORY of NxN.png (electron-builder's Linux icon-set format) instead of
   # a single 256px file every panel/launcher had to downscale itself — the
   # mushy result RING_MIN_PX exists to avoid. tools/make-icons.py regenerates
