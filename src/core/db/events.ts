@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { eventBus } from '../event-bus'
 import os from 'os'
-import { getDB } from './index'
+import { getDB, getReadonlyDB } from './index'
 import { monotonicNs, getNtpOffsetMs } from '../clock'
 import { signEvent } from '../signing'
 import { storeRaw, type RawRef } from '../raw-store'
@@ -296,6 +296,52 @@ export function canonicalStringify(v: unknown): string {
     parts.push(JSON.stringify(k) + ':' + canonicalStringify(val))
   }
   return '{' + parts.join(',') + '}'
+}
+
+// v0.15 logged-tier integrity (docs/DESIGN-two-tier-chain.md §7.5 / §8): the
+// logged tier is deliberately un-chained and un-signed — see the events_logged
+// schema comment in db/index.ts. That is the tier, not an oversight, so it has
+// no per-row tamper-evidence by design. Rather than pay a per-row hash on the
+// hot write path (which would defeat the tier's whole reason to exist), we fold
+// ONE cheap digest over the tier on demand — at export/audit time — and let the
+// caller record it into the chained tier, where the OTS anchor already reaches.
+// §8 always said the honest way to prove "these logged rows existed at time T"
+// is to hash the logged tier and anchor the hash; this is that hash, in a single
+// index-ordered streaming scan (O(1) memory, canonical-key hashing like the
+// chain), so an export carries a verifiable snapshot with zero write-path cost.
+export function loggedTierDigest(): {
+  count: number
+  sha256: string
+  oldest: number | null
+  newest: number | null
+} {
+  const db = getDB()
+  // Same column projection and ordering the bundle dump uses (bundle-export.ts),
+  // so the digest is a faithful fingerprint of what an export serialises.
+  // iterate() keeps a single row resident regardless of tier size.
+  const rows = db.prepare(
+    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+            hostname, source_ip, target_id, data, created_at
+     FROM events_logged ORDER BY created_at ASC, rowid ASC`
+  ).iterate() as IterableIterator<Record<string, unknown>>
+  const h = crypto.createHash('sha256')
+  let count = 0
+  let oldest: number | null = null
+  let newest: number | null = null
+  for (const row of rows) {
+    // Newline-delimited canonical rows: the delimiter stops two adjacent rows
+    // from being ambiguous with one row whose fields happen to concatenate to
+    // the same bytes. canonicalStringify sorts keys so the fingerprint is stable
+    // across Node versions and export/import round-trips (same rationale the
+    // chain hash relies on).
+    h.update(canonicalStringify(row))
+    h.update('\n')
+    const ts = row.timestamp as number
+    if (oldest === null || ts < oldest) oldest = ts
+    if (newest === null || ts > newest) newest = ts
+    count++
+  }
+  return { count, sha256: h.digest('hex'), oldest, newest }
 }
 
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
@@ -704,7 +750,9 @@ export function queryEvents(opts: {
    *  logged-tier-only queries (rare — mostly a debug affordance). */
   tier?: 'all' | 'chained' | 'logged'
 }): RedLogEvent[] {
-  const db = getDB()
+  // Heavy read: route through the cached read-only handle so a large timeline
+  // scan doesn't serialise capture writes on the read-write connection.
+  const db = getReadonlyDB()
   const conditions: string[] = []
   const params: unknown[] = []
 
@@ -772,9 +820,27 @@ export function queryEvents(opts: {
     sql = `${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
     bind = [...params, limit]
   } else {
-    sql = `SELECT * FROM (${chainedSelect} UNION ALL ${loggedSelect})
-           ORDER BY timestamp DESC, _row DESC LIMIT ?`
-    bind = [...params, ...params, limit]
+    // Push ORDER BY + LIMIT into EACH arm before the UNION. The outer query
+    // keeps at most `limit` rows, and the top-`limit` of a merge of two
+    // already-sorted inputs is always contained in the top-`limit` of each
+    // input — so capping each arm at `limit` rows changes nothing observable
+    // while bounding what the union materializes at 2×`limit` instead of
+    // (whole `events` + whole `events_logged`). This matters because the only
+    // real pager (Timeline loadMore) seeks with `beforeCreatedAt`, so each arm
+    // already carries `created_at < ?` in its WHERE; without a per-arm LIMIT,
+    // both arms still returned EVERY row older than the cursor (158k+ at
+    // scale) just for the outer LIMIT to discard all but 200. With the cap,
+    // each arm satisfies its own `ORDER BY timestamp DESC` from idx_events_ts /
+    // idx_events_logged_ts and stops after `limit` rows. SQLite forbids
+    // ORDER BY/LIMIT on a bare compound member, hence the `SELECT * FROM (...)`
+    // wrappers; the outer ORDER + LIMIT is the k-way merge over the two capped,
+    // already-sorted arms — same result the single-tier branches above return.
+    sql = `SELECT * FROM (
+             SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+             UNION ALL
+             SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+           ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
+    bind = [...params, limit, ...params, limit, limit]
   }
 
   const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
@@ -895,7 +961,9 @@ export function getLatestLoggedTs(): number | null {
 }
 
 export function searchEvents(query: string, limit = 100): RedLogEvent[] {
-  const db = getDB()
+  // Heavy read: an un-indexed full-table LIKE over data/target_id/agent_type —
+  // route it off the write connection.
+  const db = getReadonlyDB()
   const pattern = `%${query}%`
   const rows = db.prepare(
     `SELECT * FROM events WHERE data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?
@@ -905,7 +973,9 @@ export function searchEvents(query: string, limit = 100): RedLogEvent[] {
 }
 
 export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] {
-  const db = getDB()
+  // Heavy read: the LIMIT-100000 export scan. Read-only handle keeps it off the
+  // write path.
+  const db = getReadonlyDB()
   // Push obvious no-target exclusions into SQL so we don't drag half the
   // engagement's clipboard/system rows into memory just to drop them. Pattern
   // matching against user-supplied scope targets stays in JS because SQLite
@@ -948,7 +1018,8 @@ export interface HostAggregate {
  * aggregation, shaped for the command palette: busiest hosts first, capped.
  */
 export function distinctHosts(limit = 500): HostAggregate[] {
-  const db = getDB()
+  // Heavy read: two-tier json_extract + GROUP BY aggregate.
+  const db = getReadonlyDB()
   const sql = `
     SELECT host, COUNT(*) AS count, MAX(timestamp) AS lastSeen
     FROM (
@@ -984,7 +1055,8 @@ export interface TargetAggregate {
  * project's scope patterns and the stricter CIDR match.
  */
 export function aggregateTargets(): TargetAggregate[] {
-  const db = getDB()
+  // Heavy read: two-tier json_extract + GROUP BY over the whole timeline.
+  const db = getReadonlyDB()
   const sql = `
     SELECT target,
            COUNT(*)       AS eventCount,

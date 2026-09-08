@@ -3,7 +3,8 @@ import path from 'path'
 import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
-import { queryEvents } from './db/events'
+import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
+import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
@@ -39,7 +40,7 @@ interface ManifestPayload {
    *  counts per tier. `chained` matches chainHead.eventCount — that IS the
    *  count the OTS anchor covers. `logged` is the events_logged row count
    *  bundled in `events_logged.jsonl`. Only present on bundleVersion >= 2. */
-  tiers?: { chained: number; logged: number }
+  tiers?: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
   files: ManifestFile[]
 }
 
@@ -88,8 +89,40 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
 
   const files: ManifestFile[] = []
 
-  // 1. events.jsonl (in insertion order)
   const db = getDB()
+
+  // v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): fold one cheap digest over
+  // the logged tier and append it as a chained `system.logged_tier_digest`
+  // event BEFORE the events.jsonl dump below — so the snapshot ships inside this
+  // bundle's chained tier and the next OTS anchor covers it. This wires §8's own
+  // escape hatch ("hash the logged tier and anchor the hash") into the automatic
+  // anchor loop instead of leaving it a manual step, without touching the hot
+  // logged write path. Skipped on an empty tier, mirroring the retention sweep's
+  // "no rows → no event" rule. NB: this is a snapshot of the LIVE logged tier;
+  // the byte integrity of the (possibly sanitized) events_logged.jsonl copy is
+  // the separate files[].sha256 entry recorded further down.
+  // Resolve the signing operator up front: the digest snapshot below is a
+  // chained `system` event and must carry an operatorId like any chained row
+  // (insertEvent rejects a system event without one), and the manifest's
+  // signedBy further down reuses this same primary. No primary operator → the
+  // bundle is unsigned and the snapshot is skipped, not force-attributed.
+  const primary = getPrimaryOperator()
+
+  const loggedDigest = loggedTierDigest()
+  if (loggedDigest.count > 0 && primary) {
+    const ev = insertEvent('system', {
+      subtype: 'logged_tier_digest',
+      count: loggedDigest.count,
+      sha256: loggedDigest.sha256,
+      oldest_at: loggedDigest.oldest,
+      newest_at: loggedDigest.newest,
+      reason: 'export',
+      description: `export: logged-tier snapshot — ${loggedDigest.count} row(s), sha256 ${loggedDigest.sha256.slice(0, 12)}…`
+    }, { engagementId, operatorId: primary.id })
+    if (ev) eventBus.publish(ev)
+  }
+
+  // 1. events.jsonl (in insertion order)
   const eventsPath = path.join(bundleDir, 'events.jsonl')
   const fd = fs.openSync(eventsPath, 'w')
   const rowIter = db.prepare(
@@ -359,7 +392,6 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
 
   const head = computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
-  const primary = getPrimaryOperator()
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
   const manifest: ManifestPayload = {
@@ -395,9 +427,16 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     sanitizedOutOfScope: outOfScopeMasked,
     tiers: {
       // chained = chainHead.eventCount when the head exists; both are
-      // definitionally the count the OTS anchor covers.
+      // definitionally the count the OTS anchor covers. It now also counts the
+      // system.logged_tier_digest event emitted above, so the anchor covers it.
       chained: head?.eventCount ?? 0,
-      logged: loggedRowCount
+      logged: loggedRowCount,
+      // §7.5: the anchored snapshot of the logged tier taken above. Surfaced
+      // here so a consumer reading manifest.json sees the count + hash without
+      // walking events.jsonl for the system.logged_tier_digest event.
+      loggedDigest: loggedDigest.count > 0
+        ? { count: loggedDigest.count, sha256: loggedDigest.sha256 }
+        : undefined
     },
     files
   }
