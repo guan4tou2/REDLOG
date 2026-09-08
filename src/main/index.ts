@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol } from 'electron'
-import { electronApp } from '@electron-toolkit/utils'
+import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
@@ -68,6 +68,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BR
 import { detectLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
+import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
 
@@ -1117,6 +1118,30 @@ app.whenReady().then(() => {
   // registers as an accessory (UIElement) and gets no Dock icon; force 'regular'
   // so RedLog always shows in the Dock, matching the packaged app.
   if (process.platform === 'darwin') app.dock?.show()
+
+  // Content-Security-Policy. windows.ts blocks navigation off our own origin;
+  // this caps what the loaded document may fetch/execute, so a captured link or
+  // an evidence body rendered into the DOM can't pull remote script. Delivered
+  // as a header (not a <meta> tag) so prod file:// stays locked to 'self' while
+  // dev permits Vite's inline HMR preamble + websocket. Both renderer entries
+  // share defaultSession, so one handler covers index.html and overlay.html.
+  //
+  // Stamps every response and strips any prior CSP first: stamping unconditionally
+  // guarantees the document is covered however file:// classifies its request,
+  // and a CSP header on the harmless redlog-screenshot image subresource is
+  // ignored by the browser. This is the item flagged 'needs runtime validation'
+  // — confirm the header is actually delivered on the packaged file:// load
+  // (see the verify steps), because the failure mode here is fail-open.
+  const csp = contentSecurityPolicy({ dev: is.dev, rendererUrl: process.env['ELECTRON_RENDERER_URL'] })
+  session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+    const headers: Record<string, string[]> = {}
+    for (const [k, v] of Object.entries(details.responseHeaders ?? {})) {
+      if (k.toLowerCase() === 'content-security-policy') continue
+      headers[k] = Array.isArray(v) ? v : [String(v)]
+    }
+    headers['Content-Security-Policy'] = [csp]
+    cb({ responseHeaders: headers })
+  })
 
   // Allow the renderer's opt-in geolocation request (Settings ▸ 網路 ▸ show Wi-Fi
   // name). Granting macOS Location Services un-redacts the SSID for `ipconfig`.
