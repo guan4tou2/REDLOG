@@ -389,7 +389,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const before = url.searchParams.get('before') ? parseInt(url.searchParams.get('before')!) : undefined
       const targetId = url.searchParams.get('target_id') || undefined
       const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : undefined
-      const harJson = exportHar({ since, before, targetId, limit })
+      // Redaction: the layer-4 sanitize swap always applies inside exportHar;
+      // pass scope so an API token holder can't pull out-of-scope bodies either.
+      const scope = { targets: configLoaderRef?.getTargets?.() ?? [] }
+      const harJson = exportHar({ since, before, targetId, limit, scope })
       res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="redlog-export.har"' })
       res.end(harJson)
       return
