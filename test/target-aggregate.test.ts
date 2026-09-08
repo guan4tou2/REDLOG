@@ -91,5 +91,9 @@ describeDB('aggregateTargets', () => {
     const byTgt = Object.fromEntries(rows.map((r) => [r.target, r]))
     expect(byTgt['busy.example.com'].eventCount).toBe(1100) // a 1000-cap could not
     expect(byTgt['sparse.example.com'].eventCount).toBe(1)  // and would not drop this
-  })
+    // 1100 hash-chained inserts is wall-clock-slow on the Windows CI runner and
+    // flaked past the default 5s in a release build — the timeout is the test's
+    // setup cost, not a code slowness. (Same reason bundle-export.test.ts:218
+    // carries one.)
+  }, 30000)
 })
