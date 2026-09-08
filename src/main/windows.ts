@@ -9,8 +9,12 @@ const isWin = process.platform === 'win32'
 
 export function createMainWindow(savedBounds?: Electron.Rectangle): BrowserWindow {
   const win = new BrowserWindow({
-    width: savedBounds?.width ?? 1100,
-    height: savedBounds?.height ?? 700,
+    // Default sized to the dashboard's "寬屏 1400px 居中" layout (§22) so the
+    // one-screen-one-question view shows at full width on first launch, with
+    // more vertical room for the timeline and the HTTP/loot tables. A saved
+    // bound (the operator resized) always wins.
+    width: savedBounds?.width ?? 1400,
+    height: savedBounds?.height ?? 900,
     x: savedBounds?.x,
     y: savedBounds?.y,
     minWidth: 800,
