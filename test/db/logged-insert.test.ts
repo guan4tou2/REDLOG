@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -139,6 +139,71 @@ describeDB('insertEvent — two-tier dispatch (v0.13.0)', () => {
     const loggedOnly = events.queryEvents({ limit: 100, tier: 'logged' })
     expect(loggedOnly).toHaveLength(2)
     expect(loggedOnly.every((e) => e.tier === 'logged')).toBe(true)
+  })
+
+  it('union paging walks every row once, newest-first, across both tiers', () => {
+    // Locks the seek-pager contract that the per-arm LIMIT push-down must not
+    // break: seed >PAGE rows alternating tiers, each stamped a distinct,
+    // strictly-increasing clock so the `beforeCreatedAt` cursor
+    // (created_at < ?) has a clean boundary. Rows can't be UPDATEd after the
+    // fact — the `events` table has an immutability trigger — so we advance a
+    // fake system clock between inserts instead, which stamps both `timestamp`
+    // and `created_at` through the normal insert path. (The real Timeline
+    // pager tolerates same-ms write bursts by de-duping on id client-side;
+    // here we prove the SQL itself loses no row and invents none, page after
+    // page.) monotonic_ns comes from a real hrtime clock, so the chain's
+    // clock-anomaly detector is unaffected by the faked wall clock.
+    type Ev = ReturnType<typeof events.queryEvents>[number]
+    const N = 120
+    const PAGE = 50
+    const base = 1_700_000_000_000  // fixed epoch; fake timers start Date.now at 0
+    const ids: string[] = []
+    vi.useFakeTimers()
+    try {
+      for (let i = 0; i < N; i++) {
+        vi.setSystemTime(base + i)  // later insert = newer wall clock
+        const ev = i % 2 === 0
+          ? events.insertEvent('shell', { subtype: 'command_start', command: `c${i}` }, { operatorId })
+          : events.insertEvent('dns', { subtype: 'dns_query', query_name: `q${i}.test` }, { operatorId })
+        ids.push(ev!.id)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+
+    // Page with the exact contract the Timeline pager uses.
+    const seen: Ev[] = []
+    const seenIds = new Set<string>()
+    let cursor: number | undefined
+    for (;;) {
+      const page: Ev[] = events.queryEvents(
+        cursor !== undefined ? { limit: PAGE, beforeCreatedAt: cursor } : { limit: PAGE }
+      )
+      if (page.length === 0) break
+      for (const e of page) {
+        expect(seenIds.has(e.id)).toBe(false)  // no dupes across pages
+        seenIds.add(e.id)
+        seen.push(e)
+      }
+      cursor = page[page.length - 1].createdAt  // oldest row of this page
+      if (page.length < PAGE) break
+    }
+
+    // Every row exactly once — no gaps, no dupes.
+    expect(seen).toHaveLength(N)
+    // Strict newest-first order preserved across page boundaries.
+    for (let i = 1; i < seen.length; i++) {
+      expect(seen[i - 1].timestamp).toBeGreaterThan(seen[i].timestamp)
+    }
+    // Full sequence equals reverse insertion order (newest first).
+    expect(seen.map((e) => e.id)).toEqual([...ids].reverse())
+    // Both tiers participated.
+    const tiers = new Set(seen.map((e) => e.tier))
+    expect(tiers.has('chained')).toBe(true)
+    expect(tiers.has('logged')).toBe(true)
+    // Head page is exactly PAGE rows though 2×PAGE+ exist across both tiers —
+    // i.e. each capped arm still supplied enough to fill the merged page.
+    expect(events.queryEvents({ limit: PAGE })).toHaveLength(PAGE)
   })
 
   it('queryEventById finds rows in either table (chained-first on tie)', () => {
