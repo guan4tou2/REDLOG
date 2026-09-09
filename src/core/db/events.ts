@@ -1084,6 +1084,91 @@ export function aggregateTargets(): TargetAggregate[] {
   return db.prepare(sql).all() as TargetAggregate[]
 }
 
+// An event "touches" a host when its canonical `target_id` is that host, or its
+// data carries it as `host` (HTTP/DNS/scanner rows) or `detectedTarget`
+// (shell/loot rows key on the derived target). Three `?` per use.
+const HOST_MATCH_SQL = `(
+  target_id = ?
+  OR json_extract(data, '$.host') = ?
+  OR json_extract(data, '$.detectedTarget') = ?
+)`
+
+// The turning points design 10a's 〈相關〉chain shows for a host — a name
+// resolution, a command, loot, a marker, a scope violation — NOT every row that
+// touched it (a scan is thousands). command_start/end both pass; folding the
+// pair into one line is the renderer's job (collapseCommandPairs), so the
+// backend returns the raw turning-point rows.
+const CHAIN_TURNING_POINT_SQL = `(
+  agent_type IN ('loot', 'marker')
+  OR (agent_type = 'dns' AND json_extract(data, '$.subtype') = 'dns_response')
+  OR (agent_type = 'shell' AND json_extract(data, '$.subtype') IN ('command_start', 'command_end', 'command'))
+  OR (agent_type = 'system' AND json_extract(data, '$.subtype') = 'scope_violation')
+)`
+
+export interface HostCausalChain {
+  host: string
+  /** Every event touching the host, both tiers — the header's "· N 個事件". */
+  eventCount: number
+  operatorCount: number
+  firstSeen: number | null
+  lastSeen: number | null
+  /** The curated turning-point events, oldest-first. Scope status is deliberately
+   *  NOT included — the renderer classifies it from the project scope config
+   *  (lib/scope.ts), keeping this query display-agnostic. */
+  chain: RedLogEvent[]
+}
+
+/** Data backend for the Inspector 〈相關〉panel (design 10a): a host's causal
+ *  chain — a header aggregate plus the handful of understanding-changing events
+ *  in time order, rather than the full pile of same-host rows. Read-only, both
+ *  tiers. v1 keys on target_id / data.host / data.detectedTarget; unifying a
+ *  DNS name with its resolved IP (so the resolution shows in the IP's chain
+ *  even when the dns row is keyed on the name) is a later enhancement. */
+export function hostCausalChain(host: string, opts: { chainLimit?: number } = {}): HostCausalChain {
+  const empty: HostCausalChain = { host, eventCount: 0, operatorCount: 0, firstSeen: null, lastSeen: null, chain: [] }
+  if (!host) return empty
+  const db = getReadonlyDB()
+  const chainLimit = opts.chainLimit ?? 200
+
+  const header = db.prepare(`
+    SELECT COUNT(*) AS eventCount,
+           COUNT(DISTINCT operator_id) AS operatorCount,
+           MIN(timestamp) AS firstSeen,
+           MAX(timestamp) AS lastSeen
+    FROM (
+      SELECT operator_id, timestamp, target_id, data FROM events
+      UNION ALL
+      SELECT operator_id, timestamp, target_id, data FROM events_logged
+    )
+    WHERE ${HOST_MATCH_SQL}
+  `).get(host, host, host) as {
+    eventCount: number; operatorCount: number; firstSeen: number | null; lastSeen: number | null
+  }
+
+  const chained = `SELECT rowid AS _row, id, timestamp, engagement_id, session_id, operator_id,
+    agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+    monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+    FROM events WHERE ${HOST_MATCH_SQL} AND ${CHAIN_TURNING_POINT_SQL}`
+  const logged = `SELECT rowid AS _row, id, timestamp, engagement_id, session_id, operator_id,
+    agent_type, hostname, source_ip, target_id, data, NULL AS hash, NULL AS prev_hash, created_at,
+    NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature, 'logged' AS tier
+    FROM events_logged WHERE ${HOST_MATCH_SQL} AND ${CHAIN_TURNING_POINT_SQL}`
+  const rows = db.prepare(`
+    SELECT * FROM (${chained} UNION ALL ${logged})
+    ORDER BY timestamp ASC, _row ASC
+    LIMIT ?
+  `).all(host, host, host, host, host, host, chainLimit) as Array<Record<string, unknown>>
+
+  return {
+    host,
+    eventCount: header?.eventCount ?? 0,
+    operatorCount: header?.operatorCount ?? 0,
+    firstSeen: header?.firstSeen ?? null,
+    lastSeen: header?.lastSeen ?? null,
+    chain: rows.map(rowToEvent)
+  }
+}
+
 export function matchTarget(target: string, pattern: string): boolean {
   const t = target.toLowerCase()
   const p = pattern.toLowerCase()
