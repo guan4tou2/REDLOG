@@ -70,6 +70,22 @@ export function dismissIssue(id: string): void {
   emit()
 }
 
+/** Wave away every currently-showing `pending` issue this session — the lower
+ *  tier's 〈全部忽略〉 (§9 / design 3c). Attention-tier issues are never
+ *  dismissed, and like single-dismiss this writes no audit event. Returns the
+ *  number newly dismissed so a caller can decide whether anything happened. */
+export function dismissAllPending(): number {
+  let n = 0
+  for (const issue of issues.values()) {
+    if (issue.tier === 'pending' && !dismissed.has(issue.id)) {
+      dismissed.add(issue.id)
+      n++
+    }
+  }
+  if (n > 0) emit()
+  return n
+}
+
 function snapshot(): Issue[] {
   return [...issues.values()]
     .filter((i) => !dismissed.has(i.id))

@@ -884,7 +884,6 @@
   "export.title": "Export",
   "export.all": "Everything",
   "export.ndjson": "NDJSON (for ELK / log store)",
-  "export.walkthrough": "Target walkthrough (Markdown)",
   "export.view": "This view — {{view}}",
   "export.slice": "The visible time range",
   "export.bundle": "Evidence bundle (with verifier)",

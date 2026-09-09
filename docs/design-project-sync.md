@@ -24,10 +24,11 @@ date: 2026-09-09T00:00:00Z
 |---|---|---|
 | **7a 範圍外標示** | `lib/scope.ts` `hostOutOfScope()`;HttpHistoryPanel 已上 badge | (已含基本 UI)可再精修樣式 |
 | **截圖差異靈敏度** | `config.screenshot.diffThreshold`;設定組已有按鈕 | (已含基本 UI) |
-| **command-linked 截圖** | `config.screenshot.captureOnCommand`;command_end 觸發、`_causes` 連結;設定組已有勾選框 | (已含基本開關)截「哪個視窗」的精修留後續 |
+| **command-linked 截圖** | `config.screenshot.captureOnCommand`;command_end 觸發、trigger=`command`、`_causes` 連結;設定組已有勾選框 | **是 2d 觸發原因軸多一個值**「隨指令」(design 已加 chip,非新功能);截「哪個視窗」精修留後續 |
+| **3c 需要注意互動層** | `dismissIssue`/`dismissAllPending`(下層〈忽略/全部忽略〉,session-only、不寫稽核);上層〈修復〉的動作 IPC 已在(`chain:anchorNow` 重試錨定、`chain:verify` 驗鏈);導航用 Issue 的 `view` | 兩層互動彈出層、每列〈修復〉/〈診斷〉鈕(上層無關閉、下層可忽略) |
 | **NDJSON(ELK)匯出** | IPC `data:exportNdjson({scopeOnly?,scrubPii?})` → 檔案路徑;匯出選單已有「NDJSON」項 | `scopeOnly`/`scrubPii` 做成選單勾選(現為全部+內容遮蔽) |
-| **目標 walkthrough 匯出** | IPC `data:exportWalkthrough` → `.md`;匯出選單已有項 | (已可操作) |
-| **pcap 擷取** | `hooks/pcap-agent.py`(CLI producer,同 mitmproxy);API 白名單 + LOGGED_TIER 已接 | 時間軸 pcap 泳道、設定裡的擷取來源啟動器/狀態 |
+| **walkthrough(逐字稿依主機分段)** | IPC `data:exportWalkthrough` → `.md` 就緒 | **不是第四種格式**(design 2026-09-09 裁定):逐字稿 Markdown 匯出的〈依主機分段〉開關,預設關。已移除獨立選單項,後端待接該開關 |
+| **pcap 擷取** | `hooks/pcap-agent.py`(CLI producer,同 mitmproxy);API 白名單 + LOGGED_TIER 已接 | 時間軸 pcap = 流量組多一列;設定裡的擷取來源啟動器/狀態 |
 | **10a 因果鏈** | IPC `events:hostChain(host)` → `{eventCount,operatorCount,firstSeen,lastSeen,chain[]}` | **Inspector〈相關〉面板**:表頭 + 策展鏈清單、command 對摺(`collapseCommandPairs`)、範圍徽章(`lib/scope.ts`)、當前事件釘選、〈在目標頁開啟〉/⌘↩ |
 | **5a 更新前錨定** | `core/update-anchor.ts` `anchorBeforeRestart()`;IPC `app:anchorForRestart`;updater「前往下載」已自動觸發 | 狀態列青點、不彈視窗的更新卡、「約 8 秒不記錄」確認框 |
 
@@ -37,6 +38,11 @@ inline 加入允許清單、5c 操作員金鑰管理 UI、4e 標記圓點嚴重�
 2d 截圖 ×N/SHA-256/批次刪除升級、時間軸 Inspector 分頁/事件流 >50 折疊/鏈警示/在逐字稿上顯示/圖例中文。
 **刻意不做**(2026-09-09 裁定):flag/proof 偵測、MITRE 技術欄(非通用工具定位);2a PDF 報告(改純資料匯出);
 at-rest 加密(維持「信任本機」假設,暫不)。
+
+**設計端回寫(2026-09-09)**:八項後端交回,設計端確認六項本就有對應畫面(7a/截圖差異/NDJSON/pcap=
+流量組一列/10a/5a);兩項改為既有軸的延伸而非新增——walkthrough 收為逐字稿匯出的〈依主機分段〉開關
+(已移除獨立匯出項),command 截圖收為 2d 觸發原因軸的第四個值「隨指令」(設計稿已補 chip)。全稿 30 板
+無溢出/壞連結、§0–§28 與設計稿一致,設計端無待辦,UI 由 repo 端接。
 
 ### 2026-09-09 · turn 10 鏡像（設計稿新增，鏡像原止於 turn 9）
 
