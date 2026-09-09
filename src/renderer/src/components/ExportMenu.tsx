@@ -145,14 +145,12 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 return api.exportNdjson?.() ?? Promise.resolve(null)
               })}
             />
-            {/* Per-target Markdown walkthrough — the report skeleton. */}
-            <Option
-              label={t('export.walkthrough')}
-              onPick={() => void run(t('export.walkthrough'), () => {
-                const api = window.redlog.data as { exportWalkthrough?: () => Promise<string | null> }
-                return api.exportWalkthrough?.() ?? Promise.resolve(null)
-              })}
-            />
+            {/* Per-target walkthrough (data:exportWalkthrough) is deliberately
+                NOT a fourth format here (design ruling 2026-09-09): it is the
+                transcript Markdown export with an 〈依主機分段〉 toggle (default
+                off). The backend is ready; wire it to that toggle when the
+                transcript export UI grows one, rather than as a menu item that
+                makes people ask how it differs from "Everything". */}
 
             <div className="border-t border-redlog-border my-1" />
             {/* Separated: a signed archive for someone challenging the record

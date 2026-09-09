@@ -884,7 +884,6 @@
   "export.title": "匯出",
   "export.all": "全部",
   "export.ndjson": "NDJSON（供 ELK／日誌庫）",
-  "export.walkthrough": "目標 walkthrough（Markdown）",
   "export.view": "目前畫面——{{view}}",
   "export.slice": "可視時間範圍",
   "export.bundle": "證據包（含驗證器）",
