@@ -18,6 +18,7 @@ import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } 
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import { redactEventsForExport } from '../core/redact-export'
 import { eventsToNdjson } from '../core/ndjson-export'
+import { buildTargetWalkthrough } from '../core/walkthrough-export'
 import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../core/overlay-layout'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -546,7 +547,8 @@ function startProject(project: ProjectMeta): void {
     operatorId,
     quality: config.screenshot.quality,
     intervalSec: config.screenshot.intervalSec ?? 0,
-    diffThreshold: config.screenshot.diffThreshold ?? 5
+    diffThreshold: config.screenshot.diffThreshold ?? 5,
+    captureOnCommand: config.screenshot.captureOnCommand ?? false
   })
 
   invalidateViolationCount()
@@ -1291,7 +1293,8 @@ app.whenReady().then(() => {
     screenshotAgent.configure({
       quality: newConfig.screenshot.quality,
       intervalSec: newConfig.screenshot.intervalSec ?? 0,
-      diffThreshold: newConfig.screenshot.diffThreshold ?? 5
+      diffThreshold: newConfig.screenshot.diffThreshold ?? 5,
+      captureOnCommand: newConfig.screenshot.captureOnCommand ?? false
     })
     // v0.9.7: refresh the snapshot capture-health reads its on/off switches
     // from, so toggling a source updates the card on the next poll instead of
@@ -1532,6 +1535,12 @@ app.whenReady().then(() => {
       const p = getActivePivots()
       send(overlayWindow, 'pivots:changed', p)
       send(mainWindow, 'pivots:changed', p)
+    }
+    // 2b/OSCP: opt-in screenshot linked to a finished command (_causes → this
+    // event). No-op unless config.screenshot.captureOnCommand is on; the agent
+    // owns the flag and the perceptual-dedup skip.
+    if (event.agentType === 'shell' && d.subtype === 'command_end') {
+      screenshotAgent.onCommandEnd(event.id).catch(() => { /* best-effort */ })
     }
   })
   ipcMain.handle('pivots:getActive', () => getActivePivots())
@@ -1860,6 +1869,19 @@ app.whenReady().then(() => {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const filePath = path.join(outDir, `redlog-${ts}.ndjson`)
     fs.writeFileSync(filePath, ndjson)
+    return filePath
+  })
+  // Per-target Markdown walkthrough — the report skeleton (OSCP write-up, red
+  // attack narrative, purple by-target). Data, not a formatted PDF.
+  ipcMain.handle('data:exportWalkthrough', (_e) => {
+    if (!activeProject) return null
+    const projectDir = getProjectPath(activeProject)
+    const md = buildTargetWalkthrough({ scope: scopeForActiveProject(), generatedAt: new Date().toISOString() })
+    const outDir = path.join(projectDir, 'exports')
+    fs.mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const filePath = path.join(outDir, `redlog-walkthrough-${ts}.md`)
+    fs.writeFileSync(filePath, md)
     return filePath
   })
   // Per-view slice exports — audit finding #80. Same target directory + naming
