@@ -98,6 +98,7 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    anchorForRestart?: (opts?: { toVersion?: string }) => Promise<import('../../core/update-anchor').RestartAnchorResult>
     openExternal: (url: string) => Promise<void>
   }
   ui: {

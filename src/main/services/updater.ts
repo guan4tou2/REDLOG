@@ -1,4 +1,5 @@
 import { app, dialog, shell } from 'electron'
+import { anchorBeforeRestart } from '../../core/update-anchor'
 
 // Lightweight update checker. Full auto-download+install (electron-updater) needs
 // a code-signed build on macOS, which we don't ship, so instead we check the
@@ -86,7 +87,15 @@ export async function checkForUpdates(opts: { manual?: boolean } = {}): Promise<
       type: 'info', buttons: ['前往下載', '稍後'], defaultId: 0, cancelId: 1,
       title: '有新版本', message: `RedLog ${latest.version} 可用(目前 ${app.getVersion()})`, detail
     })
-    if (r.response === 0) await shell.openExternal(latest.url)
+    if (r.response === 0) {
+      // 5a "重啟前先錨定鏈頭": the operator is about to quit and reinstall, so
+      // anchor the head + mark the expected gap before sending them to the
+      // download page. Best-effort — never block the update on it.
+      try {
+        await anchorBeforeRestart({ fromVersion: app.getVersion(), toVersion: latest.version })
+      } catch { /* anchoring is best-effort; do not block the download */ }
+      await shell.openExternal(latest.url)
+    }
   } else if (manual) {
     await dialog.showMessageBox({
       type: 'info', buttons: ['好'], title: '已是最新版',
