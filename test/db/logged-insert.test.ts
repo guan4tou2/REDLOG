@@ -84,6 +84,18 @@ describeDB('insertEvent — two-tier dispatch (v0.13.0)', () => {
     expect(loggedRows.map((r) => r.id)).toContain(ev!.id)
   })
 
+  it('pcap.connection_attempt lands in events_logged (v0.15 producer)', () => {
+    // The pcap agent is high-volume network metadata — it must not bloat the
+    // chained spine. Regression guard for the LOGGED_TIER entries.
+    const ev = events.insertEvent('pcap', {
+      subtype: 'connection_attempt', dst_port: 22, proto: 'tcp'
+    }, { operatorId, targetId: '10.10.11.24' })
+    expect(ev!.tier).toBe('logged')
+    const db = getDB()
+    const loggedRows = db.prepare('SELECT id FROM events_logged').all() as Array<{ id: string }>
+    expect(loggedRows.map((r) => r.id)).toContain(ev!.id)
+  })
+
   it('logged insert does NOT bump the chain event count', () => {
     events.insertEvent('shell', { subtype: 'command_start', command: 'ls' }, { operatorId })
     const beforeCount = events.getEventCount()
