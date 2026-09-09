@@ -31,10 +31,11 @@ date: 2026-09-09T00:00:00Z
 | **pcap 擷取** | `hooks/pcap-agent.py`(CLI producer,同 mitmproxy);API 白名單 + LOGGED_TIER 已接 | 時間軸 pcap = 流量組多一列;設定裡的擷取來源啟動器/狀態 |
 | **10a 因果鏈** | IPC `events:hostChain(host)` → `{eventCount,operatorCount,firstSeen,lastSeen,chain[]}` | **Inspector〈相關〉面板**:表頭 + 策展鏈清單、command 對摺(`collapseCommandPairs`)、範圍徽章(`lib/scope.ts`)、當前事件釘選、〈在目標頁開啟〉/⌘↩ |
 | **5a 更新前錨定** | `core/update-anchor.ts` `anchorBeforeRestart()`;IPC `app:anchorForRestart`;updater「前往下載」已自動觸發 | 狀態列青點、不彈視窗的更新卡、「約 8 秒不記錄」確認框 |
+| **5c 操作員金鑰管理** | IPC `operators:create`/`rotateToken`/`revoke`/`rename`/`pubKey`;`operators:list` 已補 `signerPubKey`;token 寫 `~/.redlog/tokens/<id>.token`(0600、專案樹外),IPC 只回**檔案路徑**不回 raw token(§10) | 5c 操作員頁:清單(名稱/主要/建立時間/公鑰)、〈新增〉、〈輪替金鑰〉、〈撤銷〉、〈改名〉;金鑰檔用 `data:revealPath` 揭示,不在畫面顯示 token |
 
 **仍未動(多為 UI 為主,後端多已具備)**:3c 需要注意互動彈出層(`dismissIssue` 後端在)、2b 終端機
-per-pane 記錄中/未記錄 chip、5b 終端機設定頁(config 後端在)、4d 逐字稿首行/自動展開、4b 違規展開 +
-inline 加入允許清單、5c 操作員金鑰管理 UI、4e 標記圓點嚴重度 + 截圖圖示、2c 標記對話框〈將一併記錄〉、
+per-pane 記錄中/未記錄 chip(**後端已就緒**:`terminal:list` 每列已回 `recording`/`castBytes`/`castTruncated`/`castStartedAt`)、5b 終端機設定頁(config 後端在)、4d 逐字稿首行/自動展開、4b 違規展開 +
+inline 加入允許清單、5c 操作員金鑰管理 UI(**後端已就緒,見上表**)、4e 標記圓點嚴重度 + 截圖圖示、2c 標記對話框〈將一併記錄〉、
 2d 截圖 ×N/SHA-256/批次刪除升級、時間軸 Inspector 分頁/事件流 >50 折疊/鏈警示/在逐字稿上顯示/圖例中文。
 **刻意不做**(2026-09-09 裁定):flag/proof 偵測、MITRE 技術欄(非通用工具定位);2a PDF 報告(改純資料匯出);
 at-rest 加密(維持「信任本機」假設,暫不)。
