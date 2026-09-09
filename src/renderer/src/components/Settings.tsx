@@ -736,6 +736,17 @@ export default function Settings(): JSX.Element {
                 ))}
               </div>
               <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
+
+              <label className="flex items-start gap-2 mt-3 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.screenshot?.captureOnCommand ?? false}
+                  onChange={(e) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: e.target.checked } })}
+                  className="mt-0.5 accent-redlog-accent"
+                />
+                <span className="text-redlog-text-dim">{t('settings.screenshot.onCommand')}</span>
+              </label>
+              <p className="text-xs text-redlog-text-faint mt-1">{t('settings.screenshot.onCommandHint')}</p>
             </FieldGroup>}
 
             {/* Size-pressure eviction budgets. The rotation LOGIC shipped in
