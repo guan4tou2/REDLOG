@@ -12,6 +12,7 @@ const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    anchorForRestart: (opts?: { toVersion?: string }) => ipcRenderer.invoke('app:anchorForRestart', opts) as Promise<import('../core/update-anchor').RestartAnchorResult>,
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
   },
   ui: {
