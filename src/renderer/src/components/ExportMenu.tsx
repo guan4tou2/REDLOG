@@ -136,6 +136,23 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
               count={totalCount}
               onPick={() => void run(t('export.all'), () => window.redlog.data.exportJson())}
             />
+            {/* NDJSON for a shared log store (ELK/Filebeat): one redacted event
+                per line, ISO @timestamp. Data, not a bundle. */}
+            <Option
+              label={t('export.ndjson')}
+              onPick={() => void run(t('export.ndjson'), () => {
+                const api = window.redlog.data as { exportNdjson?: (o?: { scopeOnly?: boolean; scrubPii?: boolean }) => Promise<string | null> }
+                return api.exportNdjson?.() ?? Promise.resolve(null)
+              })}
+            />
+            {/* Per-target Markdown walkthrough — the report skeleton. */}
+            <Option
+              label={t('export.walkthrough')}
+              onPick={() => void run(t('export.walkthrough'), () => {
+                const api = window.redlog.data as { exportWalkthrough?: () => Promise<string | null> }
+                return api.exportWalkthrough?.() ?? Promise.resolve(null)
+              })}
+            />
 
             <div className="border-t border-redlog-border my-1" />
             {/* Separated: a signed archive for someone challenging the record
