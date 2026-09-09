@@ -193,7 +193,14 @@ const api: RedLogAPI = {
     status: () => ipcRenderer.invoke('clock:status')
   },
   operators: {
-    list: () => ipcRenderer.invoke('operators:list')
+    list: () => ipcRenderer.invoke('operators:list'),
+    // create/rotateToken return the token FILE path (~/.redlog/tokens/<id>.token),
+    // never the raw token — the UI reveals the file rather than displaying it (§10).
+    create: (name: string) => ipcRenderer.invoke('operators:create', { name }),
+    rotateToken: (id: string) => ipcRenderer.invoke('operators:rotateToken', id),
+    revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
+    rename: (id: string, name: string) => ipcRenderer.invoke('operators:rename', id, name),
+    pubKey: (id: string) => ipcRenderer.invoke('operators:pubKey', id)
   },
   visibility: {
     signals: () => ipcRenderer.invoke('visibility:signals')
