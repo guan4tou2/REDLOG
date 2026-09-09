@@ -22,24 +22,43 @@ export class ScreenshotAgent {
   // the frame is skipped — the .cast stream still has the raw bytes if
   // needed.
   private lastDHash: bigint | null = null
-  // Hamming distance below which two frames count as visually identical. 5
-  // out of 64 bits is empirically forgiving: mouse cursor moved but no window
-  // changed = ~2-3, one line of new terminal output = ~6-10.
-  private static readonly DHASH_SKIP_THRESHOLD = 5
+  // Hamming distance below which two frames count as visually identical, so an
+  // automatic capture is skipped. Operator-configurable (config.screenshot.
+  // diffThreshold): 5/64 is empirically forgiving (mouse cursor ≈2-3, one line
+  // of new terminal output ≈6-10); higher stores only bigger changes; `0`
+  // disables perceptual dedup and stores every non-byte-identical frame.
+  private diffThreshold = 5
+  // Opt-in: capture a frame when a shell command finishes, linked to it.
+  private captureOnCommand = false
 
   configure(opts: {
     engagementId?: string
     operatorId?: string
     quality?: number
     intervalSec?: number
+    diffThreshold?: number
+    captureOnCommand?: boolean
   }): void {
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
     if (opts.quality) this.quality = opts.quality
+    if (opts.diffThreshold !== undefined) this.diffThreshold = Math.max(0, Math.floor(opts.diffThreshold))
+    if (opts.captureOnCommand !== undefined) this.captureOnCommand = opts.captureOnCommand
     if (opts.intervalSec !== undefined) {
       this.intervalSec = Math.max(0, Math.floor(opts.intervalSec))
       this.applyInterval()
     }
+  }
+
+  /** A shell command_end landed. When captureOnCommand is on, grab a frame
+   *  linked to that command via `_causes` so a report can pair "command →
+   *  resulting screen" without a manual marker. Uses the 'command' trigger, so
+   *  the perceptual dedup still skips a command that changed nothing visible
+   *  (a text-only terminal step is better read from its `.cast` output anyway).
+   *  No-op when disabled — the event handler calls it unconditionally. */
+  async onCommandEnd(causeEventId: string): Promise<void> {
+    if (!this.captureOnCommand) return
+    await this.captureNow('command', causeEventId).catch(() => { /* transient */ })
   }
 
   // Start / stop the periodic loop when settings change. Called on configure
@@ -80,14 +99,17 @@ export class ScreenshotAgent {
       if (trigger !== 'manual') {
         // First-pass exact-bytes dedup (rare hit, but zero-cost).
         if (dedupKey === this.lastHash) return null
-        // Perceptual dedup — only for automatic triggers (periodic / idle).
+        // Perceptual dedup — only for automatic triggers (periodic / idle),
+        // and only when enabled (diffThreshold > 0; 0 stores every frame).
         // Manual captures always land regardless of similarity.
-        const dHash = this.computeDHash(image)
-        if (this.lastDHash != null) {
-          const dist = ScreenshotAgent.hammingDistance(dHash, this.lastDHash)
-          if (dist < ScreenshotAgent.DHASH_SKIP_THRESHOLD) return null
+        if (this.diffThreshold > 0) {
+          const dHash = this.computeDHash(image)
+          if (this.lastDHash != null) {
+            const dist = ScreenshotAgent.hammingDistance(dHash, this.lastDHash)
+            if (dist < this.diffThreshold) return null
+          }
+          this.lastDHash = dHash
         }
-        this.lastDHash = dHash
       }
       this.lastHash = dedupKey
 

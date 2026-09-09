@@ -98,6 +98,7 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
+    anchorForRestart?: (opts?: { toVersion?: string }) => Promise<import('../../core/update-anchor').RestartAnchorResult>
     openExternal: (url: string) => Promise<void>
   }
   ui: {
@@ -145,6 +146,7 @@ interface RedLogAPI {
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
     /** §10: distinct hosts across the timeline for ⌘K host search. */
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
+    hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
     searchCasts?: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string
@@ -176,6 +178,8 @@ interface RedLogAPI {
   screenshot: {
     capture: (causeEventId?: string) => Promise<string | null>
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
+    /** 2d batch-delete: subset of these screenshot ids that a marker cites. */
+    markerReferenced: (ids: string[]) => Promise<string[]>
   }
   scope: {
     getViolations: () => Promise<Array<{
@@ -231,6 +235,8 @@ interface RedLogAPI {
     exportLoot?: () => Promise<string | null>
     exportViolations?: () => Promise<string | null>
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
+    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => Promise<string | null>
+    exportWalkthrough?: () => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
   }
   visibility: {
@@ -258,7 +264,11 @@ interface RedLogAPI {
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
-    list: () => Promise<Array<{ id: string; pid: number; lastActivity: number }>>
+    list: () => Promise<Array<{
+      id: string; pid: number; lastActivity: number
+      /** 2b per-pane chip: open cast stream and under the size cap. */
+      recording: boolean; castBytes: number; castTruncated: boolean; castStartedAt: number | null
+    }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
     replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
@@ -282,6 +292,19 @@ interface RedLogAPI {
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
+    /** Returns { id, name, signerPubKey, tokenPath } — or { error, id } if the
+     *  DB write failed. tokenPath points at the written ~/.redlog/tokens file;
+     *  the raw token is never returned to the renderer (§10). */
+    create: (name: string) => Promise<
+      { id: string; name: string; signerPubKey: string | null; tokenPath: string }
+      | { error: string; id: string }
+      | null
+    >
+    /** Rotates the token, rewrites the token file; returns { id, tokenPath }. */
+    rotateToken: (id: string) => Promise<{ id: string; tokenPath: string } | null>
+    revoke: (id: string) => Promise<boolean>
+    rename: (id: string, name: string) => Promise<boolean>
+    pubKey: (id: string) => Promise<string | null>
   }
   hooks: {
     detect: () => Promise<HookInfo[]>
@@ -361,6 +384,8 @@ interface OperatorInfo {
   isPrimary: boolean
   createdAt: number
   revokedAt: number | null
+  /** ed25519 public key for §5c key display; null if this operator never signed. */
+  signerPubKey?: string | null
 }
 
 interface CalendarReceiptInfo {

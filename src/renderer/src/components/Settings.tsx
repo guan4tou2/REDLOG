@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n, type Locale } from '../i18n'
+import { usePersistentState } from '../lib/usePersistentState'
 import { toast, toastDeferred } from './Toast'
 import { raiseIssue, clearIssue } from '../lib/issues'
 import { confirm as confirmDialog } from './ConfirmDialog'
@@ -21,7 +22,7 @@ interface ConfigState {
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
-  screenshot: { quality: number; intervalSec?: number }
+  screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
   // Size-pressure eviction budgets (bytes; 0 = unbounded). Distinct from the
   // SINGULAR `screenshot` above, which is capture cadence/quality. These drive
   // sweepBodyStore / sweepArtifactStore (src/core/retention.ts): coldest
@@ -715,6 +716,37 @@ export default function Settings(): JSX.Element {
               <p className="text-xs text-redlog-text-faint">
                 {t('settings.qualityHint')}
               </p>
+
+              <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { v: 0, k: 'settings.screenshot.diff.off' },
+                  { v: 5, k: 'settings.screenshot.diff.standard' },
+                  { v: 12, k: 'settings.screenshot.diff.major' }
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
+                    className={`px-3 py-1 text-xs rounded ${
+                      (config.screenshot.diffThreshold ?? 5) === opt.v
+                        ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                        : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+                    }`}
+                  >{t(opt.k)}</button>
+                ))}
+              </div>
+              <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
+
+              <label className="flex items-start gap-2 mt-3 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.screenshot?.captureOnCommand ?? false}
+                  onChange={(e) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: e.target.checked } })}
+                  className="mt-0.5 accent-redlog-accent"
+                />
+                <span className="text-redlog-text-dim">{t('settings.screenshot.onCommand')}</span>
+              </label>
+              <p className="text-xs text-redlog-text-faint mt-1">{t('settings.screenshot.onCommandHint')}</p>
             </FieldGroup>}
 
             {/* Size-pressure eviction budgets. The rotation LOGIC shipped in
@@ -1727,13 +1759,16 @@ const UI_SCALE_OPTIONS: Array<{ value: number; labelKey: string }> = [
   { value: 1.3, labelKey: 'settings.uiScale.xlarge' }
 ]
 function UiScaleControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
-  const [scale, setScale] = useState<number>(() => {
-    const raw = parseFloat(localStorage.getItem(UI_SCALE_KEY) || '')
-    return Number.isFinite(raw) && raw >= 0.9 && raw <= 1.5 ? raw : 1
+  const [scale, setScale] = usePersistentState<number>(UI_SCALE_KEY, 1, {
+    parse: (raw) => {
+      const parsed = parseFloat(raw || '')
+      return Number.isFinite(parsed) && parsed >= 0.9 && parsed <= 1.5 ? parsed : 1
+    }
   })
   useEffect(() => {
     document.body.style.setProperty('--app-zoom', String(scale))
-    localStorage.setItem(UI_SCALE_KEY, String(scale))
+    // usePersistentState already mirrors `scale` into UI_SCALE_KEY; this effect
+    // only carries the side-effects that must ride the same value change.
     // A bigger zoom means fewer rows on screen, so it implies tight density —
     // unless the operator has picked a density themselves (§3).
     applyDensity(resolveDensity(scale, storedDensity()))

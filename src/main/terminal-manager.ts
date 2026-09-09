@@ -375,11 +375,22 @@ export function killTerminal(id: string): void {
   sessions.delete(id)
 }
 
-export function listTerminals(): Array<{ id: string; pid: number; lastActivity: number }> {
+export function listTerminals(): Array<{
+  id: string; pid: number; lastActivity: number
+  recording: boolean; castBytes: number; castTruncated: boolean; castStartedAt: number | null
+}> {
   return Array.from(sessions.values()).map((s) => ({
     id: s.id,
     pid: s.pty.pid,
-    lastActivity: s.lastActivity
+    lastActivity: s.lastActivity,
+    // 2b per-pane 記錄中/未記錄 chip (§5b/§2). A pane is recording only while a
+    // cast stream is open and has not hit the size cap; a null stream means the
+    // cast never opened (e.g. casts/ unwritable) and the pane runs unrecorded —
+    // a state the operator must be able to see, not a silent gap.
+    recording: s.castStream !== null && !s.castTruncated,
+    castBytes: s.castBytes,
+    castTruncated: s.castTruncated,
+    castStartedAt: s.castPath ? s.castStart : null
   }))
 }
 

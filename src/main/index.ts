@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol } from 'electron'
-import { electronApp } from '@electron-toolkit/utils'
+import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
 import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
@@ -10,13 +10,15 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import { redactEventsForExport } from '../core/redact-export'
+import { eventsToNdjson } from '../core/ndjson-export'
+import { buildTargetWalkthrough } from '../core/walkthrough-export'
 import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../core/overlay-layout'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
@@ -41,7 +43,8 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  listOperators
+  listOperators, createOperator, updateOperatorToken, revokeOperator, renameOperator,
+  generateToken, slugifyOperatorId, getOperatorSignerPubKey
 } from '../core/db/operators'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
@@ -67,7 +70,9 @@ import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk,
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
 import { detectLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
+import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
+import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
 
@@ -542,7 +547,9 @@ function startProject(project: ProjectMeta): void {
     engagementId,
     operatorId,
     quality: config.screenshot.quality,
-    intervalSec: config.screenshot.intervalSec ?? 0
+    intervalSec: config.screenshot.intervalSec ?? 0,
+    diffThreshold: config.screenshot.diffThreshold ?? 5,
+    captureOnCommand: config.screenshot.captureOnCommand ?? false
   })
 
   invalidateViolationCount()
@@ -1118,6 +1125,30 @@ app.whenReady().then(() => {
   // so RedLog always shows in the Dock, matching the packaged app.
   if (process.platform === 'darwin') app.dock?.show()
 
+  // Content-Security-Policy. windows.ts blocks navigation off our own origin;
+  // this caps what the loaded document may fetch/execute, so a captured link or
+  // an evidence body rendered into the DOM can't pull remote script. Delivered
+  // as a header (not a <meta> tag) so prod file:// stays locked to 'self' while
+  // dev permits Vite's inline HMR preamble + websocket. Both renderer entries
+  // share defaultSession, so one handler covers index.html and overlay.html.
+  //
+  // Stamps every response and strips any prior CSP first: stamping unconditionally
+  // guarantees the document is covered however file:// classifies its request,
+  // and a CSP header on the harmless redlog-screenshot image subresource is
+  // ignored by the browser. This is the item flagged 'needs runtime validation'
+  // — confirm the header is actually delivered on the packaged file:// load
+  // (see the verify steps), because the failure mode here is fail-open.
+  const csp = contentSecurityPolicy({ dev: is.dev, rendererUrl: process.env['ELECTRON_RENDERER_URL'] })
+  session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+    const headers: Record<string, string[]> = {}
+    for (const [k, v] of Object.entries(details.responseHeaders ?? {})) {
+      if (k.toLowerCase() === 'content-security-policy') continue
+      headers[k] = Array.isArray(v) ? v : [String(v)]
+    }
+    headers['Content-Security-Policy'] = [csp]
+    cb({ responseHeaders: headers })
+  })
+
   // Allow the renderer's opt-in geolocation request (Settings ▸ 網路 ▸ show Wi-Fi
   // name). Granting macOS Location Services un-redacts the SSID for `ipconfig`.
   // Nothing else is permitted.
@@ -1262,7 +1293,9 @@ app.whenReady().then(() => {
     }, targets)
     screenshotAgent.configure({
       quality: newConfig.screenshot.quality,
-      intervalSec: newConfig.screenshot.intervalSec ?? 0
+      intervalSec: newConfig.screenshot.intervalSec ?? 0,
+      diffThreshold: newConfig.screenshot.diffThreshold ?? 5,
+      captureOnCommand: newConfig.screenshot.captureOnCommand ?? false
     })
     // v0.9.7: refresh the snapshot capture-health reads its on/off switches
     // from, so toggling a source updates the card on the next poll instead of
@@ -1402,6 +1435,9 @@ app.whenReady().then(() => {
   ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
   ipcMain.handle('events:aggregateTargets', () => activeProject ? aggregateTargets() : [])
   ipcMain.handle('events:distinctHosts', () => activeProject ? distinctHosts() : [])
+  // 10a Inspector 〈相關〉: a host's curated causal chain + header aggregate.
+  ipcMain.handle('events:hostChain', (_e, host: string, opts?: { chainLimit?: number }) =>
+    activeProject ? hostCausalChain(host, opts ?? {}) : null)
 
   // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
   // §2.4). Separate from events:search because the two answer different
@@ -1501,6 +1537,12 @@ app.whenReady().then(() => {
       send(overlayWindow, 'pivots:changed', p)
       send(mainWindow, 'pivots:changed', p)
     }
+    // 2b/OSCP: opt-in screenshot linked to a finished command (_causes → this
+    // event). No-op unless config.screenshot.captureOnCommand is on; the agent
+    // owns the flag and the perceptual-dedup skip.
+    if (event.agentType === 'shell' && d.subtype === 'command_end') {
+      screenshotAgent.onCommandEnd(event.id).catch(() => { /* best-effort */ })
+    }
   })
   ipcMain.handle('pivots:getActive', () => getActivePivots())
 
@@ -1588,6 +1630,14 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+
+  // 2d batch-delete guard (design §12 / §28.7): of a batch of screenshot event
+  // ids, which are referenced by a marker. The renderer uses this to pick the
+  // confirmation tier — a plain checkbox when nothing is cited, type-to-confirm
+  // when a finding points at one. The delete itself still goes through
+  // screenshot:deleteFile one file at a time, each writing an audited tombstone.
+  ipcMain.handle('screenshot:markerReferenced', (_e, ids: unknown) =>
+    activeProject && Array.isArray(ids) ? screenshotsReferencedByMarker(ids.map(String)) : [])
 
   // --- Scope ---
   // Read from the chain, not from the in-process log the alert runtime keeps.
@@ -1808,6 +1858,39 @@ app.whenReady().then(() => {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const filePath = path.join(outDir, `redlog-${ts}.json`)
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
+    return filePath
+  })
+  // NDJSON export for a shared log store (ELK / Filebeat): one redacted event
+  // per line, ISO `@timestamp` alias, chain columns kept. `scopeOnly` excludes
+  // out-of-scope rows entirely (+ no-target noise) rather than only masking
+  // their content; `scrubPii` strips the operator's home path / username /
+  // hostname. Both default off (single-operator export keeps attribution).
+  ipcMain.handle('data:exportNdjson', (_e, opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => {
+    if (!activeProject) return null
+    const projectDir = getProjectPath(activeProject)
+    const scope = scopeForActiveProject()
+    const events = opts?.scopeOnly && scope
+      ? queryScopeFilteredEvents(scope.targets)
+      : queryEvents({ limit: 100000 })
+    const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: opts?.scrubPii === true })
+    const outDir = path.join(projectDir, 'exports')
+    fs.mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const filePath = path.join(outDir, `redlog-${ts}.ndjson`)
+    fs.writeFileSync(filePath, ndjson)
+    return filePath
+  })
+  // Per-target Markdown walkthrough — the report skeleton (OSCP write-up, red
+  // attack narrative, purple by-target). Data, not a formatted PDF.
+  ipcMain.handle('data:exportWalkthrough', (_e) => {
+    if (!activeProject) return null
+    const projectDir = getProjectPath(activeProject)
+    const md = buildTargetWalkthrough({ scope: scopeForActiveProject(), generatedAt: new Date().toISOString() })
+    const outDir = path.join(projectDir, 'exports')
+    fs.mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const filePath = path.join(outDir, `redlog-walkthrough-${ts}.md`)
+    fs.writeFileSync(filePath, md)
     return filePath
   })
   // Per-view slice exports — audit finding #80. Same target directory + naming
@@ -2141,9 +2224,50 @@ app.whenReady().then(() => {
     if (!activeProject) return []
     return listOperators().map((op) => ({
       id: op.id, name: op.name, isPrimary: op.isPrimary,
-      createdAt: op.createdAt, revokedAt: op.revokedAt
+      createdAt: op.createdAt, revokedAt: op.revokedAt,
+      signerPubKey: op.signerPubKey  // ed25519 public key, for §5c key display
     }))
   })
+
+  // §5c operator management. Tokens are written to ~/.redlog/tokens/<id>.token
+  // (0600, outside the project tree so no export sweeps them up — §10), never
+  // returned to the renderer to copy; the caller reveals the file via
+  // data:revealPath. create/rotateToken return the token file PATH, not the token.
+  const writeOperatorToken = (id: string, token: string): string => {
+    const dir = path.join(homedir(), '.redlog', 'tokens')
+    fs.mkdirSync(dir, { recursive: true })
+    const p = path.join(dir, `${id}.token`)
+    fs.writeFileSync(p, token, { mode: 0o600 })
+    try { fs.chmodSync(p, 0o600) } catch { /* platforms without POSIX modes */ }
+    return p
+  }
+  ipcMain.handle('operators:create', (_e, opts: { name: string }) => {
+    if (!activeProject) return null
+    const name = String(opts?.name ?? '').trim()
+    if (!name) return null
+    const id = slugifyOperatorId(name)
+    try {
+      const token = generateToken()
+      const op = createOperator({ id, name, token })
+      return { id: op.id, name: op.name, signerPubKey: op.signerPubKey, tokenPath: writeOperatorToken(id, token) }
+    } catch {
+      // slugifyOperatorId appends a random suffix so id collisions are
+      // effectively impossible; this is a defensive backstop (DB write failed).
+      return { error: 'create_failed', id }
+    }
+  })
+  ipcMain.handle('operators:rotateToken', (_e, id: string) => {
+    if (!activeProject || typeof id !== 'string' || !id) return null
+    const token = generateToken()
+    if (!updateOperatorToken(id, token)) return null
+    return { id, tokenPath: writeOperatorToken(id, token) }
+  })
+  ipcMain.handle('operators:revoke', (_e, id: string) =>
+    activeProject && typeof id === 'string' ? revokeOperator(id) : false)
+  ipcMain.handle('operators:rename', (_e, id: string, name: string) =>
+    activeProject && typeof id === 'string' && typeof name === 'string' ? renameOperator(id, name.trim()) : false)
+  ipcMain.handle('operators:pubKey', (_e, id: string) =>
+    activeProject && typeof id === 'string' ? getOperatorSignerPubKey(id) : null)
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerBookmark)
@@ -2160,6 +2284,14 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  // 5a: anchor the chain head + mark the expected recording gap before the
+  // design's update card sends the operator to quit-and-reinstall.
+  ipcMain.handle('app:anchorForRestart', (_e, opts?: { toVersion?: string }) =>
+    anchorBeforeRestart({
+      fromVersion: app.getVersion(),
+      toVersion: opts?.toVersion ?? null,
+      engagementId: currentEngagementId ?? 'default'
+    }))
   // Renderer needs a way to open a URL in the operator's real browser (marks
   // page, plugin homepage, etc.). Only http/https allowed — Electron's
   // openExternal can dispatch file:/// and other schemes with unbounded side

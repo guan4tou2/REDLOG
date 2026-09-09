@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { replayStore } from '../lib/replayStore'
 import { useI18n } from '../i18n'
 import en from '../i18n/en.json'
@@ -10,6 +10,8 @@ import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
+import { usePersistentState } from '../lib/usePersistentState'
+import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
@@ -722,12 +724,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // agent lane. Per-project persisted; default off (existing operators
   // don't lose visibility on upgrade). Toggle chip in the header + `?`
   // cheatsheet lists it.
-  const [collapseAgentTurns, setCollapseAgentTurns] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-collapse-agent') === '1' } catch { return false }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-collapse-agent', collapseAgentTurns ? '1' : '0') } catch { /* ignore */ }
-  }, [collapseAgentTurns])
+  const [collapseAgentTurns, setCollapseAgentTurns] = usePersistentState<boolean>(
+    'redlog-timeline-collapse-agent', false,
+    { parse: (raw) => raw === '1', serialize: (v) => (v ? '1' : '0') }
+  )
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
@@ -761,6 +761,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     if (!collapseAgentTurns) return 0
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
+  // A tool_call and its tool_result are two separate chained events (each
+  // independently hashed + timestamped, so the chain records real call→return
+  // latency and order). That makes the exchange easy to audit but splits it
+  // across two dots. This index maps tool_use_id → each half in the loaded set
+  // so the detail panel can show the other half inline (see pairedToolHalf).
+  // Keyed on rawEvents so it still finds a result the agent-turn collapse hides;
+  // a partner not yet paged in is simply absent — a graceful no-op.
+  const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   // §6: the Inspector is a separate layer from the selection. They used to be
   // the same state, so an operator could not walk the timeline by keyboard
@@ -1012,12 +1020,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // newest event visible while enabled. On by default; the header badge
   // reflects "🔴 LIVE" vs "⏸ Xm behind" state. `now` state ticks every second
   // just so the "behind" label refreshes without waiting for a new event.
-  const [followMode, setFollowMode] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-follow-mode') !== '0' } catch { return true }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-follow-mode', followMode ? '1' : '0') } catch { /* ignore */ }
-  }, [followMode])
+  const [followMode, setFollowMode] = usePersistentState<boolean>(
+    'redlog-timeline-follow-mode', true,
+    { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
+  )
   const [atRightEdge, setAtRightEdge] = useState(true)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -1029,25 +1035,18 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // and system.recording_paused/resumed pairs. Toggle persisted; default on
   // because it's the primary visual anchor when reviewing a multi-terminal
   // engagement.
-  const [sessionDividers, setSessionDividers] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-session-dividers') !== '0' } catch { return true }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-session-dividers', sessionDividers ? '1' : '0') } catch { /* ignore */ }
-  }, [sessionDividers])
+  const [sessionDividers, setSessionDividers] = usePersistentState<boolean>(
+    'redlog-timeline-session-dividers', true,
+    { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
+  )
 
   // v0.6.91 S7: timezone picker. `projectTz` is filled from
   // config.engagement.timezone when the panel mounts; if unset or invalid,
   // the "Project" option falls back to Local (via formatTs).
-  const [tz, setTz] = useState<TzMode>(() => {
-    try {
-      const raw = localStorage.getItem('redlog-timeline-tz')
-      return raw === 'utc' || raw === 'project' ? raw : 'local'
-    } catch { return 'local' }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-tz', tz) } catch { /* ignore */ }
-  }, [tz])
+  const [tz, setTz] = usePersistentState<TzMode>(
+    'redlog-timeline-tz', 'local',
+    { parse: (raw) => (raw === 'utc' || raw === 'project' ? raw : 'local') }
+  )
   const [projectTz, setProjectTz] = useState<string | null>(null)
   useEffect(() => {
     window.redlog.config?.get?.().then((c) => {
@@ -2838,25 +2837,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >+</button>
         </div>
 
-        {/* v0.9.3 U3: collapse-agent-turns chip. Off by default (existing
-            operators don't lose visibility on upgrade). When on, per-turn
-            agent subtypes are dropped from the render pipeline — the
-            hidden count is shown so the empty agent lane doesn't look
-            like a bug. Same visual weight as the other filter chips. */}
-        <button
-          onClick={() => setCollapseAgentTurns((v) => !v)}
-          title={collapseAgentTurns
-            ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
-            : t('timeline.collapseAgent.hint')}
-          className={`ml-2 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
-        >
-          <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
-          <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
-          {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-            <span className="font-mono tabular-nums text-xs text-lime-400/80">−{hiddenAgentTurnCount}</span>
-          )}
-        </button>
-
         {/* v0.11.6 (AUDIT V7): idle-gap compression. Only offered when there is
             something to compress — a chip that never does anything is noise.
             The count is on the chip because a compressed axis is not
@@ -3112,15 +3092,17 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
             const externalOnly = EXTERNAL_ONLY_LANES.has(id)
-            // v0.6.97 F: external-only lanes (credential_use, c2_checkin)
-            // stay hidden on an internal engagement — pre-v0.6.97 they
-            // rendered dimmed with a tooltip, but on a laptop-only pentest
-            // they'll never populate and just clutter the chip row. Once a
-            // real event lands they auto-reappear (populatedLanes shifts).
-            if (externalOnly && empty) return null
+            // A lane that has captured nothing is hidden from the chip row
+            // rather than shown dimmed: an empty chip is noise, and the lane
+            // reappears the instant a real event lands (populatedLanes shifts).
+            // v0.6.97 did this only for external-only lanes (credential_use,
+            // c2_checkin); v0.15 extends it to every not-yet-captured lane. A
+            // populated lane the operator toggled OFF still renders (struck
+            // through) so it can be restored — that's `hidden`, not `empty`.
+            if (empty) return null
             return (
+              <Fragment key={id}>
               <button
-                key={id}
                 onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
                 disabled={empty}
                 className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
@@ -3136,6 +3118,26 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               >
                 {laneLabels[id]}
               </button>
+              {/* Condense-chat rides next to the AI lane it acts on — it hides
+                  that lane's per-turn events (keeping snapshot + session_end).
+                  Sits here, not with the zoom/idle density controls, because it
+                  filters ONE lane rather than the whole view. */}
+              {id === 'agent' && (
+                <button
+                  onClick={() => setCollapseAgentTurns((v) => !v)}
+                  title={collapseAgentTurns
+                    ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+                    : t('timeline.collapseAgent.hint')}
+                  className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]'}`}
+                >
+                  <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
+                  <span>{t('timeline.collapseAgent.label')}</span>
+                  {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
+                    <span className="tabular-nums text-lime-400/80">−{hiddenAgentTurnCount}</span>
+                  )}
+                </button>
+              )}
+              </Fragment>
             )
           })}
         </div>
@@ -3901,7 +3903,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               on click without another expand. tool_call renders the
               parsed input JSON; tool_result its output stream. */}
           {selectedEvent.agentType === 'agent' && (
-            <AgentTurnDetail data={selectedEvent.data as Record<string, unknown>} />
+            <AgentTurnDetail
+              data={selectedEvent.data as Record<string, unknown>}
+              paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
+            />
           )}
           {/* v0.11.2 (T6): scanner and browser events carried their payloads
               all along — mitmproxy sends request params and a 2 KB
@@ -4079,8 +4084,15 @@ function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, 
 
 /** v0.9.2 U1: renders the payload of one `agent.*` event in the detail
  *  panel. Reuses CollapsibleStream + MetadataGrid so operators get the
- *  same expand/copy affordances they already know from shell events. */
-function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+ *  same expand/copy affordances they already know from shell events.
+ *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
+ *  other half so both the request and its return read in one panel. */
+function AgentTurnDetail(
+  { data, paired }: {
+    data: Record<string, unknown>
+    paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
+  }
+): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isMessage = subtype === 'user_message' || subtype === 'assistant_message'
@@ -4109,6 +4121,18 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
   const outputText = typeof data.output === 'string' ? (data.output as string) : ''
   const outputBytes = typeof data.output_length === 'number' ? (data.output_length as number) : outputText.length
 
+  // The paired half (v0.15): a selected tool_call pairs with its result's
+  // output; a selected tool_result pairs with its call's input. Extracted the
+  // same way as the primary event's own fields so the inline pair reads
+  // identically to selecting the other dot directly.
+  const pairedResultOut = paired?.kind === 'result' && typeof paired.data.output === 'string'
+    ? (paired.data.output as string) : ''
+  const pairedResultBytes = paired?.kind === 'result' && typeof paired.data.output_length === 'number'
+    ? (paired.data.output_length as number) : pairedResultOut.length
+  const pairedCallInput = paired?.kind === 'call'
+    ? (paired.data.tool_input as Record<string, unknown> | undefined) : undefined
+  const pairedCallStr = pairedCallInput ? safePretty(pairedCallInput) : ''
+
   return (
     <div className="mt-2 space-y-1.5">
       {(isMessage || isThinking) && bodyText.length > 0 && (
@@ -4125,6 +4149,28 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
         <CollapsibleStream
           label={t('timeline.detail.agentToolInput', { name: String(data.tool_name ?? 'tool') })}
           content={toolInputStr}
+          accent="zinc"
+          startOpen={false}
+        />
+      )}
+      {/* v0.15: the tool_call's paired result, inline — startOpen so the
+          operator reads the return without hunting for its separate dot. */}
+      {isToolCall && paired?.kind === 'result' && pairedResultOut.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolOutput')}
+          content={pairedResultOut}
+          bytes={pairedResultBytes}
+          truncated={paired.data.truncated === true}
+          accent="emerald"
+          startOpen={true}
+        />
+      )}
+      {/* v0.15: the tool_result's paired call input, inline above its output —
+          so a selected result shows what was asked. */}
+      {isToolResult && paired?.kind === 'call' && pairedCallStr.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolInput', { name: String(paired.data.tool_name ?? 'tool') })}
+          content={pairedCallStr}
           accent="zinc"
           startOpen={false}
         />

@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { eventBus } from '../event-bus'
 import os from 'os'
-import { getDB } from './index'
+import { getDB, getReadonlyDB } from './index'
 import { monotonicNs, getNtpOffsetMs } from '../clock'
 import { signEvent } from '../signing'
 import { storeRaw, type RawRef } from '../raw-store'
@@ -127,7 +127,17 @@ const LOGGED_TIER: ReadonlySet<string> = new Set([
   'process:process_spawn',
   'process:process_exit',
   'system:process_monitor_saturated',
-  'system:process_monitor_ps_unavailable'
+  'system:process_monitor_ps_unavailable',
+  // v0.15: pcap producer (hooks/pcap-agent.py) — high-volume network metadata.
+  // Logged, not chained: a port scan is thousands of probes, and these are
+  // supporting context that earns its keep via `_causes` to the shell command
+  // that ran the scan, not court-alone evidence. Default-chained would bloat
+  // the tamper-evident spine with packet noise.
+  'pcap:connection_attempt',
+  'pcap:port_scan',
+  'pcap:connection_established',
+  'pcap:connection_refused',
+  'pcap:udp_flow'
 ])
 
 // Design doc §4.1 hedged a `system.ip_verdict` special case that would route
@@ -296,6 +306,52 @@ export function canonicalStringify(v: unknown): string {
     parts.push(JSON.stringify(k) + ':' + canonicalStringify(val))
   }
   return '{' + parts.join(',') + '}'
+}
+
+// v0.15 logged-tier integrity (docs/DESIGN-two-tier-chain.md §7.5 / §8): the
+// logged tier is deliberately un-chained and un-signed — see the events_logged
+// schema comment in db/index.ts. That is the tier, not an oversight, so it has
+// no per-row tamper-evidence by design. Rather than pay a per-row hash on the
+// hot write path (which would defeat the tier's whole reason to exist), we fold
+// ONE cheap digest over the tier on demand — at export/audit time — and let the
+// caller record it into the chained tier, where the OTS anchor already reaches.
+// §8 always said the honest way to prove "these logged rows existed at time T"
+// is to hash the logged tier and anchor the hash; this is that hash, in a single
+// index-ordered streaming scan (O(1) memory, canonical-key hashing like the
+// chain), so an export carries a verifiable snapshot with zero write-path cost.
+export function loggedTierDigest(): {
+  count: number
+  sha256: string
+  oldest: number | null
+  newest: number | null
+} {
+  const db = getDB()
+  // Same column projection and ordering the bundle dump uses (bundle-export.ts),
+  // so the digest is a faithful fingerprint of what an export serialises.
+  // iterate() keeps a single row resident regardless of tier size.
+  const rows = db.prepare(
+    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
+            hostname, source_ip, target_id, data, created_at
+     FROM events_logged ORDER BY created_at ASC, rowid ASC`
+  ).iterate() as IterableIterator<Record<string, unknown>>
+  const h = crypto.createHash('sha256')
+  let count = 0
+  let oldest: number | null = null
+  let newest: number | null = null
+  for (const row of rows) {
+    // Newline-delimited canonical rows: the delimiter stops two adjacent rows
+    // from being ambiguous with one row whose fields happen to concatenate to
+    // the same bytes. canonicalStringify sorts keys so the fingerprint is stable
+    // across Node versions and export/import round-trips (same rationale the
+    // chain hash relies on).
+    h.update(canonicalStringify(row))
+    h.update('\n')
+    const ts = row.timestamp as number
+    if (oldest === null || ts < oldest) oldest = ts
+    if (newest === null || ts > newest) newest = ts
+    count++
+  }
+  return { count, sha256: h.digest('hex'), oldest, newest }
 }
 
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
@@ -704,7 +760,9 @@ export function queryEvents(opts: {
    *  logged-tier-only queries (rare — mostly a debug affordance). */
   tier?: 'all' | 'chained' | 'logged'
 }): RedLogEvent[] {
-  const db = getDB()
+  // Heavy read: route through the cached read-only handle so a large timeline
+  // scan doesn't serialise capture writes on the read-write connection.
+  const db = getReadonlyDB()
   const conditions: string[] = []
   const params: unknown[] = []
 
@@ -772,9 +830,27 @@ export function queryEvents(opts: {
     sql = `${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
     bind = [...params, limit]
   } else {
-    sql = `SELECT * FROM (${chainedSelect} UNION ALL ${loggedSelect})
-           ORDER BY timestamp DESC, _row DESC LIMIT ?`
-    bind = [...params, ...params, limit]
+    // Push ORDER BY + LIMIT into EACH arm before the UNION. The outer query
+    // keeps at most `limit` rows, and the top-`limit` of a merge of two
+    // already-sorted inputs is always contained in the top-`limit` of each
+    // input — so capping each arm at `limit` rows changes nothing observable
+    // while bounding what the union materializes at 2×`limit` instead of
+    // (whole `events` + whole `events_logged`). This matters because the only
+    // real pager (Timeline loadMore) seeks with `beforeCreatedAt`, so each arm
+    // already carries `created_at < ?` in its WHERE; without a per-arm LIMIT,
+    // both arms still returned EVERY row older than the cursor (158k+ at
+    // scale) just for the outer LIMIT to discard all but 200. With the cap,
+    // each arm satisfies its own `ORDER BY timestamp DESC` from idx_events_ts /
+    // idx_events_logged_ts and stops after `limit` rows. SQLite forbids
+    // ORDER BY/LIMIT on a bare compound member, hence the `SELECT * FROM (...)`
+    // wrappers; the outer ORDER + LIMIT is the k-way merge over the two capped,
+    // already-sorted arms — same result the single-tier branches above return.
+    sql = `SELECT * FROM (
+             SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+             UNION ALL
+             SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+           ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
+    bind = [...params, limit, ...params, limit, limit]
   }
 
   const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
@@ -848,6 +924,70 @@ export function queryMarkerAmendments(markerIds: string[]): RedLogEvent[] {
   return out
 }
 
+/** Of the given screenshot event ids, which are referenced by a marker.
+ *
+ *  The 2d batch-delete confirmation tiers key on this (design §12 / §28.7): a
+ *  batch containing a screenshot some finding points at gets the type-to-confirm
+ *  tier, not the one-checkbox tier. Deleting stays audited either way — the
+ *  chain records a `system.screenshot_deleted` with `sha256_pre_delete` — so
+ *  this only steers the *warning*, it does not gate the delete itself.
+ *
+ *  The one link that exists runs screenshot→marker: a marker-triggered capture
+ *  stamps the screenshot's `_causes` with the marker id (screenshot-agent.ts);
+ *  `marker:create` strips `_causes`, so markers never point forward at a shot.
+ *  Both types are chained, but the logged arm is queried too for the same
+ *  reason queryMarkerAmendments does — "which table is `marker` in" is a fact
+ *  about today's classifier, not one to hard-code here.
+ *
+ *  Returns the referenced subset in the input order; unknown ids and non-marker
+ *  causes (e.g. a command-linked capture) are simply absent. */
+export function screenshotsReferencedByMarker(screenshotIds: string[]): string[] {
+  if (screenshotIds.length === 0) return []
+  const db = getReadonlyDB()
+  // 1. Pull each screenshot's `_causes` array from the JSON blob. Only rows that
+  //    are actually screenshots — a caller passing a stray id gets it dropped,
+  //    not mis-attributed.
+  const causeIdsByShot = new Map<string, string[]>()
+  const allCauseIds = new Set<string>()
+  for (let i = 0; i < screenshotIds.length; i += 400) {
+    const chunk = screenshotIds.slice(i, i + 400)
+    const holes = chunk.map(() => '?').join(',')
+    const rows = db.prepare(
+      `SELECT id, json_extract(data, '$._causes') AS causes
+         FROM events
+        WHERE agent_type = 'screenshot' AND id IN (${holes})`
+    ).all(...chunk) as Array<{ id: string; causes: string | null }>
+    for (const r of rows) {
+      let causes: string[] = []
+      if (r.causes) {
+        try {
+          const parsed = JSON.parse(r.causes)
+          if (Array.isArray(parsed)) causes = parsed.filter((c): c is string => typeof c === 'string')
+        } catch { /* malformed blob — treat as no references */ }
+      }
+      causeIdsByShot.set(r.id, causes)
+      for (const c of causes) allCauseIds.add(c)
+    }
+  }
+  if (allCauseIds.size === 0) return []
+  // 2. Of every referenced id, which are markers. Markers are chained, but check
+  //    both tiers so a future reclassification does not silently drop half.
+  const markerIds = new Set<string>()
+  const causeList = [...allCauseIds]
+  for (let i = 0; i < causeList.length; i += 400) {
+    const chunk = causeList.slice(i, i + 400)
+    const holes = chunk.map(() => '?').join(',')
+    const rows = db.prepare(
+      `SELECT id FROM events         WHERE agent_type = 'marker' AND id IN (${holes})
+       UNION ALL
+       SELECT id FROM events_logged  WHERE agent_type = 'marker' AND id IN (${holes})`
+    ).all(...chunk, ...chunk) as Array<{ id: string }>
+    for (const r of rows) markerIds.add(r.id)
+  }
+  // 3. A screenshot is referenced when any of its causes resolved to a marker.
+  return screenshotIds.filter((id) => (causeIdsByShot.get(id) ?? []).some((c) => markerIds.has(c)))
+}
+
 export function queryByFlowId(flowId: string): RedLogEvent[] {
   const db = getDB()
   const pattern = `%"flow_id":"${flowId}"%`
@@ -895,7 +1035,9 @@ export function getLatestLoggedTs(): number | null {
 }
 
 export function searchEvents(query: string, limit = 100): RedLogEvent[] {
-  const db = getDB()
+  // Heavy read: an un-indexed full-table LIKE over data/target_id/agent_type —
+  // route it off the write connection.
+  const db = getReadonlyDB()
   const pattern = `%${query}%`
   const rows = db.prepare(
     `SELECT * FROM events WHERE data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?
@@ -905,7 +1047,9 @@ export function searchEvents(query: string, limit = 100): RedLogEvent[] {
 }
 
 export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] {
-  const db = getDB()
+  // Heavy read: the LIMIT-100000 export scan. Read-only handle keeps it off the
+  // write path.
+  const db = getReadonlyDB()
   // Push obvious no-target exclusions into SQL so we don't drag half the
   // engagement's clipboard/system rows into memory just to drop them. Pattern
   // matching against user-supplied scope targets stays in JS because SQLite
@@ -948,7 +1092,8 @@ export interface HostAggregate {
  * aggregation, shaped for the command palette: busiest hosts first, capped.
  */
 export function distinctHosts(limit = 500): HostAggregate[] {
-  const db = getDB()
+  // Heavy read: two-tier json_extract + GROUP BY aggregate.
+  const db = getReadonlyDB()
   const sql = `
     SELECT host, COUNT(*) AS count, MAX(timestamp) AS lastSeen
     FROM (
@@ -984,7 +1129,8 @@ export interface TargetAggregate {
  * project's scope patterns and the stricter CIDR match.
  */
 export function aggregateTargets(): TargetAggregate[] {
-  const db = getDB()
+  // Heavy read: two-tier json_extract + GROUP BY over the whole timeline.
+  const db = getReadonlyDB()
   const sql = `
     SELECT target,
            COUNT(*)       AS eventCount,
@@ -1000,6 +1146,91 @@ export function aggregateTargets(): TargetAggregate[] {
     ORDER BY lastSeen DESC
   `
   return db.prepare(sql).all() as TargetAggregate[]
+}
+
+// An event "touches" a host when its canonical `target_id` is that host, or its
+// data carries it as `host` (HTTP/DNS/scanner rows) or `detectedTarget`
+// (shell/loot rows key on the derived target). Three `?` per use.
+const HOST_MATCH_SQL = `(
+  target_id = ?
+  OR json_extract(data, '$.host') = ?
+  OR json_extract(data, '$.detectedTarget') = ?
+)`
+
+// The turning points design 10a's 〈相關〉chain shows for a host — a name
+// resolution, a command, loot, a marker, a scope violation — NOT every row that
+// touched it (a scan is thousands). command_start/end both pass; folding the
+// pair into one line is the renderer's job (collapseCommandPairs), so the
+// backend returns the raw turning-point rows.
+const CHAIN_TURNING_POINT_SQL = `(
+  agent_type IN ('loot', 'marker')
+  OR (agent_type = 'dns' AND json_extract(data, '$.subtype') = 'dns_response')
+  OR (agent_type = 'shell' AND json_extract(data, '$.subtype') IN ('command_start', 'command_end', 'command'))
+  OR (agent_type = 'system' AND json_extract(data, '$.subtype') = 'scope_violation')
+)`
+
+export interface HostCausalChain {
+  host: string
+  /** Every event touching the host, both tiers — the header's "· N 個事件". */
+  eventCount: number
+  operatorCount: number
+  firstSeen: number | null
+  lastSeen: number | null
+  /** The curated turning-point events, oldest-first. Scope status is deliberately
+   *  NOT included — the renderer classifies it from the project scope config
+   *  (lib/scope.ts), keeping this query display-agnostic. */
+  chain: RedLogEvent[]
+}
+
+/** Data backend for the Inspector 〈相關〉panel (design 10a): a host's causal
+ *  chain — a header aggregate plus the handful of understanding-changing events
+ *  in time order, rather than the full pile of same-host rows. Read-only, both
+ *  tiers. v1 keys on target_id / data.host / data.detectedTarget; unifying a
+ *  DNS name with its resolved IP (so the resolution shows in the IP's chain
+ *  even when the dns row is keyed on the name) is a later enhancement. */
+export function hostCausalChain(host: string, opts: { chainLimit?: number } = {}): HostCausalChain {
+  const empty: HostCausalChain = { host, eventCount: 0, operatorCount: 0, firstSeen: null, lastSeen: null, chain: [] }
+  if (!host) return empty
+  const db = getReadonlyDB()
+  const chainLimit = opts.chainLimit ?? 200
+
+  const header = db.prepare(`
+    SELECT COUNT(*) AS eventCount,
+           COUNT(DISTINCT operator_id) AS operatorCount,
+           MIN(timestamp) AS firstSeen,
+           MAX(timestamp) AS lastSeen
+    FROM (
+      SELECT operator_id, timestamp, target_id, data FROM events
+      UNION ALL
+      SELECT operator_id, timestamp, target_id, data FROM events_logged
+    )
+    WHERE ${HOST_MATCH_SQL}
+  `).get(host, host, host) as {
+    eventCount: number; operatorCount: number; firstSeen: number | null; lastSeen: number | null
+  }
+
+  const chained = `SELECT rowid AS _row, id, timestamp, engagement_id, session_id, operator_id,
+    agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+    monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+    FROM events WHERE ${HOST_MATCH_SQL} AND ${CHAIN_TURNING_POINT_SQL}`
+  const logged = `SELECT rowid AS _row, id, timestamp, engagement_id, session_id, operator_id,
+    agent_type, hostname, source_ip, target_id, data, NULL AS hash, NULL AS prev_hash, created_at,
+    NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature, 'logged' AS tier
+    FROM events_logged WHERE ${HOST_MATCH_SQL} AND ${CHAIN_TURNING_POINT_SQL}`
+  const rows = db.prepare(`
+    SELECT * FROM (${chained} UNION ALL ${logged})
+    ORDER BY timestamp ASC, _row ASC
+    LIMIT ?
+  `).all(host, host, host, host, host, host, chainLimit) as Array<Record<string, unknown>>
+
+  return {
+    host,
+    eventCount: header?.eventCount ?? 0,
+    operatorCount: header?.operatorCount ?? 0,
+    firstSeen: header?.firstSeen ?? null,
+    lastSeen: header?.lastSeen ?? null,
+    chain: rows.map(rowToEvent)
+  }
 }
 
 export function matchTarget(target: string, pattern: string): boolean {

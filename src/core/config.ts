@@ -71,6 +71,20 @@ export interface RedLogConfig {
      *  against the previous frame's SHA-256 (see ScreenshotAgent), so a
      *  30s interval on an idle screen doesn't produce 120 dupes/hour. */
     intervalSec: number
+    /** Perceptual-diff threshold for AUTOMATIC captures (periodic/idle): a
+     *  frame whose dHash Hamming distance from the last stored frame is BELOW
+     *  this is treated as "no visible change" and skipped. Higher = only store
+     *  bigger changes; `0` = disable perceptual dedup and store every
+     *  non-byte-identical frame. Manual captures ignore it entirely. Default 5
+     *  (mouse/clock jitter ≈2-3 bits, one new terminal line ≈6-10). */
+    diffThreshold?: number
+    /** Capture a screenshot when a shell command finishes, linked to that
+     *  command via `_causes` — so a report's "this command produced this
+     *  screen" is automatic, not a manual ⌘⇧M. Off by default: it only earns
+     *  its keep for GUI-heavy work (Burp, a browser), and the perceptual dedup
+     *  still skips a command that changed nothing visible. Terminal output is
+     *  better read from the `.cast` recording (searchable text) than a JPEG. */
+    captureOnCommand?: boolean
   }
   overlay: {
     showMarkButton: boolean
@@ -269,7 +283,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshot: {
     quality: 85,
-    intervalSec: 0
+    intervalSec: 0,
+    diffThreshold: 5,
+    captureOnCommand: false
   },
   overlay: {
     showMarkButton: true,

@@ -60,7 +60,9 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
       .split('\n').filter(Boolean)
     const logged = fs.readFileSync(path.join(bundleDir, 'events_logged.jsonl'), 'utf-8')
       .split('\n').filter(Boolean)
-    expect(chained).toHaveLength(1)  // shell command_start
+    // shell command_start + the export's logged_tier_digest snapshot: an
+    // export over a non-empty logged tier appends one chained digest (§7.5).
+    expect(chained).toHaveLength(2)
     expect(logged).toHaveLength(2)   // dns + scanner
   })
 
@@ -77,7 +79,9 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
     // unchanged.
     expect(manifest.bundleVersion).toBe(3)
     expect(manifest.tiers).toBeDefined()
-    expect(manifest.tiers.chained).toBe(2)
+    // +1 chained: an export over a non-empty logged tier appends one
+    // system.logged_tier_digest snapshot into the chain (§7.5).
+    expect(manifest.tiers.chained).toBe(3)  // 2 shell + logged_tier_digest
     expect(manifest.tiers.logged).toBe(3)
   })
 

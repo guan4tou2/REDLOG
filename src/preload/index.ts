@@ -12,6 +12,7 @@ const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    anchorForRestart: (opts?: { toVersion?: string }) => ipcRenderer.invoke('app:anchorForRestart', opts) as Promise<import('../core/update-anchor').RestartAnchorResult>,
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
   },
   ui: {
@@ -60,6 +61,7 @@ const api: RedLogAPI = {
     search: (query: string, limit?: number) => ipcRenderer.invoke('events:search', query, limit),
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
+    hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
     // Recordings are searched separately from events — see casts:search in
     // main. `status` is not optional decoration: a project whose recordings
     // are still being indexed returns fewer hits than it will in a minute,
@@ -112,7 +114,10 @@ const api: RedLogAPI = {
   },
   screenshot: {
     capture: (causeEventId?: string) => ipcRenderer.invoke('screenshot:capture', causeEventId),
-    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath)
+    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath),
+    // 2d batch-delete: which of these screenshot ids a marker cites, to pick the
+    // confirmation tier before any deleteFile call.
+    markerReferenced: (ids: string[]) => ipcRenderer.invoke('screenshot:markerReferenced', ids)
     // v0.6.98 B: `read` IPC dropped. v0.6.97 B moved every renderer call site
     // onto the `redlog-screenshot://` custom protocol (streamed direct from
     // disk, no base64 round-trip). Nothing in-tree references screenshot.read
@@ -166,6 +171,8 @@ const api: RedLogAPI = {
     exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
     exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
     exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
+    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
+    exportWalkthrough: () => ipcRenderer.invoke('data:exportWalkthrough') as Promise<string | null>,
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
   hooks: {
@@ -189,7 +196,14 @@ const api: RedLogAPI = {
     status: () => ipcRenderer.invoke('clock:status')
   },
   operators: {
-    list: () => ipcRenderer.invoke('operators:list')
+    list: () => ipcRenderer.invoke('operators:list'),
+    // create/rotateToken return the token FILE path (~/.redlog/tokens/<id>.token),
+    // never the raw token — the UI reveals the file rather than displaying it (§10).
+    create: (name: string) => ipcRenderer.invoke('operators:create', { name }),
+    rotateToken: (id: string) => ipcRenderer.invoke('operators:rotateToken', id),
+    revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
+    rename: (id: string, name: string) => ipcRenderer.invoke('operators:rename', id, name),
+    pubKey: (id: string) => ipcRenderer.invoke('operators:pubKey', id)
   },
   visibility: {
     signals: () => ipcRenderer.invoke('visibility:signals')
