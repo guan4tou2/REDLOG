@@ -262,7 +262,11 @@ interface RedLogAPI {
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
-    list: () => Promise<Array<{ id: string; pid: number; lastActivity: number }>>
+    list: () => Promise<Array<{
+      id: string; pid: number; lastActivity: number
+      /** 2b per-pane chip: open cast stream and under the size cap. */
+      recording: boolean; castBytes: number; castTruncated: boolean; castStartedAt: number | null
+    }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
     replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
