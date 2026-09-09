@@ -22,7 +22,7 @@ interface ConfigState {
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
-  screenshot: { quality: number; intervalSec?: number }
+  screenshot: { quality: number; intervalSec?: number; diffThreshold?: number }
   // Size-pressure eviction budgets (bytes; 0 = unbounded). Distinct from the
   // SINGULAR `screenshot` above, which is capture cadence/quality. These drive
   // sweepBodyStore / sweepArtifactStore (src/core/retention.ts): coldest
@@ -716,6 +716,26 @@ export default function Settings(): JSX.Element {
               <p className="text-xs text-redlog-text-faint">
                 {t('settings.qualityHint')}
               </p>
+
+              <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { v: 0, k: 'settings.screenshot.diff.off' },
+                  { v: 5, k: 'settings.screenshot.diff.standard' },
+                  { v: 12, k: 'settings.screenshot.diff.major' }
+                ].map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
+                    className={`px-3 py-1 text-xs rounded ${
+                      (config.screenshot.diffThreshold ?? 5) === opt.v
+                        ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                        : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+                    }`}
+                  >{t(opt.k)}</button>
+                ))}
+              </div>
+              <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
             </FieldGroup>}
 
             {/* Size-pressure eviction budgets. The rotation LOGIC shipped in

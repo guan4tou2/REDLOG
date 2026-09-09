@@ -231,6 +231,7 @@ interface RedLogAPI {
     exportLoot?: () => Promise<string | null>
     exportViolations?: () => Promise<string | null>
     exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
+    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
   }
   visibility: {
