@@ -22,7 +22,7 @@ interface ConfigState {
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string }
-  screenshot: { quality: number; intervalSec?: number; diffThreshold?: number }
+  screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
   // Size-pressure eviction budgets (bytes; 0 = unbounded). Distinct from the
   // SINGULAR `screenshot` above, which is capture cadence/quality. These drive
   // sweepBodyStore / sweepArtifactStore (src/core/retention.ts): coldest

@@ -169,6 +169,7 @@ const api: RedLogAPI = {
     exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
     exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
     exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
+    exportWalkthrough: () => ipcRenderer.invoke('data:exportWalkthrough') as Promise<string | null>,
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
   hooks: {

@@ -28,6 +28,8 @@ export class ScreenshotAgent {
   // of new terminal output ≈6-10); higher stores only bigger changes; `0`
   // disables perceptual dedup and stores every non-byte-identical frame.
   private diffThreshold = 5
+  // Opt-in: capture a frame when a shell command finishes, linked to it.
+  private captureOnCommand = false
 
   configure(opts: {
     engagementId?: string
@@ -35,15 +37,28 @@ export class ScreenshotAgent {
     quality?: number
     intervalSec?: number
     diffThreshold?: number
+    captureOnCommand?: boolean
   }): void {
     if (opts.engagementId) this.engagementId = opts.engagementId
     if (opts.operatorId) this.operatorId = opts.operatorId
     if (opts.quality) this.quality = opts.quality
     if (opts.diffThreshold !== undefined) this.diffThreshold = Math.max(0, Math.floor(opts.diffThreshold))
+    if (opts.captureOnCommand !== undefined) this.captureOnCommand = opts.captureOnCommand
     if (opts.intervalSec !== undefined) {
       this.intervalSec = Math.max(0, Math.floor(opts.intervalSec))
       this.applyInterval()
     }
+  }
+
+  /** A shell command_end landed. When captureOnCommand is on, grab a frame
+   *  linked to that command via `_causes` so a report can pair "command →
+   *  resulting screen" without a manual marker. Uses the 'command' trigger, so
+   *  the perceptual dedup still skips a command that changed nothing visible
+   *  (a text-only terminal step is better read from its `.cast` output anyway).
+   *  No-op when disabled — the event handler calls it unconditionally. */
+  async onCommandEnd(causeEventId: string): Promise<void> {
+    if (!this.captureOnCommand) return
+    await this.captureNow('command', causeEventId).catch(() => { /* transient */ })
   }
 
   // Start / stop the periodic loop when settings change. Called on configure
