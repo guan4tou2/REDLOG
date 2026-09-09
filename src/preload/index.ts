@@ -114,7 +114,10 @@ const api: RedLogAPI = {
   },
   screenshot: {
     capture: (causeEventId?: string) => ipcRenderer.invoke('screenshot:capture', causeEventId),
-    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath)
+    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath),
+    // 2d batch-delete: which of these screenshot ids a marker cites, to pick the
+    // confirmation tier before any deleteFile call.
+    markerReferenced: (ids: string[]) => ipcRenderer.invoke('screenshot:markerReferenced', ids)
     // v0.6.98 B: `read` IPC dropped. v0.6.97 B moved every renderer call site
     // onto the `redlog-screenshot://` custom protocol (streamed direct from
     // disk, no base64 round-trip). Nothing in-tree references screenshot.read

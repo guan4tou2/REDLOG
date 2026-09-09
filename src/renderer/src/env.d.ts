@@ -178,6 +178,8 @@ interface RedLogAPI {
   screenshot: {
     capture: (causeEventId?: string) => Promise<string | null>
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
+    /** 2d batch-delete: subset of these screenshot ids that a marker cites. */
+    markerReferenced: (ids: string[]) => Promise<string[]>
   }
   scope: {
     getViolations: () => Promise<Array<{

@@ -10,7 +10,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -1630,6 +1630,14 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+
+  // 2d batch-delete guard (design §12 / §28.7): of a batch of screenshot event
+  // ids, which are referenced by a marker. The renderer uses this to pick the
+  // confirmation tier — a plain checkbox when nothing is cited, type-to-confirm
+  // when a finding points at one. The delete itself still goes through
+  // screenshot:deleteFile one file at a time, each writing an audited tombstone.
+  ipcMain.handle('screenshot:markerReferenced', (_e, ids: unknown) =>
+    activeProject && Array.isArray(ids) ? screenshotsReferencedByMarker(ids.map(String)) : [])
 
   // --- Scope ---
   // Read from the chain, not from the in-process log the alert runtime keeps.
