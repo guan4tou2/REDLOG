@@ -286,6 +286,19 @@ interface RedLogAPI {
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
+    /** Returns { id, name, signerPubKey, tokenPath } — or { error, id } if the
+     *  DB write failed. tokenPath points at the written ~/.redlog/tokens file;
+     *  the raw token is never returned to the renderer (§10). */
+    create: (name: string) => Promise<
+      { id: string; name: string; signerPubKey: string | null; tokenPath: string }
+      | { error: string; id: string }
+      | null
+    >
+    /** Rotates the token, rewrites the token file; returns { id, tokenPath }. */
+    rotateToken: (id: string) => Promise<{ id: string; tokenPath: string } | null>
+    revoke: (id: string) => Promise<boolean>
+    rename: (id: string, name: string) => Promise<boolean>
+    pubKey: (id: string) => Promise<string | null>
   }
   hooks: {
     detect: () => Promise<HookInfo[]>
@@ -365,6 +378,8 @@ interface OperatorInfo {
   isPrimary: boolean
   createdAt: number
   revokedAt: number | null
+  /** ed25519 public key for §5c key display; null if this operator never signed. */
+  signerPubKey?: string | null
 }
 
 interface CalendarReceiptInfo {
