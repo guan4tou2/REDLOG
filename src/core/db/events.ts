@@ -924,6 +924,70 @@ export function queryMarkerAmendments(markerIds: string[]): RedLogEvent[] {
   return out
 }
 
+/** Of the given screenshot event ids, which are referenced by a marker.
+ *
+ *  The 2d batch-delete confirmation tiers key on this (design §12 / §28.7): a
+ *  batch containing a screenshot some finding points at gets the type-to-confirm
+ *  tier, not the one-checkbox tier. Deleting stays audited either way — the
+ *  chain records a `system.screenshot_deleted` with `sha256_pre_delete` — so
+ *  this only steers the *warning*, it does not gate the delete itself.
+ *
+ *  The one link that exists runs screenshot→marker: a marker-triggered capture
+ *  stamps the screenshot's `_causes` with the marker id (screenshot-agent.ts);
+ *  `marker:create` strips `_causes`, so markers never point forward at a shot.
+ *  Both types are chained, but the logged arm is queried too for the same
+ *  reason queryMarkerAmendments does — "which table is `marker` in" is a fact
+ *  about today's classifier, not one to hard-code here.
+ *
+ *  Returns the referenced subset in the input order; unknown ids and non-marker
+ *  causes (e.g. a command-linked capture) are simply absent. */
+export function screenshotsReferencedByMarker(screenshotIds: string[]): string[] {
+  if (screenshotIds.length === 0) return []
+  const db = getReadonlyDB()
+  // 1. Pull each screenshot's `_causes` array from the JSON blob. Only rows that
+  //    are actually screenshots — a caller passing a stray id gets it dropped,
+  //    not mis-attributed.
+  const causeIdsByShot = new Map<string, string[]>()
+  const allCauseIds = new Set<string>()
+  for (let i = 0; i < screenshotIds.length; i += 400) {
+    const chunk = screenshotIds.slice(i, i + 400)
+    const holes = chunk.map(() => '?').join(',')
+    const rows = db.prepare(
+      `SELECT id, json_extract(data, '$._causes') AS causes
+         FROM events
+        WHERE agent_type = 'screenshot' AND id IN (${holes})`
+    ).all(...chunk) as Array<{ id: string; causes: string | null }>
+    for (const r of rows) {
+      let causes: string[] = []
+      if (r.causes) {
+        try {
+          const parsed = JSON.parse(r.causes)
+          if (Array.isArray(parsed)) causes = parsed.filter((c): c is string => typeof c === 'string')
+        } catch { /* malformed blob — treat as no references */ }
+      }
+      causeIdsByShot.set(r.id, causes)
+      for (const c of causes) allCauseIds.add(c)
+    }
+  }
+  if (allCauseIds.size === 0) return []
+  // 2. Of every referenced id, which are markers. Markers are chained, but check
+  //    both tiers so a future reclassification does not silently drop half.
+  const markerIds = new Set<string>()
+  const causeList = [...allCauseIds]
+  for (let i = 0; i < causeList.length; i += 400) {
+    const chunk = causeList.slice(i, i + 400)
+    const holes = chunk.map(() => '?').join(',')
+    const rows = db.prepare(
+      `SELECT id FROM events         WHERE agent_type = 'marker' AND id IN (${holes})
+       UNION ALL
+       SELECT id FROM events_logged  WHERE agent_type = 'marker' AND id IN (${holes})`
+    ).all(...chunk, ...chunk) as Array<{ id: string }>
+    for (const r of rows) markerIds.add(r.id)
+  }
+  // 3. A screenshot is referenced when any of its causes resolved to a marker.
+  return screenshotIds.filter((id) => (causeIdsByShot.get(id) ?? []).some((c) => markerIds.has(c)))
+}
+
 export function queryByFlowId(flowId: string): RedLogEvent[] {
   const db = getDB()
   const pattern = `%"flow_id":"${flowId}"%`
