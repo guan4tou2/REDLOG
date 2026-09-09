@@ -15,6 +15,29 @@ path: src/renderer
 
 date: 2026-09-09T00:00:00Z
 
+### 2026-09-09 · 後端完成 → design 待接 UI（交接清單）
+
+以「後端我做、UIUX 交給 design」的分工,本輪把數個設計缺口的**後端**落地(IPC/preload/core
+函式 + 測試),UI 留給設計端。契約如下,design 端接 UI 時對照此表。
+
+| 缺口 | 後端契約(已就緒) | design 端要做的 UI |
+|---|---|---|
+| **7a 範圍外標示** | `lib/scope.ts` `hostOutOfScope()`;HttpHistoryPanel 已上 badge | (已含基本 UI)可再精修樣式 |
+| **截圖差異靈敏度** | `config.screenshot.diffThreshold`;設定組已有按鈕 | (已含基本 UI) |
+| **command-linked 截圖** | `config.screenshot.captureOnCommand`;command_end 觸發、`_causes` 連結;設定組已有勾選框 | (已含基本開關)截「哪個視窗」的精修留後續 |
+| **NDJSON(ELK)匯出** | IPC `data:exportNdjson({scopeOnly?,scrubPii?})` → 檔案路徑;匯出選單已有「NDJSON」項 | `scopeOnly`/`scrubPii` 做成選單勾選(現為全部+內容遮蔽) |
+| **目標 walkthrough 匯出** | IPC `data:exportWalkthrough` → `.md`;匯出選單已有項 | (已可操作) |
+| **pcap 擷取** | `hooks/pcap-agent.py`(CLI producer,同 mitmproxy);API 白名單 + LOGGED_TIER 已接 | 時間軸 pcap 泳道、設定裡的擷取來源啟動器/狀態 |
+| **10a 因果鏈** | IPC `events:hostChain(host)` → `{eventCount,operatorCount,firstSeen,lastSeen,chain[]}` | **Inspector〈相關〉面板**:表頭 + 策展鏈清單、command 對摺(`collapseCommandPairs`)、範圍徽章(`lib/scope.ts`)、當前事件釘選、〈在目標頁開啟〉/⌘↩ |
+| **5a 更新前錨定** | `core/update-anchor.ts` `anchorBeforeRestart()`;IPC `app:anchorForRestart`;updater「前往下載」已自動觸發 | 狀態列青點、不彈視窗的更新卡、「約 8 秒不記錄」確認框 |
+
+**仍未動(多為 UI 為主,後端多已具備)**:3c 需要注意互動彈出層(`dismissIssue` 後端在)、2b 終端機
+per-pane 記錄中/未記錄 chip、5b 終端機設定頁(config 後端在)、4d 逐字稿首行/自動展開、4b 違規展開 +
+inline 加入允許清單、5c 操作員金鑰管理 UI、4e 標記圓點嚴重度 + 截圖圖示、2c 標記對話框〈將一併記錄〉、
+2d 截圖 ×N/SHA-256/批次刪除升級、時間軸 Inspector 分頁/事件流 >50 折疊/鏈警示/在逐字稿上顯示/圖例中文。
+**刻意不做**(2026-09-09 裁定):flag/proof 偵測、MITRE 技術欄(非通用工具定位);2a PDF 報告(改純資料匯出);
+at-rest 加密(維持「信任本機」假設,暫不)。
+
 ### 2026-09-09 · turn 10 鏡像（設計稿新增，鏡像原止於 turn 9）
 
 設計專案新增 **turn 10「解開搜尋頁那條鏈」（10a–10b）**，本地鏡像（2026-09-04 取回，止於 turn 9 /
