@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { hostOutOfScope } from '../lib/scope'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n'
@@ -68,13 +69,14 @@ function parentCommandOf(
 // level the eye lands on. A 40,000-request brute force and a single curl both
 // occupy one row, which is the point: they were both one action.
 
-function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }: {
+function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, outOfScope }: {
   activity: Activity<HttpFlow>
   t: (k: string, vars?: Record<string, string | number>) => string
   rowProps: ReturnType<ReturnType<typeof useListKeyboard>['itemProps']>
   open: boolean
   onToggle: () => void
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  outOfScope?: (host: string) => boolean
 }): JSX.Element {
   const { statusBuckets: sb, flows } = activity
   const spanSec = Math.round((activity.endMs - activity.startMs) / 1000)
@@ -101,9 +103,17 @@ function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }
         />
         <span className="sr-only">{t(`httpHistory.kind.${activity.kind}`)}</span>
 
-        <span className="font-mono text-redlog-text truncate max-w-[220px]" title={activity.host}>
+        <span
+          className={`font-mono truncate max-w-[220px] ${outOfScope?.(activity.host) ? 'text-redlog-text-faint' : 'text-redlog-text'}`}
+          title={activity.host}
+        >
           {activity.host || t('httpHistory.noHost')}
         </span>
+        {outOfScope?.(activity.host) && (
+          <span className="shrink-0 font-mono text-xs px-1 rounded bg-redlog-elevated text-redlog-text-faint" title={t('httpHistory.outOfScopeHint')}>
+            {t('httpHistory.outOfScope')}
+          </span>
+        )}
 
         <span className="font-mono text-redlog-text-dim shrink-0">{activity.methods.join(' ')}</span>
 
@@ -233,11 +243,13 @@ function buildSitemapTree(flows: HttpFlow[]): Map<string, SitemapNode> {
   return roots
 }
 
-function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
+function SitemapTreeNode({ node, depth, onOpenInTimeline, outOfScope }: {
   node: SitemapNode
   depth: number
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  outOfScope?: (host: string) => boolean
 }): JSX.Element {
+  const { t } = useI18n()
   const [expanded, setExpanded] = useState(depth < 2)
   const hasChildren = node.children.size > 0
   const sortedChildren = useMemo(() =>
@@ -273,10 +285,19 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
         </span>
         <span
           title={node.fullPath}
-          className={`text-xs font-mono truncate ${depth === 0 ? 'text-redlog-accent font-semibold' : 'text-redlog-text'}`}
+          className={`text-xs font-mono truncate ${
+            depth === 0
+              ? (outOfScope?.(node.name) ? 'text-redlog-text-faint font-semibold' : 'text-redlog-accent font-semibold')
+              : 'text-redlog-text'
+          }`}
         >
           {depth === 0 ? node.name : '/' + node.name}
         </span>
+        {depth === 0 && outOfScope?.(node.name) && (
+          <span className="shrink-0 font-mono text-xs px-1 rounded bg-redlog-elevated text-redlog-text-faint" title={t('httpHistory.outOfScopeHint')}>
+            {t('httpHistory.outOfScope')}
+          </span>
+        )}
         <span className="flex-shrink-0 flex items-center gap-1 ml-auto">
           {methodArr.map(m => (
             <span key={m} className={`text-xs font-mono px-1 rounded ${
@@ -302,6 +323,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
           key={child.fullPath}
           node={child}
           depth={depth + 1}
+          outOfScope={outOfScope}
           onOpenInTimeline={onOpenInTimeline}
         />
       ))}
@@ -329,6 +351,22 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   // raw thing — it is just no longer what you land on.
   const [viewMode, setViewMode] = useState<'activity' | 'flows' | 'sitemap'>('activity')
   const [openActivity, setOpenActivity] = useState<string | null>(null)
+  // §7a: mark out-of-scope (non-attack) hosts. Scope comes from project config;
+  // an empty allow list means nothing is "out of scope" (no rule to violate),
+  // so the marker never appears on an unscoped engagement.
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
+  useEffect(() => {
+    window.redlog.config.get().then((c) => {
+      const s = (c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null)?.scope
+      setScopeTargets(s?.targets ?? [])
+      setExcludeTargets(s?.excludeTargets ?? [])
+    }).catch(() => {})
+  }, [])
+  const outOfScope = useCallback(
+    (host: string) => hostOutOfScope(host, scopeTargets, excludeTargets),
+    [scopeTargets, excludeTargets]
+  )
 
   const loadFlows = useCallback(async () => {
     const events = await window.redlog.events.query({
@@ -581,6 +619,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               open={openActivity === a.id}
               onToggle={() => setOpenActivity((cur) => (cur === a.id ? null : a.id))}
               onOpenInTimeline={onOpenInTimeline}
+              outOfScope={outOfScope}
             />
           ))}
         </div>
@@ -680,6 +719,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                   node={node}
                   depth={0}
                   onOpenInTimeline={onOpenInTimeline}
+                  outOfScope={outOfScope}
                 />
               ))
           )}
