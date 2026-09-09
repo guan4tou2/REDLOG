@@ -282,7 +282,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
         'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
         'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
-        'browser', 'http_navigation'
+        'browser', 'http_navigation',
+        // v0.15: out-of-process pcap producer (hooks/pcap-agent.py) — connection
+        // attempts / SYN scans / non-proxied flow metadata the app-layer proxy
+        // and the established-only connection monitor can't see.
+        'pcap'
       ])
       if (!e2eSeed && !EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
         // A 403 an integration ignores is capture silently stopping, which is

@@ -127,7 +127,17 @@ const LOGGED_TIER: ReadonlySet<string> = new Set([
   'process:process_spawn',
   'process:process_exit',
   'system:process_monitor_saturated',
-  'system:process_monitor_ps_unavailable'
+  'system:process_monitor_ps_unavailable',
+  // v0.15: pcap producer (hooks/pcap-agent.py) — high-volume network metadata.
+  // Logged, not chained: a port scan is thousands of probes, and these are
+  // supporting context that earns its keep via `_causes` to the shell command
+  // that ran the scan, not court-alone evidence. Default-chained would bloat
+  // the tamper-evident spine with packet noise.
+  'pcap:connection_attempt',
+  'pcap:port_scan',
+  'pcap:connection_established',
+  'pcap:connection_refused',
+  'pcap:udp_flow'
 ])
 
 // Design doc §4.1 hedged a `system.ip_verdict` special case that would route
