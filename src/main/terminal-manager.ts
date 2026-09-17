@@ -9,6 +9,7 @@ import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
+import { shellFlavour, type ShellFlavour } from '../core/shell-flavour'
 
 interface TerminalSession {
   id: string
@@ -21,6 +22,11 @@ interface TerminalSession {
   castBytes: number
   castTruncated: boolean
   finalised: boolean
+  /** What this pane is running, and whether its commands are being recorded.
+   *  Kept on the session so a re-attaching renderer gets the same answer as
+   *  the one that spawned it. */
+  shell: string
+  hookSourced: boolean
   // v0.6.89 `_causes`: id of the shell.session_start event so finaliseSession
   // can stamp session_end with `_causes: [startEventId]`. Populated after the
   // session_start insertEvent returns. Null when the start insert failed.
@@ -88,14 +94,15 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   }
 }
 
-function resolveShellHook(shell: string): string | null {
+function resolveShellHook(flavour: ShellFlavour): string | null {
+  if (flavour === 'none') return null
   const candidates = [
     path.join(__dirname, '../../../hooks'),
     path.join(__dirname, '../../hooks')
   ]
   const dir = candidates.find(d => fs.existsSync(d))
   if (!dir) return null
-  const file = /powershell|pwsh/i.test(shell) ? 'shell-hook.ps1' : 'shell-preexec-hook.sh'
+  const file = flavour === 'powershell' ? 'shell-hook.ps1' : 'shell-preexec-hook.sh'
   const p = path.join(dir, file)
   return fs.existsSync(p) ? p : null
 }
@@ -188,7 +195,16 @@ export function recoverOrphanSessions(): number {
   return recovered
 }
 
-export function spawnTerminal(id: string, cols: number, rows: number): { pid: number } {
+export interface SpawnResult {
+  pid: number
+  /** The shell actually launched, so the UI can name it when it warns. */
+  shell: string
+  /** False when this pane records no commands: its shell has no hook, or the
+   *  hook file is missing from the install. */
+  hookSourced: boolean
+}
+
+export function spawnTerminal(id: string, cols: number, rows: number): SpawnResult {
   const existing = sessions.get(id)
   if (existing) {
     // A re-attaching renderer (StrictMode remount, tab re-render) gets a brand
@@ -198,7 +214,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
       const buf = existing.buffer
       setTimeout(() => sendToWindow(`terminal:data:${id}`, buf), 0)
     }
-    return { pid: existing.pty.pid }
+    return { pid: existing.pty.pid, shell: existing.shell, hookSourced: existing.hookSourced }
   }
   if (!operatorId) {
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
@@ -214,8 +230,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   const shell = (envShell && (os.platform() !== 'win32' || isWin32Path(envShell)))
     ? envShell
     : (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
-  const isPowerShell = /powershell|pwsh/i.test(shell)
-  const shellArgs = isPowerShell ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : []
+  const flavour = shellFlavour(shell)
+  const shellArgs = flavour === 'powershell' ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : []
   // Use os.homedir() only — it resolves via USERPROFILE on Windows. Reading
   // process.env.HOME first bit Git Bash / MSYS2 users where HOME is a
   // POSIX-shaped `/c/Users/foo` that pty.spawn rejects as invalid Win32.
@@ -281,7 +297,9 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castStart,
     castBytes: castHeaderBytes,
     castTruncated: false,
-    finalised: false
+    finalised: false,
+    shell,
+    hookSourced: false
   }
 
   term.onData((data: string) => {
@@ -318,13 +336,21 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
 
   sessions.set(id, session)
 
+  // Resolved before the event is written so `session_start` carries the
+  // answer: reading the timeline later, "this pane logged no commands" and
+  // "this pane could not log commands" must not look the same.
+  const hookPath = resolveShellHook(flavour)
+  session.hookSourced = hookPath !== null
+
   const event = insertEvent('shell', {
     subtype: 'session_start',
     source: 'builtin-terminal',
     terminalId: id,
     shell,
     pid: term.pid,
-    castPath
+    castPath,
+    hookSourced: session.hookSourced,
+    ...(session.hookSourced ? {} : { hookMissing: flavour === 'none' ? 'no-hook-for-shell' : 'hook-file-not-found' })
   }, { engagementId, operatorId })
   if (event) {
     eventBus.publish(event)
@@ -332,27 +358,36 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
   }
 
   // Auto-source the shell hook so individual commands appear in the timeline
-  const hookPath = resolveShellHook(shell)
   if (hookPath) {
     // Source the hook quietly: a leading space keeps it out of shell history,
     // output is discarded, and the screen is cleared so the operator sees a clean
     // prompt instead of the `source …` line and the hook's banner.
-    // POSIX branch converts backslashes → slashes for `source`; on Windows a
-    // native bash (git-bash / cygwin) would still need `cygpath -u` to accept
-    // the drive-lettered path, so we skip the auto-source there. If someone
-    // ever wants that, wire cygpath conversion here. Audit P1-6.
-    const canAutoSource = isPowerShell || process.platform !== 'win32'
-    if (canAutoSource) {
-      const sourceCmd = isPowerShell
-        ? ` . "${hookPath}" *> $null; Clear-Host\r`
-        : ` source "${hookPath.replace(/\\/g, '/')}" >/dev/null 2>&1; clear\r`
-      setTimeout(() => {
-        if (!session.finalised) term.write(sourceCmd)
-      }, 600)
-    }
+    //
+    // The POSIX branch now runs on Windows too. It used to be skipped there on
+    // the belief that a native bash "would still need `cygpath -u` to accept
+    // the drive-lettered path" (Audit P1-6). That premise is wrong: Git Bash
+    // and MSYS2 accept the mixed form this produces —
+    // `source "C:/…/hooks/shell-preexec-hook.sh"` sources cleanly and defines
+    // the hook's functions. Verified on Windows 11 / Git for Windows before
+    // removing the guard.
+    //
+    // The cost of the old guard was not a missing convenience: a pane whose
+    // `SHELL` pointed at Git Bash — which is every pane launched from a Git
+    // Bash shell, since the value is inherited — recorded `session_start` and
+    // a `.cast` and **not one command**, with nothing on screen to say so.
+    const sourceCmd = flavour === 'powershell'
+      ? ` . "${hookPath}" *> $null; Clear-Host\r`
+      : ` source "${hookPath.replace(/\\/g, '/')}" >/dev/null 2>&1; clear\r`
+    setTimeout(() => {
+      if (!session.finalised) term.write(sourceCmd)
+    }, 600)
   }
 
-  return { pid: term.pid }
+  // `hookSourced: false` is the pane saying "my commands are not being
+  // recorded". The renderer shows it, because a capture gap the operator
+  // cannot see is the one failure mode the product does not allow
+  // (docs/PRD-COMPLETION.md §1.5).
+  return { pid: term.pid, shell, hookSourced: hookPath !== null }
 }
 
 export function writeTerminal(id: string, data: string): void {

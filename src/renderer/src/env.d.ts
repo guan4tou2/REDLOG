@@ -260,7 +260,7 @@ interface RedLogAPI {
     onChange: (cb: (recording: boolean) => void) => () => void
   }
   terminal: {
-    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number }>
+    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number; shell: string; hookSourced: boolean }>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void

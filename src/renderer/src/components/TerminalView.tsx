@@ -323,6 +323,10 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
   const fitRef = useRef<FitAddon | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
   const { t } = useI18n()
+  // Set only when this pane's shell takes no hook, i.e. its commands are not
+  // being recorded. A capture gap has to be visible where the operator is
+  // working, not just inferable from an empty timeline later.
+  const [unhookedShell, setUnhookedShell] = useState<string | null>(null)
 
   // Right-click menu. xterm keeps its selection in its own model rather than the
   // DOM, so Chromium's context-menu event fires with an empty selection here and
@@ -464,7 +468,10 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
     requestAnimationFrame(() => {
       try { fitAddon.fit() } catch {}
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24)
-        .then(({ pid }) => onPid(pid))
+        .then(({ pid, shell, hookSourced }) => {
+          onPid(pid)
+          if (!hookSourced) setUnhookedShell(shell)
+        })
         .catch(() => {})
     })
 
@@ -497,5 +504,19 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
     }
   }, [active])
 
-  return <div ref={containerRef} className="w-full h-full" onContextMenu={showContextMenu} />
+  return (
+    <div className="w-full h-full flex flex-col">
+      {unhookedShell && (
+        <div
+          role="status"
+          data-testid="terminal-no-hook"
+          className="shrink-0 flex items-start gap-2 px-3 py-1.5 border-b border-redlog-border bg-amber-500/12 text-xs text-redlog-text-dim"
+        >
+          <span className="text-amber-400 shrink-0" aria-hidden="true">⚠</span>
+          <span>{t('terminal.noHook', { shell: unhookedShell.split(/[\\/]/).pop() ?? unhookedShell })}</span>
+        </div>
+      )}
+      <div ref={containerRef} className="flex-1 min-h-0" onContextMenu={showContextMenu} />
+    </div>
+  )
 }
