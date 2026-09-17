@@ -156,13 +156,13 @@ export function recoverOrphanSessions(): number {
       SELECT s.data AS start_data
       FROM events s
       WHERE s.agent_type = 'shell'
-        AND json_extract(s.data,'$.subtype') = 'session_start'
+        AND s.subtype = 'session_start'
         AND json_extract(s.data,'$.source') = 'builtin-terminal'
         AND json_extract(s.data,'$.terminalId') IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM events e
           WHERE e.agent_type = 'shell'
-            AND json_extract(e.data,'$.subtype') = 'session_end'
+            AND e.subtype = 'session_end'
             AND json_extract(e.data,'$.source') = 'builtin-terminal'
             AND json_extract(e.data,'$.terminalId') = json_extract(s.data,'$.terminalId')
         )
