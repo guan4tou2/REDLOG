@@ -27,7 +27,7 @@ export function useAppShortcuts(
   view: View,
   setView: (v: View) => void,
   setPaletteOpen: (open: boolean) => void,
-  t: (key: string, params?: Record<string, unknown>) => string
+  t: (key: string, params?: Record<string, string | number>) => string
 ): void {
   // Cmd/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
   // Re-read fresh inside the handler so a drag-reorder in the sidebar takes
