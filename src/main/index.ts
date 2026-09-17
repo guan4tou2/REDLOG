@@ -51,7 +51,7 @@ import {
   listTerminals, killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions,
   getCastPosition
 } from './terminal-manager'
-import { detectHooks, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -2152,10 +2152,17 @@ app.whenReady().then(() => {
   })
 
   // --- Hooks ---
-  ipcMain.handle('hooks:detect', () => detectHooks())
+  ipcMain.handle('hooks:detect', async () => {
+    const cached = getCachedHooks()
+    if (cached) {
+      detectHooksAsync().catch(() => {})
+      return cached
+    }
+    return detectHooksAsync()
+  })
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
-  ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); return installHook(hookId) })
-  ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); return uninstallHook(hookId) })
+  ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
+  ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())
@@ -2180,7 +2187,7 @@ app.whenReady().then(() => {
   }))
   ipcMain.handle('plugins:list', () => pluginView())
   ipcMain.handle('plugins:eventTypes', () => listEventTypes())
-  ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); reloadPlugins(); return pluginView() })
+  ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); invalidateHooksDetectCache(); reloadPlugins(); return pluginView() })
   // Open the user plugin dir in Finder/Explorer so operators can drop new
   // plugin folders in and reload without hunting for the path.
   ipcMain.handle('plugins:openFolder', async () => {
@@ -2189,7 +2196,7 @@ app.whenReady().then(() => {
     shell.openPath(dir)
     return dir
   })
-  ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); return pluginView() })
+  ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); invalidateHooksDetectCache(); return pluginView() })
   ipcMain.handle('plugins:grant', (_e, id: string) => {
     const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
     const r = grantPluginTrust(id, opId); return { ...r, plugins: pluginView() }
