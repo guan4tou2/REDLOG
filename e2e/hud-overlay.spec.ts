@@ -214,9 +214,18 @@ test.describe.serial('HUD size stability', () => {
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('overlay'))!
       return w.getBounds()
     })
-    // Collapsed at scale 1 is a single row — 440px wide, well under 100px tall.
-    // Runaway growth showed up here first as a window pinned near the cap.
+    // Collapsed at scale 1 is a single row: 440px wide and, measured, 58px
+    // tall — 40pt of content plus HUD_CONTENT_CHROME. Runaway growth showed up
+    // here first as a window pinned near the cap.
+    //
+    // The bound used to be 120, more than twice the real height, which let the
+    // HUD double before this test noticed — and noticing is the only reason it
+    // exists. 80 keeps room for font and DPI differences across the platforms
+    // this runs on while still catching a doubling.
     expect(b.width, 'collapsed HUD should be near its 440px base, not the ceiling').toBeLessThan(560)
-    expect(b.height, 'collapsed HUD should be one row tall').toBeLessThan(120)
+    expect(b.height, 'collapsed HUD should be one row tall').toBeLessThan(80)
+    // And it must not have collapsed to nothing: below the floor the bar is
+    // clipped, which reads as "the HUD is broken" rather than "it is small".
+    expect(b.height, 'collapsed HUD should still clear the height floor').toBeGreaterThanOrEqual(46)
   })
 })

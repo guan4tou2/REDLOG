@@ -2,7 +2,7 @@ import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { attachContextMenu } from './context-menu'
-import { defaultOverlayBounds } from '../core/overlay-layout'
+import { HUD_INITIAL_H, defaultOverlayBounds } from '../core/overlay-layout'
 
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
@@ -89,7 +89,7 @@ export function createOverlayWindow(saved?: { x: number; y: number } | null): Br
 
   const win = new BrowserWindow({
     width,
-    height: 52,
+    height: HUD_INITIAL_H,
     x: placed.x,
     y: placed.y,
     frame: false,
