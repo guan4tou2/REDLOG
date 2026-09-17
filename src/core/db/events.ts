@@ -1034,15 +1034,50 @@ export function getLatestLoggedTs(): number | null {
   return row.ts ?? null
 }
 
-export function searchEvents(query: string, limit = 100): RedLogEvent[] {
+export function searchEvents(query: string, limit = 100, opts?: { agentType?: string }): RedLogEvent[] {
   // Heavy read: an un-indexed full-table LIKE over data/target_id/agent_type —
   // route it off the write connection.
   const db = getReadonlyDB()
   const pattern = `%${query}%`
-  const rows = db.prepare(
-    `SELECT * FROM events WHERE data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?
-     ORDER BY timestamp DESC LIMIT ?`
-  ).all(pattern, pattern, pattern, limit) as Array<Record<string, unknown>>
+
+  const likeCond = '(data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?)'
+  const likeParams: unknown[] = [pattern, pattern, pattern]
+
+  const extraConds: string[] = []
+  const extraParams: unknown[] = []
+  if (opts?.agentType) {
+    extraConds.push('agent_type = ?')
+    extraParams.push(opts.agentType)
+  }
+
+  const where = `WHERE ${likeCond}${extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''}`
+  const baseParams = [...likeParams, ...extraParams]
+
+  const chainedSelect = `
+    SELECT rowid AS _row,
+           id, timestamp, engagement_id, session_id, operator_id, agent_type,
+           hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+           monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+    FROM events ${where}
+  `
+  const loggedSelect = `
+    SELECT rowid AS _row,
+           id, timestamp, engagement_id, session_id, operator_id, agent_type,
+           hostname, source_ip, target_id, data,
+           NULL AS hash, NULL AS prev_hash, created_at,
+           NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+           'logged' AS tier
+    FROM events_logged ${where}
+  `
+
+  const sql = `SELECT * FROM (
+    SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+    UNION ALL
+    SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+  ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
+  const bind = [...baseParams, limit, ...baseParams, limit, limit]
+
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
 }
 

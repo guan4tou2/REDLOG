@@ -49,7 +49,7 @@ let projectOpen = false
 let primaryOperatorId = ''
 let primaryOperatorName = ''
 
-let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
+let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[]; getExcludeTargets?: () => string[] } | null = null
 
 let lootDetectorRef: {
   scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => Array<{ type: string; value: string; confidence: 'high' | 'medium' | 'low' }>
@@ -623,7 +623,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       try {
         // PRD A2: mask out-of-scope events in the bundle when scope is known.
         const scopeTargets = configLoaderRef?.getTargets?.() ?? []
-        const bundle = exportBundle(engagementId, { scope: { targets: scopeTargets } })
+        const excludeTargets = configLoaderRef?.getExcludeTargets?.() ?? []
+        const bundle = exportBundle(engagementId, { scope: { targets: scopeTargets, excludeTargets } })
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
       } catch (e) {
         const err = e as Error
