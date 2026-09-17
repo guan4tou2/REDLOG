@@ -188,7 +188,7 @@ describe('platform detection', () => {
       .map((f) => path.relative(path.join(__dirname, '..'), f).split(path.sep).join('/'))
     // Settings legitimately branches on the OS for OS-specific features
     // (macOS location services, Windows WSL) rather than for a keyboard glyph.
-    expect(offenders.filter((f) => !f.endsWith('Settings.tsx'))).toEqual([])
+    expect(offenders.filter((f) => !f.endsWith('Settings.tsx') && !f.endsWith('SettingsShared.tsx'))).toEqual([])
   })
 })
 

@@ -7,19 +7,15 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
-import { redactEventsForExport } from '../core/redact-export'
-import { eventsToNdjson } from '../core/ndjson-export'
-import { buildTargetWalkthrough } from '../core/walkthrough-export'
-import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../core/overlay-layout'
 import fs from 'fs'
 import { createHash } from 'crypto'
 import { eventBus } from '../core/event-bus'
@@ -29,27 +25,20 @@ import { getChainLength } from '../core/evidence-chain'
 import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
-import { amendMarker, markerIdsIn, sliceWithAmendments } from '../core/marker-amend'
+import { amendMarker } from '../core/marker-amend'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
-import { exportBundle } from '../core/bundle-export'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
 import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
-import { exportHar } from '../core/har-export'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  listOperators, createOperator, updateOperatorToken, revokeOperator, renameOperator,
-  generateToken, slugifyOperatorId, getOperatorSignerPubKey
-} from '../core/db/operators'
-import {
-  spawnTerminal, writeTerminal, resizeTerminal, killTerminal,
-  listTerminals, killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions,
+  killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions,
   getCastPosition
 } from './terminal-manager'
 import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
@@ -62,7 +51,7 @@ import { configureTranscriptTailer, stopTranscriptTailer } from './services/tran
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
-import { initPlugins, reloadPlugins, listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, setPluginHost } from '../core/plugins'
+import { initPlugins, setPluginHost } from '../core/plugins'
 import { configureIngest } from '../core/ingest'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
@@ -76,6 +65,16 @@ import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
 import { registerContextMenuIpc } from './context-menu'
+import { registerDataExportIpc } from './ipc/data-export'
+import {
+  registerOverlayIpc, setOverlayPassThrough, stopOverlayMouseTracking,
+  configureOverlayState, handleIpExposedChange, startOverlayMouseTracking,
+  applyOverlayPassThrough, applyOverlayOpacity, isOverlayPassThrough
+} from './ipc/overlay'
+import { registerTerminalIpc } from './ipc/terminal'
+import { registerPluginsIpc } from './ipc/plugins'
+import { registerOperatorsIpc } from './ipc/operators'
+import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
 // to stay there. Windows and Linux don't — and RedLog draws its own title bar
@@ -101,8 +100,6 @@ let activeProject: ProjectMeta | null = null
 let currentEngagementId: string | null = null
 let currentOperatorId: string | null = null
 let forceQuit = false
-let overlayMouseInside = false
-let overlayTrackingInterval: ReturnType<typeof setInterval> | null = null
 // v0.6.89 P1-A: read-path chain sampling. Runs periodically while a project
 // is open to catch chain tampering silently — the on-demand verify button is
 // too easy to skip. Cleared in stopProject so a project switch stops the loop.
@@ -112,87 +109,6 @@ let chainSampleTimer: ReturnType<typeof setInterval> | null = null
  *  project close so the timer doesn't fire against a closed DB. */
 let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
-
-// While `overlayPassThrough` is on, mouse tracking is disabled entirely —
-// the HUD stays ignore-mouse regardless of cursor position. Users who want
-// the HUD to never steal a stray click (e.g. it's sitting over Burp) enable
-// this in Settings ▸ HUD; the opacity drops so it's clearly ghost-mode.
-let overlayPassThrough = false
-let overlayPassThroughOpacity = 0.4
-/** Set while the external IP is exposed. §8's single sanctioned override of
- *  the operator's own HUD preferences: pass-through off, fully opaque. */
-let overlayIpExposed = false
-
-/** §8: 0.85 at rest so the HUD sits over a terminal without hiding it; 1.0
- *  once the cursor is on it, which is also why click-through defaults to off —
- *  the hover response is the affordance that says the thing is interactive. */
-const OVERLAY_REST_OPACITY = 0.85
-
-function overlayOpacity(): number {
-  // An exposed IP overrides the operator's preference — the one case §8 allows
-  // that — so it is never the thing that faded into a screenshot.
-  if (overlayIpExposed) return 1
-  return overlayMouseInside ? 1 : OVERLAY_REST_OPACITY
-}
-
-function applyOverlayOpacity(): void {
-  if (!overlayWindow || overlayWindow.isDestroyed()) return
-  overlayWindow.setOpacity(overlayOpacity())
-}
-
-function applyOverlayPassThrough(): void {
-  if (!overlayWindow || overlayWindow.isDestroyed()) return
-  applyOverlayOpacity()
-  if (overlayPassThrough) {
-    stopOverlayMouseTracking()
-    overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-    send(overlayWindow, 'overlay:interactive', false)
-    overlayMouseInside = false
-  } else {
-    startOverlayMouseTracking()
-  }
-  send(overlayWindow, 'overlay:passThrough', overlayPassThrough, overlayPassThroughOpacity)
-}
-
-// §8: the single runtime toggle for pass-through, shared by the HUD action-row
-// button (on), the ⌘⇧P shortcut and the menu bar (off) — so every entry point
-// applies the same state and keeps the Settings checkbox in sync.
-function setOverlayPassThrough(on: boolean): void {
-  if (overlayPassThrough === on) return
-  overlayPassThrough = on
-  applyOverlayPassThrough()
-  send(mainWindow, 'overlay:passThroughChanged', on)
-}
-
-function startOverlayMouseTracking(): void {
-  if (overlayPassThrough) return
-  if (overlayTrackingInterval) clearInterval(overlayTrackingInterval)
-  overlayTrackingInterval = setInterval(() => {
-    if (!overlayWindow || overlayWindow.isDestroyed() || !overlayWindow.isVisible()) return
-    const point = screen.getCursorScreenPoint()
-    const bounds = overlayWindow.getBounds()
-    const inside = point.x >= bounds.x && point.x <= bounds.x + bounds.width &&
-                   point.y >= bounds.y && point.y <= bounds.y + bounds.height
-    if (inside && !overlayMouseInside) {
-      overlayMouseInside = true
-      overlayWindow.setIgnoreMouseEvents(false)
-      overlayWindow.webContents.send('overlay:interactive', true)
-      applyOverlayOpacity()
-    } else if (!inside && overlayMouseInside) {
-      overlayMouseInside = false
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-      overlayWindow.webContents.send('overlay:interactive', false)
-      applyOverlayOpacity()
-    }
-  }, 50)
-}
-
-function stopOverlayMouseTracking(): void {
-  if (overlayTrackingInterval) {
-    clearInterval(overlayTrackingInterval)
-    overlayTrackingInterval = null
-  }
-}
 
 // Timers and pty callbacks keep firing while the app tears down, and a
 // destroyed BrowserWindow is still non-null — send through here so a quit
@@ -403,16 +319,7 @@ function broadcastIPStatus(status: IPStatusShape): void {
   // own HUD preferences. Pass-through comes off and the window goes fully
   // opaque, because the failure being prevented is an operator working through
   // a HUD they had ghosted and never seeing that their real address is out.
-  const exposed = status.ipSafety === 'exposed'
-  if (exposed !== overlayIpExposed) {
-    overlayIpExposed = exposed
-    if (exposed && overlayPassThrough) {
-      overlayPassThrough = false
-      applyOverlayPassThrough()
-    } else {
-      applyOverlayOpacity()
-    }
-  }
+  handleIpExposedChange(status.ipSafety === 'exposed')
 }
 
 // Log the security-relevant fields that changed on config:save. Cosmetic changes
@@ -1024,12 +931,13 @@ function startProject(project: ProjectMeta): void {
       applyDock()
       setTimeout(applyDock, 250)
     }
-    overlayPassThrough = !!config.overlay?.passThrough
-    overlayPassThroughOpacity = config.overlay?.passThroughOpacity ?? 0.4
-    applyOverlayPassThrough()
+    configureOverlayState({
+      passThrough: !!config.overlay?.passThrough,
+      opacity: config.overlay?.passThroughOpacity ?? 0.4
+    })
     if (tray) {
       tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!overlayPassThrough))
+      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!isOverlayPassThrough()))
       setTrayRecording(tray, !eventBus.paused)
     }
   }
@@ -1174,11 +1082,28 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!overlayPassThrough))
+  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!isOverlayPassThrough()))
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
   registerContextMenuIpc(ipcMain)
+
+  // Shared context for extracted IPC handler modules.
+  const ipcCtx: IpcContext = {
+    getActiveProject: () => activeProject,
+    getMainWindow: () => mainWindow,
+    getOverlayWindow: () => overlayWindow,
+    getCurrentEngagementId: () => currentEngagementId,
+    getCurrentOperatorId: () => currentOperatorId,
+    send,
+    triggerBookmark,
+    triggerInstantMark
+  }
+  registerOverlayIpc(ipcMain, ipcCtx)
+  registerDataExportIpc(ipcMain, ipcCtx)
+  registerTerminalIpc(ipcMain, ipcCtx)
+  registerPluginsIpc(ipcMain, ipcCtx)
+  registerOperatorsIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1344,86 +1269,11 @@ app.whenReady().then(() => {
     send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
     send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
     send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
-    overlayPassThrough = !!newConfig.overlay?.passThrough
-    overlayPassThroughOpacity = newConfig.overlay?.passThroughOpacity ?? 0.4
-    applyOverlayPassThrough()
+    configureOverlayState({
+      passThrough: !!newConfig.overlay?.passThrough,
+      opacity: newConfig.overlay?.passThroughOpacity ?? 0.4
+    })
     return true
-  })
-  // The renderer measures its own content and reports the exact height it needs
-  // (see OverlayApp) — no more guessing, so the panel never clips or leaves a
-  // big empty gap. Clamp to sane bounds.
-  ipcMain.on('overlay:autosize', (_e, height: number, width?: number) => {
-    if (!overlayWindow || overlayWindow.isDestroyed()) return
-    const cur = overlayWindow.getBounds()
-    let disp: Electron.Rectangle
-    try { disp = screen.getDisplayNearestPoint({ x: cur.x, y: cur.y }).workArea }
-    catch { disp = screen.getPrimaryDisplay().workArea }
-    const maxH = disp.height - 20
-    const h = Math.max(HUD_MIN_H, Math.min(maxH, Math.round(Number(height) || HUD_MIN_H)))
-    const w = width != null
-      ? Math.max(HUD_MIN_W, Math.min(HUD_MAX_W, Math.round(Number(width))))
-      : cur.width
-    let x = cur.x
-    let y = cur.y
-    if (x + w > disp.x + disp.width) x = Math.max(disp.x, disp.x + disp.width - w)
-    if (y + h > disp.y + disp.height) y = Math.max(disp.y, disp.y + disp.height - h)
-    if (y < disp.y) y = disp.y
-    overlayWindow.setBounds({ x, y, width: w, height: h })
-    if (process.platform === 'win32') {
-      overlayWindow.setOpacity(0.99)
-      setImmediate(() => { if (!overlayWindow!.isDestroyed()) overlayWindow!.setOpacity(1) })
-    }
-  })
-  // setExpanded only toggles state now; the height comes from autosize.
-  ipcMain.on('overlay:setExpanded', () => { /* height handled by overlay:autosize */ })
-  // Snap HUD to one of the four corners of the display it's currently on —
-  // driven by the main window's ⌘⌥ arrow shortcuts (audit finding #53). The
-  // renderer just sends the compass direction; we compute bounds here so we
-  // can pick the right display without asking the renderer to guess.
-  ipcMain.on('overlay:moveToCorner', (_e, corner: 'tl' | 'tr' | 'bl' | 'br') => {
-    if (!overlayWindow || overlayWindow.isDestroyed()) return
-    const b = overlayWindow.getBounds()
-    try {
-      const disp = screen.getDisplayNearestPoint({ x: b.x, y: b.y }).workArea
-      const pad = 16
-      const x = corner === 'tl' || corner === 'bl' ? disp.x + pad : disp.x + disp.width - b.width - pad
-      const y = corner === 'tl' || corner === 'tr' ? disp.y + pad : disp.y + disp.height - b.height - pad
-      overlayWindow.setBounds({ x, y, width: b.width, height: b.height })
-      saveOverlayPosition(overlayWindow)
-    } catch { /* no display — bail */ }
-  })
-  ipcMain.on('overlay:hide', () => {
-    overlayWindow?.hide()
-    send(mainWindow, 'overlay:visibilityChanged', false)
-  })
-  ipcMain.on('overlay:show', () => {
-    overlayWindow?.show()
-    send(mainWindow, 'overlay:visibilityChanged', true)
-  })
-  ipcMain.on('overlay:toggle', () => {
-    if (overlayWindow?.isVisible()) {
-      overlayWindow.hide()
-    } else {
-      overlayWindow?.show()
-    }
-    send(mainWindow, 'overlay:visibilityChanged', overlayWindow?.isVisible() ?? false)
-  })
-  ipcMain.handle('overlay:isVisible', () => {
-    return overlayWindow?.isVisible() ?? false
-  })
-  ipcMain.on('overlay:mouseEnter', () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayMouseInside = true
-      overlayWindow.setIgnoreMouseEvents(false)
-      overlayWindow.webContents.send('overlay:interactive', true)
-    }
-  })
-  ipcMain.on('overlay:mouseLeave', () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayMouseInside = false
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
-      overlayWindow.webContents.send('overlay:interactive', false)
-    }
   })
   // Per-tick push — fires every IP check so `lastCheck`/link updates reach the
   // UI even when the verdict doesn't flip. IPPolicy dedup ensures the CHAIN
@@ -1441,34 +1291,6 @@ app.whenReady().then(() => {
   ipcMain.handle('events:hostChain', (_e, host: string, opts?: { chainLimit?: number }) =>
     activeProject ? hostCausalChain(host, opts ?? {}) : null)
 
-  // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
-  // §2.4). Separate from events:search because the two answer different
-  // questions and have different completeness: an event either exists or does
-  // not, whereas a recording may be on disk and not yet indexed. `casts:status`
-  // exists so the UI can say which of those it is, rather than returning zero
-  // hits and letting the operator conclude the bytes are missing.
-  ipcMain.handle('casts:search', async (_e, query: string, limit?: number) => {
-    if (!activeProject) return []
-    const { searchCasts } = await import('../core/cast-index')
-    return searchCasts(query, limit)
-  })
-  ipcMain.handle('casts:status', async () => {
-    if (!activeProject) return { total: 0, indexed: 0, pending: 0 }
-    const { castIndexStatus } = await import('../core/cast-index')
-    return castIndexStatus()
-  })
-  ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number) => {
-    if (!activeProject) return null
-    // castRel comes from a search hit, but the hit came from a DB the renderer
-    // can reach — so re-derive the path from the project root and refuse
-    // anything that escapes it, the same guard the api-server applies to
-    // castPath out of event data.
-    const castsDir = path.join(getProjectPath(activeProject), 'casts')
-    const full = path.resolve(castsDir, castRel)
-    if (!isInsideDir(castsDir, full)) return null
-    const { readCastRange } = await import('../core/cast-slice')
-    return readCastRange(full, off, len)
-  })
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
   // `queryEventById` has existed since v0.6.96 with no way to reach it from the
   // renderer. The Timeline pages newest-first, 200 rows at a time, and an
@@ -1499,11 +1321,6 @@ app.whenReady().then(() => {
   ipcMain.handle('httpBody:read', (_e, ref: BodyRef) => {
     if (!activeProject) return null
     return readHttpBody(ref)
-  })
-
-  ipcMain.handle('har:export', (_e, opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => {
-    if (!activeProject) return null
-    return exportHar({ ...opts, scope: scopeForActiveProject() })
   })
 
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
@@ -1790,186 +1607,6 @@ app.whenReady().then(() => {
   ipcMain.handle('cdp:getTab', () => getActiveBrowserTab())
   ipcMain.handle('cdp:setPort', (_e, port: number) => { setCdpPort(port); return true })
 
-  // --- Evidence bundle ---
-  ipcMain.handle('data:exportBundle', (_e, opts?: { maskOutOfScope?: boolean }) => {
-    if (!activeProject) return { ok: false, error: 'no-active-project' }
-    try {
-      const cfg = loadConfig(getProjectPath(activeProject))
-      // PRD A2: mask out-of-scope events' captured content in the bundle by
-      // DEFAULT. The operator can override (opts.maskOutOfScope === false) to
-      // ship the raw out-of-scope content — a deliberate, audited choice the
-      // ExportMenu surfaces with a warning. `true`/undefined both mask.
-      const maskOutOfScope = opts?.maskOutOfScope !== false
-      const snap = snapshotScope(cfg)
-      const bundle = exportBundle(cfg.engagement.id, {
-        scope: { targets: snap.targets, excludeTargets: cfg.scope?.excludeTargets },
-        maskOutOfScope
-      })
-      return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
-    } catch (e) {
-      return { ok: false, error: (e as Error)?.message ?? String(e) }
-    }
-  })
-  // Renderer button "Reveal in Finder / Show in Explorer" wants shell access
-  // without exposing the whole Electron shell module to preload. This handler
-  // opens the containing directory of an exported bundle/file. Rejects any
-  // path that isn't a string — belt+braces against renderer bugs.
-  // Operator tokens are written to a file rather than handed to the operator
-  // as text to copy (UIUX-STANDARD §10). Two reasons, and the second is the
-  // one that matters: a token on the clipboard is a token in every clipboard
-  // manager on the machine, and a token the operator pastes into a note is a
-  // token in whatever that note gets backed up to. Writing it means there is
-  // exactly one copy and the app knows where it is.
-  //
-  // `~/.redlog/tokens/` sits deliberately outside the project directory, so
-  // no bundle export or evidence package can ever sweep it up —
-  // those walk the project tree, and a credential is not evidence.
-
-  ipcMain.handle('data:revealPath', async (_e, target: string) => {
-    if (typeof target !== 'string' || !target) return false
-    try {
-      // Containment: `target` comes from the renderer, and shell.openPath on a
-      // directory opens it — a macOS `.app` bundle IS a directory, so an
-      // unconstrained path is a renderer→app-launch primitive. Only reveal
-      // inside the app's own roots: the active project dir, or ~/.redlog (where
-      // the tokens dir lives). Everything RedLog reveals is under one of these.
-      const resolved = path.resolve(target)
-      const redlogHome = path.join(homedir(), '.redlog')
-      const projectDir = activeProject ? getProjectPath(activeProject) : null
-      const allowed = (projectDir && isInsideDir(projectDir, resolved)) || isInsideDir(redlogHome, resolved)
-      if (!allowed) return false
-      // If `target` is a file, open its parent directory; if it's a directory,
-      // open it directly. shell.openPath returns an empty string on success.
-      const stat = fs.existsSync(resolved) ? fs.statSync(resolved) : null
-      const toOpen = stat && stat.isFile() ? path.dirname(resolved) : resolved
-      const err = await shell.openPath(toOpen)
-      return err === ''
-    } catch {
-      return false
-    }
-  })
-
-  // --- Data Export (minimal JSON dump) ---
-  ipcMain.handle('data:exportJson', () => {
-    if (!activeProject) return null
-    const projectDir = getProjectPath(activeProject)
-    const config = loadConfig(projectDir)
-    const events = redactEventsForExport(queryEvents({ limit: 100000 }), scopeForActiveProject())
-    const data = { config, events, exportedAt: new Date().toISOString() }
-    const outDir = path.join(projectDir, 'exports')
-    fs.mkdirSync(outDir, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filePath = path.join(outDir, `redlog-${ts}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
-    return filePath
-  })
-  // NDJSON export for a shared log store (ELK / Filebeat): one redacted event
-  // per line, ISO `@timestamp` alias, chain columns kept. `scopeOnly` excludes
-  // out-of-scope rows entirely (+ no-target noise) rather than only masking
-  // their content; `scrubPii` strips the operator's home path / username /
-  // hostname. Both default off (single-operator export keeps attribution).
-  ipcMain.handle('data:exportNdjson', (_e, opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => {
-    if (!activeProject) return null
-    const projectDir = getProjectPath(activeProject)
-    const scope = scopeForActiveProject()
-    const events = opts?.scopeOnly && scope
-      ? queryScopeFilteredEvents(scope.targets)
-      : queryEvents({ limit: 100000 })
-    const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: opts?.scrubPii === true })
-    const outDir = path.join(projectDir, 'exports')
-    fs.mkdirSync(outDir, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filePath = path.join(outDir, `redlog-${ts}.ndjson`)
-    fs.writeFileSync(filePath, ndjson)
-    return filePath
-  })
-  // Per-target Markdown walkthrough — the report skeleton (OSCP write-up, red
-  // attack narrative, purple by-target). Data, not a formatted PDF.
-  ipcMain.handle('data:exportWalkthrough', (_e) => {
-    if (!activeProject) return null
-    const projectDir = getProjectPath(activeProject)
-    const md = buildTargetWalkthrough({ scope: scopeForActiveProject(), generatedAt: new Date().toISOString() })
-    const outDir = path.join(projectDir, 'exports')
-    fs.mkdirSync(outDir, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filePath = path.join(outDir, `redlog-walkthrough-${ts}.md`)
-    fs.writeFileSync(filePath, md)
-    return filePath
-  })
-  // Per-view slice exports — audit finding #80. Same target directory + naming
-  // as the full export so the operator has one place to look. Each returns a
-  // path or null (no active project). Callers open the containing dir via
-  // shell.openPath after a successful save.
-  // The active project's scope, shaped for redact-export. The layer-4 sanitize
-  // swap applies regardless of scope; passing this also masks out-of-scope
-  // bodies. Undefined only when no project is open (nothing to export anyway).
-  const scopeForActiveProject = (): { targets: string[]; excludeTargets?: string[] } | undefined => {
-    if (!activeProject) return undefined
-    const cfg = loadConfig(getProjectPath(activeProject))
-    return { targets: snapshotScope(cfg).targets, excludeTargets: cfg.scope?.excludeTargets }
-  }
-
-  const sliceExport = (name: string, payload: unknown): string | null => {
-    if (!activeProject) return null
-    const projectDir = getProjectPath(activeProject)
-    const outDir = path.join(projectDir, 'exports')
-    fs.mkdirSync(outDir, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filePath = path.join(outDir, `redlog-${name}-${ts}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2))
-    return filePath
-  }
-  // Not `sliceExport`: that writes into <project>/exports/ beside the evidence
-  // bundle and the scope-filtered export, where a file called
-  // `redlog-marks-*.json` reads as part of the delivery. Bookmarks are the
-  // operator's own notes — they get their own directory and say what they are.
-  ipcMain.handle('data:exportMarks', () => {
-    if (!activeProject) return null
-    const outDir = path.join(getProjectPath(activeProject), 'bookmarks')
-    fs.mkdirSync(outDir, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filePath = path.join(outDir, `redlog-bookmarks-${ts}.json`)
-    fs.writeFileSync(filePath, JSON.stringify({
-      _note: 'Private bookmarks. Not chained, not signed, not attributed to an operator, editable in place, and not covered by `redlog-cli sanitize`. Not evidence.',
-      bookmarks: listBookmarks()
-    }, null, 2))
-    return filePath
-  })
-  ipcMain.handle('data:exportLoot', () => activeProject ? sliceExport('loot', redactEventsForExport(queryEvents({ agentType: 'loot', limit: 10000 }), scopeForActiveProject())) : null)
-  // All three subtypes, not just violations: an export showing a violation
-  // without the record that withdrew it misstates the operator's own
-  // conclusion, and the recompute summary is what says under which boundary the
-  // retroactive rows were judged.
-  ipcMain.handle('data:exportViolations', () => activeProject
-    ? sliceExport('scope-violations', redactEventsForExport(queryEvents({ agentType: 'system', limit: 10000 })
-        .filter((e) => SCOPE_COUNT_SUBTYPES.has(String(e.data?.subtype))), scopeForActiveProject()))
-    : null)
-  // v0.6.87 C2: Timeline slice export. Renderer picks a time window (usually
-  // the current visible viewport in Timeline) and gets a filtered JSON slice
-  // that a bug-bounty writeup can attach as evidence for a specific attack
-  // moment. The export includes the surrounding markers/screenshots for
-  // context; the operator can trim in a text editor if too much lands.
-  ipcMain.handle('data:exportTimelineSlice', (_e, opts: { from: number; to: number }) => {
-    if (!activeProject) return null
-    const from = Number(opts?.from) || 0
-    const to = Number(opts?.to) || Date.now()
-    if (to <= from) return null
-    const all = queryEvents({ limit: 100000, since: from })
-    const slice = all.filter((e) => e.timestamp >= from && e.timestamp <= to)
-    // A correction is always written after the window its marker lives in, so a
-    // plain window filter exports the finding with the wording the operator has
-    // since retracted, and nothing in the file says so. Pulled in regardless of
-    // the window, under their own key so a reader can see they were fetched for
-    // context rather than because they fell inside it.
-    const markerIds = markerIdsIn(slice)
-    const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds) : []
-    const scope = scopeForActiveProject()
-    return sliceExport(
-      `timeline-${new Date(from).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
-      { window: { fromMs: from, toMs: to }, ...sliceWithAmendments(redactEventsForExport(slice, scope), redactEventsForExport(amendments, scope)) }
-    )
-  })
-
   // --- Config Profile Export/Import ---
   ipcMain.handle('config:exportProfile', async () => {
     if (!activeProject) return null
@@ -2044,114 +1681,6 @@ app.whenReady().then(() => {
     }
   })
 
-  // --- Terminal ---
-  ipcMain.handle('terminal:spawn', (_e, id: string, cols: number, rows: number) => spawnTerminal(id, cols, rows))
-  ipcMain.on('terminal:write', (_e, id: string, data: string) => writeTerminal(id, data))
-  ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) => resizeTerminal(id, cols, rows))
-  ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
-  ipcMain.handle('terminal:list', () => listTerminals())
-  // Replay a command_end event by slicing its session's .cast file — see
-  // api-server /api/terminal/replay for the logic; this IPC surface just
-  // forwards to the same function so the UI doesn't need a token round-trip.
-  ipcMain.handle('terminal:replay', async (_e, eventId: string) => {
-    try {
-      const { queryEvents } = await import('../core/db/events')
-      const { readCastSlice } = await import('../core/cast-slice')
-      const target = queryEventById(eventId)
-      if (!target) return { ok: false, error: 'event not found' }
-      const td = target.data as Record<string, unknown>
-      const tid = td.terminalId as string | undefined
-      if (target.agentType !== 'shell' || td.subtype !== 'command_end' || td.source !== 'builtin-terminal' || !tid) {
-        return { ok: false, error: 'not a builtin-terminal command_end event' }
-      }
-      const sess = queryEvents({ agentType: 'shell', limit: 5000 })
-        .filter((ev) => ev.data?.subtype === 'session_start' && ev.data.terminalId === tid && ev.timestamp <= target.timestamp)[0]
-      const castPath = sess?.data?.castPath as string | undefined
-      if (!castPath) return { ok: false, error: 'no cast file for this session' }
-      const duration = Number(td.duration_sec ?? 0) * 1000
-      const startMs = target.timestamp - Math.max(duration, 100)
-      const slice = await readCastSlice(castPath, startMs, target.timestamp)
-      if (!slice) return { ok: false, error: 'failed to read cast file' }
-      return { ok: true, command: td.command, exitCode: td.exit_code, durationSec: td.duration_sec, text: slice.text, bytes: slice.bytes }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-
-  // Session-level replay: given a session_start or session_end event, walk
-  // the ENTIRE .cast file for that terminal. Used when the operator ssh'd
-  // into a remote host and needs to see everything that scrolled by after
-  // that — command_end alone only exposes the local `ssh` line.
-  ipcMain.handle('terminal:replaySession', async (_e, eventId: string) => {
-    try {
-      const { queryEvents } = await import('../core/db/events')
-      const { readCastSlice } = await import('../core/cast-slice')
-      const target = queryEventById(eventId)
-      if (!target) return { ok: false, error: 'event not found' }
-      const td = target.data as Record<string, unknown>
-      const tid = td.terminalId as string | undefined
-      const subtype = td.subtype
-      if (target.agentType !== 'shell' || (subtype !== 'session_start' && subtype !== 'session_end') || td.source !== 'builtin-terminal' || !tid) {
-        return { ok: false, error: 'not a builtin-terminal session event' }
-      }
-      // For session_end the castPath is on that event itself; for
-      // session_start we look up the matching session_end (or use the
-      // session_start's own castPath if set).
-      let castPath = td.castPath as string | undefined
-      if (!castPath) {
-        const other = queryEvents({ agentType: 'shell', limit: 5000 })
-          .find((ev) => ev.data?.terminalId === tid && (ev.data?.subtype === 'session_start' || ev.data?.subtype === 'session_end') && ev.data?.castPath)
-        castPath = other?.data?.castPath as string | undefined
-      }
-      if (!castPath) return { ok: false, error: 'no cast file for this session' }
-      // Slice from 0 to a far future — readCastSlice bounds against the file
-      // itself. text captures the whole session, ANSI-stripped.
-      const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
-      if (!slice) return { ok: false, error: 'failed to read cast file' }
-      // events carries the raw asciinema frames ([relSec, 'o', bytes]) so the
-      // renderer can drive a proper scrubber/player. text is kept for the
-      // fallback pre-tag view and copy-to-clipboard flows.
-      return { ok: true, castPath, text: slice.text, bytes: slice.bytes, truncated: slice.truncated, events: slice.events }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-
-  // --- Scope-filtered export ---
-  ipcMain.handle('data:exportScopeFiltered', () => {
-    if (!activeProject) return null
-    const projectDir = getProjectPath(activeProject)
-    const config = loadConfig(projectDir)
-    let scopeTargets = config.scope.targets
-    if (config.scope.scopeFile) {
-      const loaded = loadScopeFile(config.scope.scopeFile)
-      if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
-    }
-    const events = redactEventsForExport(
-      queryScopeFilteredEvents(scopeTargets),
-      { targets: scopeTargets, excludeTargets: config.scope?.excludeTargets }
-    )
-    // Bookmarks are NOT included, and this is the export where that mattered
-    // most: the events went through the scope filter and the bookmark rows did
-    // not, so a "scope-filtered" file shipped URLs for hosts the operator had
-    // deliberately excluded.
-    const data = {
-      engagement: config.engagement,
-      operator: config.operator,
-      scope: config.scope,
-      events,
-      exportedAt: new Date().toISOString(),
-      filtered: true,
-      scopeTargets
-    }
-    const outDir = path.join(projectDir, 'exports')
-    fs.mkdirSync(outDir, { recursive: true })
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const filePath = path.join(outDir, `redlog-scope-${ts}.json`)
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
-    return filePath
-  })
-
   // --- Hooks ---
   ipcMain.handle('hooks:detect', async () => {
     const cached = getCachedHooks()
@@ -2174,36 +1703,6 @@ app.whenReady().then(() => {
     wslUninstallHook(distro, shell as 'bash' | 'zsh'))
   ipcMain.handle('wsl:runDiagnostics', (_e, distro: string) =>
     wslRunDiagnostics(distro))
-
-  // --- Plugins ---
-  // Serialise LoadedPlugin to a UI-friendly shape (drop absolute dirs/hashes we
-  // don't need in the renderer; keep what the panel renders + acts on).
-  const pluginView = () => listPlugins().map((p) => ({
-    id: p.manifest.id, name: p.manifest.name, version: p.manifest.version,
-    description: p.manifest.description ?? '', author: p.manifest.author ?? '',
-    source: p.source, tier: p.tier, status: p.status,
-    capabilities: p.manifest.capabilities ?? [],
-    contributes: Object.keys(p.manifest.contributes ?? {}),
-    error: p.error
-  }))
-  ipcMain.handle('plugins:list', () => pluginView())
-  ipcMain.handle('plugins:eventTypes', () => listEventTypes())
-  ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); invalidateHooksDetectCache(); reloadPlugins(); return pluginView() })
-  // Open the user plugin dir in Finder/Explorer so operators can drop new
-  // plugin folders in and reload without hunting for the path.
-  ipcMain.handle('plugins:openFolder', async () => {
-    const dir = path.join(homedir(), '.redlog', 'plugins')
-    try { await fs.promises.mkdir(dir, { recursive: true }) } catch { /* ignore */ }
-    shell.openPath(dir)
-    return dir
-  })
-  ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); invalidateHooksDetectCache(); return pluginView() })
-  ipcMain.handle('plugins:grant', (_e, id: string) => {
-    const opId = activeProject ? loadConfig(getProjectPath(activeProject)).operator.id : 'unknown'
-    const r = grantPluginTrust(id, opId); return { ...r, plugins: pluginView() }
-  })
-  ipcMain.handle('plugins:revoke', (_e, id: string) => { revokePluginTrust(id); return pluginView() })
-
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
@@ -2229,56 +1728,6 @@ app.whenReady().then(() => {
     }
   })
 
-  // --- Operators ---
-  ipcMain.handle('operators:list', () => {
-    if (!activeProject) return []
-    return listOperators().map((op) => ({
-      id: op.id, name: op.name, isPrimary: op.isPrimary,
-      createdAt: op.createdAt, revokedAt: op.revokedAt,
-      signerPubKey: op.signerPubKey  // ed25519 public key, for §5c key display
-    }))
-  })
-
-  // §5c operator management. Tokens are written to ~/.redlog/tokens/<id>.token
-  // (0600, outside the project tree so no export sweeps them up — §10), never
-  // returned to the renderer to copy; the caller reveals the file via
-  // data:revealPath. create/rotateToken return the token file PATH, not the token.
-  const writeOperatorToken = (id: string, token: string): string => {
-    const dir = path.join(homedir(), '.redlog', 'tokens')
-    fs.mkdirSync(dir, { recursive: true })
-    const p = path.join(dir, `${id}.token`)
-    fs.writeFileSync(p, token, { mode: 0o600 })
-    try { fs.chmodSync(p, 0o600) } catch { /* platforms without POSIX modes */ }
-    return p
-  }
-  ipcMain.handle('operators:create', (_e, opts: { name: string }) => {
-    if (!activeProject) return null
-    const name = String(opts?.name ?? '').trim()
-    if (!name) return null
-    const id = slugifyOperatorId(name)
-    try {
-      const token = generateToken()
-      const op = createOperator({ id, name, token })
-      return { id: op.id, name: op.name, signerPubKey: op.signerPubKey, tokenPath: writeOperatorToken(id, token) }
-    } catch {
-      // slugifyOperatorId appends a random suffix so id collisions are
-      // effectively impossible; this is a defensive backstop (DB write failed).
-      return { error: 'create_failed', id }
-    }
-  })
-  ipcMain.handle('operators:rotateToken', (_e, id: string) => {
-    if (!activeProject || typeof id !== 'string' || !id) return null
-    const token = generateToken()
-    if (!updateOperatorToken(id, token)) return null
-    return { id, tokenPath: writeOperatorToken(id, token) }
-  })
-  ipcMain.handle('operators:revoke', (_e, id: string) =>
-    activeProject && typeof id === 'string' ? revokeOperator(id) : false)
-  ipcMain.handle('operators:rename', (_e, id: string, name: string) =>
-    activeProject && typeof id === 'string' && typeof name === 'string' ? renameOperator(id, name.trim()) : false)
-  ipcMain.handle('operators:pubKey', (_e, id: string) =>
-    activeProject && typeof id === 'string' ? getOperatorSignerPubKey(id) : null)
-
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerBookmark)
   // §8: the way back out of click-through. Without it, turning pass-through on
@@ -2286,11 +1735,6 @@ app.whenReady().then(() => {
   // the button is behind it — and the only escape is Settings, which the
   // operator has to know exists.
   globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => setOverlayPassThrough(false))
-  ipcMain.on('overlay:quickMark', triggerBookmark)
-  ipcMain.handle('overlay:instantMark', () => triggerInstantMark())
-  // §8: the HUD action-row button turns pass-through ON (it can't turn it off —
-  // once on, the HUD is click-through). The exits are ⌘⇧P and the menu bar.
-  ipcMain.on('overlay:setPassThrough', (_e, on: boolean) => setOverlayPassThrough(!!on))
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
