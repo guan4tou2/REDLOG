@@ -285,11 +285,11 @@ describe('renderer views render without throwing', () => {
     expect(tags.length).toBeGreaterThan(0)
   })
 
-  // #47: the artifact-rotation eviction budgets live in the "What gets
-  // captured" Settings tab. Switching to it must surface the controls.
-  it('Settings exposes the artifact-rotation budgets under "What gets captured"', async () => {
+  // #47: the artifact-rotation eviction budgets live in the "Capture control"
+  // Settings tab. Switching to it must surface the controls.
+  it('Settings exposes the artifact-rotation budgets under "Capture control"', async () => {
     renderView(<Settings />)
-    const tab = await screen.findByText('What gets captured')
+    const tab = await screen.findByText('Capture control')
     fireEvent.click(tab)
     expect(await screen.findByText('Disk pressure / artifact rotation')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()

@@ -1025,6 +1025,12 @@ export function getEventCount(opts?: { tier?: 'chained' | 'logged' | 'all' }): n
   return chained + logged
 }
 
+export function getLootCount(): number {
+  const db = getReadonlyDB()
+  const row = db.prepare("SELECT COUNT(*) as count FROM events WHERE agent_type = 'loot'").get() as { count: number }
+  return row.count
+}
+
 // v0.14.3 §9.5: timestamp of the newest logged-tier row, or null if none.
 // Powers the CaptureHealthCard "last fed …" freshness readout without pulling
 // row bodies — a single SELECT MAX() against events_logged's timestamp index.

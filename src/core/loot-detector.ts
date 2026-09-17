@@ -110,7 +110,10 @@ export class LootDetector {
   private detectedHashes = new Set<string>()
 
   configure(opts: { engagementId?: string; operatorId?: string }): void {
-    if (opts.engagementId) this.engagementId = opts.engagementId
+    if (opts.engagementId && opts.engagementId !== this.engagementId) {
+      this.engagementId = opts.engagementId
+      this.detectedHashes.clear()
+    }
     if (opts.operatorId) this.operatorId = opts.operatorId
   }
 
