@@ -776,6 +776,16 @@ export default function Settings(): JSX.Element {
               />
             </FieldGroup>}
 
+            {tab === 'captureControl' && <FieldGroup title={t('settings.retentionGroup')}>
+              <p className="text-xs text-redlog-text-faint">{t('settings.retentionLoggedTierHint')}</p>
+              <Field
+                label={t('settings.retentionLoggedTier')}
+                value={String(config.retention?.loggedTier?.keepDays ?? 0)}
+                onChange={(v) => setConfig({ ...config, retention: { ...config.retention, loggedTier: { ...config.retention?.loggedTier, keepDays: Math.max(0, parseInt(v) || 0) } } })}
+                type="number"
+              />
+            </FieldGroup>}
+
             {tab === 'integrity' && <IntegrityPanel t={t} />}
                       </>
         )}
