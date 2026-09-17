@@ -386,7 +386,7 @@ export const EVIDENCE_SQL = `
   AND NOT (agent_type = 'terminal' AND json_extract(data,'$.subtype') = 'session_start')
   AND NOT (
     agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command','command_end')
-    AND json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%'
+    AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%')
   )
 `
 
@@ -401,7 +401,7 @@ const HOUSEKEEPING_SQL = `
     (agent_type = 'system' AND json_extract(data,'$.subtype') IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND json_extract(data,'$.subtype') = 'session_start')
     OR (agent_type = 'terminal' AND json_extract(data,'$.subtype') = 'session_start')
-    OR (agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command') AND json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%')
+    OR (agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
   )
 `
 

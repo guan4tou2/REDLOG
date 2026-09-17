@@ -11,7 +11,7 @@
 import type { RedLogEvent } from '../../../core/db/events'
 
 export function isHookSource(cmd: unknown): boolean {
-  return typeof cmd === 'string' && /shell-preexec-hook\.sh/.test(cmd)
+  return typeof cmd === 'string' && /shell-preexec-hook\.sh|shell-hook\.ps1/.test(cmd)
 }
 
 export function isHousekeeping(e: RedLogEvent): boolean {
@@ -24,7 +24,7 @@ export function isHousekeeping(e: RedLogEvent): boolean {
   // into a remote host and the local command_end row only shows `ssh`.
   if (e.agentType === 'shell' && s === 'session_start') return true
   if (e.agentType === 'terminal' && s === 'session_start') return true
-  if (e.agentType === 'shell' && (s === 'command_start' || s === 'command') && isHookSource(e.data?.command)) return true
+  if (e.agentType === 'shell' && (s === 'command_start' || s === 'command' || s === 'command_end') && isHookSource(e.data?.command)) return true
   return false
 }
 
