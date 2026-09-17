@@ -825,24 +825,8 @@ export default function Settings(): JSX.Element {
         {tab === 'plugins' && <PluginsTab t={t} />}
       </div>
 
-      <div className="px-4 py-3 border-t border-redlog-border shrink-0 max-w-[900px]">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={async () => {
-              // Auto-save already writes on every change; this is now a
-              // "force save now" escape hatch — useful if the user wants to
-              // flush before the 350ms debounce window closes.
-              if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-              await window.redlog.config.save(config)
-              setSaved(true)
-              setTimeout(() => setSaved(false), 1500)
-            }}
-            className="px-4 py-1.5 bg-redlog-danger text-redlog-on-danger hover:bg-redlog-danger-hover text-xs rounded transition-colors"
-          >
-            {t('settings.save')}
-          </button>
-          <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
-        </div>
+      <div className="px-4 py-2 border-t border-redlog-border shrink-0 max-w-[900px]">
+        <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
       </div>
       </div>
     </div>
