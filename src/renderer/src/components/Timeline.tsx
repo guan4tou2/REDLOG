@@ -4143,19 +4143,24 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
   const contentType = String(data.content_type ?? '')
   const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
 
-  const inlineReqBody = data.request_body as { data?: string; encoding?: string; size?: number } | undefined
-  const inlineRespBody = data.response_body as { data?: string; encoding?: string; size?: number } | undefined
-  const inlineWsBody = data.ws_body as { data?: string; encoding?: string; size?: number } | undefined
-  const inlineTcpBody = data.tcp_body as { data?: string; encoding?: string; size?: number } | undefined
-  const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-  const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-  const wsBodyRef = data.ws_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-  const tcpBodyRef = data.tcp_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
+  const inlineReqBody = data.request_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
+  const inlineRespBody = data.response_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
+  const inlineWsBody = data.ws_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
+  const inlineTcpBody = data.tcp_body as { data?: string; encoding?: string; size?: number; truncated?: boolean } | undefined
+  const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
+  const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
+  const wsBodyRef = data.ws_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
+  const tcpBodyRef = data.tcp_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64'; truncated?: boolean } | undefined
 
   const hasFullReqBody = !!(inlineReqBody?.data || reqBodyRef)
   const hasFullRespBody = !!(inlineRespBody?.data || respBodyRef)
   const hasFullWsBody = !!(inlineWsBody?.data || wsBodyRef)
   const hasFullTcpBody = !!(inlineTcpBody?.data || tcpBodyRef)
+
+  const reqBodyTruncated = inlineReqBody?.truncated === true || reqBodyRef?.truncated === true
+  const respBodyTruncated = inlineRespBody?.truncated === true || respBodyRef?.truncated === true
+  const wsBodyTruncated = inlineWsBody?.truncated === true || wsBodyRef?.truncated === true
+  const tcpBodyTruncated = inlineTcpBody?.truncated === true || tcpBodyRef?.truncated === true
 
   const [loadedReqBody, setLoadedReqBody] = useState<string | null>(null)
   const [loadedRespBody, setLoadedRespBody] = useState<string | null>(null)
@@ -4218,7 +4223,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           label={t('timeline.detail.httpRequestBody')}
           content={reqPreview}
           bytes={inlineReqBody?.size ?? reqPreview.length}
-          truncated={hasFullReqBody}
+          truncated={reqBodyTruncated}
           accent="zinc"
           startOpen
         />
@@ -4247,7 +4252,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           label={t('timeline.detail.httpResponseBody')}
           content={(loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview}
           bytes={contentLength ?? ((loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview).length}
-          truncated={!loadedRespBody && hasFullRespBody}
+          truncated={respBodyTruncated}
           accent="emerald"
           startOpen
         />
@@ -4267,7 +4272,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           label={t('timeline.detail.wsPayload')}
           content={(loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview}
           bytes={data.size as number ?? ((loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview).length}
-          truncated={!loadedWsBody && hasFullWsBody}
+          truncated={wsBodyTruncated}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
         />
@@ -4287,7 +4292,7 @@ function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; event
           label={t('timeline.detail.tcpPayload')}
           content={(loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview}
           bytes={data.size as number ?? ((loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview).length}
-          truncated={!loadedTcpBody && hasFullTcpBody}
+          truncated={tcpBodyTruncated}
           accent={data.direction === 'client' ? 'zinc' : 'emerald'}
           startOpen
         />
