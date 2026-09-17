@@ -257,14 +257,14 @@ Two tiers, decided by `manifest.ts:PRIVILEGED_KEYS`:
 | Tier | Contributions | Executes in RedLog? |
 |---|---|---|
 | 🟢 declarative | `lootPatterns`, `redaction`, `commandTags`, `targetExtractors`, `eventTypes`, `capture` | no |
-| 🔴 privileged | `mcpTools`, `tailers`, (`exporters`, `monitors` reserved) | yes |
+| 🔴 privileged | `tailers`, (`exporters`, `monitors` reserved) | yes |
 
-`mcpTools` run in `utilityProcess.fork()` with a capability-scoped RPC
+Privileged code runs in `utilityProcess.fork()` with a capability-scoped RPC
 surface (`read:events`, `write:events`, `read:findings`, `read:config`,
 `net:outbound`), a 30 s per-call timeout, and no access to the DB handle or
 signing keys. Trust is pinned to a content hash covering the manifest plus
 every privileged code file; changing either the code or the requested
-capabilities revokes it automatically.
+capabilities revokes it automatically. (`mcpTools` was retired in #88.)
 
 `tailers` is the exception and currently does **not** follow this path — see
 `AUDIT-2026-08-08.md` §2 (P1-3).
