@@ -10,6 +10,29 @@ import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
 import { shellFlavour, type ShellFlavour } from '../core/shell-flavour'
+import { buildShellCatalog, type ShellOption } from '../core/shell-catalog'
+import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
+
+// The shells this machine can open, discovered asynchronously and read
+// synchronously by spawnTerminal. Probing is what must not happen on the main
+// thread — listWslDistros() alone cost 2.1 s of blocking spawnSync before
+// #100, and a pane opening is not the moment to pay it again.
+let catalog: ShellOption[] = []
+
+export function cachedShells(): ShellOption[] { return catalog }
+
+export async function discoverShells(): Promise<ShellOption[]> {
+  const wslDistros = process.platform === 'win32'
+    ? (await listWslDistros()).map((d) => d.name)
+    : []
+  catalog = buildShellCatalog({
+    platform: process.platform,
+    envShell: process.env.SHELL,
+    exists: (p) => { try { return fs.existsSync(p) } catch { return false } },
+    wslDistros
+  })
+  return catalog
+}
 
 interface TerminalSession {
   id: string
@@ -26,6 +49,7 @@ interface TerminalSession {
    *  Kept on the session so a re-attaching renderer gets the same answer as
    *  the one that spawned it. */
   shell: string
+  shellLabel: string
   hookSourced: boolean
   // v0.6.89 `_causes`: id of the shell.session_start event so finaliseSession
   // can stamp session_end with `_causes: [startEventId]`. Populated after the
@@ -203,12 +227,15 @@ export interface SpawnResult {
   pid: number
   /** The shell actually launched, so the UI can name it when it warns. */
   shell: string
+  /** Catalog label when the operator picked one ("Git Bash", "WSL · Ubuntu"),
+   *  else the executable's own name. */
+  shellLabel: string
   /** False when this pane records no commands: its shell has no hook, or the
    *  hook file is missing from the install. */
   hookSourced: boolean
 }
 
-export function spawnTerminal(id: string, cols: number, rows: number): SpawnResult {
+export function spawnTerminal(id: string, cols: number, rows: number, shellId?: string): SpawnResult {
   const existing = sessions.get(id)
   if (existing) {
     // A re-attaching renderer (StrictMode remount, tab re-render) gets a brand
@@ -218,24 +245,31 @@ export function spawnTerminal(id: string, cols: number, rows: number): SpawnResu
       const buf = existing.buffer
       setTimeout(() => sendToWindow(`terminal:data:${id}`, buf), 0)
     }
-    return { pid: existing.pty.pid, shell: existing.shell, hookSourced: existing.hookSourced }
+    return { pid: existing.pty.pid, shell: existing.shell, shellLabel: existing.shellLabel, hookSourced: existing.hookSourced }
   }
   if (!operatorId) {
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
   }
 
+  // The operator's pick, when the picker has one and the catalog still has it.
+  // Falls back to the inherited-$SHELL rule below, which is what every pane
+  // used before the catalog existed.
+  //
   // v0.6.96 CP-1: on Windows, ignore inherited POSIX-shaped SHELL (Git Bash
   // sets `SHELL=/usr/bin/bash` — pty.spawn rejects it with an inscrutable
   // error). Only accept SHELL when it looks like a Win32 path or ends in .exe.
   // Same class as the v0.6.82 cwd-from-HOME fix, but for SHELL — that audit
   // didn't touch this line.
+  const picked = shellId ? cachedShells().find((s) => s.id === shellId) : undefined
   const isWin32Path = (p: string): boolean => /^[A-Z]:[\\/]/i.test(p) || /\.exe$/i.test(p)
   const envShell = process.env.SHELL
-  const shell = (envShell && (os.platform() !== 'win32' || isWin32Path(envShell)))
+  const shell = picked?.command ?? ((envShell && (os.platform() !== 'win32' || isWin32Path(envShell)))
     ? envShell
-    : (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh')
-  const flavour = shellFlavour(shell)
-  const shellArgs = flavour === 'powershell' ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : []
+    : (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh'))
+  const flavour = picked?.flavour ?? shellFlavour(shell)
+  const shellArgs = picked?.args ?? (flavour === 'powershell' ? ['-ExecutionPolicy', 'Bypass', '-NoLogo'] : [])
+  const wslDistro = picked?.wslDistro
+  const shellLabel = picked?.label ?? (shell.split(/[\/]/).pop() ?? shell)
   // Use os.homedir() only — it resolves via USERPROFILE on Windows. Reading
   // process.env.HOME first bit Git Bash / MSYS2 users where HOME is a
   // POSIX-shaped `/c/Users/foo` that pty.spawn rejects as invalid Win32.
@@ -305,6 +339,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): SpawnResu
     engagementId,
     operatorId,
     shell,
+    shellLabel,
     hookSourced: false
   }
 
@@ -359,6 +394,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): SpawnResu
     source: 'builtin-terminal',
     terminalId: id,
     shell,
+    shellLabel,
+    ...(picked ? { shellId: picked.id } : {}),
     pid: term.pid,
     castPath,
     hookSourced: session.hookSourced,
@@ -389,9 +426,14 @@ export function spawnTerminal(id: string, cols: number, rows: number): SpawnResu
     // `SHELL` pointed at Git Bash — which is every pane launched from a Git
     // Bash shell, since the value is inherited — recorded `session_start` and
     // a `.cast` and **not one command**, with nothing on screen to say so.
+    // A WSL pane is a Linux shell looking at the Windows disk through /mnt,
+    // so the hook has to be named the way that shell can reach it — the same
+    // conversion `wsl-manager` does when it installs the hook into a distro's
+    // rc file.
+    const posixPath = wslDistro ? windowsPathToWsl(hookPath) : hookPath.replace(/\\/g, '/')
     const sourceCmd = flavour === 'powershell'
       ? ` . "${hookPath}" *> $null; Clear-Host\r`
-      : ` source "${hookPath.replace(/\\/g, '/')}" >/dev/null 2>&1; clear\r`
+      : ` source "${posixPath}" >/dev/null 2>&1; clear\r`
     setTimeout(() => {
       if (!session.finalised) term.write(sourceCmd)
     }, 600)
@@ -401,7 +443,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): SpawnResu
   // recorded". The renderer shows it, because a capture gap the operator
   // cannot see is the one failure mode the product does not allow
   // (docs/PRD-COMPLETION.md §1.5).
-  return { pid: term.pid, shell, hookSourced: hookPath !== null }
+  return { pid: term.pid, shell, shellLabel, hookSourced: hookPath !== null }
 }
 
 export function writeTerminal(id: string, data: string): void {
