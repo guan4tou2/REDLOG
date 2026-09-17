@@ -25,9 +25,9 @@ So plugins are split by how much they can affect that record:
 | Tier | What it contributes | Runs code in RedLog? | Can it subvert the evidence log? |
 |------|--------------------|----------------------|----------------------------------|
 | 🟢 **declarative** | loot/redaction/target patterns, event types, capture scripts | **No** — data the app reads, or scripts *you* run that only reach the authenticated HTTP API | No |
-| 🔴 **privileged** | MCP tools (and, later, exporters/monitors) | **Yes** — in an isolated process, only after you grant trust | Only within the capabilities you granted |
+| 🔴 **privileged** | Exporters, monitors, tailers | **Yes** — in an isolated process, only after you grant trust | Only within the capabilities you granted |
 
-A plugin is 🔴 **only** if it contributes code (`mcpTools`/`exporters`/`monitors`).
+A plugin is 🔴 **only** if it contributes code (`exporters`/`monitors`/`tailers`).
 Everything else is 🟢 and loads automatically. 🔴 plugins are inert until you
 review and trust them (see [the trust gate](#the-trust-gate)).
 
@@ -313,39 +313,10 @@ warning on startup if a plugin file fails to import).
 
 ## 🔴 Privileged code contributions
 
-A plugin that sets `mcpTools` (a manifest-relative CommonJS module path) ships
-code RedLog will execute — **in an isolated Electron utility process**, never in
-the main process, and only after you grant trust. It must declare the
-`capabilities` it needs.
-
-### The module contract
-
-```js
-// code/tools.js
-module.exports = {
-  register(ctx) {
-    return {
-      tools: [
-        {
-          name: 'geolocate',
-          description: 'Geolocate an IPv4 and log the lookup.',
-          inputSchema: { type: 'object', properties: { ip: { type: 'string' } }, required: ['ip'] },
-          async run(args) {
-            const resp = await ctx.fetch({ url: `https://ipapi.co/${args.ip}/json/` })   // net:outbound
-            const geo = JSON.parse(resp.body)
-            await ctx.events.append({ agent_type: 'agent', data: { subtype: 'geoip', ip: args.ip, city: geo.city } }) // write:events
-            return { ip: args.ip, city: geo.city }
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
-Tools are exposed over RedLog's built-in MCP server, name-spaced to the plugin
-(`geoip_tool_geolocate`), so any connected agent can call them. `run()` executes
-in the isolated process; its return value is sent back as the tool result.
+A plugin that sets `exporters`, `monitors`, or `tailers` (manifest-relative
+CommonJS module paths) ships code RedLog will execute — **in an isolated Electron
+utility process**, never in the main process, and only after you grant trust. It
+must declare the `capabilities` it needs.
 
 ### The `ctx` API and capabilities
 
@@ -366,11 +337,9 @@ A call to a method whose capability wasn't granted is **rejected** at the host �
 the plugin can't escalate by asking. The isolated process has **no** direct
 access to the SQLite database, the signing keys, or the main process.
 
-See [`examples/plugins/geoip-tool`](../examples/plugins/geoip-tool).
-
 > `exporters` and `monitors` are reserved in the manifest for the same isolated,
-> capability-scoped mechanism and are on the roadmap; only `mcpTools` executes
-> today.
+> capability-scoped mechanism; `tailers` is the first shipped code contribution
+> (v0.8.2, bundled plugins only).
 
 ---
 
@@ -388,8 +357,8 @@ See [`examples/plugins/geoip-tool`](../examples/plugins/geoip-tool).
 4. If the code or requested capabilities later change, the hash no longer
    matches → trust is automatically revoked and the plugin returns to
    **CODE CHANGED / NEEDS CONSENT** until you review again.
-5. **Revoke trust** at any time; the isolated process is killed and its tools
-   disappear from MCP.
+5. **Revoke trust** at any time; the isolated process is killed and its
+   contributions are removed.
 
 This means: shipping new code, or a manifest asking for more power, can never
 silently gain execution — a human re-approves every material change.
@@ -427,7 +396,7 @@ RedLog's extension points, and their tier:
 | Target extractors | 🟢 | ✅ shipped (`targetExtractors`) |
 | Command taggers (MITRE / custom stamping) | 🟢 | ✅ shipped v0.6.15 (`commandTags`) |
 | Event types + timeline lanes | 🟢 | ✅ shipped (`eventTypes`) |
-| MCP tools (agent-operable) | 🔴 | ✅ shipped (`mcpTools`) |
+| Tailer adapters | 🔴 | ✅ shipped v0.8.2 (`tailers`, bundled only) |
 | Exporters / reporters | 🔴 | 🛣️ reserved (`exporters`) |
 | Background monitors | 🔴 | 🛣️ reserved (`monitors`) |
 
