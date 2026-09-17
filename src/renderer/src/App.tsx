@@ -848,6 +848,7 @@ function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: strin
   const [lootCount, setLootCount] = useState(0)
   const [chainLen, setChainLen] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
+  const [scopeConfigured, setScopeConfigured] = useState(true)
   // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
   // start at 0 / null so the card doesn't flash a spurious "no logged
   // rows" line while the initial fetch is in flight.
@@ -874,6 +875,7 @@ function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: strin
       window.redlog.loot.getCount().then(setLootCount).catch(() => {}),
       window.redlog.chain.length().then(setChainLen).catch(() => {}),
       window.redlog.scope.getViolationCount().then(setScopeViolations).catch(() => {}),
+      window.redlog.scope.isConfigured().then(setScopeConfigured).catch(() => {}),
       window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)).catch(() => {})
     ]).then(() => setLoading(false))
 
@@ -1048,8 +1050,8 @@ function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: strin
           <StatCard label={t('dashboard.loot')} value={String(lootCount)} tone={lootCount > 0 ? 'red' : 'neutral'} />
           <StatCard
             label={t('dashboard.scope')}
-            value={scopeViolations > 0 ? String(scopeViolations) : t('dashboard.scopeOk')}
-            tone={scopeViolations > 0 ? 'red' : 'green'}
+            value={scopeViolations > 0 ? String(scopeViolations) : scopeConfigured ? t('dashboard.scopeOk') : t('dashboard.scopeNotConfigured')}
+            tone={scopeViolations > 0 ? 'red' : scopeConfigured ? 'green' : 'neutral'}
           />
         </div>
       </section>

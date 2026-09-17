@@ -18,6 +18,7 @@ export default function StatusBar(): JSX.Element {
   const [loggedCount, setLoggedCount] = useState(0)
   const [lootCount, setLootCount] = useState(0)
   const [scopeViolations, setScopeViolations] = useState(0)
+  const [scopeConfigured, setScopeConfigured] = useState(true)
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
   const [overlayVisible, setOverlayVisible] = useState(true)
@@ -43,6 +44,7 @@ export default function StatusBar(): JSX.Element {
     window.redlog.events.getCount('logged').then(setLoggedCount)
     window.redlog.loot.getCount().then(setLootCount)
     window.redlog.scope.getViolationCount().then(setScopeViolations)
+    window.redlog.scope.isConfigured().then(setScopeConfigured).catch(() => {})
     window.redlog.recording.get().then(setRecording)
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
@@ -259,10 +261,15 @@ export default function StatusBar(): JSX.Element {
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
             <span className="text-red-400/80">{t('statusBar.scopeViolations', { count: scopeViolations })}</span>
           </>
-        ) : (
+        ) : scopeConfigured ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
+          </>
+        ) : (
+          <>
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+            <span className="text-redlog-text-dim">{t('statusBar.scopeNotConfigured')}</span>
           </>
         )}
       </div>
