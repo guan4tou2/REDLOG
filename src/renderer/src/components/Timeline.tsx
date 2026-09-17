@@ -3,7 +3,6 @@ import { replayStore } from '../lib/replayStore'
 import { useI18n } from '../i18n'
 import en from '../i18n/en.json'
 import { toast } from './Toast'
-import { useContributeExport } from '../lib/exportScope'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -1567,17 +1566,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
 
-  // The timeline is the one surface with a scope nothing else can name: the
-  // range currently framed. It contributes that to the shell's export control
-  // rather than carrying its own button (§10).
-  const exportSlice = useCallback(async (): Promise<string | null> => {
-    if (!window.redlog.data.exportTimelineSlice) return null
-    const from = Math.round(fromX((view.left / 100) * TRACK_W))
-    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-    return window.redlog.data.exportTimelineSlice(from, to)
-  }, [fromX, view.left, view.width, TRACK_W])
-
-  useContributeExport({ label: t('export.slice'), run: exportSlice })
   const totalH = visibleRows.length * laneH
 
   const laneEvents = useMemo(() => {
@@ -2837,33 +2825,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >+</button>
         </div>
 
-        {/* v0.11.6 (AUDIT V7): idle-gap compression. Only offered when there is
-            something to compress — a chip that never does anything is noise.
-            The count is on the chip because a compressed axis is not
-            proportional, and the operator should be able to see that state
-            without hovering. */}
-        {timeMap.gaps.length > 0 || compressGaps ? (
-          <button
-            onClick={() => {
-              // Keep the operator where they were. The mapping is about to
-              // change under a fixed scrollLeft, so capture the timestamp at
-              // the centre of the viewport and re-centre on it once the new
-              // mapping has rendered.
-              const el = scrollRef.current
-              if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
-              setCompressGaps((v) => !v)
-            }}
-            title={t('timeline.compressGaps.hint')}
-            className={`ml-1 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
-          >
-            <span>⋯</span>
-            <span className="font-mono">{t('timeline.compressGaps.label')}</span>
-            {compressGaps && timeMap.gaps.length > 0 && (
-              <span className="font-mono tabular-nums text-xs text-cyan-400/80">{timeMap.gaps.length}</span>
-            )}
-          </button>
-        ) : null}
-
         {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
             operators can see there's a text filter (previously discoverable
             only by shortcut). Icon prefix + clear button on the right. */}
@@ -2894,10 +2855,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           )}
         </div>
 
-        {/* v0.6.91 W2: LIVE / behind badge. Green = at the right edge with
-            follow on; grey/amber = scrolled back into history. Click →
-            snap to now + re-enable follow. Little icon button toggles the
-            follow mode without jumping. */}
+        {/* §27.1: merged LIVE/behind toggle. One button: ● 即時 when live,
+            ⏸ 落後 N 分 when behind. Click toggles follow; when resuming from
+            behind, also snaps to now. */}
         {(() => {
           const latestTs = events.length > 0 ? events[events.length - 1].timestamp : 0
           const behindMs = Math.max(0, now - latestTs)
@@ -2906,28 +2866,24 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             ? t('timeline.follow.live')
             : t('timeline.follow.behindFmt', { time: formatBehind(behindMs) })
           return (
-            <div className="flex items-center gap-1">
-              <button
-                data-testid="timeline-follow-badge"
-                onClick={() => {
+            <button
+              data-testid="timeline-follow-badge"
+              onClick={() => {
+                if (isLive) {
+                  setFollowMode(false)
+                } else {
                   const el = scrollRef.current
                   if (el && TRACK_W > 0) el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
                   setFollowMode(true)
-                }}
-                title={isLive ? t('timeline.follow.jumpToNow') : t('timeline.follow.jumpToNow')}
-                className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
-                  isLive
-                    ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
-                    : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
-                }`}
-              >{label}</button>
-              <button
-                onClick={() => setFollowMode((v) => !v)}
-                title={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                aria-label={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-              >{followMode ? '⏸' : '▶'}</button>
-            </div>
+                }
+              }}
+              title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
+              className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                isLive
+                  ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
+                  : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
+              }`}
+            >{label}</button>
           )
         })()}
 
@@ -2939,63 +2895,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             onto a second row — reported when running at 1280 wide with the
             full lane list open. */}
         <div className="ml-auto flex flex-nowrap gap-1 items-center overflow-x-auto min-w-0">
-          {/* v0.6.91 S1: Views dropdown. Save current view + list. Kept as a
-              plain <details>-style toggle so keyboard tab-order and focus
-              rings stay predictable across platforms. */}
-          <div className="relative shrink-0">
-            <button
-              data-testid="timeline-views-dropdown"
-              onClick={() => setViewsOpen((v) => !v)}
-              className="whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-              aria-expanded={viewsOpen}
-            >★ {t('timeline.views.button')}</button>
-            {viewsOpen && (
-              <div className="absolute top-full right-0 mt-1 z-40 w-72 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl">
-                <div className="px-2 py-1.5 border-b border-redlog-border">
-                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t('timeline.views.saveNew')}</div>
-                  <input
-                    value={viewsName}
-                    onChange={(e) => setViewsName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { void saveCurrentView(viewsName) }
-                      if (e.key === 'Escape') setViewsOpen(false)
-                    }}
-                    placeholder={t('timeline.views.saveNamePlaceholder')}
-                    title={t('timeline.views.saveHint')}
-                    className="w-full px-2 py-1 text-xs font-mono bg-redlog-bg border border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-border"
-                  />
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {savedViews === null && (
-                    <div className="px-2 py-2 text-xs text-redlog-text-dim font-mono">…</div>
-                  )}
-                  {savedViews && savedViews.length === 0 && (
-                    <div className="px-2 py-2 text-xs text-redlog-text-dim font-mono">{t('timeline.views.empty')}</div>
-                  )}
-                  {savedViews && savedViews.map((v) => (
-                    <div key={v.id} className="flex items-center gap-1 px-2 py-1 hover:bg-white/5">
-                      <button
-                        onClick={() => applyView(v)}
-                        className="flex-1 text-left text-xs font-mono text-redlog-text truncate"
-                        title={v.name}
-                      >{v.name}</button>
-                      <span className="text-xs font-mono text-redlog-text-faint tabular-nums">
-                        {formatTs(v.createdAt, tz, projectTz, 'time')}
-                      </span>
-                      <button
-                        onClick={() => void deleteView(v.id)}
-                        title={t('timeline.views.delete')}
-                        aria-label={t('timeline.views.delete')}
-                        className="text-redlog-text-dim hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-                      >×</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* v0.6.89.5 feature 4: anomaly filter — dims every event without an
+          {/* v0.6.89.5 feature 4: anomaly filter (§27.1: renamed 鏈警示) — dims every event without an
               integrity badge (clock anomaly / recovery / evidence removal /
               anchor failure / chain break). First chip so it's the fastest
               thing to reach when a verify caught something. Disabled at
@@ -3019,10 +2919,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >
             {t('timeline.anomalies.chip', { count: anomalyCount })}
           </button>
-          {/* Overflow: the low-frequency view/audit controls, grouped off the
-              flat row (§6). Session dividers, timezone and the auditor view are
-              set once and rarely touched, so they live behind one control
-              rather than each taking a slot the operator scans past. */}
+          {/* §27.1: More menu — 隱藏 AI 逐輪, 略過閒置, 工作階段邊界, 稽核檢視, 時區 */}
           <div className="relative shrink-0">
             <button
               data-testid="timeline-more-menu"
@@ -3036,7 +2933,35 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
                 <div role="menu" className="absolute top-full right-0 mt-1 z-40 w-56 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl py-1">
-                  <div className="px-2 py-1 text-xs font-mono uppercase tracking-wider text-redlog-text-faint">{t('timeline.more.viewGroup')}</div>
+                  <button
+                    role="menuitemcheckbox"
+                    aria-checked={collapseAgentTurns}
+                    onClick={() => setCollapseAgentTurns((v) => !v)}
+                    title={collapseAgentTurns
+                      ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+                      : t('timeline.collapseAgent.hint')}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+                  >
+                    <span>{t('timeline.collapseAgent.label')}</span>
+                    <span className={collapseAgentTurns ? 'text-lime-300' : 'text-redlog-text-faint'}>{collapseAgentTurns ? '✓' : ''}</span>
+                  </button>
+                  {(timeMap.gaps.length > 0 || compressGaps) && (
+                    <button
+                      role="menuitemcheckbox"
+                      aria-checked={compressGaps}
+                      onClick={() => {
+                        const el = scrollRef.current
+                        if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
+                        setCompressGaps((v) => !v)
+                      }}
+                      title={t('timeline.compressGaps.hint')}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+                    >
+                      <span>{t('timeline.compressGaps.label')}{compressGaps && timeMap.gaps.length > 0 ? ` (${timeMap.gaps.length})` : ''}</span>
+                      <span className={compressGaps ? 'text-cyan-300' : 'text-redlog-text-faint'}>{compressGaps ? '✓' : ''}</span>
+                    </button>
+                  )}
+                  <div className="border-t border-redlog-border/50 my-0.5" />
                   <button
                     role="menuitemcheckbox"
                     aria-checked={sessionDividers}
@@ -3075,11 +3000,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               </>
             )}
           </div>
-          {/* v0.6.87 C2: export the currently-visible time window as JSON.
-              The window is derived from the minimap view (left..left+width in
-              percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
-              zoom to the attack moment then click this to grab an evidence
-              slice. Saved under exports/redlog-timeline-<ts>.json. */}
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}
@@ -3118,25 +3038,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               >
                 {laneLabels[id]}
               </button>
-              {/* Condense-chat rides next to the AI lane it acts on — it hides
-                  that lane's per-turn events (keeping snapshot + session_end).
-                  Sits here, not with the zoom/idle density controls, because it
-                  filters ONE lane rather than the whole view. */}
-              {id === 'agent' && (
-                <button
-                  onClick={() => setCollapseAgentTurns((v) => !v)}
-                  title={collapseAgentTurns
-                    ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
-                    : t('timeline.collapseAgent.hint')}
-                  className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono inline-flex items-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05]'}`}
-                >
-                  <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
-                  <span>{t('timeline.collapseAgent.label')}</span>
-                  {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-                    <span className="tabular-nums text-lime-400/80">−{hiddenAgentTurnCount}</span>
-                  )}
-                </button>
-              )}
               </Fragment>
             )
           })}
