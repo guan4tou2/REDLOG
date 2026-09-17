@@ -429,7 +429,7 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
       return true
     })
 
-    term.open(containerRef.current)
+    term.open(containerRef.current!)
 
     termRef.current = term
     fitRef.current = fitAddon

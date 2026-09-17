@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../../../../tailwind.config.js";
 
 /* App-wide text scale. The type scale is stated in tailwind.config.js with a
  * 13px floor, so the root goes back to the browser default — it used to be

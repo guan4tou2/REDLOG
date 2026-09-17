@@ -34,13 +34,13 @@ function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex')
 }
 
-function sample(): void {
+async function sample(): Promise<void> {
   // Recording paused → skip ambient clipboard capture entirely. Only
   // gate ambient/background capture here; user-driven writes (markers,
   // session boundaries) go through their own IPC and always land.
   if (eventBus.paused) return
   let text: string
-  try { text = clipboard.readText() } catch { return }
+  try { text = await clipboard.readText() } catch { return }
   if (!text) return
   const hash = sha256(text)
   if (hash === lastHash) return
@@ -95,11 +95,11 @@ export function stopClipboardMonitor(): void {
   lastHash = null
 }
 
-function restart(): void {
+async function restart(): Promise<void> {
   if (timer) { clearInterval(timer); timer = null }
   if (!cfg.enabled) return
   // Seed lastHash so the first poll doesn't emit an event for whatever was on
   // the clipboard before RedLog opened — that's out-of-scope for this session.
-  try { lastHash = sha256(clipboard.readText() || '') } catch { lastHash = null }
-  timer = setInterval(sample, Math.max(500, cfg.pollMs))
+  try { lastHash = sha256((await clipboard.readText()) || '') } catch { lastHash = null }
+  timer = setInterval(() => { sample().catch(() => {}) }, Math.max(500, cfg.pollMs))
 }
