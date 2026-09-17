@@ -21,6 +21,7 @@ import path from 'path'
 const ROOT = path.join(__dirname, '..')
 const R = (p: string): string => fs.readFileSync(path.join(ROOT, p), 'utf-8')
 const SRC = R('src/renderer/src/components/Settings.tsx')
+const SETTINGS_DIR = path.join(ROOT, 'src/renderer/src/components/settings')
 
 const PAGES = [
   'hooks', 'agents', 'captureControl',
@@ -74,11 +75,11 @@ describe('settings information architecture', () => {
   it('flattens plugins to one level', () => {
     // The marker of the old shape was a second `useState` for a sub-tab
     // inside the page. There is one section left, so there is nothing to
-    // select between.
-    const tab = SRC.slice(SRC.indexOf('function PluginsTab'))
-    const body = tab.slice(0, tab.indexOf('\n}'))
-    expect(body, 'a sub-tab selector is the third level').not.toMatch(/useState<'installed'/)
-    expect(body).toMatch(/<PluginsPanel/)
+    // select between. After decomposition the panel lives in settings/.
+    const pluginsSrc = R('src/renderer/src/components/settings/PluginsPanel.tsx')
+    expect(pluginsSrc, 'a sub-tab selector is the third level').not.toMatch(/useState<'installed'/)
+    // Settings routes to PluginsPanel directly (no wrapper)
+    expect(SRC).toMatch(/<PluginsPanel/)
   })
 
   it('keeps the group count from creeping back', () => {
@@ -86,7 +87,14 @@ describe('settings information architecture', () => {
     // outrunning the persona. The number is a proxy, but it is the proxy that
     // was measured, so it is the one worth holding — a group added without a
     // group removed should have to argue for itself in a diff.
-    const groups = (SRC.match(/<FieldGroup title=/g) ?? []).length
+    // After decomposition, FieldGroups live in the settings/ directory.
+    const allSettingsSrc = [
+      SRC,
+      ...fs.readdirSync(SETTINGS_DIR)
+        .filter((f: string) => f.endsWith('.tsx'))
+        .map((f: string) => R(`src/renderer/src/components/settings/${f}`))
+    ].join('\n')
+    const groups = (allSettingsSrc.match(/<FieldGroup title=/g) ?? []).length
     expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(28)
   })
 

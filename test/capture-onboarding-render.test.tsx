@@ -11,7 +11,7 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { render, cleanup, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
-import { CaptureHealthCard } from '../src/renderer/src/App'
+import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
 
 type Source = {
   id: string

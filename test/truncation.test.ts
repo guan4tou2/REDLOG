@@ -72,7 +72,7 @@ describe('truncated text', () => {
 describe('empty states', () => {
   it('every view that can be empty uses the shared three-part component', () => {
     const VIEWS = [
-      ['App.tsx', 'screenshots'],
+      ['components/ScreenshotsView.tsx', 'screenshots'],
       ['components/LootPanel.tsx', 'loot'],
       ['components/TargetView.tsx', 'targets'],
       ['components/BookmarksView.tsx', 'bookmarks'],

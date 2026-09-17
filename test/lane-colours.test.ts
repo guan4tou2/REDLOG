@@ -13,12 +13,13 @@ import path from 'path'
 // and the assertions below exist so a future "just give this lane its own
 // colour" change has to walk past a red test and read this comment.
 //
-// The palette is parsed out of the source rather than imported: Timeline.tsx
-// pulls in the whole renderer tree (xterm, i18n, the preload bridge), none of
-// which a colour assertion needs.
+// The palette is parsed out of the source rather than imported: the renderer
+// tree (xterm, i18n, the preload bridge) is too heavy for a colour assertion.
+// The lane constants now live in timelineDomain.ts after the Timeline.tsx
+// decomposition.
 
 const SRC = fs.readFileSync(
-  path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineDomain.ts'), 'utf-8'
 )
 const INDEX_CSS = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'styles', 'index.css'), 'utf-8'
