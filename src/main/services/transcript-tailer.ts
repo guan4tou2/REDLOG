@@ -36,9 +36,9 @@ type ChokidarWatcher = {
 }
 type ChokidarNS = { watch: (paths: string | string[], opts: Record<string, unknown>) => ChokidarWatcher }
 let chokidarNS: ChokidarNS | null = null
-function loadChokidar(): ChokidarNS | null {
+async function loadChokidar(): Promise<ChokidarNS | null> {
   if (chokidarNS) return chokidarNS
-  try { chokidarNS = require('chokidar') as ChokidarNS } catch { return null }
+  try { chokidarNS = (await import('chokidar')) as unknown as ChokidarNS } catch { return null }
   return chokidarNS
 }
 
@@ -52,9 +52,9 @@ function transcriptDir(): string {
   return path.join(homedir(), '.redlog', 'transcripts')
 }
 
-export function configureTranscriptTailer(next: Partial<TranscriptTailerConfig>): void {
+export function configureTranscriptTailer(next: Partial<TranscriptTailerConfig>): Promise<void> {
   cfg = { ...cfg, ...next }
-  restart()
+  return restart()
 }
 
 export function stopTranscriptTailer(): void {
@@ -62,11 +62,11 @@ export function stopTranscriptTailer(): void {
   emitted.clear()
 }
 
-function restart(): void {
+async function restart(): Promise<void> {
   if (watcher) { void watcher.close(); watcher = null }
   emitted.clear()
   if (!cfg.enabled) return
-  const chok = loadChokidar()
+  const chok = await loadChokidar()
   if (!chok) { console.warn('[transcript-tailer] chokidar not installed; skipping'); return }
 
   const dir = transcriptDir()

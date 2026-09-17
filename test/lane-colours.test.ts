@@ -20,7 +20,9 @@ import path from 'path'
 const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
 )
-const TAILWIND = fs.readFileSync(path.join(__dirname, '..', 'tailwind.config.js'), 'utf-8')
+const INDEX_CSS = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'styles', 'index.css'), 'utf-8'
+)
 
 function laneColour(): string {
   const m = /const LANE_COLOR = '(#[0-9a-fA-F]{6})'/.exec(SRC)
@@ -46,10 +48,10 @@ describe('lane palette', () => {
     expect(laneColour()).toBe('#6e6e78')
   })
 
-  it('matches the `lane` token in tailwind.config.js', () => {
+  it('matches the `lane` token in index.css', () => {
     // Two files, one colour: the Timeline draws lane dots inline (SVG fill,
     // not a class) while chips use the Tailwind token. They have to agree.
-    const m = /lane: '(#[0-9a-fA-F]{6})'/.exec(TAILWIND)
+    const m = /--color-redlog-lane:\s*(#[0-9a-fA-F]{6})/.exec(INDEX_CSS)
     expect(m?.[1].toLowerCase()).toBe(laneColour())
   })
 

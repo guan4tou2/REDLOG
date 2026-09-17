@@ -94,11 +94,11 @@ describe('text on a fill', () => {
   }
 
   function tokens(): Record<string, string> {
-    const config = read('tailwind.config.js')
-    const block = /redlog: \{([\s\S]*?)\n        \}/.exec(config)
-    if (!block) throw new Error('redlog token block not found')
+    const css = read('src/renderer/src/styles/index.css')
+    const block = /@theme \{([\s\S]*?)\n\}/.exec(css)
+    if (!block) throw new Error('@theme block not found in index.css')
     const out: Record<string, string> = {}
-    for (const m of block[1].matchAll(/'?([a-z][a-z-]*)'?: '(#[0-9a-fA-F]{6})'/g)) out[m[1]] = m[2]
+    for (const m of block[1].matchAll(/--color-redlog-([a-z][a-z-]*):\s*(#[0-9a-fA-F]{6})/g)) out[m[1]] = m[2]
     return out
   }
 
