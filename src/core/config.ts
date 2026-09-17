@@ -235,9 +235,7 @@ export interface RedLogConfig {
      *  doc §7.1 for the second-pass shape. */
     loggedTier?: {
       /** Days to keep. `0` = keep forever (matches cast/screenshot
-       *  convention). Default `30` — the first RedLog retention default
-       *  that is *non-zero*, because logged-tier rows are the first
-       *  non-primary evidence artifact. */
+       *  convention). Default `0` (keep forever) since v0.15 (#91). */
       keepDays?: number
       /** Periodic sweep interval in hours. `0` disables the timer — the
        *  project-open sweep still runs. Default `24`. */
@@ -351,13 +349,12 @@ const DEFAULT_CONFIG: RedLogConfig = {
     emitThinking: false
   },
   retention: {
-    // v0.13.0: 30d default. First non-zero retention default RedLog
-    // ships — see docs/DESIGN-logged-tier-retention.md §4.2 for the
-    // three-observation rationale (engagement duration + retrospective
-    // lag + client review lag). Size/count ceilings deferred to a
-    // follow-up (§7.1); not surfaced in v0.13.0 to avoid silent no-op.
+    // v0.13.0→v0.15: default changed from 30 to 0 (keep forever) — #91.
+    // 30d silently dropped traffic evidence; RedLog's positioning as an
+    // evidence-chain tool means "recorded → kept" is the safe default.
+    // Operators who need disk-pressure relief set keepDays in Settings.
     loggedTier: {
-      keepDays: 30,
+      keepDays: 0,
       sweepIntervalHours: 24
     },
     bookmarks: {
