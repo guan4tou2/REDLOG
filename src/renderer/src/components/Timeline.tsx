@@ -23,6 +23,7 @@ import { CollapsibleStream, MetadataGrid, HttpDetail, BODY_GONE, STREAM_ACCENTS,
 import { isHookSource, isHousekeeping } from '../lib/housekeeping'
 import { compareMonotonicNs } from '../lib/eventOrder'
 import { isMac } from '../lib/platform'
+import { useContributeExport } from '../lib/exportScope'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -2137,6 +2138,31 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
     return nearest
   }, [events, hiddenLanes, pluginTypes, view.left, view.width, TRACK_W, timeStart, timeSpan])
+
+  const sliceExportRun = useCallback(async () => {
+    const from = Math.round(fromX((view.left / 100) * TRACK_W))
+    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    return window.redlog.data.exportTimelineSlice?.(from, to) ?? null
+  }, [fromX, view.left, view.width, TRACK_W])
+
+  const sliceCount = useMemo(() => {
+    const widthPx = (view.width / 100) * TRACK_W
+    if (widthPx <= 0 || (view.left <= 0.01 && view.width >= 99.99)) return events.length
+    const from = fromX((view.left / 100) * TRACK_W)
+    const to = fromX(((view.left + view.width) / 100) * TRACK_W)
+    let n = 0
+    for (const e of events) {
+      const d = displayTs(e)
+      if (d >= from && d <= to) n++
+    }
+    return n
+  }, [events, view.left, view.width, TRACK_W, fromX])
+
+  useContributeExport(
+    events.length > 0
+      ? { label: t('timeline.exportSlice'), run: sliceExportRun, count: sliceCount }
+      : null
+  )
 
   useEffect(() => {
     const el = scrollRef.current
