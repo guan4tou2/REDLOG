@@ -262,7 +262,10 @@ interface RedLogAPI {
     onChange: (cb: (recording: boolean) => void) => () => void
   }
   terminal: {
-    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number; shell: string; hookSourced: boolean }>
+    spawn: (id: string, cols: number, rows: number, shellId?: string) =>
+      Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean }>
+    shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
+    rediscoverShells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
