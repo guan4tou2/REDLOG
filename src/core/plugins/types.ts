@@ -163,7 +163,6 @@ export interface PluginContributes {
   eventTypes?: EventTypeContribution[]
   capture?: CaptureContribution[]
   // 🔴 privileged (code) — manifest-relative module paths
-  mcpTools?: string
   exporters?: string
   monitors?: string
   /** v0.8.2: TailerAdapter contribution. Module must `export const adapter =

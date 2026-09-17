@@ -71,6 +71,20 @@ export interface RedLogConfig {
      *  against the previous frame's SHA-256 (see ScreenshotAgent), so a
      *  30s interval on an idle screen doesn't produce 120 dupes/hour. */
     intervalSec: number
+    /** Perceptual-diff threshold for AUTOMATIC captures (periodic/idle): a
+     *  frame whose dHash Hamming distance from the last stored frame is BELOW
+     *  this is treated as "no visible change" and skipped. Higher = only store
+     *  bigger changes; `0` = disable perceptual dedup and store every
+     *  non-byte-identical frame. Manual captures ignore it entirely. Default 5
+     *  (mouse/clock jitter ≈2-3 bits, one new terminal line ≈6-10). */
+    diffThreshold?: number
+    /** Capture a screenshot when a shell command finishes, linked to that
+     *  command via `_causes` — so a report's "this command produced this
+     *  screen" is automatic, not a manual ⌘⇧M. Off by default: it only earns
+     *  its keep for GUI-heavy work (Burp, a browser), and the perceptual dedup
+     *  still skips a command that changed nothing visible. Terminal output is
+     *  better read from the `.cast` recording (searchable text) than a JPEG. */
+    captureOnCommand?: boolean
   }
   overlay: {
     showMarkButton: boolean
@@ -221,9 +235,7 @@ export interface RedLogConfig {
      *  doc §7.1 for the second-pass shape. */
     loggedTier?: {
       /** Days to keep. `0` = keep forever (matches cast/screenshot
-       *  convention). Default `30` — the first RedLog retention default
-       *  that is *non-zero*, because logged-tier rows are the first
-       *  non-primary evidence artifact. */
+       *  convention). Default `0` (keep forever) since v0.15 (#91). */
       keepDays?: number
       /** Periodic sweep interval in hours. `0` disables the timer — the
        *  project-open sweep still runs. Default `24`. */
@@ -269,7 +281,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   },
   screenshot: {
     quality: 85,
-    intervalSec: 0
+    intervalSec: 0,
+    diffThreshold: 5,
+    captureOnCommand: false
   },
   overlay: {
     showMarkButton: true,
@@ -335,13 +349,12 @@ const DEFAULT_CONFIG: RedLogConfig = {
     emitThinking: false
   },
   retention: {
-    // v0.13.0: 30d default. First non-zero retention default RedLog
-    // ships — see docs/DESIGN-logged-tier-retention.md §4.2 for the
-    // three-observation rationale (engagement duration + retrospective
-    // lag + client review lag). Size/count ceilings deferred to a
-    // follow-up (§7.1); not surfaced in v0.13.0 to avoid silent no-op.
+    // v0.13.0→v0.15: default changed from 30 to 0 (keep forever) — #91.
+    // 30d silently dropped traffic evidence; RedLog's positioning as an
+    // evidence-chain tool means "recorded → kept" is the safe default.
+    // Operators who need disk-pressure relief set keepDays in Settings.
     loggedTier: {
-      keepDays: 30,
+      keepDays: 0,
       sweepIntervalHours: 24
     },
     bookmarks: {
@@ -388,7 +401,7 @@ export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = migrateConfig(yaml.load(raw) as Record<string, unknown>)
+    const parsed = migrateConfig(yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>)
     return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return { ...DEFAULT_CONFIG }

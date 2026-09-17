@@ -137,7 +137,7 @@ export function sweepLoggedTier(
   const envDays = envRaw && envRaw.length > 0 ? Number(envRaw) : NaN
   const keepDays = Number.isFinite(envDays) && envDays >= 0
     ? envDays
-    : (cfg?.keepDays ?? 30)
+    : (cfg?.keepDays ?? 0)
   if (keepDays <= 0) return noop  // 0 = keep forever (opt-out)
 
   const cutoff = Date.now() - keepDays * DAY_MS

@@ -49,7 +49,7 @@ let projectOpen = false
 let primaryOperatorId = ''
 let primaryOperatorName = ''
 
-let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[] } | null = null
+let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[]; getExcludeTargets?: () => string[] } | null = null
 
 let lootDetectorRef: {
   scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => Array<{ type: string; value: string; confidence: 'high' | 'medium' | 'low' }>
@@ -282,7 +282,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
         'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
         'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
-        'browser', 'http_navigation'
+        'browser', 'http_navigation',
+        // v0.15: out-of-process pcap producer (hooks/pcap-agent.py) — connection
+        // attempts / SYN scans / non-proxied flow metadata the app-layer proxy
+        // and the established-only connection monitor can't see.
+        'pcap'
       ])
       if (!e2eSeed && !EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
         // A 403 an integration ignores is capture silently stopping, which is
@@ -619,7 +623,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       try {
         // PRD A2: mask out-of-scope events in the bundle when scope is known.
         const scopeTargets = configLoaderRef?.getTargets?.() ?? []
-        const bundle = exportBundle(engagementId, { scope: { targets: scopeTargets } })
+        const excludeTargets = configLoaderRef?.getExcludeTargets?.() ?? []
+        const bundle = exportBundle(engagementId, { scope: { targets: scopeTargets, excludeTargets } })
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
       } catch (e) {
         const err = e as Error

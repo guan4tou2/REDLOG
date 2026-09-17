@@ -13,7 +13,59 @@ path: src/renderer
 
 ## Last sync
 
-date: 2026-08-24T02:30:00Z
+date: 2026-09-09T00:00:00Z
+
+### 2026-09-09 · 後端完成 → design 待接 UI（交接清單）
+
+以「後端我做、UIUX 交給 design」的分工,本輪把數個設計缺口的**後端**落地(IPC/preload/core
+函式 + 測試),UI 留給設計端。契約如下,design 端接 UI 時對照此表。
+
+| 缺口 | 後端契約(已就緒) | design 端要做的 UI |
+|---|---|---|
+| **7a 範圍外標示** | `lib/scope.ts` `hostOutOfScope()`;HttpHistoryPanel 已上 badge | (已含基本 UI)可再精修樣式 |
+| **截圖差異靈敏度** | `config.screenshot.diffThreshold`;設定組已有按鈕 | (已含基本 UI) |
+| **command-linked 截圖** | `config.screenshot.captureOnCommand`;command_end 觸發、trigger=`command`、`_causes` 連結;設定組已有勾選框 | **是 2d 觸發原因軸多一個值**「隨指令」(design 已加 chip,非新功能);截「哪個視窗」精修留後續 |
+| **3c 需要注意互動層** | `dismissIssue`/`dismissAllPending`(下層〈忽略/全部忽略〉,session-only、不寫稽核);上層〈修復〉的動作 IPC 已在(`chain:anchorNow` 重試錨定、`chain:verify` 驗鏈);導航用 Issue 的 `view` | 兩層互動彈出層、每列〈修復〉/〈診斷〉鈕(上層無關閉、下層可忽略) |
+| **NDJSON(ELK)匯出** | IPC `data:exportNdjson({scopeOnly?,scrubPii?})` → 檔案路徑;匯出選單已有「NDJSON」項 | `scopeOnly`/`scrubPii` 做成選單勾選(現為全部+內容遮蔽) |
+| **walkthrough(逐字稿依主機分段)** | IPC `data:exportWalkthrough` → `.md` 就緒 | **不是第四種格式**(design 2026-09-09 裁定):逐字稿 Markdown 匯出的〈依主機分段〉開關,預設關。已移除獨立選單項,後端待接該開關 |
+| **pcap 擷取** | `hooks/pcap-agent.py`(CLI producer,同 mitmproxy);API 白名單 + LOGGED_TIER 已接 | 時間軸 pcap = 流量組多一列;設定裡的擷取來源啟動器/狀態 |
+| **10a 因果鏈** | IPC `events:hostChain(host)` → `{eventCount,operatorCount,firstSeen,lastSeen,chain[]}` | **Inspector〈相關〉面板**:表頭 + 策展鏈清單、command 對摺(`collapseCommandPairs`)、範圍徽章(`lib/scope.ts`)、當前事件釘選、〈在目標頁開啟〉/⌘↩ |
+| **5a 更新前錨定** | `core/update-anchor.ts` `anchorBeforeRestart()`;IPC `app:anchorForRestart`;updater「前往下載」已自動觸發 | 狀態列青點、不彈視窗的更新卡、「約 8 秒不記錄」確認框 |
+| **5c 操作員金鑰管理** | IPC `operators:create`/`rotateToken`/`revoke`/`rename`/`pubKey`;`operators:list` 已補 `signerPubKey`;token 寫 `~/.redlog/tokens/<id>.token`(0600、專案樹外),IPC 只回**檔案路徑**不回 raw token(§10) | 5c 操作員頁:清單(名稱/主要/建立時間/公鑰)、〈新增〉、〈輪替金鑰〉、〈撤銷〉、〈改名〉;金鑰檔用 `data:revealPath` 揭示,不在畫面顯示 token |
+| **2b 終端機 per-pane 記錄狀態** | `terminal:list` 每列回 `recording`/`castBytes`/`castTruncated`/`castStartedAt` | **三種 chip,不可都寫「未記錄」**(§28.7):`recording=true`→綠「記錄中」;`recording=false && castTruncated`→**琥珀「已停錄」**(撞 50 MB 上限,操作員最易漏、以為還在錄);`recording=false && !castTruncated && castStartedAt==null`→灰(cast 開不了,附〈診斷〉)。互動式工作階段的灰點既有 pane 已正確處理 |
+| **2d 截圖批次刪除分級** | IPC `screenshot:markerReferenced(ids[])` → 被標記引用的子集;刪除仍走既有 `screenshot:deleteFile`(每檔寫 `system.screenshot_deleted` + `sha256_pre_delete`,鏈見證) | 依回傳挑確認層級:空→第二級(勾選框);非空→第三級(輸入確認)。刪除本身逐檔呼叫 deleteFile |
+
+**仍未動(多為 UI 為主,後端多已具備)**:3c 需要注意互動彈出層(`dismissIssue` 後端在)、2b 終端機
+per-pane chip(**後端已就緒,見上表——UI 須拆三態,勿都寫「未記錄」**)、5b 終端機設定頁(config 後端在)、4d 逐字稿首行/自動展開、4b 違規展開 +
+inline 加入允許清單、5c 操作員金鑰管理 UI(**後端已就緒,見上表**)、4e 標記圓點嚴重度 + 截圖圖示、2c 標記對話框〈將一併記錄〉、
+2d 截圖 ×N/SHA-256/批次刪除升級(**分級查詢後端已就緒,見上表**)、時間軸 Inspector 分頁/事件流 >50 折疊/鏈警示/在逐字稿上顯示/圖例中文。
+**刻意不做**(2026-09-09 裁定):flag/proof 偵測、MITRE 技術欄(非通用工具定位);2a PDF 報告(改純資料匯出);
+at-rest 加密(維持「信任本機」假設,暫不)。
+（**修正 2026-09-09 §28.7**:2d 批次刪除先前誤記為「涉永久刪除、依安全約束不做」——實為分級問題,非安全問題:§12 的
+`screenshot:deleteFile` 已寫鏈見證 tombstone,證據性質未破壞,缺的只是「批內哪些被標記引用」的查詢。已補。）
+
+**設計端回寫(2026-09-09)**:八項後端交回,設計端確認六項本就有對應畫面(7a/截圖差異/NDJSON/pcap=
+流量組一列/10a/5a);兩項改為既有軸的延伸而非新增——walkthrough 收為逐字稿匯出的〈依主機分段〉開關
+(已移除獨立匯出項),command 截圖收為 2d 觸發原因軸的第四個值「隨指令」(設計稿已補 chip)。全稿 30 板
+無溢出/壞連結、§0–§28 與設計稿一致,設計端無待辦,UI 由 repo 端接。
+
+### 2026-09-09 · turn 10 鏡像（設計稿新增，鏡像原止於 turn 9）
+
+設計專案新增 **turn 10「解開搜尋頁那條鏈」（10a–10b）**，本地鏡像（2026-09-04 取回，止於 turn 9 /
+§22）尚未含它。已鏡像進 `docs/UIUX-STANDARD.md` §24 並附實作狀態：
+
+- **10a Inspector ▸〈相關〉**（host 因果鏈策展面板：DNS 首解→指令→戰利品→標記→違規，大白點釘當前
+  事件，只列理解轉折事件）—— 🔴 **未實作**。repo 有時間軸 `focusChain` 因果高亮與底部面板的
+  `_causes`／效應 chip，但沒有這個以 host 為範圍、策展成清單、釘住當前事件的〈相關〉面板。turn 10
+  相對鏡像的主要程式缺口。§6「Inspector 底部面板、無分頁」分歧維持，但〈相關〉的內容仍待補。
+- **10b ⌘K ▸ host**（Host 分組排在事件之前，每列帶事件數／範圍狀態／↩ 目標頁）—— ✓ **已實作**
+  （#78，`distinctHosts()` 兩層聚合 + ⌘K「主機」段）。小分歧待 UI 目視：host 是否恆排在事件之上、
+  以及從 host 列直跳〈↩ 目標頁〉（現為跳時間軸）。
+- **刪搜尋頁**（turn 10 收尾主張 10a／10b 上線後即可刪）—— ▲ 分歧，repo 已領先其立論：§23
+  （2026-09-08）保留搜尋頁，理由是 turn 10 前提沒算到 `.cast` 錄影全文搜尋（FTS5、`readCastRange`）
+  這第三個用途，⌘K 承載不了。
+
+**同時啟動一次以 design 為準的逐畫面（turn 2–10）全面對照**，找出鏡像可能漏記的缺口；結果另記。
 
 ### 2026-09-04 · 書籤裁決：標記只指一件事
 

@@ -67,10 +67,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
-  // Type-filter chips: null = show all, non-null = only that agentType. Audit
-  // finding #57 — before this, "192.168" matching 200 shell events left no
-  // way to say "only screenshots". Kept client-side because the search
-  // backend uses full-text LIKE that doesn't take a WHERE agent_type filter.
+  // Type-filter chips: null = show all, non-null = only that agentType.
+  // v0.15.1: pushed to backend so the SQL LIMIT applies after the type
+  // filter, not before — prevents dominant types from squeezing out rare ones.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   // Recordings are searched alongside events (§2.4). Kept as separate state
   // rather than merged into `results`: an event and a span of terminal output
@@ -84,7 +83,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   // Hoisted out of the render IIFE it used to live in so the keyboard hook can
   // count it. Same keys as every other list (§9); a result row's only action
   // is "show me this on the Timeline", so Enter and ⌘↩ agree.
-  const filtered = typeFilter ? results.filter((e) => e.agentType === typeFilter) : results
+  const filtered = results
   const listNav = useListKeyboard({
     count: filtered.length,
     onActivate: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },
@@ -102,7 +101,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       return
     }
     setSearching(true)
-    window.redlog.events.search(q, 200).then(async (r) => {
+    window.redlog.events.search(q, 200, typeFilter ? { agentType: typeFilter } : undefined).then(async (r) => {
       // `searchEvents` is a LIKE over each row's own bytes, so a marker
       // corrected since it was written matches its OLD title only, and the new
       // one matches the amendment row alone. Showing that bare correction —
@@ -143,13 +142,17 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     window.redlog.events.searchCasts?.(q, 50)
       .then((r) => setCastHits(r ?? []))
       .catch(() => setCastHits([]))
-  }, [])
+  }, [typeFilter])
 
   useEffect(() => {
     window.redlog.events.castIndexStatus?.()
       .then((s) => setCastPending(s?.pending ?? 0))
       .catch(() => { /* older main process; treat as fully indexed */ })
   }, [])
+
+  useEffect(() => {
+    if (query.length >= 1) doSearch(query)
+  }, [typeFilter])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)

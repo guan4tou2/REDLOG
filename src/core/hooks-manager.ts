@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from 'child_process'
+import { execSync, spawn, spawnSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -277,6 +277,29 @@ function commandExists(cmd: string): boolean {
   }
 }
 
+function commandExistsAsync(cmd: string): Promise<boolean> {
+  const hit = _cmdCache.get(cmd)
+  if (hit !== undefined) return Promise.resolve(hit)
+  return new Promise((resolve) => {
+    try {
+      const probeCmd = process.platform === 'win32' ? 'where' : 'which'
+      const child = spawn(probeCmd, [cmd], { stdio: 'ignore' })
+      child.on('close', (code) => {
+        const found = code === 0
+        _cmdCache.set(cmd, found)
+        resolve(found)
+      })
+      child.on('error', () => {
+        _cmdCache.set(cmd, false)
+        resolve(false)
+      })
+    } catch {
+      _cmdCache.set(cmd, false)
+      resolve(false)
+    }
+  })
+}
+
 function isClaudeSettingsInstalled(matcher: string): boolean {
   const settingsPath = join(homedir(), '.claude', 'settings.json')
   if (!existsSync(settingsPath)) return false
@@ -323,8 +346,7 @@ function checkAvailable(plugin: PluginManifest): boolean {
     if (plugin.id === 'shell-powershell') return process.platform === 'win32'
     if (plugin.id === 'shell-wsl') {
       if (process.platform !== 'win32') return false
-      // v0.6.93 P0-B: same guard as commandExists — no shell, argv only.
-      try { return spawnSync('where', ['wsl'], { stdio: 'ignore' }).status === 0 } catch { return false }
+      return commandExists('wsl')
     }
     if (plugin.id === 'shell-zsh') return process.env.SHELL?.includes('zsh') || existsSync('/bin/zsh')
     if (plugin.id === 'shell-bash') {
@@ -333,6 +355,25 @@ function checkAvailable(plugin: PluginManifest): boolean {
     return true
   }
   return plugin.requires.some((cmd) => commandExists(cmd))
+}
+
+async function checkAvailableAsync(plugin: PluginManifest): Promise<boolean> {
+  if (plugin.requires.length === 0) {
+    if (plugin.id === 'shell-powershell') return process.platform === 'win32'
+    if (plugin.id === 'shell-wsl') {
+      if (process.platform !== 'win32') return false
+      return commandExistsAsync('wsl')
+    }
+    if (plugin.id === 'shell-zsh') return process.env.SHELL?.includes('zsh') || existsSync('/bin/zsh')
+    if (plugin.id === 'shell-bash') {
+      return existsSync('/bin/bash') || (process.platform === 'win32' && await commandExistsAsync('bash'))
+    }
+    return true
+  }
+  for (const cmd of plugin.requires) {
+    if (await commandExistsAsync(cmd)) return true
+  }
+  return false
 }
 
 // Manual hooks can't be a persistent one-click install: mitmproxy needs a
@@ -417,7 +458,6 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
 export function detectHooks(): PluginInfo[] {
   return allManifests().map((plugin) => {
     const hookFile = srcPathFor(plugin)
-    // Plugin captures carry their own manualSteps; built-ins compute theirs.
     const manualSteps = plugin.installMethod === 'manual'
       ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
       : undefined
@@ -435,6 +475,40 @@ export function detectHooks(): PluginInfo[] {
       manualSteps
     }
   })
+}
+
+let _detectCache: PluginInfo[] | null = null
+
+export async function detectHooksAsync(): Promise<PluginInfo[]> {
+  const manifests = allManifests()
+  const results = await Promise.all(manifests.map(async (plugin) => {
+    const hookFile = srcPathFor(plugin)
+    const manualSteps = plugin.installMethod === 'manual'
+      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
+      : undefined
+    return {
+      id: plugin.id,
+      name: plugin.name,
+      description: plugin.description,
+      agentType: plugin.agentType,
+      emits: plugin.emits,
+      installed: checkInstalled(plugin),
+      available: await checkAvailableAsync(plugin),
+      installMethod: plugin.installMethod,
+      hookFile,
+      manualSteps
+    }
+  }))
+  _detectCache = results
+  return results
+}
+
+export function getCachedHooks(): PluginInfo[] | null {
+  return _detectCache
+}
+
+export function invalidateHooksCache(): void {
+  _detectCache = null
 }
 
 export function installHook(pluginId: string): { success: boolean; message: string } {
