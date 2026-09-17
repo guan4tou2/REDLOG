@@ -227,6 +227,7 @@
   "terminal.closeTitle": "Close terminal tab",
   "terminal.restart": "Restart this tab's shell (keeps slot + label)",
   "terminal.lastExit": "Last command exited with code {{code}}",
+  "terminal.noHook": "This pane runs {{shell}}, which RedLog has no hook for — its commands are NOT being recorded. The screen recording still is.",
   "terminal.closeConfirm": "Closing \"{{label}}\" kills its PTY session. Continue?",
   "terminal.fontSmaller": "Smaller font",
   "terminal.fontLarger": "Larger font",
