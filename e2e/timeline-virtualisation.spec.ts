@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // v0.11.1: the track renders only the clusters near the viewport.
 //
@@ -15,7 +14,7 @@ import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
 // test fails.
 test('the track renders only the clusters near the viewport', async () => {
   test.setTimeout(300_000)
-  const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-virt-'))
+  const tmpHome = makeTempHome('redlog-virt-')
   const app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
     env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
   const page = await app.firstWindow()

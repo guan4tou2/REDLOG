@@ -1,8 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §6: the eight flat toolbar toggles grouped by
 // effect. The low-frequency view/audit controls (session dividers, timezone,
@@ -14,7 +11,7 @@ let page: Page
 
 test.describe.serial('timeline toolbar overflow', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-toolbar-'))
+    const tmpHome = makeTempHome('redlog-toolbar-')
     app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
     page = await app.firstWindow()

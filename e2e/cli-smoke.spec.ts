@@ -1,9 +1,8 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 // Smoke coverage for redlog-cli against a live app. The CLI had no automated
 // tests at all before v0.9.4 — `redlog-sign` was the only covered binary —
@@ -11,7 +10,7 @@ import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
 // not been anchored yet. Mirrors RELEASE_CHECKLIST §13.
 test('redlog-cli smoke against a live app', async () => {
   test.setTimeout(180_000)
-  const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-rel-'))
+  const tmpHome = makeTempHome('redlog-rel-')
   const app = await electron.launch({
     args: [MAIN_ENTRY], cwd: REPO_ROOT,
     env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
