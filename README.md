@@ -67,9 +67,9 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
 - **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology; plain `ssh user@host` also fires a pivot so the timeline reflects "attention moved to a remote host" ([details](docs/event-schema.md#pivot-events))
 - **VPS deployment** — `hooks/vps-deploy.sh install user@vps && hooks/vps-deploy.sh tunnel user@vps` copies the shell hook to a remote box and opens a reverse-tunnel session, so every command run on the VPS lands in the local chain in real time
-- **Pause means pause** — while recording is paused RedLog writes nothing except its own audit trail (`system`) and explicit markers. The gate sits at the single DB write point, so every source is covered — the shell hook and the mitmproxy addon included — and no derived event (scope violation, loot, pivot) leaks the content either. The paused API answers `200 {recording:false, skipped}` so the hook doesn't spool and replay it later. Each `recording_paused` / `recording_resumed` row records whether the toggle came from the `ui`, the `api` or an `mcp` agent
+- **Pause means pause** — while recording is paused RedLog writes nothing except its own audit trail (`system`) and explicit markers. The gate sits at the single DB write point, so every source is covered — the shell hook and the mitmproxy addon included — and no derived event (scope violation, loot, pivot) leaks the content either. The paused API answers `200 {recording:false, skipped}` so the hook doesn't spool and replay it later. Each `recording_paused` / `recording_resumed` row records whether the toggle came from the `ui` or the `api`
 - **Path exclusion** — the agent transcript tailer and the Codex / OpenCode hooks additionally skip any session whose cwd is in the operator's exclusion list, so daily/hobby coding stays off the audit chain by default. The shell preexec hook has no cwd gate: pause RedLog, or don't source it in shells you don't want recorded
-- **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (agent-operable MCP tools) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
+- **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (exporters, monitors) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Quick Start
@@ -162,7 +162,7 @@ RedLog's scope monitor uses root-domain matching for smart violation detection:
 Trust-tiered plugin system for shop-specific patterns (see [docs/plugin-development.md](docs/plugin-development.md)):
 
 - 🟢 **Declarative** (no code): `lootPatterns`, `redaction`, `commandTags` (stamp MITRE / custom fields onto shell events), `targetExtractors`, `eventTypes`, `capture` integrations
-- 🔴 **Privileged** (code): custom MCP tools, exporters, monitors — content-hash pinned + operator consent + capability-scoped, run in an isolated utility process
+- 🔴 **Privileged** (code): exporters, monitors — content-hash pinned + operator consent + capability-scoped, run in an isolated utility process
 
 RedLog ships with **no** `commandTags` installed — MITRE tagging is opinionated per shop, so either drop a plugin into `~/.redlog/plugins/` (Settings ▸ Plugins ▸ Open folder) or let your SIEM tag downstream. Hot-reload from Settings ▸ Plugins ▸ Reload.
 
@@ -172,7 +172,7 @@ Built-in English and Traditional Chinese (zh-TW). Locale files in `src/renderer/
 
 ## AI Agent Integration
 
-RedLog is designed to work alongside AI coding agents. Three integration layers — **install the hooks first and rely on them; add MCP only for what hooks can't do.** Hooks are passive so nothing can be forgotten; MCP is agent-initiated, and anything the agent forgets to log is a silent gap in the audit trail. See [Capture priority](docs/agent-integration.md#two-planes-hooks-log-mcp-operates).
+RedLog is designed to work alongside AI coding agents. Three integration layers — **install the hooks first and rely on them; add the API only for what hooks can't do.** Hooks are passive so nothing can be forgotten; API calls are agent-initiated, and anything the agent forgets to log is a silent gap in the audit trail. See [Capture priority](docs/agent-integration.md#how-agents-capture-hooks-log).
 
 ### Layer 1: Terminal Hooks (Automatic Capture) — start here
 
@@ -217,9 +217,9 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 ./hooks/codex-wrapper.sh nmap -sV target.com
 ```
 
-### Layer 3: HTTP API (Universal)
+### Layer 2: HTTP API (Universal)
 
-Direct REST API for scripts, custom agents, and non-MCP tools.
+Direct REST API for scripts and custom agents.
 
 ```bash
 TOKEN=$(cat ~/.redlog/api-token)
@@ -250,7 +250,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
 | GET/POST | `/api/anchors` | List / trigger OpenTimestamps anchoring |
 | GET | `/api/anchors/verify` | Fast integrity check |
 
-### Layer 4: Shell Functions
+### Layer 3: Shell Functions
 
 ```bash
 source /path/to/redlog/shell/redlog-agent.sh
@@ -273,10 +273,10 @@ See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible funct
 
 - [操作者手冊 (User guide, zh-TW)](docs/USER-GUIDE.md) — first engagement in ten minutes: what to wire up, what each screen answers, how to export
 - [Docs index](docs/README.md) — every page, grouped
-- [Agent integration](docs/agent-integration.md) — full REST + MCP + hook reference
+- [Agent integration](docs/agent-integration.md) — full REST + hook reference
 - [Audit trail](docs/audit-trail.md) — hash chain + OpenTimestamps + full re-walk + bundle export
 - [Event schema](docs/event-schema.md) — standard agent_type + data keys (Ghostwriter-compatible)
-- [Plugin development](docs/plugin-development.md) — extend RedLog: 🟢 declarative packs + 🔴 trust-gated MCP tools
+- [Plugin development](docs/plugin-development.md) — extend RedLog: 🟢 declarative packs + 🔴 trust-gated code plugins
 - [Skill: redlog-pentest](docs/skills/redlog-pentest.md) — ready-to-copy Claude Code skill
 
 ## Architecture
@@ -298,7 +298,7 @@ Electron Main Process
         ├── PivotDetector      auto-detects tunnels from shell (ssh -D/-L/-R, chisel, ligolo, …)
         ├── TechniqueTagger    auto-detects cleanup (T1070) + file-transfer (T1105/T1041)
         ├── EvidenceChain      SHA-256 chain + OpenTimestamps anchor (hourly + on-demand)
-        └── APIServer          localhost HTTP: REST + MCP (streamable HTTP) for agents
+        └── APIServer          localhost HTTP: REST API for agents
 
 Renderer (React 18 + Tailwind CSS 3)
   ├── ProjectPicker         create (with advanced scope setup) / open / delete
@@ -478,7 +478,7 @@ Export your project config as a `.yaml` or `.json` profile:
 | Config | js-yaml |
 | i18n | Custom React context |
 | Build | electron-builder |
-| AI integration | MCP (stdio) + HTTP API + shell hooks |
+| AI integration | HTTP API + shell hooks |
 
 ## Packaging
 
