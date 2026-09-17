@@ -32,7 +32,7 @@ function lookupCauseEventId(subtype: 'cast_pruned' | 'screenshot_pruned', absPat
       const row = db.prepare(`
         SELECT id FROM events
         WHERE agent_type = 'shell'
-          AND json_extract(data,'$.subtype') = 'session_end'
+          AND subtype = 'session_end'
           AND json_extract(data,'$.castPath') = ?
         ORDER BY created_at DESC LIMIT 1
       `).get(absPath) as { id: string } | undefined
@@ -430,7 +430,7 @@ function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]
   const query = kind === 'cast'
     ? `SELECT target_id, json_extract(data,'$.castPath') AS p, NULL AS fn FROM events
          WHERE agent_type = 'shell'
-           AND json_extract(data,'$.subtype') = 'session_end'
+           AND subtype = 'session_end'
            AND json_extract(data,'$.castPath') IS NOT NULL`
     : `SELECT target_id,
               json_extract(data,'$.filePath') AS p,

@@ -276,7 +276,7 @@ export function assertEventsAppendOnly(): void {
     END;
     CREATE TRIGGER no_update_events_hash
       BEFORE UPDATE OF hash, prev_hash, data, id, timestamp, operator_id,
-                       agent_type, hostname, session_id, engagement_id,
+                       agent_type, subtype, hostname, session_id, engagement_id,
                        source_ip, target_id, monotonic_ns, ntp_offset_ms,
                        created_at, signature
                        ON events
@@ -382,10 +382,10 @@ const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
  */
 export const EVIDENCE_SQL = `
   agent_type NOT IN ('system', 'cleanup')
-  AND NOT (agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('session_start','session_end'))
-  AND NOT (agent_type = 'terminal' AND json_extract(data,'$.subtype') = 'session_start')
+  AND NOT (agent_type = 'shell' AND subtype IN ('session_start','session_end'))
+  AND NOT (agent_type = 'terminal' AND subtype = 'session_start')
   AND NOT (
-    agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command','command_end')
+    agent_type = 'shell' AND subtype IN ('command_start','command','command_end')
     AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%')
   )
 `
@@ -398,10 +398,10 @@ export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as con
 
 const HOUSEKEEPING_SQL = `
   NOT (
-    (agent_type = 'system' AND json_extract(data,'$.subtype') IN ('api_started','session_start'))
-    OR (agent_type = 'shell' AND json_extract(data,'$.subtype') = 'session_start')
-    OR (agent_type = 'terminal' AND json_extract(data,'$.subtype') = 'session_start')
-    OR (agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
+    (agent_type = 'system' AND subtype IN ('api_started','session_start'))
+    OR (agent_type = 'shell' AND subtype = 'session_start')
+    OR (agent_type = 'terminal' AND subtype = 'session_start')
+    OR (agent_type = 'shell' AND subtype IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
   )
 `
 
@@ -622,13 +622,17 @@ function insertChainedEvent(
   const signature = signEvent(canonicalForHash, event.operatorId)
   event.signature = signature
 
+  // Denormalized subtype column — a copy of data.subtype so WHERE clauses
+  // hit the composite index instead of json_extract.
+  const subtypeCol = typeof dataForChain.subtype === 'string' ? dataForChain.subtype : null
+
   try {
     db.prepare(`
-      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.id, event.timestamp, event.engagementId, event.sessionId,
-      event.operatorId, event.agentType, event.hostname, event.sourceIP,
+      event.operatorId, event.agentType, subtypeCol, event.hostname, event.sourceIP,
       event.targetId, JSON.stringify(event.data), event.hash, event.prevHash, event.createdAt,
       event.monotonicNs, event.ntpOffsetMs, event.signature,
       env.rawRef ? JSON.stringify(env.rawRef) : null,
@@ -710,15 +714,17 @@ function insertLoggedEvent(
     signature: null,
     tier: 'logged'
   }
+  const subtypeCol = typeof data.subtype === 'string' ? data.subtype : null
+
   try {
     db.prepare(`
       INSERT INTO events_logged
-        (id, timestamp, engagement_id, session_id, operator_id, agent_type,
+        (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype,
          hostname, source_ip, target_id, data, created_at, raw_ref, mapper, schema_version, ts_source, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.id, event.timestamp, event.engagementId, event.sessionId,
-      event.operatorId, event.agentType, event.hostname, event.sourceIP,
+      event.operatorId, event.agentType, subtypeCol, event.hostname, event.sourceIP,
       event.targetId, JSON.stringify(event.data), event.createdAt,
       env.rawRef ? JSON.stringify(env.rawRef) : null,
       env.mapper ? JSON.stringify(env.mapper) : null,
@@ -898,7 +904,7 @@ export function queryMarkerAmendments(markerIds: string[]): RedLogEvent[] {
     const chunk = markerIds.slice(i, i + 400)
     const holes = chunk.map(() => '?').join(',')
     const where = `WHERE agent_type = 'marker'
-                     AND json_extract(data, '$.subtype') = 'amended'
+                     AND subtype = 'amended'
                      AND json_extract(data, '$.markerId') IN (${holes})`
     const chained = `
       SELECT rowid AS _row,
@@ -990,12 +996,11 @@ export function screenshotsReferencedByMarker(screenshotIds: string[]): string[]
 
 export function queryByFlowId(flowId: string): RedLogEvent[] {
   const db = getDB()
-  const pattern = `%"flow_id":"${flowId}"%`
   const rows = db.prepare(
     `SELECT *, 'logged' AS tier FROM events_logged
-     WHERE agent_type = 'scanner' AND data LIKE ?
+     WHERE agent_type = 'scanner' AND json_extract(data, '$.flow_id') = ?
      ORDER BY timestamp ASC LIMIT 10`
-  ).all(pattern) as Array<Record<string, unknown>>
+  ).all(flowId) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
 }
 
@@ -1205,9 +1210,9 @@ const HOST_MATCH_SQL = `(
 // backend returns the raw turning-point rows.
 const CHAIN_TURNING_POINT_SQL = `(
   agent_type IN ('loot', 'marker')
-  OR (agent_type = 'dns' AND json_extract(data, '$.subtype') = 'dns_response')
-  OR (agent_type = 'shell' AND json_extract(data, '$.subtype') IN ('command_start', 'command_end', 'command'))
-  OR (agent_type = 'system' AND json_extract(data, '$.subtype') = 'scope_violation')
+  OR (agent_type = 'dns' AND subtype = 'dns_response')
+  OR (agent_type = 'shell' AND subtype IN ('command_start', 'command_end', 'command'))
+  OR (agent_type = 'system' AND subtype = 'scope_violation')
 )`
 
 export interface HostCausalChain {

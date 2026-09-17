@@ -70,7 +70,7 @@ export function scanCandidates(): { candidates: Map<string, CandidateTarget>; sc
       const rows = db.prepare(
         `SELECT ${b.keySql} AS k, COUNT(*) AS n, MIN(timestamp) AS first_at, MAX(timestamp) AS last_at
          FROM ${table}
-         WHERE agent_type = ? AND json_extract(data, '$.subtype') IN (${holes})
+         WHERE agent_type = ? AND subtype IN (${holes})
            AND ${b.keySql} IS NOT NULL AND ${b.keySql} != ''
          GROUP BY k`
       ).all(b.agentType, ...b.subtypes) as Array<{ k: string; n: number; first_at: number; last_at: number }>
@@ -98,7 +98,7 @@ export function readExistingViolations(): ExistingViolation[] {
   const rows = db.prepare(
     `SELECT id, timestamp, data FROM events
      WHERE agent_type = 'system'
-       AND json_extract(data, '$.subtype') IN ('scope_violation','scope_cleared')
+       AND subtype IN ('scope_violation','scope_cleared')
      ORDER BY created_at ASC, rowid ASC`
   ).all() as Array<{ id: string; timestamp: number; data: string }>
 
@@ -162,7 +162,7 @@ export function hydrateCorpus(targets: ReadonlySet<string>): CorpusEvent[] {
       const holes = b.subtypes.map(() => '?').join(',')
       const rows = db.prepare(
         `SELECT id, timestamp, agent_type, data FROM ${table}
-         WHERE agent_type = ? AND json_extract(data, '$.subtype') IN (${holes})
+         WHERE agent_type = ? AND subtype IN (${holes})
            AND ${b.keySql} IS NOT NULL
          ORDER BY timestamp DESC`
       ).all(b.agentType, ...b.subtypes) as Array<{ id: string; timestamp: number; agent_type: string; data: string }>
@@ -355,7 +355,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
 export function queryLastScopeRecompute(): Record<string, unknown> | null {
   const row = getDB().prepare(
     `SELECT id, timestamp, data FROM events
-     WHERE agent_type = 'system' AND json_extract(data, '$.subtype') = 'scope_recomputed'
+     WHERE agent_type = 'system' AND subtype = 'scope_recomputed'
      ORDER BY created_at DESC, rowid DESC LIMIT 1`
   ).get() as { id: string; timestamp: number; data: string } | undefined
   if (!row) return null
@@ -386,7 +386,7 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
   const byId = new Map(existing.map((v) => [v.id, v]))
   const rows = db.prepare(
     `SELECT id, timestamp, data FROM events
-     WHERE agent_type = 'system' AND json_extract(data, '$.subtype') = 'scope_violation'
+     WHERE agent_type = 'system' AND subtype = 'scope_violation'
      ORDER BY created_at DESC, rowid DESC LIMIT ?`
   ).all(limit) as Array<{ id: string; timestamp: number; data: string }>
   const out: ScopeViolationRow[] = []

@@ -1,21 +1,17 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense, memo } from 'react'
 import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
-import TranscriptView from './components/TranscriptView'
 import StatusBar from './components/StatusBar'
 import { ReplayDrawer } from './components/ReplayDrawer'
 import IPStatusCard from './components/IPStatusCard'
 import TimelinePanel from './components/Timeline'
 import EventMarker from './components/EventMarker'
-import Settings from './components/Settings'
 import ProjectPicker from './components/ProjectPicker'
 import { TargetView } from './components/TargetView'
 import { ScopeStatus } from './components/ScopeStatus'
 import { LootPanel } from './components/LootPanel'
-import { HttpHistoryPanel } from './components/HttpHistoryPanel'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { BookmarksView } from './components/BookmarksView'
-import TerminalView from './components/TerminalView'
 import { ToastContainer } from './components/Toast'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchPanel } from './components/SearchPanel'
@@ -23,6 +19,13 @@ import { ExportMenu } from './components/ExportMenu'
 import { LoadingSpinner } from './components/Feedback'
 import { ConfirmDialogContainer, confirm as confirmDialog } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
+
+// Heavy views loaded lazily — keeps the initial bundle small.
+// Electron-local loads are instant so the Suspense fallback is null.
+const TerminalView = lazy(() => import('./components/TerminalView'))
+const Settings = lazy(() => import('./components/Settings'))
+const TranscriptView = lazy(() => import('./components/TranscriptView'))
+const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then(m => ({ default: m.HttpHistoryPanel })))
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from './lib/captureReadiness'
 import { useI18n } from './i18n'
 import { DEFAULT_ORDER, type SidebarViewId, NUMBERED_SLOTS } from './lib/sidebarOrder'
@@ -365,7 +368,7 @@ export default function App(): JSX.Element {
         <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={firstRunActive} />}
-            {view === 'terminal' && <TerminalView />}
+            {view === 'terminal' && <Suspense fallback={null}><TerminalView /></Suspense>}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
                 project's rows and the initial useEffect doesn't re-fire.
@@ -376,15 +379,17 @@ export default function App(): JSX.Element {
                 this answers "what did I type and what came back", which is the
                 question an operator asks when writing an engagement up. */}
             {view === 'transcript' && (
-              <TranscriptView
-                key={project?.id ?? 'no-project'}
-                // `onNavigate` is not in scope here — App switches views with
-                // `setView`. This threw a ReferenceError on every use of the
-                // transcript's ↗ button, which is §7's transcript ↔ timeline
-                // link and one of the five cross-view routes phase 3 is meant
-                // to be completing.
-                onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
-              />
+              <Suspense fallback={null}>
+                <TranscriptView
+                  key={project?.id ?? 'no-project'}
+                  // `onNavigate` is not in scope here — App switches views with
+                  // `setView`. This threw a ReferenceError on every use of the
+                  // transcript's ↗ button, which is §7's transcript ↔ timeline
+                  // link and one of the five cross-view routes phase 3 is meant
+                  // to be completing.
+                  onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
+                />
+              </Suspense>
             )}
             {view === 'screenshots' && <ScreenshotsView onNavigate={(v) => setView(v as View)} />}
             {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
@@ -392,8 +397,8 @@ export default function App(): JSX.Element {
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
-            {view === 'http_history' && <HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
-            {view === 'settings' && <Settings />}
+            {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} /></Suspense>}
+            {view === 'settings' && <Suspense fallback={null}><Settings /></Suspense>}
           </ErrorBoundary>
         </div>
       </div>
@@ -1116,7 +1121,7 @@ function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: strin
 
 type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 
-function StatCard({ label, value, sub, tone = 'neutral' }: {
+const StatCard = memo(function StatCard({ label, value, sub, tone = 'neutral' }: {
   label: string; value: string; sub?: string; tone?: HudTone
 }): JSX.Element {
   const bar = tone === 'red' ? 'bg-red-500' : tone === 'green' ? 'bg-emerald-500'
@@ -1135,7 +1140,7 @@ function StatCard({ label, value, sub, tone = 'neutral' }: {
       {sub && <p className="text-xs text-redlog-text-faint mt-0.5">{sub}</p>}
     </div>
   )
-}
+})
 
 function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])

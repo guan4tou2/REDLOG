@@ -107,7 +107,7 @@ export function getVisibilitySignals(): VisibilitySignals {
   }
   if (!next.transcriptSeen) {
     next.transcriptSeen =
-      exists(`events WHERE agent_type = 'shell' AND json_extract(data,'$.subtype') = 'command_end'`)
+      exists(`events WHERE agent_type = 'shell' AND subtype = 'command_end'`)
       || exists(`events WHERE agent_type = 'agent'`)
       || exists(`events_logged WHERE agent_type = 'agent'`)
   }
@@ -120,7 +120,7 @@ export function getVisibilitySignals(): VisibilitySignals {
   if (!next.bookmarkSeen) next.bookmarkSeen = exists('bookmarks')
   if (!next.httpFlowSeen) {
     next.httpFlowSeen = exists(
-      `events_logged WHERE agent_type = 'scanner' AND json_extract(data,'$.subtype') IN (${holes})`,
+      `events_logged WHERE agent_type = 'scanner' AND subtype IN (${holes})`,
       [...HTTP_FLOW_SUBTYPES]
     )
   }
@@ -128,7 +128,7 @@ export function getVisibilitySignals(): VisibilitySignals {
     // The audit row survives the sweep that deletes what it describes, so a
     // project whose logged tier has been fully pruned still knows it had one.
     next.loggedEver = exists('events_logged')
-      || exists(`events WHERE agent_type = 'system' AND json_extract(data,'$.subtype') = 'retention_pruned_logged'`)
+      || exists(`events WHERE agent_type = 'system' AND subtype = 'retention_pruned_logged'`)
   }
 
   cache = next

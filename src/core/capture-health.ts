@@ -252,13 +252,13 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // Shell preexec / agent-shell hooks write shell command_start/command_end
   // (NOT the builtin terminal, which sets source = 'builtin-terminal').
   const shellHookLast = lastEventFor(
-    `agent_type = 'shell' AND json_extract(data,'$.subtype') IN ('command_start','command_end') AND coalesce(json_extract(data,'$.source'),'') != 'builtin-terminal'`
+    `agent_type = 'shell' AND subtype IN ('command_start','command_end') AND coalesce(json_extract(data,'$.source'),'') != 'builtin-terminal'`
   )
   // mitmproxy addon writes scanner http_request/http_error events.
   // mitmproxy and the connection monitor both land on agent_type='scanner';
   // split them by subtype so one does not light the other's indicator.
-  const mitmLast = lastEventFor(`agent_type = 'scanner' AND json_extract(data,'$.subtype') NOT IN ('connection','connection_end')`)
-  const connLast = lastEventFor(`agent_type = 'scanner' AND json_extract(data,'$.subtype') IN ('connection','connection_end')`)
+  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')`)
+  const connLast = lastEventFor(`agent_type = 'scanner' AND subtype IN ('connection','connection_end')`)
   // RedLog's own terminal panes.
   const builtinLast = lastEventFor(`agent_type = 'shell' AND json_extract(data,'$.source') = 'builtin-terminal'`)
   // v0.6.92: DNS/browser/process/file-watcher producers. `installed` is
@@ -339,7 +339,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       if (emits.length > 0) {
         const placeholders = emits.map(() => '?').join(',')
         last = lastEventFor(
-          `agent_type = ? AND json_extract(data,'$.subtype') IN (${placeholders})`,
+          `agent_type = ? AND subtype IN (${placeholders})`,
           [h.agentType, ...emits]
         )
       }
@@ -348,7 +348,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       // recent one means "running". No stop event is needed — heartbeats age out.
       const pluginId = h.id.split('.')[0]
       const hbLast = lastEventFor(
-        `agent_type = 'system' AND json_extract(data,'$.subtype') = 'producer_heartbeat' AND json_extract(data,'$.producer') = ?`,
+        `agent_type = 'system' AND subtype = 'producer_heartbeat' AND json_extract(data,'$.producer') = ?`,
         [pluginId]
       )
       const running = hbLast !== null && now - hbLast <= PRODUCER_HEARTBEAT_WINDOW_MS

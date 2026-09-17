@@ -45,6 +45,13 @@ export default defineConfig({
         input: {
           main: resolve(__dirname, 'src/renderer/index.html'),
           overlay: resolve(__dirname, 'src/renderer/overlay.html')
+        },
+        output: {
+          manualChunks(id) {
+            if (id.includes('@xterm/xterm') || id.includes('@xterm/')) return 'vendor-xterm'
+            if (id.includes('@fontsource/')) return 'vendor-fonts'
+            if (id.includes('@tanstack/react-virtual')) return 'vendor-virtual'
+          }
         }
       }
     }

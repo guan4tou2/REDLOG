@@ -15,7 +15,6 @@
     "redlog-cli": "./cli/redlog-cli.js"
   },
   "scripts": {
-    "predev": "electron-rebuild",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.check.json",

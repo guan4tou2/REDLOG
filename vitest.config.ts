@@ -11,5 +11,7 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     setupFiles: ['./test/setup.ts'],
+    pool: 'forks',
+    poolOptions: { forks: { minForks: 2, maxForks: 4 } },
   },
 })
