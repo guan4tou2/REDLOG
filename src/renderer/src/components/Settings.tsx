@@ -53,6 +53,9 @@ interface ConfigState {
     enabled: boolean
     emitThinking?: boolean
   }
+  retention?: {
+    loggedTier?: { keepDays?: number }
+  }
 }
 
 interface ManualStep {
