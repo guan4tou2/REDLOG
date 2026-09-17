@@ -63,9 +63,19 @@ test.describe.serial('timeline presentation', () => {
 
   test('the skip-idle chip appears only when there is something to skip', async () => {
     // Detection has to run whether or not compression is on, or the control
-    // that turns it on can never appear.
-    const chip = page.getByRole('button', { name: /skip idle/i })
+    // that turns it on can never appear. That claim is unchanged; where the
+    // control lives is not. #86 moved the rare view controls out of the flat
+    // toolbar into the overflow menu (see timeline-toolbar-overflow.spec.ts),
+    // and the role moved with it — `menuitemcheckbox`, not a bare button. The
+    // old locator matched nothing, which is a stale test, not a lost feature:
+    // the render condition it guards, `timeMap.gaps.length > 0 ||
+    // compressGaps`, is still what decides whether the row exists at all.
+    await page.locator('[data-testid="timeline-more-menu"]').click()
+    const chip = page.getByRole('menuitemcheckbox', { name: /skip idle/i })
     await expect(chip).toBeVisible()
+    // Off, and offering itself — which is only possible if gap detection ran
+    // with compression disabled.
+    await expect(chip).toHaveAttribute('aria-checked', 'false')
   })
 
   test('compressing collapses the gap and keeps the operator in place', async () => {
@@ -77,7 +87,11 @@ test.describe.serial('timeline presentation', () => {
       }).length
     })
 
-    await page.getByRole('button', { name: /skip idle/i }).click()
+    // The menu is still open from the previous test in this serial describe;
+    // click it open if something closed it, then toggle compression on.
+    const menu = page.getByRole('menuitemcheckbox', { name: /skip idle/i })
+    if (await menu.count() === 0) await page.locator('[data-testid="timeline-more-menu"]').click()
+    await page.getByRole('menuitemcheckbox', { name: /skip idle/i }).click()
     await page.waitForTimeout(900)
 
     const after = await page.evaluate(() => {
