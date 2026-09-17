@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // Design turn 9a. Two claims only the real app can settle: that the first
 // screen of a new engagement is the single-path one, and that it gets out of
@@ -24,7 +23,7 @@ const post = async (agent_type: string, data: Record<string, unknown>): Promise<
 
 test.describe.serial('the first run', () => {
   test.beforeAll(async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), 'redlog-firstrun-'))
+    tmpHome = makeTempHome('redlog-firstrun-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }

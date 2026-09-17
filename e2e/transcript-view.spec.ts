@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 interface T { spawn: (i: string, c: number, r: number) => Promise<unknown>; write: (i: string, d: string) => void; kill: (i: string) => void }
 
 // v0.11.2 (design note T5). The Timeline answers "when did this happen and
@@ -15,7 +14,7 @@ interface T { spawn: (i: string, c: number, r: number) => Promise<unknown>; writ
 // Getting that wrong is what makes a transcript unreadable.
 test('folds request/response pairs into single exchanges', async () => {
   test.setTimeout(180_000)
-  const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-tr-'))
+  const tmpHome = makeTempHome('redlog-tr-')
   const app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
     env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
   const page = await app.firstWindow()

@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §4d, verified end to end: a command with a
 // password flag produces a credential_use companion event, and the secret is
@@ -10,7 +9,7 @@ import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
 // this proves the wiring in the api-server ingest path fires and masks.
 
 test('a -p flag on a command produces a masked credential_use event', async () => {
-  const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-cred-'))
+  const tmpHome = makeTempHome('redlog-cred-')
   let app: ElectronApplication | undefined
   try {
     app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,

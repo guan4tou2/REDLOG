@@ -1,5 +1,5 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { existsSync, mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -21,6 +21,14 @@ export interface RedLogBridge {
 export const REPO_ROOT = join(__dirname, '..')
 export const MAIN_ENTRY = join(REPO_ROOT, 'out', 'main', 'index.js')
 
+export function makeTempHome(prefix = 'redlog-e2e-'): string {
+  const home = mkdtempSync(join(tmpdir(), prefix))
+  if (process.platform === 'win32') {
+    mkdirSync(join(home, 'AppData', 'Roaming'), { recursive: true })
+  }
+  return home
+}
+
 /**
  * Launch the built Electron app with HOME pointed at a fresh temp dir so the
  * test never touches the operator's real `~/.redlog/`. Also asserts the build
@@ -37,7 +45,7 @@ export async function launchWithTempHome(): Promise<{
         `Run "npm run build" before "npm run e2e".`
     )
   }
-  const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-e2e-'))
+  const tmpHome = makeTempHome()
   const app = await electron.launch({
     args: [MAIN_ENTRY],
     cwd: REPO_ROOT,
