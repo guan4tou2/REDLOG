@@ -10,7 +10,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, loadScopeFile, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, queryScopeFilteredEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -1678,7 +1678,7 @@ app.whenReady().then(() => {
   }))
 
   // --- Loot ---
-  ipcMain.handle('loot:getCount', () => lootDetector.getLootCount())
+  ipcMain.handle('loot:getCount', () => activeProject ? getLootCount() : 0)
 
   // --- Bookmarks ---
   ipcMain.handle('bookmarks:list', () => activeProject ? listBookmarks() : [])
@@ -2015,7 +2015,7 @@ app.whenReady().then(() => {
     try {
       const raw = fs.readFileSync(result.filePaths[0], 'utf-8')
       const ext = path.extname(result.filePaths[0]).toLowerCase()
-      const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw) as Record<string, unknown>
+      const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
       delete data.version
       // v0.6.96 Ops-2: split saved views out of the config payload and merge
       // them into the local views.json. Prior teammate's views are preserved

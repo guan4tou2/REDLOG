@@ -404,7 +404,7 @@ export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = migrateConfig(yaml.load(raw) as Record<string, unknown>)
+    const parsed = migrateConfig(yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>)
     return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return { ...DEFAULT_CONFIG }
