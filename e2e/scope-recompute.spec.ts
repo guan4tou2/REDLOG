@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // Design turn 8a, end to end. The unit and DB suites prove the decision and the
 // writes; what only the real app can show is that a save actually triggers the
@@ -48,7 +47,7 @@ const setScope = async (targets: string[], excludeTargets: string[]): Promise<vo
 
 test.describe.serial('recomputing scope after the boundary moves', () => {
   test.beforeAll(async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), 'redlog-scope-'))
+    tmpHome = makeTempHome('redlog-scope-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }

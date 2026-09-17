@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §3/§7, the reconciled target axis: rather
 // than PR #8's dynamic target-lanes (which also deleted TargetView), the
@@ -16,7 +15,7 @@ let page: Page
 
 test.describe.serial('target focus on the timeline', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-tfocus-'))
+    const tmpHome = makeTempHome('redlog-tfocus-')
     app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
     page = await app.firstWindow()

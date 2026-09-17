@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §6: the 18 lanes banded by capture group.
 // The timeline opens as capture-group bands (collapsed), each expandable to its
@@ -16,7 +15,7 @@ let page: Page
 
 test.describe.serial('timeline lane bands', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-bands-'))
+    const tmpHome = makeTempHome('redlog-bands-')
     app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
     page = await app.firstWindow()

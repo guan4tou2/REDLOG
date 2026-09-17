@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // v0.11.4 (AUDIT V1/V2/V3): what the track says without being clicked.
 //
@@ -39,7 +38,7 @@ const dots = (p: Page): Promise<Array<{ title: string; radius: string; rotated: 
 
 test.describe.serial('timeline visual encoding', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-enc-'))
+    const tmpHome = makeTempHome('redlog-enc-')
     app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
     page = await app.firstWindow()

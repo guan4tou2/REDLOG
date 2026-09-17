@@ -23,7 +23,11 @@ const HOUSEKEEPING: RedLogEvent[] = [
   ev('shell', { subtype: 'session_start' }),
   ev('terminal', { subtype: 'session_start' }),
   ev('shell', { subtype: 'command_start', command: '/opt/redlog/shell-preexec-hook.sh install' }),
-  ev('shell', { subtype: 'command', command: 'bash /x/shell-preexec-hook.sh' })
+  ev('shell', { subtype: 'command', command: 'bash /x/shell-preexec-hook.sh' }),
+  ev('shell', { subtype: 'command_end', command: 'bash /x/shell-preexec-hook.sh' }),
+  ev('shell', { subtype: 'command_start', command: '. "C:\\Users\\op\\hooks\\shell-hook.ps1" *> $null; Clear-Host' }),
+  ev('shell', { subtype: 'command', command: '. "C:\\Users\\op\\hooks\\shell-hook.ps1" *> $null; Clear-Host' }),
+  ev('shell', { subtype: 'command_end', command: '. "C:\\Users\\op\\hooks\\shell-hook.ps1" *> $null; Clear-Host' })
 ]
 
 const EVIDENCE: RedLogEvent[] = [
@@ -49,7 +53,9 @@ describe('housekeeping', () => {
 
   it('recognises the hook by its script name only', () => {
     expect(isHookSource('/x/shell-preexec-hook.sh')).toBe(true)
+    expect(isHookSource('. "C:\\Users\\op\\hooks\\shell-hook.ps1" *> $null')).toBe(true)
     expect(isHookSource('curl https://example/shell-preexec-hookXsh')).toBe(false)
+    expect(isHookSource('shell-hook.ps2')).toBe(false)
     expect(isHookSource(undefined)).toBe(false)
   })
 
@@ -72,7 +78,7 @@ describe('housekeeping', () => {
     // Structural rather than a re-implementation: every rule the JS applies has
     // to be named in the SQL, or the pager and the view disagree about which
     // rows exist.
-    for (const rule of ['api_started', 'session_start', 'shell-preexec-hook.sh', 'command_start']) {
+    for (const rule of ['api_started', 'session_start', 'shell-preexec-hook.sh', 'shell-hook.ps1', 'command_start', 'command_end']) {
       expect(block, `SQL is missing the ${rule} rule`).toContain(rule)
     }
     expect(block).toContain("agent_type = 'terminal'")
@@ -83,5 +89,6 @@ describe('housekeeping', () => {
     expect(evidence).toContain("agent_type NOT IN ('system', 'cleanup')")
     expect(evidence).toContain('session_end')
     expect(evidence).toContain('shell-preexec-hook.sh')
+    expect(evidence).toContain('shell-hook.ps1')
   })
 })

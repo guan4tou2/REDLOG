@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // v0.11.6: AUDIT V7 (idle-gap compression) and V9 (keyboard/screen-reader
 // reachable event dots). V8 and V13 are geometry properties covered by
@@ -14,7 +13,7 @@ let page: Page
 
 test.describe.serial('timeline presentation', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-pres-'))
+    const tmpHome = makeTempHome('redlog-pres-')
     app = await electron.launch({ args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' } })
     page = await app.firstWindow()

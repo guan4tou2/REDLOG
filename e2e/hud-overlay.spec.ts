@@ -1,8 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 // HUD overlay geometry. The window sizes itself from `overlay:autosize`, which
 // the renderer fires on every layout-affecting render. Both halves of that
@@ -45,7 +42,7 @@ async function autosize(page: Page, h: number, w: number): Promise<void> {
 
 test.describe.serial('HUD overlay geometry', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-hud-'))
+    const tmpHome = makeTempHome('redlog-hud-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
@@ -129,7 +126,7 @@ test.describe.serial('HUD size stability', () => {
   let hud2: Page
 
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-hud2-'))
+    const tmpHome = makeTempHome('redlog-hud2-')
     app2 = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
