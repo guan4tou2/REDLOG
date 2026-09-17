@@ -17,10 +17,12 @@ import { repoRelative } from './helpers/repo-path'
 const ROOT = path.join(__dirname, '..')
 
 function redlogTokens(): Set<string> {
-  const config = fs.readFileSync(path.join(ROOT, 'tailwind.config.js'), 'utf-8')
-  const block = /redlog: \{([\s\S]*?)\n        \}/.exec(config)
-  if (!block) throw new Error('redlog token block not found')
-  return new Set([...block[1].matchAll(/'?([a-z][a-z-]*)'?:/g)].map((m) => m[1]))
+  const css = fs.readFileSync(
+    path.join(ROOT, 'src', 'renderer', 'src', 'styles', 'index.css'), 'utf-8'
+  )
+  const block = /@theme \{([\s\S]*?)\n\}/.exec(css)
+  if (!block) throw new Error('@theme block not found in index.css')
+  return new Set([...block[1].matchAll(/--color-redlog-([a-z][a-z-]*):/g)].map((m) => m[1]))
 }
 
 describe('tailwind classes', () => {

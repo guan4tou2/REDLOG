@@ -1,28 +1,109 @@
 @import "tailwindcss";
-@config "../../../../tailwind.config.js";
+@source "../**/*.{tsx,ts,html}";
 
-/* App-wide text scale. The type scale is stated in tailwind.config.js with a
- * 13px floor, so the root goes back to the browser default — it used to be
- * 17px, which scaled the text but also inflated every rem-based spacing,
- * radius and sizing utility by ~6% and pulled the layout off its 4px grid.
- * Stacking a raised scale on a raised root would make body text too large on a
- * big display (docs/UIUX-STANDARD.md §2).
- *
- * `--app-zoom` stays the user's knob for scaling everything at once, including
- * SVG, images and layout. It is applied via Chromium's non-standard `zoom` at
- * the body level and persisted to localStorage as `redlog-app-zoom`; the
- * default drops to 1 now that the floor carries the legibility the 1.1 was
- * compensating for. The HUD overlay is a separate BrowserWindow with its own
- * scale setting and is unaffected. */
+/* ─── Tailwind 4 native theme ─────────────────────────────────────────────
+ * Migrated from tailwind.config.js (v3 compat @config) to CSS-native @theme.
+ * Every token below was previously in the JS config; the source of truth is
+ * now this file and the JS config is deleted. */
+@theme {
+  /* ── Font families ──────────────────────────────────────────────────── */
+  --font-sans: "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* ── Type scale (§2, 13px floor) ────────────────────────────────────── */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.6rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.7rem;
+  --text-lg: 1.1875rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.9rem;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 2.125rem;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 2.375rem;
+  --text-4xl: 2.375rem;
+  --text-4xl--line-height: 2.625rem;
+
+  /* ── Softened accent shades (desaturated HUD palette) ───────────────── */
+  --color-red-300: #e4989b;
+  --color-red-400: #d75f63;
+  --color-red-500: #cf5459;
+  --color-red-600: #b84d51;
+  --color-rose-400: #d75f63;
+  --color-emerald-300: #8fddb6;
+  --color-emerald-400: #5ecf9c;
+  --color-emerald-500: #4bbf8a;
+  --color-green-300: #8fddb6;
+  --color-green-400: #5ecf9c;
+  --color-green-500: #4bbf8a;
+  --color-amber-300: #e2c886;
+  --color-amber-400: #d4ac5a;
+  --color-amber-500: #c69a45;
+  --color-yellow-300: #e2c886;
+  --color-yellow-400: #d4ac5a;
+  --color-yellow-500: #c69a45;
+  --color-cyan-300: #7fe0ea;
+  --color-cyan-400: #3fc7d6;
+  --color-cyan-500: #2ba9b8;
+
+  /* ── RedLog design tokens (§1) ──────────────────────────────────────── */
+  --color-redlog-bg: #121214;
+  --color-redlog-surface: #1a1a1d;
+  --color-redlog-elevated: #212126;
+  --color-redlog-elevated-hover: #2a2a30;
+  --color-redlog-border-subtle: #26262c;
+  --color-redlog-border: #33333a;
+  --color-redlog-text: #ececf0;
+  --color-redlog-text-dim: #9a9aa4;
+  --color-redlog-text-faint: #7a7a84;
+  --color-redlog-muted: #6a6a74;
+  --color-redlog-on-accent: #16090a;
+  --color-redlog-on-danger: #1a0303;
+  --color-redlog-on-warn: #1a1203;
+  --color-redlog-on-safe: #03150d;
+  --color-redlog-on-info: #031215;
+  --color-redlog-accent: #d75f63;
+  --color-redlog-accent-dim: #b84d51;
+  --color-redlog-danger: #ff4d4f;
+  --color-redlog-danger-hover: #ff6a6c;
+  --color-redlog-cyan: #3fc7d6;
+  --color-redlog-cyan-dim: #0e7490;
+  --color-redlog-lane: #6e6e78;
+
+  /* ── Shadows ────────────────────────────────────────────────────────── */
+  --shadow-glow-red: 0 0 12px 0 rgba(239, 68, 68, 0.15);
+  --shadow-glow-red-sm: 0 0 6px 0 rgba(239, 68, 68, 0.1);
+  --shadow-glow-cyan: 0 0 14px 0 rgba(34, 211, 238, 0.18);
+  --shadow-glow-cyan-sm: 0 0 6px 0 rgba(34, 211, 238, 0.25);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  --shadow-card-hover: 0 4px 12px 0 rgba(0, 0, 0, 0.5);
+
+  /* ── Animations ─────────────────────────────────────────────────────── */
+  --animate-pulse-slow: pulse 3s ease-in-out infinite;
+  --animate-toast-in: toastIn 0.25s ease-out;
+  --animate-blink-rec: blinkRec 1s step-end infinite;
+  --animate-spin-slow: spin 2s linear infinite;
+}
+
+@keyframes toastIn {
+  0% { opacity: 0; transform: translateX(16px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes blinkRec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ─── App-wide base styles ────────────────────────────────────────────── */
+
 html {
   font-size: 16px;
 }
 
-/* Density is a second axis, orthogonal to `--app-zoom`: zoom scales everything,
- * density changes only row heights and padding (§3). Everything goes through
- * var() rather than a Tailwind variant so a component opts in by using the
- * variable, and the two axes compose without a matrix of class names.
- * Whatever `--row-h` is set to, the real hit area stays at or above 32px. */
 :root {
   --row-h: 40px;
   --pad: 16px;
@@ -36,12 +117,6 @@ html {
   --section-gap: 14px;
 }
 
-/* Full-height chain so descendants can use `h-full` (100%) instead of the
- * naive `h-screen` (100vh). vh is measured against the un-zoomed viewport,
- * so `h-screen` inside a zoomed body overflows by (zoom-1)×100vh — the
- * StatusBar and Timeline event log used to sit outside the window because
- * of that. Cascading `height: 100%` from html→body→#root pins every layer
- * to whatever body computed itself as, which we shrink below. */
 html, body, #root { height: 100%; }
 body {
   margin: 0;
@@ -51,30 +126,16 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* zoom scales the layout box in Chromium. Pre-shrink body's height by the
-   * inverse zoom so the on-screen render lines up with the viewport. Any
-   * descendant using `h-full` (not `h-screen`) then fills exactly one visual
-   * screen after the zoom multiplies things back. */
   zoom: var(--app-zoom, 1);
   height: calc(100vh / var(--app-zoom, 1));
 }
 
-/* Noto Sans TC's hinting renders thin at small sizes on low-DPI Windows
- * displays, where greyscale antialiasing has no subpixels to lean on. */
 @media (-webkit-min-device-pixel-ratio: 1) and (max-resolution: 143dpi) {
   body {
     -webkit-font-smoothing: subpixel-antialiased;
   }
 }
 
-/* Desktop chrome doesn't select. Dragging across the sidebar, the status bar or
- * a tab strip and watching the labels highlight is one of the loudest tells
- * that an Electron app is a web page in a window. Same split VS Code uses:
- * `none` on the shell, text re-enabled on the surfaces that hold content —
- * the view root carries `select-text` (App.tsx), as does each overlay rooted
- * outside it (ConfirmDialog, EventMarker, Toast, the picker's modal), so an
- * operator can still select and copy an IP, a hash, a command or an error
- * message wherever it appears. */
 body {
   -webkit-user-select: none;
   user-select: none;
@@ -85,9 +146,6 @@ textarea,
   -webkit-user-select: text;
   user-select: text;
 }
-/* Controls opt back out. A direct rule beats the value inherited from the
- * `select-text` container, so buttons and tabs inside a content view stay
- * unselectable without every call site needing `select-none`. */
 button,
 [role='button'],
 [role='tab'],
@@ -96,8 +154,6 @@ select {
   user-select: none;
 }
 
-/* 10px, up from 6px: a 6px-wide target is a precision task with a mouse and
- * impossible with a trackpad flick. */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -124,12 +180,6 @@ select {
   cursor: grabbing !important;
 }
 
-/* Respect prefers-reduced-motion (a11y). We use recording pulse, HUD alarm,
- * EXPOSED-IP pulse, toast-in, spin-slow (loading), blinkRec, animate-pulse-slow
- * and Tailwind's default animate-* utilities — none of which respected this
- * OS-level setting before (ui-ux-pro-max-skill checklist / WCAG SC 2.3.3).
- * We keep animations that are essential information (e.g. the recording dot
- * still colours red) but freeze motion. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

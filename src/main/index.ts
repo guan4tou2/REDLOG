@@ -21,6 +21,7 @@ import { eventsToNdjson } from '../core/ndjson-export'
 import { buildTargetWalkthrough } from '../core/walkthrough-export'
 import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../core/overlay-layout'
 import fs from 'fs'
+import { createHash } from 'crypto'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { LootDetector } from '../core/loot-detector'
@@ -1614,7 +1615,7 @@ app.whenReady().then(() => {
       const resolved = path.resolve(filePath)
       if (!isInsideDir(screenshotDir, resolved)) return { ok: false, error: 'path outside project' }
       let sha256: string | null = null
-      try { sha256 = require('crypto').createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
+      try { sha256 = createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
       fs.unlinkSync(resolved)
       if (currentEngagementId && currentOperatorId) {
         const ev = insertEvent('system', {
@@ -2192,7 +2193,7 @@ app.whenReady().then(() => {
   // plugin folders in and reload without hunting for the path.
   ipcMain.handle('plugins:openFolder', async () => {
     const dir = path.join(homedir(), '.redlog', 'plugins')
-    try { await require('fs').promises.mkdir(dir, { recursive: true }) } catch { /* ignore */ }
+    try { await fs.promises.mkdir(dir, { recursive: true }) } catch { /* ignore */ }
     shell.openPath(dir)
     return dir
   })
