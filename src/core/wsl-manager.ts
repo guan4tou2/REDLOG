@@ -84,7 +84,7 @@ export function invalidateWslCache(): void { distroCache = null }
  *
  * Reuses the same logic from hooks-manager.ts buildManualSteps('shell-wsl').
  */
-function windowsPathToWsl(winPath: string): string {
+export function windowsPathToWsl(winPath: string): string {
   return winPath
     .replace(/\\/g, '/')
     .replace(/^([A-Z]):/, (_m, d: string) => `/mnt/${d.toLowerCase()}`)
