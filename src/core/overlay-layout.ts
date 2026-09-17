@@ -60,8 +60,24 @@ export function clampHudScale(scale: number): number {
 /** Window-width band the `overlay:autosize` handler enforces in main. */
 export const HUD_MIN_W = 380
 export const HUD_MAX_W = 720
-/** Height floor (also the window's created height before the first measure). */
+/** Height floor the `overlay:autosize` handler enforces, and what
+ *  `hudWindowHeight` returns for an unmeasured content block. */
 export const HUD_MIN_H = 46
+
+/** Height the overlay window is *created* at, before the renderer has measured
+ *  anything.
+ *
+ *  This used to be a bare `52` in `windows.ts` while `HUD_MIN_H`'s comment
+ *  claimed to be "also the window's created height" — two numbers, neither
+ *  matching, and nothing tying them together. Measured on Windows 11, the
+ *  collapsed HUD at scale 1 settles at 58 (40pt of content + the 18 of
+ *  `HUD_CONTENT_CHROME`), so being born at 52 meant every HUD grew 6px the
+ *  moment it first measured itself.
+ *
+ *  Starting at the settled height removes that jump for the default, which is
+ *  the case nearly every operator sees. A scaled or wrapped HUD still resizes
+ *  on first measure — it has to; this is a starting guess, not a constraint. */
+export const HUD_INITIAL_H = 58
 /** Chrome around the measured content: outer 3px padding ×2, the 1px frame
  *  inset, and the corner brackets' breathing room. Added before requesting. */
 export const HUD_CONTENT_CHROME = 18
