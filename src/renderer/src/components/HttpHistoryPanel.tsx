@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { hostOutOfScope } from '../lib/scope'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, X } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { groupFlows, type Activity } from '../lib/httpActivity'
+import { HttpDetail } from './HttpDetail'
 
 interface HttpFlow {
   flowId: string
@@ -69,13 +70,14 @@ function parentCommandOf(
 // level the eye lands on. A 40,000-request brute force and a single curl both
 // occupy one row, which is the point: they were both one action.
 
-function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, outOfScope }: {
+function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, onOpenDetail, outOfScope }: {
   activity: Activity<HttpFlow>
   t: (k: string, vars?: Record<string, string | number>) => string
   rowProps: ReturnType<ReturnType<typeof useListKeyboard>['itemProps']>
   open: boolean
   onToggle: () => void
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  onOpenDetail?: (eventId: string | null) => void
   outOfScope?: (host: string) => boolean
 }): JSX.Element {
   const { statusBuckets: sb, flows } = activity
@@ -157,7 +159,11 @@ function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, 
             })()
             const sc = f.status !== null ? STATUS_COLORS[String(f.status)[0]] : undefined
             return (
-              <li key={f.flowId} className="flex items-center gap-2 px-2 py-1 text-xs font-mono">
+              <li
+                key={f.flowId}
+                className="flex items-center gap-2 px-2 py-1 text-xs font-mono cursor-pointer hover:bg-redlog-elevated/30"
+                onClick={() => onOpenDetail?.(f.responseEventId ?? f.requestEventId)}
+              >
                 <span className="text-redlog-text-dim shrink-0 w-12">{f.method}</span>
                 <span className={`shrink-0 w-8 tabular-nums ${sc ?? 'text-redlog-text-faint'}`}>{f.status ?? '—'}</span>
                 <span className="text-redlog-text truncate flex-1" title={f.url}>{path}</span>
@@ -243,10 +249,11 @@ function buildSitemapTree(flows: HttpFlow[]): Map<string, SitemapNode> {
   return roots
 }
 
-function SitemapTreeNode({ node, depth, onOpenInTimeline, outOfScope }: {
+function SitemapTreeNode({ node, depth, onOpenInTimeline, onOpenDetail, outOfScope }: {
   node: SitemapNode
   depth: number
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  onOpenDetail?: (eventId: string | null) => void
   outOfScope?: (host: string) => boolean
 }): JSX.Element {
   const { t } = useI18n()
@@ -267,7 +274,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline, outOfScope }: {
     } else if (node.flows.length === 1) {
       const f = node.flows[0]
       const eid = f.responseEventId ?? f.requestEventId
-      if (eid) onOpenInTimeline?.(eid, f.timestamp)
+      if (eid) onOpenDetail?.(eid)
     }
   }
 
@@ -325,6 +332,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline, outOfScope }: {
           depth={depth + 1}
           outOfScope={outOfScope}
           onOpenInTimeline={onOpenInTimeline}
+          onOpenDetail={onOpenDetail}
         />
       ))}
     </div>
@@ -351,6 +359,20 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   // raw thing — it is just no longer what you land on.
   const [viewMode, setViewMode] = useState<'activity' | 'flows' | 'sitemap'>('activity')
   const [openActivity, setOpenActivity] = useState<string | null>(null)
+  const [detailEvent, setDetailEvent] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const openDetail = useCallback((eventId: string | null) => {
+    if (!eventId) return
+    if (detailEvent?.id === eventId) { setDetailEvent(null); return }
+    setDetailLoading(true)
+    window.redlog.events.getById([eventId]).then(evts => {
+      const evt = evts?.[0]
+      if (evt) setDetailEvent({ id: evt.id, data: evt.data })
+      else setDetailEvent(null)
+      setDetailLoading(false)
+    }).catch(() => { setDetailLoading(false) })
+  }, [detailEvent?.id])
   // §7a: mark out-of-scope (non-attack) hosts. Scope comes from project config;
   // an empty allow list means nothing is "out of scope" (no rule to violate),
   // so the marker never appears on an unscoped engagement.
@@ -500,14 +522,14 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     onActivate: (i) => {
       const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
-      if (id) onOpenInTimeline?.(id, f.timestamp)
+      openDetail(id)
     },
     onJumpToTimeline: (i) => {
       const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
       if (id) onOpenInTimeline?.(id, f.timestamp)
     },
-    onEscape: () => { setMethodFilter(null); setStatusFilter(null) },
+    onEscape: () => { if (detailEvent) setDetailEvent(null); else { setMethodFilter(null); setStatusFilter(null) } },
     onScrollToIndex: (i) => rowVirtualizer.scrollToIndex(i)
   })
 
@@ -524,7 +546,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       const id = a?.causeEventId ?? a?.flows[0]?.responseEventId ?? a?.flows[0]?.requestEventId
       if (id && a) onOpenInTimeline?.(id, a.startMs)
     },
-    onEscape: () => setOpenActivity(null)
+    onEscape: () => { if (detailEvent) setDetailEvent(null); else setOpenActivity(null) }
   })
 
   const sitemapTree = useMemo(() => buildSitemapTree(filtered), [filtered])
@@ -619,6 +641,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               open={openActivity === a.id}
               onToggle={() => setOpenActivity((cur) => (cur === a.id ? null : a.id))}
               onOpenInTimeline={onOpenInTimeline}
+              onOpenDetail={openDetail}
               outOfScope={outOfScope}
             />
           ))}
@@ -677,7 +700,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                     ref={(el) => rowProps.ref(el as unknown as HTMLElement | null)}
                     style={{ height: 29 }}
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
-                    onClick={() => { rowProps.onClick(); if (eventId) onOpenInTimeline?.(eventId, f.timestamp) }}
+                    onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
                     <td className={`px-2 py-1 font-semibold ${methodClass}`}>{f.method}</td>
                     <td className={`px-2 py-1 ${statusClass}`}>{f.status ?? '—'}</td>
@@ -719,10 +742,43 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                   node={node}
                   depth={0}
                   onOpenInTimeline={onOpenInTimeline}
+                  onOpenDetail={openDetail}
                   outOfScope={outOfScope}
                 />
               ))
           )}
+        </div>
+      )}
+
+      {(detailEvent || detailLoading) && (
+        <div className="shrink-0 border-t border-redlog-border bg-redlog-surface overflow-auto" style={{ maxHeight: '50%' }}>
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-bg/50 sticky top-0 z-10">
+            <span className="text-xs font-semibold text-redlog-text">{t('httpHistory.detail')}</span>
+            {detailEvent && onOpenInTimeline && (
+              <button
+                onClick={() => { const d = detailEvent.data; onOpenInTimeline(detailEvent.id, typeof d.timestamp === 'number' ? d.timestamp : Date.now()) }}
+                title={t('httpHistory.openAtMoment')}
+                className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-1.5 py-0.5 rounded border border-redlog-border/60 hover:bg-redlog-elevated/40"
+              >↗ {t('httpHistory.openInTimeline')}</button>
+            )}
+            <div className="flex-1" />
+            <button
+              onClick={() => setDetailEvent(null)}
+              className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
+              aria-label={t('httpHistory.closeDetail')}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {detailLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="animate-spin w-4 h-4 border-2 border-redlog-border border-t-transparent rounded-full" />
+            </div>
+          ) : detailEvent ? (
+            <div className="px-3 py-2">
+              <HttpDetail data={detailEvent.data} eventId={detailEvent.id} />
+            </div>
+          ) : null}
         </div>
       )}
     </div>
