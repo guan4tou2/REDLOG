@@ -2,6 +2,7 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { restrictToOwner } from './fs-acl'
 import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { createBookmark, listBookmarks } from './db/bookmarks'
 import {
@@ -137,12 +138,14 @@ function writePrimaryToken(): string {
   const token = generateToken()
   fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
   fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
+  try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   primaryToken = token
   return token
 }
 
 function writePort(port: number): void {
   fs.writeFileSync(PORT_PATH, String(port), { mode: 0o600 })
+  try { restrictToOwner(PORT_PATH) } catch { /* best-effort on win32 */ }
 }
 
 function extractBearerToken(req: http.IncomingMessage): string | null {
@@ -818,10 +821,12 @@ export function onApiProjectOpen(): void {
     if (!token) {
       token = generateToken()
       fs.writeFileSync(projTokenPath, token, { mode: 0o600 })
+      try { restrictToOwner(projTokenPath) } catch { /* best-effort on win32 */ }
     }
     primaryToken = token
     fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true })
     fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
+    try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   } catch { /* keep the bootstrap token from startApiServer */ }
   ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, primaryToken)
   projectOpen = true

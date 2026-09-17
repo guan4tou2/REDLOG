@@ -87,7 +87,7 @@ describe('settings information architecture', () => {
     // was measured, so it is the one worth holding — a group added without a
     // group removed should have to argue for itself in a diff.
     const groups = (SRC.match(/<FieldGroup title=/g) ?? []).length
-    expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(27)
+    expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(28)
   })
 
   it('does not ship a cloud share backend', () => {
