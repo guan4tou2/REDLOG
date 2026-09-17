@@ -1,0 +1,133 @@
+import { toast } from '../Toast'
+import { DEFAULT_CDP_PORT } from '../../lib/defaults'
+import { FieldGroup, Field, ListField, VpnAdaptersField, isMacOS, type ConfigState } from './SettingsShared'
+import BrowserPanel from './BrowserPanel'
+
+export default function NetworkPage({
+  config, setConfig, t
+}: {
+  config: ConfigState
+  setConfig: (c: ConfigState) => void
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element {
+  return (
+    <>
+      <BrowserPanel t={t} config={config} setConfig={setConfig} />
+      <FieldGroup title={t('settings.cdp')}>
+        <p className="text-xs text-redlog-text-faint mb-2">
+          {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
+        </p>
+        <button
+          onClick={async () => {
+            // Uses the CDP port from BrowserPanel above (config.browser.
+            // cdpPort) — the previous separate field silently didn't
+            // auto-save so users often set two different ports without
+            // knowing (audit finding P0 #43).
+            const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
+            await window.redlog.cdp.setPort(port)
+            const cdpTab = await window.redlog.cdp.getTab()
+            if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title ?? '', url: cdpTab.url ?? '' }), 'success')
+            else {
+              toast(t('settings.cdpNotConnectedTitle'), {
+                type: 'error',
+                why: t('settings.cdpNotConnected', { port: String(port) }),
+                action: { label: t('common.retry'), onClick: () => { void window.redlog.cdp.getTab() } }
+              })
+            }
+          }}
+          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+        >
+          {t('settings.testConnection')}
+        </button>
+      </FieldGroup>
+
+      <FieldGroup title={t('settings.ipSafety')}>
+        {/* Adapter detection used to be its own group. It exists only to
+            answer this group's question — is my traffic where I think it
+            is — and reading it as a separate subject made "am I exposed"
+            look like two unrelated settings instead of one. */}
+        <ListField
+          label={t('settings.whitelist')}
+          items={config.network.whitelist}
+          onChange={(items) => setConfig({ ...config, network: { ...config.network, whitelist: items } })}
+          placeholder={t('settings.safeIpPlaceholder')}
+        />
+        <ListField
+          label={t('settings.blacklist')}
+          items={config.network.blacklist}
+          onChange={(items) => setConfig({ ...config, network: { ...config.network, blacklist: items } })}
+          placeholder={t('settings.exposedIpPlaceholder')}
+        />
+        <VpnAdaptersField config={config} setConfig={setConfig} />
+      </FieldGroup>
+      {/* Was "Polling", which read as a tuning knob and is why I nearly deleted
+          it. It is not: every field here decides what RedLog itself sends
+          out to the network and to whom — which resolver or third-party
+          echo service learns your address, how often, and from where.
+          During an engagement that is OPSEC surface, and SS1's operator
+          has to be able to see it, not discover it in a packet capture. */}
+      <FieldGroup title={t('settings.ownTraffic')}>
+        <div>
+          <label className="block text-xs text-redlog-text-dim mb-1">{t('settings.ipMode')}</label>
+          <div className="flex gap-1">
+            {(['auto', 'dns', 'http'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setConfig({ ...config, network: { ...config.network, ipMode: m } })}
+                className={`px-3 py-1 text-xs rounded transition-colors ${
+                  (config.network.ipMode ?? 'auto') === m ? 'bg-redlog-elevated text-redlog-text border border-redlog-border' : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+                }`}
+              >
+                {t(`settings.ipMode.${m}`)}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-redlog-text-faint mt-1">{t('settings.ipModeHint')}</p>
+        </div>
+        {isMacOS && (
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={config.network.showWifiName ?? false}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  setConfig({ ...config, network: { ...config.network, showWifiName: on } })
+                  // Trigger the macOS Location Services prompt; once granted,
+                  // the OS un-redacts the SSID for the next network poll.
+                  if (on && navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
+                  }
+                }}
+                className="accent-red-600"
+              />
+              <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
+            </label>
+            <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>
+          </div>
+        )}
+        <Field
+          label={t('settings.checkInterval')}
+          value={String(config.network.checkInterval)}
+          onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 60 } })}
+          type="number"
+        />
+        <p className="text-xs text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
+        <Field
+          label={t('settings.confirmations')}
+          value={String(config.network.confirmations ?? 3)}
+          onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
+          type="number"
+        />
+        <p className="text-xs text-redlog-text-faint">{t('settings.confirmationsHint')}</p>
+        <ListField
+          label={t('settings.ipProviders')}
+          items={config.network.providers ?? []}
+          onChange={(items) => setConfig({ ...config, network: { ...config.network, providers: items } })}
+          placeholder="https://ip.internal.example/json"
+        />
+        <p className="text-xs text-redlog-text-faint">{t('settings.ipProvidersHint')}</p>
+      </FieldGroup>
+    </>
+  )
+}

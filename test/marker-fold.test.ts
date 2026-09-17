@@ -255,7 +255,7 @@ describe('the vocabulary that spans the bundle boundary', () => {
     // These used to disagree: Timeline's tiebreak did BigInt() on a stamp that
     // carries a boot prefix, so it threw every time and ordered ties by UUID.
     // Two answers to "which happened first" is one too many.
-    const tl = fs.readFileSync(path.join(__dirname, '../src/renderer/src/components/Timeline.tsx'), 'utf-8')
+    const tl = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/timelineDomain.ts'), 'utf-8')
     const fold = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/markerFold.ts'), 'utf-8')
     expect(tl).toContain('compareMonotonicNs')
     expect(fold).toContain('compareMonotonicNs')

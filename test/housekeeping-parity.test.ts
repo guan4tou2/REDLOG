@@ -73,7 +73,7 @@ describe('housekeeping', () => {
   })
 
   it('agrees with the SQL twin on every fixture', () => {
-    const sql = fs.readFileSync(path.join(__dirname, '../src/core/db/events.ts'), 'utf-8')
+    const sql = fs.readFileSync(path.join(__dirname, '../src/core/db/event-queries.ts'), 'utf-8')
     const block = sql.slice(sql.indexOf('const HOUSEKEEPING_SQL'), sql.indexOf('const HOUSEKEEPING_SQL') + 900)
     // Structural rather than a re-implementation: every rule the JS applies has
     // to be named in the SQL, or the pager and the view disagree about which
