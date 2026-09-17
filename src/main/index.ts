@@ -862,7 +862,8 @@ function startProject(project: ProjectMeta): void {
     operatorName: config.operator.name,
     configLoader: {
       getConfig: () => loadConfig(projectDir),
-      getTargets: () => loadConfig(projectDir).scope.targets
+      getTargets: () => loadConfig(projectDir).scope.targets,
+      getExcludeTargets: () => loadConfig(projectDir).scope?.excludeTargets ?? []
     },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
@@ -1432,7 +1433,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
   ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
   ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
-  ipcMain.handle('events:search', (_e, query: string, limit?: number) => activeProject ? searchEvents(query, limit) : [])
+  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string }) => activeProject ? searchEvents(query, limit, opts) : [])
   ipcMain.handle('events:aggregateTargets', () => activeProject ? aggregateTargets() : [])
   ipcMain.handle('events:distinctHosts', () => activeProject ? distinctHosts() : [])
   // 10a Inspector 〈相關〉: a host's curated causal chain + header aggregate.
@@ -1798,8 +1799,9 @@ app.whenReady().then(() => {
       // ship the raw out-of-scope content — a deliberate, audited choice the
       // ExportMenu surfaces with a warning. `true`/undefined both mask.
       const maskOutOfScope = opts?.maskOutOfScope !== false
+      const snap = snapshotScope(cfg)
       const bundle = exportBundle(cfg.engagement.id, {
-        scope: { targets: snapshotScope(cfg).targets },
+        scope: { targets: snap.targets, excludeTargets: cfg.scope?.excludeTargets },
         maskOutOfScope
       })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
