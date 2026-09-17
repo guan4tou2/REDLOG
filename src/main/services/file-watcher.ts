@@ -29,9 +29,9 @@ type ChokidarNS = {
   watch: (paths: string | string[], opts: Record<string, unknown>) => ChokidarWatcher
 }
 let chokidarNS: ChokidarNS | null = null
-function loadChokidar(): ChokidarNS | null {
+async function loadChokidar(): Promise<ChokidarNS | null> {
   if (chokidarNS) return chokidarNS
-  try { chokidarNS = require('chokidar') as ChokidarNS } catch { return null }
+  try { chokidarNS = (await import('chokidar')) as unknown as ChokidarNS } catch { return null }
   return chokidarNS
 }
 
@@ -60,14 +60,14 @@ const DEFAULT_IGNORES = [
 let cfg: FileWatcherConfig = { enabled: false, engagementId: '', operatorId: '' }
 let watcher: ChokidarWatcher | null = null
 
-export function configureFileWatcher(next: Partial<FileWatcherConfig>): void {
+export function configureFileWatcher(next: Partial<FileWatcherConfig>): Promise<void> {
   cfg = { ...cfg, ...next }
-  restartFileWatcher()
+  return restartFileWatcher()
 }
 
-export function startFileWatcher(next?: Partial<FileWatcherConfig>): void {
+export function startFileWatcher(next?: Partial<FileWatcherConfig>): Promise<void> {
   if (next) cfg = { ...cfg, ...next }
-  restartFileWatcher()
+  return restartFileWatcher()
 }
 
 export function stopFileWatcher(): void {
@@ -77,13 +77,13 @@ export function stopFileWatcher(): void {
   }
 }
 
-function restartFileWatcher(): void {
+async function restartFileWatcher(): Promise<void> {
   stopFileWatcher()
   if (!cfg.enabled) return
   if (!cfg.engagementId || !cfg.operatorId) return
   const paths = (cfg.watchPaths ?? []).filter(Boolean)
   if (paths.length === 0) return  // nothing configured — silent no-op
-  const chok = loadChokidar()
+  const chok = await loadChokidar()
   if (!chok) {
     console.warn('[file-watcher] chokidar not installed; skipping')
     return

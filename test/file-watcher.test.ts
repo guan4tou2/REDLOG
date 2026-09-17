@@ -45,10 +45,10 @@ describe('file-watcher / lifecycle', () => {
     expect(s.watching).toBe(false)  // safety: no attribution → don't watch
   })
 
-  it('starts a watcher when enabled + paths + attribution are all present', () => {
+  it('starts a watcher when enabled + paths + attribution are all present', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-fw-'))
     try {
-      configureFileWatcher({
+      await configureFileWatcher({
         enabled: true, watchPaths: [tmp],
         engagementId: 'e1', operatorId: 'op1'
       })
@@ -61,15 +61,15 @@ describe('file-watcher / lifecycle', () => {
     }
   })
 
-  it('flipping enabled off stops the watcher', () => {
+  it('flipping enabled off stops the watcher', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-fw-'))
     try {
-      configureFileWatcher({
+      await configureFileWatcher({
         enabled: true, watchPaths: [tmp],
         engagementId: 'e1', operatorId: 'op1'
       })
       expect(_getWatcherStateForTests().watching).toBe(true)
-      configureFileWatcher({ enabled: false })
+      await configureFileWatcher({ enabled: false })
       expect(_getWatcherStateForTests().watching).toBe(false)
     } finally {
       stopFileWatcher()

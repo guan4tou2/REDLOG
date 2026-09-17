@@ -9,16 +9,15 @@ import path from 'path'
 // reads it on a laptop in daylight.
 
 const ROOT = path.join(__dirname, '..')
-const TAILWIND = fs.readFileSync(path.join(ROOT, 'tailwind.config.js'), 'utf-8')
 const INDEX_CSS = fs.readFileSync(
   path.join(ROOT, 'src', 'renderer', 'src', 'styles', 'index.css'), 'utf-8'
 )
 
 function redlogTokens(): Record<string, string> {
-  const block = /redlog: \{([\s\S]*?)\n        \}/.exec(TAILWIND)
+  const block = /@theme \{([\s\S]*?)\n\}/.exec(INDEX_CSS)
   if (!block) throw new Error('redlog token block not found — did it move?')
   const out: Record<string, string> = {}
-  for (const m of block[1].matchAll(/'?([a-z-]+)'?: '(#[0-9a-fA-F]{6})'/g)) out[m[1]] = m[2]
+  for (const m of block[1].matchAll(/--color-redlog-([a-z][a-z-]*):\s*(#[0-9a-fA-F]{6})/g)) out[m[1]] = m[2]
   return out
 }
 
@@ -92,10 +91,10 @@ describe('token palette', () => {
 
 describe('type scale', () => {
   it('floors the app at 13px', () => {
-    const block = /fontSize: \{([\s\S]*?)\n      \}/.exec(TAILWIND)
-    expect(block, 'fontSize block not found').not.toBeNull()
-    const sizes = [...block![1].matchAll(/'?[a-z0-9]+'?: \['([0-9.]+)rem'/g)]
-      .map((m) => parseFloat(m[1]) * 16)
+    const block = /@theme \{([\s\S]*?)\n\}/.exec(INDEX_CSS)
+    expect(block, '@theme block not found').not.toBeNull()
+    const sizes = [...block![1].matchAll(/--text-([a-z0-9]+):\s*([0-9.]+)rem/g)]
+      .map((m) => parseFloat(m[2]) * 16)
     expect(sizes.length).toBeGreaterThan(0)
     expect(Math.min(...sizes)).toBeGreaterThanOrEqual(13)
   })

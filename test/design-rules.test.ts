@@ -5,11 +5,13 @@ import path from 'path'
 // UIUX-STANDARD §21: the token/contrast rules, parsed from source so a reviewer
 // checks "test exists and is green", not "I eyeballed it". Companion to
 // lane-colours.test.ts (which owns the lane-uniformity rule). Tokens are read
-// out of tailwind.config.js rather than imported — a colour assertion shouldn't
-// pull in PostCSS.
+// out of the CSS @theme block rather than imported — a colour assertion
+// shouldn't pull in PostCSS.
 
 const ROOT = path.join(__dirname, '..')
-const TW = fs.readFileSync(path.join(ROOT, 'tailwind.config.js'), 'utf-8')
+const CSS = fs.readFileSync(
+  path.join(ROOT, 'src', 'renderer', 'src', 'styles', 'index.css'), 'utf-8'
+)
 
 /** WCAG relative luminance + contrast ratio. */
 function lum(hex: string): number {
@@ -26,16 +28,14 @@ function contrast(a: string, b: string): number {
 
 /** A named `redlog` token's hex, e.g. tok('text-dim') / tok('on-accent'). */
 function tok(name: string): string {
-  // The leading [\s{,'"] stops `accent` from matching inside `on-accent`
-  // (a '-' before the name is not a key boundary).
-  const re = new RegExp(`[\\s{,'"]${name.replace(/-/g, '\\-')}['"]?\\s*:\\s*'(#[0-9a-fA-F]{6})'`)
-  const m = re.exec(TW)
-  if (!m) throw new Error(`token '${name}' not found in tailwind.config.js`)
+  const re = new RegExp(`--color-redlog-${name.replace(/-/g, '\\-')}:\\s*(#[0-9a-fA-F]{6})`)
+  const m = re.exec(CSS)
+  if (!m) throw new Error(`token '${name}' not found in index.css`)
   return m[1].toLowerCase()
 }
 /** The amber-400 fill (#d4ac5a) that `on-warn` sits on. */
 function amber400(): string {
-  const m = /amber:\s*\{[^}]*?400:\s*'(#[0-9a-fA-F]{6})'/.exec(TW)
+  const m = /--color-amber-400:\s*(#[0-9a-fA-F]{6})/.exec(CSS)
   if (!m) throw new Error('amber-400 not found')
   return m[1].toLowerCase()
 }
