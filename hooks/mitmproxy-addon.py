@@ -126,7 +126,9 @@ def _send_to_redlog(payload: dict):
                 method="POST",
             )
             urllib.request.urlopen(req, timeout=5)
-        except Exception:
+        except Exception as exc:
+            if VERBOSE:
+                ctx.log.warn(f"[redlog] send failed: {exc}")
             _spool_payload(payload)
 
     threading.Thread(target=_do_send, daemon=True).start()
@@ -403,7 +405,10 @@ def _extract_tls_info(flow: http.HTTPFlow) -> dict | None:
             info["cert_issuer"] = str(getattr(leaf, 'issuer', ''))
             san = getattr(leaf, 'altnames', None) or getattr(leaf, 'san', None)
             if san:
-                info["cert_san"] = list(san)[:20]
+                info["cert_san"] = [
+                    s.value if hasattr(s, 'value') else str(s)
+                    for s in list(san)[:20]
+                ]
             serial = getattr(leaf, 'serial', None)
             if serial is not None:
                 info["cert_serial"] = str(serial)
