@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { homedir } from 'os'
+import { restrictToOwner } from './fs-acl'
 
 // v0.6.89: per-event Ed25519 signature closes the ≤59-minute rewrite window
 // left open by hash chain + hourly OTS anchor. Each operator has a keypair;
@@ -37,7 +38,9 @@ function ensureKeysDir(): string {
   // existed. `recursive: true` respects `mode` only for created leaves — if
   // dir already exists we chmod to be sure. Windows: no-op (POSIX perms).
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
-  if (process.platform !== 'win32') {
+  if (process.platform === 'win32') {
+    try { restrictToOwner(dir) } catch { /* best-effort */ }
+  } else {
     try { fs.chmodSync(dir, 0o700) } catch { /* pre-existing, permission denied */ }
   }
   return dir
@@ -100,9 +103,8 @@ export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
 
   const privPath = privateKeyPath(operatorId)
   const pubPath = publicKeyPath(operatorId)
-  // 0o600 on POSIX; Windows ignores the mode and falls back to inherited
-  // ACLs. That's best-effort by design — the DB copy is what verify checks.
   fs.writeFileSync(privPath, privB64, { mode: 0o600 })
+  try { restrictToOwner(privPath) } catch { /* best-effort on win32 */ }
   fs.writeFileSync(pubPath, pubB64)
   // v0.12.1: a prior loadKeyObject call may have negative-cached this
   // operator's key as `null` (fresh operator, key not yet written) — drop

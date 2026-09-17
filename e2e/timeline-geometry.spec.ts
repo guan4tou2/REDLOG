@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // Timeline geometry + startup-gate regressions. These drive the real app
 // because none of them are reachable from unit tests: the hook-config read
@@ -21,7 +20,7 @@ let tmpHome = ''
 test.describe.serial('timeline geometry + startup gates', () => {
   test.beforeAll(async () => {
     if (!existsSync(MAIN_ENTRY)) throw new Error(`run "npm run build" first (${MAIN_ENTRY})`)
-    tmpHome = mkdtempSync(join(tmpdir(), 'redlog-v094-'))
+    tmpHome = makeTempHome('redlog-v094-')
     // P0-1 setup: a VALID hook-config must exist before the app starts, so
     // startProject() actually walks the read path we fixed.
     mkdirSync(join(tmpHome, '.redlog'), { recursive: true })

@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync, existsSync, readdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 // v0.9.5 pause semantics, end to end through the HTTP surface the shell hook
 // and mitmproxy addon actually use.
@@ -35,7 +34,7 @@ const setRecording = async (on: boolean): Promise<void> => {
 
 test.describe.serial('recording pause semantics', () => {
   test.beforeAll(async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), 'redlog-pause-'))
+    tmpHome = makeTempHome('redlog-pause-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }

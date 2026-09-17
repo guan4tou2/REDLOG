@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // Design turn 8b, end to end. Two things here can only be caught by the real
 // bundle: the temporal-dead-zone crash that a memo referencing a const declared
@@ -46,7 +45,7 @@ const selectMarker = async (titleText: string): Promise<void> => {
 
 test.describe.serial('amending a marker', () => {
   test.beforeAll(async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), 'redlog-amend-'))
+    tmpHome = makeTempHome('redlog-amend-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }

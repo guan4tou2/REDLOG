@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject, openView } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §3, on the surface that was contradicting it.
 //
@@ -18,7 +17,7 @@ let token = ''
 
 test.describe.serial('HTTP history lists activities, not connections', () => {
   test.beforeAll(async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), 'redlog-httpact-'))
+    const tmpHome = makeTempHome('redlog-httpact-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }

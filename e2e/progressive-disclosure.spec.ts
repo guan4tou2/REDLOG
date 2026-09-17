@@ -1,8 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { MAIN_ENTRY, REPO_ROOT, openTestProject } from './helpers'
+import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject } from './helpers'
 
 // docs/UIUX-STANDARD.md §22. The unit tests prove the model; only the real app
 // can show that hiding a row leaves it reachable and leaves the chords alone —
@@ -32,7 +31,7 @@ const waitForView = async (id: string): Promise<void> => {
 
 test.describe.serial('progressive disclosure', () => {
   test.beforeAll(async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), 'redlog-disclose-'))
+    tmpHome = makeTempHome('redlog-disclose-')
     app = await electron.launch({
       args: [MAIN_ENTRY], cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: 'test', HOME: tmpHome, USERPROFILE: tmpHome, REDLOG_E2E: '1' }
