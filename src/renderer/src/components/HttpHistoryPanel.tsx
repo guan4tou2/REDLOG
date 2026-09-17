@@ -7,6 +7,7 @@ import { formatTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
+import { useContributeExport } from '../lib/exportScope'
 
 interface HttpFlow {
   flowId: string
@@ -352,6 +353,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const [filterText, setFilterText] = useState('')
   const [methodFilter, setMethodFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [sortCol, setSortCol] = useState<'timestamp' | 'status' | 'size' | 'durationMs'>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
   // §3: the activity is the row, not the connection. 'flows' is still here
@@ -466,6 +468,17 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     return Array.from(s).sort()
   }, [flows])
 
+  const hosts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const f of flows) {
+      const h = f.host || ''
+      if (h) counts.set(h, (counts.get(h) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([h]) => h)
+  }, [flows])
+
   // Debounce the filter text: `filtered` (a sort), `activities` (groupFlows) and
   // `sitemapTree` (buildSitemapTree) all derive from it, so recomputing them on
   // every keystroke — even in `flows` view where the tree/activity aren't shown —
@@ -491,6 +504,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     if (statusFilter) {
       list = list.filter(f => f.status !== null && String(f.status).startsWith(statusFilter))
     }
+    if (hostFilter) {
+      list = list.filter(f => f.host === hostFilter)
+    }
 
     list = [...list].sort((a, b) => {
       const va = a[sortCol] ?? 0
@@ -498,7 +514,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return list
-  }, [flows, filterTextDebounced, methodFilter, statusFilter, sortCol, sortAsc])
+  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc])
 
   // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
   // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size
@@ -558,6 +574,25 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
 
   const sortArrow = (col: typeof sortCol) =>
     sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : ''
+
+  const harExportRun = useCallback(async () => {
+    const opts: { since?: number; before?: number; targetId?: string } = {}
+    if (hostFilter) opts.targetId = hostFilter
+    if (filtered.length > 0) {
+      const timestamps = filtered.map(f => f.timestamp).filter(Boolean)
+      if (timestamps.length > 0) {
+        opts.since = Math.min(...timestamps)
+        opts.before = Math.max(...timestamps) + 1
+      }
+    }
+    return window.redlog.har.export(opts)
+  }, [hostFilter, filtered])
+
+  useContributeExport(
+    filtered.length > 0
+      ? { label: t('httpHistory.exportHar'), run: harExportRun, count: filtered.length }
+      : null
+  )
 
   if (loading) {
     return (
@@ -626,6 +661,21 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{s}xx</button>
         ))}
+        {hosts.length > 1 && (
+          <>
+            <span className="w-px h-3 bg-redlog-elevated-hover/60 mx-1" />
+            <select
+              value={hostFilter ?? ''}
+              onChange={e => setHostFilter(e.target.value || null)}
+              className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-1.5 py-0.5 text-redlog-text-dim focus:outline-none focus:border-redlog-accent/50 max-w-[200px]"
+            >
+              <option value="">{t('httpHistory.allHosts')}</option>
+              {hosts.map(h => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
 
       {viewMode === 'activity' ? (
