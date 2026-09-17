@@ -140,7 +140,7 @@ interface RedLogAPI {
      *  if none have been written. Drives the CaptureHealthCard "last
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
-    search: (query: string, limit?: number) => Promise<RedLogEvent[]>
+    search: (query: string, limit?: number, opts?: { agentType?: string }) => Promise<RedLogEvent[]>
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
