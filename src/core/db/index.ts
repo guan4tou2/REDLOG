@@ -10,6 +10,11 @@ function hasRows(db: import('better-sqlite3').Database, table: string): boolean 
 let db: Database.Database | null = null
 let currentDbPath: string | null = null
 let currentProjectDir: string | null = null
+// v0.15: cached read-only handle for heavy/long read queries — see
+// getReadonlyDB. Tied to currentDbPath and reset by closeDB, so a project
+// switch (which always goes through closeDB before reopening) never serves a
+// stale handle from the previous project.
+let roDb: Database.Database | null = null
 
 export function initDB(projectDir: string): Database.Database {
   if (db) closeDB()
@@ -276,9 +281,35 @@ export function getDB(): Database.Database {
   return db
 }
 
+/** v0.15: a cached read-only handle for heavy/long-running READ queries
+ *  (queryEvents, the export/scope LIMIT-100000 scan, target/host aggregates,
+ *  the searchEvents LIKE). getDB() is the single read-WRITE connection, and
+ *  better-sqlite3 runs one statement per connection at a time — so a heavy
+ *  scan on getDB() serialises every capture write behind it. WAL lets a
+ *  separate reader run concurrently with the writer, so the heavy readers get
+ *  their own connection and the write path keeps getDB() to itself.
+ *
+ *  Distinct from openReadOnlyDB(), which hands out a FRESH connection per call:
+ *  the hash-walk holds an iterator open across setImmediate yields and must not
+ *  pin a shared handle. The heavy readers here are short, non-overlapping
+ *  statements that don't need isolation from each other, so they share one
+ *  cached handle. Cached and invalidated exactly like `db` — closeDB() drops
+ *  it, and initDB() reopens through closeDB(). */
+export function getReadonlyDB(): Database.Database {
+  if (!currentDbPath) throw new Error('Database not initialized')
+  if (roDb) return roDb
+  roDb = new Database(currentDbPath, { readonly: true })
+  return roDb
+}
+
 export function closeDB(): void {
   db?.close()
   db = null
+  // v0.15: the cached read-only handle is bound to currentDbPath — close it
+  // here so a project switch (initDB → closeDB → reopen) re-creates it against
+  // the new file instead of serving reads from the previous project's db.
+  roDb?.close()
+  roDb = null
   currentProjectDir = null
 }
 

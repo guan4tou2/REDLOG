@@ -5,6 +5,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
 import { toast, UNDO_MS } from './Toast'
+import { usePersistentState } from '../lib/usePersistentState'
 
 interface Tab {
   id: string
@@ -28,11 +29,12 @@ export default function TerminalView(): JSX.Element {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTab, setActiveTab] = useState<string | null>(null)
   // Persist font-size across sessions; ⌘+ / ⌘- adjust it live.
-  const [fontSize, setFontSize] = useState<number>(() => {
-    const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY) || '')
-    return Number.isFinite(saved) && saved >= 8 && saved <= 32 ? saved : DEFAULT_FONT_SIZE
+  const [fontSize, setFontSize] = usePersistentState<number>(FONT_SIZE_KEY, DEFAULT_FONT_SIZE, {
+    parse: (raw) => {
+      const saved = parseInt(raw || '')
+      return Number.isFinite(saved) && saved >= 8 && saved <= 32 ? saved : DEFAULT_FONT_SIZE
+    }
   })
-  useEffect(() => { localStorage.setItem(FONT_SIZE_KEY, String(fontSize)) }, [fontSize])
   // In-buffer search (per active pane): the input toggles + a small state
   // holds the current query. Enter → next match, Shift+Enter → previous.
   const [searchOpen, setSearchOpen] = useState(false)

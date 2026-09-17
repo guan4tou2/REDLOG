@@ -17,10 +17,7 @@ import { applyContributions, removeContributions } from '../src/core/plugins/con
 import { extractTarget, unregisterTargetExtractors } from '../src/core/target-extractor'
 import { getRules, unregisterRedactionRules } from '../src/core/redaction'
 import { detectHooks, unregisterCapturePlugins } from '../src/core/hooks-manager'
-import {
-  registerPluginTools, unregisterPluginTools, listPluginTools, dispatchPluginTool,
-  toolName, methodAllowed
-} from '../src/core/plugins/tool-registry'
+import { methodAllowed } from '../src/core/plugins/host'
 
 // Isolate all plugin stores (trust/state) + userRoot under a temp home dir.
 // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
@@ -62,7 +59,7 @@ describe('manifest validation', () => {
       { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: {}, capabilities: ['do:anything'] }, dir
     ).ok).toBe(false)
     expect(validateManifest(
-      { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: { mcpTools: '../../etc/passwd' } }, dir
+      { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: { exporters: '../../etc/passwd' } }, dir
     ).ok).toBe(false)
   })
 
@@ -106,7 +103,7 @@ describe('manifest validation', () => {
   it('§8-4 forward-compat: a CODE plugin one version ahead is refused (its code is not run)', () => {
     const dir = writePlugin('ahead-code', {
       id: 'ahead-code', name: 'Ahead Code', version: '1.0.0', redlogApi: PLUGIN_API_VERSION + 1,
-      contributes: { mcpTools: 'code/tools.js' }
+      contributes: { exporters: 'code/tools.js' }
     }, { 'code/tools.js': 'exports.tools = []\n' })
     expect(dir).toBeTruthy()
     const p = loadPlugins().find((x) => x.manifest.id === 'ahead-code')!
@@ -174,7 +171,7 @@ describe('privileged trust gate', () => {
   const priv = {
     id: 'tool-plugin', name: 'Tool', version: '1.0.0', redlogApi: 1,
     capabilities: ['read:events'],
-    contributes: { mcpTools: 'code/tools.js' }
+    contributes: { exporters: 'code/tools.js' }
   }
 
   it('is needs-consent until granted, and grant pins the content hash', () => {
@@ -225,7 +222,7 @@ describe('privileged trust gate', () => {
 
 describe('shipped example plugins', () => {
   const examplesDir = path.join(__dirname, '..', 'examples', 'plugins')
-  for (const id of ['recon-pack', 'geoip-tool']) {
+  for (const id of ['recon-pack']) {
     it(`example ${id} has a valid manifest`, () => {
       const dir = path.join(examplesDir, id)
       const raw = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf-8'))
@@ -327,29 +324,6 @@ describe('tailer plugin contribution (v0.8.2)', () => {
   })
 })
 
-describe('plugin MCP tool registry', () => {
-  afterEach(() => { unregisterPluginTools('geo'); unregisterPluginTools('other') })
-
-  it('namespaces tool names to the plugin id', () => {
-    expect(toolName('geo', 'lookup')).toBe('geo_lookup')
-    expect(toolName('geo', 'geo_lookup')).toBe('geo_lookup') // already prefixed
-    expect(toolName('my-plug', 'do')).toBe('my_plug_do')     // hyphen → underscore
-  })
-
-  it('routes a call to the owning plugin and returns its result', async () => {
-    registerPluginTools('geo', [{ name: 'lookup', description: 'd', inputSchema: {} }],
-      async (name, args) => ({ echoed: name, ip: args.ip }))
-    const names = listPluginTools().map((t) => t.name)
-    expect(names).toContain('geo_lookup')
-
-    const hit = await dispatchPluginTool('geo_lookup', { ip: '1.1.1.1' })
-    expect(hit.owned).toBe(true)
-    expect((hit.result as { ip: string }).ip).toBe('1.1.1.1')
-
-    const miss = await dispatchPluginTool('nonexistent_tool', {})
-    expect(miss.owned).toBe(false)
-  })
-})
 
 // v0.11.0 (AUDIT P1-3): `tailers` makes RedLog require() plugin code, so it is
 // in PRIVILEGED_KEYS — but it was applied through applyContributions, which

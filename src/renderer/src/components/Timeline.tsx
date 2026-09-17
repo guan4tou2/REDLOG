@@ -1,15 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { replayStore } from '../lib/replayStore'
 import { useI18n } from '../i18n'
 import en from '../i18n/en.json'
 import { toast } from './Toast'
-import { useContributeExport } from '../lib/exportScope'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { timelineShortcuts } from '../lib/shortcuts'
+import { usePersistentState } from '../lib/usePersistentState'
+import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
@@ -18,9 +19,11 @@ import {
   AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
 } from '../lib/markerFold'
 import { MarkerDetail } from './MarkerDetail'
+import { CollapsibleStream, MetadataGrid, HttpDetail, BODY_GONE, STREAM_ACCENTS, formatBytes, safePretty } from './HttpDetail'
 import { isHookSource, isHousekeeping } from '../lib/housekeeping'
 import { compareMonotonicNs } from '../lib/eventOrder'
 import { isMac } from '../lib/platform'
+import { useContributeExport } from '../lib/exportScope'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -42,10 +45,6 @@ const MAX_TRACK_W = 400_000
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
 // and `process` (spawn/exit) between scope and system so it doesn't dilute
 // the top attack-narrative lanes.
-// Sentinel: a body whose sidecar file is no longer on disk (pruned or evicted
-// under disk pressure). Distinct from null (never loaded) and '' (empty body).
-const BODY_GONE = '\u0000__redlog_body_gone__'
-
 const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 type LaneId = (typeof LANES)[number]
 
@@ -722,12 +721,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // agent lane. Per-project persisted; default off (existing operators
   // don't lose visibility on upgrade). Toggle chip in the header + `?`
   // cheatsheet lists it.
-  const [collapseAgentTurns, setCollapseAgentTurns] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-collapse-agent') === '1' } catch { return false }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-collapse-agent', collapseAgentTurns ? '1' : '0') } catch { /* ignore */ }
-  }, [collapseAgentTurns])
+  const [collapseAgentTurns, setCollapseAgentTurns] = usePersistentState<boolean>(
+    'redlog-timeline-collapse-agent', false,
+    { parse: (raw) => raw === '1', serialize: (v) => (v ? '1' : '0') }
+  )
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
@@ -761,6 +758,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     if (!collapseAgentTurns) return 0
     return rawEvents.filter(isCollapsibleAgentTurn).length
   }, [rawEvents, collapseAgentTurns])
+  // A tool_call and its tool_result are two separate chained events (each
+  // independently hashed + timestamped, so the chain records real call→return
+  // latency and order). That makes the exchange easy to audit but splits it
+  // across two dots. This index maps tool_use_id → each half in the loaded set
+  // so the detail panel can show the other half inline (see pairedToolHalf).
+  // Keyed on rawEvents so it still finds a result the agent-turn collapse hides;
+  // a partner not yet paged in is simply absent — a graceful no-op.
+  const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
   // §6: the Inspector is a separate layer from the selection. They used to be
   // the same state, so an operator could not walk the timeline by keyboard
@@ -1012,12 +1017,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // newest event visible while enabled. On by default; the header badge
   // reflects "🔴 LIVE" vs "⏸ Xm behind" state. `now` state ticks every second
   // just so the "behind" label refreshes without waiting for a new event.
-  const [followMode, setFollowMode] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-follow-mode') !== '0' } catch { return true }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-follow-mode', followMode ? '1' : '0') } catch { /* ignore */ }
-  }, [followMode])
+  const [followMode, setFollowMode] = usePersistentState<boolean>(
+    'redlog-timeline-follow-mode', true,
+    { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
+  )
   const [atRightEdge, setAtRightEdge] = useState(true)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -1029,25 +1032,18 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // and system.recording_paused/resumed pairs. Toggle persisted; default on
   // because it's the primary visual anchor when reviewing a multi-terminal
   // engagement.
-  const [sessionDividers, setSessionDividers] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-session-dividers') !== '0' } catch { return true }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-session-dividers', sessionDividers ? '1' : '0') } catch { /* ignore */ }
-  }, [sessionDividers])
+  const [sessionDividers, setSessionDividers] = usePersistentState<boolean>(
+    'redlog-timeline-session-dividers', true,
+    { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
+  )
 
   // v0.6.91 S7: timezone picker. `projectTz` is filled from
   // config.engagement.timezone when the panel mounts; if unset or invalid,
   // the "Project" option falls back to Local (via formatTs).
-  const [tz, setTz] = useState<TzMode>(() => {
-    try {
-      const raw = localStorage.getItem('redlog-timeline-tz')
-      return raw === 'utc' || raw === 'project' ? raw : 'local'
-    } catch { return 'local' }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-tz', tz) } catch { /* ignore */ }
-  }, [tz])
+  const [tz, setTz] = usePersistentState<TzMode>(
+    'redlog-timeline-tz', 'local',
+    { parse: (raw) => (raw === 'utc' || raw === 'project' ? raw : 'local') }
+  )
   const [projectTz, setProjectTz] = useState<string | null>(null)
   useEffect(() => {
     window.redlog.config?.get?.().then((c) => {
@@ -1568,17 +1564,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
 
-  // The timeline is the one surface with a scope nothing else can name: the
-  // range currently framed. It contributes that to the shell's export control
-  // rather than carrying its own button (§10).
-  const exportSlice = useCallback(async (): Promise<string | null> => {
-    if (!window.redlog.data.exportTimelineSlice) return null
-    const from = Math.round(fromX((view.left / 100) * TRACK_W))
-    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-    return window.redlog.data.exportTimelineSlice(from, to)
-  }, [fromX, view.left, view.width, TRACK_W])
-
-  useContributeExport({ label: t('export.slice'), run: exportSlice })
   const totalH = visibleRows.length * laneH
 
   const laneEvents = useMemo(() => {
@@ -2153,6 +2138,31 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
     return nearest
   }, [events, hiddenLanes, pluginTypes, view.left, view.width, TRACK_W, timeStart, timeSpan])
+
+  const sliceExportRun = useCallback(async () => {
+    const from = Math.round(fromX((view.left / 100) * TRACK_W))
+    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    return window.redlog.data.exportTimelineSlice?.(from, to) ?? null
+  }, [fromX, view.left, view.width, TRACK_W])
+
+  const sliceCount = useMemo(() => {
+    const widthPx = (view.width / 100) * TRACK_W
+    if (widthPx <= 0 || (view.left <= 0.01 && view.width >= 99.99)) return events.length
+    const from = fromX((view.left / 100) * TRACK_W)
+    const to = fromX(((view.left + view.width) / 100) * TRACK_W)
+    let n = 0
+    for (const e of events) {
+      const d = displayTs(e)
+      if (d >= from && d <= to) n++
+    }
+    return n
+  }, [events, view.left, view.width, TRACK_W, fromX])
+
+  useContributeExport(
+    events.length > 0
+      ? { label: t('timeline.exportSlice'), run: sliceExportRun, count: sliceCount }
+      : null
+  )
 
   useEffect(() => {
     const el = scrollRef.current
@@ -2838,52 +2848,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >+</button>
         </div>
 
-        {/* v0.9.3 U3: collapse-agent-turns chip. Off by default (existing
-            operators don't lose visibility on upgrade). When on, per-turn
-            agent subtypes are dropped from the render pipeline — the
-            hidden count is shown so the empty agent lane doesn't look
-            like a bug. Same visual weight as the other filter chips. */}
-        <button
-          onClick={() => setCollapseAgentTurns((v) => !v)}
-          title={collapseAgentTurns
-            ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
-            : t('timeline.collapseAgent.hint')}
-          className={`ml-2 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${collapseAgentTurns ? 'bg-lime-900/40 text-lime-300 hover:bg-lime-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
-        >
-          <span>{collapseAgentTurns ? '⇘' : '⇗'}</span>
-          <span className="font-mono">{t('timeline.collapseAgent.label')}</span>
-          {collapseAgentTurns && hiddenAgentTurnCount > 0 && (
-            <span className="font-mono tabular-nums text-xs text-lime-400/80">−{hiddenAgentTurnCount}</span>
-          )}
-        </button>
-
-        {/* v0.11.6 (AUDIT V7): idle-gap compression. Only offered when there is
-            something to compress — a chip that never does anything is noise.
-            The count is on the chip because a compressed axis is not
-            proportional, and the operator should be able to see that state
-            without hovering. */}
-        {timeMap.gaps.length > 0 || compressGaps ? (
-          <button
-            onClick={() => {
-              // Keep the operator where they were. The mapping is about to
-              // change under a fixed scrollLeft, so capture the timestamp at
-              // the centre of the viewport and re-centre on it once the new
-              // mapping has rendered.
-              const el = scrollRef.current
-              if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
-              setCompressGaps((v) => !v)
-            }}
-            title={t('timeline.compressGaps.hint')}
-            className={`ml-1 px-2 h-5 flex items-center gap-1 text-xs rounded shrink-0 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${compressGaps ? 'bg-cyan-900/40 text-cyan-300 hover:bg-cyan-900/60' : 'bg-redlog-elevated/50 text-redlog-text-dim hover:text-redlog-text'}`}
-          >
-            <span>⋯</span>
-            <span className="font-mono">{t('timeline.compressGaps.label')}</span>
-            {compressGaps && timeMap.gaps.length > 0 && (
-              <span className="font-mono tabular-nums text-xs text-cyan-400/80">{timeMap.gaps.length}</span>
-            )}
-          </button>
-        ) : null}
-
         {/* v0.6.91 W1: inline `/` filter. Always visible in the header so
             operators can see there's a text filter (previously discoverable
             only by shortcut). Icon prefix + clear button on the right. */}
@@ -2914,10 +2878,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           )}
         </div>
 
-        {/* v0.6.91 W2: LIVE / behind badge. Green = at the right edge with
-            follow on; grey/amber = scrolled back into history. Click →
-            snap to now + re-enable follow. Little icon button toggles the
-            follow mode without jumping. */}
+        {/* §27.1: merged LIVE/behind toggle. One button: ● 即時 when live,
+            ⏸ 落後 N 分 when behind. Click toggles follow; when resuming from
+            behind, also snaps to now. */}
         {(() => {
           const latestTs = events.length > 0 ? events[events.length - 1].timestamp : 0
           const behindMs = Math.max(0, now - latestTs)
@@ -2926,28 +2889,24 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             ? t('timeline.follow.live')
             : t('timeline.follow.behindFmt', { time: formatBehind(behindMs) })
           return (
-            <div className="flex items-center gap-1">
-              <button
-                data-testid="timeline-follow-badge"
-                onClick={() => {
+            <button
+              data-testid="timeline-follow-badge"
+              onClick={() => {
+                if (isLive) {
+                  setFollowMode(false)
+                } else {
                   const el = scrollRef.current
                   if (el && TRACK_W > 0) el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
                   setFollowMode(true)
-                }}
-                title={isLive ? t('timeline.follow.jumpToNow') : t('timeline.follow.jumpToNow')}
-                className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
-                  isLive
-                    ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
-                    : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
-                }`}
-              >{label}</button>
-              <button
-                onClick={() => setFollowMode((v) => !v)}
-                title={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                aria-label={followMode ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
-                className="w-5 h-5 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/60 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-              >{followMode ? '⏸' : '▶'}</button>
-            </div>
+                }
+              }}
+              title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint')}
+              className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
+                isLive
+                  ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
+                  : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
+              }`}
+            >{label}</button>
           )
         })()}
 
@@ -2959,63 +2918,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             onto a second row — reported when running at 1280 wide with the
             full lane list open. */}
         <div className="ml-auto flex flex-nowrap gap-1 items-center overflow-x-auto min-w-0">
-          {/* v0.6.91 S1: Views dropdown. Save current view + list. Kept as a
-              plain <details>-style toggle so keyboard tab-order and focus
-              rings stay predictable across platforms. */}
-          <div className="relative shrink-0">
-            <button
-              data-testid="timeline-views-dropdown"
-              onClick={() => setViewsOpen((v) => !v)}
-              className="whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-              aria-expanded={viewsOpen}
-            >★ {t('timeline.views.button')}</button>
-            {viewsOpen && (
-              <div className="absolute top-full right-0 mt-1 z-40 w-72 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl">
-                <div className="px-2 py-1.5 border-b border-redlog-border">
-                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t('timeline.views.saveNew')}</div>
-                  <input
-                    value={viewsName}
-                    onChange={(e) => setViewsName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { void saveCurrentView(viewsName) }
-                      if (e.key === 'Escape') setViewsOpen(false)
-                    }}
-                    placeholder={t('timeline.views.saveNamePlaceholder')}
-                    title={t('timeline.views.saveHint')}
-                    className="w-full px-2 py-1 text-xs font-mono bg-redlog-bg border border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-border"
-                  />
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {savedViews === null && (
-                    <div className="px-2 py-2 text-xs text-redlog-text-dim font-mono">…</div>
-                  )}
-                  {savedViews && savedViews.length === 0 && (
-                    <div className="px-2 py-2 text-xs text-redlog-text-dim font-mono">{t('timeline.views.empty')}</div>
-                  )}
-                  {savedViews && savedViews.map((v) => (
-                    <div key={v.id} className="flex items-center gap-1 px-2 py-1 hover:bg-white/5">
-                      <button
-                        onClick={() => applyView(v)}
-                        className="flex-1 text-left text-xs font-mono text-redlog-text truncate"
-                        title={v.name}
-                      >{v.name}</button>
-                      <span className="text-xs font-mono text-redlog-text-faint tabular-nums">
-                        {formatTs(v.createdAt, tz, projectTz, 'time')}
-                      </span>
-                      <button
-                        onClick={() => void deleteView(v.id)}
-                        title={t('timeline.views.delete')}
-                        aria-label={t('timeline.views.delete')}
-                        className="text-redlog-text-dim hover:text-red-400 leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-                      >×</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* v0.6.89.5 feature 4: anomaly filter — dims every event without an
+          {/* v0.6.89.5 feature 4: anomaly filter (§27.1: renamed 鏈警示) — dims every event without an
               integrity badge (clock anomaly / recovery / evidence removal /
               anchor failure / chain break). First chip so it's the fastest
               thing to reach when a verify caught something. Disabled at
@@ -3039,10 +2942,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >
             {t('timeline.anomalies.chip', { count: anomalyCount })}
           </button>
-          {/* Overflow: the low-frequency view/audit controls, grouped off the
-              flat row (§6). Session dividers, timezone and the auditor view are
-              set once and rarely touched, so they live behind one control
-              rather than each taking a slot the operator scans past. */}
+          {/* §27.1: More menu — 隱藏 AI 逐輪, 略過閒置, 工作階段邊界, 稽核檢視, 時區 */}
           <div className="relative shrink-0">
             <button
               data-testid="timeline-more-menu"
@@ -3056,7 +2956,35 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
                 <div role="menu" className="absolute top-full right-0 mt-1 z-40 w-56 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl py-1">
-                  <div className="px-2 py-1 text-xs font-mono uppercase tracking-wider text-redlog-text-faint">{t('timeline.more.viewGroup')}</div>
+                  <button
+                    role="menuitemcheckbox"
+                    aria-checked={collapseAgentTurns}
+                    onClick={() => setCollapseAgentTurns((v) => !v)}
+                    title={collapseAgentTurns
+                      ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+                      : t('timeline.collapseAgent.hint')}
+                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+                  >
+                    <span>{t('timeline.collapseAgent.label')}</span>
+                    <span className={collapseAgentTurns ? 'text-lime-300' : 'text-redlog-text-faint'}>{collapseAgentTurns ? '✓' : ''}</span>
+                  </button>
+                  {(timeMap.gaps.length > 0 || compressGaps) && (
+                    <button
+                      role="menuitemcheckbox"
+                      aria-checked={compressGaps}
+                      onClick={() => {
+                        const el = scrollRef.current
+                        if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
+                        setCompressGaps((v) => !v)
+                      }}
+                      title={t('timeline.compressGaps.hint')}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+                    >
+                      <span>{t('timeline.compressGaps.label')}{compressGaps && timeMap.gaps.length > 0 ? ` (${timeMap.gaps.length})` : ''}</span>
+                      <span className={compressGaps ? 'text-cyan-300' : 'text-redlog-text-faint'}>{compressGaps ? '✓' : ''}</span>
+                    </button>
+                  )}
+                  <div className="border-t border-redlog-border/50 my-0.5" />
                   <button
                     role="menuitemcheckbox"
                     aria-checked={sessionDividers}
@@ -3095,11 +3023,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               </>
             )}
           </div>
-          {/* v0.6.87 C2: export the currently-visible time window as JSON.
-              The window is derived from the minimap view (left..left+width in
-              percent) mapped back to (timeStart..timeEnd). Bug-bounty writeups
-              zoom to the attack moment then click this to grab an evidence
-              slice. Saved under exports/redlog-timeline-<ts>.json. */}
           {hiddenLanes.size > 0 && (
             <button
               onClick={showAllLanes}
@@ -3112,15 +3035,17 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             const hidden = hiddenLanes.has(id)
             const off = empty || hidden
             const externalOnly = EXTERNAL_ONLY_LANES.has(id)
-            // v0.6.97 F: external-only lanes (credential_use, c2_checkin)
-            // stay hidden on an internal engagement — pre-v0.6.97 they
-            // rendered dimmed with a tooltip, but on a laptop-only pentest
-            // they'll never populate and just clutter the chip row. Once a
-            // real event lands they auto-reappear (populatedLanes shifts).
-            if (externalOnly && empty) return null
+            // A lane that has captured nothing is hidden from the chip row
+            // rather than shown dimmed: an empty chip is noise, and the lane
+            // reappears the instant a real event lands (populatedLanes shifts).
+            // v0.6.97 did this only for external-only lanes (credential_use,
+            // c2_checkin); v0.15 extends it to every not-yet-captured lane. A
+            // populated lane the operator toggled OFF still renders (struck
+            // through) so it can be restored — that's `hidden`, not `empty`.
+            if (empty) return null
             return (
+              <Fragment key={id}>
               <button
-                key={id}
                 onClick={(e) => { if (empty) return; if (e.altKey) soloLane(id, populatedLanes); else toggleLane(id) }}
                 disabled={empty}
                 className={`shrink-0 whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
@@ -3136,6 +3061,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               >
                 {laneLabels[id]}
               </button>
+              </Fragment>
             )
           })}
         </div>
@@ -3901,7 +3827,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               on click without another expand. tool_call renders the
               parsed input JSON; tool_result its output stream. */}
           {selectedEvent.agentType === 'agent' && (
-            <AgentTurnDetail data={selectedEvent.data as Record<string, unknown>} />
+            <AgentTurnDetail
+              data={selectedEvent.data as Record<string, unknown>}
+              paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
+            />
           )}
           {/* v0.11.2 (T6): scanner and browser events carried their payloads
               all along — mitmproxy sends request params and a 2 KB
@@ -3967,12 +3896,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
 // v0.6.89: human-readable byte size. Deliberately tiny — no third-party
 // formatter for this. 1 KB = 1024 B (chosen so we don't disagree with `wc -c`
 // output when the operator eyeballs numbers).
-function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B'
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
+// formatBytes imported from HttpDetail
 
 // Structured detail body for a shell command_end event. Renders separate
 // stdout / stderr collapsible sections when the wrapper populated them,
@@ -4079,8 +4003,15 @@ function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, 
 
 /** v0.9.2 U1: renders the payload of one `agent.*` event in the detail
  *  panel. Reuses CollapsibleStream + MetadataGrid so operators get the
- *  same expand/copy affordances they already know from shell events. */
-function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+ *  same expand/copy affordances they already know from shell events.
+ *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
+ *  other half so both the request and its return read in one panel. */
+function AgentTurnDetail(
+  { data, paired }: {
+    data: Record<string, unknown>
+    paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
+  }
+): JSX.Element {
   const { t } = useI18n()
   const subtype = String(data.subtype ?? '')
   const isMessage = subtype === 'user_message' || subtype === 'assistant_message'
@@ -4109,6 +4040,18 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
   const outputText = typeof data.output === 'string' ? (data.output as string) : ''
   const outputBytes = typeof data.output_length === 'number' ? (data.output_length as number) : outputText.length
 
+  // The paired half (v0.15): a selected tool_call pairs with its result's
+  // output; a selected tool_result pairs with its call's input. Extracted the
+  // same way as the primary event's own fields so the inline pair reads
+  // identically to selecting the other dot directly.
+  const pairedResultOut = paired?.kind === 'result' && typeof paired.data.output === 'string'
+    ? (paired.data.output as string) : ''
+  const pairedResultBytes = paired?.kind === 'result' && typeof paired.data.output_length === 'number'
+    ? (paired.data.output_length as number) : pairedResultOut.length
+  const pairedCallInput = paired?.kind === 'call'
+    ? (paired.data.tool_input as Record<string, unknown> | undefined) : undefined
+  const pairedCallStr = pairedCallInput ? safePretty(pairedCallInput) : ''
+
   return (
     <div className="mt-2 space-y-1.5">
       {(isMessage || isThinking) && bodyText.length > 0 && (
@@ -4125,6 +4068,28 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
         <CollapsibleStream
           label={t('timeline.detail.agentToolInput', { name: String(data.tool_name ?? 'tool') })}
           content={toolInputStr}
+          accent="zinc"
+          startOpen={false}
+        />
+      )}
+      {/* v0.15: the tool_call's paired result, inline — startOpen so the
+          operator reads the return without hunting for its separate dot. */}
+      {isToolCall && paired?.kind === 'result' && pairedResultOut.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolOutput')}
+          content={pairedResultOut}
+          bytes={pairedResultBytes}
+          truncated={paired.data.truncated === true}
+          accent="emerald"
+          startOpen={true}
+        />
+      )}
+      {/* v0.15: the tool_result's paired call input, inline above its output —
+          so a selected result shows what was asked. */}
+      {isToolResult && paired?.kind === 'call' && pairedCallStr.length > 0 && (
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolInput', { name: String(paired.data.tool_name ?? 'tool') })}
+          content={pairedCallStr}
           accent="zinc"
           startOpen={false}
         />
@@ -4156,327 +4121,10 @@ function AgentTurnDetail({ data }: { data: Record<string, unknown> }): JSX.Eleme
   )
 }
 
-/** v0.11.2 (T6): one HTTP exchange as the operator thinks about it — what went
- *  out, what came back. The request and response arrive as two separate chain
- *  events linked by `flow_id`, so each renders the half it holds and names the
- *  other half's absence rather than showing a blank. */
+/** v0.11.2 (T6): alias — the actual component lives in HttpDetail.tsx now,
+ *  shared with HttpHistoryPanel. */
 function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; eventId: string }): JSX.Element {
-  const { t } = useI18n()
-  const subtype = String(data.subtype ?? '')
-  const isResponse = subtype === 'http_response'
-  const isRequest = subtype === 'http_request_start'
-  const isWs = subtype === 'ws_message'
-  const isTcp = subtype === 'tcp_message'
-  const tlsInfo = data.tls as Record<string, unknown> | undefined
-  const timingInfo = data.timing as Record<string, number> | undefined
-
-  const flowId = typeof data.flow_id === 'string' ? data.flow_id : ''
-  const [pairedData, setPairedData] = useState<Record<string, unknown> | null>(null)
-  const [pairedLoading, setPairedLoading] = useState(false)
-
-  useEffect(() => {
-    if (!flowId || (!isRequest && !isResponse)) { setPairedData(null); return }
-    let cancelled = false
-    setPairedLoading(true)
-    window.redlog.events.queryByFlowId(flowId).then(evts => {
-      if (cancelled) return
-      const partner = evts.find(e => e.id !== eventId && (
-        isRequest ? e.data?.subtype === 'http_response' : e.data?.subtype === 'http_request_start'
-      ))
-      setPairedData(partner?.data ?? null)
-      setPairedLoading(false)
-    }).catch(() => { if (!cancelled) setPairedLoading(false) })
-    return () => { cancelled = true }
-  }, [flowId, eventId, isRequest, isResponse])
-  const params = data.params as Record<string, unknown> | undefined
-  const preview = typeof data.response_preview === 'string' ? (data.response_preview as string) : ''
-  const reqPreview = typeof data.request_body_preview === 'string' ? (data.request_body_preview as string) : ''
-  const wsPreview = typeof data.ws_preview === 'string' ? (data.ws_preview as string) : ''
-  const tcpPreview = typeof data.tcp_preview === 'string' ? (data.tcp_preview as string) : ''
-  const contentType = String(data.content_type ?? '')
-  const contentLength = typeof data.content_length === 'number' ? (data.content_length as number) : null
-
-  const inlineReqBody = data.request_body as { data?: string; encoding?: string; size?: number } | undefined
-  const inlineRespBody = data.response_body as { data?: string; encoding?: string; size?: number } | undefined
-  const inlineWsBody = data.ws_body as { data?: string; encoding?: string; size?: number } | undefined
-  const inlineTcpBody = data.tcp_body as { data?: string; encoding?: string; size?: number } | undefined
-  const reqBodyRef = data.request_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-  const respBodyRef = data.response_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-  const wsBodyRef = data.ws_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-  const tcpBodyRef = data.tcp_body_ref as { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined
-
-  const hasFullReqBody = !!(inlineReqBody?.data || reqBodyRef)
-  const hasFullRespBody = !!(inlineRespBody?.data || respBodyRef)
-  const hasFullWsBody = !!(inlineWsBody?.data || wsBodyRef)
-  const hasFullTcpBody = !!(inlineTcpBody?.data || tcpBodyRef)
-
-  const [loadedReqBody, setLoadedReqBody] = useState<string | null>(null)
-  const [loadedRespBody, setLoadedRespBody] = useState<string | null>(null)
-  const [loadedWsBody, setLoadedWsBody] = useState<string | null>(null)
-  const [loadedTcpBody, setLoadedTcpBody] = useState<string | null>(null)
-  const [loadingReq, setLoadingReq] = useState(false)
-  const [loadingResp, setLoadingResp] = useState(false)
-  const [loadingWs, setLoadingWs] = useState(false)
-  const [loadingTcp, setLoadingTcp] = useState(false)
-
-  const loadFullBody = useCallback(async (
-    ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' } | undefined,
-    inline: { data?: string; encoding?: string; size?: number } | undefined,
-    setter: (v: string | null) => void,
-    setLoading: (v: boolean) => void
-  ) => {
-    if (inline?.data) {
-      setter(inline.encoding === 'base64'
-        ? `[base64, ${inline.size ?? inline.data.length} bytes]\n${inline.data}`
-        : inline.data)
-      return
-    }
-    if (!ref) return
-    setLoading(true)
-    try {
-      const content = await window.redlog.httpBody.read(ref)
-      // A ref that resolves to nothing means the file is gone — pruned by
-      // retention or evicted under disk pressure. The sha256 attestation on
-      // the event still stands; only the openable content is gone. Say that,
-      // rather than leaving the load button to do nothing.
-      setter(content === null ? BODY_GONE : content)
-    } catch { setter(BODY_GONE) }
-    setLoading(false)
-  }, [])
-
-  const headers = data.request_headers ?? data.response_headers
-  const headersText = useMemo(() => {
-    if (!headers) return ''
-    if (Array.isArray(headers)) {
-      return (headers as string[][]).map(([n, v]) => `${n}: ${v}`).join('\n')
-    }
-    return safePretty(headers)
-  }, [headers])
-
-  const bodyless = isResponse && !preview && !hasFullRespBody && contentLength !== null && contentLength > 0
-  const binaryish = bodyless && !!contentType && !/json|html|text|xml|javascript/i.test(contentType)
-
-  return (
-    <div className="mt-2 space-y-1.5">
-      {isRequest && params && Object.keys(params).length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpRequestParams')}
-          content={safePretty(params)}
-          accent="zinc"
-          startOpen
-        />
-      )}
-      {isRequest && reqPreview.length > 0 && !loadedReqBody && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpRequestBody')}
-          content={reqPreview}
-          bytes={inlineReqBody?.size ?? reqPreview.length}
-          truncated={hasFullReqBody}
-          accent="zinc"
-          startOpen
-        />
-      )}
-      {isRequest && hasFullReqBody && !loadedReqBody && (
-        <button
-          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
-          onClick={() => loadFullBody(reqBodyRef, inlineReqBody, setLoadedReqBody, setLoadingReq)}
-          disabled={loadingReq}
-        >
-          {loadingReq ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineReqBody?.size ?? reqBodyRef?.size ?? 0)})
-        </button>
-      )}
-      {isRequest && loadedReqBody && loadedReqBody !== BODY_GONE && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpRequestBody')}
-          content={loadedReqBody}
-          bytes={inlineReqBody?.size ?? reqBodyRef?.size}
-          accent="zinc"
-          startOpen
-        />
-      )}
-      {isResponse && (preview.length > 0 || (loadedRespBody && loadedRespBody !== BODY_GONE)) && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpResponseBody')}
-          content={(loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview}
-          bytes={contentLength ?? ((loadedRespBody && loadedRespBody !== BODY_GONE) ? loadedRespBody : preview).length}
-          truncated={!loadedRespBody && hasFullRespBody}
-          accent="emerald"
-          startOpen
-        />
-      )}
-      {isResponse && hasFullRespBody && !loadedRespBody && (
-        <button
-          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
-          onClick={() => loadFullBody(respBodyRef, inlineRespBody, setLoadedRespBody, setLoadingResp)}
-          disabled={loadingResp}
-        >
-          {loadingResp ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineRespBody?.size ?? respBodyRef?.size ?? contentLength ?? 0)})
-        </button>
-      )}
-      {isWs && (wsPreview.length > 0 || (loadedWsBody && loadedWsBody !== BODY_GONE)) && (
-        <CollapsibleStream
-          label={t('timeline.detail.wsPayload')}
-          content={(loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview}
-          bytes={data.size as number ?? ((loadedWsBody && loadedWsBody !== BODY_GONE) ? loadedWsBody : wsPreview).length}
-          truncated={!loadedWsBody && hasFullWsBody}
-          accent={data.direction === 'client' ? 'zinc' : 'emerald'}
-          startOpen
-        />
-      )}
-      {isWs && hasFullWsBody && !loadedWsBody && (
-        <button
-          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
-          onClick={() => loadFullBody(wsBodyRef, inlineWsBody, setLoadedWsBody, setLoadingWs)}
-          disabled={loadingWs}
-        >
-          {loadingWs ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineWsBody?.size ?? wsBodyRef?.size ?? 0)})
-        </button>
-      )}
-      {isTcp && (tcpPreview.length > 0 || (loadedTcpBody && loadedTcpBody !== BODY_GONE)) && (
-        <CollapsibleStream
-          label={t('timeline.detail.tcpPayload')}
-          content={(loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview}
-          bytes={data.size as number ?? ((loadedTcpBody && loadedTcpBody !== BODY_GONE) ? loadedTcpBody : tcpPreview).length}
-          truncated={!loadedTcpBody && hasFullTcpBody}
-          accent={data.direction === 'client' ? 'zinc' : 'emerald'}
-          startOpen
-        />
-      )}
-      {isTcp && hasFullTcpBody && !loadedTcpBody && (
-        <button
-          className="text-xs text-indigo-400 hover:text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-600/30 bg-indigo-900/10 hover:bg-indigo-900/20"
-          onClick={() => loadFullBody(tcpBodyRef, inlineTcpBody, setLoadedTcpBody, setLoadingTcp)}
-          disabled={loadingTcp}
-        >
-          {loadingTcp ? '...' : t('timeline.detail.httpLoadFullBody')}
-          {' '}({formatBytes(inlineTcpBody?.size ?? tcpBodyRef?.size ?? 0)})
-        </button>
-      )}
-      {bodyless && (
-        <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
-          {t(binaryish ? 'timeline.detail.httpBodyBinary' : 'timeline.detail.httpBodyNotCaptured', {
-            type: contentType || '—', size: formatBytes(contentLength ?? 0)
-          })}
-        </p>
-      )}
-      {[loadedReqBody, loadedRespBody, loadedWsBody, loadedTcpBody].includes(BODY_GONE) && (
-        <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
-          {t('timeline.detail.httpBodyEvicted')}
-        </p>
-      )}
-      {headersText && (
-        <CollapsibleStream
-          label={t('timeline.detail.httpHeaders')}
-          content={headersText}
-          accent="zinc"
-        />
-      )}
-      <MetadataGrid
-        entries={[
-          ...(isWs ? [
-            ['direction', data.direction],
-            ['message_type', data.message_type],
-            ['size', formatBytes(data.size as number ?? 0)],
-            ['message_#', data.message_count],
-          ] as [string, unknown][] : isTcp ? [
-            ['direction', data.direction],
-            ['size', formatBytes(data.size as number ?? 0)],
-            ['port', data.port],
-            ['message_#', data.message_count],
-            ['tls_version', data.tls_version],
-          ] as [string, unknown][] : [
-            ['method', data.method],
-            ['status', data.status],
-            ['content_type', contentType || undefined],
-            ['content_length', contentLength !== null ? formatBytes(contentLength) : undefined],
-            ['duration_ms', data.duration_ms],
-            ['http_version', data.http_version],
-            ['stream_id', data.stream_id],
-          ] as [string, unknown][]),
-          ['host', data.host],
-          ['flow_id', data.flow_id]
-        ]}
-      />
-      {tlsInfo && (
-        <CollapsibleStream
-          label={t('timeline.detail.tlsInfo')}
-          content={Object.entries(tlsInfo).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\n')}
-          accent="zinc"
-        />
-      )}
-      {timingInfo && (
-        <CollapsibleStream
-          label={t('timeline.detail.timing')}
-          content={Object.entries(timingInfo).map(([k, v]) => `${k}: ${v}ms`).join('\n')}
-          accent="zinc"
-        />
-      )}
-      {isRequest && Array.isArray(data.cookies) && (data.cookies as Array<{name: string; value: string}>).length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.cookies')}
-          content={(data.cookies as Array<{name: string; value: string}>).map(c => `${c.name}=${c.value}`).join('\n')}
-          accent="zinc"
-        />
-      )}
-      {isResponse && Array.isArray(data.set_cookies) && (data.set_cookies as Array<Record<string, unknown>>).length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.setCookies')}
-          content={(data.set_cookies as Array<Record<string, unknown>>).map(c => {
-            const parts = [`${c.name}=${c.value}`]
-            if (c.domain) parts.push(`Domain=${c.domain}`)
-            if (c.path) parts.push(`Path=${c.path}`)
-            if (c.secure) parts.push('Secure')
-            if (c.httponly) parts.push('HttpOnly')
-            if (c.samesite) parts.push(`SameSite=${c.samesite}`)
-            return parts.join('; ')
-          }).join('\n')}
-          accent="zinc"
-        />
-      )}
-      {pairedLoading && (
-        <p className="text-xs text-redlog-text-dim font-mono px-2">loading paired event...</p>
-      )}
-      {pairedData && (() => {
-        const pSub = String(pairedData.subtype ?? '')
-        const pLabel = pSub === 'http_request_start'
-          ? t('timeline.detail.pairedRequest')
-          : t('timeline.detail.pairedResponse')
-        const pHeaders = pairedData.request_headers ?? pairedData.response_headers
-        const pHeadersText = pHeaders
-          ? Array.isArray(pHeaders)
-            ? (pHeaders as string[][]).map(([n, v]) => `${n}: ${v}`).join('\n')
-            : safePretty(pHeaders)
-          : ''
-        const pPreview = typeof pairedData.request_body_preview === 'string'
-          ? pairedData.request_body_preview as string
-          : typeof pairedData.response_preview === 'string'
-            ? pairedData.response_preview as string
-            : ''
-        const pMeta: [string, unknown][] = pSub === 'http_request_start'
-          ? [['method', pairedData.method], ['url', pairedData.url], ['host', pairedData.host]]
-          : [['status', pairedData.status], ['content_type', pairedData.content_type], ['duration_ms', pairedData.duration_ms]]
-        return (
-          <div className="mt-2 pt-2 border-t border-zinc-700/40 space-y-1.5">
-            <span className="text-xs font-mono font-semibold text-zinc-400 uppercase tracking-wider px-1">{pLabel}</span>
-            <MetadataGrid entries={pMeta} />
-            {pHeadersText && (
-              <CollapsibleStream label={t('timeline.detail.httpHeaders')} content={pHeadersText} accent="zinc" />
-            )}
-            {pPreview.length > 0 && (
-              <CollapsibleStream
-                label={pSub === 'http_request_start' ? t('timeline.detail.httpRequestBody') : t('timeline.detail.httpResponseBody')}
-                content={pPreview}
-                accent={pSub === 'http_request_start' ? 'zinc' : 'emerald'}
-              />
-            )}
-          </div>
-        )
-      })()}
-    </div>
-  )
+  return <HttpDetail data={data} eventId={eventId} />
 }
 
 /** v0.11.2 (T6): a captured browser console line. The stack is the reason this
@@ -4503,116 +4151,6 @@ function BrowserConsoleDetail({ data }: { data: Record<string, unknown> }): JSX.
           ['url', data.url]
         ]}
       />
-    </div>
-  )
-}
-
-function safePretty(v: unknown): string {
-  try { return JSON.stringify(v, null, 2) } catch { return String(v) }
-}
-
-const STREAM_ACCENTS: Record<'emerald' | 'amber' | 'zinc', { label: string; bar: string; bg: string; badge: string }> = {
-  emerald: { label: 'text-emerald-400', bar: 'border-emerald-600/40', bg: 'bg-emerald-900/10', badge: 'text-emerald-300 bg-emerald-900/30' },
-  amber:   { label: 'text-amber-400',   bar: 'border-amber-600/40',   bg: 'bg-amber-900/10',   badge: 'text-amber-300 bg-amber-900/30' },
-  zinc:    { label: 'text-redlog-text',    bar: 'border-redlog-border/60',    bg: 'bg-redlog-surface/40',    badge: 'text-redlog-text bg-redlog-elevated/60' }
-}
-
-// Inline preview cap. Anything larger than this is rendered as head-4KB
-// + a "Copy full" button that puts the entire raw string on the clipboard.
-const INLINE_PREVIEW_BYTES = 4096
-
-function CollapsibleStream({
-  label,
-  content,
-  bytes,
-  truncated,
-  accent,
-  startOpen
-}: {
-  label: string
-  content: string
-  bytes?: number
-  truncated?: boolean
-  accent: 'emerald' | 'amber' | 'zinc'
-  startOpen?: boolean
-}): JSX.Element {
-  const { t } = useI18n()
-  const [open, setOpen] = useState(!!startOpen)
-  const [copied, setCopied] = useState(false)
-  const acc = STREAM_ACCENTS[accent]
-  // Prefer the explicit bytes field (the true, pre-truncation size); fall
-  // back to string length when the wrapper didn't stamp it (e.g. legacy
-  // `output` field).
-  const shownBytes = typeof bytes === 'number' ? bytes : content.length
-  const isLarge = content.length > INLINE_PREVIEW_BYTES
-  const preview = isLarge ? content.slice(0, INLINE_PREVIEW_BYTES) : content
-  const copyFull = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-      toast(t('toast.copied'), 'success')
-    } catch { /* ignore */ }
-  }
-  return (
-    <div className={`border ${acc.bar} rounded ${acc.bg}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-2 px-2 py-1 text-left"
-      >
-        <span className="text-xs text-redlog-text-dim font-mono w-3">{open ? '▼' : '▶'}</span>
-        <span className={`text-xs font-mono font-semibold uppercase tracking-wider ${acc.label}`}>{label}</span>
-        <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${acc.badge}`}>
-          {formatBytes(shownBytes)}
-        </span>
-        {truncated && (
-          <span className="text-xs font-mono text-amber-400" title={t('timeline.detail.truncatedHint')}>
-            {t('timeline.detail.truncated')}
-          </span>
-        )}
-        {isLarge && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); void copyFull() }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); void copyFull() } }}
-            className="ml-auto text-xs font-mono px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover hover:text-redlog-text cursor-pointer"
-          >
-            {copied ? t('timeline.detail.copied') : t('timeline.detail.copyFull')}
-          </span>
-        )}
-      </button>
-      {open && content.length > 0 && (
-        <pre className="mx-2 mb-2 p-2 bg-redlog-bg rounded border border-redlog-border/60 text-xs text-redlog-text font-mono max-h-80 overflow-y-auto whitespace-pre-wrap break-all">
-          {preview}
-          {isLarge && (
-            <span className="block mt-2 text-xs text-redlog-text-dim">
-              {t('timeline.detail.previewCut', { shown: formatBytes(preview.length), total: formatBytes(shownBytes) })}
-            </span>
-          )}
-        </pre>
-      )}
-      {open && content.length === 0 && (
-        <p className="mx-2 mb-2 px-2 py-1 text-xs text-redlog-text-faint font-mono italic">{t('timeline.detail.empty')}</p>
-      )}
-    </div>
-  )
-}
-
-function MetadataGrid({ entries }: { entries: Array<[string, unknown]> }): JSX.Element {
-  const rows = entries.filter(([, v]) => v !== undefined && v !== null && v !== '')
-  if (rows.length === 0) return <></>
-  return (
-    <div className="rounded border border-redlog-border/60 bg-redlog-bg/40 px-2 py-1.5">
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
-        {rows.map(([k, v]) => (
-          <div key={k} className="contents">
-            <span className="text-redlog-text-dim">{k}</span>
-            <span className="text-redlog-text break-all">{String(v)}</span>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

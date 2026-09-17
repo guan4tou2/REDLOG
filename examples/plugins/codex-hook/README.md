@@ -83,6 +83,6 @@ Reference: <https://learn.chatgpt.com/docs/hooks> (verified 2026-08). The old
 
 ## Trust tier
 
-🟢 **Declarative.** No code files under `contributes.mcpTools|exporters|monitors`
+🟢 **Declarative.** No code files under `contributes.exporters|monitors|tailers`
 — the plugin ships only a `capture` entry and a hook script the operator runs
 out-of-process. Nothing to consent to; loads automatically.

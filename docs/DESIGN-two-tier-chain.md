@@ -613,6 +613,35 @@ Layer-4 redaction ([redaction-design.md](redaction-design.md)) currently applies
 
 ---
 
+### 7.5 Logged-tier integrity digest (v0.15)
+
+§8 states the honest way to prove "these logged rows existed at time T" is to
+hash the logged tier and get an OTS timestamp on the hash. `exportBundle` now
+does exactly that automatically: before it dumps `events.jsonl`, it folds one
+cheap streaming digest over the live logged rows (`loggedTierDigest()` in
+`db/events.ts` — a single index-ordered scan, O(1) memory, canonical-key hashing
+like the chain) and appends a chained `system.logged_tier_digest` event carrying
+`{ count, sha256, oldest_at, newest_at }`. Because that event lands in the
+chained tier it is hashed, Ed25519-signed, included in this bundle's
+`events.jsonl`, and covered by the next OTS anchor (§8) — no per-row cost on the
+logged write path, no change to the anchor loop. The same `{ count, sha256 }` is
+mirrored into `manifest.tiers.loggedDigest` for consumers that read the manifest
+without walking the chain.
+
+This is a snapshot of the operator's **live** logged tier at export time, not of
+the (possibly sanitized) `events_logged.jsonl` copy — that copy's byte-level
+integrity is the separate `files[].sha256` entry in the manifest. The digest's
+job is the anchored existence claim; the file hash's job is bundle-copy
+integrity. The two are deliberately distinct.
+
+Why not a per-row hash-chain on `events_logged`? That would defeat the tier: it
+exists to be mutable (retention prunes it, §5.4 of the retention design) and
+high-throughput. A per-row chain would reintroduce exactly the write-path cost
+and append-only rigidity §1.3 set out to shed. One on-demand digest gives the
+integrity signal an export needs without paying that cost on every write.
+
+---
+
 ## 8. OTS anchor
 
 **Unchanged.** `computeChainHead`, `anchorNow`, `startAnchorLoop`, `verifyLatestAnchor` all read from the `events` table (chained-tier only). The head hash formula stays `SHA256(latest_hash || event_count)`; `event_count` is unambiguously the chained count (see §5.4).

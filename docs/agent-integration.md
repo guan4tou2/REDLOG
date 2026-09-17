@@ -1,6 +1,6 @@
 # RedLog AI Agent Integration
 
-RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI-driven penetration testing. This document covers all integration methods, from zero-config terminal hooks to full MCP control.
+RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI-driven penetration testing. This document covers all integration methods, from zero-config terminal hooks to the REST API and shell helpers.
 
 ## Integration Architecture
 
@@ -8,40 +8,40 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
 ┌─────────────────────────────────────────────────────────┐
 │                     AI Agent                            │
 │  (Claude Code / Codex / GPT / Cursor / OpenCode / custom) │
-└──────┬────────────────┬────────────────┬────────────────┘
-       │                │                │
-  ┌────▼────┐    ┌──────▼──────┐   ┌─────▼─────┐
-  │ Terminal │    │ MCP Server  │   │ HTTP API  │
-  │  Hooks   │    │ (18 tools)  │   │ (REST)    │
-  │  (log)   │    │ (operate)   │   │(universal)│
-  └────┬────┘    └──────┬──────┘   └─────┬─────┘
-       │                │                │
-       └────────────────┼────────────────┘
-                        │
-              ┌─────────▼─────────┐
-              │   RedLog Engine   │
-              │  (SQLite + Event  │
-              │   Bus + Timeline) │
-              └───────────────────┘
+└──────┬──────────────────────────┬──────────────────────┘
+       │                          │
+  ┌────▼────┐               ┌─────▼─────┐
+  │ Terminal │               │ HTTP API  │
+  │  Hooks   │               │ (REST)    │
+  │  (log)   │               │(universal)│
+  └────┬────┘               └─────┬─────┘
+       │                          │
+       └──────────┬───────────────┘
+                  │
+        ┌─────────▼─────────┐
+        │   RedLog Engine   │
+        │  (SQLite + Event  │
+        │   Bus + Timeline) │
+        └───────────────────┘
 ```
 
-**Passive hooks** capture everything without the agent knowing. **MCP/API** lets the agent actively query scope, create markers, and search history.
+**Passive hooks** capture everything without the agent knowing. **The API** lets the agent actively query scope, create markers, and search history.
 
 ## How agents capture: hooks log
 
 The cleanest way to think about it:
 
 - **Hooks are the data plane — they record.** Passive, automatic, fire on every command. This is where *logging* happens.
-- **MCP is the control plane — it operates and configures the app.** Create markers, check scope, anchor the chain, read the timeline. These are actions *on* RedLog, not a substitute for capturing what the agent did.
+- **The API is the control plane — it operates and configures the app.** Create markers, check scope, anchor the chain, read the timeline. These are actions *on* RedLog, not a substitute for capturing what the agent did.
 
-**For logging, always prefer hooks; use MCP only for what a hook cannot do.** The reason is completeness, not taste:
+**For logging, always prefer hooks; use the API only for what a hook cannot do.** The reason is completeness, not taste:
 
 - A hook fires whether or not the agent is thinking about it — a command *cannot* run without being recorded. For an audit log, that guarantee is the whole point.
-- MCP only records what the agent decides to call. An agent that forgets, is interrupted, or wasn't prompted will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make capture depend on the agent's memory.
+- API calls only record what the agent decides to call. An agent that forgets, is interrupted, or wasn't prompted will leave gaps, and a gap in an audit log is indistinguishable from "nothing happened." Never make capture depend on the agent's memory.
 
 So the division of labour is:
 
-| Use **hooks** for (logging) | Use **MCP** for (operating the app) |
+| Use **hooks** for (logging) | Use the **API** for (operating the app) |
 |---|---|
 | Every shell / Bash command and its output (automatic) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
 | mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
@@ -49,9 +49,9 @@ So the division of labour is:
 | | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |
 | | Structured events for actions no shell ran — GUI clicks, manual observations (`redlog_log_event`) |
 
-If activity *can* be captured by a hook, let the hook capture it and do **not** also log it over MCP — that just produces duplicates. MCP is for the control-plane actions and the observations that never touched a shell.
+If activity *can* be captured by a hook, let the hook capture it and do **not** also log it via the API — that just produces duplicates. The API is for control-plane actions and observations that never touched a shell.
 
-So: install **all applicable hooks first** for logging, then connect MCP for operating the app.
+So: install **all applicable hooks first** for logging, then use the API for operating the app.
 
 ## Set up capture — do this first
 
@@ -253,9 +253,9 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 - If called without arguments: starts an interactive shell with preexec hooks loaded
 - Sets `REDLOG_SHELL_WRAPPED=1` env var so tools can detect the wrapper
 
-## 3. HTTP API
+## 2. HTTP API
 
-Direct REST API for scripts, custom agents, and non-MCP tools. Runs on `127.0.0.1:6660` (configurable).
+Direct REST API for scripts and custom agents. Runs on `127.0.0.1:6660` (configurable).
 
 ### Authentication
 
@@ -332,7 +332,7 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 }
 ```
 
-## 4. Shell Functions
+## 3. Shell Functions
 
 Source the helper script for quick access from any terminal:
 
@@ -353,7 +353,7 @@ source /path/to/redlog/shell/redlog-agent.sh
 | `redlog_quickmark` | Bookmark a URL | `redlog_quickmark "Endpoint" "https://..."` |
 | `redlog_screenshot` | Manual capture | `redlog_screenshot` |
 
-## 5. Codex / OpenAI Function Calling
+## 4. Codex / OpenAI Function Calling
 
 See [`codex-tools.json`](codex-tools.json) for OpenAI-compatible function definitions. These work with Codex, GPT, or any OpenAI-API-compatible model.
 
@@ -432,17 +432,16 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 
 ## Recommended Setup
 
-For maximum coverage with minimal friction — **hooks first, MCP only for the gaps** (see [Capture priority](#two-planes-hooks-log-mcp-operates)):
+For maximum coverage with minimal friction — **hooks first, API only for the gaps** (see [Capture priority](#how-agents-capture-hooks-log)):
 
 1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
 2. **Add the Claude Code PostToolUse hook** — structured Bash tool-call capture.
 3. **Add the mitmproxy addon** if you're proxying traffic — passive HTTP capture.
-4. **Only then add the MCP server** — for the agent-initiated actions hooks can't do (markers, scope checks, anchoring), never as a substitute for capture the hooks already handle.
-5. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use MCP only for those gaps.
-6. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.
+4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use the API for what hooks can't do (markers, scope checks, anchoring).
+5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.
 
 This gives you:
 - Automatic passive capture of every command (hooks)
-- Agent-initiated markers and scope checks (MCP)
+- Agent-initiated markers and scope checks (API / shell functions)
 - Team-shared scope configuration (profiles)
 - Per-operator attribution + Bitcoin-backed integrity anchoring

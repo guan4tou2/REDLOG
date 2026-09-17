@@ -87,4 +87,36 @@ describeDB('operators', () => {
     expect(ops.resolveOperatorByToken('nope')).toBeNull()
     expect(ops.resolveOperatorByToken('')).toBeNull()
   })
+
+  // The §5c operator-management IPCs (operators:create/rename/pubKey) lean on
+  // these three, so pin their contract here rather than only in the IPC layer.
+  describe('§5c management surface', () => {
+    it('slugifyOperatorId derives a collision-resistant id the create IPC uses as a PK', () => {
+      // <base>-<6 random chars>: the random suffix means two operators can share
+      // a display name and still get distinct ids (no forced rename).
+      expect(ops.slugifyOperatorId('Codex Agent')).toMatch(/^codex-agent-[a-z0-9]{6}$/)
+      expect(ops.slugifyOperatorId('Red Team!')).not.toBe(ops.slugifyOperatorId('Red Team!'))
+      // A name with no slug-able characters still yields a usable PK.
+      expect(ops.slugifyOperatorId('  ')).toMatch(/^op-[a-z0-9]{6}$/)
+    })
+
+    it('renameOperator changes the display name, keeps id and token', () => {
+      const token = ops.generateToken()
+      ops.createOperator({ id: 'r1', name: 'Old', token })
+      expect(ops.renameOperator('r1', 'New')).toBe(true)
+      expect(ops.listOperators().find((o) => o.id === 'r1')?.name).toBe('New')
+      // Rename is not a credential change — the token still resolves.
+      expect(ops.resolveOperatorByToken(token)?.id).toBe('r1')
+      expect(ops.renameOperator('ghost', 'X')).toBe(false)
+    })
+
+    it('getOperatorSignerPubKey returns the key the list surfaces for §5c display', () => {
+      const op = ops.createOperator({ id: 'k1', name: 'Signer', token: ops.generateToken() })
+      const pub = ops.getOperatorSignerPubKey('k1')
+      // Signing may degrade to unsigned (no writable home), but whatever the
+      // create returned is what the standalone getter must return.
+      expect(pub).toBe(op.signerPubKey)
+      expect(ops.getOperatorSignerPubKey('ghost')).toBeNull()
+    })
+  })
 })

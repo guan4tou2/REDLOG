@@ -132,6 +132,7 @@ export function exportHar(opts?: {
     tier: 'logged',
     limit: opts?.limit ?? 50000,
     since: opts?.since,
+    before: opts?.before,
     ...(opts?.targetId ? { targetId: opts.targetId } : {})
   }), opts?.scope)
 

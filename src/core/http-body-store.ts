@@ -11,6 +11,7 @@ export interface BodyRef {
   size: number
   file: string
   encoding: 'text' | 'base64'
+  truncated?: boolean
 }
 
 let _cachedDir: string | null = null
@@ -93,6 +94,8 @@ export function extractBodyToSidecar(
 
   const ref = storeBody(body)
   if (!ref) return
+
+  if (body.truncated) ref.truncated = true
 
   const refField = field === 'request_body' ? 'request_body_ref'
     : field === 'response_body' ? 'response_body_ref'

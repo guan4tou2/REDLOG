@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { hostOutOfScope } from '../lib/scope'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { ChevronRight, ChevronDown, X } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { groupFlows, type Activity } from '../lib/httpActivity'
+import { HttpDetail } from './HttpDetail'
+import { useContributeExport } from '../lib/exportScope'
 
 interface HttpFlow {
   flowId: string
@@ -68,13 +71,15 @@ function parentCommandOf(
 // level the eye lands on. A 40,000-request brute force and a single curl both
 // occupy one row, which is the point: they were both one action.
 
-function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }: {
+function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline, onOpenDetail, outOfScope }: {
   activity: Activity<HttpFlow>
   t: (k: string, vars?: Record<string, string | number>) => string
   rowProps: ReturnType<ReturnType<typeof useListKeyboard>['itemProps']>
   open: boolean
   onToggle: () => void
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  onOpenDetail?: (eventId: string | null) => void
+  outOfScope?: (host: string) => boolean
 }): JSX.Element {
   const { statusBuckets: sb, flows } = activity
   const spanSec = Math.round((activity.endMs - activity.startMs) / 1000)
@@ -101,9 +106,17 @@ function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }
         />
         <span className="sr-only">{t(`httpHistory.kind.${activity.kind}`)}</span>
 
-        <span className="font-mono text-redlog-text truncate max-w-[220px]" title={activity.host}>
+        <span
+          className={`font-mono truncate max-w-[220px] ${outOfScope?.(activity.host) ? 'text-redlog-text-faint' : 'text-redlog-text'}`}
+          title={activity.host}
+        >
           {activity.host || t('httpHistory.noHost')}
         </span>
+        {outOfScope?.(activity.host) && (
+          <span className="shrink-0 font-mono text-xs px-1 rounded bg-redlog-elevated text-redlog-text-faint" title={t('httpHistory.outOfScopeHint')}>
+            {t('httpHistory.outOfScope')}
+          </span>
+        )}
 
         <span className="font-mono text-redlog-text-dim shrink-0">{activity.methods.join(' ')}</span>
 
@@ -147,7 +160,11 @@ function ActivityRow({ activity, t, rowProps, open, onToggle, onOpenInTimeline }
             })()
             const sc = f.status !== null ? STATUS_COLORS[String(f.status)[0]] : undefined
             return (
-              <li key={f.flowId} className="flex items-center gap-2 px-2 py-1 text-xs font-mono">
+              <li
+                key={f.flowId}
+                className="flex items-center gap-2 px-2 py-1 text-xs font-mono cursor-pointer hover:bg-redlog-elevated/30"
+                onClick={() => onOpenDetail?.(f.responseEventId ?? f.requestEventId)}
+              >
                 <span className="text-redlog-text-dim shrink-0 w-12">{f.method}</span>
                 <span className={`shrink-0 w-8 tabular-nums ${sc ?? 'text-redlog-text-faint'}`}>{f.status ?? '—'}</span>
                 <span className="text-redlog-text truncate flex-1" title={f.url}>{path}</span>
@@ -233,11 +250,14 @@ function buildSitemapTree(flows: HttpFlow[]): Map<string, SitemapNode> {
   return roots
 }
 
-function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
+function SitemapTreeNode({ node, depth, onOpenInTimeline, onOpenDetail, outOfScope }: {
   node: SitemapNode
   depth: number
   onOpenInTimeline?: (eventId: string, ts: number) => void
+  onOpenDetail?: (eventId: string | null) => void
+  outOfScope?: (host: string) => boolean
 }): JSX.Element {
+  const { t } = useI18n()
   const [expanded, setExpanded] = useState(depth < 2)
   const hasChildren = node.children.size > 0
   const sortedChildren = useMemo(() =>
@@ -255,7 +275,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
     } else if (node.flows.length === 1) {
       const f = node.flows[0]
       const eid = f.responseEventId ?? f.requestEventId
-      if (eid) onOpenInTimeline?.(eid, f.timestamp)
+      if (eid) onOpenDetail?.(eid)
     }
   }
 
@@ -273,10 +293,19 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
         </span>
         <span
           title={node.fullPath}
-          className={`text-xs font-mono truncate ${depth === 0 ? 'text-redlog-accent font-semibold' : 'text-redlog-text'}`}
+          className={`text-xs font-mono truncate ${
+            depth === 0
+              ? (outOfScope?.(node.name) ? 'text-redlog-text-faint font-semibold' : 'text-redlog-accent font-semibold')
+              : 'text-redlog-text'
+          }`}
         >
           {depth === 0 ? node.name : '/' + node.name}
         </span>
+        {depth === 0 && outOfScope?.(node.name) && (
+          <span className="shrink-0 font-mono text-xs px-1 rounded bg-redlog-elevated text-redlog-text-faint" title={t('httpHistory.outOfScopeHint')}>
+            {t('httpHistory.outOfScope')}
+          </span>
+        )}
         <span className="flex-shrink-0 flex items-center gap-1 ml-auto">
           {methodArr.map(m => (
             <span key={m} className={`text-xs font-mono px-1 rounded ${
@@ -302,7 +331,9 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline }: {
           key={child.fullPath}
           node={child}
           depth={depth + 1}
+          outOfScope={outOfScope}
           onOpenInTimeline={onOpenInTimeline}
+          onOpenDetail={onOpenDetail}
         />
       ))}
     </div>
@@ -322,6 +353,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const [filterText, setFilterText] = useState('')
   const [methodFilter, setMethodFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [hostFilter, setHostFilter] = useState<string | null>(null)
   const [sortCol, setSortCol] = useState<'timestamp' | 'status' | 'size' | 'durationMs'>('timestamp')
   const [sortAsc, setSortAsc] = useState(false)
   // §3: the activity is the row, not the connection. 'flows' is still here
@@ -329,6 +361,36 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   // raw thing — it is just no longer what you land on.
   const [viewMode, setViewMode] = useState<'activity' | 'flows' | 'sitemap'>('activity')
   const [openActivity, setOpenActivity] = useState<string | null>(null)
+  const [detailEvent, setDetailEvent] = useState<{ id: string; data: Record<string, unknown> } | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+
+  const openDetail = useCallback((eventId: string | null) => {
+    if (!eventId) return
+    if (detailEvent?.id === eventId) { setDetailEvent(null); return }
+    setDetailLoading(true)
+    window.redlog.events.getById([eventId]).then(evts => {
+      const evt = evts?.[0]
+      if (evt) setDetailEvent({ id: evt.id, data: evt.data })
+      else setDetailEvent(null)
+      setDetailLoading(false)
+    }).catch(() => { setDetailLoading(false) })
+  }, [detailEvent?.id])
+  // §7a: mark out-of-scope (non-attack) hosts. Scope comes from project config;
+  // an empty allow list means nothing is "out of scope" (no rule to violate),
+  // so the marker never appears on an unscoped engagement.
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
+  useEffect(() => {
+    window.redlog.config.get().then((c) => {
+      const s = (c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null)?.scope
+      setScopeTargets(s?.targets ?? [])
+      setExcludeTargets(s?.excludeTargets ?? [])
+    }).catch(() => {})
+  }, [])
+  const outOfScope = useCallback(
+    (host: string) => hostOutOfScope(host, scopeTargets, excludeTargets),
+    [scopeTargets, excludeTargets]
+  )
 
   const loadFlows = useCallback(async () => {
     const events = await window.redlog.events.query({
@@ -406,6 +468,17 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     return Array.from(s).sort()
   }, [flows])
 
+  const hosts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const f of flows) {
+      const h = f.host || ''
+      if (h) counts.set(h, (counts.get(h) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([h]) => h)
+  }, [flows])
+
   // Debounce the filter text: `filtered` (a sort), `activities` (groupFlows) and
   // `sitemapTree` (buildSitemapTree) all derive from it, so recomputing them on
   // every keystroke — even in `flows` view where the tree/activity aren't shown —
@@ -431,6 +504,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     if (statusFilter) {
       list = list.filter(f => f.status !== null && String(f.status).startsWith(statusFilter))
     }
+    if (hostFilter) {
+      list = list.filter(f => f.host === hostFilter)
+    }
 
     list = [...list].sort((a, b) => {
       const va = a[sortCol] ?? 0
@@ -438,7 +514,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return list
-  }, [flows, filterTextDebounced, methodFilter, statusFilter, sortCol, sortAsc])
+  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc])
 
   // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
   // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size
@@ -462,14 +538,14 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     onActivate: (i) => {
       const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
-      if (id) onOpenInTimeline?.(id, f.timestamp)
+      openDetail(id)
     },
     onJumpToTimeline: (i) => {
       const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
       if (id) onOpenInTimeline?.(id, f.timestamp)
     },
-    onEscape: () => { setMethodFilter(null); setStatusFilter(null) },
+    onEscape: () => { if (detailEvent) setDetailEvent(null); else { setMethodFilter(null); setStatusFilter(null) } },
     onScrollToIndex: (i) => rowVirtualizer.scrollToIndex(i)
   })
 
@@ -486,7 +562,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       const id = a?.causeEventId ?? a?.flows[0]?.responseEventId ?? a?.flows[0]?.requestEventId
       if (id && a) onOpenInTimeline?.(id, a.startMs)
     },
-    onEscape: () => setOpenActivity(null)
+    onEscape: () => { if (detailEvent) setDetailEvent(null); else setOpenActivity(null) }
   })
 
   const sitemapTree = useMemo(() => buildSitemapTree(filtered), [filtered])
@@ -498,6 +574,25 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
 
   const sortArrow = (col: typeof sortCol) =>
     sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : ''
+
+  const harExportRun = useCallback(async () => {
+    const opts: { since?: number; before?: number; targetId?: string } = {}
+    if (hostFilter) opts.targetId = hostFilter
+    if (filtered.length > 0) {
+      const timestamps = filtered.map(f => f.timestamp).filter(Boolean)
+      if (timestamps.length > 0) {
+        opts.since = Math.min(...timestamps)
+        opts.before = Math.max(...timestamps) + 1
+      }
+    }
+    return window.redlog.har.export(opts)
+  }, [hostFilter, filtered])
+
+  useContributeExport(
+    filtered.length > 0
+      ? { label: t('httpHistory.exportHar'), run: harExportRun, count: filtered.length }
+      : null
+  )
 
   if (loading) {
     return (
@@ -566,6 +661,21 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
             className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-indigo-600/30 text-indigo-300' : 'text-redlog-text-dim hover:text-redlog-text'}`}
           >{s}xx</button>
         ))}
+        {hosts.length > 1 && (
+          <>
+            <span className="w-px h-3 bg-redlog-elevated-hover/60 mx-1" />
+            <select
+              value={hostFilter ?? ''}
+              onChange={e => setHostFilter(e.target.value || null)}
+              className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-1.5 py-0.5 text-redlog-text-dim focus:outline-none focus:border-redlog-accent/50 max-w-[200px]"
+            >
+              <option value="">{t('httpHistory.allHosts')}</option>
+              {hosts.map(h => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
 
       {viewMode === 'activity' ? (
@@ -581,6 +691,8 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               open={openActivity === a.id}
               onToggle={() => setOpenActivity((cur) => (cur === a.id ? null : a.id))}
               onOpenInTimeline={onOpenInTimeline}
+              onOpenDetail={openDetail}
+              outOfScope={outOfScope}
             />
           ))}
         </div>
@@ -638,7 +750,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                     ref={(el) => rowProps.ref(el as unknown as HTMLElement | null)}
                     style={{ height: 29 }}
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
-                    onClick={() => { rowProps.onClick(); if (eventId) onOpenInTimeline?.(eventId, f.timestamp) }}
+                    onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
                     <td className={`px-2 py-1 font-semibold ${methodClass}`}>{f.method}</td>
                     <td className={`px-2 py-1 ${statusClass}`}>{f.status ?? '—'}</td>
@@ -680,9 +792,43 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
                   node={node}
                   depth={0}
                   onOpenInTimeline={onOpenInTimeline}
+                  onOpenDetail={openDetail}
+                  outOfScope={outOfScope}
                 />
               ))
           )}
+        </div>
+      )}
+
+      {(detailEvent || detailLoading) && (
+        <div className="shrink-0 border-t border-redlog-border bg-redlog-surface overflow-auto" style={{ maxHeight: '50%' }}>
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-redlog-border-subtle/60 bg-redlog-bg/50 sticky top-0 z-10">
+            <span className="text-xs font-semibold text-redlog-text">{t('httpHistory.detail')}</span>
+            {detailEvent && onOpenInTimeline && (
+              <button
+                onClick={() => { const d = detailEvent.data; onOpenInTimeline(detailEvent.id, typeof d.timestamp === 'number' ? d.timestamp : Date.now()) }}
+                title={t('httpHistory.openAtMoment')}
+                className="text-xs text-redlog-text-dim hover:text-redlog-text font-mono px-1.5 py-0.5 rounded border border-redlog-border/60 hover:bg-redlog-elevated/40"
+              >↗ {t('httpHistory.openInTimeline')}</button>
+            )}
+            <div className="flex-1" />
+            <button
+              onClick={() => setDetailEvent(null)}
+              className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
+              aria-label={t('httpHistory.closeDetail')}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          {detailLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <div className="animate-spin w-4 h-4 border-2 border-redlog-border border-t-transparent rounded-full" />
+            </div>
+          ) : detailEvent ? (
+            <div className="px-3 py-2">
+              <HttpDetail data={detailEvent.data} eventId={detailEvent.id} />
+            </div>
+          ) : null}
         </div>
       )}
     </div>
