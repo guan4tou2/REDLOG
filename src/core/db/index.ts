@@ -42,6 +42,7 @@ export function initDB(projectDir: string): Database.Database {
       session_id TEXT NOT NULL,
       operator_id TEXT NOT NULL,
       agent_type TEXT NOT NULL,
+      subtype TEXT,
       hostname TEXT NOT NULL DEFAULT '',
       source_ip TEXT,
       target_id TEXT,
@@ -101,6 +102,13 @@ export function initDB(projectDir: string): Database.Database {
     -- column. On a 131k-event project with 151 MB of data that was 43 ms per
     -- call, and verifyLatestAnchor pays it twice.
     CREATE INDEX IF NOT EXISTS idx_events_hashed ON events(created_at) WHERE hash IS NOT NULL;
+    -- v0.16: denormalized subtype column. The most-queried JSON property,
+    -- previously accessed via json_extract(data,'$.subtype') on every
+    -- Timeline page load, evidence filter, chain-turning-point scan, tier
+    -- classifier, and capture-health probe. Composite with agent_type +
+    -- timestamp DESC so the hot (agent_type, subtype, newest-first) pattern
+    -- is a single bounded index walk.
+    CREATE INDEX IF NOT EXISTS idx_events_agent_subtype_ts ON events(agent_type, subtype, timestamp DESC);
 
     CREATE TABLE IF NOT EXISTS bookmarks (
       id TEXT PRIMARY KEY,
@@ -174,6 +182,7 @@ export function initDB(projectDir: string): Database.Database {
       session_id    TEXT NOT NULL,
       operator_id   TEXT NOT NULL,
       agent_type    TEXT NOT NULL,
+      subtype       TEXT,
       hostname      TEXT NOT NULL DEFAULT '',
       source_ip     TEXT,
       target_id     TEXT,
@@ -194,6 +203,7 @@ export function initDB(projectDir: string): Database.Database {
     -- in wall-clock terms since it is set inside the insert transaction
     -- from Date.now(); timestamp can lag or lead per producer clock.
     CREATE INDEX IF NOT EXISTS idx_events_logged_created_at ON events_logged(created_at);
+    CREATE INDEX IF NOT EXISTS idx_events_logged_agent_subtype_ts ON events_logged(agent_type, subtype, timestamp DESC);
   `)
 
   // Migrate: add columns if missing (older DB versions)
