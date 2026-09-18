@@ -95,13 +95,15 @@ PR：https://github.com/guan4tou2/REDLOG/pull/114
 | 7 | 非標的 body 物件未遮蔽 | `isUnclassifiedScope()` 辨識無 target 事件；`scopeMaskReplacements` 對 unclassified 套用 `[redacted: no target — scope unclassified]` | `scope-sanitize.ts` |
 | 8 | 附件與文字 scope 政策不一致 | screenshots: 依 DB event target_id 過濾 out-of-scope、計數 unattributed；casts: 維持全量（跨目標裁切不安全）；manifest 新增 `attachmentScopePolicy` 揭露各附件類型處理方式 | `bundle-export.ts` |
 
-### 2.4 UI/UX 最小改善
+### 2.4 UI/UX 最小改善 — ✅ 已完成（最小可行範圍）
 
 報告建議的操作路徑：選專案 → 確認記錄中 → 找事件 → 看細節 → 確認交付 → 匯出
 
-- **狀態區分**：未啟用 / 等待資料 / 記錄中 / 暫停 / 錯誤 — 目前 capture-health 已有 verdict，需在 UI 顯示最後收到資料時間
-- **共用篩選**：搜尋 / HTTP / AI 使用一致的時間、目標、來源篩選
-- **匯出確認頁**：顯示條件、事件數、附件選擇、遮蔽政策
+| # | 問題 | 修復方式 | 檔案 |
+|---|------|---------|------|
+| 1 | 狀態區分不足 | StatusBar 新增 `lastEventAt` 顯示；tooltip 依 recording × verdict × lastEventAt 呈現 5 種狀態（暫停 / 等待事件 / 記錄中 / 部分閒置 / 全暗）；label 新增「等待事件中…」狀態 | `StatusBar.tsx`, `en.json`, `zh-TW.json` |
+| 2 | 共用篩選 | 設計範圍較大（跨 3 個 view 統一 filter state），列為後續 UI 重構項目 | *(deferred)* |
+| 3 | 匯出確認頁 | 證據包匯出成功後 toast 顯示摘要：chained/logged 事件數、out-of-scope 遮蔽數、截圖排除/包含數、casts 包含數與 scope 政策 | `ExportMenu.tsx`, `en.json`, `zh-TW.json` |
 
 ---
 
