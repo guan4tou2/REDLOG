@@ -21,6 +21,16 @@ export interface RedLogBridge {
 export const REPO_ROOT = join(__dirname, '..')
 export const MAIN_ENTRY = join(REPO_ROOT, 'out', 'main', 'index.js')
 
+/**
+ * A fresh, isolated fake home for one Electron launch.
+ *
+ * Windows: `mkdtemp` hands back a bare directory, and Electron dies during
+ * startup — no stderr, exit `0xC0000005` — when `%USERPROFILE%\AppData\Roaming`
+ * does not exist, because Chromium resolves the roaming-appdata path before
+ * any RedLog code runs. Every spec that pointed `USERPROFILE` at a bare temp
+ * dir therefore failed to launch on Windows, which is why the whole e2e suite
+ * was unrunnable there. Creating that one directory is the whole fix.
+ */
 export function makeTempHome(prefix = 'redlog-e2e-'): string {
   const home = mkdtempSync(join(tmpdir(), prefix))
   if (process.platform === 'win32') {
