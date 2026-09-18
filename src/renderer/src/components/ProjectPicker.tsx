@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { formatFreshness } from '../lib/time'
+import { formatFreshness, formatDate, formatSize } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
@@ -301,11 +301,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         )}
 
         {/* Recent projects */}
-        {projects.length > 0 && (
+        {projects.length > 0 && (() => {
+          const nameCounts = new Map<string, number>()
+          for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1)
+          return (
           <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
             <h2 className="text-redlog-text-dim text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.recent')}</h2>
             <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
-              {projects.map((p) => (
+              {projects.map((p) => {
+                const isDup = (nameCounts.get(p.name) ?? 0) > 1
+                return (
                 <div
                   key={p.id}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/[0.03] cursor-pointer group transition-colors"
@@ -327,9 +332,24 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                         className="w-full bg-redlog-bg border border-redlog-border rounded px-2 py-0.5 text-redlog-text text-xs font-medium font-mono focus:outline-none focus:border-red-500/50"
                       />
                     ) : (
-                      <div title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</span>
+                        {isDup && (
+                          <span className="text-redlog-text-faint text-[10px] font-mono shrink-0">{formatDate(p.createdAt)}</span>
+                        )}
+                      </div>
                     )}
-                    <div className="text-redlog-text-faint text-xs font-mono">{formatFreshness(p.lastOpened, t)}</div>
+                    <div className="flex items-center gap-2 text-redlog-text-faint text-[11px] font-mono">
+                      <span>{formatFreshness(p.lastOpened, t)}</span>
+                      <span className="text-redlog-muted">·</span>
+                      <span>{t('project.created', { date: formatDate(p.createdAt) })}</span>
+                      {p.dbSize != null && p.dbSize > 0 && (
+                        <>
+                          <span className="text-redlog-muted">·</span>
+                          <span>{formatSize(p.dbSize)}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }}
@@ -348,10 +368,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                     ✕
                   </button>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
-        )}
+          )
+        })()}
         </div>{/* end two-column grid */}
 
         <p className="text-redlog-muted text-xs text-center font-mono">

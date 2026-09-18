@@ -1114,5 +1114,7 @@
   "filter.last6h": "6h",
   "filter.last24h": "24h",
   "filter.since": "Since {{time}}",
-  "filter.before": "Before {{time}}"
+  "filter.before": "Before {{time}}",
+  "project.created": "Created {{date}}",
+  "project.size": "{{size}}"
 }

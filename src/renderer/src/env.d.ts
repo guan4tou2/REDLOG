@@ -8,6 +8,7 @@ interface ProjectMeta {
   createdAt: number
   lastOpened: number
   path: string
+  dbSize?: number
 }
 
 interface IPStatus {

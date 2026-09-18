@@ -1114,5 +1114,7 @@
   "filter.last6h": "6 小時",
   "filter.last24h": "24 小時",
   "filter.since": "自 {{time}} 起",
-  "filter.before": "{{time}} 之前"
+  "filter.before": "{{time}} 之前",
+  "project.created": "建立於 {{date}}",
+  "project.size": "{{size}}"
 }
