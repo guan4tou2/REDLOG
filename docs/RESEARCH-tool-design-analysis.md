@@ -259,6 +259,127 @@ Open-source browser-based security operations platform。面向 infosec team/MSS
 
 ---
 
+## 8. 工具生態全景 — 按 RedLog 核心定位分類
+
+> §1-7 分析的都偏向 vulnerability management / report generation 那一端。
+> 本節重新按 RedLog 的實際定位（**即時操作記錄 + evidence chain**）分類整個生態。
+
+### 8.1 C2 框架內建操作日誌
+
+C2 框架自帶的 operator logging 是最接近「即時記錄操作者行為」的功能，但鎖定在各自框架內部，無法跨工具使用。
+
+| 工具 | 日誌能力 | 維護狀態 |
+|------|---------|---------|
+| **Cobalt Strike** | 每個 beacon 獨立 log（beacon_[id].log）、operator 身份 + timestamp、keystroke log、截圖瀏覽器（View→Screenshots）、Aggressor Script Events API | 商業，持續維護 |
+| **Mythic** | Event Feed（server 全域活動）、每個 task/command 記錄 operator + timestamp、artifact/credential/file 追蹤、v4.0 加入 operation chat | 開源，持續維護（SpecterOps 生態） |
+| **Sliver** | server-side implant 通訊 + operator command log、task queue history、**AsciiCast 互動 shell 錄影** | 開源，持續維護（Bishop Fox） |
+| **Havoc** | TeamServer 集中式 operator command log、Event Viewer、但 BOF-only 執行的可見度較弱 | 開源，積極開發中 |
+| **Covenant** | 追蹤 operation 期間產生的 Indicators，用於與 blue team 的 deconfliction | 開源，基本停滯 |
+
+**與 RedLog 的關係**：C2 log 記錄「C2 框架內發生了什麼」，RedLog 記錄「操作者桌面上發生了什麼」（包含 C2 以外的所有活動）。兩者互補——RedLog 可以擷取 C2 的終端輸出但不依賴特定 C2。
+
+### 8.2 Red Team 操作日誌工具
+
+| 工具 | 定位 | 維護狀態 |
+|------|------|---------|
+| **Ghostwriter Oplog** | Ghostwriter 的 Oplog 子功能：即時 operator command log，可手動輸入或透過 REST API 從 C2 自動 push。**最接近 RedLog 的既有功能**，但依賴手動記錄或 C2 特定整合，非 OS-level 被動擷取 | 持續維護（SpecterOps），v6.3.0 |
+| **ghostwriter-oplog-populate** | 自動將 C2 活動推送到 Ghostwriter Oplog 的 companion script | SpecterOps 維護 |
+| **Red Team Guide Oplog 範本** | 非軟體——是產業標準的 oplog 格式規範（timestamp/operator/target/ATT&CK ID/command/result/detected） | 持續更新的 living doc |
+| **Lair Framework** | Meteor/Node web app，scanner 資料聚合 + 輕量級 command log | 基本廢棄（~2016-2018） |
+
+**關鍵觀察**：Ghostwriter Oplog 是唯一認真做「跨 C2 操作日誌」的工具，但它是 **pull 模型**（需要手動/API push），RedLog 是 **passive capture 模型**（OS-level 自動擷取）。這是根本性的架構差異。
+
+### 8.3 紅隊 infra 監控與 artifact 處理
+
+| 工具 | 定位 | 維護狀態 |
+|------|------|---------|
+| **RedELK** (Outflank) | 紅隊的「自有 SIEM」——聚合多個 C2/redirector 的 infra/traffic log 到 ELK，**偵測藍隊是否在調查紅隊基礎設施** | 開源，持續維護 |
+| **Nemesis** (SpecterOps) | 攻擊性資料富化管線（「攻擊版 VirusTotal」）——從 CS/Mythic/Sliver 攝入 file/output，自動分類 secret/credential、解密 DPAPI | 開源，持續維護，v2.0 |
+
+**與 RedLog 的關係**：RedELK 看的是「紅隊基礎設施的 traffic pattern」，Nemesis 處理的是「已擷取的 artifact」。RedLog 在這兩者上游——它記錄操作者做了什麼，產出的 artifact 可以餵給 Nemesis 處理。
+
+### 8.4 通用終端錄影（合規/audit 用途）
+
+| 工具 | 定位 | 維護狀態 |
+|------|------|---------|
+| **tlog** (Red Hat) | RHEL 內建 session recording，JSON 格式寫入 syslog/journal，支援 PCI-DSS/HIPAA/SOX 合規 | 持續維護，RHEL 8/9/10 |
+| **Teleport** (Gravitational) | SSH/K8s/DB/RDP session proxy + 錄影 + audit log，完整回放 | 商業+開源核心，持續維護 |
+| **CyberArk PSM / BeyondTrust** | 企業 PAM（Privileged Access Management），特權 session 錄影/監控 | 商業，持續維護 |
+| **ContainerSSH** | 容器化 SSH session audit，asciicast 匯出到 S3 | 開源，持續維護 |
+
+**與 RedLog 的關係**：這些工具為「合規 audit」設計——記錄管理員做了什麼以滿足法規。缺少 ATT&CK tagging、loot detection、OPSEC 狀態追蹤、perceptual screenshot dedup 等 pentest 特有功能。
+
+### 8.5 Evidence integrity / 防竄改工具
+
+| 工具 | 定位 | 維護狀態 |
+|------|------|---------|
+| **Evidence Collector** | 法律級截圖工具：SHA-256 hash + FreeTSA timestamp (.tsr)，用於 chain-of-custody | 活躍，法律鑑識用途 |
+| **TrueScreen** | 認證級 evidence 平台：裝置驗證 + hash + timestamp + 數位簽名 | 商業，持續維護 |
+
+**關鍵缺口**：**沒有**專門為 pentest evidence chain 設計的工具。這個空間被通用法律/數位鑑識工具佔據。RedLog 的 SHA-256 hash chain + OpenTimestamps 錨定是 pentest 領域首創。
+
+### 8.6 紫隊 / Adversary Emulation 平台
+
+| 工具 | 定位 | 維護狀態 |
+|------|------|---------|
+| **Vectr** (SecurityRisk Advisors) | 紫隊追蹤——MITRE ATT&CK 覆蓋率追蹤、campaign 管理 | 持續維護 |
+| **SCYTHE** | 對手威脅模擬 + 紫隊平台，記錄 detection 結果（logged/alerted/blocked/defended） | 商業，持續維護 |
+| **MITRE Caldera** | 自動化 adversary emulation，server-side 執行 + 稽核軌跡 | 開源，MITRE 維護 |
+| **Prelude Operator** | 持續安全測試平台（BAS），桌面 C2 風格應用 | 持續維護 |
+| **Atomic Red Team** (Red Canary) | ATT&CK technique 的 atomic test 集合（不是平台，是測試庫） | 開源，持續維護 |
+
+**與 RedLog 的關係**：這些工具關注「測試了哪些 technique + 偵測結果如何」，RedLog 關注「執行過程中實際發生了什麼」。Vectr 的 technique 覆蓋率追蹤與 RedLog 的 auto-tagging + dual-lens grouping 提案有概念交集。
+
+### 8.7 截圖自動化（偵察用途）
+
+| 工具 | 定位 | 維護狀態 |
+|------|------|---------|
+| **gowitness** (SensePost) | 大規模 web URL 截圖工具，偵察用 | 開源，持續維護 |
+| **EyeWitness** (RedSiege) | web 截圖 + server header + default cred 檢查，偵察用 | 開源，持續維護 |
+
+**與 RedLog 的關係**：pre-engagement 偵察截圖 ≠ in-engagement evidence capture。完全不同的使用情境。
+
+---
+
+### 生態定位圖
+
+```
+                    被動擷取 ←————————————→ 主動協調
+                         |                    |
+    即時記錄        RedLog ●                  |
+    (engagement      Ghostwriter Oplog ○      |
+     中)             C2 內建 log ◐            |
+                         |                    |
+    infra 監控       RedELK ○            Caldera ○
+                     Nemesis ○           SCYTHE ○
+                         |               Vectr ○
+                         |                    |
+    合規 audit       tlog ○                   |
+                     Teleport ○               |
+                         |                    |
+    Evidence         Evidence Collector ○     |
+    integrity        TrueScreen ○             |
+                         |                    |
+    Post-engagement      |           Dradis ○ PlexTrac ○
+    報告/VM              |           PwnDoc ○ AttackForge ○
+                         |           Faraday ○ Reconmap ○
+```
+
+● = RedLog 佔據的位置（唯一：OS-level 被動擷取 + 防竄改 + cross-tool）
+◐ = 部分重疊（C2 內建 log 在各自框架內很強）
+○ = 鄰接但不同領域
+
+### 關鍵結論
+
+1. **RedLog 的「OS-level 被動擷取 + 防竄改 evidence chain + cross-tool」定位基本沒有直接競品**
+2. 最接近的是 **Ghostwriter Oplog**，但它是 pull 模型（手動/API push），不是 passive capture
+3. C2 框架的內建 logging 在各自框架內很強，但彼此隔離——RedLog 的價值在跨工具統一記錄
+4. 通用 session recording（tlog/Teleport）缺少 pentest 領域特有功能
+5. Evidence integrity 工具存在但非 pentest 原生
+6. §1-7 分析的工具（Dradis/PlexTrac/AttackForge/Faraday/PwnDoc/Reconmap）全部落在 post-engagement 報告/VM 端，與 RedLog 互補而非競爭
+
+---
+
 ## 跨工具三視角評估結果
 
 > 方法：Opus（架構師）、Sonnet（實用主義者）、Haiku（懷疑論者）分別獨立評估 26 項功能
