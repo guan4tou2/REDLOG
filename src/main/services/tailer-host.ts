@@ -254,6 +254,8 @@ interface SessionState {
   toolCallsSeen: number
   toolCallsEmitted: number
   toolGapAdvisoryFired: boolean
+  /** P1: incremental SHA-256 of the sidecar, updated on each append. */
+  runningHash: crypto.Hash
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
@@ -418,7 +420,7 @@ const TOOL_INPUT_SCAN_FIELDS: Record<string, Set<string>> = {
   Edit: new Set(['old_string', 'new_string']),
   Grep: new Set(['pattern']),
   Glob: new Set([]),                // pattern is a glob, not free-text
-  WebFetch: new Set(['prompt']),    // URL is not user-secret; prompt is
+  WebFetch: new Set(['prompt', 'url']),
   WebSearch: new Set(['query']),
   Task: new Set(['prompt', 'description']),
   // OpenCode / Codex tools (best-effort; unknown tools scan-all so we're
@@ -739,6 +741,7 @@ function catchUpJsonl(s: SessionState): void {
     s.postCompact = true
     s.lastSnapshotBytes = 0
     s.bytesAppendedSinceSnapshot = 0
+    s.runningHash = crypto.createHash('sha256')
     try {
       const ev = insertEvent('agent', {
         subtype: 'transcript_compacted',
@@ -805,6 +808,7 @@ function catchUpJsonl(s: SessionState): void {
   try { fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 }) } catch (e) {
     noteDbError('tailer-host', e); return
   }
+  s.runningHash.update(bytes)
   s.bytesAppendedSinceSnapshot += bytes.length
 
   // If there is more data beyond the chunk cap, schedule another tick.
@@ -916,7 +920,7 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
   if (s.bytesAppendedSinceSnapshot === 0 && reason === 'idle') return
   let sidecarSize = 0
   try { sidecarSize = fs.statSync(s.sidecarPath).size } catch { return }
-  const sha = fileSha256(s.sidecarPath)
+  const sha = s.runningHash.copy().digest('hex')
   try {
     const ev = insertEvent('agent', {
       subtype: 'transcript_snapshot',
@@ -1049,8 +1053,15 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     parentMissingAdvisoryFired: false,
     toolCallsSeen: 0,
     toolCallsEmitted: 0,
-    toolGapAdvisoryFired: false
+    toolGapAdvisoryFired: false,
+    runningHash: crypto.createHash('sha256')
   }
+  // Seed running hash from existing sidecar so incremental updates produce
+  // the same digest as a full-file read would.
+  try {
+    const existing = fs.readFileSync(sidecarPath)
+    if (existing.length > 0) s.runningHash.update(existing)
+  } catch { /* new sidecar — hash starts empty */ }
   sessions.set(key, s)
 
   // v0.7.4 F2: seed the parent-map from DB so re-ingest post-sidecar-prune
