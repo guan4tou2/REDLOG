@@ -150,7 +150,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         className="h-10 shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
-      <div className="flex-1 flex items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
       <div className={`w-full ${hasRecent ? 'max-w-[880px]' : 'max-w-[480px]'} space-y-6`}>
         {/* Header — spans both columns. Centered anchor for identity so the
             wider layout still feels intentional and not empty. */}
@@ -304,7 +304,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         {projects.length > 0 && (
           <div className="bg-redlog-surface border border-redlog-border rounded-xl p-5 shadow-card">
             <h2 className="text-redlog-text-dim text-xs font-semibold uppercase tracking-[0.15em] mb-3">{t('project.recent')}</h2>
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 max-h-[50vh] overflow-y-auto">
               {projects.map((p) => (
                 <div
                   key={p.id}
