@@ -57,7 +57,8 @@ const KNOWN_INGEST_TYPES = new Set([
   'tool_use',
   'tool_result',
   'tool_interrupted',
-  'away_summary'
+  'away_summary',
+  'system'
 ])
 
 const KNOWN_IGNORED_TYPES = new Set([
@@ -66,13 +67,21 @@ const KNOWN_IGNORED_TYPES = new Set([
   'mode',
   'queue-operation',
   'attachment',
-  'system',
   'meta',
   // v0.7.5 G1 + v0.7.6 H1: real Claude Code metadata line types
   // observed in dogfood — silence schema-drift advisories.
   'last-prompt',
   'frame-link',
-  'pr-link'
+  'pr-link',
+  // P2-6: observed in current Claude Code transcripts — suppress false
+  // drift advisories. bridge-session and file-history-* may warrant
+  // ingest in a future pass.
+  'bridge-session',
+  'atis-latch',
+  'agent-name',
+  'file-history-delta',
+  'file-history-snapshot',
+  'stop_hook_summary'
 ])
 
 // ─── Path helpers (Claude-format specific) ──────────────────────────────────
@@ -145,7 +154,30 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
     if (usage) {
       if (typeof usage.input_tokens === 'number') t.usageTokensIn = usage.input_tokens
       if (typeof usage.output_tokens === 'number') t.usageTokensOut = usage.output_tokens
+      if (typeof usage.cache_creation_input_tokens === 'number') t.usageCacheCreation = usage.cache_creation_input_tokens
+      if (typeof usage.cache_read_input_tokens === 'number') t.usageCacheRead = usage.cache_read_input_tokens
+      const outputDetails = usage.output_tokens_details as Record<string, unknown> | undefined
+      if (outputDetails && typeof outputDetails.thinking_tokens === 'number') t.usageThinkingTokens = outputDetails.thinking_tokens
     }
+    if (typeof message.service_tier === 'string') t.serviceTier = message.service_tier
+    if (typeof message.stop_reason === 'string') t.stopReason = message.stop_reason
+    return t
+  }
+
+  // Audit 2026-09-18 P2-3: capture model refusals, API errors, permission decisions.
+  if (type === 'system') {
+    const subtype = typeof raw.subtype === 'string' ? raw.subtype : ''
+    const INGESTED_SUBTYPES = new Set(['model_refusal_fallback', 'model_refusal_no_fallback', 'api_error'])
+    if (!INGESTED_SUBTYPES.has(subtype)) return null
+    const t: ParsedTurn = applyMeta({ uuid, parentUuid, type, role })
+    t.systemSubtype = subtype
+    if (typeof raw.apiRefusalCategory === 'string') t.refusalCategory = raw.apiRefusalCategory
+    if (typeof raw.apiRefusalExplanation === 'string') t.refusalExplanation = raw.apiRefusalExplanation
+    if (typeof raw.direction === 'string') t.refusalDirection = raw.direction
+    if (typeof raw.originalModel === 'string') t.originalModel = raw.originalModel
+    if (typeof raw.fallbackModel === 'string') t.fallbackModel = raw.fallbackModel
+    if (typeof raw.errorType === 'string') t.errorType = raw.errorType
+    if (typeof raw.errorMessage === 'string') t.errorMessage = raw.errorMessage
     return t
   }
 
@@ -174,27 +206,34 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
         }
         if (cAny.type === 'tool_result' && type === 'tool_result') {
           let toolOutput: string | undefined
+          let imgCount = 0
           const rc = cAny.content
           if (typeof rc === 'string') {
             toolOutput = rc
           } else if (Array.isArray(rc)) {
             const parts: string[] = []
             for (const rr of rc) {
-              if (rr && typeof rr === 'object' && (rr as Record<string, unknown>).type === 'text') {
-                const txt = (rr as Record<string, unknown>).text
-                if (typeof txt === 'string') parts.push(txt)
+              if (rr && typeof rr === 'object') {
+                if ((rr as Record<string, unknown>).type === 'text') {
+                  const txt = (rr as Record<string, unknown>).text
+                  if (typeof txt === 'string') parts.push(txt)
+                } else if ((rr as Record<string, unknown>).type === 'image') {
+                  imgCount++
+                }
               }
             }
             toolOutput = parts.join('\n')
           }
-          turns.push(applyMeta({
+          const trTurn: ParsedTurn = applyMeta({
             uuid: turns.length === 0 ? uuid : (uuid ? `${uuid}:tr${turns.length}` : null),
             parentUuid,
             type: 'tool_result',
             role,
             toolUseId: typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined,
             toolOutput
-          }))
+          })
+          if (imgCount > 0) trTurn.imageBlockCount = imgCount
+          turns.push(trTurn)
         }
       }
       if (turns.length === 0) return applyMeta({ uuid, parentUuid, type, role })
@@ -227,40 +266,63 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
         }))
       } else if (cAny.type === 'tool_result' && type === 'user') {
         let toolOutput: string | undefined
+        let imgCount = 0
         const rc = cAny.content
         if (typeof rc === 'string') {
           toolOutput = rc
         } else if (Array.isArray(rc)) {
           const rParts: string[] = []
           for (const rr of rc) {
-            if (rr && typeof rr === 'object' && (rr as Record<string, unknown>).type === 'text') {
-              const txt = (rr as Record<string, unknown>).text
-              if (typeof txt === 'string') rParts.push(txt)
+            if (rr && typeof rr === 'object') {
+              if ((rr as Record<string, unknown>).type === 'text') {
+                const txt = (rr as Record<string, unknown>).text
+                if (typeof txt === 'string') rParts.push(txt)
+              } else if ((rr as Record<string, unknown>).type === 'image') {
+                imgCount++
+              }
             }
           }
           toolOutput = rParts.join('\n')
         }
-        toolTurns.push(applyMeta({
+        const trTurn: ParsedTurn = applyMeta({
           uuid: uuid ? `${uuid}:tr${toolTurns.length}` : null,
           parentUuid: uuid,
           type: 'tool_result',
           role,
           toolUseId: typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined,
           toolOutput
-        }))
+        })
+        if (imgCount > 0) trTurn.imageBlockCount = imgCount
+        toolTurns.push(trTurn)
       }
     }
     const t: ParsedTurn = applyMeta({ uuid, parentUuid, type, role })
     t.textContent = parts.join('\n')
     if (hasThink) t.hasThinking = true
+    // P2-3: extract permission decision fields from user-type lines.
+    if (type === 'user') {
+      if (typeof raw.toolDenialKind === 'string') t.toolDenialKind = raw.toolDenialKind
+      if (typeof raw.toolResultRemedy === 'string') t.toolResultRemedy = raw.toolResultRemedy
+    }
     if (toolTurns.length === 0) return t
     return [t, ...toolTurns]
   } else if (typeof content === 'string') {
     const t: ParsedTurn = applyMeta({ uuid, parentUuid, type, role })
     t.textContent = content
+    // P2-3: extract permission decision fields from user-type lines.
+    if (type === 'user') {
+      if (typeof raw.toolDenialKind === 'string') t.toolDenialKind = raw.toolDenialKind
+      if (typeof raw.toolResultRemedy === 'string') t.toolResultRemedy = raw.toolResultRemedy
+    }
     return t
   }
-  return applyMeta({ uuid, parentUuid, type, role })
+  const fallback: ParsedTurn = applyMeta({ uuid, parentUuid, type, role })
+  // P2-3: extract permission decision fields from user-type lines.
+  if (type === 'user') {
+    if (typeof raw.toolDenialKind === 'string') fallback.toolDenialKind = raw.toolDenialKind
+    if (typeof raw.toolResultRemedy === 'string') fallback.toolResultRemedy = raw.toolResultRemedy
+  }
+  return fallback
 }
 
 // ─── Subtype mapping (Claude type → RedLog event subtype) ───────────────────
@@ -273,6 +335,11 @@ function subtypeForClaude(t: ParsedTurn): string {
     case 'tool_result': return 'tool_result'
     case 'tool_interrupted': return 'tool_interrupted'
     case 'away_summary': return 'away_summary'
+    case 'system': {
+      if (t.systemSubtype?.startsWith('model_refusal')) return 'model_refusal'
+      if (t.systemSubtype === 'api_error') return 'api_error'
+      return t.systemSubtype ?? 'system'
+    }
     default: return t.type
   }
 }
