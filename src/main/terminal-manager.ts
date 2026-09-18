@@ -25,6 +25,10 @@ interface TerminalSession {
   // can stamp session_end with `_causes: [startEventId]`. Populated after the
   // session_start insertEvent returns. Null when the start insert failed.
   startEventId?: string | null
+  // Audit 2026-09-18 P1: identity captured at spawn time so a project switch
+  // mid-session doesn't silently re-attribute the close event.
+  engagementId: string
+  operatorId: string
 }
 
 // Writes the session_end event (with the cast's SHA-256) exactly once.
@@ -77,7 +81,7 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
       durationMs: Date.now() - session.castStart,
       // v0.6.89: point at the session_start we captured above.
       ...(session.startEventId ? { _causes: [session.startEventId] } : {})
-    }, { engagementId, operatorId })
+    }, { engagementId: session.engagementId, operatorId: session.operatorId })
     if (event) eventBus.publish(event)
   } catch (e) {
     // Session_end write is the recording integrity chain's signal that a
@@ -281,7 +285,9 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castStart,
     castBytes: castHeaderBytes,
     castTruncated: false,
-    finalised: false
+    finalised: false,
+    engagementId,
+    operatorId
   }
 
   term.onData((data: string) => {
@@ -289,6 +295,12 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     session.buffer += data
     if (session.buffer.length > 8192) {
       session.buffer = session.buffer.slice(-4096)
+    }
+    // Audit 2026-09-18 P1: skip cast writing while recording is paused.
+    // Terminal display keeps working; only the .cast file stops growing.
+    if (eventBus.paused) {
+      sendToWindow(`terminal:data:${id}`, data)
+      return
     }
     if (session.castStream && !session.castTruncated) {
       const encoded = JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', data]) + '\n'
@@ -325,7 +337,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     shell,
     pid: term.pid,
     castPath
-  }, { engagementId, operatorId })
+  }, { engagementId: session.engagementId, operatorId: session.operatorId })
   if (event) {
     eventBus.publish(event)
     session.startEventId = event.id

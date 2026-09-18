@@ -25,7 +25,14 @@ const BODY_REF_FOR: Record<string, string> = {
   request_body_preview: 'request_body_ref',
   response_body: 'response_body_ref',
   response_body_preview: 'response_body_ref',
-  response_preview: 'response_body_ref'
+  response_preview: 'response_body_ref',
+  ws_body: 'ws_body_ref',
+  ws_preview: 'ws_body_ref',
+  tcp_body: 'tcp_body_ref',
+  tcp_preview: 'tcp_body_ref',
+  output: 'output_ref',
+  stdout: 'stdout_ref',
+  stderr: 'stderr_ref'
 }
 
 /** Redact one event's data for export. Returns the same object when nothing

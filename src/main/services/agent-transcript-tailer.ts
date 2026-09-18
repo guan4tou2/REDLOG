@@ -116,18 +116,10 @@ export function readTranscriptCwd(sourcePath: string, maxScanLines = 50): string
 
 // ─── Line parser (Claude Code JSONL schema) ─────────────────────────────────
 
-export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | null {
+export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | ParsedTurn[] | null {
   const type = String(raw.type ?? '')
   if (!KNOWN_INGEST_TYPES.has(type)) {
-    // Also return non-null for ignored types so the host can distinguish
-    // "recognised but skipped" (return with `type` in ignored set) from
-    // "unknown type" (return with `type` outside both). The host's
-    // schema-drift check is keyed off knownIngestTypes only, so returning
-    // an ignored-type turn here is safe — it'll get skipped by
-    // `!knownIngestTypes.has(turn.type)` and NOT fire the drift advisory
-    // because the type is in `knownIgnoredTypes`.
     if (KNOWN_IGNORED_TYPES.has(type)) return null
-    // Unknown-and-not-ignored: return a stub so host fires drift advisory.
     return { uuid: null, parentUuid: null, type }
   }
   const uuid = typeof raw.uuid === 'string' ? raw.uuid : null
@@ -135,36 +127,56 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
   const message = (raw.message as Record<string, unknown> | undefined) ?? {}
   const role = typeof message.role === 'string' ? message.role : undefined
   const content = message.content
-  const t: ParsedTurn = { uuid, parentUuid, type, role }
-  if (typeof raw.isSidechain === 'boolean') t.isSidechain = raw.isSidechain
-  if (typeof raw.version === 'string') t.version = raw.version
-  if (typeof raw.gitBranch === 'string') t.gitBranch = raw.gitBranch
-  if (typeof raw.promptId === 'string') t.promptId = raw.promptId
-  if (typeof raw.permissionMode === 'string') t.permissionMode = raw.permissionMode
-  if (typeof raw.isCompactSummary === 'boolean') t.isCompactSummary = raw.isCompactSummary
-  if (typeof message.model === 'string') t.model = message.model
-  const usage = message.usage as Record<string, unknown> | undefined
-  if (usage) {
-    if (typeof usage.input_tokens === 'number') t.usageTokensIn = usage.input_tokens
-    if (typeof usage.output_tokens === 'number') t.usageTokensOut = usage.output_tokens
+  // Audit 2026-09-18 P2: capture source timestamp from the transcript line.
+  const sourceTimestamp = typeof raw.timestamp === 'number' ? raw.timestamp
+    : (typeof raw.timestamp === 'string' ? Date.parse(raw.timestamp) || undefined : undefined)
+
+  /** Shared metadata fields applied to every turn from this line. */
+  function applyMeta(t: ParsedTurn): ParsedTurn {
+    if (typeof raw.isSidechain === 'boolean') t.isSidechain = raw.isSidechain
+    if (typeof raw.version === 'string') t.version = raw.version
+    if (typeof raw.gitBranch === 'string') t.gitBranch = raw.gitBranch
+    if (typeof raw.promptId === 'string') t.promptId = raw.promptId
+    if (typeof raw.permissionMode === 'string') t.permissionMode = raw.permissionMode
+    if (typeof raw.isCompactSummary === 'boolean') t.isCompactSummary = raw.isCompactSummary
+    if (typeof message.model === 'string') t.model = message.model
+    if (typeof sourceTimestamp === 'number') t.sourceTimestamp = sourceTimestamp
+    const usage = message.usage as Record<string, unknown> | undefined
+    if (usage) {
+      if (typeof usage.input_tokens === 'number') t.usageTokensIn = usage.input_tokens
+      if (typeof usage.output_tokens === 'number') t.usageTokensOut = usage.output_tokens
+    }
+    return t
   }
 
+  // Audit 2026-09-18 P2: multi-tool fix. A single JSONL line can carry N
+  // tool_use or tool_result blocks in its content array. The old code iterated
+  // the array and overwrote a single ParsedTurn on each hit, so only the LAST
+  // block survived. Now we collect one ParsedTurn per block and return the
+  // array; the host's processUnit already handles ParsedTurn[].
   if (type === 'tool_use' || type === 'tool_result') {
     if (Array.isArray(content)) {
+      const turns: ParsedTurn[] = []
       for (const c of content) {
         if (!c || typeof c !== 'object') continue
         const cAny = c as Record<string, unknown>
         if (cAny.type === 'tool_use' && type === 'tool_use') {
-          t.toolName = typeof cAny.name === 'string' ? cAny.name : undefined
-          t.toolUseId = typeof cAny.id === 'string' ? cAny.id : undefined
-          t.toolInput = (cAny.input && typeof cAny.input === 'object')
-            ? (cAny.input as Record<string, unknown>) : undefined
+          turns.push(applyMeta({
+            uuid: turns.length === 0 ? uuid : (uuid ? `${uuid}:tu${turns.length}` : null),
+            parentUuid,
+            type: 'tool_use',
+            role,
+            toolName: typeof cAny.name === 'string' ? cAny.name : undefined,
+            toolUseId: typeof cAny.id === 'string' ? cAny.id : undefined,
+            toolInput: (cAny.input && typeof cAny.input === 'object')
+              ? (cAny.input as Record<string, unknown>) : undefined
+          }))
         }
         if (cAny.type === 'tool_result' && type === 'tool_result') {
-          t.toolUseId = typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined
+          let toolOutput: string | undefined
           const rc = cAny.content
           if (typeof rc === 'string') {
-            t.toolOutput = rc
+            toolOutput = rc
           } else if (Array.isArray(rc)) {
             const parts: string[] = []
             for (const rr of rc) {
@@ -173,34 +185,51 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
                 if (typeof txt === 'string') parts.push(txt)
               }
             }
-            t.toolOutput = parts.join('\n')
+            toolOutput = parts.join('\n')
           }
+          turns.push(applyMeta({
+            uuid: turns.length === 0 ? uuid : (uuid ? `${uuid}:tr${turns.length}` : null),
+            parentUuid,
+            type: 'tool_result',
+            role,
+            toolUseId: typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined,
+            toolOutput
+          }))
         }
       }
+      if (turns.length === 0) return applyMeta({ uuid, parentUuid, type, role })
+      if (turns.length === 1) return turns[0]
+      return turns
     }
-    return t
+    return applyMeta({ uuid, parentUuid, type, role })
   }
 
+  // Assistant / user lines: may embed tool blocks alongside text.
   if (Array.isArray(content)) {
     const parts: string[] = []
     let hasThink = false
+    const toolTurns: ParsedTurn[] = []
     for (const c of content) {
       if (!c || typeof c !== 'object') continue
       const cAny = c as Record<string, unknown>
       if (cAny.type === 'text' && typeof cAny.text === 'string') parts.push(cAny.text)
       else if (cAny.type === 'thinking') hasThink = true
       else if (cAny.type === 'tool_use' && type === 'assistant') {
-        t.type = 'tool_use'
-        t.toolName = typeof cAny.name === 'string' ? cAny.name : undefined
-        t.toolUseId = typeof cAny.id === 'string' ? cAny.id : undefined
-        t.toolInput = (cAny.input && typeof cAny.input === 'object')
-          ? (cAny.input as Record<string, unknown>) : undefined
+        toolTurns.push(applyMeta({
+          uuid: uuid ? `${uuid}:tu${toolTurns.length}` : null,
+          parentUuid: uuid,
+          type: 'tool_use',
+          role,
+          toolName: typeof cAny.name === 'string' ? cAny.name : undefined,
+          toolUseId: typeof cAny.id === 'string' ? cAny.id : undefined,
+          toolInput: (cAny.input && typeof cAny.input === 'object')
+            ? (cAny.input as Record<string, unknown>) : undefined
+        }))
       } else if (cAny.type === 'tool_result' && type === 'user') {
-        t.type = 'tool_result'
-        t.toolUseId = typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined
+        let toolOutput: string | undefined
         const rc = cAny.content
         if (typeof rc === 'string') {
-          t.toolOutput = rc
+          toolOutput = rc
         } else if (Array.isArray(rc)) {
           const rParts: string[] = []
           for (const rr of rc) {
@@ -209,16 +238,29 @@ export function parseTranscriptLine(raw: Record<string, unknown>): ParsedTurn | 
               if (typeof txt === 'string') rParts.push(txt)
             }
           }
-          t.toolOutput = rParts.join('\n')
+          toolOutput = rParts.join('\n')
         }
+        toolTurns.push(applyMeta({
+          uuid: uuid ? `${uuid}:tr${toolTurns.length}` : null,
+          parentUuid: uuid,
+          type: 'tool_result',
+          role,
+          toolUseId: typeof cAny.tool_use_id === 'string' ? cAny.tool_use_id : undefined,
+          toolOutput
+        }))
       }
     }
+    const t: ParsedTurn = applyMeta({ uuid, parentUuid, type, role })
     t.textContent = parts.join('\n')
     if (hasThink) t.hasThinking = true
+    if (toolTurns.length === 0) return t
+    return [t, ...toolTurns]
   } else if (typeof content === 'string') {
+    const t: ParsedTurn = applyMeta({ uuid, parentUuid, type, role })
     t.textContent = content
+    return t
   }
-  return t
+  return applyMeta({ uuid, parentUuid, type, role })
 }
 
 // ─── Subtype mapping (Claude type → RedLog event subtype) ───────────────────
@@ -246,7 +288,7 @@ export const claudeCodeAdapter: TailerAdapter = {
   resolveCwd(sourcePath: string): string | null {
     return readTranscriptCwd(sourcePath)
   },
-  parseUnit(rawContent: string): ParsedTurn | null {
+  parseUnit(rawContent: string): ParsedTurn | ParsedTurn[] | null {
     try {
       const obj = JSON.parse(rawContent) as Record<string, unknown>
       return parseTranscriptLine(obj)
