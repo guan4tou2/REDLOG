@@ -262,9 +262,29 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await window.redlog.events.query({ limit: 2000 }) as Ev[]
-      // queryEvents returns newest-first; a transcript reads oldest-first.
-      setEvents([...rows].reverse())
+      // Balanced per-type query so high-volume types (HTTP/scanner) don't
+      // crowd out AI conversation and shell events.
+      const buckets: Array<{ agentType?: string; limit: number }> = [
+        { agentType: 'agent', limit: 800 },
+        { agentType: 'shell', limit: 400 },
+        { agentType: 'scanner', limit: 300 },
+        { agentType: 'system', limit: 200 },
+        { agentType: 'marker', limit: 100 },
+        { agentType: 'loot', limit: 100 },
+        { agentType: 'pivot', limit: 100 },
+      ]
+      const results = await Promise.all(
+        buckets.map((b) => window.redlog.events.query(b) as Promise<Ev[]>)
+      )
+      const seen = new Set<string>()
+      const merged: Ev[] = []
+      for (const batch of results) {
+        for (const e of batch) {
+          if (!seen.has(e.id)) { seen.add(e.id); merged.push(e) }
+        }
+      }
+      merged.sort((a, b) => a.timestamp - b.timestamp)
+      setEvents(merged)
     } finally { setLoading(false) }
   }, [])
 

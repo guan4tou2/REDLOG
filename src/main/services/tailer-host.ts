@@ -1136,6 +1136,35 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     pauseSkippedLines: 0,
     pauseStartedAt: null
   }
+  // Align sidecar to the last complete-line boundary. Within a run,
+  // pendingLineBuffer carries incomplete trailing text across catchUp calls.
+  // On restart pendingLineBuffer is lost; any bytes past the last '\n' in
+  // the sidecar would never be re-read from the source. Truncate so those
+  // bytes are re-read and combined with new data on the next catchUp.
+  if (!adapter.perMessageDir) {
+    const TAIL_SCAN = 64 * 1024
+    try {
+      const fd = fs.openSync(sidecarPath, 'r')
+      try {
+        const st = fs.fstatSync(fd)
+        if (st.size > 0) {
+          const readSize = Math.min(st.size, TAIL_SCAN)
+          const buf = Buffer.alloc(readSize)
+          fs.readSync(fd, buf, 0, readSize, st.size - readSize)
+          let lastNl = -1
+          for (let i = buf.length - 1; i >= 0; i--) {
+            if (buf[i] === 0x0A) { lastNl = i; break }
+          }
+          if (lastNl >= 0) {
+            const alignedSize = st.size - readSize + lastNl + 1
+            if (alignedSize < st.size) {
+              fs.ftruncateSync(fd, alignedSize)
+            }
+          }
+        }
+      } finally { fs.closeSync(fd) }
+    } catch { /* new sidecar or read error */ }
+  }
   // Seed running hash from existing sidecar so incremental updates produce
   // the same digest as a full-file read would.
   try {

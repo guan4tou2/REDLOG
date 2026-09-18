@@ -70,25 +70,17 @@ PR：https://github.com/guan4tou2/REDLOG/pull/114
 
 5 項子問題全數解決（見 Commit 7），其中 3 項在 P0/P1 先行修復。
 
-### 2.2 AI 原始保存與解析（部分完成）
+### 2.2 AI 原始保存與解析 — ✅ 已完成
 
 #### 2.2.1 半行 JSONL 重啟後漏解析
 
-- **現況**：P0 已改善 sidecar cursor，但 checkpoint 仍可能停在不完整行
-- **建議做法**：
-  - checkpoint 以已完成解析單位為準（完整 JSONL 行的結尾 byte offset）
-  - 重啟時從 checkpoint 恢復，重試不完整行
-  - 記錄解析失敗行數，供健康狀態顯示
+- **修復**：`registerSession` 時掃描 sidecar 尾部 64 KB，truncate 到最後一個 `\n` 邊界。重啟後不完整的半行從 source 重新讀取並與新資料合併。Hash 從 truncated sidecar 重新 seed，保持一致性。
+- **檔案**：`tailer-host.ts`
 
 #### 2.2.2 Transcript UI 先取 2,000 筆混合所有種類
 
-- **位置**：`TranscriptView.tsx:245`
-- **現況**：`query({ limit: 2000 })` 取所有 `agent_type` 最新 2,000 筆
-- **風險**：大量 HTTP 事件擠出 AI 對話
-- **建議做法**：
-  - 先以 `agent_type` 分類查詢（agent 取 N 筆、shell 取 M 筆、scanner 取 K 筆）
-  - 或改為以 `session` 分組的 transcript view，只載入選中 session 的事件
-  - 或加入分頁 / load-more 機制，並標示「更早 X 筆事件未顯示」
+- **修復**：`TranscriptView.load()` 改為 per-type balanced query（agent 800 / shell 400 / scanner 300 / system 200 / marker 100 / loot 100 / pivot 100），`Promise.all` 並行查詢後 dedup + 時間排序合併。AI 對話事件不再被 HTTP 事件擠出。
+- **檔案**：`TranscriptView.tsx`
 
 ### 2.3 搜尋、篩選與匯出
 
