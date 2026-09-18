@@ -516,11 +516,13 @@ function insertChainedEvent(
   // Denormalized subtype column — a copy of data.subtype so WHERE clauses
   // hit the composite index instead of json_extract.
   const subtypeCol = typeof dataForChain.subtype === 'string' ? dataForChain.subtype : null
+  // P2-2: denormalized transcript_uuid for buildSeedIndex.
+  const transcriptUuid = typeof dataForChain.transcript_uuid === 'string' ? dataForChain.transcript_uuid : null
 
   try {
     db.prepare(`
-      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source, transcript_uuid)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event.id, event.timestamp, event.engagementId, event.sessionId,
       event.operatorId, event.agentType, subtypeCol, event.hostname, event.sourceIP,
@@ -528,7 +530,7 @@ function insertChainedEvent(
       event.monotonicNs, event.ntpOffsetMs, event.signature,
       env.rawRef ? JSON.stringify(env.rawRef) : null,
       env.mapper ? JSON.stringify(env.mapper) : null,
-      env.schemaVersion, env.tsSource, env.source
+      env.schemaVersion, env.tsSource, env.source, transcriptUuid
     )
   } catch (e) {
     // v0.6.95 P0-4b: any INSERT failure invalidates the cached prev-hash —
