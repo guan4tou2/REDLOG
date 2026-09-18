@@ -727,7 +727,10 @@ function catchUpJsonl(s: SessionState): void {
     // pre-compact transcript is preserved for forensic review.
     if (sidecarSize > 0) {
       const archivePath = s.sidecarPath + `.${Date.now()}.bak`
-      try { fs.copyFileSync(s.sidecarPath, archivePath) } catch { /* best-effort */ }
+      try {
+        fs.copyFileSync(s.sidecarPath, archivePath)
+        fs.chmodSync(archivePath, 0o600)
+      } catch { /* best-effort */ }
     }
     try { fs.truncateSync(s.sidecarPath, 0) } catch { /* ignore */ }
     s.pendingLineBuffer = ''
@@ -753,7 +756,9 @@ function catchUpJsonl(s: SessionState): void {
 
   if (sourceSize <= sidecarSize) return
 
-  const toRead = sourceSize - sidecarSize
+  // P0 fix: read delta in bounded chunks to avoid OOM on large transcripts.
+  const MAX_CHUNK = 10 * 1024 * 1024 // 10 MB per tick
+  const toRead = Math.min(sourceSize - sidecarSize, MAX_CHUNK)
   let bytes: Buffer
   try {
     const handle = fs.openSync(s.sourcePath, 'r')
@@ -769,19 +774,17 @@ function catchUpJsonl(s: SessionState): void {
     } finally { try { fs.closeSync(handle) } catch { /* ignore */ } }
   } catch (e) { noteDbError('tailer-host', e); return }
 
-  try { fs.appendFileSync(s.sidecarPath, bytes) } catch (e) {
-    noteDbError('tailer-host', e); return
-  }
-  s.bytesAppendedSinceSnapshot += bytes.length
-
+  // P0 fix (sidecar-cursor decoupling): parse lines and insert DB events
+  // BEFORE advancing the sidecar. Previously sidecar was written first,
+  // which meant a crash between sidecar-append and DB-insert permanently
+  // lost those turns (sidecar had advanced, restart would skip them).
+  // Now: parse → insert → sidecar-append, so a crash before sidecar-append
+  // simply re-reads the same bytes on restart.
   const text = s.pendingLineBuffer + bytes.toString('utf-8')
   const lastNl = text.lastIndexOf('\n')
   const complete = lastNl === -1 ? '' : text.slice(0, lastNl)
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
-  // Audit 2026-09-18 P1: when paused, sidecar was advanced above (raw copy
-  // maintained) but events must NOT be emitted. Count lines for accuracy
-  // but skip processUnit so no DB rows land during the pause window.
   if (!eventBus.paused) {
     for (const raw of complete.split('\n')) {
       const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
@@ -794,6 +797,19 @@ function catchUpJsonl(s: SessionState): void {
     for (const raw of complete.split('\n')) {
       if (raw.trim() || (raw.endsWith('\r') && raw.slice(0, -1).trim())) s.linesSeen++
     }
+  }
+
+  // Sidecar append AFTER successful DB processing — the forensic raw copy
+  // is still maintained, but the cursor (sidecar size) now reflects only
+  // bytes whose events have been committed.
+  try { fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 }) } catch (e) {
+    noteDbError('tailer-host', e); return
+  }
+  s.bytesAppendedSinceSnapshot += bytes.length
+
+  // If there is more data beyond the chunk cap, schedule another tick.
+  if (sourceSize - sidecarSize > toRead) {
+    setImmediate(() => catchUpJsonl(s))
   }
 }
 
@@ -1008,7 +1024,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return }
   const sidecarDir = path.join(projectDir, 'agent-transcripts')
-  try { fs.mkdirSync(sidecarDir, { recursive: true }) } catch { /* ignore */ }
+  try { fs.mkdirSync(sidecarDir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
   const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}.jsonl`)
   if (!isInsideDir(sidecarDir, sidecarPath)) return
 

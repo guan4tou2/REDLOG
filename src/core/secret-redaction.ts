@@ -30,7 +30,14 @@ const PATTERNS: Array<[RegExp, string]> = [
   [/-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----/g, '[PRIVATE_KEY_REDACTED]'],
   [/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[JWT_REDACTED]'],
   [/ghp_[A-Za-z0-9]{36}/g, '[GITHUB_TOKEN_REDACTED]'],
-  [/glpat-[A-Za-z0-9_-]{20}/g, '[GITLAB_TOKEN_REDACTED]']
+  [/glpat-[A-Za-z0-9_-]{20}/g, '[GITLAB_TOKEN_REDACTED]'],
+  // P0 additions — common secret formats previously missed
+  [/xox[bpsa]-[A-Za-z0-9-]{10,}/g, '[SLACK_TOKEN_REDACTED]'],
+  [/npm_[A-Za-z0-9]{36,}/g, '[NPM_TOKEN_REDACTED]'],
+  [/hf_[A-Za-z0-9]{20,}/g, '[HF_TOKEN_REDACTED]'],
+  [/GOCSPX-[A-Za-z0-9_-]+/g, '[GOOGLE_OAUTH_REDACTED]'],
+  [/[a-z+]+:\/\/[^/:@\s]+:[^/@\s]+@[^\s]+/gi, '[URI_CREDENTIALS_REDACTED]'],
+  [/MII[A-Za-z0-9+/]{100,}={0,2}/g, '[BASE64_KEY_REDACTED]']
 ]
 
 // v0.12.2: cheap prefilter. redactSecrets ran 8 regex replace() calls on
@@ -50,7 +57,7 @@ const PATTERNS: Array<[RegExp, string]> = [
 // (v0.12.2 originally included `[=: ]` in the union, but a literal space
 // matched every prose sentence and defeated the short-circuit; the fix is
 // to prefilter on the identifying keyword itself, not the separator.)
-const PREFILTER_RE = /api[_-]?key|api[_-]?secret|token|password|passwd|secret|authorization|bearer|AKIA|sk[-_]|BEGIN|eyJ|ghp_|glpat/i
+const PREFILTER_RE = /api[_-]?key|api[_-]?secret|token|password|passwd|secret|authorization|bearer|AKIA|sk[-_]|BEGIN|eyJ|ghp_|glpat|xox[bpsa]-|npm_|hf_|GOCSPX|:\/\/[^/:@\s]+:[^/@\s]+@|MII[A-Za-z0-9+/]{20}/i
 
 export function redactSecrets(input: unknown): string {
   if (typeof input !== 'string' || input.length === 0) {
@@ -62,7 +69,10 @@ export function redactSecrets(input: unknown): string {
   return out
 }
 
-const SENSITIVE_PATH_HINTS = ['.claude/', '.ssh/', '.env', '.netrc', 'credentials', '.aws/']
+const SENSITIVE_PATH_HINTS = [
+  '.claude/', '.ssh/', '.env', '.netrc', 'credentials', '.aws/',
+  '.npmrc', '.docker/config.json', '.kube/config', '.gnupg/', '.pgpass', '.pypirc'
+]
 
 export function outputIfPathHiddenByCommand(command: string, output: string): string {
   for (const hint of SENSITIVE_PATH_HINTS) {
