@@ -52,63 +52,23 @@ PR：https://github.com/guan4tou2/REDLOG/pull/114
 | 5 | session registry 跨專案殘留 | `stopHost()` 新增 `sessionRegistry.clear()` | `tailer-host.ts` |
 | 6 | DB error 60 秒後自動消失 | 新增 `dbErrorTotal` 累計計數 + `dbErrorFirstAt` 首次錯誤時間戳，分離「目前可寫入」與「曾有缺口」 | `capture-health.ts` |
 
+### Commit 7 — 暫停語意與專案歸屬
+
+| 項目 | 修復內容 | 檔案 |
+|------|----------|------|
+| 離線 spool 專案歸屬 | hooks 產生 spool 時嵌入 `_identity`（來自 `active-identity.json`）；replay 時比對身分，不符標記 `spool_attribution: 'mismatched'`，無身分標記 `'unattributed'` | `main/index.ts`, `shell-preexec-hook.sh`, `shell-hook.ps1`, `mitmproxy-addon.py`, `pcap-agent.py` |
+| AI 暫停期間補收 | `SessionState` 新增 `pauseSkippedLines` / `pauseStartedAt`；暫停時消耗但不處理行數；恢復時發出 `capture_gap` 系統事件 | `tailer-host.ts` |
+| 暫停寫入終端 `.cast` | 已在 P1 中由 `eventBus.paused` gate 覆蓋 | *(先前 commit)* |
+| 切換專案保留舊 terminal | 已在 P1 中由 `stopProject` finalization 覆蓋 | *(先前 commit)* |
+| AI 來源縮短清空舊副本 | 已在 P1 中由 sidecar archive 覆蓋 | *(先前 commit)* |
+
 ---
 
 ## 二、尚未處理項目 — 分析與建議
 
-### 2.1 暫停語意與專案歸屬（報告建議第一優先）
+### 2.1 暫停語意與專案歸屬 — ✅ 已完成
 
-這組問題的共同根因是**保存政策散落在 DB、tailer、PTY、spool，不是所有來源遵守同一保存邊界**。
-
-#### 2.1.1 離線 spool 沒有固定專案歸屬
-
-- **位置**：`src/main/index.ts:624`
-- **現況**：離線事件在恢復時歸入「目前開啟的專案」
-- **風險**：A 專案離線事件可能歸入後來開啟的 B 專案
-- **建議做法**：
-  - spool 事件在產生時就記錄 `project_id`、`session_id`、`operator_id`
-  - 恢復時依記錄歸屬，而非套用當前專案
-  - 無法判定歸屬的事件標記為「未分類」，不自動歸入
-  - 預估影響：需修改 spool 事件結構 + 恢復邏輯，涉及 `main/index.ts` + `db/events.ts`
-
-#### 2.1.2 暫停仍寫入終端 `.cast`
-
-- **位置**：`src/main/terminal-manager.ts:287`
-- **現況**：畫面暫停卻仍保存輸出到 `.cast` 檔
-- **建議做法**：
-  - 終端 writer 檢查 `eventBus.paused` 狀態
-  - 暫停時停止寫入 `.cast`，恢復時記錄缺口
-  - 或明確定義暫停為「不保存」，恢復時跳過期間
-  - 關鍵決策：**暫停 = 不保存** vs **暫停 = 延後讀取**，需要產品層決定
-
-#### 2.1.3 切換專案保留舊 terminal
-
-- **位置**：`src/main/index.ts:947`
-- **現況**：切換到 B 專案時，A 專案的 terminal session 未結束
-- **風險**：A 的結束事件可能使用 B 的身分
-- **建議做法**：
-  - 關閉 A 的 DB 前，先結束/封存所有 A session
-  - 或將每個 terminal session 永久綁定專案，隔離寫入
-  - 需要 `terminal-manager.ts` 的 session 綁定重構
-
-#### 2.1.4 AI 暫停期間稍後被補收
-
-- **位置**：`tailer-host.ts:699,712`
-- **現況**：暫停不推進來源位置，恢復時補入使用者以為未保存的內容
-- **建議做法**：
-  - 恢復時跳過暫停期間的 JSONL 行，記錄缺口事件
-  - 在 `SessionState` 加入 `pausedAtOffset` 欄位
-  - 恢復時比較 `pausedAtOffset` 與當前 offset，跳過差值
-  - 插入 `system.capture_gap` 事件，記錄跳過的時間區間
-
-#### 2.1.5 AI 來源縮短清空舊副本
-
-- **位置**：`tailer-host.ts:721`
-- **現況**：truncate 時清空 sidecar，原始對話消失
-- **建議做法**：
-  - 來源縮短時，舊 sidecar 封存為上一代（rename 加時間戳後綴）
-  - 新來源另開 sidecar
-  - hash 不取代原始內容
+5 項子問題全數解決（見 Commit 7），其中 3 項在 P0/P1 先行修復。
 
 ### 2.2 AI 原始保存與解析（部分完成）
 

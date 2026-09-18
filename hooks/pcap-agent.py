@@ -59,7 +59,20 @@ def _get_redlog_connection():
     return REDLOG_PORT_FILE.read_text().strip(), REDLOG_TOKEN_FILE.read_text().strip()
 
 
+_IDENTITY_PATH = Path.home() / ".redlog" / "active-identity.json"
+
+
+def _embed_identity(payload: dict) -> None:
+    try:
+        ident = json.loads(_IDENTITY_PATH.read_text(encoding="utf-8"))
+        if "engagementId" in ident:
+            payload["_identity"] = ident
+    except Exception:
+        pass
+
+
 def _spool_payload(payload: dict) -> None:
+    _embed_identity(payload)
     try:
         SPOOL_DIR.mkdir(parents=True, exist_ok=True)
         (SPOOL_DIR / f"{int(time.time() * 1000)}-{id(payload)}.json").write_text(

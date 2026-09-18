@@ -110,6 +110,27 @@ let chainSampleTimer: ReturnType<typeof setInterval> | null = null
 let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
 
+const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
+
+function writeSpoolIdentity(engagementId: string, operatorId: string): void {
+  try {
+    fs.mkdirSync(path.dirname(SPOOL_IDENTITY_PATH), { recursive: true })
+    fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
+  } catch { /* best-effort */ }
+}
+
+function clearSpoolIdentity(): void {
+  try { fs.unlinkSync(SPOOL_IDENTITY_PATH) } catch { /* already gone */ }
+}
+
+function readSpoolIdentity(): { engagementId: string; operatorId: string } | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(SPOOL_IDENTITY_PATH, 'utf8'))
+    if (typeof raw.engagementId === 'string' && typeof raw.operatorId === 'string') return raw
+  } catch { /* missing or malformed */ }
+  return null
+}
+
 // Timers and pty callbacks keep firing while the app tears down, and a
 // destroyed BrowserWindow is still non-null — send through here so a quit
 // mid-poll can't raise "Object has been destroyed".
@@ -435,6 +456,7 @@ function startProject(project: ProjectMeta): void {
   currentEngagementId = engagementId
   currentOperatorId = operatorId
 
+  writeSpoolIdentity(engagementId, operatorId)
   initDB(projectDir)
 
   // Bring the recording index up to date in the background. Idempotent and
@@ -622,12 +644,16 @@ function startProject(project: ProjectMeta): void {
 
   // v0.6.87 A2: replay shell-hook spool. Any commands run in an external shell
   // while RedLog was closed were spooled to ~/.redlog/pending/*.json — replay
-  // them into the current chain now. Newest project owns the recovered rows.
+  // them into the current chain now.
+  // Audit 2026-09-18: spool files now carry `_identity` from the project that was
+  // open when the event was spooled. Mismatched events are flagged, not silently
+  // attributed to the current project.
   try {
     const spoolDir = path.join(homedir(), '.redlog', 'pending')
     if (fs.existsSync(spoolDir)) {
       const files = fs.readdirSync(spoolDir).filter((f) => f.endsWith('.json')).sort()
       let replayed = 0
+      let unattributed = 0
       for (const f of files) {
         const full = path.join(spoolDir, f)
         try {
@@ -636,17 +662,25 @@ function startProject(project: ProjectMeta): void {
           const agentType = String(payload?.agent_type || '')
           const data = payload?.data && typeof payload.data === 'object' ? payload.data : null
           if (agentType && data) {
-            const ev = insertEvent(agentType, { ...data, recovered_from_spool: true }, { engagementId, operatorId })
+            const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
+            const useEngagement = ident?.engagementId || engagementId
+            const useOperator = ident?.operatorId || operatorId
+            const mismatched = ident?.engagementId != null && ident.engagementId !== engagementId
+            const ev = insertEvent(agentType, {
+              ...data,
+              recovered_from_spool: true,
+              ...(mismatched ? { spool_attribution: 'mismatched', spool_original_engagement: ident!.engagementId } : {}),
+              ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
+            }, { engagementId: useEngagement, operatorId: useOperator })
             if (ev) { eventBus.publish(ev); replayed++ }
+            if (mismatched || !ident?.engagementId) unattributed++
           }
           fs.unlinkSync(full)
         } catch (e) {
-          // Malformed spool file — move it aside instead of deleting so we
-          // can inspect later.
           try { fs.renameSync(full, full + '.bad') } catch { /* */ }
         }
       }
-      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)${unattributed > 0 ? ` (${unattributed} unattributed)` : ''}`)
     }
   } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
@@ -666,7 +700,16 @@ function startProject(project: ProjectMeta): void {
           const at = String(payload?.agent_type || '')
           const d = payload?.data && typeof payload.data === 'object' ? payload.data : null
           if (at && d) {
-            const ev = insertEvent(at, { ...d, recovered_from_spool: true }, { engagementId: currentEngagementId!, operatorId: currentOperatorId! })
+            const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
+            const useEng = ident?.engagementId || currentEngagementId!
+            const useOp = ident?.operatorId || currentOperatorId!
+            const mismatched = ident?.engagementId != null && ident.engagementId !== currentEngagementId
+            const ev = insertEvent(at, {
+              ...d,
+              recovered_from_spool: true,
+              ...(mismatched ? { spool_attribution: 'mismatched', spool_original_engagement: ident!.engagementId } : {}),
+              ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
+            }, { engagementId: useEng, operatorId: useOp })
             if (ev) { eventBus.publish(ev); count++ }
           }
           fs.unlinkSync(full)
@@ -970,6 +1013,7 @@ function stopProject(): void {
   killAllTerminals()
   closeDB()
   resetBodiesDirCache()
+  clearSpoolIdentity()
   activeProject = null
   currentEngagementId = null
   currentOperatorId = null
