@@ -77,10 +77,12 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   // a summary line for bytes that already have one.
   const [castHits, setCastHits] = useState<CastHit[]>([])
   const [castPending, setCastPending] = useState(0)
+  const [knownTypes, setKnownTypes] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Audit 2026-09-18 P4: monotonic counter so stale slow responses don't
   // overwrite newer results.
   const searchSeqRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const { t } = useI18n()
 
   // Hoisted out of the render IIFE it used to live in so the keyboard hook can
@@ -103,11 +105,13 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setSearched(false)
       return
     }
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
     setSearching(true)
     const seq = ++searchSeqRef.current
     window.redlog.events.search(q, 200, typeFilter ? { agentType: typeFilter } : undefined).then(async (r) => {
-      // Audit 2026-09-18 P4: discard stale responses.
-      if (seq !== searchSeqRef.current) return
+      if (ac.signal.aborted || seq !== searchSeqRef.current) return
       // `searchEvents` is a LIKE over each row's own bytes, so a marker
       // corrected since it was written matches its OLD title only, and the new
       // one matches the amendment row alone. Showing that bare correction —
@@ -148,9 +152,10 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     // Fired in parallel and settled independently: the recording index can be
     // slower or absent, and making the event results wait on it would slow
     // the common case for the rarer one.
+    const castSeq = seq
     window.redlog.events.searchCasts?.(q, 50)
-      .then((r) => setCastHits(r ?? []))
-      .catch(() => setCastHits([]))
+      .then((r) => { if (castSeq === searchSeqRef.current) setCastHits(r ?? []) })
+      .catch(() => { if (castSeq === searchSeqRef.current) setCastHits([]) })
   }, [typeFilter])
 
   useEffect(() => {
@@ -158,6 +163,13 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       .then((s) => setCastPending(s?.pending ?? 0))
       .catch(() => { /* older main process; treat as fully indexed */ })
   }, [])
+
+  useEffect(() => {
+    (window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
+      .distinctAgentTypes?.()
+      .then((types) => setKnownTypes(types ?? []))
+      .catch(() => {})
+  }, [results])
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
@@ -208,31 +220,33 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             )}
           </div>
         )}
+        {/* Type filter chips from DB DISTINCT — always visible once a search
+            has run so clearing the filter remains possible even on zero results. */}
+        {searched && knownTypes.length > 1 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {knownTypes.map((type) => {
+              const count = results.filter((e) => e.agentType === type).length
+              return (
+                <button
+                  key={type}
+                  onClick={() => setTypeFilter(typeFilter === type ? null : type)}
+                  className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                    typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
+                  }`}
+                >
+                  <span className={TYPE_COLORS[type] || ''}>{type}</span>
+                  {count > 0 && <span className="text-redlog-text-faint"> ·{count}</span>}
+                </button>
+              )
+            })}
+          </div>
+        )}
         {results.length > 0 && (() => {
-          // Bucket by agentType so the filter chips can show counts inline.
-          const byType = new Map<string, number>()
-          for (const e of results) byType.set(e.agentType, (byType.get(e.agentType) ?? 0) + 1)
-          const types = [...byType.entries()].sort((a, b) => b[1] - a[1])
           return (
           <>
             <div className="text-redlog-text-dim text-xs mb-2">
               {t('search.results', { count: filtered.length })}
             </div>
-            {types.length > 1 && (
-              <div className="flex flex-wrap gap-1 mb-2">
-                {types.map(([type, count]) => (
-                  <button
-                    key={type}
-                    onClick={() => setTypeFilter(typeFilter === type ? null : type)}
-                    className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
-                      typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
-                    }`}
-                  >
-                    <span className={TYPE_COLORS[type] || ''}>{type}</span> <span className="text-redlog-text-faint">·{count}</span>
-                  </button>
-                ))}
-              </div>
-            )}
             <div className="space-y-1" {...listNav.containerProps} aria-label={t('search.resultsLabel', { count: filtered.length })}>
               {filtered.map((e, i) => {
                 const rowProps = listNav.itemProps(i)
