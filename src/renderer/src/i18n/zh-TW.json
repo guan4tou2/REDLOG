@@ -1101,5 +1101,18 @@
   "eventTitle.connectionSaturated": "⇄ 單次輪詢 {{count}} 條連線——只記錄數量，不逐條記錄",
   "eventTitle.connectionClosed": "已關閉",
   "eventTitle.droppedAfter": "{{age}} 後被丟棄",
-  "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} 已輪替"
+  "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} 已輪替",
+  "filter.title": "篩選",
+  "filter.target": "目標",
+  "filter.type": "類型",
+  "filter.time": "時間",
+  "filter.allTargets": "所有目標",
+  "filter.allTypes": "所有類型",
+  "filter.allTime": "全部時間",
+  "filter.clearAll": "全部清除",
+  "filter.last1h": "1 小時",
+  "filter.last6h": "6 小時",
+  "filter.last24h": "24 小時",
+  "filter.since": "自 {{time}} 起",
+  "filter.before": "{{time}} 之前"
 }
