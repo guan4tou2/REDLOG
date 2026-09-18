@@ -6,6 +6,7 @@ import { insertEvent } from '../../core/db/events'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 import { getProjectDir } from '../../core/db/index'
+import { dHashFromBgra, hammingDistance } from '../../core/dhash'
 
 export class ScreenshotAgent {
   private lastHash = ''
@@ -105,7 +106,7 @@ export class ScreenshotAgent {
         if (this.diffThreshold > 0) {
           const dHash = this.computeDHash(image)
           if (this.lastDHash != null) {
-            const dist = ScreenshotAgent.hammingDistance(dHash, this.lastDHash)
+            const dist = hammingDistance(dHash, this.lastDHash)
             if (dist < this.diffThreshold) return null
           }
           this.lastDHash = dHash
@@ -158,40 +159,8 @@ export class ScreenshotAgent {
     }
   }
 
-  // dHash (difference hash) — compare each pixel against its right-hand
-  // neighbor in an 8x9 grayscale downsample, produce a 64-bit signature.
-  // Small visual changes (mouse cursor, one-line terminal scroll) shift a
-  // handful of bits; a whole new window shifts dozens. Cheap enough to run
-  // every tick even at 30s cadence.
   private computeDHash(image: Electron.NativeImage): bigint {
-    // resize returns a fresh nativeImage; toBitmap returns BGRA row-major.
     const small = image.resize({ width: 9, height: 8, quality: 'good' })
-    const buf = small.toBitmap()
-    // Build a hash by walking each row and comparing pixel i to pixel i+1.
-    // Result: 8 rows × 8 bits = 64 bits total.
-    let hash = 0n
-    for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-        const i = (row * 9 + col) * 4
-        const j = (row * 9 + col + 1) * 4
-        // Sum-of-channels stand-in for luminance — perfect luma would use
-        // 0.299R + 0.587G + 0.114B, but for a difference comparison the
-        // exact weighting doesn't matter.
-        const a = buf[i] + buf[i + 1] + buf[i + 2]
-        const b = buf[j] + buf[j + 1] + buf[j + 2]
-        hash = (hash << 1n) | (a > b ? 1n : 0n)
-      }
-    }
-    return hash
-  }
-
-  private static hammingDistance(a: bigint, b: bigint): number {
-    let x = a ^ b
-    let count = 0
-    while (x > 0n) {
-      count += Number(x & 1n)
-      x >>= 1n
-    }
-    return count
+    return dHashFromBgra(small.toBitmap())
   }
 }
