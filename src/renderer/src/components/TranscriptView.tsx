@@ -91,7 +91,9 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     if (e.agentType === 'shell' && sub === 'command_end') {
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
       const inlineOut = [d.stdout, d.stderr, d.output].filter((x) => typeof x === 'string').join('')
-      const exit = Number(d.exit_code ?? 0)
+      const exitRaw = d.exit_code
+      const exitKnown = exitRaw != null
+      const exit = exitKnown ? Number(exitRaw) : null
       let outputNote: string | undefined
       let output: string | undefined
       let outputBytes: number | undefined
@@ -104,7 +106,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
         input: `$ ${String(d.command ?? '')}`,
         output, outputBytes, outputNote,
-        meta: `exit ${exit}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
+        meta: `${exitKnown ? `exit ${exit}` : 'exit unknown'}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}`,
         events: [e]
       })
       continue
@@ -131,20 +133,38 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
           outputNote: 'pending',
           events: [e]
         }
-        if (typeof d.tool_use_id === 'string') pendingTool.set(d.tool_use_id as string, b)
+        if (typeof d.tool_use_id === 'string') {
+          const tk = `${d.session_id ?? ''}:${d.tool_use_id}`
+          pendingTool.set(tk, b)
+        }
         out.push(b)
+        continue
+      }
+      if (sub === 'tool_interrupted') {
+        const tk = typeof d.tool_use_id === 'string' ? `${d.session_id ?? ''}:${d.tool_use_id}` : null
+        const b = tk ? pendingTool.get(tk) : undefined
+        if (b) {
+          b.outputNote = 'interrupted'
+          b.events.push(e)
+          pendingTool.delete(tk!)
+        } else {
+          out.push({
+            id: e.id, ts: e.timestamp, kind: 'agent-tool', actor: String(d.agent ?? 'agent'),
+            input: '(tool interrupted)', outputNote: 'interrupted', events: [e]
+          })
+        }
         continue
       }
       if (sub === 'tool_result') {
         const body = typeof d.output === 'string' ? (d.output as string) : ''
-        const b = typeof d.tool_use_id === 'string' ? pendingTool.get(d.tool_use_id as string) : undefined
+        const tk = typeof d.tool_use_id === 'string' ? `${d.session_id ?? ''}:${d.tool_use_id}` : null
+        const b = tk ? pendingTool.get(tk) : undefined
         if (b) {
-          // Fold into the call that produced it — one exchange, not two rows.
           b.output = body
           b.outputBytes = typeof d.output_length === 'number' ? (d.output_length as number) : body.length
           b.outputNote = undefined
           b.events.push(e)
-          pendingTool.delete(d.tool_use_id as string)
+          pendingTool.delete(tk!)
         } else {
           out.push({
             id: e.id, ts: e.timestamp, kind: 'agent-tool', actor: String(d.agent ?? 'agent'),
@@ -242,9 +262,29 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await window.redlog.events.query({ limit: 2000 }) as Ev[]
-      // queryEvents returns newest-first; a transcript reads oldest-first.
-      setEvents([...rows].reverse())
+      // Balanced per-type query so high-volume types (HTTP/scanner) don't
+      // crowd out AI conversation and shell events.
+      const buckets: Array<{ agentType?: string; limit: number }> = [
+        { agentType: 'agent', limit: 800 },
+        { agentType: 'shell', limit: 400 },
+        { agentType: 'scanner', limit: 300 },
+        { agentType: 'system', limit: 200 },
+        { agentType: 'marker', limit: 100 },
+        { agentType: 'loot', limit: 100 },
+        { agentType: 'pivot', limit: 100 },
+      ]
+      const results = await Promise.all(
+        buckets.map((b) => window.redlog.events.query(b) as Promise<Ev[]>)
+      )
+      const seen = new Set<string>()
+      const merged: Ev[] = []
+      for (const batch of results) {
+        for (const e of batch) {
+          if (!seen.has(e.id)) { seen.add(e.id); merged.push(e) }
+        }
+      }
+      merged.sort((a, b) => a.timestamp - b.timestamp)
+      setEvents(merged)
     } finally { setLoading(false) }
   }, [])
 
@@ -289,7 +329,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
     for (const b of shown) {
       lines.push(`## ${new Date(b.ts).toISOString()} — ${b.actor}${b.meta ? ` (${b.meta})` : ''}`, '')
       lines.push('```', b.input, '```', '')
-      if (b.output) lines.push('```', b.output.slice(0, MAX_INLINE), '```', '')
+      if (b.output) {
+        const truncated = b.output.length > MAX_INLINE
+        lines.push('```', b.output.slice(0, MAX_INLINE), '```')
+        if (truncated) lines.push(`_[truncated — ${fmtBytes(b.output.length)} total]_`)
+        lines.push('')
+      }
       else if (b.outputNote) lines.push(`_${t(`transcript.note.${b.outputNote}`)}_`, '')
     }
     try {

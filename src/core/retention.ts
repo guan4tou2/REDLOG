@@ -239,7 +239,7 @@ export function sweepRetention(config: {
   const agentTranscripts = sweepDir(
     path.join(projectDir, 'agent-transcripts'),
     agentDays,
-    (n) => n.endsWith('.jsonl'),
+    (n) => n.endsWith('.jsonl') || n.endsWith('.bak'),
     'agent_transcript_pruned',
     opts
   )

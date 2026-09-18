@@ -82,7 +82,7 @@ _redlog_send_event() {
 
   local payload
   payload=$(python3 -c "
-import json, sys, os
+import json, sys, os, pathlib
 d = {
     'agent_type': 'shell',
     'data': {
@@ -99,6 +99,13 @@ if tid:
     d['data']['terminalId'] = tid
 if sys.argv[3]:
     d['data'].update(json.loads(sys.argv[3]))
+# Embed active project identity so spooled events can be attributed correctly.
+try:
+    ident = json.loads(pathlib.Path.home().joinpath('.redlog', 'active-identity.json').read_text())
+    if 'engagementId' in ident:
+        d['_identity'] = ident
+except Exception:
+    pass
 print(json.dumps(d))
 " "$subtype" "$command" "$extra" 2>/dev/null) || return 0
 

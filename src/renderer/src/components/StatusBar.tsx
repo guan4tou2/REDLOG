@@ -5,6 +5,7 @@ import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
+import { formatTime } from '../lib/time'
 
 // The ⌘. chord, drawn the way this platform writes it. Read from the one
 // shortcut table so the toast cannot drift from the binding (§11).
@@ -23,6 +24,7 @@ export default function StatusBar(): JSX.Element {
   const [recording, setRecording] = useState(true)
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
+  const [lastEventAt, setLastEventAt] = useState<number | null>(null)
   const { t } = useI18n()
   const issues = useIssues()
 
@@ -80,7 +82,9 @@ export default function StatusBar(): JSX.Element {
           if (!h || typeof h !== 'object' || !('verdict' in h)) return
           const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
           const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
+          const evAt = (h as { lastEventAt?: number | null }).lastEventAt ?? null
           setCaptureVerdict(verdict)
+          setLastEventAt(evAt)
           // A dark or partial pipeline is a *condition*, not an event, so it
           // goes to the issue store rather than firing a toast every poll
           // (§9). The one-shot toast on the healthy → not-healthy transition
@@ -217,13 +221,18 @@ export default function StatusBar(): JSX.Element {
           : captureVerdict === 'dark' || captureVerdict === 'partial'
             ? 'text-amber-400/80'
             : 'text-red-400/80'
+        const lastEventLine = lastEventAt
+          ? t('statusBar.lastEvent', { time: formatTime(lastEventAt, { seconds: true }) })
+          : recording ? t('statusBar.lastEventNever') : ''
         const tooltip = !recording
           ? t('statusBar.clickToResume')
           : captureVerdict === 'dark'
-            ? t('statusBar.captureDark')
+            ? `${t('statusBar.captureDark')}\n${lastEventLine}`
             : captureVerdict === 'partial'
-              ? t('statusBar.capturePartial')
-              : t('statusBar.clickToPause')
+              ? `${t('statusBar.capturePartial')}\n${lastEventLine}`
+              : lastEventAt
+                ? `${t('statusBar.clickToPause')}\n${lastEventLine}`
+                : `${t('statusBar.captureWaiting')}\n${t('statusBar.lastEventNever')}`
         return (
           <button
             data-testid="status-bar-recording"
@@ -235,7 +244,11 @@ export default function StatusBar(): JSX.Element {
             aria-label={tooltip}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-            <span className={labelColor}>{recording ? t('statusBar.rec') : t('statusBar.paused')}</span>
+            <span className={labelColor}>{
+              !recording ? t('statusBar.paused')
+              : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
+              : t('statusBar.rec')
+            }</span>
             <span className="text-redlog-text-dim tabular-nums">{uptimeStr}</span>
           </button>
         )

@@ -59,6 +59,7 @@ const api: RedLogAPI = {
     getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number, opts?: { agentType?: string }) => ipcRenderer.invoke('events:search', query, limit, opts),
+    distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
     hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
