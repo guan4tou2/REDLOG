@@ -157,12 +157,37 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 is a different errand from taking the log away to write up. */}
             <Option
               label={t('export.bundle')}
-              onPick={() => void run(t('export.bundle'), async () => {
-                const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ ok: boolean; outDir?: string }> }
-                if (!api.exportBundle) return null
-                const r = await api.exportBundle({ maskOutOfScope: maskScope })
-                return r.ok ? (r.outDir ?? null) : null
-              })}
+              onPick={() => void (async () => {
+                setBusy(true)
+                try {
+                  const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ ok: boolean; outDir?: string; manifest?: Record<string, unknown> }> }
+                  if (!api.exportBundle) { setBusy(false); return }
+                  const r = await api.exportBundle({ maskOutOfScope: maskScope })
+                  if (r.ok && r.outDir) {
+                    const m = r.manifest as {
+                      tiers?: { chained?: number; logged?: number }
+                      sanitizedOutOfScope?: number
+                      attachmentScopePolicy?: { screenshots?: { included: number; excludedOutOfScope: number }; casts?: { included: number } }
+                    } | undefined
+                    const chained = m?.tiers?.chained ?? 0
+                    const logged = m?.tiers?.logged ?? 0
+                    const masked = m?.sanitizedOutOfScope ?? 0
+                    const shots = m?.attachmentScopePolicy?.screenshots
+                    const casts = m?.attachmentScopePolicy?.casts
+                    const detail = [
+                      t('export.bundleSummaryEvents', { chained, logged }),
+                      masked > 0 ? t('export.bundleSummaryMasked', { count: masked }) : '',
+                      shots ? t('export.bundleSummaryShots', { included: shots.included, excluded: shots.excludedOutOfScope }) : '',
+                      casts?.included ? t('export.bundleSummaryCasts', { count: casts.included }) : ''
+                    ].filter(Boolean).join('\n')
+                    toast(t('export.done', { label: t('export.bundle') }), { type: 'success', why: r.outDir, detail })
+                  } else {
+                    toast(t('export.failed', { label: t('export.bundle') }), { type: 'error', why: t('toast.exportFailedWhy') })
+                  }
+                } catch (e) {
+                  toast(t('export.failed', { label: t('export.bundle') }), { type: 'error', why: t('toast.exportFailedWhy'), detail: String((e as Error)?.message ?? e) })
+                } finally { setBusy(false); setOpen(false) }
+              })()}
             />
             {/* A2 override. Checked = out-of-scope captured content is redacted
                 in the bundle. Unchecked ships it raw — labelled as a warning
