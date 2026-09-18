@@ -82,18 +82,18 @@ PR：https://github.com/guan4tou2/REDLOG/pull/114
 - **修復**：`TranscriptView.load()` 改為 per-type balanced query（agent 800 / shell 400 / scanner 300 / system 200 / marker 100 / loot 100 / pivot 100），`Promise.all` 並行查詢後 dedup + 時間排序合併。AI 對話事件不再被 HTTP 事件擠出。
 - **檔案**：`TranscriptView.tsx`
 
-### 2.3 搜尋、篩選與匯出
+### 2.3 搜尋、篩選與匯出 — ✅ 已完成
 
-| # | 問題 | 建議做法 |
-|---|------|---------|
-| 1 | 類型 filter 由 200 筆結果產生 | 從 DB 直接查詢 `DISTINCT agent_type` 建立固定 facets |
-| 2 | 空結果時清除入口消失 | 搜尋列常駐顯示已套條件與清除按鈕 |
-| 3 | 搜尋沒有非同步請求序號保護 | AbortController + request serial number，只接受最後一筆 |
-| 4 | 證據包成功後 UI 顯示失敗 | 統一 `ExportMenu` / `data-export.ts` 回傳型別（`zipPath` vs `outDir`）|
-| 5 | 全部匯出只取 100,000 筆 | 分頁串流匯出，完成後核對筆數，標示是否為完整 |
-| 6 | 外部 HTTP body 沒一起交付 | `bundle-export.ts` 依事件收集 `http-bodies/` refs，打包後檢查缺檔 |
-| 7 | 非標的 body 物件未遮蔽 | `scope-sanitize.ts` 擴充處理結構化 / base64 body |
-| 8 | 附件與文字 scope 政策不一致 | 交付前可排除附件；無法判定歸屬者明示「未分類」 |
+| # | 問題 | 修復方式 | 檔案 |
+|---|------|---------|------|
+| 1 | 類型 filter 由 200 筆結果產生 | 新增 `distinctAgentTypes()` DB 查詢；IPC + preload bridge；SearchPanel 使用 DB facets | `event-queries.ts`, `main/index.ts`, `preload/index.ts`, `SearchPanel.tsx` |
+| 2 | 空結果時清除入口消失 | filter chips 移至 `results.length > 0` 區塊外；clear-filter 按鈕常駐；Esc 重設 | `SearchPanel.tsx` |
+| 3 | 搜尋沒有非同步請求序號保護 | `AbortController` + `searchSeqRef` 序號保護；cast 搜尋共用序號驗證 | `SearchPanel.tsx` |
+| 4 | 證據包成功後 UI 顯示失敗 | 已在現行程式修正（`r.outDir` 正確對應），無需額外變更 | `ExportMenu.tsx` |
+| 5 | 全部匯出只取 100,000 筆 | `queryScopeFilteredEvents` 改為 50k 分頁 + 500k 上限，回傳 `{ events, truncated }` | `event-aggregates.ts`, `data-export.ts` |
+| 6 | 外部 HTTP body 沒一起交付 | `bundle-export.ts` 新增 `http-bodies/` 複製區塊，逐檔 SHA-256 + manifest | `bundle-export.ts` |
+| 7 | 非標的 body 物件未遮蔽 | `isUnclassifiedScope()` 辨識無 target 事件；`scopeMaskReplacements` 對 unclassified 套用 `[redacted: no target — scope unclassified]` | `scope-sanitize.ts` |
+| 8 | 附件與文字 scope 政策不一致 | screenshots: 依 DB event target_id 過濾 out-of-scope、計數 unattributed；casts: 維持全量（跨目標裁切不安全）；manifest 新增 `attachmentScopePolicy` 揭露各附件類型處理方式 | `bundle-export.ts` |
 
 ### 2.4 UI/UX 最小改善
 
