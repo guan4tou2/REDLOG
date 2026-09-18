@@ -103,6 +103,29 @@ export interface ParsedTurn {
   toolInput?: Record<string, unknown>
   toolOutput?: string
   hasThinking?: boolean
+  /** Audit 2026-09-18 P2: wall-clock timestamp from the source transcript
+   *  (e.g. Claude Code's `timestamp` field). Lets a reviewer correlate a
+   *  turn with the agent's own timeline rather than relying solely on
+   *  RedLog's insert-time `created_at`. */
+  sourceTimestamp?: number
+  // P2-3: model refusal / API error / permission decision metadata
+  systemSubtype?: string
+  refusalCategory?: string
+  refusalExplanation?: string
+  refusalDirection?: string
+  originalModel?: string
+  fallbackModel?: string
+  errorType?: string
+  errorMessage?: string
+  toolDenialKind?: string
+  toolResultRemedy?: string
+  // P2-4: expanded token usage + response metadata
+  stopReason?: string
+  usageCacheCreation?: number
+  usageCacheRead?: number
+  usageThinkingTokens?: number
+  serviceTier?: string
+  imageBlockCount?: number
 }
 
 /** v0.8.3: control surface handed to `adapter.init(...)` so an adapter can
@@ -244,22 +267,43 @@ interface SessionState {
   idleTimer: NodeJS.Timeout | null
   lastSnapshotBytes: number
   bytesAppendedSinceSnapshot: number
-  driftAdvisoryFired: boolean
+  driftAdvisoryFired: Set<string>
   parentMissingAdvisoryFired: boolean
   toolCallsSeen: number
   toolCallsEmitted: number
   toolGapAdvisoryFired: boolean
+  /** P1: incremental SHA-256 of the sidecar, updated on each append. */
+  runningHash: crypto.Hash
+  /** Lines skipped while recording was paused (reset on gap event emit). */
+  pauseSkippedLines: number
+  /** Timestamp when the first pause-skipped line was encountered. */
+  pauseStartedAt: number | null
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
 let cfg: TailerHostConfig = { enabled: false, engagementId: '', operatorId: '' }
 const watchersByAgent = new Map<string, FSWatcher>()
+// P2-5: write coalescing — rapid chokidar `change` events for the same
+// session are debounced into a single catchUpSession call over a 50ms window.
+const coalesceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** Keyed by `${agentKind}:${sessionId}` — two adapters can produce the same
  *  bare sessionId (e.g. Codex + Claude both name a session 'rollout-abc'). */
 const sessions = new Map<string, SessionState>()
 
 function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
+}
+
+const COALESCE_MS = 50
+
+function coalescedCatchUp(agentKind: string, sid: string): void {
+  const key = sessionKey(agentKind, sid)
+  const existing = coalesceTimers.get(key)
+  if (existing) clearTimeout(existing)
+  coalesceTimers.set(key, setTimeout(() => {
+    coalesceTimers.delete(key)
+    if (sessions.has(key)) catchUpSession(agentKind, sid)
+  }, COALESCE_MS))
 }
 
 // ─── Session ID registry (Hybrid D Phase 1) ────────────────────────────────
@@ -413,7 +457,7 @@ const TOOL_INPUT_SCAN_FIELDS: Record<string, Set<string>> = {
   Edit: new Set(['old_string', 'new_string']),
   Grep: new Set(['pattern']),
   Glob: new Set([]),                // pattern is a glob, not free-text
-  WebFetch: new Set(['prompt']),    // URL is not user-secret; prompt is
+  WebFetch: new Set(['prompt', 'url']),
   WebSearch: new Set(['query']),
   Task: new Set(['prompt', 'description']),
   // OpenCode / Codex tools (best-effort; unknown tools scan-all so we're
@@ -557,6 +601,22 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     ...(s.postCompact ? { post_compact: true } : {}),
     ...(typeof t.usageTokensIn === 'number' ? { usage_tokens_in: t.usageTokensIn } : {}),
     ...(typeof t.usageTokensOut === 'number' ? { usage_tokens_out: t.usageTokensOut } : {}),
+    ...(typeof t.usageCacheCreation === 'number' ? { usage_cache_creation: t.usageCacheCreation } : {}),
+    ...(typeof t.usageCacheRead === 'number' ? { usage_cache_read: t.usageCacheRead } : {}),
+    ...(typeof t.usageThinkingTokens === 'number' ? { usage_thinking_tokens: t.usageThinkingTokens } : {}),
+    ...(t.serviceTier ? { service_tier: t.serviceTier } : {}),
+    ...(t.stopReason ? { stop_reason: t.stopReason } : {}),
+    ...(typeof t.imageBlockCount === 'number' ? { image_block_count: t.imageBlockCount } : {}),
+    ...(typeof t.sourceTimestamp === 'number' ? { source_timestamp: t.sourceTimestamp } : {}),
+    ...(t.refusalCategory ? { refusal_category: t.refusalCategory } : {}),
+    ...(t.refusalExplanation ? { refusal_explanation: t.refusalExplanation } : {}),
+    ...(t.refusalDirection ? { refusal_direction: t.refusalDirection } : {}),
+    ...(t.originalModel ? { original_model: t.originalModel } : {}),
+    ...(t.fallbackModel ? { fallback_model: t.fallbackModel } : {}),
+    ...(t.errorType ? { error_type: t.errorType } : {}),
+    ...(t.errorMessage ? { error_message: t.errorMessage } : {}),
+    ...(t.toolDenialKind ? { tool_denial_kind: t.toolDenialKind } : {}),
+    ...(t.toolResultRemedy ? { tool_result_remedy: t.toolResultRemedy } : {}),
     ...(causesArr ? { _causes: causesArr } : {})
   }
 
@@ -630,6 +690,8 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     if (t.textContent !== undefined) data.full_length = t.textContent.length
   } else if (subtype === 'tool_interrupted' || subtype === 'away_summary') {
     if (preview !== undefined) data.preview = preview
+  } else if (subtype === 'model_refusal' || subtype === 'api_error') {
+    if (t.systemSubtype) data.system_subtype = t.systemSubtype
   }
 
   try {
@@ -696,7 +758,6 @@ function pendingSize(s: SessionState): number {
  *  Handles both per-line (JSONL) and per-message (file-per-unit) adapters
  *  based on `adapter.perMessageDir`. Public for testability. */
 export function catchUpSession(agentKind: string, sessionId: string): void {
-  if (eventBus.paused) return
   const s = sessions.get(sessionKey(agentKind, sessionId))
   if (!s) return
   if (s.adapter.perMessageDir) {
@@ -718,6 +779,15 @@ function catchUpJsonl(s: SessionState): void {
 
   if (shouldReset) {
     const oldHash = fileSha256(s.sidecarPath)
+    // Audit 2026-09-18 P1: archive the sidecar before truncating so the raw
+    // pre-compact transcript is preserved for forensic review.
+    if (sidecarSize > 0) {
+      const archivePath = s.sidecarPath + `.${Date.now()}.bak`
+      try {
+        fs.copyFileSync(s.sidecarPath, archivePath)
+        fs.chmodSync(archivePath, 0o600)
+      } catch { /* best-effort */ }
+    }
     try { fs.truncateSync(s.sidecarPath, 0) } catch { /* ignore */ }
     s.pendingLineBuffer = ''
     s.redlogIdByUuid.clear()
@@ -725,6 +795,7 @@ function catchUpJsonl(s: SessionState): void {
     s.postCompact = true
     s.lastSnapshotBytes = 0
     s.bytesAppendedSinceSnapshot = 0
+    s.runningHash = crypto.createHash('sha256')
     try {
       const ev = insertEvent('agent', {
         subtype: 'transcript_compacted',
@@ -742,7 +813,9 @@ function catchUpJsonl(s: SessionState): void {
 
   if (sourceSize <= sidecarSize) return
 
-  const toRead = sourceSize - sidecarSize
+  // P0 fix: read delta in bounded chunks to avoid OOM on large transcripts.
+  const MAX_CHUNK = 10 * 1024 * 1024 // 10 MB per tick
+  const toRead = Math.min(sourceSize - sidecarSize, MAX_CHUNK)
   let bytes: Buffer
   try {
     const handle = fs.openSync(s.sourcePath, 'r')
@@ -758,24 +831,65 @@ function catchUpJsonl(s: SessionState): void {
     } finally { try { fs.closeSync(handle) } catch { /* ignore */ } }
   } catch (e) { noteDbError('tailer-host', e); return }
 
-  try { fs.appendFileSync(s.sidecarPath, bytes) } catch (e) {
-    noteDbError('tailer-host', e); return
-  }
-  s.bytesAppendedSinceSnapshot += bytes.length
-
+  // P0 fix (sidecar-cursor decoupling): parse lines and insert DB events
+  // BEFORE advancing the sidecar. Previously sidecar was written first,
+  // which meant a crash between sidecar-append and DB-insert permanently
+  // lost those turns (sidecar had advanced, restart would skip them).
+  // Now: parse → insert → sidecar-append, so a crash before sidecar-append
+  // simply re-reads the same bytes on restart.
   const text = s.pendingLineBuffer + bytes.toString('utf-8')
   const lastNl = text.lastIndexOf('\n')
   const complete = lastNl === -1 ? '' : text.slice(0, lastNl)
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
-  for (const raw of complete.split('\n')) {
-    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-    if (!line.trim()) continue
-    s.linesSeen++
-    processUnit(s, line, s.sourcePath)
+  if (!eventBus.paused) {
+    if (s.pauseSkippedLines > 0) {
+      try {
+        const ev = insertEvent('system', {
+          subtype: 'capture_gap',
+          agent: s.agentKind,
+          session_id: s.sessionId,
+          skipped_lines: s.pauseSkippedLines,
+          gap_started_at: s.pauseStartedAt,
+          gap_ended_at: Date.now(),
+          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested. Raw data preserved in sidecar.`
+        }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+        if (ev) eventBus.publish(ev, { bypassPause: true })
+      } catch (e) { noteDbError('tailer-host', e) }
+      s.pauseSkippedLines = 0
+      s.pauseStartedAt = null
+    }
+    for (const raw of complete.split('\n')) {
+      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+      if (!line.trim()) continue
+      s.linesSeen++
+      processUnit(s, line, s.sourcePath)
+    }
+    scheduleIdleSnapshot(s)
+  } else {
+    const now = Date.now()
+    for (const raw of complete.split('\n')) {
+      if (raw.trim() || (raw.endsWith('\r') && raw.slice(0, -1).trim())) {
+        s.linesSeen++
+        s.pauseSkippedLines++
+        if (s.pauseStartedAt === null) s.pauseStartedAt = now
+      }
+    }
   }
 
-  scheduleIdleSnapshot(s)
+  // Sidecar append AFTER successful DB processing — the forensic raw copy
+  // is still maintained, but the cursor (sidecar size) now reflects only
+  // bytes whose events have been committed.
+  try { fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 }) } catch (e) {
+    noteDbError('tailer-host', e); return
+  }
+  s.runningHash.update(bytes)
+  s.bytesAppendedSinceSnapshot += bytes.length
+
+  // If there is more data beyond the chunk cap, schedule another tick.
+  if (sourceSize - sidecarSize > toRead) {
+    setImmediate(() => catchUpJsonl(s))
+  }
 }
 
 /** Per-message directory scan: each new file in the watched dir is one
@@ -805,18 +919,17 @@ function catchUpPerMessageDir(s: SessionState): void {
     let raw: string
     try { raw = fs.readFileSync(p.full, 'utf-8') } catch { continue }
     s.linesSeen++
-    // Append the filename to the sidecar index so a crash before emit
-    // still records "we saw this file" — next tick's dedup check skips it.
     try { fs.appendFileSync(s.sidecarPath, p.name + '\n') } catch { /* ignore */ }
     s.bytesAppendedSinceSnapshot += p.name.length + 1
-    // For per-message adapters we treat the FILENAME as the uuid so dedup
-    // works — parseUnit's returned `.uuid` is expected to be the filename
-    // OR a real uuid; either way emitTurn's dedup covers it. sourcePath
-    // passed here is the individual unit file (so adapters like OpenCode
-    // can resolve sibling `part/msg_<id>/` dirs).
+    // Audit 2026-09-18 P1: sidecar index advanced above; skip event
+    // processing when paused so no DB rows land during the pause window.
+    if (eventBus.paused) {
+      s.redlogIdByUuid.set(p.name, '__paused__')
+      continue
+    }
     processUnit(s, raw, p.full)
   }
-  scheduleIdleSnapshot(s)
+  if (!eventBus.paused) scheduleIdleSnapshot(s)
 }
 
 function processUnit(s: SessionState, rawContent: string, sourcePath: string): void {
@@ -826,8 +939,8 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
   } catch (e) {
     // Adapter blew up on a single unit — count it as schema drift, don't
     // crash the whole session's ingest.
-    if (!s.driftAdvisoryFired) {
-      s.driftAdvisoryFired = true
+    if (!s.driftAdvisoryFired.has('<parse_error>')) {
+      s.driftAdvisoryFired.add('<parse_error>')
       try {
         const ev = insertEvent('agent', {
           subtype: 'transcript_schema_drift',
@@ -850,14 +963,15 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
     // adapter's whitelist. Fire the advisory once per session and skip.
     if (turn.type === 'tool_use') s.toolCallsSeen++
     if (!s.adapter.knownIngestTypes.has(turn.type)) {
-      if (!s.driftAdvisoryFired) {
-        s.driftAdvisoryFired = true
+      if (!s.driftAdvisoryFired.has(turn.type)) {
+        s.driftAdvisoryFired.add(turn.type)
+        const safeType = String(turn.type).slice(0, 100).replace(/[\x00-\x1f]/g, '')
         try {
           const ev = insertEvent('agent', {
             subtype: 'transcript_schema_drift',
             session_id: s.sessionId,
             agent: s.agentKind,
-            unknown_type: turn.type,
+            unknown_type: safeType,
             description: `Encountered a transcript line type not in the adapter whitelist. Skipping only this type.`
           }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
           if (ev) eventBus.publish(ev)
@@ -882,7 +996,7 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
   if (s.bytesAppendedSinceSnapshot === 0 && reason === 'idle') return
   let sidecarSize = 0
   try { sidecarSize = fs.statSync(s.sidecarPath).size } catch { return }
-  const sha = fileSha256(s.sidecarPath)
+  const sha = s.runningHash.copy().digest('hex')
   try {
     const ev = insertEvent('agent', {
       subtype: 'transcript_snapshot',
@@ -942,14 +1056,16 @@ export function resetTailerSeedIndex(): void { seedIndex = null }
 
 function buildSeedIndex(): Map<string, Map<string, string>> {
   const idx = new Map<string, Map<string, string>>()
+  // P2-2: use denormalized transcript_uuid column + partial index instead
+  // of json_extract full-table scan. Falls back to json_extract for DBs
+  // that haven't migrated yet.
   const rows = getDB().prepare(
-    `SELECT id,
-            json_extract(data, '$.session_id')     AS sid,
-            json_extract(data, '$.agent')          AS agent,
-            json_extract(data, '$.transcript_uuid') AS uuid
+    `SELECT id, session_id AS sid,
+            json_extract(data, '$.agent') AS agent,
+            transcript_uuid AS uuid
        FROM events
       WHERE agent_type = 'agent'
-        AND json_extract(data, '$.transcript_uuid') IS NOT NULL`
+        AND transcript_uuid IS NOT NULL`
   ).all() as Array<{ id: string; sid: string | null; agent: string | null; uuid: string }>
   for (const r of rows) {
     if (!r.sid || !r.agent) continue
@@ -990,7 +1106,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return }
   const sidecarDir = path.join(projectDir, 'agent-transcripts')
-  try { fs.mkdirSync(sidecarDir, { recursive: true }) } catch { /* ignore */ }
+  try { fs.mkdirSync(sidecarDir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
   const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}.jsonl`)
   if (!isInsideDir(sidecarDir, sidecarPath)) return
 
@@ -1011,12 +1127,50 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     idleTimer: null,
     lastSnapshotBytes: 0,
     bytesAppendedSinceSnapshot: 0,
-    driftAdvisoryFired: false,
+    driftAdvisoryFired: new Set(),
     parentMissingAdvisoryFired: false,
     toolCallsSeen: 0,
     toolCallsEmitted: 0,
-    toolGapAdvisoryFired: false
+    toolGapAdvisoryFired: false,
+    runningHash: crypto.createHash('sha256'),
+    pauseSkippedLines: 0,
+    pauseStartedAt: null
   }
+  // Align sidecar to the last complete-line boundary. Within a run,
+  // pendingLineBuffer carries incomplete trailing text across catchUp calls.
+  // On restart pendingLineBuffer is lost; any bytes past the last '\n' in
+  // the sidecar would never be re-read from the source. Truncate so those
+  // bytes are re-read and combined with new data on the next catchUp.
+  if (!adapter.perMessageDir) {
+    const TAIL_SCAN = 64 * 1024
+    try {
+      const fd = fs.openSync(sidecarPath, 'r')
+      try {
+        const st = fs.fstatSync(fd)
+        if (st.size > 0) {
+          const readSize = Math.min(st.size, TAIL_SCAN)
+          const buf = Buffer.alloc(readSize)
+          fs.readSync(fd, buf, 0, readSize, st.size - readSize)
+          let lastNl = -1
+          for (let i = buf.length - 1; i >= 0; i--) {
+            if (buf[i] === 0x0A) { lastNl = i; break }
+          }
+          if (lastNl >= 0) {
+            const alignedSize = st.size - readSize + lastNl + 1
+            if (alignedSize < st.size) {
+              fs.ftruncateSync(fd, alignedSize)
+            }
+          }
+        }
+      } finally { fs.closeSync(fd) }
+    } catch { /* new sidecar or read error */ }
+  }
+  // Seed running hash from existing sidecar so incremental updates produce
+  // the same digest as a full-file read would.
+  try {
+    const existing = fs.readFileSync(sidecarPath)
+    if (existing.length > 0) s.runningHash.update(existing)
+  } catch { /* new sidecar — hash starts empty */ }
   sessions.set(key, s)
 
   // v0.7.4 F2: seed the parent-map from DB so re-ingest post-sidecar-prune
@@ -1066,6 +1220,8 @@ function unregisterSession(key: string): void {
   const s = sessions.get(key)
   if (!s) return
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
+  const ct = coalesceTimers.get(key)
+  if (ct) { clearTimeout(ct); coalesceTimers.delete(key) }
   // v0.7.4 F4: skip snapshot + session_end emits when paused. Still remove
   // the session from the map so a subsequent resume + re-register picks up.
   if (!eventBus.paused) {
@@ -1110,8 +1266,11 @@ export function startHost(next?: Partial<TailerHostConfig>): void {
 export function stopHost(): void {
   for (const [, w] of watchersByAgent) void w.close()
   watchersByAgent.clear()
+  for (const [, t] of coalesceTimers) clearTimeout(t)
+  coalesceTimers.clear()
   for (const [key] of sessions) unregisterSession(key)
   sessions.clear()
+  sessionRegistry.clear()
   // The seed index is keyed by session, not by project, and holds event ids
   // from whichever database was open when it was built. Closing the host is
   // the boundary — dropping it here means a project switch can never hand the
@@ -1138,15 +1297,9 @@ function restartAdapter(adapter: TailerAdapter): void {
   const isJsonl = !adapter.perMessageDir
   const watchDirCanon = path.resolve(watchDir)
   const watcher = chokidar.watch(watchDir, {
-    ignored: (p) => {
-      const stat = fs.statSync(p, { throwIfNoEntry: false })
-      if (stat?.isDirectory()) return false
-      // For JSONL adapters, watch files ending .jsonl. For per-message,
-      // the "session" IS a directory containing per-message files —
-      // chokidar's directory-add is what triggers registerSession.
-      if (isJsonl) return !p.endsWith('.jsonl')
-      return false
-    },
+    ignored: isJsonl
+      ? /(^|[/\\])\.|node_modules|(?<!\.jsonl)$/
+      : /(^|[/\\])\.|node_modules/,
     persistent: true,
     ignoreInitial: false,
     depth: 6,
@@ -1182,7 +1335,7 @@ function restartAdapter(adapter: TailerAdapter): void {
       if (!p.endsWith('.jsonl')) return
       const sid = path.basename(p, '.jsonl')
       const key = sessionKey(adapter.agentKind, sid)
-      if (sessions.has(key)) catchUpSession(adapter.agentKind, sid)
+      if (sessions.has(key)) coalescedCatchUp(adapter.agentKind, sid)
       else registerSession(adapter.agentKind, p)
       return
     }
@@ -1192,7 +1345,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     if (!sessionDir) return
     const sid = path.basename(sessionDir)
     const key = sessionKey(adapter.agentKind, sid)
-    if (sessions.has(key)) catchUpSession(adapter.agentKind, sid)
+    if (sessions.has(key)) coalescedCatchUp(adapter.agentKind, sid)
   })
   watcher.on('unlink', (p) => {
     if (isJsonl) {

@@ -59,6 +59,12 @@ export interface CaptureHealth {
    *  pulsing red even when nothing was landing. Now the callsites forward
    *  the error via `noteDbError()` and it surfaces here + in StatusBar. */
   lastDbError?: { source: string; at: number; message: string }
+  /** Cumulative DB write error count for this session. Zero means the session
+   *  has never had a write failure; non-zero after lastDbError clears means
+   *  "recovered but had gaps". */
+  dbErrorTotal: number
+  /** Timestamp of the first DB error in this session, or null. */
+  dbErrorFirstAt: number | null
   /** v0.6.89 P1-A: most recent chain-sample failure. Pins verdict to `dark`
    *  for the TTL window even if all sources are otherwise healthy — a
    *  broken chain is worse than a dark capture, since it means historical
@@ -77,19 +83,31 @@ export interface CaptureHealth {
   lastSampleOkAt?: number | null
 }
 
-// Ring buffer of one — we only need "was there recently an error, and from
-// where". Reset by `clearDbError()` (e.g. after a successful write from the
-// same source, though callsites don't have to — the CaptureHealth consumer
-// treats anything older than DB_ERROR_TTL_MS as gone).
+// The live DB error tracks "is writing currently broken". It auto-expires
+// after DB_ERROR_TTL_MS so the verdict can recover without operator action.
+// The cumulative counters (_dbErrorTotal, _dbErrorFirstAt) persist for the
+// session lifetime so the health readout can distinguish "never had a
+// problem" from "recovered but had N write failures earlier".
 let _lastDbError: { source: string; at: number; message: string } | null = null
 const DB_ERROR_TTL_MS = 60_000
+let _dbErrorTotal = 0
+let _dbErrorFirstAt: number | null = null
 
 export function noteDbError(source: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err ?? '')
-  _lastDbError = { source, at: Date.now(), message: msg.slice(0, 200) }
+  const now = Date.now()
+  _lastDbError = { source, at: now, message: msg.slice(0, 200) }
+  _dbErrorTotal++
+  if (_dbErrorFirstAt === null) _dbErrorFirstAt = now
   healthCache = null
 }
 export function clearDbError(): void { _lastDbError = null; healthCache = null }
+export function resetDbErrorHistory(): void {
+  _lastDbError = null
+  _dbErrorTotal = 0
+  _dbErrorFirstAt = null
+  healthCache = null
+}
 function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
   if (!_lastDbError) return undefined
   if (now - _lastDbError.at > DB_ERROR_TTL_MS) { _lastDbError = null; return undefined }
@@ -414,6 +432,8 @@ function computeCaptureHealth(now: number): CaptureHealth {
   return {
     verdict, recording: everFed, sources: [...sources, ...pluginSources], lastEventAt, checkedAt: now,
     lastDbError,
+    dbErrorTotal: _dbErrorTotal,
+    dbErrorFirstAt: _dbErrorFirstAt,
     lastSampleBroken,
     lastSampleOkAt: _lastSampleOkAt
   }

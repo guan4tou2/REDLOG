@@ -117,7 +117,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (!project) return null
     const projectDir = getProjectPath(project)
     const config = loadConfig(projectDir)
-    const events = redactEventsForExport(queryEvents({ limit: 100000 }), scopeForActiveProject(ctx))
+    const events = redactEventsForExport(queryEvents({ limit: -1 }), scopeForActiveProject(ctx))
     const data = { config, events, exportedAt: new Date().toISOString() }
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -137,8 +137,8 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const projectDir = getProjectPath(project)
     const scope = scopeForActiveProject(ctx)
     const events = opts?.scopeOnly && scope
-      ? queryScopeFilteredEvents(scope.targets)
-      : queryEvents({ limit: 100000 })
+      ? queryScopeFilteredEvents(scope.targets).events
+      : queryEvents({ limit: -1 })
     const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: opts?.scrubPii === true })
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -202,7 +202,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const from = Number(opts?.from) || 0
     const to = Number(opts?.to) || Date.now()
     if (to <= from) return null
-    const all = queryEvents({ limit: 100000, since: from })
+    const all = queryEvents({ limit: -1, since: from })
     const slice = all.filter((e) => e.timestamp >= from && e.timestamp <= to)
     // A correction is always written after the window its marker lives in, so a
     // plain window filter exports the finding with the wording the operator has
@@ -230,14 +230,11 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const loaded = loadScopeFile(config.scope.scopeFile)
       if (loaded.length > 0) scopeTargets = [...scopeTargets, ...loaded]
     }
+    const { events: scopeEvents, truncated } = queryScopeFilteredEvents(scopeTargets)
     const events = redactEventsForExport(
-      queryScopeFilteredEvents(scopeTargets),
+      scopeEvents,
       { targets: scopeTargets, excludeTargets: config.scope?.excludeTargets }
     )
-    // Bookmarks are NOT included, and this is the export where that mattered
-    // most: the events went through the scope filter and the bookmark rows did
-    // not, so a "scope-filtered" file shipped URLs for hosts the operator had
-    // deliberately excluded.
     const data = {
       engagement: config.engagement,
       operator: config.operator,
@@ -245,6 +242,8 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       events,
       exportedAt: new Date().toISOString(),
       filtered: true,
+      truncated,
+      eventCount: events.length,
       scopeTargets
     }
     const outDir = path.join(projectDir, 'exports')

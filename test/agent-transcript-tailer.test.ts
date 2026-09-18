@@ -16,6 +16,7 @@ import {
 import {
   registerSession as hostRegisterSession
 } from '../src/main/services/tailer-host'
+import type { ParsedTurn } from '../src/main/services/tailer-host'
 import { initDB, closeDB } from '../src/core/db/index'
 import { queryEvents } from '../src/core/db/events'
 import { createOperator, generateToken } from '../src/core/db/operators'
@@ -101,6 +102,61 @@ describe('parseTranscriptLine', () => {
     expect(parseTranscriptLine({ type: 'summary', summary: 'x' })).toBeNull()
     expect(parseTranscriptLine({ type: 'mode', mode: 'default' })).toBeNull()
     expect(parseTranscriptLine({ type: 'queue-operation' })).toBeNull()
+  })
+
+  it('splits two tool_use blocks into two ParsedTurns with synthetic uuid', () => {
+    const uuid = 'multi-tu'
+    const result = parseTranscriptLine({
+      type: 'tool_use', uuid, parentUuid: 'p1',
+      message: { content: [
+        { type: 'tool_use', id: 'toolu_a', name: 'Bash', input: { command: 'ls' } },
+        { type: 'tool_use', id: 'toolu_b', name: 'Read', input: { path: '/tmp' } }
+      ] }
+    }) as ParsedTurn[]
+    expect(Array.isArray(result)).toBe(true)
+    expect(result).toHaveLength(2)
+    expect(result[0].uuid).toBe(uuid)
+    expect(result[0].type).toBe('tool_use')
+    expect(result[0].toolName).toBe('Bash')
+    expect(result[0].toolUseId).toBe('toolu_a')
+    expect(result[1].uuid).toBe(`${uuid}:tu1`)
+    expect(result[1].type).toBe('tool_use')
+    expect(result[1].toolName).toBe('Read')
+    expect(result[1].toolUseId).toBe('toolu_b')
+  })
+
+  it('splits two tool_result blocks into two ParsedTurns with synthetic uuid', () => {
+    const uuid = 'multi-tr'
+    const result = parseTranscriptLine({
+      type: 'tool_result', uuid, parentUuid: 'p2',
+      message: { content: [
+        { type: 'tool_result', tool_use_id: 'toolu_a', content: 'output-a' },
+        { type: 'tool_result', tool_use_id: 'toolu_b', content: 'output-b' }
+      ] }
+    }) as ParsedTurn[]
+    expect(Array.isArray(result)).toBe(true)
+    expect(result).toHaveLength(2)
+    expect(result[0].uuid).toBe(uuid)
+    expect(result[0].type).toBe('tool_result')
+    expect(result[0].toolOutput).toBe('output-a')
+    expect(result[1].uuid).toBe(`${uuid}:tr1`)
+    expect(result[1].type).toBe('tool_result')
+    expect(result[1].toolOutput).toBe('output-b')
+  })
+
+  it('single tool_use block returns single ParsedTurn (not array)', () => {
+    const result = parseTranscriptLine({
+      type: 'tool_use', uuid: 'single-tu', parentUuid: 'p3',
+      message: { content: [
+        { type: 'tool_use', id: 'toolu_only', name: 'Bash', input: { command: 'pwd' } }
+      ] }
+    })
+    expect(Array.isArray(result)).toBe(false)
+    const t = result as ParsedTurn
+    expect(t.type).toBe('tool_use')
+    expect(t.uuid).toBe('single-tu')
+    expect(t.toolName).toBe('Bash')
+    expect(t.toolUseId).toBe('toolu_only')
   })
 })
 

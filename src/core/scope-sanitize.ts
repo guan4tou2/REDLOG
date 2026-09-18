@@ -34,22 +34,27 @@ export const SCOPE_SANITIZED_FIELDS = [
 
 /**
  * True when this event carries a target that matches none of the scope targets.
- * A no-target event, or an empty scope, is never classified as out-of-scope
- * (we cannot tell, so we do not mask).
+ * An empty scope is never classified as out-of-scope (can't classify).
  */
 export function isOutOfScope(targetId: string | null | undefined, scope: ScopeForSanitize | undefined): boolean {
-  if (!targetId || !scope || scope.targets.length === 0) return false
-  // The authoritative, CIDR- and domain-aware classifier the scope monitor
-  // uses — so 10.1.2.3 correctly counts as in-scope under 10.0.0.0/8 and is
-  // never masked. Only a target the scope engine places OUTSIDE the include
-  // list (unrelated, same-root-but-out, or explicitly excluded) is masked.
+  if (!scope || scope.targets.length === 0) return false
+  if (!targetId) return false
   const verdict = classifyScopeTarget(targetId, { targets: scope.targets, excludeTargets: scope.excludeTargets ?? [] })
   return verdict.distance !== 'in_scope'
 }
 
 /**
- * Replacement values for the content fields of an out-of-scope event, or null
- * when the event is in scope / unclassifiable / carries no content field. The
+ * True when scope is defined, the event carries body content, but has no
+ * target — meaning we cannot determine whether it's in or out of scope.
+ */
+export function isUnclassifiedScope(targetId: string | null | undefined, scope: ScopeForSanitize | undefined): boolean {
+  if (!scope || scope.targets.length === 0) return false
+  return !targetId
+}
+
+/**
+ * Replacement values for the content fields of an out-of-scope or unclassified
+ * event, or null when the event is in scope / carries no content field. The
  * replacement names the reason so a bundle reader sees why the bytes are gone.
  */
 export function scopeMaskReplacements(
@@ -57,11 +62,18 @@ export function scopeMaskReplacements(
   targetId: string | null | undefined,
   scope: ScopeForSanitize | undefined
 ): Record<string, string> | null {
-  if (!isOutOfScope(targetId, scope)) return null
+  const outOfScope = isOutOfScope(targetId, scope)
+  const unclassified = !outOfScope && isUnclassifiedScope(targetId, scope)
+  if (!outOfScope && !unclassified) return null
+  const reason = outOfScope ? '[redacted: out of scope]' : '[redacted: no target — scope unclassified]'
   const out: Record<string, string> = {}
   for (const field of SCOPE_SANITIZED_FIELDS) {
-    if (typeof data[field] === 'string' && (data[field] as string).length > 0) {
-      out[field] = '[redacted: out of scope]'
+    const v = data[field]
+    if (v == null) continue
+    if (typeof v === 'string') {
+      if (v.length > 0) out[field] = reason
+    } else if (typeof v === 'object' || typeof v === 'number' || typeof v === 'boolean') {
+      out[field] = reason
     }
   }
   return Object.keys(out).length > 0 ? out : null

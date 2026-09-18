@@ -251,6 +251,19 @@ export function initDB(projectDir: string): Database.Database {
   // stays hands-off.
   if (!opColNames.has('signer_pub_key')) db.exec('ALTER TABLE operators ADD COLUMN signer_pub_key TEXT')
 
+  // P2-2: denormalized transcript_uuid column on events — eliminates the
+  // json_extract full-table scan in buildSeedIndex (tailer-host.ts).
+  {
+    const evCols = new Set((db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>).map(c => c.name))
+    if (!evCols.has('transcript_uuid')) {
+      db.exec('ALTER TABLE events ADD COLUMN transcript_uuid TEXT')
+      db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
+      // Backfill existing rows from the JSON data column.
+      db.exec(`UPDATE events SET transcript_uuid = json_extract(data, '$.transcript_uuid') WHERE agent_type = 'agent' AND json_extract(data, '$.transcript_uuid') IS NOT NULL AND transcript_uuid IS NULL`)
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
+
   // v0.6.88 P1-B: install append-only triggers on events table so
   // DELETE / UPDATE-of-immutable-fields raise instead of silently corrupting
   // the chain. Idempotent — safe to call every project open.
