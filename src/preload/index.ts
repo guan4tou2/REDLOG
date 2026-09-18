@@ -246,7 +246,8 @@ const api: RedLogAPI = {
       return () => ipcRenderer.removeListener(channel, handler)
     },
     replay: (eventId: string) => ipcRenderer.invoke('terminal:replay', eventId),
-    replaySession: (eventId: string) => ipcRenderer.invoke('terminal:replaySession', eventId)
+    replaySession: (eventId: string) => ipcRenderer.invoke('terminal:replaySession', eventId),
+    replayAtTime: (atMs: number) => ipcRenderer.invoke('terminal:replayAtTime', atMs)
   },
   wsl: {
     listDistros: () => ipcRenderer.invoke('wsl:listDistros'),

@@ -22,7 +22,7 @@ const SPEED_OPTIONS = [0.5, 1, 2, 4] as const
 // they did in the original pty. Seeks by resetting the terminal and
 // fast-replaying every frame up to the target — clean, and cheap enough for
 // the ~50MB cast cap enforced upstream.
-export function SessionReplayPlayer({ events, truncated }: { events: Array<[number, 'o', string]>; truncated: boolean }): JSX.Element {
+export function SessionReplayPlayer({ events, truncated, initialSeekMs }: { events: Array<[number, 'o', string]>; truncated: boolean; initialSeekMs?: number }): JSX.Element {
   const { t } = useI18n()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const termRef = useRef<Terminal | null>(null)
@@ -97,9 +97,9 @@ export function SessionReplayPlayer({ events, truncated }: { events: Array<[numb
     setPosMs(targetMs)
   }, [events])
 
-  // Once xterm is mounted, seek to 0 so the terminal is definitely primed.
+  // Once xterm is mounted, seek to the requested position (or 0).
   useEffect(() => {
-    seekTo(0)
+    seekTo(initialSeekMs ?? 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

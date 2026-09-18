@@ -13,6 +13,9 @@ export interface ReplaySession {
   /** Monotonic open id — the drawer keys the player on it so each open is a
    *  fresh terminal, not the previous session's frames left on screen. */
   id?: number
+  /** When set, the player seeks to this position (ms into the cast) on mount
+   *  instead of starting at 0. Used by Marker → replay jump. */
+  initialSeekMs?: number
 }
 
 let current: ReplaySession | null = null

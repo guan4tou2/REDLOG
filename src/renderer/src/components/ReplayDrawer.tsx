@@ -36,7 +36,7 @@ export function ReplayDrawer(): JSX.Element | null {
       <div className="px-3 pb-2">
         {/* Key on the open id: a new replay is a fresh terminal, not the last
             session's frames left on screen. */}
-        <SessionReplayPlayer key={session.id} events={session.events} truncated={session.truncated} />
+        <SessionReplayPlayer key={session.id} events={session.events} truncated={session.truncated} initialSeekMs={session.initialSeekMs} />
       </div>
     </div>
   )
