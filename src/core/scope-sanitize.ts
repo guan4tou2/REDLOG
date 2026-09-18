@@ -78,3 +78,131 @@ export function scopeMaskReplacements(
   }
   return Object.keys(out).length > 0 ? out : null
 }
+
+// ────── "For sharing" metadata masking (Option D, wave 2) ──────
+//
+// SCOPE_SANITIZED_FIELDS masks captured CONTENT (bodies, output). This second
+// tier masks METADATA that identifies out-of-scope targets or carries sensitive
+// values (headers with auth tokens, URLs with query-string credentials). Off by
+// default ("For my records"); on in "For sharing" export preset.
+
+/** Metadata fields blanked for out-of-scope events when metadata masking is on. */
+export const SCOPE_METADATA_FIELDS = [
+  'url', 'host',
+  'request_headers', 'response_headers',
+  'cookies', 'set_cookies',
+  'query_name'
+] as const
+
+/** Operator-authored input that can carry target data as arguments. */
+export const SCOPE_COMMAND_FIELDS = [
+  'command'
+] as const
+
+/** Headers whose VALUE is scrubbed from in-scope events in sharing mode. */
+export const SENSITIVE_HEADERS = new Set([
+  'authorization', 'proxy-authorization',
+  'cookie', 'set-cookie',
+  'x-api-key', 'x-auth-token'
+])
+
+/** Query-string parameter names whose values are scrubbed. */
+const SENSITIVE_PARAMS = /^(token|key|password|passwd|secret|auth|api_key|access_token|refresh_token|session|sid)$/i
+
+/** Scrub sensitive values from a URL's query string, preserving the path. */
+export function scrubUrlQueryParams(url: string): string {
+  try {
+    const u = new URL(url)
+    let changed = false
+    for (const [name] of u.searchParams) {
+      if (SENSITIVE_PARAMS.test(name)) { u.searchParams.set(name, '[REDACTED]'); changed = true }
+    }
+    return changed ? u.toString() : url
+  } catch { return url }
+}
+
+/** Scrub sensitive header values from a header array (pairs or object). */
+export function scrubSensitiveHeaders(
+  headers: unknown,
+  mode: 'scrub-sensitive' | 'redact-all'
+): unknown {
+  if (mode === 'redact-all') return '[redacted: out of scope]'
+  if (Array.isArray(headers)) {
+    return (headers as unknown[][]).map((pair) => {
+      if (!Array.isArray(pair) || pair.length < 2) return pair
+      const name = String(pair[0]).toLowerCase()
+      if (SENSITIVE_HEADERS.has(name)) return [pair[0], '[REDACTED]']
+      return pair
+    })
+  }
+  if (headers && typeof headers === 'object') {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(headers as Record<string, string>)) {
+      out[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? '[REDACTED]' : v
+    }
+    return out
+  }
+  return headers
+}
+
+/** Scrub cookie values while preserving names and attributes. */
+export function scrubCookieValues(cookies: unknown): unknown {
+  if (!Array.isArray(cookies)) return '[redacted: out of scope]'
+  return (cookies as Record<string, unknown>[]).map((c) => ({
+    ...c, value: '[REDACTED]'
+  }))
+}
+
+export interface MetadataMaskOpts {
+  /** The event's target classification. */
+  outOfScope: boolean
+}
+
+/**
+ * Metadata-level replacements for "For sharing" mode. Returns field→replacement
+ * entries to merge into data, or null when nothing needs masking.
+ *
+ * For out-of-scope events: blanks all metadata fields.
+ * For in-scope events: scrubs only sensitive values (auth headers, credential
+ * query params, cookie values).
+ */
+export function scopeMetadataReplacements(
+  data: Record<string, unknown>,
+  opts: MetadataMaskOpts
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {}
+  let changed = false
+
+  if (opts.outOfScope) {
+    const reason = '[redacted: out-of-scope metadata]'
+    for (const f of SCOPE_METADATA_FIELDS) {
+      if (data[f] != null) { out[f] = reason; changed = true }
+    }
+    for (const f of SCOPE_COMMAND_FIELDS) {
+      if (data[f] != null) { out[f] = '[redacted: out-of-scope command]'; changed = true }
+    }
+    if (data.target_id != null) { out.target_id = reason; changed = true }
+  } else {
+    // In-scope: surgical scrub of sensitive values only.
+    if (typeof data.url === 'string') {
+      const scrubbed = scrubUrlQueryParams(data.url)
+      if (scrubbed !== data.url) { out.url = scrubbed; changed = true }
+    }
+    if (data.request_headers != null) {
+      const scrubbed = scrubSensitiveHeaders(data.request_headers, 'scrub-sensitive')
+      if (scrubbed !== data.request_headers) { out.request_headers = scrubbed; changed = true }
+    }
+    if (data.response_headers != null) {
+      const scrubbed = scrubSensitiveHeaders(data.response_headers, 'scrub-sensitive')
+      if (scrubbed !== data.response_headers) { out.response_headers = scrubbed; changed = true }
+    }
+    if (Array.isArray(data.cookies) && data.cookies.length > 0) {
+      out.cookies = scrubCookieValues(data.cookies); changed = true
+    }
+    if (Array.isArray(data.set_cookies) && data.set_cookies.length > 0) {
+      out.set_cookies = scrubCookieValues(data.set_cookies); changed = true
+    }
+  }
+
+  return changed ? out : null
+}

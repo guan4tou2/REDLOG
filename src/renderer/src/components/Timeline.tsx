@@ -1498,10 +1498,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return nearest
   }, [events, hiddenLanes, pluginTypes, view.left, view.width, TRACK_W, timeStart, timeSpan])
 
-  const sliceExportRun = useCallback(async () => {
+  const sliceExportRun = useCallback(async (opts?: { sharing?: boolean }) => {
     const from = Math.round(fromX((view.left / 100) * TRACK_W))
     const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-    return window.redlog.data.exportTimelineSlice?.(from, to) ?? null
+    return window.redlog.data.exportTimelineSlice?.(from, to, opts) ?? null
   }, [fromX, view.left, view.width, TRACK_W])
 
   const sliceCount = useMemo(() => {

@@ -165,15 +165,15 @@ const api: RedLogAPI = {
     stop: () => ipcRenderer.invoke('browser:stop')
   },
   data: {
-    exportJson: () => ipcRenderer.invoke('data:exportJson'),
+    exportJson: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportJson', opts),
     exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
-    exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
+    exportScopeFiltered: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportScopeFiltered', opts),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
-    exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
-    exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
-    exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
-    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
-    exportWalkthrough: () => ipcRenderer.invoke('data:exportWalkthrough') as Promise<string | null>,
+    exportLoot: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportLoot', opts),
+    exportViolations: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportViolations', opts),
+    exportTimelineSlice: (from: number, to: number, opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to, ...opts }),
+    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
+    exportWalkthrough: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportWalkthrough', opts) as Promise<string | null>,
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
   hooks: {
