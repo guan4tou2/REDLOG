@@ -274,6 +274,10 @@ interface SessionState {
   toolGapAdvisoryFired: boolean
   /** P1: incremental SHA-256 of the sidecar, updated on each append. */
   runningHash: crypto.Hash
+  /** Lines skipped while recording was paused (reset on gap event emit). */
+  pauseSkippedLines: number
+  /** Timestamp when the first pause-skipped line was encountered. */
+  pauseStartedAt: number | null
 }
 
 const registeredAdapters = new Map<string, TailerAdapter>()
@@ -839,6 +843,22 @@ function catchUpJsonl(s: SessionState): void {
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
   if (!eventBus.paused) {
+    if (s.pauseSkippedLines > 0) {
+      try {
+        const ev = insertEvent('system', {
+          subtype: 'capture_gap',
+          agent: s.agentKind,
+          session_id: s.sessionId,
+          skipped_lines: s.pauseSkippedLines,
+          gap_started_at: s.pauseStartedAt,
+          gap_ended_at: Date.now(),
+          description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested. Raw data preserved in sidecar.`
+        }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
+        if (ev) eventBus.publish(ev, { bypassPause: true })
+      } catch (e) { noteDbError('tailer-host', e) }
+      s.pauseSkippedLines = 0
+      s.pauseStartedAt = null
+    }
     for (const raw of complete.split('\n')) {
       const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
       if (!line.trim()) continue
@@ -847,8 +867,13 @@ function catchUpJsonl(s: SessionState): void {
     }
     scheduleIdleSnapshot(s)
   } else {
+    const now = Date.now()
     for (const raw of complete.split('\n')) {
-      if (raw.trim() || (raw.endsWith('\r') && raw.slice(0, -1).trim())) s.linesSeen++
+      if (raw.trim() || (raw.endsWith('\r') && raw.slice(0, -1).trim())) {
+        s.linesSeen++
+        s.pauseSkippedLines++
+        if (s.pauseStartedAt === null) s.pauseStartedAt = now
+      }
     }
   }
 
@@ -1107,7 +1132,9 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     toolCallsSeen: 0,
     toolCallsEmitted: 0,
     toolGapAdvisoryFired: false,
-    runningHash: crypto.createHash('sha256')
+    runningHash: crypto.createHash('sha256'),
+    pauseSkippedLines: 0,
+    pauseStartedAt: null
   }
   // Seed running hash from existing sidecar so incremental updates produce
   // the same digest as a full-file read would.

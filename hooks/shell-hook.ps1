@@ -76,7 +76,16 @@ function _RedLogBuildPayload {
     if ($env:REDLOG_TERMINAL -eq '1') { $data['source'] = 'builtin-terminal' }
     if ($env:REDLOG_TERMINAL_ID)      { $data['terminalId'] = $env:REDLOG_TERMINAL_ID }
     foreach ($k in $Extra.Keys) { $data[$k] = $Extra[$k] }
-    @{ agent_type = 'shell'; data = $data } | ConvertTo-Json -Depth 6 -Compress
+    $payload = @{ agent_type = 'shell'; data = $data }
+    # Embed active project identity for spool attribution.
+    $identPath = Join-Path $script:_RedLogDir 'active-identity.json'
+    if (Test-Path $identPath) {
+        try {
+            $ident = Get-Content $identPath -Raw | ConvertFrom-Json
+            if ($ident.engagementId) { $payload['_identity'] = @{ engagementId = $ident.engagementId; operatorId = $ident.operatorId } }
+        } catch { }
+    }
+    $payload | ConvertTo-Json -Depth 6 -Compress
 }
 
 function _RedLogSendEvent {

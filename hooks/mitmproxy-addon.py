@@ -98,8 +98,22 @@ def _get_redlog_connection():
     return port, token
 
 
+_IDENTITY_PATH = Path.home() / ".redlog" / "active-identity.json"
+
+
+def _embed_identity(payload: dict):
+    """Embed the active project identity into a payload for spool attribution."""
+    try:
+        ident = json.loads(_IDENTITY_PATH.read_text(encoding="utf-8"))
+        if "engagementId" in ident:
+            payload["_identity"] = ident
+    except Exception:
+        pass
+
+
 def _spool_payload(payload: dict):
     """Write a payload to the spool directory for later replay."""
+    _embed_identity(payload)
     try:
         SPOOL_DIR.mkdir(parents=True, exist_ok=True)
         filename = f"{int(time.time() * 1000)}-{id(payload)}.json"
