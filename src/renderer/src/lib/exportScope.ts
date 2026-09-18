@@ -16,7 +16,7 @@ export interface ViewExport {
   /** What the operator will recognise this subset as, in the menu. */
   label: string
   /** Resolves to the written path, or null if the operator cancelled. */
-  run: () => Promise<string | null>
+  run: (opts?: { sharing?: boolean }) => Promise<string | null>
   /** Events in this subset, for the preview line. Omit if not countable. */
   count?: number
 }

@@ -230,15 +230,15 @@ interface RedLogAPI {
     stop: () => Promise<{ stopped: boolean }>
   }
   data: {
-    exportJson: () => Promise<string | null>
+    exportJson: (opts?: { sharing?: boolean }) => Promise<string | null>
     exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ outDir: string; manifest: unknown } | null>
-    exportScopeFiltered?: () => Promise<string | null>
+    exportScopeFiltered?: (opts?: { sharing?: boolean }) => Promise<string | null>
     exportMarks?: () => Promise<string | null>
-    exportLoot?: () => Promise<string | null>
-    exportViolations?: () => Promise<string | null>
-    exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
-    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => Promise<string | null>
-    exportWalkthrough?: () => Promise<string | null>
+    exportLoot?: (opts?: { sharing?: boolean }) => Promise<string | null>
+    exportViolations?: (opts?: { sharing?: boolean }) => Promise<string | null>
+    exportTimelineSlice?: (from: number, to: number, opts?: { sharing?: boolean }) => Promise<string | null>
+    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => Promise<string | null>
+    exportWalkthrough?: (opts?: { sharing?: boolean }) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
   }
   visibility: {

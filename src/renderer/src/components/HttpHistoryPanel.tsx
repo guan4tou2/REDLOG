@@ -588,7 +588,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const sortArrow = (col: typeof sortCol) =>
     sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : ''
 
-  const harExportRun = useCallback(async () => {
+  const harExportRun = useCallback(async (_opts?: { sharing?: boolean }) => {
     const opts: { since?: number; before?: number; targetId?: string } = {}
     if (hostFilter) opts.targetId = hostFilter
     if (filtered.length > 0) {

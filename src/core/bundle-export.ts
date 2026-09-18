@@ -9,6 +9,7 @@ import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
+import { BODY_REF_FOR } from './redact-export'
 
 interface ManifestFile {
   path: string
@@ -44,7 +45,7 @@ interface ManifestPayload {
   attachmentScopePolicy?: {
     screenshots: { included: number; excludedOutOfScope: number; unattributed: number }
     casts: { included: number; scopeFiltered: false; reason: string }
-    httpBodies: { included: number }
+    httpBodies: { included: number; excludedOutOfScope: number }
   }
   files: ManifestFile[]
 }
@@ -145,6 +146,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   let sanitizedRowsWritten = 0
   let outOfScopeMasked = 0
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
+  const survivingBodyRefs = new Set<string>()
   for (const row of rowIter) {
     const eventId = row.id as string
     const replacements = getSanitizedFields(eventId)
@@ -160,10 +162,27 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       try {
         if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
         const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
-        if (scopeRepl) { for (const [f, v] of Object.entries(scopeRepl)) data[f] = v; outOfScopeMasked++ }
+        if (scopeRepl) {
+          for (const [f, v] of Object.entries(scopeRepl)) data[f] = v
+          for (const f of Object.keys(scopeRepl)) {
+            const ref = BODY_REF_FOR[f]
+            if (ref && ref in data) delete data[ref]
+          }
+          outOfScopeMasked++
+        }
       } catch { /* leave row as-is */ }
     }
     if (data) row.data = JSON.stringify(data)
+    // Collect surviving body-store refs so http-bodies/ can be scope-filtered.
+    try {
+      const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
+      for (const refKey of Object.values(BODY_REF_FOR)) {
+        const ref = d[refKey]
+        if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
+          survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
+        }
+      }
+    } catch { /* parse already failed above; skip */ }
     fs.writeSync(fd, JSON.stringify(row) + '\n')
   }
   fs.closeSync(fd)
@@ -202,10 +221,27 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       try {
         if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
         const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
-        if (scopeRepl) { for (const [f, v] of Object.entries(scopeRepl)) data[f] = v; outOfScopeMasked++ }
+        if (scopeRepl) {
+          for (const [f, v] of Object.entries(scopeRepl)) data[f] = v
+          for (const f of Object.keys(scopeRepl)) {
+            const ref = BODY_REF_FOR[f]
+            if (ref && ref in data) delete data[ref]
+          }
+          outOfScopeMasked++
+        }
       } catch { /* leave row as-is */ }
     }
     if (data) row.data = JSON.stringify(data)
+    // Collect surviving body-store refs from logged tier too.
+    try {
+      const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
+      for (const refKey of Object.values(BODY_REF_FOR)) {
+        const ref = d[refKey]
+        if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
+          survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
+        }
+      }
+    } catch { /* skip */ }
     fs.writeSync(loggedFd, JSON.stringify(row) + '\n')
     loggedRowCount++
   }
@@ -299,14 +335,24 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   }
 
   // 6a. http-bodies/ — copy referenced body files so the bundle is self-contained.
+  // When scope masking is active, only copy files whose sha256 is still
+  // referenced by a surviving *_ref pointer — bodies whose refs were dropped
+  // (because the corresponding content field was scope-masked) are excluded so
+  // a bundle consumer cannot recover the un-redacted original.
   const srcBodies = path.join(projectDir, 'http-bodies')
   let httpBodiesIncluded = 0
+  let httpBodiesExcluded = 0
   if (fs.existsSync(srcBodies)) {
     const dstBodies = path.join(bundleDir, 'http-bodies')
     const bodyFiles = fs.readdirSync(srcBodies).filter((n) => n.endsWith('.body'))
     if (bodyFiles.length > 0) {
-      fs.mkdirSync(dstBodies, { recursive: true })
+      let dirCreated = false
       for (const name of bodyFiles) {
+        if (scope && survivingBodyRefs.size > 0) {
+          const hash = name.replace(/\.body$/, '')
+          if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; continue }
+        }
+        if (!dirCreated) { fs.mkdirSync(dstBodies, { recursive: true }); dirCreated = true }
         const s = path.join(srcBodies, name)
         const d = path.join(dstBodies, name)
         if (fs.statSync(s).isFile()) {
@@ -488,7 +534,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },
-      httpBodies: { included: httpBodiesIncluded }
+      httpBodies: { included: httpBodiesIncluded, excludedOutOfScope: httpBodiesExcluded }
     } : undefined,
     tiers: {
       // chained = chainHead.eventCount when the head exists; both are
