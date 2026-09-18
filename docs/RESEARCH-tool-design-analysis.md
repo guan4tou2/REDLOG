@@ -466,3 +466,161 @@ C2 框架自帶的 operator logging 是最接近「即時記錄操作者行為�
 - **現狀**：flat list → 點擊跳到 Timeline
 - **提案**：展開式 detail panel（metadata + mini-timeline + 截圖縮圖 + marker 連結）
 - **靈感**：Dradis consolidated node page、Faraday tabbed finding detail
+
+---
+
+## 9. Session Recording 工具技術設計深研
+
+> §8.4 列出了通用 session recording 工具的生態定位。
+> 本節深入研究 **tlog（Red Hat）、Teleport（Gravitational）、ContainerSSH、asciinema、CyberArk PSM、BeyondTrust** 的技術設計，
+> 提煉 RedLog 可參考的 log 擷取/格式/查詢/效能模式。
+> **核心關注**：log 本身——擷取方式、格式結構、查詢搜尋、效能控制。ATT&CK / evidence chain 是附加，不是重點。
+
+### 9.1 擷取架構模式比較
+
+三種主流擷取架構，各有 trade-off：
+
+| 模式 | 代表工具 | 原理 | 優勢 | 限制 |
+|------|---------|------|------|------|
+| **Shell wrapper（login shell 替換）** | tlog | SSSD 將使用者 login shell 替換為 `tlog-rec-session`，在真正 shell 外包一層 PTY，透明中繼並記錄所有 I/O | 零 infra 改動、對使用者透明、單一策略控制點（SSSD conf scope=none/some/all） | root 可 bypass/kill wrapper；無法跨多 hop 追蹤；不感知 command 語意（只是 raw byte stream） |
+| **Proxy 中間人** | Teleport | Proxy Service 終結 SSH/RDP 連線，解密後記錄再轉發到目標主機 | 集中錄製，目標主機不需安裝軟體；可管控所有流入流量 | MITM 信任模型（需 SSH agent forwarding）、Proxy 必須解密再加密（CPU 開銷）、正在被 `proxy-v2` gRPC 串流取代 |
+| **Gateway 攔截** | ContainerSSH | SSH gateway 層攔截，可設定擷取粒度：connection/auth/SSH request/program execution，且 stdin/stdout/stderr 可**個別開關** | 精細控制（如關掉 stdin 避免擷取密碼）；容器化環境天然適配 | 限定容器化場景；不涵蓋 gateway 以外的操作 |
+
+**第四種——eBPF 核心層補強**（Teleport Enhanced Session Recording）：
+
+- 在 PTY 錄影之外，透過 3 支 eBPF 程式（execsnoop / opensnoop / tcpconnect）追蹤核心層級行為
+- 使用 **cgroupv2 per-session** 歸因：每個 SSH session 在獨立 cgroup，eBPF 事件透過 cgroup ID 追溯到具體 session
+- 產出結構化事件（`session.command` / `session.disk` / `session.network`），不取代 PTY 錄影而是補充
+- 自我保護：載入 BPF 後用 seccomp-bpf 永久撤銷自身 `bpf()` syscall 能力
+
+**RedLog 對照**：RedLog 不攔截 SSH——它在操作者本機 OS 層被動擷取（截圖 + 終端 I/O + shell hooks），更接近「桌面側 shell wrapper」但不替換 login shell。eBPF 的 **per-session cgroup 歸因**思路值得參考——RedLog 的 socket→pid→command resolver 在做類似的事（將 traffic 歸因到具體 session/command）。
+
+### 9.2 Log 格式結構比較
+
+| 工具 | 格式 | 結構 | 語意豐富度 | 編輯/裁剪友善度 |
+|------|------|------|-----------|---------------|
+| **tlog** | JSON（per-message） | `ver/host/rec/user/id/pos/time` + `in_txt/out_txt/in_bin/out_bin` + `timing`（ABNF 編碼 interleaving） | 低——不分 command/prompt/output，raw byte stream 按大小（2048B）和延遲（10s）切 chunk | 低——absolute `pos` ms offset，插入/刪除需重算後續所有 timestamp |
+| **Teleport** | Protobuf event stream（gzip 壓縮，可加密） | 強型別事件（resize/input/output/exec/exit），每個事件有 `DelayMilliseconds` | 高——SSH=PTY+lifecycle events，Desktop=TDP messages with PNG frames，eBPF 補充 command/file/network 結構化事件 | 中——delta timing（ms since previous event），但 protobuf binary 不可直接手動編輯 |
+| **ContainerSSH** | 雙格式：native binary + asciicast v2 | Binary=nanosecond timing、完整 metadata；Asciicast v2=ndjson `[time, type, data]` | Binary 高（分 stdin/stdout/stderr + request metadata）；Asciicast 低（丟失 stdin/stdout 分離、無 request metadata） | Binary 低（需專用 decoder）；Asciicast 中（JSON 但 absolute time） |
+| **asciicast v2** | ndjson（header + events） | Header: `version/width/height/timestamp/env/theme`；Events: `[absolute_time_s, "o"/"i", data]` | 低——只有 output("o") 和 input("i") 兩種事件類型 | 低——absolute time，插入/刪除需重算所有後續 timestamp |
+| **asciicast v3**（2025-09） | ndjson（header + events，不向下相容） | Header: `term:{cols,rows,type,version,theme}` + `tags[]`；Events: `[delta_time_s, type, data]` | 中——新增 `"m"` marker（書籤/章節）、`"r"` resize、`"x"` exit status；支援 `#` 行內註解 | **高**——**delta timing**（距上一事件的秒數），插入/刪除只影響相鄰事件，不需全局重算 |
+| **CyberArk PSM** | RDP=`.avi` video / SSH=`.log` text | 非結構化；text search 需 opt-in indexer（RDP=OCR，SSH=literal text flag），不可追溯 | 低——已記錄的 session 無法事後索引 | N/A |
+| **BeyondTrust** | 加密 video + 獨立 keystroke log | Video=pixel-accurate；Keystroke=結構化事件流（非 baked into video） | 中——keystroke 獨立可搜尋，不需 OCR | 中——keystroke 結構化但 video 不可編輯 |
+
+**關鍵設計洞察**：
+
+1. **雙軌格式策略**（compact binary for storage + standard replayable for humans）——ContainerSSH 和 Teleport（`tsh play --format json`）都這麼做。RedLog 的 `.cast` + event envelope 已是這個模式。
+2. **asciicast v3 的 delta timing** 是一個重要演進：如果 RedLog 未來需要支援錄影裁剪/脫敏，delta timing 比 absolute timing 友善得多（Bresenham/error-diffusion rounding 避免 drift）。
+3. **語意分離**很重要：tlog 把所有東西混在一個 byte stream（prompt + echo + output），無法事後分離。Teleport 用結構化事件（但 PTY 本身仍是 raw bytes，靠 eBPF 補充語意）。RedLog 的 shell hooks 已經在 command 層面做語意分離（command_start/command_end），比 tlog 強。
+4. **Marker/章節標記**：asciicast v3 新增 `"m"` event type（命名書籤/章節點），和 RedLog 的 Marker 系統概念一致但實作層級不同（asciinema 是錄影層 marker，RedLog 是事件層 marker）。
+
+### 9.3 查詢與搜尋設計
+
+**這是所有 session recording 工具的共同弱點**——沒有任何工具提供完整的終端內容全文搜尋。
+
+| 工具 | Metadata 查詢 | 終端內容搜尋 | 設計選擇 |
+|------|-------------|------------|---------|
+| **tlog** | journalctl 欄位匹配（`TLOG_REC=<id>`、user/host/time） | ❌ 無——只能 grep export 的 JSON | metadata-only |
+| **Teleport** | Audit log JSON 結構化查詢（event type/user/session/time），Enhanced BPF 產出的 `session.command` 可結構化搜尋 | ❌ 無——confirmed open feature request（#11694），社群明確表示需要「找到四個月前跑過的那個指令」 | metadata + structured BPF events only |
+| **ContainerSSH** | 程式化 `List()` / `OpenReader()` API | ❌ 無——decode 後自行 grep | 無索引 |
+| **asciinema-server** | 標題/描述搜尋 | ✅ **有**——PostgreSQL native FTS（`tsvector/tsquery`），server-side 用 `avt` 虛擬終端引擎渲染/展平終端輸出後索引為純文字 | **唯一做到終端全文搜尋的工具** |
+| **CyberArk PSM** | 分頁瀏覽（Web UI 25/page、REST API 100/page） + timeline scrubber | ⚠️ 條件式——需 opt-in indexer（SSH=literal text flag，RDP=OCR，~20-30% 額外儲存），不可追溯 | opt-in indexer, non-retroactive |
+| **BeyondTrust** | protocol/date-range/quick-filter | ✅ keystroke 獨立搜尋（搜尋 keystroke 結構化事件流，不靠 OCR） | 雙軌：video 不可搜 + keystroke 結構化可搜 |
+| **Segura (senhasegura)** | session metadata 篩選 | ✅ 混合——SSH=native text capture，RDP=Tesseract OCR (~90% accuracy)，統一併入「Session Texts」全文搜尋報告 | protocol-native text + OCR fallback → 統一 index |
+
+**三種搜尋策略及其 trade-off**：
+
+| 策略 | 原理 | 成本 | 適用場景 |
+|------|------|------|---------|
+| ① **展平 + DB FTS** | 用虛擬終端引擎渲染 session，展平為純文字，灌入 DB 全文索引（Postgres tsvector） | 低（最便宜可行路徑） | SSH/terminal-only（純文字 protocol） |
+| ② **獨立結構化事件索引** | 索引獨立的 keystroke/command 事件流，而非 video/PTY bytes | 中 | 控制 client 端的 protocol（keystroke 可分離） |
+| ③ **OCR** | 渲染螢幕 frame → 文字辨識 → 索引 | 高（20-30% 額外儲存，~90% accuracy，非追溯） | 只有 pixel-only protocol（RDP/VNC） |
+
+**RedLog 對照**：RedLog 的 `cast-index` 已實作策略①（展平 .cast 內容做全文索引），這在整個生態中**只有 asciinema-server 做了同樣的事**。Teleport/tlog/ContainerSSH 都確認缺少這個能力。這是 RedLog 的一個真實差異化優勢。
+
+### 9.4 Replay UI/UX 模式
+
+| 模式 | 出處 | 說明 | RedLog 相關性 |
+|------|------|------|-------------|
+| **Timeline scrubber + jump-to-point** | CyberArk、asciinema player | 近乎通用的播放 UI：scrubber bar + 點擊跳到任意時間點 | ✅ asciinema-player 已有 |
+| **Web player + 自適應 resize** | Cockpit（tlog）、asciinema-server | CLI player 無法 resize（tlog-play 必須匹配原始終端尺寸）；Web player 可自適應瀏覽器視窗 | ✅ RedLog 用 web-based xterm.js |
+| **Playback speed 控制** | tlog-play（1/16x–16x）、`tsh play --speed` | CLI 有速度控制，但 Teleport Web UI **沒有**（idle time 會真實阻塞 Web player，GitHub #38560） | ⚠️ 確認 RedLog player 是否有速度控制 |
+| **Skip idle** | `tsh play --skip-idle-time` | 跳過無活動時段，大幅縮短回放長度 | ✅ 值得確認/實作 |
+| **Marker/章節導航** | asciicast v3 `"m"` event | 錄影內嵌具名書籤，播放時可直接跳到章節點 | ⭐ RedLog 的 Marker 已在事件層做到；可考慮在 recording player 內嵌 Marker timestamp 跳轉 |
+| **分頁式 session 瀏覽** | CyberArk（25/page UI、100/page API） | 大規模下沒人做 infinite scroll——straight pagination + metadata filters | ✅ Timeline 已是 virtualized scroll |
+| **Review/accountability** | BeyondTrust | 「Reviewed」狀態標記 + 審查者稽核軌跡 | ⏸ 合規用途，RedLog 暫不需要 |
+
+**RedLog 已有 player 的優勢**：web-based xterm.js player + cast-index 全文搜尋，在回放體驗上已超越 tlog 和 Teleport。最值得補強的是：
+
+1. **Marker → recording player 時間點跳轉**（Marker 帶 timestamp，player 可自動定位到 Marker 發生的瞬間）
+2. **Skip idle / speed 控制**（如果還沒有的話）
+
+### 9.5 效能與節流設計
+
+#### Token-bucket 速率限制（tlog）
+
+tlog 的核心效能機制，直接可參考：
+
+| 參數 | 預設值 | 說明 |
+|------|-------|------|
+| `rate` | 16384 B/s | 穩態最大 logging 吞吐量 |
+| `burst` | 32768 B | 允許的瞬間超額量 |
+| `latency` | 10s | 緩衝多長時間再 flush 一條 log message |
+| `payload` | 2048 B | 每條 JSON message 的最大 encoded payload |
+| `action` | `delay` | 預算耗盡時行為：`delay`（背壓，終端變慢）/ `drop`（丟棄多餘資料）/ `pass`（停用限制） |
+
+`delay` 模式下，`cat` 大檔案或高速 log scroll 會**可見地讓終端變慢**——這是有意為之的 trade-off（保護 log 管線 vs. 使用者體驗）。
+
+#### Sync vs. Async 錄製模式（Teleport）
+
+| 模式 | 行為 | 保證 | 風險 |
+|------|------|------|------|
+| `node-sync` / `proxy-sync` | 每個事件即時提交 Auth Service，傳輸失敗 = session 終止 | **零丟失**——no session without full logging | Auth 不可用 → session 中斷；需低延遲可靠連線 |
+| `node` / `proxy`（async） | 本地磁碟緩衝，session 結束後上傳 | 容錯 Auth 暫時不可用 | 上傳前存在竄改窗口；需本地磁碟空間 |
+
+Upload completer 每 5 分鐘掃描未完成上傳（30 分鐘 session-tracker 過期），crash recovery 最差 ~35 分鐘。
+
+#### 分段策略（Teleport / 通用）
+
+- Teleport 長 session 按 **5 分鐘切段**，gzip 壓縮 + 可選信封加密（RSA-OAEP 4096-bit）
+- 通用 PAM 工具常見 50MB/5min 邊界，或硬 10MB 加密段
+- 目的：**限制 replay 延遲**（不需下載整個多 GB 檔案才能 seek 到尾端）+ 限制單段損毀的影響範圍
+- 單一無界限 session file 被視為 **anti-pattern**
+
+#### 本地緩衝 fallback（通用）
+
+- ContainerSSH：S3 multipart upload（5MB parts），local staging directory 作為 fallback/buffer
+- Teleport async：寫入本地磁碟，session 結束後上傳
+- **共識**：永遠有 local fallback，session 擷取絕不因 remote storage 不可用而中斷
+
+**RedLog 對照**：RedLog 作為本機 Electron app，所有 log 天然寫入本地——沒有 remote storage 延遲問題。但以下模式值得參考：
+
+1. **Token-bucket 節流**：RedLog 的 `ScreenshotAgent` 已有 perceptual dedup（dHash），但終端錄影（pty-recorder）沒有對高吞吐量終端輸出做節流設計。如果操作者 `cat` 大檔案，.cast 會瞬間膨脹。可參考 tlog 的 rate/burst/action 三參數模型。
+2. **分段**：長 session 的 .cast 檔案不做分段，會影響 replay seek 效能和 cast-index 建構速度。5 分鐘或固定大小分段是值得考慮的方向。
+3. **Sync/async 取捨**：若 RedLog 未來做 push-only log export（user 提過 ELK/Splunk/SIEM），Teleport 的 sync/async 模式是直接可參考的架構。
+
+### 9.6 跨工具設計模式總結
+
+以下提煉出 RedLog 最值得參考的設計模式，按「log 為核心」的視角排序：
+
+| # | 模式 | 來源 | RedLog 行動 | 優先級 |
+|---|------|------|-----------|--------|
+| 1 | **展平終端 + DB FTS（全文搜尋）** | asciinema-server（PostgreSQL tsvector） | ✅ **已有**——cast-index 全文索引。生態中只有 asciinema-server 和 RedLog 做到 | — |
+| 2 | **Delta timing** | asciicast v3 | 📝 注意——如果 RedLog 需要錄影裁剪/脫敏，delta timing 比 absolute timing 友善得多。目前 .cast 用 asciicast v2（absolute），v3 尚新 | P3 |
+| 3 | **Per-stream toggle**（stdin/stdout 個別開關） | ContainerSSH | 📝 考慮——RedLog pty-recorder 是否能選擇性不記錄 stdin（避免記錄密碼輸入）？目前全錄 | P3 |
+| 4 | **Token-bucket 速率限制** | tlog（rate/burst/latency/action） | ⚠️ 建議——pty-recorder 對高吞吐量輸出無節流，.cast 會膨脹 | P2 |
+| 5 | **長 session 分段**（5min / 50MB 邊界） | Teleport、通用 PAM | ⚠️ 建議——長 session 的 .cast 是單一無界限檔案 | P2 |
+| 6 | **Audit log / recording 分離** | Teleport | ✅ **已有**——event DB（輕量、可查詢）vs. .cast/.jpg（heavy blobs）已是分離架構 |  — |
+| 7 | **Marker → player 時間跳轉** | asciicast v3 `"m"` event | ✅ 採納——Marker 帶 timestamp，player 可定位到 Marker 瞬間 | P2 |
+| 8 | **eBPF cgroup 歸因** | Teleport Enhanced Session Recording | 📝 參考——RedLog 的 socket→pid→command resolver 在做類似歸因，eBPF 是更強力的替代方案（但需 Linux kernel ≥5.8、非跨平台） | P3 |
+| 9 | **Sync/async export 模式** | Teleport | 📝 未來——push-only log export 到 ELK/SIEM 時的架構參考 | future |
+| 10 | **雙軌格式**（compact binary + standard replayable） | ContainerSSH、Teleport | ✅ **已有**——event envelope + .cast 播放格式 | — |
+
+### 9.7 確認的差異化優勢
+
+經深入研究 6+ 工具後確認：
+
+1. **終端全文搜尋**：生態中只有 asciinema-server 和 RedLog 做到。tlog / Teleport / ContainerSSH / CyberArk 都確認**沒有**這個能力。Teleport 社群明確表示這是需求（#11694），至今未實作。
+2. **被動 OS-level 擷取 + cross-tool**：所有 session recording 工具都綁定特定 protocol（SSH/RDP/container），沒有任何工具做「操作者桌面上所有活動」的被動擷取。
+3. **Shell 語意分離**：tlog 完全不分 command/prompt/output（raw byte stream）；Teleport 靠 eBPF 補充（需 Linux kernel ≥5.8）。RedLog 透過 shell hooks 在 command 層面已做到語意分離，不依賴 kernel 功能，跨平台。
+4. **Perceptual screenshot dedup**：dHash 相似度過濾是 session recording 工具完全沒有的維度（它們只錄終端，不截圖）。
