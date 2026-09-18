@@ -8,6 +8,7 @@ export interface ProjectMeta {
   createdAt: number
   lastOpened: number
   path: string
+  dbSize?: number
 }
 
 interface ProjectsIndex {
@@ -34,10 +35,23 @@ function saveIndex(index: ProjectsIndex): void {
   fs.writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2), 'utf-8')
 }
 
+function dirSize(dir: string): number {
+  let total = 0
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) total += dirSize(full)
+      else try { total += fs.statSync(full).size } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return total
+}
+
 export function listProjects(): ProjectMeta[] {
   const index = loadIndex()
   return index.recent
     .filter((p) => fs.existsSync(p.path))
+    .map((p) => ({ ...p, dbSize: dirSize(p.path) }))
     .sort((a, b) => b.lastOpened - a.lastOpened)
 }
 

@@ -8,6 +8,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
+import { useSharedFilter } from '../lib/FilterContext'
 
 interface HttpFlow {
   flowId: string
@@ -348,6 +349,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   onOpenInTimeline?: (eventId: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
+  const { filter: sharedFilter } = useSharedFilter()
   const [flows, setFlows] = useState<HttpFlow[]>([])
   const [loading, setLoading] = useState(true)
   const [filterText, setFilterText] = useState('')
@@ -507,6 +509,17 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     if (hostFilter) {
       list = list.filter(f => f.host === hostFilter)
     }
+    if (sharedFilter.targetId) {
+      list = list.filter(f => f.host === sharedFilter.targetId)
+    }
+    if (sharedFilter.timeRange) {
+      const { since, before } = sharedFilter.timeRange
+      list = list.filter(f => {
+        if (since && f.timestamp < since) return false
+        if (before && f.timestamp > before) return false
+        return true
+      })
+    }
 
     list = [...list].sort((a, b) => {
       const va = a[sortCol] ?? 0
@@ -514,7 +527,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return list
-  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc])
+  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc, sharedFilter.targetId, sharedFilter.timeRange])
 
   // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
   // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size

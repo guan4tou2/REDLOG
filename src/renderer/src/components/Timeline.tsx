@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { useSharedFilter } from '../lib/FilterContext'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -69,6 +70,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 }
 
 export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
+  const { filter: sharedFilter } = useSharedFilter()
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -354,6 +356,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // 10.0.0.5 does not also light up 10.0.0.50 the way the text filter would.
   const [targetFocus, setTargetFocus] = useState<string | null>(focusTarget ?? null)
   useEffect(() => { setTargetFocus(focusTarget ?? null) }, [focusTarget])
+  const effectiveTarget = sharedFilter.targetId ?? targetFocus
 
   const [filterQuery, setFilterQuery] = useState<string>(() => {
     try { return localStorage.getItem('redlog-timeline-filter-query') || '' } catch { return '' }
@@ -1027,8 +1030,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // operator asking what happened to a host wants the connection, the
   // request and the scope violation, not only the extractor-tagged rows.
   const targetMatches = useMemo(() => {
-    if (!targetFocus) return null
-    const t = targetFocus.toLowerCase()
+    if (!effectiveTarget) return null
+    const t = effectiveTarget.toLowerCase()
     const set = new Set<string>()
     for (const e of events) {
       const d = e.data as Record<string, unknown> | undefined
@@ -1036,7 +1039,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       if (fields.some((v) => typeof v === 'string' && v.toLowerCase() === t)) set.add(e.id)
     }
     return set
-  }, [events, targetFocus])
+  }, [events, effectiveTarget])
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => {
@@ -2137,17 +2140,17 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >×</button>
         </div>
       )}
-      {targetFocus && (
+      {effectiveTarget && (
         <div
           data-testid="timeline-target-focus-badge"
           className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-redlog-accent/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
           style={{ top: focusChain ? 36 : 6, right: 8 }}
         >
           <span className="text-redlog-accent">
-            {t('timeline.targetFocus.badge', { target: targetFocus, count: targetMatches?.size ?? 0 })}
+            {t('timeline.targetFocus.badge', { target: effectiveTarget, count: targetMatches?.size ?? 0 })}
           </span>
           <button
-            onClick={() => setTargetFocus(null)}
+            onClick={() => { setTargetFocus(null) }}
             className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
             title={t('timeline.targetFocus.exit')}
             aria-label={t('timeline.targetFocus.exit')}
