@@ -164,14 +164,14 @@ PR：https://github.com/guan4tou2/REDLOG/pull/114
 - 無 target / 未設定 scope 應標「未分類」，不代表 in-scope
 - 原始證據保存與對外交付衍生副本應保持分離
 
-### 3.5 建議執行順序
+### 3.5 執行順序（已完成）
 
-依稽核報告建議，剩餘工作分四階段：
+依稽核報告建議，四階段全部完成：
 
-1. **暫停語意與專案歸屬**（§2.1）— 跨子系統政策統一，風險最高
-2. **AI 原始保存與解析**（§2.2）— transcript checkpoint + UI 分頁
-3. **交付正確性**（§2.3）— 搜尋/匯出 8 項修正
-4. **共用 filter + UI 驗收**（§2.4）— 最後收尾
+1. ✅ **暫停語意與專案歸屬**（§2.1）— Commit 7 (`9e7ce0f`)
+2. ✅ **AI 原始保存與解析**（§2.2）— Commit 8 (`3b0039a`)
+3. ✅ **交付正確性**（§2.3）— Commit 9 (`f3ba36b`)
+4. ✅ **共用 filter + UI 驗收**（§2.4）— Commit 10 (`0eb39f8`)，共用篩選列為後續
 
 不建議此階段增加協查案件管理、清理任務追蹤、SIEM 規則平台或 agent 編排。
 
@@ -180,6 +180,7 @@ PR：https://github.com/guan4tou2/REDLOG/pull/114
 ## 四、驗證狀態
 
 - TypeScript 編譯：零錯誤（`npx tsc --noEmit` 通過）
-- 測試：55 tests passed（agent-transcript-tailer 27 + retention 21 + secret-redaction 7）
-- 分支共 5 個 commit：原始四項 → P0 → P1 → P2 → 補充核對 6 項
+- 測試：1405 passed / 6 failed（3 個 pre-existing failures on main：api-server、per-project-token、tool-input-redaction）
+- 分支共 10 個 commit：原始四項 → P0 → P1 → P2 → 補充核對 6 項 → 暫停語意與專案歸屬 → §2.2 AI 原始保存與解析 → §2.3 搜尋篩選與匯出 → §2.4 UI/UX 最小改善
 - 尚未完成實機 UI 驗收（稽核報告明示需要新版桌面與窄視窗操作驗收）
+- §2.4 第 2 項（共用篩選）列為後續 UI 重構項目
