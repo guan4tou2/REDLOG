@@ -78,6 +78,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [castHits, setCastHits] = useState<CastHit[]>([])
   const [castPending, setCastPending] = useState(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Audit 2026-09-18 P4: monotonic counter so stale slow responses don't
+  // overwrite newer results.
+  const searchSeqRef = useRef(0)
   const { t } = useI18n()
 
   // Hoisted out of the render IIFE it used to live in so the keyboard hook can
@@ -101,7 +104,10 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       return
     }
     setSearching(true)
+    const seq = ++searchSeqRef.current
     window.redlog.events.search(q, 200, typeFilter ? { agentType: typeFilter } : undefined).then(async (r) => {
+      // Audit 2026-09-18 P4: discard stale responses.
+      if (seq !== searchSeqRef.current) return
       // `searchEvents` is a LIKE over each row's own bytes, so a marker
       // corrected since it was written matches its OLD title only, and the new
       // one matches the amendment row alone. Showing that bare correction —
@@ -135,6 +141,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setResults(rows)
       setSearching(false)
       setSearched(true)
+    }).catch(() => {
+      if (seq !== searchSeqRef.current) return
+      setSearching(false)
     })
     // Fired in parallel and settled independently: the recording index can be
     // slower or absent, and making the event results wait on it would slow
@@ -182,6 +191,13 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             {t('search.hint')}
           </div>
         )}
+        {/* Audit 2026-09-18 P4: clear-filter button outside the results block so
+            it stays visible when the active filter yields zero matches. */}
+        {searched && typeFilter && (
+          <div className="text-redlog-text-dim text-xs mb-2">
+            <button onClick={() => setTypeFilter(null)} className="text-redlog-text-dim hover:text-redlog-text underline">{t('search.clearFilter')}</button>
+          </div>
+        )}
         {searched && results.length === 0 && castHits.length === 0 && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.noResults', { query })}
@@ -201,7 +217,6 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           <>
             <div className="text-redlog-text-dim text-xs mb-2">
               {t('search.results', { count: filtered.length })}
-              {typeFilter && <> · <button onClick={() => setTypeFilter(null)} className="text-redlog-text-dim hover:text-redlog-text underline">{t('search.clearFilter')}</button></>}
             </div>
             {types.length > 1 && (
               <div className="flex flex-wrap gap-1 mb-2">

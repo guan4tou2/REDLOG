@@ -103,6 +103,11 @@ export interface ParsedTurn {
   toolInput?: Record<string, unknown>
   toolOutput?: string
   hasThinking?: boolean
+  /** Audit 2026-09-18 P2: wall-clock timestamp from the source transcript
+   *  (e.g. Claude Code's `timestamp` field). Lets a reviewer correlate a
+   *  turn with the agent's own timeline rather than relying solely on
+   *  RedLog's insert-time `created_at`. */
+  sourceTimestamp?: number
 }
 
 /** v0.8.3: control surface handed to `adapter.init(...)` so an adapter can
@@ -557,6 +562,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
     ...(s.postCompact ? { post_compact: true } : {}),
     ...(typeof t.usageTokensIn === 'number' ? { usage_tokens_in: t.usageTokensIn } : {}),
     ...(typeof t.usageTokensOut === 'number' ? { usage_tokens_out: t.usageTokensOut } : {}),
+    ...(typeof t.sourceTimestamp === 'number' ? { source_timestamp: t.sourceTimestamp } : {}),
     ...(causesArr ? { _causes: causesArr } : {})
   }
 
@@ -696,7 +702,6 @@ function pendingSize(s: SessionState): number {
  *  Handles both per-line (JSONL) and per-message (file-per-unit) adapters
  *  based on `adapter.perMessageDir`. Public for testability. */
 export function catchUpSession(agentKind: string, sessionId: string): void {
-  if (eventBus.paused) return
   const s = sessions.get(sessionKey(agentKind, sessionId))
   if (!s) return
   if (s.adapter.perMessageDir) {
@@ -718,6 +723,12 @@ function catchUpJsonl(s: SessionState): void {
 
   if (shouldReset) {
     const oldHash = fileSha256(s.sidecarPath)
+    // Audit 2026-09-18 P1: archive the sidecar before truncating so the raw
+    // pre-compact transcript is preserved for forensic review.
+    if (sidecarSize > 0) {
+      const archivePath = s.sidecarPath + `.${Date.now()}.bak`
+      try { fs.copyFileSync(s.sidecarPath, archivePath) } catch { /* best-effort */ }
+    }
     try { fs.truncateSync(s.sidecarPath, 0) } catch { /* ignore */ }
     s.pendingLineBuffer = ''
     s.redlogIdByUuid.clear()
@@ -768,14 +779,22 @@ function catchUpJsonl(s: SessionState): void {
   const complete = lastNl === -1 ? '' : text.slice(0, lastNl)
   s.pendingLineBuffer = lastNl === -1 ? text : text.slice(lastNl + 1)
 
-  for (const raw of complete.split('\n')) {
-    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-    if (!line.trim()) continue
-    s.linesSeen++
-    processUnit(s, line, s.sourcePath)
+  // Audit 2026-09-18 P1: when paused, sidecar was advanced above (raw copy
+  // maintained) but events must NOT be emitted. Count lines for accuracy
+  // but skip processUnit so no DB rows land during the pause window.
+  if (!eventBus.paused) {
+    for (const raw of complete.split('\n')) {
+      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw
+      if (!line.trim()) continue
+      s.linesSeen++
+      processUnit(s, line, s.sourcePath)
+    }
+    scheduleIdleSnapshot(s)
+  } else {
+    for (const raw of complete.split('\n')) {
+      if (raw.trim() || (raw.endsWith('\r') && raw.slice(0, -1).trim())) s.linesSeen++
+    }
   }
-
-  scheduleIdleSnapshot(s)
 }
 
 /** Per-message directory scan: each new file in the watched dir is one
@@ -805,18 +824,17 @@ function catchUpPerMessageDir(s: SessionState): void {
     let raw: string
     try { raw = fs.readFileSync(p.full, 'utf-8') } catch { continue }
     s.linesSeen++
-    // Append the filename to the sidecar index so a crash before emit
-    // still records "we saw this file" — next tick's dedup check skips it.
     try { fs.appendFileSync(s.sidecarPath, p.name + '\n') } catch { /* ignore */ }
     s.bytesAppendedSinceSnapshot += p.name.length + 1
-    // For per-message adapters we treat the FILENAME as the uuid so dedup
-    // works — parseUnit's returned `.uuid` is expected to be the filename
-    // OR a real uuid; either way emitTurn's dedup covers it. sourcePath
-    // passed here is the individual unit file (so adapters like OpenCode
-    // can resolve sibling `part/msg_<id>/` dirs).
+    // Audit 2026-09-18 P1: sidecar index advanced above; skip event
+    // processing when paused so no DB rows land during the pause window.
+    if (eventBus.paused) {
+      s.redlogIdByUuid.set(p.name, '__paused__')
+      continue
+    }
     processUnit(s, raw, p.full)
   }
-  scheduleIdleSnapshot(s)
+  if (!eventBus.paused) scheduleIdleSnapshot(s)
 }
 
 function processUnit(s: SessionState, rawContent: string, sourcePath: string): void {

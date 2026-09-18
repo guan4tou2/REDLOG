@@ -117,7 +117,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (!project) return null
     const projectDir = getProjectPath(project)
     const config = loadConfig(projectDir)
-    const events = redactEventsForExport(queryEvents({ limit: 100000 }), scopeForActiveProject(ctx))
+    const events = redactEventsForExport(queryEvents({ limit: -1 }), scopeForActiveProject(ctx))
     const data = { config, events, exportedAt: new Date().toISOString() }
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -138,7 +138,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const scope = scopeForActiveProject(ctx)
     const events = opts?.scopeOnly && scope
       ? queryScopeFilteredEvents(scope.targets)
-      : queryEvents({ limit: 100000 })
+      : queryEvents({ limit: -1 })
     const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: opts?.scrubPii === true })
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -202,7 +202,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const from = Number(opts?.from) || 0
     const to = Number(opts?.to) || Date.now()
     if (to <= from) return null
-    const all = queryEvents({ limit: 100000, since: from })
+    const all = queryEvents({ limit: -1, since: from })
     const slice = all.filter((e) => e.timestamp >= from && e.timestamp <= to)
     // A correction is always written after the window its marker lives in, so a
     // plain window filter exports the finding with the wording the operator has

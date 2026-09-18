@@ -60,7 +60,11 @@ export function scopeMaskReplacements(
   if (!isOutOfScope(targetId, scope)) return null
   const out: Record<string, string> = {}
   for (const field of SCOPE_SANITIZED_FIELDS) {
-    if (typeof data[field] === 'string' && (data[field] as string).length > 0) {
+    const v = data[field]
+    if (v == null) continue
+    if (typeof v === 'string') {
+      if (v.length > 0) out[field] = '[redacted: out of scope]'
+    } else if (typeof v === 'object' || typeof v === 'number' || typeof v === 'boolean') {
       out[field] = '[redacted: out of scope]'
     }
   }

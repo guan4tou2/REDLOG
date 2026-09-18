@@ -963,6 +963,11 @@ function stopProject(): void {
   stopOpsecMonitor()
   screenshotAgent.stop()
   closeCastIndex()
+  // Audit 2026-09-18 P1: finalize all terminal sessions BEFORE closing the DB
+  // so session_end events (with cast SHA-256) land in the chain. Without this,
+  // terminals survive the project switch with stale identity and their close
+  // events race the DB close.
+  killAllTerminals()
   closeDB()
   resetBodiesDirCache()
   activeProject = null

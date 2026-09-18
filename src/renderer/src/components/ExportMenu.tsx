@@ -158,10 +158,10 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             <Option
               label={t('export.bundle')}
               onPick={() => void run(t('export.bundle'), async () => {
-                const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ ok: boolean; zipPath?: string }> }
+                const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ ok: boolean; outDir?: string }> }
                 if (!api.exportBundle) return null
                 const r = await api.exportBundle({ maskOutOfScope: maskScope })
-                return r.ok ? (r.zipPath ?? null) : null
+                return r.ok ? (r.outDir ?? null) : null
               })}
             />
             {/* A2 override. Checked = out-of-scope captured content is redacted
