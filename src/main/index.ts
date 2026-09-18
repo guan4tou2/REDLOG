@@ -10,7 +10,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, distinctAgentTypes, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -1334,6 +1334,7 @@ app.whenReady().then(() => {
   ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
   ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
   ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string }) => activeProject ? searchEvents(query, limit, opts) : [])
+  ipcMain.handle('events:distinctAgentTypes', () => activeProject ? distinctAgentTypes() : [])
   ipcMain.handle('events:aggregateTargets', () => activeProject ? aggregateTargets() : [])
   ipcMain.handle('events:distinctHosts', () => activeProject ? distinctHosts() : [])
   // 10a Inspector 〈相關〉: a host's curated causal chain + header aggregate.

@@ -5,36 +5,45 @@ import { rowToEvent } from './event-types'
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
 const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
 
-export function queryScopeFilteredEvents(scopeTargets: string[]): RedLogEvent[] {
-  // Heavy read: the LIMIT-100000 export scan. Read-only handle keeps it off the
-  // write path.
+export function queryScopeFilteredEvents(scopeTargets: string[]): { events: RedLogEvent[]; truncated: boolean } {
   const db = getReadonlyDB()
-  // Push obvious no-target exclusions into SQL so we don't drag half the
-  // engagement's clipboard/system rows into memory just to drop them. Pattern
-  // matching against user-supplied scope targets stays in JS because SQLite
-  // has no cheap wildcard/glob for arbitrary patterns like `*.example.com`.
   const excluded = Array.from(EXCLUDED_NO_TARGET_TYPES)
   const allowedNoTarget = Array.from(ALLOWED_NO_TARGET_TYPES)
   const excludedPlaceholders = excluded.map(() => '?').join(',')
   const allowedPlaceholders = allowedNoTarget.map(() => '?').join(',')
-  const sql = `
-    SELECT * FROM events
-    WHERE (
-      target_id IS NOT NULL
-      OR agent_type IN (${allowedPlaceholders})
-    )
-    AND agent_type NOT IN (${excludedPlaceholders})
-    ORDER BY timestamp DESC
-    LIMIT 100000
-  `
-  const rows = db.prepare(sql).all(...allowedNoTarget, ...excluded) as Array<Record<string, unknown>>
-  const events = rows.map(rowToEvent)
-  if (scopeTargets.length === 0) return events
-
-  return events.filter((e) => {
-    if (e.targetId) return scopeTargets.some((t) => matchTarget(e.targetId!, t))
-    return ALLOWED_NO_TARGET_TYPES.has(e.agentType)
-  })
+  const PAGE = 50_000
+  const allEvents: RedLogEvent[] = []
+  let offset = 0
+  let truncated = false
+  const MAX_ROWS = 500_000
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const sql = `
+      SELECT * FROM events
+      WHERE (
+        target_id IS NOT NULL
+        OR agent_type IN (${allowedPlaceholders})
+      )
+      AND agent_type NOT IN (${excludedPlaceholders})
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?
+    `
+    const rows = db.prepare(sql).all(...allowedNoTarget, ...excluded, PAGE, offset) as Array<Record<string, unknown>>
+    const batch = rows.map(rowToEvent)
+    if (scopeTargets.length === 0) {
+      allEvents.push(...batch)
+    } else {
+      for (const e of batch) {
+        if (e.targetId ? scopeTargets.some((t) => matchTarget(e.targetId!, t)) : ALLOWED_NO_TARGET_TYPES.has(e.agentType)) {
+          allEvents.push(e)
+        }
+      }
+    }
+    if (batch.length < PAGE) break
+    offset += PAGE
+    if (offset >= MAX_ROWS) { truncated = true; break }
+  }
+  return { events: allEvents, truncated }
 }
 
 /** One host's rollup for ⌘K host search (UIUX-STANDARD §10). */

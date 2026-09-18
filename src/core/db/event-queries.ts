@@ -344,6 +344,18 @@ export function getEventCount(opts?: { tier?: 'chained' | 'logged' | 'all' }): n
   return chained + logged
 }
 
+export function distinctAgentTypes(): string[] {
+  const db = getReadonlyDB()
+  const rows = db.prepare(
+    `SELECT agent_type FROM (
+       SELECT DISTINCT agent_type FROM events
+       UNION
+       SELECT DISTINCT agent_type FROM events_logged
+     ) ORDER BY agent_type`
+  ).all() as Array<{ agent_type: string }>
+  return rows.map((r) => r.agent_type)
+}
+
 export function getLootCount(): number {
   const db = getReadonlyDB()
   const row = db.prepare("SELECT COUNT(*) as count FROM events WHERE agent_type = 'loot'").get() as { count: number }

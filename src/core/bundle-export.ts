@@ -8,7 +8,7 @@ import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
-import { scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
+import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 
 interface ManifestFile {
   path: string
@@ -41,6 +41,11 @@ interface ManifestPayload {
    *  count the OTS anchor covers. `logged` is the events_logged row count
    *  bundled in `events_logged.jsonl`. Only present on bundleVersion >= 2. */
   tiers?: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
+  attachmentScopePolicy?: {
+    screenshots: { included: number; excludedOutOfScope: number; unattributed: number }
+    casts: { included: number; scopeFiltered: false; reason: string }
+    httpBodies: { included: number }
+  }
   files: ManifestFile[]
 }
 
@@ -227,25 +232,58 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     })), null, 2)
   ))
 
-  // 5. screenshots/  — copy every jpeg, hash each
+  // 5. screenshots/  — copy jpegs, scope-filtering when maskOutOfScope is on.
+  // Audit 2026-09-18 §2.3: screenshot events carry `data.filename` + `target_id`;
+  // when scope masking is active, exclude files whose event target is out of scope.
+  // Files with no matching event or no target are included but counted as unattributed.
   const srcShots = path.join(projectDir, 'screenshots')
   const dstShots = path.join(bundleDir, 'screenshots')
+  let screenshotsIncluded = 0
+  let screenshotsExcluded = 0
+  let screenshotsUnattributed = 0
   if (fs.existsSync(srcShots)) {
-    fs.mkdirSync(dstShots, { recursive: true })
+    const shotFilenameToTarget = new Map<string, string | null>()
+    if (scope) {
+      const shotRows = db.prepare(
+        `SELECT json_extract(data, '$.filename') AS filename, target_id
+         FROM events WHERE agent_type = 'screenshot'`
+      ).all() as Array<{ filename: string | null; target_id: string | null }>
+      for (const r of shotRows) {
+        if (r.filename) shotFilenameToTarget.set(r.filename, r.target_id)
+      }
+    }
+    let dirCreated = false
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
-      const d = path.join(dstShots, name)
-      if (fs.statSync(s).isFile()) {
-        fs.copyFileSync(s, d)
-        const info = sha256File(d)
-        files.push({ path: `screenshots/${name}`, ...info })
+      if (!fs.statSync(s).isFile()) continue
+      if (scope) {
+        const target = shotFilenameToTarget.get(name)
+        if (target === undefined) {
+          screenshotsUnattributed++
+        } else if (!target) {
+          screenshotsUnattributed++
+        } else if (isOutOfScope(target, scope)) {
+          screenshotsExcluded++
+          continue
+        }
       }
+      if (!dirCreated) { fs.mkdirSync(dstShots, { recursive: true }); dirCreated = true }
+      const d = path.join(dstShots, name)
+      fs.copyFileSync(s, d)
+      const info = sha256File(d)
+      files.push({ path: `screenshots/${name}`, ...info })
+      screenshotsIncluded++
     }
   }
 
-  // 6. casts/ — copy every asciinema cast if present
+  // 6. casts/ — copy every asciinema cast if present.
+  // Audit 2026-09-18 §2.3: casts span multiple commands/targets within a single
+  // terminal session — automatic scope filtering would require byte-level
+  // splitting, which the audit explicitly deems unsafe ("不承諾自動裁切即可安全").
+  // Casts are included as-is; the manifest documents this policy gap.
   const srcCasts = path.join(projectDir, 'casts')
   const dstCasts = path.join(bundleDir, 'casts')
+  let castsIncluded = 0
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
     for (const name of fs.readdirSync(srcCasts)) {
@@ -255,6 +293,28 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
         fs.copyFileSync(s, d)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
+        castsIncluded++
+      }
+    }
+  }
+
+  // 6a. http-bodies/ — copy referenced body files so the bundle is self-contained.
+  const srcBodies = path.join(projectDir, 'http-bodies')
+  let httpBodiesIncluded = 0
+  if (fs.existsSync(srcBodies)) {
+    const dstBodies = path.join(bundleDir, 'http-bodies')
+    const bodyFiles = fs.readdirSync(srcBodies).filter((n) => n.endsWith('.body'))
+    if (bodyFiles.length > 0) {
+      fs.mkdirSync(dstBodies, { recursive: true })
+      for (const name of bodyFiles) {
+        const s = path.join(srcBodies, name)
+        const d = path.join(dstBodies, name)
+        if (fs.statSync(s).isFile()) {
+          fs.copyFileSync(s, d)
+          const info = sha256File(d)
+          files.push({ path: `http-bodies/${name}`, ...info })
+          httpBodiesIncluded++
+        }
       }
     }
   }
@@ -425,6 +485,11 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     } : null,
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
     sanitizedOutOfScope: outOfScopeMasked,
+    attachmentScopePolicy: scope ? {
+      screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
+      casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },
+      httpBodies: { included: httpBodiesIncluded }
+    } : undefined,
     tiers: {
       // chained = chainHead.eventCount when the head exists; both are
       // definitionally the count the OTS anchor covers. It now also counts the
