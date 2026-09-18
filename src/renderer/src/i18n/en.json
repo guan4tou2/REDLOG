@@ -1101,5 +1101,20 @@
   "eventTitle.connectionSaturated": "⇄ {{count}} connections in one poll — recording the count, not each",
   "eventTitle.connectionClosed": "closed",
   "eventTitle.droppedAfter": "dropped after {{age}}",
-  "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} rotated"
+  "eventTitle.cookieRotated": "[cookie] {{domain}} {{name}} rotated",
+  "filter.title": "Filter",
+  "filter.target": "Target",
+  "filter.type": "Type",
+  "filter.time": "Time",
+  "filter.allTargets": "All targets",
+  "filter.allTypes": "All types",
+  "filter.allTime": "All time",
+  "filter.clearAll": "Clear all",
+  "filter.last1h": "1h",
+  "filter.last6h": "6h",
+  "filter.last24h": "24h",
+  "filter.since": "Since {{time}}",
+  "filter.before": "Before {{time}}",
+  "project.created": "Created {{date}}",
+  "project.size": "{{size}}"
 }

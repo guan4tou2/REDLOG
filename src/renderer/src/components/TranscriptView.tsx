@@ -4,6 +4,7 @@ import { toast } from './Toast'
 import { formatTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { AlignLeft } from 'lucide-react'
+import { useSharedFilter } from '../lib/FilterContext'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -251,6 +252,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   onOpenInTimeline?: (id: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
+  const { filter: sharedFilter } = useSharedFilter()
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
@@ -306,10 +308,15 @@ export default function TranscriptView({ onOpenInTimeline }: {
     const q = query.trim().toLowerCase()
     return blocks.filter((b) => {
       if (kinds.size && !kinds.has(b.kind)) return false
+      if (sharedFilter.timeRange) {
+        const { since, before } = sharedFilter.timeRange
+        if (since && b.ts < since) return false
+        if (before && b.ts > before) return false
+      }
       if (!q) return true
       return `${b.actor}${b.input}${b.output ?? ''}${b.meta ?? ''}`.toLowerCase().includes(q)
     })
-  }, [blocks, query, kinds])
+  }, [blocks, query, kinds, sharedFilter.timeRange])
 
   const toggleKind = (k: Kind): void => setKinds((prev) => {
     const next = new Set(prev)

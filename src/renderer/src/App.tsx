@@ -28,6 +28,8 @@ const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
 import { isMac } from './lib/platform'
+import { FilterProvider } from './lib/FilterContext'
+import { FilterBar } from './components/FilterBar'
 
 // Extracted components
 import { DashboardView, LaunchBrowserButton } from './components/DashboardView'
@@ -105,7 +107,10 @@ export default function App(): JSX.Element {
     )
   }
 
+  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline'].includes(view)
+
   return (
+    <FilterProvider>
     <div className="h-full flex flex-col">
       {/* Title bar */}
       <div
@@ -169,7 +174,9 @@ export default function App(): JSX.Element {
           onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); setView(v as View) }}
         />
 
-        <div className="flex-1 min-w-0 select-text" data-testid="view-root" data-view={view}>
+        <div className="flex-1 min-w-0 select-text flex flex-col" data-testid="view-root" data-view={view}>
+          {showFilterBar && <FilterBar />}
+          <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
             {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={firstRunActive} />}
             {view === 'terminal' && <Suspense fallback={null}><TerminalView /></Suspense>}
@@ -204,6 +211,7 @@ export default function App(): JSX.Element {
             {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} /></Suspense>}
             {view === 'settings' && <Suspense fallback={null}><Settings /></Suspense>}
           </ErrorBoundary>
+          </div>
         </div>
       </div>
 
@@ -222,5 +230,6 @@ export default function App(): JSX.Element {
       <ToastContainer />
       <ConfirmDialogContainer />
     </div>
+    </FilterProvider>
   )
 }

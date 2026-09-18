@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
+import { useSharedFilter } from '../lib/FilterContext'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -62,6 +63,7 @@ interface SearchPanelProps {
 }
 
 export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.Element {
+  const { filter: sharedFilter } = useSharedFilter()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<RedLogEvent[]>([])
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
@@ -70,7 +72,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   // Type-filter chips: null = show all, non-null = only that agentType.
   // v0.15.1: pushed to backend so the SQL LIMIT applies after the type
   // filter, not before — prevents dominant types from squeezing out rare ones.
+  // Shared filter agentType takes precedence when set.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const effectiveTypeFilter = sharedFilter.agentType ?? typeFilter
   // Recordings are searched alongside events (§2.4). Kept as separate state
   // rather than merged into `results`: an event and a span of terminal output
   // are not the same kind of thing, and flattening them would mean inventing
@@ -110,7 +114,18 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     abortRef.current = ac
     setSearching(true)
     const seq = ++searchSeqRef.current
-    window.redlog.events.search(q, 200, typeFilter ? { agentType: typeFilter } : undefined).then(async (r) => {
+    const searchOpts: Record<string, unknown> = {}
+    if (effectiveTypeFilter) searchOpts.agentType = effectiveTypeFilter
+    window.redlog.events.search(q, 200, searchOpts as { agentType?: string }).then(async (r) => {
+      // Client-side time filter from shared FilterBar
+      if (sharedFilter.timeRange) {
+        const { since, before } = sharedFilter.timeRange
+        r = r.filter((e) => {
+          if (since && e.timestamp < since) return false
+          if (before && e.timestamp > before) return false
+          return true
+        })
+      }
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
       // `searchEvents` is a LIKE over each row's own bytes, so a marker
       // corrected since it was written matches its OLD title only, and the new
@@ -156,7 +171,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     window.redlog.events.searchCasts?.(q, 50)
       .then((r) => { if (castSeq === searchSeqRef.current) setCastHits(r ?? []) })
       .catch(() => { if (castSeq === searchSeqRef.current) setCastHits([]) })
-  }, [typeFilter])
+  }, [effectiveTypeFilter, sharedFilter.timeRange])
 
   useEffect(() => {
     window.redlog.events.castIndexStatus?.()
@@ -173,7 +188,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
-  }, [typeFilter])
+  }, [effectiveTypeFilter, sharedFilter.timeRange])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)

@@ -8,6 +8,7 @@ interface ProjectMeta {
   createdAt: number
   lastOpened: number
   path: string
+  dbSize?: number
 }
 
 interface IPStatus {
@@ -141,6 +142,7 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number, opts?: { agentType?: string }) => Promise<RedLogEvent[]>
+    distinctAgentTypes: () => Promise<string[]>
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>

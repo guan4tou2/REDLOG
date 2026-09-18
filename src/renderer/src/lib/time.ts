@@ -31,6 +31,13 @@ export function formatTime(ms: number, opts: { seconds?: boolean } = {}): string
   return opts.seconds ? `${base}:${pad(d.getSeconds())}` : base
 }
 
+/** `2026-08-20` — date only, for compact display. */
+export function formatDate(ms: number): string {
+  if (!Number.isFinite(ms)) return ''
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 /** `2026-08-20 15:04`, or with seconds. Sortable as text, which the
  *  locale-ordered forms are not. */
 export function formatDateTime(ms: number, opts: { seconds?: boolean } = {}): string {
@@ -65,6 +72,15 @@ export function formatFreshness(
   const hours = Math.floor(mins / 60)
   if (hours < 24) return t('time.hAgo', { h: hours })
   return t('time.dAgo', { d: Math.floor(hours / 24) })
+}
+
+/** Human-readable byte size: `1.2 MB`, `340 KB`, etc. */
+export function formatSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 // ── Timezone-aware formatting ────────────────────────────────────────────────
