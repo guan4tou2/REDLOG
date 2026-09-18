@@ -1214,6 +1214,7 @@ export function stopHost(): void {
   coalesceTimers.clear()
   for (const [key] of sessions) unregisterSession(key)
   sessions.clear()
+  sessionRegistry.clear()
   // The seed index is keyed by session, not by project, and holds event ids
   // from whichever database was open when it was built. Closing the host is
   // the boundary — dropping it here means a project switch can never hand the
