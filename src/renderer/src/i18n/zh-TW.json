@@ -1116,5 +1116,8 @@
   "filter.since": "自 {{time}} 起",
   "filter.before": "{{time}} 之前",
   "project.created": "建立於 {{date}}",
-  "project.size": "{{size}}"
+  "project.size": "{{size}}",
+  "marker.replayAtTime": "▶ 回放此時刻",
+  "marker.replayAtTime.loading": "載入中…",
+  "marker.replayAtTime.noSession": "此時間點沒有活躍的終端工作階段"
 }

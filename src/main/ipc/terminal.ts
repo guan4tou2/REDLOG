@@ -82,6 +82,40 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     }
   })
 
+  // Replay by wall-clock timestamp: find the terminal session that was active
+  // at the given moment and return its full cast + the relative seek offset.
+  // Used by Marker → replay jump (the marker knows WHEN, not WHICH session).
+  ipcMain.handle('terminal:replayAtTime', async (_e, atMs: number) => {
+    try {
+      const { queryEvents } = await import('../../core/db/events')
+      const { readCastSlice } = await import('../../core/cast-slice')
+      const sessions = queryEvents({ agentType: 'shell', limit: 10000 })
+        .filter((ev) => ev.data?.source === 'builtin-terminal' && (ev.data?.subtype === 'session_start' || ev.data?.subtype === 'session_end'))
+      // Find the session whose start <= atMs and (end >= atMs or no end yet).
+      const starts = sessions
+        .filter((ev) => ev.data?.subtype === 'session_start')
+        .sort((a, b) => b.timestamp - a.timestamp)
+      let castPath: string | undefined
+      let castStartMs = 0
+      for (const s of starts) {
+        if (s.timestamp > atMs) continue
+        const tid = s.data?.terminalId as string | undefined
+        if (!tid) continue
+        const end = sessions.find((ev) => ev.data?.subtype === 'session_end' && ev.data?.terminalId === tid && ev.timestamp >= s.timestamp)
+        if (end && end.timestamp < atMs) continue
+        castPath = (s.data?.castPath ?? end?.data?.castPath) as string | undefined
+        if (castPath) break
+      }
+      if (!castPath) return { ok: false, error: 'no active session at this time' }
+      const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
+      if (!slice) return { ok: false, error: 'failed to read cast file' }
+      const seekMs = Math.max(0, atMs - slice.castStartMs)
+      return { ok: true, events: slice.events, truncated: slice.truncated, seekMs }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message }
+    }
+  })
+
   // --- Cast search / index ---
   // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
   // §2.4). Separate from events:search because the two answer different

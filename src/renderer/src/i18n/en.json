@@ -1116,5 +1116,8 @@
   "filter.since": "Since {{time}}",
   "filter.before": "Before {{time}}",
   "project.created": "Created {{date}}",
-  "project.size": "{{size}}"
+  "project.size": "{{size}}",
+  "marker.replayAtTime": "▶ Replay at this moment",
+  "marker.replayAtTime.loading": "Loading…",
+  "marker.replayAtTime.noSession": "No active terminal session at this time"
 }

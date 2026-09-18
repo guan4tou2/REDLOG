@@ -17,6 +17,7 @@ import {
   MARKER_SEVERITIES, AMENDABLE_FIELDS, amendedFields, isMarkerAmendment,
   diffAgainst, type MarkerFold, type MarkerValues
 } from '../lib/markerFold'
+import { replayStore } from '../lib/replayStore'
 import type { RedLogEvent } from '../../../core/db/events'
 
 export interface MarkerDetailProps {
@@ -149,9 +150,12 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
           {effective.notes && (
             <p className="text-xs text-redlog-text-dim font-mono whitespace-pre-wrap leading-relaxed">{effective.notes}</p>
           )}
-          <Button level="quiet" data-testid="marker-amend" onClick={startEdit} className="!h-7 !px-2 !text-xs">
-            {t('marker.amend')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button level="quiet" data-testid="marker-amend" onClick={startEdit} className="!h-7 !px-2 !text-xs">
+              {t('marker.amend')}
+            </Button>
+            <ReplayAtTime atMs={typeof data.atTimestamp === 'number' ? data.atTimestamp : event.timestamp} />
+          </div>
         </div>
       )}
 
@@ -252,6 +256,37 @@ function ImmutableBlock({ event, linkedScreenshots, tz, projectTz, operatorLabel
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function ReplayAtTime({ atMs }: { atMs: number }): JSX.Element {
+  const { t } = useI18n()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const load = async (): Promise<void> => {
+    setLoading(true)
+    setError(null)
+    try {
+      const r = await window.redlog.terminal.replayAtTime?.(atMs)
+      if (!r || !r.ok) { setError(r?.error ?? t('marker.replayAtTime.noSession')); return }
+      replayStore.open({
+        events: r.events,
+        truncated: Boolean(r.truncated),
+        initialSeekMs: r.seekMs
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={load}
+        disabled={loading}
+        className="text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40 disabled:opacity-50"
+      >{loading ? t('marker.replayAtTime.loading') : t('marker.replayAtTime')}</button>
+      {error && <span className="text-xs text-redlog-text-dim">{error}</span>}
     </div>
   )
 }
