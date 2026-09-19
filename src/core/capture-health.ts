@@ -434,7 +434,14 @@ function computeCaptureHealth(now: number): CaptureHealth {
 
   const stripCreds = (v: string | undefined): string | undefined => {
     if (!v) return undefined
-    try { const u = new URL(v); if (!u.username && !u.password) return v; u.username = ''; u.password = ''; return u.toString() } catch { return v }
+    try {
+      const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v)
+      const normalized = hasScheme ? v : `http://${v}`
+      const u = new URL(normalized)
+      if (!u.username && !u.password) return v
+      u.username = ''; u.password = ''
+      return hasScheme ? u.toString() : u.toString().replace(/^http:\/\//, '')
+    } catch { return v }
   }
   const httpProxy = stripCreds(process.env.HTTP_PROXY || process.env.http_proxy || undefined)
   const httpsProxy = stripCreds(process.env.HTTPS_PROXY || process.env.https_proxy || undefined)
