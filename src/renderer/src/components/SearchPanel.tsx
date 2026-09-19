@@ -58,6 +58,44 @@ function hoverTitle(
   return `${shown}\n${t('search.amendedOriginalTitle', { title: String(e.data.title ?? '') })}`
 }
 
+/** Resolve orphaned amendments back to their original markers, then build
+ *  folds for all markers in the result set. Returns the (possibly adjusted)
+ *  rows and the fold map. */
+async function resolveAndFold(
+  rawItems: RedLogEvent[]
+): Promise<{ rows: RedLogEvent[]; newFolds: Map<string, MarkerFold> }> {
+  const markerIds = new Set(
+    rawItems.filter((e) => e.agentType === 'marker' && !isMarkerAmendment(e)).map((e) => e.id)
+  )
+  const orphaned = rawItems
+    .filter(isMarkerAmendment)
+    .map((e) => String((e.data as Record<string, unknown>).markerId ?? ''))
+    .filter((id) => id && !markerIds.has(id))
+
+  let rows = rawItems
+  if (orphaned.length > 0) {
+    const originals = (await window.redlog.events.getById?.([...new Set(orphaned)])) ?? []
+    for (const o of originals) markerIds.add(o.id)
+    const seen = new Set<string>()
+    rows = rawItems.flatMap((e) => {
+      if (!isMarkerAmendment(e)) return [e]
+      const id = String((e.data as Record<string, unknown>).markerId ?? '')
+      const original = originals.find((o) => o.id === id)
+      if (!original || seen.has(id)) return []
+      seen.add(id)
+      return [original]
+    })
+  }
+
+  const amendments = markerIds.size > 0
+    ? (await window.redlog.marker.amendments?.([...markerIds])) ?? []
+    : []
+  const newFolds = buildFolds(rows, amendments)
+  return { rows, newFolds }
+}
+
+const PAGE_SIZE = 100
+
 interface SearchPanelProps {
   onOpenInTimeline?: (eventId: string, ts: number) => void
 }
@@ -69,29 +107,21 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
-  // Type-filter chips: null = show all, non-null = only that agentType.
-  // v0.15.1: pushed to backend so the SQL LIMIT applies after the type
-  // filter, not before — prevents dominant types from squeezing out rare ones.
-  // Shared filter agentType takes precedence when set.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const effectiveTypeFilter = sharedFilter.agentType ?? typeFilter
-  // Recordings are searched alongside events (§2.4). Kept as separate state
-  // rather than merged into `results`: an event and a span of terminal output
-  // are not the same kind of thing, and flattening them would mean inventing
-  // a summary line for bytes that already have one.
   const [castHits, setCastHits] = useState<CastHit[]>([])
   const [castPending, setCastPending] = useState(0)
   const [knownTypes, setKnownTypes] = useState<string[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Audit 2026-09-18 P4: monotonic counter so stale slow responses don't
-  // overwrite newer results.
   const searchSeqRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
+  const queryRef = useRef(query)
+  queryRef.current = query
   const { t } = useI18n()
 
-  // Hoisted out of the render IIFE it used to live in so the keyboard hook can
-  // count it. Same keys as every other list (§9); a result row's only action
-  // is "show me this on the Timeline", so Enter and ⌘↩ agree.
   const filtered = results
   const listNav = useListKeyboard({
     count: filtered.length,
@@ -100,13 +130,21 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     onEscape: () => setTypeFilter(null)
   })
 
+  const buildSearchOpts = useCallback(() => {
+    const opts: { agentType?: string; since?: number; before?: number } = {}
+    if (effectiveTypeFilter) opts.agentType = effectiveTypeFilter
+    if (sharedFilter.timeRange?.since) opts.since = sharedFilter.timeRange.since
+    if (sharedFilter.timeRange?.before) opts.before = sharedFilter.timeRange.before
+    return opts
+  }, [effectiveTypeFilter, sharedFilter.timeRange])
+
   const doSearch = useCallback((q: string) => {
-    // Single-char search intents are real (IP octet, short tag) — down from
-    // the prior q<2 gate. 0-char still shows the placeholder hint. Audit P1 #27.
     if (q.length < 1) {
       setResults([])
       setCastHits([])
       setSearched(false)
+      setHasMore(false)
+      setNextCursor(null)
       return
     }
     abortRef.current?.abort()
@@ -114,64 +152,49 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     abortRef.current = ac
     setSearching(true)
     const seq = ++searchSeqRef.current
-    const searchOpts: Record<string, unknown> = {}
-    if (effectiveTypeFilter) searchOpts.agentType = effectiveTypeFilter
-    window.redlog.events.search(q, 200, searchOpts as { agentType?: string }).then(async (r) => {
-      // Client-side time filter from shared FilterBar
-      if (sharedFilter.timeRange) {
-        const { since, before } = sharedFilter.timeRange
-        r = r.filter((e) => {
-          if (since && e.timestamp < since) return false
-          if (before && e.timestamp > before) return false
-          return true
-        })
-      }
+    const opts = buildSearchOpts()
+    window.redlog.events.searchPage({
+      query: q, limit: PAGE_SIZE, ...opts
+    }).then(async (page) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
-      // `searchEvents` is a LIKE over each row's own bytes, so a marker
-      // corrected since it was written matches its OLD title only, and the new
-      // one matches the amendment row alone. Showing that bare correction —
-      // with the finding itself missing from the results — reads as the finding
-      // having been deleted, which for this product is the worst possible lie.
-      // So an amendment hit is resolved back to the marker it names.
-      const markerIds = new Set(r.filter((e) => e.agentType === 'marker' && !isMarkerAmendment(e)).map((e) => e.id))
-      const orphaned = r.filter(isMarkerAmendment)
-        .map((e) => String((e.data as Record<string, unknown>).markerId ?? ''))
-        .filter((id) => id && !markerIds.has(id))
-      let rows = r
-      if (orphaned.length > 0) {
-        const originals = (await window.redlog.events.getById?.([...new Set(orphaned)])) ?? []
-        for (const o of originals) markerIds.add(o.id)
-        // The correction stays out of the list; the finding takes its place at
-        // the position the correction held, so result order still tracks the hit.
-        const seen = new Set<string>()
-        rows = r.flatMap((e) => {
-          if (!isMarkerAmendment(e)) return [e]
-          const id = String((e.data as Record<string, unknown>).markerId ?? '')
-          const original = originals.find((o) => o.id === id)
-          if (!original || seen.has(id)) return []
-          seen.add(id)
-          return [original]
-        })
-      }
-      const amendments = markerIds.size > 0
-        ? (await window.redlog.marker.amendments?.([...markerIds])) ?? []
-        : []
-      setFolds(buildFolds(rows, amendments))
+      const { rows, newFolds } = await resolveAndFold(page.items)
+      setFolds(newFolds)
       setResults(rows)
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
       setSearching(false)
       setSearched(true)
     }).catch(() => {
       if (seq !== searchSeqRef.current) return
       setSearching(false)
     })
-    // Fired in parallel and settled independently: the recording index can be
-    // slower or absent, and making the event results wait on it would slow
-    // the common case for the rarer one.
     const castSeq = seq
     window.redlog.events.searchCasts?.(q, 50)
       .then((r) => { if (castSeq === searchSeqRef.current) setCastHits(r ?? []) })
       .catch(() => { if (castSeq === searchSeqRef.current) setCastHits([]) })
-  }, [effectiveTypeFilter, sharedFilter.timeRange])
+  }, [buildSearchOpts])
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    const opts = buildSearchOpts()
+    try {
+      const page = await window.redlog.events.searchPage({
+        query: queryRef.current, limit: PAGE_SIZE, cursor: nextCursor, ...opts
+      })
+      const { rows, newFolds } = await resolveAndFold(page.items)
+      setResults((prev) => [...prev, ...rows])
+      setFolds((prev) => {
+        const merged = new Map(prev)
+        for (const [k, v] of newFolds) merged.set(k, v)
+        return merged
+      })
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [nextCursor, loadingMore, buildSearchOpts])
 
   useEffect(() => {
     window.redlog.events.castIndexStatus?.()
@@ -218,8 +241,6 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             {t('search.hint')}
           </div>
         )}
-        {/* Audit 2026-09-18 P4: clear-filter button outside the results block so
-            it stays visible when the active filter yields zero matches. */}
         {searched && typeFilter && (
           <div className="text-redlog-text-dim text-xs mb-2">
             <button onClick={() => setTypeFilter(null)} className="text-redlog-text-dim hover:text-redlog-text underline">{t('search.clearFilter')}</button>
@@ -235,8 +256,6 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             )}
           </div>
         )}
-        {/* Type filter chips from DB DISTINCT — always visible once a search
-            has run so clearing the filter remains possible even on zero results. */}
         {searched && knownTypes.length > 1 && (
           <div className="flex flex-wrap gap-1 mb-2">
             {knownTypes.map((type) => {
@@ -260,7 +279,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           return (
           <>
             <div className="text-redlog-text-dim text-xs mb-2">
-              {t('search.results', { count: filtered.length })}
+              {t('search.loaded', { count: filtered.length })}
             </div>
             <div className="space-y-1" {...listNav.containerProps} aria-label={t('search.resultsLabel', { count: filtered.length })}>
               {filtered.map((e, i) => {
@@ -303,6 +322,15 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                 )
               })}
             </div>
+            {hasMore && (
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="mt-2 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+              >
+                {loadingMore ? t('search.loading') : t('search.loadMore')}
+              </button>
+            )}
           </>
         )})()}
 

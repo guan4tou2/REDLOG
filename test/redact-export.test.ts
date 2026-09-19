@@ -1,70 +1,245 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import fs from 'fs'
-import path from 'path'
-import os from 'os'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-// Security HIGH #1: redaction must apply to EVERY export, not just the bundle.
-// Pins the shared redactEventForExport: the layer-4 sanitize swap always wins,
-// scope masking applies when a scope is given, and a masked body's sha256
-// store pointer (_ref) is dropped so a ref-follower can't fetch the original.
+vi.mock('../src/core/sanitize', () => ({
+  getSanitizedFields: vi.fn(() => ({}))
+}))
 
-let initDB: typeof import('../src/core/db/index').initDB
-let closeDB: typeof import('../src/core/db/index').closeDB
-let insertEventRaw: typeof import('../src/core/db/events').insertEvent
-let getDB: typeof import('../src/core/db/index').getDB
-let redactEventForExport: typeof import('../src/core/redact-export').redactEventForExport
+vi.mock('../src/core/scope-sanitize', async () => {
+  const actual = await vi.importActual<typeof import('../src/core/scope-sanitize')>('../src/core/scope-sanitize')
+  return {
+    ...actual,
+    isOutOfScope: vi.fn((targetId: string | null, scope: { targets: string[] } | undefined) => {
+      if (!scope || !targetId) return false
+      return !scope.targets.includes(targetId)
+    })
+  }
+})
 
-let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
-  const eventsMod = await import('../src/core/db/events')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
-  insertEventRaw = eventsMod.insertEvent
-  getDB = dbMod.getDB
-  redactEventForExport = (await import('../src/core/redact-export')).redactEventForExport
-  dbAvailable = true
-} catch { /* no better-sqlite3 for this Node */ }
+import { redactEventForExport, redactEventsForExport, BODY_REF_FOR } from '../src/core/redact-export'
+import { getSanitizedFields } from '../src/core/sanitize'
+import type { RedLogEvent } from '../src/core/db/events'
 
-const insertEvent: typeof import('../src/core/db/events').insertEvent = (a, d, o) =>
-  insertEventRaw(a, d, { operatorId: 'test-op', ...o })
-const describeDB = dbAvailable ? describe : describe.skip
-let tmpDir: string
+const mockGetSanitizedFields = getSanitizedFields as ReturnType<typeof vi.fn>
 
-describeDB('redactEventForExport', () => {
-  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-redact-')); initDB(tmpDir) })
-  afterEach(() => { closeDB(); fs.rmSync(tmpDir, { recursive: true, force: true }) })
+function mkEvent(overrides: Partial<RedLogEvent> = {}): RedLogEvent {
+  return {
+    id: 'evt-1',
+    agentType: 'http',
+    timestamp: 1700000000000,
+    targetId: '10.0.0.1',
+    operatorId: 'op-alice',
+    data: {},
+    ...overrides
+  } as RedLogEvent
+}
 
-  it('applies the layer-4 sanitize swap regardless of scope', () => {
-    const e = insertEvent('shell', { command: 'aws', output: 'creds AKIAIOSFODNN7EXAMPLE end' })!
-    // A sanitized_events row is what the operator's redaction writes; the export
-    // redactor must swap it in. Write it directly (the span detector is a
-    // separate concern, covered elsewhere).
-    getDB().prepare(
-      `INSERT INTO sanitized_events (source_event_id, field, sanitized_value, replacement_sha256, created_at, sanitized_event_id) VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(e.id, 'output', 'creds \u2039REDACTED\u203a end', 'sha', Date.now(), 'san-1')
-    const out = redactEventForExport(e)  // no scope
-    expect(String(out.data.output)).not.toContain('AKIAIOSFODNN7EXAMPLE') // secret gone from export
-    expect(out).not.toBe(e)                                                // a new object
-    expect(String(e.data.output)).toContain('AKIAIOSFODNN7EXAMPLE')        // source row untouched
+describe('redactEventForExport', () => {
+  beforeEach(() => {
+    mockGetSanitizedFields.mockReturnValue({})
   })
 
-  it('leaves an un-sanitized event untouched (returns the same object)', () => {
-    const e = insertEvent('shell', { command: 'whoami', output: 'root' })!
+  it('returns event unchanged when no opts', () => {
+    const e = mkEvent()
     expect(redactEventForExport(e)).toBe(e)
   })
 
-  it('masks out-of-scope bodies when a scope is given, and drops the body ref', () => {
-    const e = insertEvent('scanner', {
-      subtype: 'http_response', host: 'evil.example',
-      response_body: 'secret-body', response_body_ref: { sha256: 'abc', size: 9, file: 'x', encoding: 'text' }
-    }, { targetId: 'evil.example' })!
-    const out = redactEventForExport(e, { targets: ['good.example'] })  // evil is out of scope
-    expect(out.data.response_body).not.toBe('secret-body') // masked
-    expect(out.data.response_body_ref).toBeUndefined()      // ref dropped so readBody can't fetch original
+  it('returns event unchanged with empty opts', () => {
+    const e = mkEvent()
+    expect(redactEventForExport(e, {})).toBe(e)
   })
 
-  it('keeps in-scope events intact under a scope', () => {
-    const e = insertEvent('scanner', { subtype: 'http_response', host: 'good.example', response_body: 'ok' }, { targetId: 'good.example' })!
-    expect(redactEventForExport(e, { targets: ['good.example'] }).data.response_body).toBe('ok')
+  // ── Blacklist exclusion ──
+
+  it('returns null when targetId is in blacklist and maskMetadata is on', () => {
+    const e = mkEvent({ targetId: '192.168.1.1' })
+    expect(redactEventForExport(e, { maskMetadata: true, blacklist: ['192.168.1.1'] })).toBeNull()
+  })
+
+  it('does NOT exclude when maskMetadata is false', () => {
+    const e = mkEvent({ targetId: '192.168.1.1' })
+    const result = redactEventForExport(e, { maskMetadata: false, blacklist: ['192.168.1.1'] })
+    expect(result).not.toBeNull()
+  })
+
+  it('does NOT exclude when blacklist is empty', () => {
+    const e = mkEvent({ targetId: '192.168.1.1' })
+    expect(redactEventForExport(e, { maskMetadata: true, blacklist: [] })).not.toBeNull()
+  })
+
+  it('does NOT exclude when targetId is null', () => {
+    const e = mkEvent({ targetId: null })
+    expect(redactEventForExport(e, { maskMetadata: true, blacklist: ['192.168.1.1'] })).not.toBeNull()
+  })
+
+  // ── Layer-4 sanitize ──
+
+  it('applies getSanitizedFields replacements', () => {
+    mockGetSanitizedFields.mockReturnValue({ output: '[sanitized]' })
+    const e = mkEvent({ data: { output: 'secret stuff' } })
+    const result = redactEventForExport(e)!
+    expect(result.data.output).toBe('[sanitized]')
+    expect(result).not.toBe(e)
+  })
+
+  // ── Scope masking ──
+
+  it('masks content fields of out-of-scope events', () => {
+    const e = mkEvent({
+      targetId: '10.99.99.99',
+      data: { output: 'sensitive', request_body: 'payload' }
+    })
+    const scope = { targets: ['10.0.0.1'] }
+    const result = redactEventForExport(e, { scope })!
+    expect(result.data.output).toContain('[redacted')
+    expect(result.data.request_body).toContain('[redacted')
+  })
+
+  it('leaves in-scope events content intact', () => {
+    const e = mkEvent({
+      targetId: '10.0.0.1',
+      data: { output: 'ok data' }
+    })
+    const result = redactEventForExport(e, { scope: { targets: ['10.0.0.1'] } })!
+    expect(result.data.output).toBe('ok data')
+  })
+
+  // ── Body ref dropping ──
+
+  it('drops body ref when body field is masked', () => {
+    const e = mkEvent({
+      targetId: '10.99.99.99',
+      data: {
+        request_body: 'payload',
+        request_body_ref: { sha256: 'abc123', size: 100, file: 'x' }
+      }
+    })
+    const result = redactEventForExport(e, { scope: { targets: ['10.0.0.1'] } })!
+    expect(result.data.request_body_ref).toBeUndefined()
+  })
+
+  it('keeps body ref when body field is not masked', () => {
+    const e = mkEvent({
+      targetId: '10.0.0.1',
+      data: {
+        request_body: 'payload',
+        request_body_ref: { sha256: 'abc123', size: 100, file: 'x' }
+      }
+    })
+    const result = redactEventForExport(e, { scope: { targets: ['10.0.0.1'] } })!
+    expect(result.data.request_body_ref).toBeDefined()
+  })
+
+  // ── Metadata masking ──
+
+  it('blanks metadata for out-of-scope events when maskMetadata is on', () => {
+    const e = mkEvent({
+      targetId: '10.99.99.99',
+      data: { url: 'https://secret.internal/admin', host: 'secret.internal', command: 'nmap -sV 10.99.99.99' }
+    })
+    const result = redactEventForExport(e, {
+      scope: { targets: ['10.0.0.1'] },
+      maskMetadata: true
+    })!
+    expect(result.data.url).toContain('[redacted')
+    expect(result.data.host).toContain('[redacted')
+    expect(result.data.command).toContain('[redacted')
+  })
+
+  it('scrubs only sensitive header values for in-scope events', () => {
+    const e = mkEvent({
+      targetId: '10.0.0.1',
+      data: {
+        url: 'https://target.com/api?token=secret123&page=1',
+        request_headers: { authorization: 'Bearer xyz', 'content-type': 'application/json' }
+      }
+    })
+    const result = redactEventForExport(e, {
+      scope: { targets: ['10.0.0.1'] },
+      maskMetadata: true
+    })!
+    expect(result.data.url).toContain('REDACTED')
+    expect(result.data.url).not.toContain('secret123')
+    expect(result.data.url).toContain('page=1')
+    const hdrs = result.data.request_headers as Record<string, string>
+    expect(hdrs.authorization).toBe('[REDACTED]')
+    expect(hdrs['content-type']).toBe('application/json')
+  })
+
+  it('does not apply metadata masking when maskMetadata is false', () => {
+    const e = mkEvent({
+      targetId: '10.99.99.99',
+      data: { url: 'https://secret.internal', host: 'secret.internal' }
+    })
+    const result = redactEventForExport(e, {
+      scope: { targets: ['10.0.0.1'] },
+      maskMetadata: false
+    })!
+    expect(result.data.url).toBe('https://secret.internal')
+  })
+
+  // ── Operator ID scrub ──
+
+  it('replaces operatorId with "operator" when maskMetadata is on', () => {
+    const e = mkEvent({ operatorId: 'op-alice' })
+    const result = redactEventForExport(e, { maskMetadata: true })!
+    expect(result.operatorId).toBe('operator')
+  })
+
+  it('preserves operatorId when maskMetadata is off', () => {
+    const e = mkEvent({ operatorId: 'op-alice' })
+    const result = redactEventForExport(e, { maskMetadata: false })!
+    expect(result.operatorId).toBe('op-alice')
+  })
+
+  it('skips operatorId scrub when operatorId is falsy', () => {
+    const e = mkEvent({ operatorId: null })
+    const result = redactEventForExport(e, { maskMetadata: true })!
+    expect(result.operatorId).toBeNull()
+  })
+
+  // ── Backward compat ──
+
+  it('accepts ScopeForSanitize directly (backward compat)', () => {
+    const e = mkEvent({
+      targetId: '10.99.99.99',
+      data: { output: 'data' }
+    })
+    const result = redactEventForExport(e, { targets: ['10.0.0.1'] })!
+    expect(result.data.output).toContain('[redacted')
+  })
+
+  // ── BODY_REF_FOR constant ──
+
+  it('maps all expected body fields to their refs', () => {
+    expect(BODY_REF_FOR.request_body).toBe('request_body_ref')
+    expect(BODY_REF_FOR.response_body).toBe('response_body_ref')
+    expect(BODY_REF_FOR.output).toBe('output_ref')
+    expect(BODY_REF_FOR.ws_body).toBe('ws_body_ref')
+    expect(BODY_REF_FOR.tcp_body).toBe('tcp_body_ref')
+  })
+})
+
+describe('redactEventsForExport', () => {
+  beforeEach(() => {
+    mockGetSanitizedFields.mockReturnValue({})
+  })
+
+  it('filters out null (blacklisted) events', () => {
+    const events = [
+      mkEvent({ id: 'e1', targetId: '192.168.1.1' }),
+      mkEvent({ id: 'e2', targetId: '10.0.0.1' })
+    ]
+    const result = redactEventsForExport(events, { maskMetadata: true, blacklist: ['192.168.1.1'] })
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('e2')
+  })
+
+  it('returns all when none excluded', () => {
+    const events = [mkEvent({ id: 'e1' }), mkEvent({ id: 'e2' })]
+    expect(redactEventsForExport(events)).toHaveLength(2)
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(redactEventsForExport([])).toEqual([])
   })
 })

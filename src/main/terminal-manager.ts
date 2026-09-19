@@ -192,7 +192,7 @@ export function recoverOrphanSessions(): number {
   return recovered
 }
 
-export function spawnTerminal(id: string, cols: number, rows: number): { pid: number } {
+export function spawnTerminal(id: string, cols: number, rows: number): { pid: number; recording: boolean; castTruncated: boolean } {
   const existing = sessions.get(id)
   if (existing) {
     // A re-attaching renderer (StrictMode remount, tab re-render) gets a brand
@@ -202,7 +202,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
       const buf = existing.buffer
       setTimeout(() => sendToWindow(`terminal:data:${id}`, buf), 0)
     }
-    return { pid: existing.pty.pid }
+    return { pid: existing.pty.pid, recording: existing.castStream !== null && !existing.castTruncated, castTruncated: existing.castTruncated }
   }
   if (!operatorId) {
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
@@ -312,6 +312,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
         } catch { /* */ }
         session.castStream = null
         session.castTruncated = true
+        sendToWindow(`terminal:castState:${id}`, { recording: false, castTruncated: true })
       } else {
         try {
           session.castStream.write(encoded)
@@ -364,7 +365,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     }
   }
 
-  return { pid: term.pid }
+  return { pid: term.pid, recording: castStream !== null, castTruncated: false }
 }
 
 export function writeTerminal(id: string, data: string): void {

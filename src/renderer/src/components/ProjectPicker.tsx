@@ -335,11 +335,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                       <div className="flex items-center gap-2 min-w-0">
                         <span title={p.name} className="text-redlog-text text-xs font-medium truncate">{p.name}</span>
                         {isDup && (
-                          <span className="text-redlog-text-faint text-[10px] font-mono shrink-0">{formatDate(p.createdAt)}</span>
+                          <span className="text-redlog-text-faint text-xs font-mono shrink-0">{formatDate(p.createdAt)}</span>
                         )}
                       </div>
                     )}
-                    <div className="flex items-center gap-2 text-redlog-text-faint text-[11px] font-mono">
+                    <div className="flex items-center gap-2 text-redlog-text-faint text-xs font-mono">
                       <span>{formatFreshness(p.lastOpened, t)}</span>
                       <span className="text-redlog-muted">·</span>
                       <span>{t('project.created', { date: formatDate(p.createdAt) })}</span>
@@ -376,9 +376,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         })()}
         </div>{/* end two-column grid */}
 
-        <p className="text-redlog-muted text-xs text-center font-mono">
-          {t('project.description')}
-        </p>
       </div>
       </div>
     </div>

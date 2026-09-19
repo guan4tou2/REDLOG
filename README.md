@@ -2,8 +2,8 @@
 
 Red Team Operation Log — an Electron desktop app that passively records everything during a penetration test engagement into a tamper-evident, per-project timeline database.
 
-![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -300,7 +300,7 @@ Electron Main Process
         ├── EvidenceChain      SHA-256 chain + OpenTimestamps anchor (hourly + on-demand)
         └── APIServer          localhost HTTP: REST API for agents
 
-Renderer (React 18 + Tailwind CSS 3)
+Renderer (React 19 + Tailwind CSS 4)
   ├── ProjectPicker         create (with advanced scope setup) / open / delete
   ├── Sidebar               navigation with live badges (loot, violations)
   ├── Dashboard             stats + engagement info + keyboard shortcuts
@@ -468,9 +468,9 @@ Export your project config as a `.yaml` or `.json` profile:
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Electron 33 + electron-vite |
+| Runtime | Electron 44 + electron-vite |
 | Database | better-sqlite3 (WAL mode) |
-| UI | React 18 + Tailwind CSS 3 |
+| UI | React 19 + Tailwind CSS 4 |
 | Timeline | Custom HTML/CSS swim-lane (zero dependencies) |
 | Screenshot capture | electron `desktopCapturer` + SHA-256 dedup (hash-suffix key) |
 | Terminal | node-pty + @xterm/xterm; asciinema `.cast` recording per pane |

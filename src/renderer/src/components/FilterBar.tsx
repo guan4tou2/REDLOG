@@ -5,8 +5,8 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 
 export function FilterBar(): JSX.Element | null {
-  const { filter, setTargetId, setAgentType, setTimeRange, clearAll,
-    activeCount, knownTargets, knownAgentTypes } = useSharedFilter()
+  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
@@ -29,7 +29,7 @@ export function FilterBar(): JSX.Element | null {
           <Filter size={12} strokeWidth={1.5} />
           <span>{t('filter.title')}</span>
           {activeCount > 0 && (
-            <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-medium tabular-nums">
+            <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-redlog-elevated text-redlog-text text-xs font-medium tabular-nums">
               {activeCount}
             </span>
           )}
@@ -49,10 +49,23 @@ export function FilterBar(): JSX.Element | null {
             onClear={() => setTimeRange(null)}
           />
         )}
+        {scopeTargets.length > 0 && (
+          <button
+            onClick={() => setInScopeOnly(!filter.inScopeOnly)}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+              filter.inScopeOnly
+                ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-accent/30'
+            }`}
+            title={t('filter.inScopeHint')}
+          >
+            {t('filter.inScopeOnly')}
+          </button>
+        )}
         {activeCount > 1 && (
           <button
             onClick={clearAll}
-            className="text-redlog-text-faint hover:text-red-400 text-[10px] underline ml-1"
+            className="text-redlog-text-faint hover:text-red-400 text-xs underline ml-1"
           >{t('filter.clearAll')}</button>
         )}
       </div>
@@ -82,7 +95,7 @@ export function FilterBar(): JSX.Element | null {
 
           {/* Time range presets */}
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] text-redlog-text-faint uppercase tracking-wider">{t('filter.time')}</span>
+            <span className="text-xs text-redlog-text-faint uppercase tracking-wider">{t('filter.time')}</span>
             <div className="flex gap-1">
               {[
                 { label: t('filter.last1h'), ms: 3600_000 },
@@ -96,10 +109,10 @@ export function FilterBar(): JSX.Element | null {
                   <button
                     key={preset.ms}
                     onClick={() => setTimeRange({ since: Date.now() - preset.ms })}
-                    className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                    className={`px-2 py-0.5 rounded text-xs border transition-colors ${
                       active
                         ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border-bright'
+                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-accent/30'
                     }`}
                   >{preset.label}</button>
                 )
@@ -107,7 +120,7 @@ export function FilterBar(): JSX.Element | null {
               {filter.timeRange && (
                 <button
                   onClick={() => setTimeRange(null)}
-                  className="px-2 py-0.5 rounded text-[11px] border border-redlog-border text-redlog-text-faint hover:text-redlog-text"
+                  className="px-2 py-0.5 rounded text-xs border border-redlog-border text-redlog-text-faint hover:text-redlog-text"
                 >{t('filter.allTime')}</button>
               )}
             </div>
@@ -120,7 +133,7 @@ export function FilterBar(): JSX.Element | null {
 
 function Chip({ label, onClear }: { label: string; onClear: () => void }): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-[11px] text-redlog-text-dim border border-redlog-border">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-xs text-redlog-text-dim border border-redlog-border">
       {label}
       <button onClick={onClear} className="hover:text-red-400 transition-colors" aria-label="Clear">
         <X size={10} />
@@ -138,11 +151,11 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
 }): JSX.Element {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] text-redlog-text-faint uppercase tracking-wider">{label}</span>
+      <span className="text-xs text-redlog-text-faint uppercase tracking-wider">{label}</span>
       <select
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="bg-redlog-elevated border border-redlog-border rounded px-2 py-0.5 text-[11px] text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
+        className="bg-redlog-elevated border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (

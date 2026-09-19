@@ -134,7 +134,8 @@ function installBridge(): void {
         return Array.from(m.values()).sort((a, b) => b.lastSeen - a.lastSeen)
       },
       getById: async (ids: string[]) => EVENTS.filter((e) => ids.includes(e.id as string)),
-      onNew: () => unsub
+      onNew: () => unsub,
+      onNewBatch: () => unsub
     },
     marker: {
       create: async () => EVENTS[0],
@@ -172,6 +173,7 @@ function installBridge(): void {
     },
     data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
+    hookConfig: { get: async () => ({ watchPaths: [] }), save: async () => true, pickPath: async () => null },
     operators: {
       list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]
     },

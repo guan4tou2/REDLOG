@@ -11,6 +11,29 @@ interface ProjectMeta {
   dbSize?: number
 }
 
+interface ExportSnapshot {
+  chainedMaxRowId: number
+  loggedMaxRowId: number
+  takenAt: number
+}
+
+interface ExportPreview {
+  total: number
+  included: number
+  dropped: number
+  personalDropped: number
+  blacklisted: number
+  outOfScope: number
+  inScope: number
+  sanitized: number
+  doNotExportCount: number
+  hasScope: boolean
+  sharing: boolean
+  withBodyRefs: number
+  screenshotEvents: number
+  snapshot: ExportSnapshot
+}
+
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
@@ -141,11 +164,26 @@ interface RedLogAPI {
      *  if none have been written. Drives the CaptureHealthCard "last
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
-    search: (query: string, limit?: number, opts?: { agentType?: string }) => Promise<RedLogEvent[]>
+    search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => Promise<RedLogEvent[]>
+    searchPage: (opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
     distinctAgentTypes: () => Promise<string[]>
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
+    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
+    queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
     /** §10: distinct hosts across the timeline for ⌘K host search. */
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
     hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>
@@ -162,6 +200,8 @@ interface RedLogAPI {
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
+    toggleDoNotExport: (eventId: string) => Promise<boolean | null>
+    isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
@@ -230,16 +270,17 @@ interface RedLogAPI {
     stop: () => Promise<{ stopped: boolean }>
   }
   data: {
-    exportJson: () => Promise<string | null>
-    exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ outDir: string; manifest: unknown } | null>
-    exportScopeFiltered?: () => Promise<string | null>
+    exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
+    exportBundle?: (opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => Promise<{ outDir: string; manifest: unknown } | null>
+    exportScopeFiltered?: (opts?: { sharing?: boolean }) => Promise<string | null>
     exportMarks?: () => Promise<string | null>
-    exportLoot?: () => Promise<string | null>
-    exportViolations?: () => Promise<string | null>
-    exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
-    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => Promise<string | null>
-    exportWalkthrough?: () => Promise<string | null>
+    exportLoot?: (opts?: { sharing?: boolean }) => Promise<string | null>
+    exportViolations?: (opts?: { sharing?: boolean }) => Promise<string | null>
+    exportTimelineSlice?: (from: number, to: number, opts?: { sharing?: boolean }) => Promise<string | null>
+    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
+    exportWalkthrough?: (opts?: { sharing?: boolean }) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
+    exportPreview?: (opts?: { sharing?: boolean }) => Promise<ExportPreview | null>
   }
   visibility: {
     /** §22 disclosure signals, or null with no project open. Optional-called
@@ -262,7 +303,7 @@ interface RedLogAPI {
     onChange: (cb: (recording: boolean) => void) => () => void
   }
   terminal: {
-    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number }>
+    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number; recording: boolean; castTruncated: boolean }>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
@@ -273,6 +314,7 @@ interface RedLogAPI {
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
+    onCastState?: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
     replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
     replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
     replayAtTime?: (atMs: number) => Promise<{ ok: boolean; events?: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number; error?: string }>
@@ -370,6 +412,7 @@ interface CaptureHealthInfo {
   lastDbError?: { source: string; at: number; message: string }
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
+  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
 }
 
 interface BrowserLaunchResult {
@@ -419,7 +462,7 @@ interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string }
+  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string; personalDomains?: string[] }
   screenshot?: { quality?: number; intervalSec?: number }
   overlay?: {
     showMarkButton?: boolean

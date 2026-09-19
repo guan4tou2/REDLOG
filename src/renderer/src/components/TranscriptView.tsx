@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
-import { formatTime } from '../lib/time'
+import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { AlignLeft } from 'lucide-react'
 import { useSharedFilter } from '../lib/FilterContext'
@@ -53,12 +53,7 @@ interface Block {
 
 const MAX_INLINE = 4096
 
-function fmtBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B'
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
+const fmtBytes = formatSize
 
 const KIND_COLOR: Record<Kind, string> = {
   shell: '#22c55e',
@@ -304,6 +299,23 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
   const blocks = useMemo(() => buildBlocks(events, names), [events, names])
 
+  const autoExpandedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const toExpand: string[] = []
+    for (const b of blocks) {
+      if (autoExpandedRef.current.has(b.id)) continue
+      autoExpandedRef.current.add(b.id)
+      if (b.kind === 'loot') { toExpand.push(b.id); continue }
+      if (b.kind === 'shell' && b.meta) {
+        const m = b.meta.match(/^exit (\d+)/)
+        if (m && m[1] !== '0') toExpand.push(b.id)
+      }
+    }
+    if (toExpand.length > 0) {
+      setExpanded((prev) => { const next = new Set(prev); for (const id of toExpand) next.add(id); return next })
+    }
+  }, [blocks])
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     return blocks.filter((b) => {
@@ -478,10 +490,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   b.outputNote === 'recorded'
                     ? 'text-emerald-400/80 border-emerald-600/30 bg-emerald-900/10'
                     : b.outputNote === 'pending'
-                      ? 'text-redlog-text-dim border-redlog-border/60 bg-redlog-surface/30'
-                      : 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
+                      ? 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
+                      : b.outputNote === 'interrupted'
+                        ? 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
+                        : 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
                 }`}>
-                  {t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
+                  {b.outputNote === 'pending' ? '⏳ ' : ''}{t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
                 </p>
               )}
             </div>

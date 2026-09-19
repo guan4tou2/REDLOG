@@ -58,9 +58,27 @@ const api: RedLogAPI = {
     // count) preserved for legacy callers.
     getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
-    search: (query: string, limit?: number, opts?: { agentType?: string }) => ipcRenderer.invoke('events:search', query, limit, opts),
+    search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => ipcRenderer.invoke('events:search', query, limit, opts),
+    searchPage: (opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) =>
+      ipcRenderer.invoke('events:searchPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
     distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
+    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryTargetPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
+    queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) =>
+      ipcRenderer.invoke('events:queryScreenshotPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
     hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
     // Recordings are searched separately from events — see casts:search in
@@ -92,7 +110,11 @@ const api: RedLogAPI = {
     // bytes of a redacted span, we log a chained system.secret_revealed event
     // so the audit trail shows who saw what and when.
     logSecretRevealed: (sourceEventId: string, fields: string[]) =>
-      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields)
+      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields),
+    toggleDoNotExport: (eventId: string) =>
+      ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
+    isDoNotExport: (eventId: string) =>
+      ipcRenderer.invoke('events:isDoNotExport', eventId) as Promise<boolean>
   },
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
@@ -165,16 +187,17 @@ const api: RedLogAPI = {
     stop: () => ipcRenderer.invoke('browser:stop')
   },
   data: {
-    exportJson: () => ipcRenderer.invoke('data:exportJson'),
+    exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportJson', opts),
     exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
-    exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
+    exportScopeFiltered: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportScopeFiltered', opts),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
-    exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
-    exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
-    exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
-    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
-    exportWalkthrough: () => ipcRenderer.invoke('data:exportWalkthrough') as Promise<string | null>,
-    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
+    exportLoot: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportLoot', opts),
+    exportViolations: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportViolations', opts),
+    exportTimelineSlice: (from: number, to: number, opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to, ...opts }),
+    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportNdjson', opts),
+    exportWalkthrough: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportWalkthrough', opts) as Promise<string | null>,
+    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target),
+    exportPreview: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportPreview', opts)
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
@@ -242,6 +265,12 @@ const api: RedLogAPI = {
     onExit: (id: string, cb: (exitCode: number) => void) => {
       const channel = `terminal:exit:${id}`
       const handler = (_e: Electron.IpcRendererEvent, code: number) => cb(code)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => {
+      const channel = `terminal:castState:${id}`
+      const handler = (_e: Electron.IpcRendererEvent, state: { recording: boolean; castTruncated: boolean }) => cb(state)
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
     },

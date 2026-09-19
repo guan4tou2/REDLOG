@@ -5,6 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let getEventCount: typeof import('../src/core/db/events').getEventCount
@@ -17,6 +18,7 @@ try {
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
+  getDB = dbMod.getDB
   insertEventRaw = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
   getEventCount = eventsMod.getEventCount
@@ -291,6 +293,60 @@ describeDB('searchEvents', () => {
     const results = searchEvents('nmap')
     expect(results.length).toBe(1)
   })
+
+  // --- SPEC: Search Query Semantics ---
+  // Domain invariant: time range filter is SQL WHERE, not post-LIMIT client filter.
+  // Uses raw INSERT to set specific timestamps (events table trigger blocks UPDATE).
+
+  function rawInsert(table: 'events' | 'events_logged', ts: number, data: Record<string, unknown>): string {
+    const db = getDB()
+    const id = `test-${Math.random().toString(36).slice(2, 10)}`
+    const agentType = (data.agent_type as string) ?? 'shell'
+    db.prepare(`
+      INSERT INTO ${table} (id, timestamp, engagement_id, session_id, operator_id,
+        agent_type, subtype, hostname, source_ip, target_id, data, created_at
+        ${table === 'events' ? ', hash, prev_hash, signature' : ''})
+      VALUES (?, ?, 'test-eng', 'test-sess', 'test-op',
+        ?, ?, '', '', ?, ?, ?
+        ${table === 'events' ? ", 'h', 'p', 's'" : ''})
+    `).run(id, ts, agentType, data.subtype ?? null, data.target_id ?? null, JSON.stringify(data), ts)
+    return id
+  }
+
+  it('since/before filter at SQL level — older match found even when newer matches exist', () => {
+    const oldId = rawInsert('events', 1000, { command: 'findme target' })
+    for (let i = 0; i < 5; i++) {
+      rawInsert('events', 9000 + i, { command: `findme noise${i}` })
+    }
+    const all = searchEvents('findme', 200)
+    expect(all.length).toBe(6)
+    const ranged = searchEvents('findme', 200, { since: 500, before: 1500 })
+    expect(ranged.length).toBe(1)
+    expect(ranged[0].id).toBe(oldId)
+  })
+
+  it('since/before works on logged tier (scanner events)', () => {
+    const earlyId = rawInsert('events_logged', 1000, {
+      agent_type: 'scanner', subtype: 'http_response', status: 200, url: 'http://target/early'
+    })
+    rawInsert('events_logged', 5000, {
+      agent_type: 'scanner', subtype: 'http_response', status: 200, url: 'http://target/late'
+    })
+    const ranged = searchEvents('target', 200, { since: 0, before: 3000 })
+    expect(ranged.length).toBe(1)
+    expect(ranged[0].id).toBe(earlyId)
+  })
+
+  it('agentType + timeRange + text compose correctly', () => {
+    const shellOldId = rawInsert('events', 500, { command: 'scan target' })
+    rawInsert('events_logged', 500, {
+      agent_type: 'scanner', subtype: 'http_response', url: 'http://target/'
+    })
+    rawInsert('events', 2000, { command: 'scan target again' })
+    const results = searchEvents('target', 200, { agentType: 'shell', since: 0, before: 1000 })
+    expect(results.length).toBe(1)
+    expect(results[0].id).toBe(shellOldId)
+  })
 })
 
 describeDB('queryScopeFilteredEvents', () => {
@@ -306,25 +362,62 @@ describeDB('queryScopeFilteredEvents', () => {
   it('includes marker events without targetId (whitelist)', () => {
     insertEvent('marker', { title: 'found something' })
     const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.length).toBe(1)
+    expect(filtered.events.length).toBe(1)
   })
 
   it('excludes clipboard events without targetId', () => {
     insertEvent('clipboard', { text: 'password123' })
     const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.length).toBe(0)
+    expect(filtered.events.length).toBe(0)
   })
 
   it('excludes system events without targetId', () => {
     insertEvent('system', { subtype: 'session_start' })
     const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.length).toBe(0)
+    expect(filtered.events.length).toBe(0)
   })
 
   it('matches wildcard domain scope', () => {
     insertEvent('shell', { command: 'curl' }, { targetId: 'api.example.com' })
     insertEvent('shell', { command: 'curl' }, { targetId: 'other.net' })
     const filtered = queryScopeFilteredEvents(['*.example.com'])
-    expect(filtered.length).toBe(1)
+    expect(filtered.events.length).toBe(1)
+  })
+
+  // --- SPEC: Export Event Selection (P0 #2) ---
+  // Domain invariant: Export operates on the complete persisted event population
+  // (events ∪ events_logged) unless policy explicitly excludes an event.
+
+  it('includes logged-tier events (scanner:http_response) for in-scope target', () => {
+    insertEvent('shell', { subtype: 'command_end', command: 'curl 10.0.0.1' }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200, url: 'http://10.0.0.1/' }, { targetId: '10.0.0.1' })
+    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
+    expect(filtered.events.length).toBe(2)
+  })
+
+  it('includes logged-tier dns events for in-scope target', () => {
+    insertEvent('dns', { subtype: 'dns_query', query: 'example.com' }, { targetId: 'example.com' })
+    const filtered = queryScopeFilteredEvents(['example.com'])
+    expect(filtered.events.length).toBe(1)
+  })
+
+  it('excludes out-of-scope logged-tier events', () => {
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '192.168.1.1' })
+    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
+    expect(filtered.events.length).toBe(1)
+  })
+
+  it('includes both tiers when scope is empty (no filtering)', () => {
+    insertEvent('shell', { subtype: 'command_end', command: 'whoami' }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
+    const filtered = queryScopeFilteredEvents([])
+    expect(filtered.events.length).toBe(2)
+  })
+
+  it('excludes system agent_type from logged tier', () => {
+    insertEvent('system', { subtype: 'process_monitor_saturated' })
+    const filtered = queryScopeFilteredEvents([])
+    expect(filtered.events.length).toBe(0)
   })
 })

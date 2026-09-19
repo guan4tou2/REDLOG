@@ -18,6 +18,8 @@ interface Tab {
   // the last thing that ran failed.
   cwd?: string
   lastExit?: number
+  castRecording?: boolean
+  castTruncated?: boolean
 }
 
 let tabCounter = 0
@@ -93,10 +95,11 @@ export default function TerminalView(): JSX.Element {
     // scrollback, so re-attaching is exactly what the operator wants: the
     // session they left, with its history.
     void (window.redlog.terminal.list?.() ?? Promise.resolve([]))
-      .then((live: Array<{ id: string; pid: number }>) => {
+      .then((live: Array<{ id: string; pid: number; recording?: boolean; castTruncated?: boolean }>) => {
         if (!Array.isArray(live) || live.length === 0) { addTab(); return }
         setTabs(live.map((s, i) => ({
-          id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true
+          id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true,
+          castRecording: s.recording, castTruncated: s.castTruncated
         })))
         setActiveTab(live[0].id)
         tabCounter = Math.max(tabCounter, live.length)
@@ -163,6 +166,15 @@ export default function TerminalView(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
             <span title={tab.label} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
+            {tab.alive && tab.castRecording === true && (
+              <span className="text-xs font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>rec</span>
+            )}
+            {tab.alive && tab.castTruncated === true && (
+              <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>trunc</span>
+            )}
+            {tab.alive && tab.castRecording === false && tab.castTruncated !== true && (
+              <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>no rec</span>
+            )}
             {tab.cwd && tab.alive && (
               <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
             )}
@@ -289,6 +301,7 @@ export default function TerminalView(): JSX.Element {
               fontSize={fontSize}
               onSearch={() => setSearchOpen(true)}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
+              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
               onSearchAddon={(addon) => { paneSearchRefs.current.set(tab.id, addon) }}
             />
@@ -309,10 +322,11 @@ export default function TerminalView(): JSX.Element {
   )
 }
 
-function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchAddon }: {
+function TerminalPane({ id, active, onPid, onCastState, onExit, fontSize, onSearch, onSearchAddon }: {
   id: string
   active: boolean
   onPid: (pid: number) => void
+  onCastState: (state: { recording: boolean; castTruncated: boolean }) => void
   onExit: () => void
   fontSize: number
   onSearch: () => void
@@ -447,6 +461,7 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
       term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
       onExit()
     })
+    const unsubCast = window.redlog.terminal.onCastState?.(id, onCastState)
     const dispInput = term.onData((data) => {
       window.redlog.terminal.write(id, data)
     })
@@ -464,7 +479,7 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
     requestAnimationFrame(() => {
       try { fitAddon.fit() } catch {}
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24)
-        .then(({ pid }) => onPid(pid))
+        .then((r) => { onPid(r.pid); onCastState({ recording: r.recording, castTruncated: r.castTruncated }) })
         .catch(() => {})
     })
 
@@ -472,6 +487,7 @@ function TerminalPane({ id, active, onPid, onExit, fontSize, onSearch, onSearchA
       resizeObserver.disconnect()
       unsubData()
       unsubExit()
+      unsubCast?.()
       dispInput.dispose()
       dispResize.dispose()
       term.dispose()

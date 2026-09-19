@@ -2,6 +2,12 @@ import { getDB, getReadonlyDB } from './index'
 import type { RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
 import { _getCachedEventCount, _setCachedEventCount } from './event-write'
+import {
+  decodeCursor, buildPerArmCursorWhere, toQueryPage,
+  TIER_RANK_CHAINED, TIER_RANK_LOGGED, CANONICAL_ORDER,
+  type QueryPage, type CursorKey
+} from '../query-page'
+import type { ExportSnapshot } from '../export-plan'
 
 // SQL predicate that matches the renderer-side `isHousekeeping()` filter in
 // Timeline.tsx. Kept in sync manually — both hide RedLog plumbing rows that
@@ -77,6 +83,7 @@ export function queryEvents(opts: {
    *  the bundle verifier consume; `logged` is available for
    *  logged-tier-only queries (rare — mostly a debug affordance). */
   tier?: 'all' | 'chained' | 'logged'
+  snapshot?: ExportSnapshot
 }): RedLogEvent[] {
   // Heavy read: route through the cached read-only handle so a large timeline
   // scan doesn't serialise capture writes on the read-write connection.
@@ -108,26 +115,31 @@ export function queryEvents(opts: {
     conditions.push(HOUSEKEEPING_SQL)
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
   const limit = opts.limit ?? 200
   const tier = opts.tier ?? 'all'
+  const snap = opts.snapshot
 
-  // v0.13.0: one SELECT per participating tier, UNION ALL, outer ORDER +
-  // LIMIT. Both tables carry compatible shape for the columns we return
-  // (hash/prev_hash/signature/monotonic_ns/ntp_offset_ms are NULL on
-  // logged rows and typed on chained rows). Both `idx_events_ts` and
-  // `idx_events_logged_ts` deliver rows already-ordered, so the outer
-  // sort is a k-way merge over two sorted inputs.
-  // `_row` (SQLite rowid) is a stable insertion-order tie-breaker for rows
-  // sharing the same wall-clock `timestamp`. Without it, two inserts landing
-  // in the same millisecond come back in indeterminate order — a real flake
-  // hit by test/pause-gate.test.ts on faster CI runners.
+  // Per-arm WHERE: shared conditions plus an optional rowid upper bound
+  // from ExportSnapshot — ensures preview and execute see the same dataset.
+  const chainedConds = [...conditions]
+  const chainedParams = [...params]
+  const loggedConds = [...conditions]
+  const loggedParams = [...params]
+  if (snap) {
+    chainedConds.push('rowid <= ?')
+    chainedParams.push(snap.chainedMaxRowId)
+    loggedConds.push('rowid <= ?')
+    loggedParams.push(snap.loggedMaxRowId)
+  }
+  const chainedWhere = chainedConds.length ? `WHERE ${chainedConds.join(' AND ')}` : ''
+  const loggedWhere = loggedConds.length ? `WHERE ${loggedConds.join(' AND ')}` : ''
+
   const chainedSelect = `
     SELECT rowid AS _row,
            id, timestamp, engagement_id, session_id, operator_id, agent_type,
            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
            monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
-    FROM events ${where}
+    FROM events ${chainedWhere}
   `
   const loggedSelect = `
     SELECT rowid AS _row,
@@ -136,43 +148,173 @@ export function queryEvents(opts: {
            NULL AS hash, NULL AS prev_hash, created_at,
            NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
            'logged' AS tier
-    FROM events_logged ${where}
+    FROM events_logged ${loggedWhere}
   `
 
   let sql: string
   let bind: unknown[]
   if (tier === 'chained') {
     sql = `${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
-    bind = [...params, limit]
+    bind = [...chainedParams, limit]
   } else if (tier === 'logged') {
     sql = `${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
-    bind = [...params, limit]
+    bind = [...loggedParams, limit]
   } else {
-    // Push ORDER BY + LIMIT into EACH arm before the UNION. The outer query
-    // keeps at most `limit` rows, and the top-`limit` of a merge of two
-    // already-sorted inputs is always contained in the top-`limit` of each
-    // input — so capping each arm at `limit` rows changes nothing observable
-    // while bounding what the union materializes at 2×`limit` instead of
-    // (whole `events` + whole `events_logged`). This matters because the only
-    // real pager (Timeline loadMore) seeks with `beforeCreatedAt`, so each arm
-    // already carries `created_at < ?` in its WHERE; without a per-arm LIMIT,
-    // both arms still returned EVERY row older than the cursor (158k+ at
-    // scale) just for the outer LIMIT to discard all but 200. With the cap,
-    // each arm satisfies its own `ORDER BY timestamp DESC` from idx_events_ts /
-    // idx_events_logged_ts and stops after `limit` rows. SQLite forbids
-    // ORDER BY/LIMIT on a bare compound member, hence the `SELECT * FROM (...)`
-    // wrappers; the outer ORDER + LIMIT is the k-way merge over the two capped,
-    // already-sorted arms — same result the single-tier branches above return.
     sql = `SELECT * FROM (
              SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
              UNION ALL
              SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
            ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
-    bind = [...params, limit, ...params, limit, limit]
+    bind = [...chainedParams, limit, ...loggedParams, limit, limit]
   }
 
   const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
+}
+
+export function queryTargetEventsPage(opts: {
+  targetId: string
+  limit?: number
+  cursor?: string | null
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const limit = opts.limit ?? 200
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+
+  const baseConds = ['target_id = ?']
+  const baseParams: unknown[] = [opts.targetId]
+
+  const chainedConds = [...baseConds]
+  const loggedConds = [...baseConds]
+  const chainedParams = [...baseParams]
+  const loggedParams = [...baseParams]
+
+  if (cursor) {
+    const cc = buildPerArmCursorWhere(cursor, 'chained')
+    chainedConds.push(cc.sql)
+    chainedParams.push(...cc.params)
+
+    const lc = buildPerArmCursorWhere(cursor, 'logged')
+    loggedConds.push(lc.sql)
+    loggedParams.push(...lc.params)
+  }
+
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+               monotonic_ns, ntp_offset_ms, signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events
+        WHERE ${chainedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data,
+               NULL AS hash, NULL AS prev_hash, created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged
+        WHERE ${loggedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  const bind = [...chainedParams, perArmLimit, ...loggedParams, perArmLimit, limit + 1]
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+
+  const page = toQueryPage(rows, limit, (row) => ({
+    ts: row.timestamp as number,
+    row: row._row as number,
+    tier: row.tier as 'chained' | 'logged'
+  }))
+
+  return { ...page, items: page.items.map(rowToEvent) }
+}
+
+export function queryScreenshotPage(opts: {
+  limit?: number
+  cursor?: string | null
+  trigger?: string | null
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const limit = opts.limit ?? 100
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+
+  const baseConds = ["agent_type = 'screenshot'"]
+  const baseParams: unknown[] = []
+
+  if (opts.trigger) {
+    baseConds.push("json_extract(data, '$.trigger') = ?")
+    baseParams.push(opts.trigger)
+  }
+
+  const chainedConds = [...baseConds]
+  const loggedConds = [...baseConds]
+  const chainedParams = [...baseParams]
+  const loggedParams = [...baseParams]
+
+  if (cursor) {
+    const cc = buildPerArmCursorWhere(cursor, 'chained')
+    chainedConds.push(cc.sql)
+    chainedParams.push(...cc.params)
+
+    const lc = buildPerArmCursorWhere(cursor, 'logged')
+    loggedConds.push(lc.sql)
+    loggedParams.push(...lc.params)
+  }
+
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+               monotonic_ns, ntp_offset_ms, signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events
+        WHERE ${chainedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data,
+               NULL AS hash, NULL AS prev_hash, created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged
+        WHERE ${loggedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  const bind = [...chainedParams, perArmLimit, ...loggedParams, perArmLimit, limit + 1]
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+
+  const page = toQueryPage(rows, limit, (row) => ({
+    ts: row.timestamp as number,
+    row: row._row as number,
+    tier: row.tier as 'chained' | 'logged'
+  }))
+
+  return { ...page, items: page.items.map(rowToEvent) }
 }
 
 // v0.6.96 Bug-2: O(1)-ish lookup by event id. Prior code did
@@ -371,40 +513,166 @@ export function getLatestLoggedTs(): number | null {
   return row.ts ?? null
 }
 
-export function searchEvents(query: string, limit = 100, opts?: { agentType?: string }): RedLogEvent[] {
-  // Heavy read: an un-indexed full-table LIKE over data/target_id/agent_type —
-  // route it off the write connection.
-  const db = getReadonlyDB()
-  const pattern = `%${query}%`
+/** FTS5 MATCH treats bare punctuation and operators as syntax. Terminal
+ *  searches are full of both — `10.0.0.5`, `-sV`, `/etc/passwd` — so each
+ *  term is quoted as a phrase rather than handed through, and only a
+ *  trailing `*` is added for the last term (prefix-match while typing). */
+function toMatchQuery(raw: string): string | null {
+  const terms = raw.trim().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return null
+  return terms
+    .map((term, i) => {
+      const quoted = `"${term.replace(/"/g, '""')}"`
+      return i === terms.length - 1 ? `${quoted}*` : quoted
+    })
+    .join(' ')
+}
 
-  const likeCond = '(data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?)'
-  const likeParams: unknown[] = [pattern, pattern, pattern]
+export function searchEventsPage(opts: {
+  query: string
+  limit?: number
+  cursor?: string | null
+  agentType?: string
+  since?: number
+  before?: number
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const match = toMatchQuery(opts.query)
+  if (!match) return { items: [], hasMore: false, nextCursor: null }
+
+  const limit = opts.limit ?? 100
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+
+  const chainedExtra: string[] = []
+  const loggedExtra: string[] = []
+  const chainedParams: unknown[] = []
+  const loggedParams: unknown[] = []
+
+  if (opts.agentType) {
+    chainedExtra.push('e.agent_type = ?')
+    loggedExtra.push('e.agent_type = ?')
+    chainedParams.push(opts.agentType)
+    loggedParams.push(opts.agentType)
+  }
+  if (opts.since != null) {
+    chainedExtra.push('e.timestamp >= ?')
+    loggedExtra.push('e.timestamp >= ?')
+    chainedParams.push(opts.since)
+    loggedParams.push(opts.since)
+  }
+  if (opts.before != null) {
+    chainedExtra.push('e.timestamp <= ?')
+    loggedExtra.push('e.timestamp <= ?')
+    chainedParams.push(opts.before)
+    loggedParams.push(opts.before)
+  }
+
+  if (cursor) {
+    const cc = buildPerArmCursorWhere(cursor, 'chained')
+    chainedExtra.push(cc.sql.replace(/\browid\b/g, 'e.rowid'))
+    chainedParams.push(...cc.params)
+
+    const lc = buildPerArmCursorWhere(cursor, 'logged')
+    loggedExtra.push(lc.sql.replace(/\browid\b/g, 'e.rowid'))
+    loggedParams.push(...lc.params)
+  }
+
+  const chainedWhere = chainedExtra.length ? ' AND ' + chainedExtra.join(' AND ') : ''
+  const loggedWhere = loggedExtra.length ? ' AND ' + loggedExtra.join(' AND ') : ''
+
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
+               e.monotonic_ns, e.ntp_offset_ms, e.signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events e
+        JOIN events_fts ON events_fts.rowid = e.rowid
+        WHERE events_fts MATCH ?${chainedWhere}
+        ORDER BY e.timestamp DESC, e.rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data,
+               NULL AS hash, NULL AS prev_hash, e.created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged e
+        JOIN events_logged_fts ON events_logged_fts.rowid = e.rowid
+        WHERE events_logged_fts MATCH ?${loggedWhere}
+        ORDER BY e.timestamp DESC, e.rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  const bind = [
+    match, ...chainedParams, perArmLimit,
+    match, ...loggedParams, perArmLimit,
+    limit + 1
+  ]
+
+  try {
+    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+    const page = toQueryPage(rows, limit, (row) => ({
+      ts: row.timestamp as number,
+      row: row._row as number,
+      tier: row.tier as 'chained' | 'logged'
+    }))
+    return { ...page, items: page.items.map(rowToEvent) }
+  } catch {
+    return { items: [], hasMore: false, nextCursor: null }
+  }
+}
+
+export function searchEvents(query: string, limit = 100, opts?: { agentType?: string; since?: number; before?: number }): RedLogEvent[] {
+  const db = getReadonlyDB()
+  const match = toMatchQuery(query)
+  if (!match) return []
 
   const extraConds: string[] = []
   const extraParams: unknown[] = []
   if (opts?.agentType) {
-    extraConds.push('agent_type = ?')
+    extraConds.push('e.agent_type = ?')
     extraParams.push(opts.agentType)
   }
+  if (opts?.since != null) {
+    extraConds.push('e.timestamp >= ?')
+    extraParams.push(opts.since)
+  }
+  if (opts?.before != null) {
+    extraConds.push('e.timestamp <= ?')
+    extraParams.push(opts.before)
+  }
 
-  const where = `WHERE ${likeCond}${extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''}`
-  const baseParams = [...likeParams, ...extraParams]
+  const whereExtra = extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''
 
   const chainedSelect = `
-    SELECT rowid AS _row,
-           id, timestamp, engagement_id, session_id, operator_id, agent_type,
-           hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-           monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
-    FROM events ${where}
+    SELECT e.rowid AS _row,
+           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+           e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
+           e.monotonic_ns, e.ntp_offset_ms, e.signature, 'chained' AS tier
+    FROM events e
+    JOIN events_fts ON events_fts.rowid = e.rowid
+    WHERE events_fts MATCH ?${whereExtra}
   `
   const loggedSelect = `
-    SELECT rowid AS _row,
-           id, timestamp, engagement_id, session_id, operator_id, agent_type,
-           hostname, source_ip, target_id, data,
-           NULL AS hash, NULL AS prev_hash, created_at,
+    SELECT e.rowid AS _row,
+           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+           e.hostname, e.source_ip, e.target_id, e.data,
+           NULL AS hash, NULL AS prev_hash, e.created_at,
            NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
            'logged' AS tier
-    FROM events_logged ${where}
+    FROM events_logged e
+    JOIN events_logged_fts ON events_logged_fts.rowid = e.rowid
+    WHERE events_logged_fts MATCH ?${whereExtra}
   `
 
   const sql = `SELECT * FROM (
@@ -412,8 +680,12 @@ export function searchEvents(query: string, limit = 100, opts?: { agentType?: st
     UNION ALL
     SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
   ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
-  const bind = [...baseParams, limit, ...baseParams, limit, limit]
+  const bind = [match, ...extraParams, limit, match, ...extraParams, limit, limit]
 
-  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-  return rows.map(rowToEvent)
+  try {
+    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+    return rows.map(rowToEvent)
+  } catch {
+    return []
+  }
 }

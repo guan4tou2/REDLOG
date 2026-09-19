@@ -81,6 +81,9 @@ export interface CaptureHealth {
    *  Dashboard renders this as "sampled Xm ago" so operators can see the
    *  background verify is actually running. */
   lastSampleOkAt?: number | null
+  /** §3.1: which HTTP proxy env vars are set so the operator can confirm
+   *  traffic routing without leaving the app. */
+  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
 }
 
 // The live DB error tracks "is writing currently broken". It auto-expires
@@ -429,12 +432,29 @@ function computeCaptureHealth(now: number): CaptureHealth {
     null
   )
 
+  const stripCreds = (v: string | undefined): string | undefined => {
+    if (!v) return undefined
+    try {
+      const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v)
+      const normalized = hasScheme ? v : `http://${v}`
+      const u = new URL(normalized)
+      if (!u.username && !u.password) return v
+      u.username = ''; u.password = ''
+      return hasScheme ? u.toString() : u.toString().replace(/^http:\/\//, '')
+    } catch { return v }
+  }
+  const httpProxy = stripCreds(process.env.HTTP_PROXY || process.env.http_proxy || undefined)
+  const httpsProxy = stripCreds(process.env.HTTPS_PROXY || process.env.https_proxy || undefined)
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy || undefined
+  const proxyEnv = (httpProxy || httpsProxy) ? { httpProxy, httpsProxy, noProxy } : undefined
+
   return {
     verdict, recording: everFed, sources: [...sources, ...pluginSources], lastEventAt, checkedAt: now,
     lastDbError,
     dbErrorTotal: _dbErrorTotal,
     dbErrorFirstAt: _dbErrorFirstAt,
     lastSampleBroken,
-    lastSampleOkAt: _lastSampleOkAt
+    lastSampleOkAt: _lastSampleOkAt,
+    proxyEnv
   }
 }
