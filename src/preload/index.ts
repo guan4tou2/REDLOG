@@ -67,6 +67,12 @@ const api: RedLogAPI = {
         hasMore: boolean
         nextCursor: string | null
       }>,
+    queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) =>
+      ipcRenderer.invoke('events:queryScreenshotPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
     hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
     // Recordings are searched separately from events — see casts:search in
