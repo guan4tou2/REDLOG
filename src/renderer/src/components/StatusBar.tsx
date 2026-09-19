@@ -6,6 +6,7 @@ import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
 import { formatTime } from '../lib/time'
+import { useAppCounts } from '../lib/useAppCounts'
 
 // The ⌘. chord, drawn the way this platform writes it. Read from the one
 // shortcut table so the toast cannot drift from the binding (§11).
@@ -14,12 +15,9 @@ const recordingChord =
   appShortcuts([], isMacPlatform).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 
 export default function StatusBar(): JSX.Element {
+  const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
-  const [eventCount, setEventCount] = useState(0)
   const [loggedCount, setLoggedCount] = useState(0)
-  const [lootCount, setLootCount] = useState(0)
-  const [scopeViolations, setScopeViolations] = useState(0)
-  const [scopeConfigured, setScopeConfigured] = useState(true)
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
   const [pausedAt, setPausedAt] = useState<number | null>(null)
@@ -41,29 +39,22 @@ export default function StatusBar(): JSX.Element {
       if (p?.createdAt) start = p.createdAt
     })
     window.redlog.ip.getStatus().then(setIpStatus)
-    window.redlog.events.getCount().then(setEventCount)
-    // v0.13.0: also fetch the logged-tier count for the chained·logged
-    // split. Legacy .getCount() returns chained (audit) — every existing
-    // caller means that.
+    // v0.13.0: fetch the logged-tier count for the chained·logged split.
+    // The shared counts (eventCount, lootCount, scopeViolations,
+    // scopeConfigured) come from useAppCounts.
     window.redlog.events.getCount('logged').then(setLoggedCount)
-    window.redlog.loot.getCount().then(setLootCount)
-    window.redlog.scope.getViolationCount().then(setScopeViolations)
-    window.redlog.scope.isConfigured().then(setScopeConfigured).catch(() => {})
     window.redlog.recording.get().then((r) => {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
     })
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
+    // v0.13.0: the logged-tier count for the chained·logged split is
+    // StatusBar-specific. The shared counts (eventCount, lootCount,
+    // scopeViolations) are refreshed by useAppCounts's own onNew subscription.
     const unsubEvent = window.redlog.events.onNew((event) => {
-      // v0.13.0: the tier flag on the incoming event tells us which
-      // counter to bump; unknown-tier (legacy events) default to chained
-      // via rowToEvent's default. Loot / scope counts refetch either way.
       const tier = (event as { tier?: import('../../../core/db/events').EventTier } | undefined)?.tier
       if (tier === 'logged') setLoggedCount((c) => c + 1)
-      else setEventCount((c) => c + 1)
-      window.redlog.loot.getCount().then(setLootCount)
-      window.redlog.scope.getViolationCount().then(setScopeViolations)
     })
     const unsubRec = window.redlog.recording.onChange((r) => {
       setRecording(r)

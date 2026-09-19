@@ -212,12 +212,6 @@ export function AgentTurnDetail(
 
 // ── Scanner (HTTP proxy) ─────────────────────────────────────────────
 
-/** v0.11.2 (T6): alias — the actual component lives in HttpDetail.tsx now,
- *  shared with HttpHistoryPanel. */
-export function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; eventId: string }): JSX.Element {
-  return <HttpDetail data={data} eventId={eventId} />
-}
-
 // ── Browser console ──────────────────────────────────────────────────
 
 /** v0.11.2 (T6): a captured browser console line. The stack is the reason this

@@ -163,10 +163,10 @@ export default function Settings(): JSX.Element {
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
             {isWindows && <WslPanel t={t} />}
-            <AgentsPanel t={t} config={config} setConfig={setConfig} />
+            <HookWatchPathsPanel t={t} />
           </>
         )}
-        {tab === 'agents' && <HookWatchPathsPanel t={t} />}
+        {tab === 'agents' && <AgentsPanel t={t} config={config} setConfig={setConfig} />}
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} />}

@@ -172,6 +172,7 @@ function installBridge(): void {
     },
     data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
+    hookConfig: { get: async () => ({ watchPaths: [] }), save: async () => true, pickPath: async () => null },
     operators: {
       list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]
     },

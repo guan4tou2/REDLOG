@@ -2,21 +2,18 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { usePivots } from '../lib/usePivots'
 import { formatFreshness } from '../lib/time'
+import { useTick } from '../lib/useTick'
 
 export default function IPStatusCard(): JSX.Element {
   const [status, setStatus] = useState<IPStatus | null>(null)
   const pivots = usePivots()
-  const [, setTick] = useState(0)
+  useTick()
   const { t } = useI18n()
 
   useEffect(() => {
     window.redlog.ip.getStatus().then(setStatus)
     const unsub = window.redlog.ip.onStatus(setStatus)
-    const timer = setInterval(() => setTick((t) => t + 1), 1000)
-    return () => {
-      unsub()
-      clearInterval(timer)
-    }
+    return () => unsub()
   }, [])
 
   if (!status) {
