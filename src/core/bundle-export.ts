@@ -87,7 +87,7 @@ export interface ExportBundleOpts {
   includeAgentTranscripts?: boolean
 }
 
-function scrubCastHeader(src: string, dst: string, reps: Array<[RegExp, string]>): void {
+function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>): void {
   const raw = fs.readFileSync(src)
   const nlIdx = raw.indexOf(0x0a)
   if (nlIdx < 0 || reps.length === 0) { fs.writeFileSync(dst, raw); return }
@@ -100,8 +100,10 @@ function scrubCastHeader(src: string, dst: string, reps: Array<[RegExp, string]>
         header.env[k] = v
       }
     }
+    let body = raw.subarray(nlIdx + 1).toString('utf-8')
+    for (const [re, rep] of reps) body = body.replace(re, rep)
     const scrubbed = Buffer.from(JSON.stringify(header) + '\n')
-    fs.writeFileSync(dst, Buffer.concat([scrubbed, raw.subarray(nlIdx + 1)]))
+    fs.writeFileSync(dst, Buffer.concat([scrubbed, Buffer.from(body, 'utf-8')]))
   } catch {
     fs.writeFileSync(dst, raw)
   }
@@ -354,7 +356,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
-        scrubCastHeader(s, d, piiReps)
+        scrubCast(s, d, piiReps)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
         castsIncluded++
