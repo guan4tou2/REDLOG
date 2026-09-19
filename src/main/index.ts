@@ -10,21 +10,19 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryMarkerAmendments, screenshotsReferencedByMarker, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
-import { createHash } from 'crypto'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { LootDetector } from '../core/loot-detector'
 import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
-import { amendMarker } from '../core/marker-amend'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
@@ -75,6 +73,7 @@ import { registerPluginsIpc } from './ipc/plugins'
 import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
+import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -159,7 +158,7 @@ function toggleRecording(): boolean {
 // is empty), so every marker producer runs `redactFields` over these before the
 // insert — otherwise `redlog-cli sanitize` reports success on a marker note and
 // ships the secret anyway.
-const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
+// MARKER_TEXT_FIELDS imported from ./ipc/markers
 
 // Opens the marker dialog in the main window — shared by the global shortcut,
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
@@ -1169,6 +1168,7 @@ app.whenReady().then(() => {
   registerOperatorsIpc(ipcMain, ipcCtx)
   registerEventsIpc(ipcMain, ipcCtx)
   registerChainIpc(ipcMain, ipcCtx)
+  registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1389,98 +1389,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('pivots:getActive', () => getActivePivots())
 
-  // --- Markers ---
-  ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
-    if (!activeProject) return null
-    const config = loadConfig(getProjectPath(activeProject))
-    // The payload is rebuilt field by field rather than spread, so an untrusted
-    // renderer cannot smuggle `_causes` or a forged subtype into a chained row.
-    // That cost `atTimestamp` for a while: the Timeline's 〈在此落標記〉 sends it
-    // (EventMarker.tsx) and this handler silently dropped it, so an in-app
-    // marker always landed at wall-clock while an e2e seeding over REST — the
-    // one path that did carry it — stayed green.
-    const at = data.atTimestamp
-    const event = insertEvent('marker', redactFields({
-      title: data.title,
-      notes: data.notes,
-      severity: data.severity ?? 'info',
-      category: data.category ?? 'custom',
-      ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {}),
-      // Where the mark points, the web analogue of `atTimestamp`. Same
-      // omit-when-absent shape as that field, for the same reason: this rebuild
-      // is what silently ate `atTimestamp` for several releases.
-      ...(typeof data.url === 'string' && data.url.trim()
-        ? { url: data.url.trim().slice(0, 2048) }
-        : {})
-    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id })
-    // `marker` is pause-exempt at insert (PAUSE_EXEMPT_AGENT_TYPES) because §10
-    // promises that an explicit "write this down" records while recording is
-    // paused. The default publish gate would then drop the fanout, leaving the
-    // row in the chain but absent from the timeline until the next reload — so
-    // the operator writes a marker, sees nothing, and writes it again.
-    if (event) eventBus.publish(event, { bypassPause: true })
-    return event
-  })
-
-  ipcMain.handle('marker:amend', (_e, markerId: string, changes: Record<string, unknown>) => {
-    if (!activeProject) return { ok: false, error: 'no-active-project' }
-    const config = loadConfig(getProjectPath(activeProject))
-    const result = amendMarker(String(markerId), changes ?? {}, {
-      engagementId: config.engagement.id,
-      operatorId: config.operator.id
-    })
-    // Same reason as marker:create — an amendment records while paused, so its
-    // fanout must not be dropped or the operator writes a correction and sees
-    // the old text stare back.
-    if (result.ok) eventBus.publish(result.event, { bypassPause: true })
-    return result
-  })
-
-  ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
-    activeProject && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
-
-  // --- Screenshots ---
-  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) => screenshotAgent.captureNow('manual', causeEventId))
-  // v0.6.98 B: `screenshot:read` handler removed. v0.6.97 B moved every
-  // renderer read onto the `redlog-screenshot://` custom protocol, and this
-  // IPC had no in-tree callers left. Dropping it shrinks the attack surface
-  // — a compromised renderer with `filePath` control can no longer coax a
-  // base64-encoded read of any file under `<projectDir>/screenshots/`.
-  // Delete only the underlying JPEG. The screenshot EVENT stays in the DB —
-  // rewriting it would break the hash chain (which is the whole point of the
-  // chain). Emits a system.screenshot_deleted event so the audit trail names
-  // when a file was purged, by whom, and its sha256 for later verification.
-  ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
-    try {
-      const screenshotDir = path.join(getProjectDir(), 'screenshots')
-      const resolved = path.resolve(filePath)
-      if (!isInsideDir(screenshotDir, resolved)) return { ok: false, error: 'path outside project' }
-      let sha256: string | null = null
-      try { sha256 = createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
-      fs.unlinkSync(resolved)
-      if (currentEngagementId && currentOperatorId) {
-        const ev = insertEvent('system', {
-          subtype: 'screenshot_deleted',
-          source_event: eventId,  // v0.6.88: legacy field name (kept for backward compat)
-          _causes: [eventId],     // v0.6.89: canonical `_causes` for focus chain walks
-          path: path.basename(resolved),
-          sha256_pre_delete: sha256
-        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-        if (ev) eventBus.publish(ev)
-      }
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-
-  // 2d batch-delete guard (design §12 / §28.7): of a batch of screenshot event
-  // ids, which are referenced by a marker. The renderer uses this to pick the
-  // confirmation tier — a plain checkbox when nothing is cited, type-to-confirm
-  // when a finding points at one. The delete itself still goes through
-  // screenshot:deleteFile one file at a time, each writing an audited tombstone.
-  ipcMain.handle('screenshot:markerReferenced', (_e, ids: unknown) =>
-    activeProject && Array.isArray(ids) ? screenshotsReferencedByMarker(ids.map(String)) : [])
+  // --- Markers + Screenshots (extracted to ipc/markers.ts) ---
 
   // --- Scope ---
   // Read from the chain, not from the in-process log the alert runtime keeps.
