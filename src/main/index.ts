@@ -10,7 +10,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, distinctAgentTypes, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, queryMarkerAmendments, screenshotsReferencedByMarker, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -21,9 +21,8 @@ import { createHash } from 'crypto'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { LootDetector } from '../core/loot-detector'
-import { getChainLength } from '../core/evidence-chain'
-import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
-import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
+import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
+import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
 import { amendMarker } from '../core/marker-amend'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
@@ -31,7 +30,7 @@ import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visib
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
-import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
+import { resetBodiesDirCache } from '../core/http-body-store'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
@@ -64,7 +63,6 @@ import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
-import { toggleDoNotExport, isDoNotExport } from '../core/db/do-not-export'
 import { registerContextMenuIpc } from './context-menu'
 import { registerDataExportIpc } from './ipc/data-export'
 import {
@@ -75,6 +73,8 @@ import {
 import { registerTerminalIpc } from './ipc/terminal'
 import { registerPluginsIpc } from './ipc/plugins'
 import { registerOperatorsIpc } from './ipc/operators'
+import { registerEventsIpc } from './ipc/events'
+import { registerChainIpc } from './ipc/chain'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -1167,6 +1167,8 @@ app.whenReady().then(() => {
   registerTerminalIpc(ipcMain, ipcCtx)
   registerPluginsIpc(ipcMain, ipcCtx)
   registerOperatorsIpc(ipcMain, ipcCtx)
+  registerEventsIpc(ipcMain, ipcCtx)
+  registerChainIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1343,58 +1345,7 @@ app.whenReady().then(() => {
   // only sees actual verdict changes; this listener is UI-only.
   alertRuntime.onIpTick(() => broadcastIPStatus(alertRuntime.ipStatus()))
 
-  // --- Events ---
-  ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
-  ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
-  ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
-  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string }) => activeProject ? searchEvents(query, limit, opts) : [])
-  ipcMain.handle('events:distinctAgentTypes', () => activeProject ? distinctAgentTypes() : [])
-  ipcMain.handle('events:aggregateTargets', () => activeProject ? aggregateTargets() : [])
-  ipcMain.handle('events:distinctHosts', () => activeProject ? distinctHosts() : [])
-  // 10a Inspector 〈相關〉: a host's curated causal chain + header aggregate.
-  ipcMain.handle('events:hostChain', (_e, host: string, opts?: { chainLimit?: number }) =>
-    activeProject ? hostCausalChain(host, opts ?? {}) : null)
-
-  ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
-  // `queryEventById` has existed since v0.6.96 with no way to reach it from the
-  // renderer. The Timeline pages newest-first, 200 rows at a time, and an
-  // amendment is by construction newer than the marker it corrects — so on any
-  // fresh timeline the correction is on screen while its marker is thousands of
-  // rows back. Without a way to fetch it, the Inspector draws the red
-  // 「chain broken」 chip on the ordinary default path.
-  ipcMain.handle('events:getById', (_e, ids: string[]) =>
-    activeProject && Array.isArray(ids)
-      ? ids.slice(0, 200).map((id) => queryEventById(String(id))).filter((e): e is RedLogEvent => e !== null)
-      : [])
-  // Four-layer redaction, layer 3 — reveal action logs a chained event so
-  // the audit trail shows raw secret bytes were viewed, by whom, when.
-  ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
-    if (!currentEngagementId || !currentOperatorId) return { ok: false, error: 'no active project' }
-    try {
-      const ev = insertEvent('system', {
-        subtype: 'secret_revealed',
-        source_event: sourceEventId,
-        fields: Array.isArray(fields) ? fields : []
-      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-      if (ev) eventBus.publish(ev)
-      return { ok: true, id: ev?.id }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('events:toggleDoNotExport', (_e, eventId: string) => {
-    if (!activeProject || typeof eventId !== 'string') return null
-    return toggleDoNotExport(eventId)
-  })
-  ipcMain.handle('events:isDoNotExport', (_e, eventId: string) => {
-    if (!activeProject || typeof eventId !== 'string') return false
-    return isDoNotExport(eventId)
-  })
-
-  ipcMain.handle('httpBody:read', (_e, ref: BodyRef) => {
-    if (!activeProject) return null
-    return readHttpBody(ref)
-  })
+  // --- Events (extracted to ipc/events.ts) ---
 
   // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
   // still fires `events:new` per-event (overlay
@@ -1545,28 +1496,7 @@ app.whenReady().then(() => {
   // flags are monotonic, so a mature project costs no queries at all.
   ipcMain.handle('visibility:signals', () => (activeProject ? getVisibilitySignals() : null))
 
-  // --- Evidence Chain ---
-  ipcMain.handle('chain:length', () => activeProject ? getChainLength() : 0)
-  ipcMain.handle('chain:anchors', () => activeProject ? listAnchors() : [])
-  ipcMain.handle('chain:anchorNow', async () => activeProject ? await anchorNow() : null)
-  ipcMain.handle('chain:verify', async (_e, opts?: { full?: boolean }) => {
-    if (!activeProject) return { ok: false, anchor: null, currentHead: null }
-    // v0.6.95 P0-4a: full verify now uses the async variant that yields to
-    // the event loop every ASYNC_CHUNK_ROWS rows, so the renderer stays
-    // responsive and IPC deliveries keep flowing during a 100k-row walk.
-    return opts?.full ? await verifyChainFullAsync() : verifyLatestAnchor()
-  })
-  ipcMain.handle('chain:upgrade', async (_e, id?: string) => {
-    if (!activeProject) return null
-    if (id) return await upgradeAnchor(id)
-    return await upgradeAllPending()
-  })
-
-  ipcMain.handle('clock:status', () => ({
-    ntpOffsetMs: getNtpOffsetMs(),
-    lastQueryAt: getLastNtpQuery(),
-    hostWallMs: Date.now()
-  }))
+  // --- Evidence Chain + Clock (extracted to ipc/chain.ts) ---
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => activeProject ? getLootCount() : 0)
