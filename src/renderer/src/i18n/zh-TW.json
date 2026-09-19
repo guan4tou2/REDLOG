@@ -146,7 +146,6 @@
   "targets.first": "首次：{{time}}",
   "targets.last": "最近：{{time}}",
   "targets.noEvidence": "此目標沒有關聯的證據。",
-  "targets.andMore": "⋯ 還有 {{count}} 筆",
   "targets.loaded": "{{loaded}} / {{total}} 筆事件",
   "targets.loadMore": "載入更多（{{loaded}} / {{total}}）",
   "targets.loading": "載入中⋯",

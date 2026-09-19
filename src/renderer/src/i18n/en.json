@@ -146,7 +146,6 @@
   "targets.first": "First: {{time}}",
   "targets.last": "Last: {{time}}",
   "targets.noEvidence": "No evidence linked to this target.",
-  "targets.andMore": "... and {{count}} more",
   "targets.loaded": "{{loaded}} / {{total}} events",
   "targets.loadMore": "Load more ({{loaded}} / {{total}})",
   "targets.loading": "Loading...",
