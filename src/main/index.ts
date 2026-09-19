@@ -74,6 +74,7 @@ import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
+import { registerViewsIpc } from './ipc/views'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -1169,6 +1170,7 @@ app.whenReady().then(() => {
   registerEventsIpc(ipcMain, ipcCtx)
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
+  registerViewsIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1431,55 +1433,7 @@ app.whenReady().then(() => {
   ipcMain.handle('bookmarks:update', (_e, id: string, data) => activeProject ? updateBookmark(id, data) : false)
   ipcMain.handle('bookmarks:delete', (_e, id: string) => activeProject ? deleteBookmark(id) : false)
 
-  // --- Saved Timeline views ---
-  // A "view" is a named snapshot of Timeline UI state — zoom, time window,
-  // hidden lanes, filter query. Stored per-project so operators reviewing an
-  // engagement can jump back to "the credential-dump moment" or "the day-2
-  // recon window" without redoing the zoom + filter dance every time.
-  //
-  // Modelled on the Bookmarks IPC pattern (small JSON payload, list/save/delete)
-  // but kept as a flat JSON file rather than a SQLite table — cheap, easy to
-  // hand-edit, and there's no query pattern beyond "list all".
-  const viewsFile = (): string | null => {
-    if (!activeProject) return null
-    return path.join(getProjectPath(activeProject), 'views.json')
-  }
-  const readViews = (): Array<Record<string, unknown>> => {
-    const p = viewsFile()
-    if (!p || !fs.existsSync(p)) return []
-    try { const arr = JSON.parse(fs.readFileSync(p, 'utf-8')); return Array.isArray(arr) ? arr : [] } catch { return [] }
-  }
-  const writeViews = (views: Array<Record<string, unknown>>): void => {
-    const p = viewsFile()
-    if (!p) return
-    fs.mkdirSync(path.dirname(p), { recursive: true })
-    fs.writeFileSync(p, JSON.stringify(views, null, 2) + '\n', 'utf-8')
-  }
-  ipcMain.handle('views:list', () => readViews())
-  ipcMain.handle('views:save', (_e, data: { name: string; state: Record<string, unknown> }) => {
-    const list = readViews()
-    const id = `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-    const entry = {
-      id,
-      name: (data.name || 'Untitled').toString().slice(0, 120),
-      createdAt: Date.now(),
-      state: data.state ?? {}
-    }
-    list.unshift(entry)
-    // Cap at 100 saved views per project — anything more is either forgotten
-    // clutter or someone using this as a real database. The list UI would be
-    // useless past that anyway.
-    if (list.length > 100) list.length = 100
-    writeViews(list)
-    return entry
-  })
-  ipcMain.handle('views:delete', (_e, id: string) => {
-    const list = readViews()
-    const next = list.filter((v) => v.id !== id)
-    if (next.length === list.length) return false
-    writeViews(next)
-    return true
-  })
+  // --- Saved Timeline views (extracted to ipc/views.ts) ---
 
   // --- Proxied browser ---
   ipcMain.handle('browser:detect', () => detectBrowser())
