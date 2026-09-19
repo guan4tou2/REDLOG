@@ -187,14 +187,14 @@ const api: RedLogAPI = {
     stop: () => ipcRenderer.invoke('browser:stop')
   },
   data: {
-    exportJson: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportJson', opts),
+    exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportJson', opts),
     exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
     exportScopeFiltered: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportScopeFiltered', opts),
     exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
     exportLoot: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportLoot', opts),
     exportViolations: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportViolations', opts),
     exportTimelineSlice: (from: number, to: number, opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to, ...opts }),
-    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
+    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportNdjson', opts),
     exportWalkthrough: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportWalkthrough', opts) as Promise<string | null>,
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target),
     exportPreview: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportPreview', opts)

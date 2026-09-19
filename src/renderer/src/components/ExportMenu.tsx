@@ -11,7 +11,7 @@ export interface ExportMenuProps {
 
 interface PendingExport {
   label: string
-  fn: () => Promise<string | null>
+  fn: (snapshot?: ExportSnapshot) => Promise<string | null>
   sharing?: boolean
 }
 
@@ -58,7 +58,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     if (!pending) return
     setBusy(true)
     try {
-      const path = await pending.fn()
+      const path = await pending.fn(preview?.snapshot)
       if (path) toast(t('export.done', { label: pending.label }), { type: 'success', why: path })
       else toast(t('export.failed', { label: pending.label }), { type: 'error', why: t('toast.exportFailedWhy') })
     } catch (e) {
@@ -221,7 +221,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 <Option
                   label={t('export.all')}
                   disabled={empty}
-                  onPick={() => void loadPreview({ label: t('export.all'), sharing, fn: () => window.redlog.data.exportJson({ sharing }) })}
+                  onPick={() => void loadPreview({ label: t('export.all'), sharing, fn: (snap) => window.redlog.data.exportJson({ sharing, snapshot: snap }) })}
                 />
                 <Option
                   label={t('export.ndjson')}
@@ -229,9 +229,9 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   onPick={() => void loadPreview({
                     label: t('export.ndjson'),
                     sharing,
-                    fn: () => {
-                      const api = window.redlog.data as { exportNdjson?: (opts?: { sharing?: boolean }) => Promise<string | null> }
-                      return api.exportNdjson?.({ sharing }) ?? Promise.resolve(null)
+                    fn: (snap) => {
+                      const api = window.redlog.data as { exportNdjson?: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null> }
+                      return api.exportNdjson?.({ sharing, snapshot: snap }) ?? Promise.resolve(null)
                     }
                   })}
                 />
@@ -244,10 +244,10 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   onPick={() => void loadPreview({
                     label: t('export.bundle'),
                     sharing,
-                    fn: async () => {
-                      const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ ok: boolean; outDir?: string; error?: string }> }
+                    fn: async (snap) => {
+                      const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => Promise<{ ok: boolean; outDir?: string; error?: string }> }
                       if (!api.exportBundle) return null
-                      const r = await api.exportBundle({ maskOutOfScope: maskScope })
+                      const r = await api.exportBundle({ maskOutOfScope: maskScope, snapshot: snap })
                       return r.ok && r.outDir ? r.outDir : null
                     }
                   })}

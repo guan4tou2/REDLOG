@@ -11,6 +11,12 @@ interface ProjectMeta {
   dbSize?: number
 }
 
+interface ExportSnapshot {
+  chainedMaxRowId: number
+  loggedMaxRowId: number
+  takenAt: number
+}
+
 interface ExportPreview {
   total: number
   included: number
@@ -25,6 +31,7 @@ interface ExportPreview {
   sharing: boolean
   withBodyRefs: number
   screenshotEvents: number
+  snapshot: ExportSnapshot
 }
 
 interface IPStatus {
@@ -263,14 +270,14 @@ interface RedLogAPI {
     stop: () => Promise<{ stopped: boolean }>
   }
   data: {
-    exportJson: (opts?: { sharing?: boolean }) => Promise<string | null>
-    exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ outDir: string; manifest: unknown } | null>
+    exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
+    exportBundle?: (opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => Promise<{ outDir: string; manifest: unknown } | null>
     exportScopeFiltered?: (opts?: { sharing?: boolean }) => Promise<string | null>
     exportMarks?: () => Promise<string | null>
     exportLoot?: (opts?: { sharing?: boolean }) => Promise<string | null>
     exportViolations?: (opts?: { sharing?: boolean }) => Promise<string | null>
     exportTimelineSlice?: (from: number, to: number, opts?: { sharing?: boolean }) => Promise<string | null>
-    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => Promise<string | null>
+    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
     exportWalkthrough?: (opts?: { sharing?: boolean }) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
     exportPreview?: (opts?: { sharing?: boolean }) => Promise<ExportPreview | null>

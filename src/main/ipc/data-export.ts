@@ -10,6 +10,7 @@ import { getProjectDir } from '../../core/db/index'
 import { queryEvents, queryMarkerAmendments, queryScopeFilteredEvents, type RedLogEvent } from '../../core/db/events'
 import { listBookmarks } from '../../core/db/bookmarks'
 import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
+import { takeExportSnapshot, type ExportSnapshot } from '../../core/export-plan'
 import { getDoNotExportIds } from '../../core/db/do-not-export'
 import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
 import { eventsToNdjson } from '../../core/ndjson-export'
@@ -75,7 +76,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   })
 
   // --- Evidence bundle ---
-  ipcMain.handle('data:exportBundle', (_e, opts?: { maskOutOfScope?: boolean }) => {
+  ipcMain.handle('data:exportBundle', (_e, opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => {
     const project = ctx.getActiveProject()
     if (!project) return { ok: false, error: 'no-active-project' }
     try {
@@ -85,10 +86,11 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       // ship the raw out-of-scope content — a deliberate, audited choice the
       // ExportMenu surfaces with a warning. `true`/undefined both mask.
       const maskOutOfScope = opts?.maskOutOfScope !== false
-      const snap = snapshotScope(cfg)
+      const scopeSnap = snapshotScope(cfg)
       const bundle = exportBundle(cfg.engagement.id, {
-        scope: { targets: snap.targets, excludeTargets: cfg.scope?.excludeTargets, personalDomains: cfg.scope?.personalDomains },
-        maskOutOfScope
+        scope: { targets: scopeSnap.targets, excludeTargets: cfg.scope?.excludeTargets, personalDomains: cfg.scope?.personalDomains },
+        maskOutOfScope,
+        snapshot: opts?.snapshot
       })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }
     } catch (e) {
@@ -137,13 +139,13 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   })
 
   // --- Data Export (minimal JSON dump) ---
-  ipcMain.handle('data:exportJson', (_e, opts?: SharingOpts) => {
+  ipcMain.handle('data:exportJson', (_e, opts?: SharingOpts & { snapshot?: ExportSnapshot }) => {
     const project = ctx.getActiveProject()
     if (!project) return null
     const projectDir = getProjectPath(project)
     const config = loadConfig(projectDir)
     const rOpts = redactOpts(ctx, opts?.sharing)
-    const events = redactEventsForExport(queryEvents({ limit: -1 }), rOpts)
+    const events = redactEventsForExport(queryEvents({ limit: -1, snapshot: opts?.snapshot }), rOpts)
     const payload = { config, events, exportedAt: new Date().toISOString() }
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -159,7 +161,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // out-of-scope rows entirely (+ no-target noise) rather than only masking
   // their content; `scrubPii` strips the operator's home path / username /
   // hostname. Both default off (single-operator export keeps attribution).
-  ipcMain.handle('data:exportNdjson', (_e, opts?: { scopeOnly?: boolean; scrubPii?: boolean } & SharingOpts) => {
+  ipcMain.handle('data:exportNdjson', (_e, opts?: { scopeOnly?: boolean; scrubPii?: boolean; snapshot?: ExportSnapshot } & SharingOpts) => {
     const project = ctx.getActiveProject()
     if (!project) return null
     const projectDir = getProjectPath(project)
@@ -167,7 +169,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const shouldScrub = opts?.scrubPii === true || opts?.sharing === true
     const events = (opts?.scopeOnly || opts?.sharing) && scope
       ? queryScopeFilteredEvents(scope.targets).events
-      : queryEvents({ limit: -1 })
+      : queryEvents({ limit: -1, snapshot: opts?.snapshot })
     const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: shouldScrub, doNotExportIds: getDoNotExportIds() })
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -289,7 +291,8 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (!project) return null
     const scope = scopeForActiveProject(ctx)
     const doNotExportIds = getDoNotExportIds()
-    const events = queryEvents({ limit: -1 })
+    const snapshot = takeExportSnapshot()
+    const events = queryEvents({ limit: -1, snapshot })
     let total = events.length
     let dropped = 0
     let personalDropped = 0
@@ -334,7 +337,8 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       hasScope: !!scope && scope.targets.length > 0,
       sharing: !!opts?.sharing,
       withBodyRefs,
-      screenshotEvents
+      screenshotEvents,
+      snapshot
     }
   })
 }
