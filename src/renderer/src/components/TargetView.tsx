@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { isMarkerAmendment, amendedFields } from '../lib/markerFold'
 import { formatTime } from '../lib/time'
@@ -38,6 +38,8 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // on each target. Empty when config isn't set (in which case every target
   // shows as "in-scope" since there's no rule to violate).
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
   const { t } = useI18n()
 
   useEffect(() => {
@@ -51,6 +53,13 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     loadTargets()
     const unsub = window.redlog.events.onNew((evt) => {
       if (evt.targetId || evt.data?.detectedTarget) loadTargets()
+      const sel = selectedRef.current
+      if (sel && evt.targetId === sel) {
+        setEvidence((prev) => {
+          if (prev.some((e) => e.id === evt.id)) return prev
+          return [evt, ...prev]
+        })
+      }
     })
     return unsub
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,8 +79,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     // Classify each target as in-scope / out-of-scope from the current scope
     // config (audit finding #33 — before this the field was null and both
     // filter chips returned empty). Scope-unset means every target is in-scope
-    // (no rule to violate). `matchesScope` here is stricter than core's
-    // (proper CIDR), which is why classification stays in the renderer.
+    // (no rule to violate).
     const list: TargetEntry[] = rows.map((r) => ({
       target: r.target,
       firstSeen: r.firstSeen,
@@ -263,7 +271,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       <p className="text-redlog-text-dim text-xs mb-1">
                         {t('targets.loaded', { loaded: evidence.length, total: tgt.eventCount })}
                       </p>
-                      {evidence.slice(0, 20).map((e) => (
+                      {evidence.map((e) => (
                         <div key={e.id} className="flex items-start gap-2 text-xs">
                           <span className={`font-mono font-bold w-4 shrink-0 ${agentColor[e.agentType] || 'text-redlog-text-dim'}`}>
                             {agentIcon[e.agentType] || '?'}
@@ -287,9 +295,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                           </span>
                         </div>
                       ))}
-                      {evidence.length > 20 && !hasMore && (
-                        <p className="text-redlog-text-faint text-xs">{t('targets.andMore', { count: evidence.length - 20 })}</p>
-                      )}
                       {hasMore && (
                         <button
                           onClick={loadMore}
