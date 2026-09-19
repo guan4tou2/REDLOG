@@ -43,6 +43,8 @@ export interface RedactExportOpts {
   /** Operator-infrastructure IPs. Events whose targetId matches are excluded
    *  entirely (not just masked) when maskMetadata is on. */
   blacklist?: string[]
+  /** Row-level "don't export this event" flags. Loaded once by the caller. */
+  doNotExportIds?: Set<string>
 }
 
 /** Redact one event's data for export. Returns the same object when nothing
@@ -52,7 +54,9 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
   const opts: RedactExportOpts = scopeOrOpts && 'targets' in scopeOrOpts
     ? { scope: scopeOrOpts }
     : (scopeOrOpts as RedactExportOpts | undefined) ?? {}
-  const { scope, maskMetadata, blacklist } = opts
+  const { scope, maskMetadata, blacklist, doNotExportIds } = opts
+
+  if (doNotExportIds?.has(e.id)) return null
 
   // Personal/local traffic: always dropped — these rows should never leave
   // the local machine regardless of export mode (merge or delivery).

@@ -64,6 +64,7 @@ import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
+import { toggleDoNotExport, isDoNotExport } from '../core/db/do-not-export'
 import { registerContextMenuIpc } from './context-menu'
 import { registerDataExportIpc } from './ipc/data-export'
 import {
@@ -1381,6 +1382,15 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
+  ipcMain.handle('events:toggleDoNotExport', (_e, eventId: string) => {
+    if (!activeProject || typeof eventId !== 'string') return null
+    return toggleDoNotExport(eventId)
+  })
+  ipcMain.handle('events:isDoNotExport', (_e, eventId: string) => {
+    if (!activeProject || typeof eventId !== 'string') return false
+    return isDoNotExport(eventId)
+  })
+
   ipcMain.handle('httpBody:read', (_e, ref: BodyRef) => {
     if (!activeProject) return null
     return readHttpBody(ref)

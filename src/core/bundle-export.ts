@@ -11,6 +11,7 @@ import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FOR } from './redact-export'
 import { operatorPiiReplacements } from './operator-pii'
+import { getDoNotExportIds } from './db/do-not-export'
 
 interface ManifestFile {
   path: string
@@ -212,10 +213,16 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   let sanitizedRowsWritten = 0
   let outOfScopeMasked = 0
   let personalDropped = 0
+  let doNotExportDropped = 0
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
+  const doNotExportIds = getDoNotExportIds()
   const survivingBodyRefs = new Set<string>()
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
+    if (doNotExportIds.has(row.id as string)) {
+      doNotExportDropped++
+      continue
+    }
     if (isPersonalDomain(row.target_id as string | null, opts.scope)) {
       personalDropped++
       continue
@@ -281,6 +288,10 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   ).iterate() as IterableIterator<Record<string, unknown>>
   let loggedRowCount = 0
   for (const row of loggedIter) {
+    if (doNotExportIds.has(row.id as string)) {
+      doNotExportDropped++
+      continue
+    }
     if (isPersonalDomain(row.target_id as string | null, opts.scope)) {
       personalDropped++
       continue
@@ -617,6 +628,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
     sanitizedOutOfScope: outOfScopeMasked,
     personalDropped,
+    doNotExportDropped,
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },

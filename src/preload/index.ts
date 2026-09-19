@@ -92,7 +92,11 @@ const api: RedLogAPI = {
     // bytes of a redacted span, we log a chained system.secret_revealed event
     // so the audit trail shows who saw what and when.
     logSecretRevealed: (sourceEventId: string, fields: string[]) =>
-      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields)
+      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields),
+    toggleDoNotExport: (eventId: string) =>
+      ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
+    isDoNotExport: (eventId: string) =>
+      ipcRenderer.invoke('events:isDoNotExport', eventId) as Promise<boolean>
   },
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
@@ -174,7 +178,8 @@ const api: RedLogAPI = {
     exportTimelineSlice: (from: number, to: number, opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to, ...opts }),
     exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
     exportWalkthrough: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportWalkthrough', opts) as Promise<string | null>,
-    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
+    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target),
+    exportPreview: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportPreview', opts)
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),

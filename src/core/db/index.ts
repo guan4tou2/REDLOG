@@ -162,6 +162,14 @@ export function initDB(projectDir: string): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_sanitized_source ON sanitized_events(source_event_id);
 
+    -- Operator assertion: "this event must not leave the local DB".
+    -- A side table (not a column) because events rows are immutable.
+    -- INSERT = mark; DELETE = unmark. Both tiers share the same table.
+    CREATE TABLE IF NOT EXISTS do_not_export (
+      event_id   TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
+
     -- v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.3): the
     -- logged tier for supporting evidence -- DNS lookups, HTTP flow
     -- bookkeeping, CDP console lines, agent thinking, ip_verdict
