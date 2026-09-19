@@ -71,18 +71,14 @@ describe('redactToolInput — per-tool allowlist', () => {
     expect(out).not.toBe(input)  // shallow copy — downstream mutations don't touch the adapter's parsed turn
   })
 
-  it('WebFetch: prompt scanned, url passthrough', () => {
+  it('WebFetch: prompt and url both scanned', () => {
     const input = {
-      url: 'https://api.example.com/?token=abc123',  // URL might carry a token but the URL field isn't in the scan set
+      url: 'https://api.example.com/?token=abc123',
       prompt: 'summarise this doc password=hunter2xxx'
     }
     const out = redactToolInput('WebFetch', input)
     expect(out.prompt).toContain('[REDACTED]')
-    // The audit trade-off: URL isn't scanned. In practice URLs with tokens
-    // land in scanner.http_request_start where the full redaction pass
-    // runs; the tailer sees only what Claude passed to WebFetch, which
-    // for real secrets is caught upstream.
-    expect(out.url).toBe('https://api.example.com/?token=abc123')
+    expect(out.url).toContain('[REDACTED]')
   })
 })
 

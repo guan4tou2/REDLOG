@@ -306,25 +306,25 @@ describeDB('queryScopeFilteredEvents', () => {
   it('includes marker events without targetId (whitelist)', () => {
     insertEvent('marker', { title: 'found something' })
     const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.length).toBe(1)
+    expect(filtered.events.length).toBe(1)
   })
 
   it('excludes clipboard events without targetId', () => {
     insertEvent('clipboard', { text: 'password123' })
     const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.length).toBe(0)
+    expect(filtered.events.length).toBe(0)
   })
 
   it('excludes system events without targetId', () => {
     insertEvent('system', { subtype: 'session_start' })
     const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.length).toBe(0)
+    expect(filtered.events.length).toBe(0)
   })
 
   it('matches wildcard domain scope', () => {
     insertEvent('shell', { command: 'curl' }, { targetId: 'api.example.com' })
     insertEvent('shell', { command: 'curl' }, { targetId: 'other.net' })
     const filtered = queryScopeFilteredEvents(['*.example.com'])
-    expect(filtered.length).toBe(1)
+    expect(filtered.events.length).toBe(1)
   })
 })

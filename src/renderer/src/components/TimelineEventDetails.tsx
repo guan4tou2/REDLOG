@@ -170,7 +170,7 @@ export function AgentTurnDetail(
             accent="emerald"
             startOpen={true}
           />
-          <p className="text-[10px] text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
+          <p className="text-xs text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
         </>
       )}
       {isToolCall && !paired && allLoaded && (
@@ -194,7 +194,7 @@ export function AgentTurnDetail(
             accent="emerald"
             startOpen={false}
           />
-          <p className="text-[10px] text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
+          <p className="text-xs text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
         </>
       )}
       <MetadataGrid

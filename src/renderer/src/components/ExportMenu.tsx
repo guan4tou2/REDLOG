@@ -129,7 +129,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 >{t('export.presetSharing')}</button>
               </div>
               {sharing && (
-                <p className="text-[10px] text-cyan-400/70 mt-1 leading-tight">
+                <p className="text-xs text-cyan-400/70 mt-1 leading-tight">
                   {t('export.sharingHint')}
                 </p>
               )}

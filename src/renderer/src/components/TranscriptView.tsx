@@ -504,7 +504,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
                 </p>
               )}
               {revealed && b.kind === 'agent-tool' && b.output && (
-                <p className="mx-2.5 mb-2 px-2 py-0.5 text-[10px] text-redlog-text-faint italic">
+                <p className="mx-2.5 mb-2 px-2 py-0.5 text-xs text-redlog-text-faint italic">
                   {t('transcript.toolDisclaimer')}
                 </p>
               )}
