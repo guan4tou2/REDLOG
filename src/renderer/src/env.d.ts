@@ -462,7 +462,7 @@ interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string }
+  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string; personalDomains?: string[] }
   screenshot?: { quality?: number; intervalSec?: number }
   overlay?: {
     showMarkButton?: boolean

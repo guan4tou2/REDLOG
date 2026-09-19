@@ -4,11 +4,12 @@ import { createHash } from 'crypto'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import { insertEvent, queryMarkerAmendments, screenshotsReferencedByMarker, type RedLogEvent } from '../../core/db/events'
-import { loadConfig, getProjectPath } from '../../core/project-manager'
+import { getProjectDir } from '../../core/project-manager'
+import { loadConfig } from '../../core/config'
 import { redactFields } from '../../core/redaction'
 import { amendMarker } from '../../core/marker-amend'
 import { isInsideDir } from '../../core/paths'
-import { getProjectDir } from '../../core/db/index'
+import { getProjectDir as getOpenProjectDir } from '../../core/db/index'
 import { eventBus } from '../../core/event-bus'
 import type { ScreenshotAgent } from '../services/screenshot-agent'
 
@@ -22,7 +23,7 @@ export function registerMarkersIpc(
   ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
     const proj = ctx.getActiveProject()
     if (!proj) return null
-    const config = loadConfig(getProjectPath(proj))
+    const config = loadConfig(getProjectDir(proj))
     const at = data.atTimestamp
     const event = insertEvent('marker', redactFields({
       title: data.title,
@@ -41,7 +42,7 @@ export function registerMarkersIpc(
   ipcMain.handle('marker:amend', (_e, markerId: string, changes: Record<string, unknown>) => {
     const proj = ctx.getActiveProject()
     if (!proj) return { ok: false, error: 'no-active-project' }
-    const config = loadConfig(getProjectPath(proj))
+    const config = loadConfig(getProjectDir(proj))
     const result = amendMarker(String(markerId), changes ?? {}, {
       engagementId: config.engagement.id,
       operatorId: config.operator.id
@@ -58,7 +59,7 @@ export function registerMarkersIpc(
 
   ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
     try {
-      const screenshotDir = path.join(getProjectDir(), 'screenshots')
+      const screenshotDir = path.join(getOpenProjectDir(), 'screenshots')
       const resolved = path.resolve(filePath)
       if (!isInsideDir(screenshotDir, resolved)) return { ok: false, error: 'path outside project' }
       let sha256: string | null = null

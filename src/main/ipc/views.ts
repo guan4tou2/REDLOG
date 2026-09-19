@@ -2,13 +2,13 @@ import fs from 'fs'
 import path from 'path'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
-import { getProjectPath } from '../../core/project-manager'
+import { getProjectDir } from '../../core/project-manager'
 
 export function registerViewsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   const viewsFile = (): string | null => {
     const proj = ctx.getActiveProject()
     if (!proj) return null
-    return path.join(getProjectPath(proj), 'views.json')
+    return path.join(getProjectDir(proj), 'views.json')
   }
   const readViews = (): Array<Record<string, unknown>> => {
     const p = viewsFile()

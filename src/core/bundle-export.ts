@@ -40,6 +40,8 @@ interface ManifestPayload {
   /** PRD A2: how many events had content fields masked because their target
    *  was out of scope (0 when no scope was supplied). */
   sanitizedOutOfScope: number
+  personalDropped: number
+  doNotExportDropped: number
   /** v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.7.2): row
    *  counts per tier. `chained` matches chainHead.eventCount — that IS the
    *  count the OTS anchor covers. `logged` is the events_logged row count
