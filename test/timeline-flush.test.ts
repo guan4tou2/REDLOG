@@ -10,6 +10,9 @@ import path from 'path'
 const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
 )
+const SESSION_BANDS_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineSessionBands.ts'), 'utf-8'
+)
 
 // Capture through the closing dependency array, not just up to it — a
 // non-greedy match that stops at `}, [` cuts the deps off, which is half of
@@ -53,11 +56,14 @@ describe('session band labels (V11)', () => {
     // Two terminals open at once is the normal case for an operator with a
     // shell and a listener; both labels drew at their own top-left and neither
     // was readable.
-    const body = memoBody('sessionBands')
-    expect(body, 'greedy interval colouring over x0-sorted bands')
+    // The logic was extracted to timelineSessionBands.ts — verify delegation
+    // and that the extracted module has the actual algorithm.
+    expect(SRC, 'Timeline delegates to buildSessionBands')
+      .toMatch(/buildSessionBands\(/)
+    expect(SESSION_BANDS_SRC, 'greedy interval colouring over x0-sorted bands')
       .toMatch(/rowEnds\.findIndex\(\(end\) => end <= b\.x0\)/)
-    expect(body, 'clearance must account for the label, not just the band')
-      .toMatch(/LABEL_CLEARANCE_PX/)
+    expect(SESSION_BANDS_SRC, 'clearance must account for the label, not just the band')
+      .toMatch(/labelClearancePx/)
   })
 
   it('offsets the label by its row and hides it on a band too narrow to hold it', () => {
