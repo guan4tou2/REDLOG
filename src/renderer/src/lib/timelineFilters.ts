@@ -156,6 +156,90 @@ export function computePaletteResults(
   return items.slice(0, 20)
 }
 
+// ── Viewport windowing ─────────────────────────────────────────────
+
+export interface ViewportWindow {
+  /** viewport left edge, 0-100 % */
+  left: number
+  /** viewport width, 0-100 % */
+  width: number
+  /** total track width in px */
+  trackW: number
+  /** pixel → timestamp mapping */
+  fromX: (px: number) => number
+  /** event → display timestamp */
+  displayTs: (e: RedLogEvent) => number
+  /** time span of the domain, ms */
+  timeSpan: number
+}
+
+/**
+ * Recent events visible in the current viewport, walking newest-first,
+ * capped at `cap`. When the whole track is visible or the windowed
+ * search yields nothing, falls back to the nearest events before the
+ * viewport's trailing edge.
+ */
+export function computeRecentEvents(
+  events: readonly RedLogEvent[],
+  hiddenLanes: ReadonlySet<LaneId>,
+  pluginTypes: PluginEventType[] | undefined,
+  vp: ViewportWindow,
+  cap = 50
+): RedLogEvent[] {
+  const isVisible = (e: RedLogEvent): boolean =>
+    !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
+
+  const widthPx = (vp.width / 100) * vp.trackW
+  const wholeTrackVisible = widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)
+
+  if (wholeTrackVisible || vp.timeSpan <= 0) {
+    const out: RedLogEvent[] = []
+    for (let i = events.length - 1; i >= 0 && out.length < cap; i--) {
+      if (isVisible(events[i])) out.push(events[i])
+    }
+    return out
+  }
+
+  const from = vp.fromX((vp.left / 100) * vp.trackW)
+  const to = vp.fromX(((vp.left + vp.width) / 100) * vp.trackW)
+  const inView: RedLogEvent[] = []
+  for (let i = events.length - 1; i >= 0 && inView.length < cap; i--) {
+    const e = events[i]
+    if (!isVisible(e)) continue
+    const d = vp.displayTs(e)
+    if (d > to) continue
+    if (d < from) break
+    inView.push(e)
+  }
+  if (inView.length > 0) return inView
+  const nearest: RedLogEvent[] = []
+  for (let i = events.length - 1; i >= 0 && nearest.length < cap; i--) {
+    const e = events[i]
+    if (isVisible(e) && vp.displayTs(e) <= to) nearest.push(e)
+  }
+  return nearest
+}
+
+/**
+ * Count of events whose display timestamp falls inside the current viewport.
+ * Returns total event count when the whole track is visible.
+ */
+export function computeSliceCount(
+  events: readonly RedLogEvent[],
+  vp: Pick<ViewportWindow, 'left' | 'width' | 'trackW' | 'fromX' | 'displayTs'>
+): number {
+  const widthPx = (vp.width / 100) * vp.trackW
+  if (widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99)) return events.length
+  const from = vp.fromX((vp.left / 100) * vp.trackW)
+  const to = vp.fromX(((vp.left + vp.width) / 100) * vp.trackW)
+  let n = 0
+  for (const e of events) {
+    const d = vp.displayTs(e)
+    if (d >= from && d <= to) n++
+  }
+  return n
+}
+
 // ── Lane distribution ───────────────────────────────────────────────
 
 /**
