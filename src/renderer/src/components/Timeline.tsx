@@ -14,7 +14,7 @@ import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents } from '../lib/timelineFilters'
+import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelinePalette } from './TimelinePalette'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import type { PaletteItem } from '../lib/timelineFilters'
@@ -1127,49 +1127,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // Falls back to the tail when the whole track is on screen or the viewport
   // has not been measured yet, which is also what the operator wants while
   // following live.
-  const recentEvents = useMemo(() => {
-    // v0.12.1: walk from the tail and short-circuit at 50 matches instead of
-    // filtering the whole array + reversing the full filtered result. On a
-    // 131k-event project the old shape was `events.filter(...).reverse().slice(0, 50)`
-    // which paid O(N) every render just to look at the last 50. Panning the
-    // timeline mutates `view.left`/`view.width` many times a second and both
-    // are in this memo's dep list, so this ran on every scroll frame.
-    const widthPx = (view.width / 100) * TRACK_W
-    const wholeTrackVisible = widthPx <= 0 || (view.left <= 0.01 && view.width >= 99.99)
-    const isVisible = (e: typeof events[number]): boolean =>
-      !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
+  const vp: ViewportWindow = useMemo(() => ({
+    left: view.left, width: view.width, trackW: TRACK_W, fromX, displayTs, timeSpan
+  }), [view.left, view.width, TRACK_W, fromX, timeSpan])
 
-    if (wholeTrackVisible || timeSpan <= 0) {
-      const out: typeof events = []
-      for (let i = events.length - 1; i >= 0 && out.length < 50; i--) {
-        if (isVisible(events[i])) out.push(events[i])
-      }
-      return out
-    }
-
-    // Scrolled window path — collect the in-view visible events walking
-    // backward. An empty window would look broken; fall back to the nearest
-    // events at or before the window's end so the panel still says something
-    // about where you are.
-    const from = fromX((view.left / 100) * TRACK_W)
-    const to = fromX(((view.left + view.width) / 100) * TRACK_W)
-    const inView: typeof events = []
-    for (let i = events.length - 1; i >= 0 && inView.length < 50; i--) {
-      const e = events[i]
-      if (!isVisible(e)) continue
-      const d = displayTs(e)
-      if (d > to) continue
-      if (d < from) break  // events are time-sorted; nothing older will be in-window
-      inView.push(e)
-    }
-    if (inView.length > 0) return inView
-    const nearest: typeof events = []
-    for (let i = events.length - 1; i >= 0 && nearest.length < 50; i--) {
-      const e = events[i]
-      if (isVisible(e) && displayTs(e) <= to) nearest.push(e)
-    }
-    return nearest
-  }, [events, hiddenLanes, pluginTypes, view.left, view.width, TRACK_W, timeStart, timeSpan])
+  const recentEvents = useMemo(
+    () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp),
+    [events, hiddenLanes, pluginTypes, vp]
+  )
 
   const sliceExportRun = useCallback(async (opts?: { sharing?: boolean }) => {
     const from = Math.round(fromX((view.left / 100) * TRACK_W))
@@ -1177,18 +1142,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return window.redlog.data.exportTimelineSlice?.(from, to, opts) ?? null
   }, [fromX, view.left, view.width, TRACK_W])
 
-  const sliceCount = useMemo(() => {
-    const widthPx = (view.width / 100) * TRACK_W
-    if (widthPx <= 0 || (view.left <= 0.01 && view.width >= 99.99)) return events.length
-    const from = fromX((view.left / 100) * TRACK_W)
-    const to = fromX(((view.left + view.width) / 100) * TRACK_W)
-    let n = 0
-    for (const e of events) {
-      const d = displayTs(e)
-      if (d >= from && d <= to) n++
-    }
-    return n
-  }, [events, view.left, view.width, TRACK_W, fromX])
+  const sliceCount = useMemo(() => computeSliceCount(events, vp), [events, vp])
 
   useContributeExport(
     events.length > 0
