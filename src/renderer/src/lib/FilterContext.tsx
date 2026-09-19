@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 export interface TimeRange {
@@ -41,7 +41,9 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [knownTargets, setKnownTargets] = useState<Array<{ target: string; eventCount: number }>>([])
   const [knownAgentTypes, setKnownAgentTypes] = useState<string[]>([])
 
-  useEffect(() => {
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const refreshLists = useCallback(() => {
     window.redlog.events.aggregateTargets()
       .then((rows) => setKnownTargets(rows.map((r) => ({ target: r.target, eventCount: r.eventCount }))))
       .catch(() => {})
@@ -50,6 +52,21 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
       .then((types) => setKnownAgentTypes(types ?? []))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    refreshLists()
+    const unsub = window.redlog.events.onNewBatch(() => {
+      if (refreshTimer.current) return
+      refreshTimer.current = setTimeout(() => {
+        refreshTimer.current = null
+        refreshLists()
+      }, 2000)
+    })
+    return () => {
+      unsub()
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+    }
+  }, [refreshLists])
 
   const setTargetId = useCallback((id: string | null) => {
     setFilter((prev) => ({ ...prev, targetId: id }))

@@ -855,6 +855,7 @@
   "settings.exportProfile": "匯出設定檔",
   "settings.handoffProfileHint": "把這個專案的範圍、操作員、擷取設定與已存的時間軸視圖寫成一個檔案。隊友在建立專案時匯入。",
   "toast.profileExported": "設定檔已匯出",
+  "toast.saveFailed": "設定儲存失敗",
   "settings.ownTraffic": "RedLog 自己發出的流量",
   "sidebar.httpHistory": "HTTP",
   "timeline.detail.httpRequestBody": "請求主體",
