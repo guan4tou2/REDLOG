@@ -8,9 +8,8 @@ for full commit body + generated notes.
 **Option D 匯出去識別化 + QA / 安全 / 效能 / UIUX 合規修復。**
 
 Feature:
-- ExportMenu soft presets：「自己留存」/「分享用」segmented control
-- 分享用模式：scope-外 metadata 遮蔽、in-scope 敏感值手術式清洗、
-  operatorId 清除、blacklist 基礎設施事件排除
+- 匯出安全層：scope-外 metadata 遮蔽、in-scope 敏感值手術式清洗、
+  operatorId 清除、blacklist 基礎設施事件排除（後端基礎設施，無額外 UI）
 - 共用 `operator-pii.ts` 統一所有匯出路徑的 PII scrub
 - CaptureHealth 新增 proxy 狀態顯示
 - TerminalView cast badge 即時更新（rec / trunc / no rec）
@@ -28,7 +27,6 @@ Performance:
 
 UX improvements:
 - ExportMenu 空專案時停用所有匯出按鈕 + 提示「尚無事件可匯出」
-- 分享用模式下證據包區塊提示 maskScope 為獨立控制
 
 Bug fixes:
 - StatusBar pause timer unmount 清理
@@ -44,11 +42,13 @@ UIUX §21 compliance:
   danger-not-on-numbers / tool-input-redaction）
 
 Cleanup:
+- 移除 ExportMenu 受眾 preset（「自己留存」/「分享用」segmented control）
+  ——預設行為即自己留存，不需額外 UI；匯出不假設目的對象
 - 移除 ExportMenu 過度設計：假精確大小估算（BYTES_PER_EVENT 魔法常數 +
   humanSize）、冗長 4 行證據包 toast、未用 ExportScope/ExportFormat 類型
 - 移除 tool disclaimer（AI 來源已由 actor label 標示，文字冗餘）
 - 移除 ProjectPicker 說明段落、精簡 capture/export 文案
-- 清理 21 個死 i18n key
+- 清理 24 個死 i18n key
 
 Tests: +5 scrub-cast unit tests；149 files / 1477 tests pass。
 

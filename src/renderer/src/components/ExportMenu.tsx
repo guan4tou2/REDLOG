@@ -7,11 +7,6 @@ import { useViewExport } from '../lib/exportScope'
 
 // One export control (docs/UIUX-STANDARD.md §10).
 //
-// Option D "soft presets": a segmented control answers "who is this for?"
-// before the format. "For my records" = current behaviour (no extra masking).
-// "For sharing" = metadata masking + operator PII scrub + operator-infra
-// exclusion + out-of-scope row exclusion where the format supports it.
-//
 // The evidence bundle stays at the bottom, separated — it is a signed forensic
 // artifact with its own scope-masking checkbox (unchanged).
 
@@ -24,7 +19,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const viewExport = useViewExport()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [sharing, setSharing] = useState(false)
   const [maskScope, setMaskScope] = useState(true)
   const panel = useRef<HTMLDivElement | null>(null)
   useFocusTrap(panel, open)
@@ -35,8 +29,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
-
-  const sharingOpts = sharing ? { sharing: true as const } : undefined
 
   const run = async (label: string, fn: () => Promise<string | null>): Promise<void> => {
     setBusy(true)
@@ -93,35 +85,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             aria-label={t('export.title')}
             className="absolute right-0 top-7 z-[91] w-[280px] bg-redlog-surface border border-redlog-border rounded-lg shadow-2xl overflow-hidden py-1"
           >
-            {/* ── Audience preset ── */}
-            <div className="px-3 pt-1.5 pb-1">
-              <div className="flex rounded border border-redlog-border overflow-hidden">
-                <button
-                  onClick={() => setSharing(false)}
-                  className={`flex-1 py-1 text-xs text-center transition-colors ${
-                    !sharing
-                      ? 'bg-redlog-elevated text-redlog-text'
-                      : 'bg-transparent text-redlog-text-dim hover:text-redlog-text'
-                  }`}
-                >{t('export.presetRecords')}</button>
-                <button
-                  onClick={() => setSharing(true)}
-                  className={`flex-1 py-1 text-xs text-center border-l border-redlog-border transition-colors ${
-                    sharing
-                      ? 'bg-cyan-500/15 text-cyan-400'
-                      : 'bg-transparent text-redlog-text-dim hover:text-redlog-text'
-                  }`}
-                >{t('export.presetSharing')}</button>
-              </div>
-              {sharing && (
-                <p className="text-xs text-cyan-400/70 mt-1 leading-tight">
-                  {t('export.sharingHint')}
-                </p>
-              )}
-            </div>
-
-            <div className="border-t border-redlog-border my-1" />
-
             {/* ── Format options ── */}
             {empty && (
               <p className="px-3 py-1 text-xs text-redlog-text-faint italic">{t('export.empty')}</p>
@@ -130,20 +93,20 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
               <Option
                 label={viewExport.label}
                 disabled={empty}
-                onPick={() => void run(viewExport.label, () => viewExport.run(sharingOpts))}
+                onPick={() => void run(viewExport.label, () => viewExport.run())}
               />
             )}
             <Option
               label={t('export.all')}
               disabled={empty}
-              onPick={() => void run(t('export.all'), () => window.redlog.data.exportJson(sharingOpts))}
+              onPick={() => void run(t('export.all'), () => window.redlog.data.exportJson())}
             />
             <Option
               label={t('export.ndjson')}
               disabled={empty}
               onPick={() => void run(t('export.ndjson'), () => {
-                const api = window.redlog.data as { exportNdjson?: (o?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => Promise<string | null> }
-                return api.exportNdjson?.(sharingOpts) ?? Promise.resolve(null)
+                const api = window.redlog.data as { exportNdjson?: () => Promise<string | null> }
+                return api.exportNdjson?.() ?? Promise.resolve(null)
               })}
             />
 
