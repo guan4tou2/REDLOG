@@ -27,17 +27,47 @@ describe('encodeCursor / decodeCursor', () => {
   })
 
   it('returns null for valid base64 but wrong shape', () => {
-    const bad = Buffer.from(JSON.stringify({ ts: 'wrong' })).toString('base64url')
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: 'wrong' })).toString('base64url')
     expect(decodeCursor(bad)).toBeNull()
   })
 
   it('returns null for missing tier', () => {
-    const bad = Buffer.from(JSON.stringify({ ts: 1, row: 2 })).toString('base64url')
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: 1, row: 2 })).toString('base64url')
     expect(decodeCursor(bad)).toBeNull()
   })
 
   it('returns null for invalid tier value', () => {
-    const bad = Buffer.from(JSON.stringify({ ts: 1, row: 2, tier: 'other' })).toString('base64url')
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: 1, row: 2, tier: 'other' })).toString('base64url')
+    expect(decodeCursor(bad)).toBeNull()
+  })
+
+  it('returns null for wrong version', () => {
+    const bad = Buffer.from(JSON.stringify({ v: 99, ts: 1, row: 1, tier: 'chained' })).toString('base64url')
+    expect(decodeCursor(bad)).toBeNull()
+  })
+
+  it('returns null for no version', () => {
+    const bad = Buffer.from(JSON.stringify({ ts: 1, row: 1, tier: 'chained' })).toString('base64url')
+    expect(decodeCursor(bad)).toBeNull()
+  })
+
+  it('rejects negative timestamp', () => {
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: -1, row: 1, tier: 'chained' })).toString('base64url')
+    expect(decodeCursor(bad)).toBeNull()
+  })
+
+  it('rejects row < 1', () => {
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: 1, row: 0, tier: 'chained' })).toString('base64url')
+    expect(decodeCursor(bad)).toBeNull()
+  })
+
+  it('rejects non-integer timestamp (float)', () => {
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: 1.5, row: 1, tier: 'chained' })).toString('base64url')
+    expect(decodeCursor(bad)).toBeNull()
+  })
+
+  it('rejects Infinity', () => {
+    const bad = Buffer.from(JSON.stringify({ v: 1, ts: Infinity, row: 1, tier: 'chained' })).toString('base64url')
     expect(decodeCursor(bad)).toBeNull()
   })
 
