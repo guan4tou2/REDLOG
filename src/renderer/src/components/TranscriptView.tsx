@@ -304,6 +304,23 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
   const blocks = useMemo(() => buildBlocks(events, names), [events, names])
 
+  const autoExpandedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const toExpand: string[] = []
+    for (const b of blocks) {
+      if (autoExpandedRef.current.has(b.id)) continue
+      autoExpandedRef.current.add(b.id)
+      if (b.kind === 'loot') { toExpand.push(b.id); continue }
+      if (b.kind === 'shell' && b.meta) {
+        const m = b.meta.match(/^exit (\d+)/)
+        if (m && m[1] !== '0') toExpand.push(b.id)
+      }
+    }
+    if (toExpand.length > 0) {
+      setExpanded((prev) => { const next = new Set(prev); for (const id of toExpand) next.add(id); return next })
+    }
+  }, [blocks])
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     return blocks.filter((b) => {
@@ -478,10 +495,17 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   b.outputNote === 'recorded'
                     ? 'text-emerald-400/80 border-emerald-600/30 bg-emerald-900/10'
                     : b.outputNote === 'pending'
-                      ? 'text-redlog-text-dim border-redlog-border/60 bg-redlog-surface/30'
-                      : 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
+                      ? 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
+                      : b.outputNote === 'interrupted'
+                        ? 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
+                        : 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
                 }`}>
-                  {t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
+                  {b.outputNote === 'pending' ? '⏳ ' : ''}{t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
+                </p>
+              )}
+              {revealed && b.kind === 'agent-tool' && b.output && (
+                <p className="mx-2.5 mb-2 px-2 py-0.5 text-[10px] text-redlog-text-faint italic">
+                  {t('transcript.toolDisclaimer')}
                 </p>
               )}
             </div>

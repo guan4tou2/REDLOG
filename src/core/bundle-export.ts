@@ -10,6 +10,7 @@ import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from '
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FOR } from './redact-export'
+import { operatorPiiReplacements } from './operator-pii'
 
 interface ManifestFile {
   path: string
@@ -47,6 +48,9 @@ interface ManifestPayload {
     casts: { included: number; scopeFiltered: false; reason: string }
     httpBodies: { included: number; excludedOutOfScope: number }
   }
+  /** §3.3: per-agent_type event count so consumers know which events are
+   *  AI-reported (agent_type 'agent') versus directly observed. */
+  eventSourceBreakdown?: Record<string, number>
   files: ManifestFile[]
 }
 
@@ -81,6 +85,26 @@ export interface ExportBundleOpts {
    *  is the safe default, and this flag is the opt-in for engagements that
    *  legitimately need the pre-redaction content. */
   includeAgentTranscripts?: boolean
+}
+
+function scrubCastHeader(src: string, dst: string, reps: Array<[RegExp, string]>): void {
+  const raw = fs.readFileSync(src)
+  const nlIdx = raw.indexOf(0x0a)
+  if (nlIdx < 0 || reps.length === 0) { fs.writeFileSync(dst, raw); return }
+  try {
+    const header = JSON.parse(raw.subarray(0, nlIdx).toString('utf-8'))
+    if (header.env && typeof header.env === 'object') {
+      for (const k of Object.keys(header.env)) {
+        let v = String(header.env[k])
+        for (const [re, rep] of reps) v = v.replace(re, rep)
+        header.env[k] = v
+      }
+    }
+    const scrubbed = Buffer.from(JSON.stringify(header) + '\n')
+    fs.writeFileSync(dst, Buffer.concat([scrubbed, raw.subarray(nlIdx + 1)]))
+  } catch {
+    fs.writeFileSync(dst, raw)
+  }
 }
 
 export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
@@ -147,8 +171,11 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   let outOfScopeMasked = 0
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
   const survivingBodyRefs = new Set<string>()
+  const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
     const eventId = row.id as string
+    const agentType = row.agent_type as string
+    sourceBreakdown[agentType] = (sourceBreakdown[agentType] ?? 0) + 1
     const replacements = getSanitizedFields(eventId)
     let data: Record<string, unknown> | null = null
     if (Object.keys(replacements).length > 0) {
@@ -322,11 +349,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   let castsIncluded = 0
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
+    const piiReps = operatorPiiReplacements()
     for (const name of fs.readdirSync(srcCasts)) {
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
-        fs.copyFileSync(s, d)
+        scrubCastHeader(s, d, piiReps)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
         castsIncluded++
@@ -536,6 +564,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },
       httpBodies: { included: httpBodiesIncluded, excludedOutOfScope: httpBodiesExcluded }
     } : undefined,
+    eventSourceBreakdown: sourceBreakdown,
     tiers: {
       // chained = chainHead.eventCount when the head exists; both are
       // definitionally the count the OTS anchor covers. It now also counts the

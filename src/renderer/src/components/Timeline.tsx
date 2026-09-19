@@ -3189,6 +3189,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
             <AgentTurnDetail
               data={selectedEvent.data as Record<string, unknown>}
               paired={pairedToolHalf(selectedEvent, toolPairByUseId)}
+              allLoaded={allLoaded}
             />
           )}
           {/* v0.11.2 (T6): scanner and browser events carried their payloads

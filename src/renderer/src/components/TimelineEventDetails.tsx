@@ -107,9 +107,10 @@ export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<s
  *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
  *  other half so both the request and its return read in one panel. */
 export function AgentTurnDetail(
-  { data, paired }: {
+  { data, paired, allLoaded }: {
     data: Record<string, unknown>
     paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
+    allLoaded?: boolean
   }
 ): JSX.Element {
   const { t } = useI18n()
@@ -160,14 +161,20 @@ export function AgentTurnDetail(
         />
       )}
       {isToolCall && paired?.kind === 'result' && pairedResultOut.length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.agentToolOutput')}
-          content={pairedResultOut}
-          bytes={pairedResultBytes}
-          truncated={paired.data.truncated === true}
-          accent="emerald"
-          startOpen={true}
-        />
+        <>
+          <CollapsibleStream
+            label={t('timeline.detail.agentToolOutput')}
+            content={pairedResultOut}
+            bytes={pairedResultBytes}
+            truncated={paired.data.truncated === true}
+            accent="emerald"
+            startOpen={true}
+          />
+          <p className="text-[10px] text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
+        </>
+      )}
+      {isToolCall && !paired && allLoaded && (
+        <p className="text-xs text-amber-400/80 font-mono px-1 py-0.5">⏳ {t('timeline.detail.toolNoResult')}</p>
       )}
       {isToolResult && paired?.kind === 'call' && pairedCallStr.length > 0 && (
         <CollapsibleStream
@@ -178,14 +185,17 @@ export function AgentTurnDetail(
         />
       )}
       {isToolResult && outputText.length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.agentToolOutput')}
-          content={outputText}
-          bytes={outputBytes}
-          truncated={data.truncated === true}
-          accent="emerald"
-          startOpen={false}
-        />
+        <>
+          <CollapsibleStream
+            label={t('timeline.detail.agentToolOutput')}
+            content={outputText}
+            bytes={outputBytes}
+            truncated={data.truncated === true}
+            accent="emerald"
+            startOpen={false}
+          />
+          <p className="text-[10px] text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
+        </>
       )}
       <MetadataGrid
         entries={[

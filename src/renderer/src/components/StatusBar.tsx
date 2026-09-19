@@ -22,6 +22,8 @@ export default function StatusBar(): JSX.Element {
   const [scopeConfigured, setScopeConfigured] = useState(true)
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
+  const [pausedAt, setPausedAt] = useState<number | null>(null)
+  const [pauseElapsed, setPauseElapsed] = useState(0)
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
   const [lastEventAt, setLastEventAt] = useState<number | null>(null)
@@ -47,7 +49,10 @@ export default function StatusBar(): JSX.Element {
     window.redlog.loot.getCount().then(setLootCount)
     window.redlog.scope.getViolationCount().then(setScopeViolations)
     window.redlog.scope.isConfigured().then(setScopeConfigured).catch(() => {})
-    window.redlog.recording.get().then(setRecording)
+    window.redlog.recording.get().then((r) => {
+      setRecording(r)
+      if (!r) setPausedAt(Date.now())
+    })
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
     const unsubEvent = window.redlog.events.onNew((event) => {
@@ -60,7 +65,11 @@ export default function StatusBar(): JSX.Element {
       window.redlog.loot.getCount().then(setLootCount)
       window.redlog.scope.getViolationCount().then(setScopeViolations)
     })
-    const unsubRec = window.redlog.recording.onChange(setRecording)
+    const unsubRec = window.redlog.recording.onChange((r) => {
+      setRecording(r)
+      if (!r) setPausedAt(Date.now())
+      else { setPausedAt(null); setPauseElapsed(0) }
+    })
     window.redlog.overlay.isVisible().then(setOverlayVisible)
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
@@ -116,6 +125,15 @@ export default function StatusBar(): JSX.Element {
 
     return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
+
+  useEffect(() => {
+    if (pausedAt == null) return
+    const tick = setInterval(() => setPauseElapsed(Math.floor((Date.now() - pausedAt) / 1000)), 1000)
+    return () => clearInterval(tick)
+  }, [pausedAt])
+
+  const PAUSE_WARN_SECS = 300
+  const pauseMins = Math.floor(pauseElapsed / 60)
 
   // Toggle recording and, on failure, say so. A swallowed rejection here is
   // the worst kind: the operator believes capture paused (or resumed) and the
@@ -209,15 +227,16 @@ export default function StatusBar(): JSX.Element {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (some sources active, some idle).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
+        const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
         const dotColor = !recording
-          ? 'bg-redlog-text-dim'
+          ? pauseWarn ? 'bg-amber-500 animate-pulse-slow' : 'bg-redlog-text-dim'
           : captureVerdict === 'dark'
             ? 'bg-amber-500'
             : captureVerdict === 'partial'
               ? 'bg-amber-500 animate-pulse-slow'
               : 'bg-red-500 animate-pulse-slow'
         const labelColor = !recording
-          ? 'text-redlog-text-dim'
+          ? pauseWarn ? 'text-amber-400/80' : 'text-redlog-text-dim'
           : captureVerdict === 'dark' || captureVerdict === 'partial'
             ? 'text-amber-400/80'
             : 'text-red-400/80'
@@ -245,7 +264,8 @@ export default function StatusBar(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
             <span className={labelColor}>{
-              !recording ? t('statusBar.paused')
+              !recording
+                ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
               : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
