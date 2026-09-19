@@ -15,7 +15,9 @@ import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, computePaletteResults, distributeLaneEvents, distributeRowEvents, type PaletteItem } from '../lib/timelineFilters'
+import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents } from '../lib/timelineFilters'
+import { TimelinePalette } from './TimelinePalette'
+import type { PaletteItem } from '../lib/timelineFilters'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
@@ -421,11 +423,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // v0.6.91 W3: ⌘K fuzzy palette. Opened by the App-level ⌘K when Timeline is
   // the active view, or by dispatching the `redlog-timeline-palette` event.
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [paletteQuery, setPaletteQuery] = useState('')
-  const [paletteIndex, setPaletteIndex] = useState(0)
-  const paletteInputRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
-    const onOpen = (): void => { setPaletteOpen(true); setPaletteQuery(''); setPaletteIndex(0) }
+    const onOpen = (): void => setPaletteOpen(true)
     window.addEventListener('redlog-timeline-palette', onOpen)
     return () => window.removeEventListener('redlog-timeline-palette', onOpen)
   }, [])
@@ -462,14 +461,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       window.removeEventListener('redlog:filter-host', onFilterHost)
     }
   }, [])
-  useEffect(() => {
-    if (paletteOpen) {
-      // Autofocus after paint — the modal renders inside a portal-like fixed
-      // overlay, and querying the ref sync in the same tick sometimes misses.
-      requestAnimationFrame(() => paletteInputRef.current?.focus())
-    }
-  }, [paletteOpen])
-
   // Overflow for the low-frequency view/audit controls (session dividers,
   // timezone, auditor view) so the toolbar row groups by effect instead of
   // listing eight flat toggles (DESIGN-core-and-capture.md §6).
@@ -1482,14 +1473,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
 
-  const paletteResults = useMemo<PaletteItem[]>(
-    () => computePaletteResults(events, operatorNames, paletteQuery, titleOf),
-    [events, operatorNames, paletteQuery, titleOf]
-  )
-  useEffect(() => {
-    if (paletteIndex >= paletteResults.length) setPaletteIndex(Math.max(0, paletteResults.length - 1))
-  }, [paletteResults, paletteIndex])
-
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
   // interaction; it uses `displayTs` so a marker with an override timestamp
@@ -1515,8 +1498,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     } else {
       setFilterQuery(item.value)
     }
-    setPaletteOpen(false)
-    setPaletteQuery('')
   }, [scrollToEvent])
 
   const copyEventJson = useCallback(() => {
@@ -1611,64 +1592,15 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           </button>
         </div>
       )}
-      {/* v0.6.91 W3: ⌘K fuzzy palette. Fixed overlay so it sits above every
-          other Timeline chrome. Escape closes. Enter activates the selected
-          result. ↑/↓ move the highlight. Backdrop click also closes. */}
-      {paletteOpen && (
-        <div
-          data-testid="timeline-palette"
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
-          onClick={(e) => { if (e.target === e.currentTarget) setPaletteOpen(false) }}
-        >
-          <div className="w-[560px] max-w-[92vw] rounded-lg border border-redlog-border bg-redlog-bg shadow-2xl overflow-hidden">
-            <input
-              ref={paletteInputRef}
-              value={paletteQuery}
-              onChange={(e) => { setPaletteQuery(e.target.value); setPaletteIndex(0) }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') { setPaletteOpen(false); return }
-                if (e.key === 'ArrowDown') { e.preventDefault(); setPaletteIndex((i) => Math.min(paletteResults.length - 1, i + 1)); return }
-                if (e.key === 'ArrowUp') { e.preventDefault(); setPaletteIndex((i) => Math.max(0, i - 1)); return }
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  const item = paletteResults[paletteIndex]
-                  if (item) activatePaletteItem(item)
-                }
-              }}
-              placeholder={t('timeline.palette.placeholder')}
-              className="w-full px-3 py-2 bg-redlog-bg text-sm font-mono text-redlog-text placeholder:text-redlog-text-dim border-b border-redlog-border focus:outline-none"
-            />
-            <div className="max-h-[360px] overflow-y-auto">
-              {paletteResults.length === 0 ? (
-                <div className="px-3 py-4 text-xs text-redlog-text-dim font-mono text-center">{t('timeline.palette.noResults')}</div>
-              ) : paletteResults.map((item, i) => {
-                const groupKey = item.kind === 'event' ? 'timeline.palette.groupEvent'
-                  : item.kind === 'marker' ? 'timeline.palette.groupMarker'
-                  : item.kind === 'operator' ? 'timeline.palette.groupOperator'
-                  : 'timeline.palette.groupHost'
-                const isSel = i === paletteIndex
-                return (
-                  <button
-                    key={'event' in item ? item.event.id : `${item.kind}-${item.value}`}
-                    onMouseEnter={() => setPaletteIndex(i)}
-                    onClick={() => activatePaletteItem(item)}
-                    className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${isSel ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                  >
-                    <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim w-14 shrink-0">
-                      {t(groupKey)}
-                    </span>
-                    <span title={item.label} className="text-xs font-mono text-redlog-text truncate flex-1">{item.label}</span>
-                    <span className="text-xs font-mono text-redlog-text-faint shrink-0">{item.sub}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <div className="px-3 py-1.5 border-t border-redlog-border text-xs font-mono text-redlog-text-dim text-center">
-              {t('timeline.palette.footer')}
-            </div>
-          </div>
-        </div>
-      )}
+      <TimelinePalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        events={events}
+        operatorNames={operatorNames}
+        titleOf={titleOf}
+        onActivate={activatePaletteItem}
+        t={t}
+      />
       {/* v0.9.3 U2: keyboard-shortcut cheatsheet modal. Same overlay
           pattern as the ⌘K palette — Escape and backdrop click both
           close. Grouped so operators can scan by task ("I want to
