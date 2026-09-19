@@ -66,31 +66,30 @@ describe('zoom ceiling (V13)', () => {
   })
 })
 
+const TIME_MAP_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineTimeMap.ts'), 'utf-8'
+)
+
 describe('idle-gap compression (V7)', () => {
-  it('detects gaps regardless of the toggle', () => {
-    // Gating detection on the toggle made the chip that turns it on
-    // unreachable — it only renders when there is something to compress.
-    const memo = /const timeMap = useMemo\(\(\) => \{([\s\S]*?)\n  \}, \[/.exec(SRC)
-    expect(memo, 'timeMap memo not found').toBeTruthy()
-    expect(memo![1], 'the early return must not depend on compressGaps')
-      .toMatch(/if \(timeSpan <= 0 \|\| events\.length === 0\) return linear/)
+  it('detects gaps regardless of the toggle — early return does not depend on compressGaps', () => {
+    // The logic now lives in buildTimeMap (timelineTimeMap.ts). The early
+    // return for empty/zero-span must NOT gate on compressGaps — doing so
+    // made the chip unreachable.
+    expect(TIME_MAP_SRC).toMatch(/if \(timeSpan <= 0 \|\| displayTimestamps\.length === 0\) return linear/)
+  })
+
+  it('Timeline delegates to buildTimeMap', () => {
+    expect(SRC).toMatch(/buildTimeMap\(/)
   })
 
   it('exposes an inverse so screen-to-time conversions follow the same mapping', () => {
-    // Six call sites converted px back to a timestamp with the linear formula.
-    // Any that still did would silently disagree with the track once the
-    // mapping became piecewise.
     expect(SRC).toMatch(/const fromX = useCallback/)
-    // The one legitimate occurrence is timeMap's own linear branch, which IS
-    // the mapping. Anything outside that memo is a call site that bypassed it.
-    const outsideMemo = SRC.replace(/const timeMap = useMemo\(\(\) => \{[\s\S]*?\n  \}, \[[^\]]*\]\)/, '')
-    expect(outsideMemo, 'no call site should invert the mapping by hand')
+    // No call site should invert the mapping by hand outside the extracted module.
+    expect(SRC, 'no call site should invert the mapping by hand')
       .not.toMatch(/timeStart \+ \([^)]*\/ TRACK_W\) \* timeSpan/)
   })
 
   it('re-renders the scroll anchor when the mapping changes', () => {
-    // TRACK_W does not change when compression toggles, so an effect keyed
-    // only on TRACK_W would leave scrollLeft pointing at moved content.
     expect(SRC).toMatch(/\}, \[TRACK_W, timeMap, updateView/)
   })
 })
