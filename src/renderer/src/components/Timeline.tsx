@@ -14,6 +14,7 @@ import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { matchesScopePattern } from '../lib/timelineScopeMatch'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
+import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
@@ -1144,93 +1145,12 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return out
   }, [visibleRows, rowEvents, toX, laneH, pluginTypes])
 
-  // v0.6.91 S3: derive session-band segments from `shell.session_end` +
-  // `system.recording_paused`/`recording_resumed` pairs. session_start is
-  // filtered by isHousekeeping so we use session_end.data.durationMs to
-  // reconstruct the pair's window. Trailing paused-without-resume gets drawn
-  // to the current time; trailing session-end without a duration is skipped
-  // (nothing sensible to draw).
-  // v0.11.7 (AUDIT V11): `row` staggers overlapping labels. Every band drew
-  // its label at its own top-left, so two terminals open at once — the normal
-  // case for an operator with a shell and a listener — stacked their labels on
-  // top of each other and neither was readable.
-  type SessionBand = { id: string; x0: number; x1: number; label: string; kind: 'term' | 'paused'; row: number }
   const sessionBands = useMemo<SessionBand[]>(() => {
     if (!sessionDividers) return []
-    const bands: SessionBand[] = []
-    for (const e of events) {
-      if (e.agentType === 'shell' && e.data?.subtype === 'session_end') {
-        const tid = (e.data?.terminalId as string | undefined) ?? ''
-        const durMs = Number(e.data?.durationMs)
-        const endTs = e.timestamp
-        const startTs = Number.isFinite(durMs) && durMs > 0 ? endTs - durMs : endTs
-        bands.push({
-          id: `term-${e.id}`,
-          x0: toX(startTs),
-          x1: toX(endTs),
-          label: t('timeline.boundaries.termLabelFmt', { id: tid.slice(0, 4) }),
-          kind: 'term',
-          row: 0
-        })
-      }
-    }
-    let openPause: RedLogEvent | null = null
-    for (const e of events) {
-      if (e.agentType !== 'system') continue
-      const sub = e.data?.subtype as string | undefined
-      if (sub === 'recording_paused') {
-        // v0.9.3: bug fix. Old code overwrote `openPause` silently on a
-        // second paused-without-resume, losing the first band. Close the
-        // prior band at the new pause's timestamp so BOTH paused events
-        // remain visible in the track (as adjacent bands with no gap).
-        // Adjacent-with-no-gap = "recording was paused twice, never
-        // resumed in between" — audit-truthful, not a fabricated resume.
-        if (openPause) {
-          bands.push({
-            id: `paused-${openPause.id}`,
-            x0: toX(openPause.timestamp),
-            x1: toX(e.timestamp),
-            label: t('timeline.boundaries.pausedLabel'),
-            kind: 'paused',
-            row: 0
-          })
-        }
-        openPause = e
-      } else if (sub === 'recording_resumed' && openPause) {
-        bands.push({
-          id: `paused-${openPause.id}`,
-          x0: toX(openPause.timestamp),
-          x1: toX(e.timestamp),
-          label: t('timeline.boundaries.pausedLabel'),
-          kind: 'paused',
-          row: 0
-        })
-        openPause = null
-      }
-    }
-    if (openPause) {
-      bands.push({
-        id: `paused-${openPause.id}-open`,
-        x0: toX(openPause.timestamp),
-        x1: toX(Math.min(Date.now(), timeEnd)),
-        label: t('timeline.boundaries.pausedLabel'),
-        kind: 'paused',
-        row: 0
-      })
-    }
-    // Greedy interval colouring: walk left to right and put each band on the
-    // lowest row whose previous band has already ended, with a label's width
-    // of clearance so the text doesn't collide either. Bands that don't
-    // overlap all stay on row 0, which is the common case.
-    const LABEL_CLEARANCE_PX = 54
-    const rowEnds: number[] = []
-    for (const b of [...bands].sort((p, q) => p.x0 - q.x0)) {
-      let row = rowEnds.findIndex((end) => end <= b.x0)
-      if (row === -1) { row = rowEnds.length; rowEnds.push(0) }
-      rowEnds[row] = Math.max(b.x1, b.x0 + LABEL_CLEARANCE_PX)
-      b.row = row
-    }
-    return bands
+    return buildSessionBands(events, toX, {
+      termLabel: (id) => t('timeline.boundaries.termLabelFmt', { id }),
+      pausedLabel: t('timeline.boundaries.pausedLabel')
+    }, timeEnd)
   }, [events, sessionDividers, toX, t, timeEnd])
 
   // Density minimap: event counts over the full range, binned into fixed cells.
