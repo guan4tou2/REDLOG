@@ -386,7 +386,7 @@ function toMatchQuery(raw: string): string | null {
     .join(' ')
 }
 
-export function searchEvents(query: string, limit = 100, opts?: { agentType?: string }): RedLogEvent[] {
+export function searchEvents(query: string, limit = 100, opts?: { agentType?: string; since?: number; before?: number }): RedLogEvent[] {
   const db = getReadonlyDB()
   const match = toMatchQuery(query)
   if (!match) return []
@@ -396,6 +396,14 @@ export function searchEvents(query: string, limit = 100, opts?: { agentType?: st
   if (opts?.agentType) {
     extraConds.push('e.agent_type = ?')
     extraParams.push(opts.agentType)
+  }
+  if (opts?.since != null) {
+    extraConds.push('e.timestamp >= ?')
+    extraParams.push(opts.since)
+  }
+  if (opts?.before != null) {
+    extraConds.push('e.timestamp <= ?')
+    extraParams.push(opts.before)
   }
 
   const whereExtra = extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''
