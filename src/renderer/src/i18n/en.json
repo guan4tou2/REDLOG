@@ -532,6 +532,8 @@
   "timeline.detail.agentThinking": "thinking",
   "timeline.detail.agentToolInput": "tool input · {{name}}",
   "timeline.detail.agentToolOutput": "tool output",
+  "timeline.detail.toolDisclaimer": "AI-reported tool output — does not confirm external system state.",
+  "timeline.detail.toolNoResult": "no result received for this tool call",
   "timeline.help.hint": "Keyboard shortcuts (?)",
   "timeline.help.title": "Keyboard Shortcuts",
   "timeline.help.close": "Close",
@@ -680,6 +682,7 @@
   "capture.noneEnabled": "No capture source is switched on — RedLog is recording nothing.",
   "capture.actionFailed": "Action failed",
   "capture.passive": "auto",
+  "capture.proxyDetected": "proxy",
   "capture.allGood": "All good — {{active}} source(s) delivering, nothing needs attention.",
   "capture.setupIntro": "Nothing is feeding the timeline yet. Wire up capture in order:",
   "capture.setupAlmost": "Capture is set up — it just needs activity to start recording:",
@@ -729,7 +732,9 @@
   "transcript.note.recorded": "output recorded — {{size}} of session capture, open this event on the Timeline to replay it",
   "transcript.note.unbracketed": "output not bracketed — use the full session replay on the Timeline",
   "transcript.note.uncaptured": "output not captured",
-  "transcript.note.pending": "no response recorded",
+  "transcript.note.pending": "no result received",
+  "transcript.note.interrupted": "tool execution interrupted",
+  "transcript.toolDisclaimer": "This is the output reported by the AI agent — it does not prove the external system reached this state.",
   "timeline.shape.scopeViolation": "out of scope",
   "timeline.compressGaps.label": "skip idle",
   "timeline.compressGaps.hint": "Collapse idle stretches longer than 10 minutes",
@@ -1122,5 +1127,8 @@
   "project.size": "{{size}}",
   "marker.replayAtTime": "▶ Replay at this moment",
   "marker.replayAtTime.loading": "Loading…",
-  "marker.replayAtTime.noSession": "No active terminal session at this time"
+  "marker.replayAtTime.noSession": "No active terminal session at this time",
+  "terminal.castRecording": "Terminal session is being recorded (.cast)",
+  "terminal.castTruncated": "Cast recording hit size limit — output past this point is not captured",
+  "terminal.castNotRecording": "No cast recording for this session"
 }

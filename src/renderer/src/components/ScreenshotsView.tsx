@@ -144,7 +144,8 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                   <span className="text-redlog-muted text-xs">{(s.data.filename as string) ?? '...'}</span>
                 )}
               </div>
-              <div className="px-2 py-1 flex items-center justify-between gap-1">
+              <div className="px-2 py-1 flex flex-col gap-0.5">
+                <div className="flex items-center justify-between gap-1">
                 <p title={`${formatTime(s.timestamp, { seconds: true })} — ${String(s.data.trigger ?? '')}`} className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
                   {formatTime(s.timestamp, { seconds: true })} &mdash; {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
@@ -176,6 +177,16 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                     title={t('screenshots.deleteTitle')}
                     aria-label={t('screenshots.deleteTitle')}
                   >&times;</button>
+                )}
+                </div>
+                {typeof s.data.sha256 === 'string' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(s.data.sha256 as string) }}
+                    className="text-[10px] font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
+                    title={`SHA-256: ${s.data.sha256 as string}`}
+                  >
+                    {(s.data.sha256 as string).slice(0, 12)}
+                  </button>
                 )}
               </div>
             </div>

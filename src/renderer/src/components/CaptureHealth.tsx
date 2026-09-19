@@ -377,6 +377,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             </div>
           </div>
         )}
+        {capture.proxyEnv && (
+          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs font-mono">
+            <span className="text-emerald-500/80">●</span>
+            <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.proxyDetected')}</span>
+            <span className="text-redlog-text-faint truncate" title={capture.proxyEnv.httpsProxy ?? capture.proxyEnv.httpProxy}>
+              {capture.proxyEnv.httpsProxy ?? capture.proxyEnv.httpProxy}
+            </span>
+          </div>
+        )}
       </div>
     </section>
   )

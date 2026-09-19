@@ -259,7 +259,7 @@ function SitemapTreeNode({ node, depth, onOpenInTimeline, onOpenDetail, outOfSco
   outOfScope?: (host: string) => boolean
 }): JSX.Element {
   const { t } = useI18n()
-  const [expanded, setExpanded] = useState(depth < 2)
+  const [expanded, setExpanded] = useState(depth < 2 && !(depth === 0 && outOfScope?.(node.name)))
   const hasChildren = node.children.size > 0
   const sortedChildren = useMemo(() =>
     Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name)),

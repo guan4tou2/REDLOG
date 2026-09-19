@@ -262,7 +262,7 @@ interface RedLogAPI {
     onChange: (cb: (recording: boolean) => void) => () => void
   }
   terminal: {
-    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number }>
+    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number; recording: boolean; castTruncated: boolean }>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
@@ -273,6 +273,7 @@ interface RedLogAPI {
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
+    onCastState?: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
     replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
     replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
     replayAtTime?: (atMs: number) => Promise<{ ok: boolean; events?: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number; error?: string }>
@@ -370,6 +371,7 @@ interface CaptureHealthInfo {
   lastDbError?: { source: string; at: number; message: string }
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
+  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
 }
 
 interface BrowserLaunchResult {
