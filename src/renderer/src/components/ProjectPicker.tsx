@@ -376,9 +376,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         })()}
         </div>{/* end two-column grid */}
 
-        <p className="text-redlog-muted text-xs text-center font-mono">
-          {t('project.description')}
-        </p>
       </div>
       </div>
     </div>

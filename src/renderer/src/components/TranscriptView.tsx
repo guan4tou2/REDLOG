@@ -503,11 +503,6 @@ export default function TranscriptView({ onOpenInTimeline }: {
                   {b.outputNote === 'pending' ? '⏳ ' : ''}{t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
                 </p>
               )}
-              {revealed && b.kind === 'agent-tool' && b.output && (
-                <p className="mx-2.5 mb-2 px-2 py-0.5 text-xs text-redlog-text-faint italic">
-                  {t('transcript.toolDisclaimer')}
-                </p>
-              )}
             </div>
           )
         })}

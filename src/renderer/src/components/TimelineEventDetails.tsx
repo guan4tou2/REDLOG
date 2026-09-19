@@ -170,7 +170,6 @@ export function AgentTurnDetail(
             accent="emerald"
             startOpen={true}
           />
-          <p className="text-xs text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
         </>
       )}
       {isToolCall && !paired && allLoaded && (
@@ -185,17 +184,14 @@ export function AgentTurnDetail(
         />
       )}
       {isToolResult && outputText.length > 0 && (
-        <>
-          <CollapsibleStream
-            label={t('timeline.detail.agentToolOutput')}
-            content={outputText}
-            bytes={outputBytes}
-            truncated={data.truncated === true}
-            accent="emerald"
-            startOpen={false}
-          />
-          <p className="text-xs text-redlog-text-faint italic px-1">{t('timeline.detail.toolDisclaimer')}</p>
-        </>
+        <CollapsibleStream
+          label={t('timeline.detail.agentToolOutput')}
+          content={outputText}
+          bytes={outputBytes}
+          truncated={data.truncated === true}
+          accent="emerald"
+          startOpen={false}
+        />
       )}
       <MetadataGrid
         entries={[
