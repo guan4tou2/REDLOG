@@ -1,5 +1,30 @@
 import { describe, it, expect } from 'vitest'
-import { bucketByPixel, tightestLaneGap, computeMaxZoom } from '../src/renderer/src/lib/timelineGeometry'
+import { bucketByPixel, tightestLaneGap, computeMaxZoom, buildClusters, filterVisibleClusters } from '../src/renderer/src/lib/timelineGeometry'
+import type { RedLogEvent } from '../src/core/db/event-types'
+
+function evt(
+  id: string,
+  agentType: string,
+  data: Record<string, unknown> = {},
+  extra: Partial<RedLogEvent> = {}
+): RedLogEvent {
+  return {
+    id,
+    timestamp: Date.now(),
+    engagementId: 'eng-1',
+    sessionId: 'ses-1',
+    operatorId: 'op-1',
+    agentType,
+    hostname: 'localhost',
+    sourceIP: null,
+    targetId: null,
+    data,
+    hash: 'h',
+    prevHash: null,
+    createdAt: Date.now(),
+    ...extra
+  }
+}
 
 describe('bucketByPixel', () => {
   const xOf = (n: number): number => n // identity: the number IS the pixel
@@ -61,5 +86,109 @@ describe('computeMaxZoom', () => {
   it('never exceeds the maxTrackW-derived ceiling even for a sub-ms burst', () => {
     const z = computeMaxZoom({ ...base, laneTimestamps: [[0, 1]], timeSpan: 3_600_000 })
     expect(z).toBeLessThanOrEqual(base.maxTrackW / base.minBaseTrackW)
+  })
+})
+
+// ── buildClusters ──────────────────────────────────────────────────
+
+describe('buildClusters', () => {
+  const LANE_H = 40
+  const CLUSTER_PX = 10
+  const toX = (ts: number): number => ts // 1 ms = 1 px
+
+  it('produces one cluster per pixel-bucket per row', () => {
+    const e1 = evt('a', 'shell', {}, { timestamp: 0 })
+    const e2 = evt('b', 'shell', {}, { timestamp: 5 })
+    const e3 = evt('c', 'shell', {}, { timestamp: 20 })
+    const clusters = buildClusters(['shell'], { shell: [e1, e2, e3] }, toX, LANE_H, CLUSTER_PX, undefined)
+    expect(clusters).toHaveLength(2)
+    expect(clusters[0].events).toEqual([e1, e2])
+    expect(clusters[1].events).toEqual([e3])
+  })
+
+  it('assigns correct y from row index and laneH', () => {
+    const e1 = evt('a', 'shell', {}, { timestamp: 100 })
+    const e2 = evt('b', 'http_navigation', {}, { timestamp: 200 })
+    const rows = ['shell', 'http_navigation']
+    const clusters = buildClusters(
+      rows,
+      { shell: [e1], http_navigation: [e2] },
+      toX, LANE_H, CLUSTER_PX, undefined
+    )
+    expect(clusters[0].y).toBe(0 * LANE_H + LANE_H / 2) // row 0
+    expect(clusters[1].y).toBe(1 * LANE_H + LANE_H / 2) // row 1
+  })
+
+  it('x is the average pixel position of bucket events', () => {
+    const e1 = evt('a', 'shell', {}, { timestamp: 2 })
+    const e2 = evt('b', 'shell', {}, { timestamp: 6 })
+    const clusters = buildClusters(['shell'], { shell: [e1, e2] }, toX, LANE_H, CLUSTER_PX, undefined)
+    expect(clusters[0].x).toBe(4) // (2 + 6) / 2
+  })
+
+  it('skips rows with no events', () => {
+    const e1 = evt('a', 'shell', {}, { timestamp: 0 })
+    const clusters = buildClusters(
+      ['shell', 'dns', 'http_navigation'],
+      { shell: [e1] },
+      toX, LANE_H, CLUSTER_PX, undefined
+    )
+    expect(clusters).toHaveLength(1)
+    expect(clusters[0].lane).toBe('shell')
+  })
+
+  it('resolves lane via toLane for colour (not row key)', () => {
+    const e1 = evt('a', 'system', { subtype: 'scope_violation' }, { timestamp: 50 })
+    const clusters = buildClusters(['system'], { system: [e1] }, toX, LANE_H, CLUSTER_PX, undefined)
+    expect(clusters[0].lane).toBe('scope')
+  })
+
+  it('returns empty for empty rows', () => {
+    expect(buildClusters([], {}, toX, LANE_H, CLUSTER_PX, undefined)).toEqual([])
+  })
+
+  it('key is rowKey-firstEventId', () => {
+    const e1 = evt('ev42', 'shell', {}, { timestamp: 0 })
+    const clusters = buildClusters(['shell'], { shell: [e1] }, toX, LANE_H, CLUSTER_PX, undefined)
+    expect(clusters[0].key).toBe('shell-ev42')
+  })
+})
+
+// ── filterVisibleClusters ──────────────────────────────────────────
+
+describe('filterVisibleClusters', () => {
+  function cluster(x: number): { key: string; lane: 'shell'; li: number; x: number; y: number; events: RedLogEvent[] } {
+    return { key: `k-${x}`, lane: 'shell', li: 0, x, y: 20, events: [] }
+  }
+
+  it('returns all when trackW <= 0', () => {
+    const cs = [cluster(50), cluster(150)]
+    expect(filterVisibleClusters(cs, 0, 10, 50)).toBe(cs)
+    expect(filterVisibleClusters(cs, -1, 10, 50)).toBe(cs)
+  })
+
+  it('returns all when viewWidth <= 0', () => {
+    const cs = [cluster(50)]
+    expect(filterVisibleClusters(cs, 1000, 10, 0)).toBe(cs)
+  })
+
+  it('returns all when the viewport covers the entire track', () => {
+    const cs = [cluster(0), cluster(500), cluster(999)]
+    expect(filterVisibleClusters(cs, 1000, 0, 100)).toBe(cs)
+  })
+
+  it('filters to a one-width buffer around the viewport', () => {
+    // trackW=1000, viewLeft=50% (500px), viewWidth=10% (100px)
+    // from = 500 - 100 = 400, to = 500 + 200 = 700
+    const cs = [cluster(100), cluster(450), cluster(600), cluster(800)]
+    const visible = filterVisibleClusters(cs, 1000, 50, 10)
+    expect(visible.map((c) => c.x)).toEqual([450, 600])
+  })
+
+  it('includes clusters at exact boundary values', () => {
+    // from = 400, to = 700 (same as above)
+    const cs = [cluster(400), cluster(700)]
+    const visible = filterVisibleClusters(cs, 1000, 50, 10)
+    expect(visible.map((c) => c.x)).toEqual([400, 700])
   })
 })
