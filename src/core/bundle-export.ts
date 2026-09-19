@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
+import type { ExportSnapshot } from './export-plan'
 import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
@@ -86,6 +87,7 @@ export interface ExportBundleOpts {
    *  is the safe default, and this flag is the opt-in for engagements that
    *  legitimately need the pre-redaction content. */
   includeAgentTranscripts?: boolean
+  snapshot?: ExportSnapshot
 }
 
 export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024): void {
@@ -198,12 +200,14 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // 1. events.jsonl (in insertion order)
   const eventsPath = path.join(bundleDir, 'events.jsonl')
   const fd = fs.openSync(eventsPath, 'w')
+  const snap = opts.snapshot
+  const chainedBound = snap ? ' WHERE rowid <= ?' : ''
   const rowIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
             monotonic_ns, ntp_offset_ms
-     FROM events ORDER BY created_at ASC, rowid ASC`
-  ).iterate() as IterableIterator<Record<string, unknown>>
+     FROM events${chainedBound} ORDER BY created_at ASC, rowid ASC`
+  ).iterate(...(snap ? [snap.chainedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   // Four-layer redaction, layer 4: when an event has a sanitized replacement
   // in the sanitized_events table, swap the raw field bytes for the sanitized
   // copy AS WRITTEN TO THE BUNDLE. The source DB row is untouched — the swap
@@ -281,11 +285,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // sanitized_events_logged bookkeeping table.
   const eventsLoggedPath = path.join(bundleDir, 'events_logged.jsonl')
   const loggedFd = fs.openSync(eventsLoggedPath, 'w')
+  const loggedBound = snap ? ' WHERE rowid <= ?' : ''
   const loggedIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, created_at
-     FROM events_logged ORDER BY created_at ASC, rowid ASC`
-  ).iterate() as IterableIterator<Record<string, unknown>>
+     FROM events_logged${loggedBound} ORDER BY created_at ASC, rowid ASC`
+  ).iterate(...(snap ? [snap.loggedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   let loggedRowCount = 0
   for (const row of loggedIter) {
     if (doNotExportIds.has(row.id as string)) {
