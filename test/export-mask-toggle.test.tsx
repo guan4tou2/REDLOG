@@ -41,7 +41,7 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
     open()
     const checkbox = screen.getByRole('checkbox')
     fireEvent.click(checkbox) // uncheck → include raw
-    expect(screen.getByText(/client data outside your engagement scope/i)).toBeTruthy()
+    expect(screen.getByText(/including out-of-scope content raw/i)).toBeTruthy()
     clickBundle()
     await waitFor(() => expect(lastOpts).toEqual({ maskOutOfScope: false }))
   })

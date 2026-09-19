@@ -15,20 +15,8 @@ import { useViewExport } from '../lib/exportScope'
 // The evidence bundle stays at the bottom, separated — it is a signed forensic
 // artifact with its own scope-masking checkbox (unchanged).
 
-export type ExportScope = 'all' | 'view' | 'slice'
-export type ExportFormat = 'json' | 'markdown'
-
 export interface ExportMenuProps {
   totalCount?: number
-}
-
-const BYTES_PER_EVENT = 520
-
-function humanSize(events: number): string {
-  const bytes = events * BYTES_PER_EVENT
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
@@ -70,8 +58,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
 
   const empty = totalCount === 0
 
-  const Option = ({ label, count, onPick, disabled: off }: {
-    label: string; count?: number; onPick: () => void; disabled?: boolean
+  const Option = ({ label, onPick, disabled: off }: {
+    label: string; onPick: () => void; disabled?: boolean
   }): JSX.Element => (
     <button
       onClick={onPick}
@@ -79,11 +67,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40 disabled:cursor-not-allowed"
     >
       <span className="block text-xs text-redlog-text">{label}</span>
-      {typeof count === 'number' && (
-        <span className="block text-xs text-redlog-text-faint tabular-nums">
-          {t('export.preview', { count, size: humanSize(count) })}
-        </span>
-      )}
     </button>
   )
 
@@ -146,14 +129,12 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             {viewExport && (
               <Option
                 label={viewExport.label}
-                count={viewExport.count}
                 disabled={empty}
                 onPick={() => void run(viewExport.label, () => viewExport.run(sharingOpts))}
               />
             )}
             <Option
               label={t('export.all')}
-              count={totalCount}
               disabled={empty}
               onPick={() => void run(t('export.all'), () => window.redlog.data.exportJson(sharingOpts))}
             />
@@ -178,23 +159,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   if (!api.exportBundle) { setBusy(false); return }
                   const r = await api.exportBundle({ maskOutOfScope: maskScope })
                   if (r.ok && r.outDir) {
-                    const m = r.manifest as {
-                      tiers?: { chained?: number; logged?: number }
-                      sanitizedOutOfScope?: number
-                      attachmentScopePolicy?: { screenshots?: { included: number; excludedOutOfScope: number }; casts?: { included: number } }
-                    } | undefined
-                    const chained = m?.tiers?.chained ?? 0
-                    const logged = m?.tiers?.logged ?? 0
-                    const masked = m?.sanitizedOutOfScope ?? 0
-                    const shots = m?.attachmentScopePolicy?.screenshots
-                    const casts = m?.attachmentScopePolicy?.casts
-                    const detail = [
-                      t('export.bundleSummaryEvents', { chained, logged }),
-                      masked > 0 ? t('export.bundleSummaryMasked', { count: masked }) : '',
-                      shots ? t('export.bundleSummaryShots', { included: shots.included, excluded: shots.excludedOutOfScope }) : '',
-                      casts?.included ? t('export.bundleSummaryCasts', { count: casts.included }) : ''
-                    ].filter(Boolean).join('\n')
-                    toast(t('export.done', { label: t('export.bundle') }), { type: 'success', why: r.outDir, detail })
+                    toast(t('export.done', { label: t('export.bundle') }), { type: 'success', why: r.outDir })
                   } else {
                     toast(t('export.failed', { label: t('export.bundle') }), { type: 'error', why: t('toast.exportFailedWhy') })
                   }
@@ -214,11 +179,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 {maskScope ? t('export.maskScope') : t('export.maskScopeOff')}
               </span>
             </label>
-            {sharing && (
-              <p className="px-3 pb-1 text-xs text-redlog-text-faint leading-tight">
-                {t('export.bundleScopeIndependent')}
-              </p>
-            )}
           </div>
         </>
       )}

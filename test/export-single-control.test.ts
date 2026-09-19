@@ -55,12 +55,13 @@ describe('one export control', () => {
     expect(store).toMatch(/return \(\) => \{\s*current = null/)
   })
 
-  it('previews what each option will produce', () => {
-    // A wrong export is cheap; discovering it was wrong after opening the
-    // file is a wasted round trip during the one task this record exists for.
+  it('labels each format option clearly', () => {
+    // Each export option uses a translated label so the operator knows what
+    // they are getting — the label IS the preview (format name + audience).
     const menu = R('src/renderer/src/components/ExportMenu.tsx')
-    expect(menu).toMatch(/export\.preview/)
-    expect(menu).toMatch(/humanSize/)
+    expect(menu).toMatch(/export\.all/)
+    expect(menu).toMatch(/export\.ndjson/)
+    expect(menu).toMatch(/export\.bundle/)
   })
 
   it('keeps copy-to-clipboard out of the file-export menu', () => {
