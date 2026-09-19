@@ -88,25 +88,55 @@ export interface ExportBundleOpts {
 }
 
 function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>): void {
-  const raw = fs.readFileSync(src)
-  const nlIdx = raw.indexOf(0x0a)
-  if (nlIdx < 0 || reps.length === 0) { fs.writeFileSync(dst, raw); return }
+  if (reps.length === 0) { fs.copyFileSync(src, dst); return }
+  const fd = fs.openSync(src, 'r')
   try {
-    const header = JSON.parse(raw.subarray(0, nlIdx).toString('utf-8'))
+    const stat = fs.fstatSync(fd)
+    if (stat.size === 0) { fs.writeFileSync(dst, ''); return }
+    const CHUNK = 64 * 1024
+    const buf = Buffer.alloc(Math.min(CHUNK, stat.size))
+    let headerLine = ''
+    let headerEnd = 0
+    let bytesRead = 0
+    while (bytesRead < stat.size) {
+      const n = fs.readSync(fd, buf, 0, buf.length, bytesRead)
+      if (n === 0) break
+      const nlIdx = buf.indexOf(0x0a, 0)
+      if (nlIdx >= 0 && nlIdx < n) {
+        headerLine += buf.subarray(0, nlIdx).toString('utf-8')
+        headerEnd = bytesRead + nlIdx + 1
+        break
+      }
+      headerLine += buf.subarray(0, n).toString('utf-8')
+      bytesRead += n
+    }
+    if (!headerEnd) { fs.copyFileSync(src, dst); return }
+    let header: Record<string, unknown>
+    try { header = JSON.parse(headerLine) } catch { fs.copyFileSync(src, dst); return }
     if (header.env && typeof header.env === 'object') {
-      for (const k of Object.keys(header.env)) {
-        let v = String(header.env[k])
+      for (const k of Object.keys(header.env as Record<string, unknown>)) {
+        let v = String((header.env as Record<string, string>)[k])
         for (const [re, rep] of reps) v = v.replace(re, rep)
-        header.env[k] = v
+        ;(header.env as Record<string, string>)[k] = v
       }
     }
-    let body = raw.subarray(nlIdx + 1).toString('utf-8')
-    for (const [re, rep] of reps) body = body.replace(re, rep)
-    const scrubbed = Buffer.from(JSON.stringify(header) + '\n')
-    fs.writeFileSync(dst, Buffer.concat([scrubbed, Buffer.from(body, 'utf-8')]))
+    const out = fs.openSync(dst, 'w')
+    try {
+      const scrubbedHeader = Buffer.from(JSON.stringify(header) + '\n', 'utf-8')
+      fs.writeSync(out, scrubbedHeader)
+      let pos = headerEnd
+      while (pos < stat.size) {
+        const n = fs.readSync(fd, buf, 0, buf.length, pos)
+        if (n === 0) break
+        let line = buf.subarray(0, n).toString('utf-8')
+        for (const [re, rep] of reps) line = line.replace(re, rep)
+        fs.writeSync(out, line, undefined, 'utf-8')
+        pos += n
+      }
+    } finally { fs.closeSync(out) }
   } catch {
-    fs.writeFileSync(dst, raw)
-  }
+    fs.copyFileSync(src, dst)
+  } finally { fs.closeSync(fd) }
 }
 
 export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
