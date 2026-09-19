@@ -66,7 +66,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     }).catch(() => {})
     loadTargets()
     const unsub = window.redlog.events.onNew((evt) => {
-      if (evt.data?.detectedTarget) loadTargets()
+      if (evt.targetId || evt.data?.detectedTarget) loadTargets()
     })
     return unsub
     // eslint-disable-next-line react-hooks/exhaustive-deps

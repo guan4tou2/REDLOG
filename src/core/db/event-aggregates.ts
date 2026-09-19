@@ -106,17 +106,19 @@ export interface TargetAggregate {
 
 /**
  * Per-target counts + first/last-seen, computed in SQL over BOTH tiers — the
- * whole timeline. The Targets page used to `query({ limit: 1000 })` and roll
- * these up in a client-side Map, so on any engagement past 1000 events a target
- * that appeared only in older rows silently vanished and every count/firstSeen
- * was a truncated-window value — wrong numbers on the page an operator uses to
- * decide what was touched. `detectedTarget` lives in the JSON `data` blob;
- * rows without one are excluded. Ordered newest-touched first (was the client
- * sort on lastSeen). Scope classification stays in the renderer, which has the
- * project's scope patterns and the stricter CIDR match.
+ * whole timeline. Keys on `target_id` column (the canonical target identity,
+ * see docs/domain/SPEC-target-identity.md), NOT `data.detectedTarget` (which
+ * is observation metadata set only by shell enrichment — a strict subset of
+ * `target_id`). This ensures the aggregate count matches what
+ * `queryEvents({ targetId })` returns for the detail view.
+ *
+ * Case-insensitive grouping via LOWER() so "Example.COM" and "example.com"
+ * merge into one row; the displayed form is the most-recently-seen casing.
+ *
+ * Scope classification stays in the renderer, which has the project's scope
+ * patterns and the stricter CIDR match.
  */
 export function aggregateTargets(): TargetAggregate[] {
-  // Heavy read: two-tier json_extract + GROUP BY over the whole timeline.
   const db = getReadonlyDB()
   const sql = `
     SELECT target,
@@ -124,12 +126,13 @@ export function aggregateTargets(): TargetAggregate[] {
            MIN(timestamp) AS firstSeen,
            MAX(timestamp) AS lastSeen
     FROM (
-      SELECT json_extract(data, '$.detectedTarget') AS target, timestamp FROM events
+      SELECT target_id AS target, timestamp FROM events
+      WHERE target_id IS NOT NULL AND target_id != ''
       UNION ALL
-      SELECT json_extract(data, '$.detectedTarget') AS target, timestamp FROM events_logged
+      SELECT target_id AS target, timestamp FROM events_logged
+      WHERE target_id IS NOT NULL AND target_id != ''
     )
-    WHERE target IS NOT NULL AND target != ''
-    GROUP BY target
+    GROUP BY LOWER(target)
     ORDER BY lastSeen DESC
   `
   return db.prepare(sql).all() as TargetAggregate[]
