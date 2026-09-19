@@ -14,7 +14,7 @@ Feature:
 - 共用 `operator-pii.ts` 統一所有匯出路徑的 PII scrub
 - CaptureHealth 新增 proxy 狀態顯示
 - TerminalView cast badge 即時更新（rec / trunc / no rec）
-- TranscriptView tool disclaimer + pending ⏳ indicator
+- TranscriptView pending ⏳ indicator
 
 Security:
 - `scrubCast` chunk-boundary PII 洩漏：chunked I/O 改為逐行
@@ -42,6 +42,13 @@ UIUX §21 compliance:
 - FilterBar danger-on-numbers 違規 + 幽靈 token 修正
 - 5 個既有測試同步（events / tailwind-classes / design-rules /
   danger-not-on-numbers / tool-input-redaction）
+
+Cleanup:
+- 移除 ExportMenu 過度設計：假精確大小估算（BYTES_PER_EVENT 魔法常數 +
+  humanSize）、冗長 4 行證據包 toast、未用 ExportScope/ExportFormat 類型
+- 移除 tool disclaimer（AI 來源已由 actor label 標示，文字冗餘）
+- 移除 ProjectPicker 說明段落、精簡 capture/export 文案
+- 清理 21 個死 i18n key
 
 Tests: +5 scrub-cast unit tests；149 files / 1477 tests pass。
 
