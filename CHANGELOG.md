@@ -3,6 +3,44 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## v0.15.1 — 2026-09-19
+
+**Option D 匯出去識別化 + QA / 安全 / 效能 / UIUX 合規修復。**
+
+Feature:
+- ExportMenu soft presets：「自己留存」/「分享用」segmented control
+- 分享用模式：scope-外 metadata 遮蔽、in-scope 敏感值手術式清洗、
+  operatorId 清除、blacklist 基礎設施事件排除
+- 共用 `operator-pii.ts` 統一所有匯出路徑的 PII scrub
+- CaptureHealth 新增 proxy 狀態顯示
+- TerminalView cast badge 即時更新（rec / trunc / no rec）
+- TranscriptView tool disclaimer + pending ⏳ indicator
+
+Security:
+- `scrubCast` chunk-boundary PII 洩漏：chunked I/O 改為逐行
+  carry-forward，跨 64KB 邊界的 PII 不再遺漏
+- `scrubCast` catch fallback 不再靜默產出未 scrub 的匯出檔
+- `stripCreds` 修正無 scheme proxy URL 憑證洩漏
+- proxy 憑證不再暴露到 renderer
+
+Performance:
+- `scrubCast` 記憶體從 O(filesize) 降為 O(64KB) chunked I/O
+
+Bug fixes:
+- StatusBar pause timer unmount 清理
+- EventMarker Cmd+Enter double-save 防護
+- Timeline keydown handler stale closure（band 收合後鍵盤導航過期）
+- Timeline tool no-result 假警告（page boundary edge case）
+- `sourceBreakdown` agent_type null → 'unknown'
+
+UIUX §21 compliance:
+- 7 元件 sub-13px 字型 → `text-xs`（§2 floor）
+- FilterBar danger-on-numbers 違規 + 幽靈 token 修正
+- 5 個既有測試同步（events / tailwind-classes / design-rules /
+  danger-not-on-numbers / tool-input-redaction）
+
+Tests: +5 scrub-cast unit tests；149 files / 1477 tests pass。
+
 ## v0.14.3 — 2026-08-19
 
 **§9.5 chain-health tier split in CaptureHealthCard.** Closes the last
