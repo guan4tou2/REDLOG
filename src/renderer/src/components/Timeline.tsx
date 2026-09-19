@@ -15,7 +15,7 @@ import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, computePaletteResults, type PaletteItem } from '../lib/timelineFilters'
+import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, computePaletteResults, distributeLaneEvents, distributeRowEvents, type PaletteItem } from '../lib/timelineFilters'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
@@ -807,26 +807,15 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
 
   const totalH = visibleRows.length * laneH
 
-  const laneEvents = useMemo(() => {
-    const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
-    for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
-    return map
-  }, [events, pluginTypes])
+  const laneEvents = useMemo(
+    () => distributeLaneEvents(events, pluginTypes),
+    [events, pluginTypes]
+  )
 
-  // Events grouped by the row they render in — a collapsed band's row holds
-  // every event from its lanes. Only rows that are actually visible get a
-  // bucket, so a hidden lane's events fall out here.
-  const rowEvents = useMemo(() => {
-    const map: Record<string, RedLogEvent[]> = {}
-    for (const r of visibleRows) map[r] = []
-    for (const e of events) {
-      const lane = toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)
-      const key = collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane
-      const bucket = map[key]
-      if (bucket) bucket.push(e)
-    }
-    return map
-  }, [events, visibleRows, collapsedBands, pluginTypes])
+  const rowEvents = useMemo(
+    () => distributeRowEvents(events, visibleRows, collapsedBands, pluginTypes),
+    [events, visibleRows, collapsedBands, pluginTypes]
+  )
 
   // Debounced so a held key or a fast typist does not run the scan per
   // character. 120 ms sits below the point where the filter feels laggy and
