@@ -1,12 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { ipToLong, matchesScopePattern } from '../src/renderer/src/lib/timelineScopeMatch'
+import { matchesScopePattern } from '../src/renderer/src/lib/timelineScopeMatch'
 
-describe('ipToLong', () => {
-  it('converts 0.0.0.0', () => expect(ipToLong('0.0.0.0')).toBe(0))
-  it('converts 255.255.255.255', () => expect(ipToLong('255.255.255.255')).toBe(0xFFFFFFFF))
-  it('converts 192.168.1.1', () => expect(ipToLong('192.168.1.1')).toBe(0xC0A80101))
-  it('converts 10.0.0.1', () => expect(ipToLong('10.0.0.1')).toBe(0x0A000001))
-})
+// ipToLong tests removed — covered by scope-evaluator.test.ts CIDR tests.
+// The function is now internal to the canonical evaluator.
 
 describe('matchesScopePattern', () => {
   describe('exact match', () => {
