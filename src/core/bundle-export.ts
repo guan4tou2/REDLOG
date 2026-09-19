@@ -87,13 +87,13 @@ export interface ExportBundleOpts {
   includeAgentTranscripts?: boolean
 }
 
-function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>): void {
+export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024): void {
   if (reps.length === 0) { fs.copyFileSync(src, dst); return }
   const fd = fs.openSync(src, 'r')
   try {
     const stat = fs.fstatSync(fd)
     if (stat.size === 0) { fs.writeFileSync(dst, ''); return }
-    const CHUNK = 64 * 1024
+    const CHUNK = chunkSize
     const buf = Buffer.alloc(Math.min(CHUNK, stat.size))
     let headerLine = ''
     let headerEnd = 0
@@ -125,17 +125,27 @@ function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>): voi
       const scrubbedHeader = Buffer.from(JSON.stringify(header) + '\n', 'utf-8')
       fs.writeSync(out, scrubbedHeader)
       let pos = headerEnd
+      let carry = ''
       while (pos < stat.size) {
         const n = fs.readSync(fd, buf, 0, buf.length, pos)
         if (n === 0) break
-        let line = buf.subarray(0, n).toString('utf-8')
-        for (const [re, rep] of reps) line = line.replace(re, rep)
-        fs.writeSync(out, line, undefined, 'utf-8')
+        const chunk = carry + buf.subarray(0, n).toString('utf-8')
+        const lines = chunk.split('\n')
+        carry = lines.pop()!
+        for (let line of lines) {
+          for (const [re, rep] of reps) line = line.replace(re, rep)
+          fs.writeSync(out, line + '\n', undefined, 'utf-8')
+        }
         pos += n
       }
+      if (carry) {
+        for (const [re, rep] of reps) carry = carry.replace(re, rep)
+        fs.writeSync(out, carry, undefined, 'utf-8')
+      }
     } finally { fs.closeSync(out) }
-  } catch {
-    fs.copyFileSync(src, dst)
+  } catch (err) {
+    try { fs.unlinkSync(dst) } catch {}
+    throw err
   } finally { fs.closeSync(fd) }
 }
 
@@ -206,7 +216,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
     const eventId = row.id as string
-    const agentType = row.agent_type as string
+    const agentType = (row.agent_type as string) ?? 'unknown'
     sourceBreakdown[agentType] = (sourceBreakdown[agentType] ?? 0) + 1
     const replacements = getSanitizedFields(eventId)
     let data: Record<string, unknown> | null = null
