@@ -12,6 +12,8 @@ import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
+import { matchesScopePattern } from '../lib/timelineScopeMatch'
+import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
@@ -60,24 +62,6 @@ const isMacPlatform = isMac
 // literal t() call: test/i18n-keys.test.ts can only see those, and a table of
 // key STRINGS would leave all four unchecked — which is exactly how a key that
 // renders as `marker.amendErr.notFound` to the operator gets shipped.
-function ipToLong(ip: string): number {
-  return ip.split('.').reduce((acc, oct) => (acc << 8) + parseInt(oct), 0) >>> 0
-}
-
-function matchesScopePattern(target: string, pattern: string): boolean {
-  if (pattern.startsWith('*.')) {
-    const bare = pattern.slice(2)
-    return target === bare || target.endsWith('.' + bare)
-  }
-  if (pattern.includes('/')) {
-    const [net, bits] = pattern.split('/')
-    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(target)) return false
-    const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0
-    return (ipToLong(target) & mask) === (ipToLong(net) & mask)
-  }
-  return target === pattern
-}
-
 function amendErrorWhy(code: string, t: (k: string) => string): string | undefined {
   switch (code) {
     case 'not-found': return t('marker.amendErr.notFound')
@@ -789,38 +773,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
   }, [])
 
-  const { timeStart, timeEnd, ticks } = useMemo(() => {
-    if (events.length === 0) {
-      const now = Date.now()
-      return { timeStart: now - 3600000, timeEnd: now, ticks: [] as number[] }
-    }
-    // v0.9.4 P0-3: the domain comes from `displayTs`, not `timestamp`.
-    // v0.12.2: `events` is sorted by `eventCompare` (wall-clock first), so
-    // for non-marker rows `events[0].timestamp` is the min and last is the
-    // max — no full scan needed. Marker rows with `atTimestamp` can point
-    // outside that window; scan ONLY those to widen the bounds. On a 131k-
-    // event project with ~20 markers this is O(20) instead of O(131k).
-    let first = events[0].timestamp
-    let last = events[events.length - 1].timestamp
-    for (const e of events) {
-      // Fast path: only markers can have a displayTs different from timestamp.
-      if (e.agentType !== 'marker') continue
-      const at = e.data?.atTimestamp
-      if (typeof at === 'number' && at > 0) {
-        if (at < first) first = at
-        if (at > last) last = at
-      }
-    }
-    const pad = Math.max((last - first) * 0.05, 60000)
-    const s = first - pad
-    const e = last + pad
-    const span = e - s
-    const steps = Math.min(Math.max(Math.floor(span / 300000), 4), 20)
-    const step = span / steps
-    const ts: number[] = []
-    for (let i = 0; i <= steps; i++) ts.push(s + i * step)
-    return { timeStart: s, timeEnd: e, ticks: ts }
-  }, [events])
+  const { timeStart, timeEnd, ticks } = useMemo(() => computeDomainBounds(events), [events])
 
 
   const baseTrackW = Math.max(MIN_BASE_TRACK_W, containerW - LABEL_W)
@@ -841,91 +794,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // Off by default. A compressed axis is no longer proportional, and for an
   // audit tool "the gap you are looking at is not to scale" has to be the
   // operator's explicit choice, announced on screen.
-  const timeMap = useMemo(() => {
-    const linear = {
-      toX: (ts: number) => ((ts - timeStart) / timeSpan) * TRACK_W,
-      fromX: (x: number) => timeStart + (x / TRACK_W) * timeSpan,
-      gaps: [] as Array<{ x: number; from: number; to: number }>
-    }
-    if (timeSpan <= 0 || events.length === 0) return linear
-
-    // Gaps are detected whether or not compression is ON — the chip that turns
-    // it on only appears when there is something to compress, so gating
-    // detection on the toggle made the control unreachable.
-    // Gaps between consecutive events, in render order.
-    const stamps: number[] = []
-    for (const e of events) stamps.push(displayTs(e))
-    stamps.sort((a, b) => a - b)
-
-    type Seg = { t0: number; t1: number; kind: 'live' | 'gap' }
-    const segs: Seg[] = []
-    let cursor = timeStart
-    for (const ts of stamps) {
-      if (ts - cursor > GAP_MIN_MS) {
-        segs.push({ t0: cursor, t1: ts, kind: 'gap' })
-        cursor = ts
-      }
-    }
-    if (segs.length === 0) return linear
-    // Rebuild as an alternating live/gap list covering the whole domain.
-    const full: Seg[] = []
-    let at = timeStart
-    for (const g of segs) {
-      if (g.t0 > at) full.push({ t0: at, t1: g.t0, kind: 'live' })
-      full.push(g)
-      at = g.t1
-    }
-    if (at < timeEnd) full.push({ t0: at, t1: timeEnd, kind: 'live' })
-
-    // Detected but not applied: report the gaps so the chip can offer itself,
-    // and keep the linear mapping.
-    if (!compressGaps) {
-      return {
-        ...linear,
-        gaps: segs.map((g) => ({ x: linear.toX(g.t0), from: g.t0, to: g.t1 }))
-      }
-    }
-
-    const liveMs = full.filter((s) => s.kind === 'live').reduce((a, s) => a + (s.t1 - s.t0), 0)
-    const gapPx = full.filter((s) => s.kind === 'gap').length * GAP_PX
-    const livePx = Math.max(1, TRACK_W - gapPx)
-    if (liveMs <= 0) return linear
-
-    // Precompute each segment's pixel span once; lookups then binary-search.
-    const bounds: Array<{ t0: number; t1: number; x0: number; x1: number; kind: Seg['kind'] }> = []
-    let x = 0
-    for (const seg of full) {
-      const w = seg.kind === 'gap' ? GAP_PX : ((seg.t1 - seg.t0) / liveMs) * livePx
-      bounds.push({ t0: seg.t0, t1: seg.t1, x0: x, x1: x + w, kind: seg.kind })
-      x += w
-    }
-    const find = <K extends 't' | 'x'>(v: number, by: K): typeof bounds[number] => {
-      let lo = 0, hi = bounds.length - 1
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1
-        const end = by === 't' ? bounds[mid].t1 : bounds[mid].x1
-        if (v > end) lo = mid + 1; else hi = mid
-      }
-      return bounds[lo]
-    }
-    return {
-      toX: (ts: number): number => {
-        const b = find(ts, 't')
-        // Inside a compressed gap every instant maps to its left edge — there
-        // is no meaningful position within a stretch that is not to scale.
-        if (b.kind === 'gap') return b.x0
-        const f = b.t1 === b.t0 ? 0 : (ts - b.t0) / (b.t1 - b.t0)
-        return b.x0 + f * (b.x1 - b.x0)
-      },
-      fromX: (px: number): number => {
-        const b = find(px, 'x')
-        if (b.kind === 'gap') return b.t0
-        const f = b.x1 === b.x0 ? 0 : (px - b.x0) / (b.x1 - b.x0)
-        return b.t0 + f * (b.t1 - b.t0)
-      },
-      gaps: bounds.filter((b) => b.kind === 'gap').map((b) => ({ x: b.x0, from: b.t0, to: b.t1 }))
-    }
-  }, [compressGaps, events, timeStart, timeEnd, timeSpan, TRACK_W])
+  const timeMap = useMemo<TimeMap>(() => buildTimeMap({
+    displayTimestamps: events.map(displayTs),
+    timeStart, timeEnd, timeSpan, trackW: TRACK_W,
+    compressGaps, gapMinMs: GAP_MIN_MS, gapPx: GAP_PX
+  }), [compressGaps, events, timeStart, timeEnd, timeSpan, TRACK_W])
 
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
@@ -1361,20 +1234,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   }, [events, sessionDividers, toX, t, timeEnd])
 
   // Density minimap: event counts over the full range, binned into fixed cells.
-  const bins = useMemo(() => {
-    const N = 120
-    const counts = new Array(N).fill(0)
-    const span = (timeEnd - timeStart) || 1
-    for (const e of events) {
-      // v0.9.4 P0-4: bin on `displayTs` so the density histogram agrees with
-      // the track. Binning on `timestamp` put an `atTimestamp`-overridden
-      // marker in a different cell than the dot the operator can see.
-      let i = Math.floor(((displayTs(e) - timeStart) / span) * N)
-      i = i < 0 ? 0 : i >= N ? N - 1 : i
-      counts[i]++
-    }
-    return { counts, max: Math.max(1, ...counts), N }
-  }, [events, timeStart, timeEnd])
+  const bins = useMemo(() => computeBins(events.map(displayTs), timeStart, timeEnd), [events, timeStart, timeEnd])
 
   // Keep the minimap's "current viewport" window in sync with the scroll/zoom.
   // v0.11.1: render only the clusters near the viewport.
