@@ -15,8 +15,8 @@ import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches } from '../lib/timelineFilters'
-import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
+import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, computePaletteResults, type PaletteItem } from '../lib/timelineFilters'
+import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
   AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
@@ -1493,58 +1493,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
 
-  // v0.6.91 W3: palette result set — fuzzy match query against events, marker
-  // titles, distinct operator names, and distinct hosts. Capped at 20 items.
-  type PaletteItem =
-    | { kind: 'event' | 'marker'; event: RedLogEvent; label: string; sub: string; score: number; ts: number }
-    | { kind: 'operator' | 'host'; value: string; label: string; sub: string; score: number; ts: number }
-  const paletteResults = useMemo<PaletteItem[]>(() => {
-    const q = paletteQuery.trim()
-    if (!q) return []
-    const items: PaletteItem[] = []
-    for (const e of events) {
-      const d = e.data as Record<string, unknown> | undefined
-      const fields = [
-        titleOf(e),
-        String(d?.command ?? ''),
-        String(d?.url ?? ''),
-        String(d?.host ?? ''),
-        String(d?.title ?? ''),
-        String(d?.subtype ?? '')
-      ]
-      let best = -1
-      for (const f of fields) { const s = fuzzyScore(f, q); if (s > best) best = s }
-      if (best > 0) {
-        items.push({
-          kind: e.agentType === 'marker' ? 'marker' : 'event',
-          event: e,
-          label: titleOf(e),
-          sub: e.agentType,
-          score: best,
-          ts: e.timestamp
-        })
-      }
-    }
-    const seenOp = new Set<string>()
-    for (const [id, name] of Object.entries(operatorNames)) {
-      const s = Math.max(fuzzyScore(name, q), fuzzyScore(id, q))
-      if (s > 0 && !seenOp.has(name)) {
-        seenOp.add(name)
-        items.push({ kind: 'operator', value: name, label: name, sub: id, score: s, ts: 0 })
-      }
-    }
-    const hosts = new Set<string>()
-    for (const e of events) {
-      const h = e.data?.host as unknown
-      if (typeof h === 'string' && h) hosts.add(h)
-    }
-    for (const h of hosts) {
-      const s = fuzzyScore(h, q)
-      if (s > 0) items.push({ kind: 'host', value: h, label: h, sub: 'host', score: s, ts: 0 })
-    }
-    items.sort((a, b) => (b.score - a.score) || (b.ts - a.ts))
-    return items.slice(0, 20)
-  }, [events, operatorNames, paletteQuery])
+  const paletteResults = useMemo<PaletteItem[]>(
+    () => computePaletteResults(events, operatorNames, paletteQuery, titleOf),
+    [events, operatorNames, paletteQuery, titleOf]
+  )
   useEffect(() => {
     if (paletteIndex >= paletteResults.length) setPaletteIndex(Math.max(0, paletteResults.length - 1))
   }, [paletteResults, paletteIndex])
