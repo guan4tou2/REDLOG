@@ -264,6 +264,65 @@ export function initDB(projectDir: string): Database.Database {
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
 
+  // FTS5 full-text search indexes for events + events_logged.
+  // External-content tables: the index references the source rows directly
+  // (no data duplication). AFTER INSERT / AFTER DELETE triggers keep the
+  // index in sync. events is append-only so only INSERT is needed there;
+  // events_logged also has retention DELETE sweeps.
+  {
+    const tbls = new Set(
+      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
+    )
+    const hadEventsFts = tbls.has('events_fts')
+
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+        data, target_id, agent_type,
+        content=events, content_rowid=rowid,
+        tokenize='unicode61 remove_diacritics 2',
+        prefix='2 3'
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS events_logged_fts USING fts5(
+        data, target_id, agent_type,
+        content=events_logged, content_rowid=rowid,
+        tokenize='unicode61 remove_diacritics 2',
+        prefix='2 3'
+      );
+    `)
+
+    // Triggers: keep FTS in sync on write. DROP+CREATE so column lists
+    // stay current across upgrades (same pattern as assertEventsAppendOnly).
+    db.exec(`
+      DROP TRIGGER IF EXISTS events_fts_ai;
+      CREATE TRIGGER events_fts_ai AFTER INSERT ON events BEGIN
+        INSERT INTO events_fts(rowid, data, target_id, agent_type)
+        VALUES (new.rowid, new.data, new.target_id, new.agent_type);
+      END;
+
+      DROP TRIGGER IF EXISTS events_logged_fts_ai;
+      CREATE TRIGGER events_logged_fts_ai AFTER INSERT ON events_logged BEGIN
+        INSERT INTO events_logged_fts(rowid, data, target_id, agent_type)
+        VALUES (new.rowid, new.data, new.target_id, new.agent_type);
+      END;
+
+      DROP TRIGGER IF EXISTS events_logged_fts_ad;
+      CREATE TRIGGER events_logged_fts_ad AFTER DELETE ON events_logged BEGIN
+        INSERT INTO events_logged_fts(events_logged_fts, rowid, data, target_id, agent_type)
+        VALUES ('delete', old.rowid, old.data, old.target_id, old.agent_type);
+      END;
+    `)
+
+    // One-time backfill: rebuild from content tables on first migration
+    // from a pre-FTS database. The 'rebuild' command re-reads every row
+    // from the content= source table.
+    if (!hadEventsFts) {
+      if (hasRows(db, 'events'))
+        db.exec("INSERT INTO events_fts(events_fts) VALUES('rebuild')")
+      if (hasRows(db, 'events_logged'))
+        db.exec("INSERT INTO events_logged_fts(events_logged_fts) VALUES('rebuild')")
+    }
+  }
+
   // v0.6.88 P1-B: install append-only triggers on events table so
   // DELETE / UPDATE-of-immutable-fields raise instead of silently corrupting
   // the chain. Idempotent — safe to call every project open.

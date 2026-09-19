@@ -371,40 +371,54 @@ export function getLatestLoggedTs(): number | null {
   return row.ts ?? null
 }
 
-export function searchEvents(query: string, limit = 100, opts?: { agentType?: string }): RedLogEvent[] {
-  // Heavy read: an un-indexed full-table LIKE over data/target_id/agent_type —
-  // route it off the write connection.
-  const db = getReadonlyDB()
-  const pattern = `%${query}%`
+/** FTS5 MATCH treats bare punctuation and operators as syntax. Terminal
+ *  searches are full of both — `10.0.0.5`, `-sV`, `/etc/passwd` — so each
+ *  term is quoted as a phrase rather than handed through, and only a
+ *  trailing `*` is added for the last term (prefix-match while typing). */
+function toMatchQuery(raw: string): string | null {
+  const terms = raw.trim().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return null
+  return terms
+    .map((term, i) => {
+      const quoted = `"${term.replace(/"/g, '""')}"`
+      return i === terms.length - 1 ? `${quoted}*` : quoted
+    })
+    .join(' ')
+}
 
-  const likeCond = '(data LIKE ? OR target_id LIKE ? OR agent_type LIKE ?)'
-  const likeParams: unknown[] = [pattern, pattern, pattern]
+export function searchEvents(query: string, limit = 100, opts?: { agentType?: string }): RedLogEvent[] {
+  const db = getReadonlyDB()
+  const match = toMatchQuery(query)
+  if (!match) return []
 
   const extraConds: string[] = []
   const extraParams: unknown[] = []
   if (opts?.agentType) {
-    extraConds.push('agent_type = ?')
+    extraConds.push('e.agent_type = ?')
     extraParams.push(opts.agentType)
   }
 
-  const where = `WHERE ${likeCond}${extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''}`
-  const baseParams = [...likeParams, ...extraParams]
+  const whereExtra = extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''
 
   const chainedSelect = `
-    SELECT rowid AS _row,
-           id, timestamp, engagement_id, session_id, operator_id, agent_type,
-           hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-           monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
-    FROM events ${where}
+    SELECT e.rowid AS _row,
+           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+           e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
+           e.monotonic_ns, e.ntp_offset_ms, e.signature, 'chained' AS tier
+    FROM events e
+    JOIN events_fts ON events_fts.rowid = e.rowid
+    WHERE events_fts MATCH ?${whereExtra}
   `
   const loggedSelect = `
-    SELECT rowid AS _row,
-           id, timestamp, engagement_id, session_id, operator_id, agent_type,
-           hostname, source_ip, target_id, data,
-           NULL AS hash, NULL AS prev_hash, created_at,
+    SELECT e.rowid AS _row,
+           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+           e.hostname, e.source_ip, e.target_id, e.data,
+           NULL AS hash, NULL AS prev_hash, e.created_at,
            NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
            'logged' AS tier
-    FROM events_logged ${where}
+    FROM events_logged e
+    JOIN events_logged_fts ON events_logged_fts.rowid = e.rowid
+    WHERE events_logged_fts MATCH ?${whereExtra}
   `
 
   const sql = `SELECT * FROM (
@@ -412,8 +426,12 @@ export function searchEvents(query: string, limit = 100, opts?: { agentType?: st
     UNION ALL
     SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
   ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
-  const bind = [...baseParams, limit, ...baseParams, limit, limit]
+  const bind = [match, ...extraParams, limit, match, ...extraParams, limit, limit]
 
-  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-  return rows.map(rowToEvent)
+  try {
+    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+    return rows.map(rowToEvent)
+  } catch {
+    return []
+  }
 }
