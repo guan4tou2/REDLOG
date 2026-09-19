@@ -8,7 +8,7 @@ import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
-import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
+import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FOR } from './redact-export'
 import { operatorPiiReplacements } from './operator-pii'
 
@@ -211,10 +211,15 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // the paired system.sanitized event to reconcile.
   let sanitizedRowsWritten = 0
   let outOfScopeMasked = 0
+  let personalDropped = 0
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
   const survivingBodyRefs = new Set<string>()
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
+    if (isPersonalDomain(row.target_id as string | null, opts.scope)) {
+      personalDropped++
+      continue
+    }
     const eventId = row.id as string
     const agentType = (row.agent_type as string) ?? 'unknown'
     sourceBreakdown[agentType] = (sourceBreakdown[agentType] ?? 0) + 1
@@ -276,6 +281,10 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   ).iterate() as IterableIterator<Record<string, unknown>>
   let loggedRowCount = 0
   for (const row of loggedIter) {
+    if (isPersonalDomain(row.target_id as string | null, opts.scope)) {
+      personalDropped++
+      continue
+    }
     const eventId = row.id as string
     const replacements = getSanitizedFields(eventId)
     let data: Record<string, unknown> | null = null
@@ -361,15 +370,21 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
       if (!fs.statSync(s).isFile()) continue
-      if (scope) {
+      {
         const target = shotFilenameToTarget.get(name)
-        if (target === undefined) {
-          screenshotsUnattributed++
-        } else if (!target) {
-          screenshotsUnattributed++
-        } else if (isOutOfScope(target, scope)) {
+        if (isPersonalDomain(target ?? null, opts.scope)) {
           screenshotsExcluded++
           continue
+        }
+        if (scope) {
+          if (target === undefined) {
+            screenshotsUnattributed++
+          } else if (!target) {
+            screenshotsUnattributed++
+          } else if (isOutOfScope(target, scope)) {
+            screenshotsExcluded++
+            continue
+          }
         }
       }
       if (!dirCreated) { fs.mkdirSync(dstShots, { recursive: true }); dirCreated = true }
@@ -601,6 +616,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     } : null,
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
     sanitizedOutOfScope: outOfScopeMasked,
+    personalDropped,
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },

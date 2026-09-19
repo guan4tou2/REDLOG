@@ -21,6 +21,9 @@ export interface ScopeForSanitize {
   targets: string[]
   /** Explicit excludes always count as out of scope. Optional. */
   excludeTargets?: string[]
+  /** Personal/local traffic: matched rows are DROPPED entirely on export
+   *  (not masked). Same syntax as excludeTargets. Optional. */
+  personalDomains?: string[]
 }
 
 /** The content fields masked for an out-of-scope event. Metadata (host, url,
@@ -31,6 +34,19 @@ export const SCOPE_SANITIZED_FIELDS = [
   'request_body', 'request_body_preview', 'response_body', 'response_preview',
   'ws_body', 'ws_preview', 'tcp_body', 'tcp_preview'
 ] as const
+
+/**
+ * True when the event's target matches a personal/local domain pattern.
+ * Personal rows are DROPPED entirely on export (not masked).
+ * Uses only the "rung 1" explicit-exclude match — residual/inferred
+ * buckets are ignored so a non-personal target doesn't false-positive.
+ */
+export function isPersonalDomain(targetId: string | null | undefined, scope: ScopeForSanitize | undefined): boolean {
+  if (!scope?.personalDomains?.length) return false
+  if (!targetId) return false
+  const verdict = classifyScopeTarget(targetId, { targets: [], excludeTargets: scope.personalDomains })
+  return verdict.distance === 'excluded'
+}
 
 /**
  * True when this event carries a target that matches none of the scope targets.

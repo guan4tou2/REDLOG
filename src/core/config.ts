@@ -63,6 +63,11 @@ export interface RedLogConfig {
     warnOnViolation: boolean
     targets: string[]
     excludeTargets: string[]
+    /** Hosts/IPs that are never part of any engagement — personal traffic,
+     *  localhost, update CDNs. Same syntax as excludeTargets (IP, CIDR,
+     *  *.domain). On export these rows are DROPPED entirely (not masked):
+     *  they should not appear in any deliverable or merge pack. */
+    personalDomains: string[]
     scopeFile: string | null
   }
   screenshot: {
@@ -277,6 +282,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     warnOnViolation: true,
     targets: [],
     excludeTargets: [],
+    personalDomains: ['127.0.0.0/8', '::1', 'localhost'],
     scopeFile: null
   },
   screenshot: {
@@ -429,6 +435,7 @@ export function saveConfig(projectDir: string, config: RedLogConfig): void {
 export interface ScopeInForce {
   targets: string[]
   excludeTargets: string[]
+  personalDomains: string[]
   scopeFile: string | null
   scopeFileSha256: string | null
   scopeFileEntries: number
@@ -453,6 +460,7 @@ export function snapshotScope(config: RedLogConfig): ScopeInForce {
   return {
     targets,
     excludeTargets: [...(config.scope?.excludeTargets ?? [])],
+    personalDomains: [...(config.scope?.personalDomains ?? [])],
     scopeFile,
     scopeFileSha256,
     scopeFileEntries
