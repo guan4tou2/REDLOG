@@ -907,6 +907,8 @@
   "export.presetRecords": "For my records",
   "export.presetSharing": "For sharing",
   "export.sharingHint": "Masks out-of-scope metadata, scrubs operator identity, excludes infra events",
+  "export.empty": "No events to export yet",
+  "export.bundleScopeIndependent": "The evidence bundle has its own scope-masking control, independent of the preset above.",
   "settings.revealInFolder": "Show in Finder / Explorer",
   "transcript.copyMd": "Copy as Markdown",
   "castSearch.heading": "Terminal recordings",
