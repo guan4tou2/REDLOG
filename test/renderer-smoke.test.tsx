@@ -134,7 +134,8 @@ function installBridge(): void {
         return Array.from(m.values()).sort((a, b) => b.lastSeen - a.lastSeen)
       },
       getById: async (ids: string[]) => EVENTS.filter((e) => ids.includes(e.id as string)),
-      onNew: () => unsub
+      onNew: () => unsub,
+      onNewBatch: () => unsub
     },
     marker: {
       create: async () => EVENTS[0],

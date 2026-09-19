@@ -645,15 +645,15 @@ function startProject(project: ProjectMeta): void {
   // v0.6.87 A2: replay shell-hook spool. Any commands run in an external shell
   // while RedLog was closed were spooled to ~/.redlog/pending/*.json — replay
   // them into the current chain now.
-  // Audit 2026-09-18: spool files now carry `_identity` from the project that was
-  // open when the event was spooled. Mismatched events are flagged, not silently
-  // attributed to the current project.
+  // P0 data-safety: mismatched engagement → quarantine, never write to current DB.
+  // NDA engagements must not leak client A's commands into client B's evidence chain.
   try {
     const spoolDir = path.join(homedir(), '.redlog', 'pending')
+    const quarantineDir = path.join(homedir(), '.redlog', 'quarantined')
     if (fs.existsSync(spoolDir)) {
       const files = fs.readdirSync(spoolDir).filter((f) => f.endsWith('.json')).sort()
       let replayed = 0
-      let unattributed = 0
+      let quarantined = 0
       for (const f of files) {
         const full = path.join(spoolDir, f)
         try {
@@ -663,24 +663,29 @@ function startProject(project: ProjectMeta): void {
           const data = payload?.data && typeof payload.data === 'object' ? payload.data : null
           if (agentType && data) {
             const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
+            const mismatched = ident?.engagementId != null && ident.engagementId !== engagementId
+            if (mismatched) {
+              fs.mkdirSync(quarantineDir, { recursive: true })
+              fs.renameSync(full, path.join(quarantineDir, f))
+              quarantined++
+              continue
+            }
             const useEngagement = ident?.engagementId || engagementId
             const useOperator = ident?.operatorId || operatorId
-            const mismatched = ident?.engagementId != null && ident.engagementId !== engagementId
             const ev = insertEvent(agentType, {
               ...data,
               recovered_from_spool: true,
-              ...(mismatched ? { spool_attribution: 'mismatched', spool_original_engagement: ident!.engagementId } : {}),
               ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
             }, { engagementId: useEngagement, operatorId: useOperator })
             if (ev) { eventBus.publish(ev); replayed++ }
-            if (mismatched || !ident?.engagementId) unattributed++
           }
           fs.unlinkSync(full)
         } catch (e) {
           try { fs.renameSync(full, full + '.bad') } catch { /* */ }
         }
       }
-      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)${unattributed > 0 ? ` (${unattributed} unattributed)` : ''}`)
+      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+      if (quarantined > 0) console.log(`[hook-spool] quarantined ${quarantined} mismatched event(s) — open the original project to replay them`)
     }
   } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
@@ -691,7 +696,9 @@ function startProject(project: ProjectMeta): void {
       if (!fs.existsSync(spoolPath)) return
       const files = fs.readdirSync(spoolPath).filter((f) => f.endsWith('.json')).sort().slice(0, 200)
       if (files.length === 0) return
+      const qDir = path.join(homedir(), '.redlog', 'quarantined')
       let count = 0
+      let qCount = 0
       for (const f of files) {
         const full = path.join(spoolPath, f)
         try {
@@ -701,13 +708,18 @@ function startProject(project: ProjectMeta): void {
           const d = payload?.data && typeof payload.data === 'object' ? payload.data : null
           if (at && d) {
             const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
+            const mismatched = ident?.engagementId != null && ident.engagementId !== currentEngagementId
+            if (mismatched) {
+              fs.mkdirSync(qDir, { recursive: true })
+              fs.renameSync(full, path.join(qDir, f))
+              qCount++
+              continue
+            }
             const useEng = ident?.engagementId || currentEngagementId!
             const useOp = ident?.operatorId || currentOperatorId!
-            const mismatched = ident?.engagementId != null && ident.engagementId !== currentEngagementId
             const ev = insertEvent(at, {
               ...d,
               recovered_from_spool: true,
-              ...(mismatched ? { spool_attribution: 'mismatched', spool_original_engagement: ident!.engagementId } : {}),
               ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
             }, { engagementId: useEng, operatorId: useOp })
             if (ev) { eventBus.publish(ev); count++ }
@@ -716,6 +728,7 @@ function startProject(project: ProjectMeta): void {
         } catch { try { fs.renameSync(full, full + '.bad') } catch { /* */ } }
       }
       if (count > 0) console.log(`[hook-spool] drained ${count} spooled event(s)`)
+      if (qCount > 0) console.log(`[hook-spool] quarantined ${qCount} mismatched event(s)`)
     } catch { /* */ }
   }, 30_000)
 

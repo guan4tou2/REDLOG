@@ -106,19 +106,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       return
     }
     setSelected(target)
-    const allEvents = await window.redlog.events.query({ limit: 500 })
-    // Named distinctly from the component-level `filtered` (the target list):
-    // two same-named consts in nested scopes tripped a bundler TDZ that
-    // crashed the whole view once it had any targets to render.
-    const matched = allEvents.filter((e) => {
-      if (e.targetId === target) return true
-      if (e.data?.detectedTarget === target) return true
-      // Scope violations are agent_type='system' with subtype='scope_violation';
-      // the prior code checked agent_type='scope_violation' which never matched
-      // (audit finding P0 #4), so this target's scope hits were invisible.
-      if (e.agentType === 'system' && e.data?.subtype === 'scope_violation' && e.data?.target === target) return true
-      return false
-    })
+    const matched = await window.redlog.events.query({ targetId: target, limit: 500 })
     setEvidence(matched.sort((a, b) => b.timestamp - a.timestamp))
   }, [selected])
 

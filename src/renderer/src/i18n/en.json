@@ -855,6 +855,7 @@
   "settings.exportProfile": "Export profile",
   "settings.handoffProfileHint": "Writes this project’s scope, operators, capture settings and saved timeline views to one file. A teammate imports it when creating their project.",
   "toast.profileExported": "Profile exported",
+  "toast.saveFailed": "Settings could not be saved",
   "settings.ownTraffic": "What RedLog itself sends out",
   "sidebar.httpHistory": "HTTP",
   "timeline.detail.httpRequestBody": "request body",
