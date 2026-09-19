@@ -162,6 +162,11 @@ interface RedLogAPI {
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
+    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
     /** §10: distinct hosts across the timeline for ⌘K host search. */
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
     hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>

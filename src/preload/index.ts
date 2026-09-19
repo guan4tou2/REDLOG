@@ -61,6 +61,12 @@ const api: RedLogAPI = {
     search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => ipcRenderer.invoke('events:search', query, limit, opts),
     distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
+    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryTargetPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
     hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
     // Recordings are searched separately from events — see casts:search in

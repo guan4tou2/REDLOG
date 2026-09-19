@@ -2,6 +2,11 @@ import { getDB, getReadonlyDB } from './index'
 import type { RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
 import { _getCachedEventCount, _setCachedEventCount } from './event-write'
+import {
+  decodeCursor, buildPerArmCursorWhere, toQueryPage,
+  TIER_RANK_CHAINED, TIER_RANK_LOGGED, CANONICAL_ORDER,
+  type QueryPage, type CursorKey
+} from '../query-page'
 
 // SQL predicate that matches the renderer-side `isHousekeeping()` filter in
 // Timeline.tsx. Kept in sync manually — both hide RedLog plumbing rows that
@@ -173,6 +178,76 @@ export function queryEvents(opts: {
 
   const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
+}
+
+export function queryTargetEventsPage(opts: {
+  targetId: string
+  limit?: number
+  cursor?: string | null
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const limit = opts.limit ?? 200
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+
+  const baseConds = ['target_id = ?']
+  const baseParams: unknown[] = [opts.targetId]
+
+  const chainedConds = [...baseConds]
+  const loggedConds = [...baseConds]
+  const chainedParams = [...baseParams]
+  const loggedParams = [...baseParams]
+
+  if (cursor) {
+    const cc = buildPerArmCursorWhere(cursor, 'chained')
+    chainedConds.push(cc.sql)
+    chainedParams.push(...cc.params)
+
+    const lc = buildPerArmCursorWhere(cursor, 'logged')
+    loggedConds.push(lc.sql)
+    loggedParams.push(...lc.params)
+  }
+
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+               monotonic_ns, ntp_offset_ms, signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events
+        WHERE ${chainedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data,
+               NULL AS hash, NULL AS prev_hash, created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged
+        WHERE ${loggedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  const bind = [...chainedParams, perArmLimit, ...loggedParams, perArmLimit, limit + 1]
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+
+  const page = toQueryPage(rows, limit, (row) => ({
+    ts: row.timestamp as number,
+    row: row._row as number,
+    tier: row.tier as 'chained' | 'logged'
+  }))
+
+  return { ...page, items: page.items.map(rowToEvent) }
 }
 
 // v0.6.96 Bug-2: O(1)-ish lookup by event id. Prior code did
