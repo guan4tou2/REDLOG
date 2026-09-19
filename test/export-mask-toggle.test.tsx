@@ -15,13 +15,25 @@ function installBridge(): void {
   lastOpts = undefined
   ;(window as unknown as { redlog: unknown }).redlog = {
     data: {
-      exportBundle: async (opts?: { maskOutOfScope?: boolean }) => { lastOpts = opts; return { ok: true, zipPath: '/tmp/b.zip' } }
+      exportBundle: async (opts?: { maskOutOfScope?: boolean }) => { lastOpts = opts; return { ok: true, outDir: '/tmp/b' } },
+      exportPreview: async () => ({
+        total: 10, included: 8, dropped: 1, personalDropped: 1,
+        blacklisted: 0, outOfScope: 2, inScope: 6, sanitized: 3,
+        doNotExportCount: 1, hasScope: true, sharing: false
+      })
     }
   }
 }
 
 const open = (): void => { fireEvent.click(screen.getByLabelText('Export')) }
 const clickBundle = (): void => { fireEvent.click(screen.getByText('Evidence bundle (with verifier)')) }
+const clickConfirm = async (): Promise<void> => {
+  await waitFor(() => expect(screen.getByText('Export')).toBeTruthy())
+  const buttons = screen.getAllByText('Export')
+  const confirm = buttons.find(b => b.closest('button')?.classList.contains('bg-red-600'))
+  expect(confirm).toBeTruthy()
+  fireEvent.click(confirm!.closest('button')!)
+}
 
 describe('ExportMenu — out-of-scope mask override (A2)', () => {
   beforeEach(() => { installBridge() })
@@ -30,9 +42,9 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
   it('masks by default', async () => {
     render(<I18nProvider><ExportMenu /></I18nProvider>)
     open()
-    // Default: the checkbox is checked and the "recommended" label shows.
     expect(screen.getByText(/masked \(recommended\)/i)).toBeTruthy()
     clickBundle()
+    await clickConfirm()
     await waitFor(() => expect(lastOpts).toEqual({ maskOutOfScope: true }))
   })
 
@@ -40,9 +52,10 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
     render(<I18nProvider><ExportMenu /></I18nProvider>)
     open()
     const checkbox = screen.getByRole('checkbox')
-    fireEvent.click(checkbox) // uncheck → include raw
+    fireEvent.click(checkbox)
     expect(screen.getByText(/including out-of-scope content raw/i)).toBeTruthy()
     clickBundle()
+    await clickConfirm()
     await waitFor(() => expect(lastOpts).toEqual({ maskOutOfScope: false }))
   })
 })

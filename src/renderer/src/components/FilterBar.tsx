@@ -5,8 +5,8 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 
 export function FilterBar(): JSX.Element | null {
-  const { filter, setTargetId, setAgentType, setTimeRange, clearAll,
-    activeCount, knownTargets, knownAgentTypes } = useSharedFilter()
+  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
@@ -48,6 +48,19 @@ export function FilterBar(): JSX.Element | null {
             label={`${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}`}
             onClear={() => setTimeRange(null)}
           />
+        )}
+        {scopeTargets.length > 0 && (
+          <button
+            onClick={() => setInScopeOnly(!filter.inScopeOnly)}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+              filter.inScopeOnly
+                ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-accent/30'
+            }`}
+            title={t('filter.inScopeHint')}
+          >
+            {t('filter.inScopeOnly')}
+          </button>
         )}
         {activeCount > 1 && (
           <button

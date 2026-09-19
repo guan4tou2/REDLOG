@@ -9,7 +9,9 @@ import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { getProjectDir } from '../../core/db/index'
 import { queryEvents, queryMarkerAmendments, queryScopeFilteredEvents, type RedLogEvent } from '../../core/db/events'
 import { listBookmarks } from '../../core/db/bookmarks'
-import { redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
+import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
+import { getDoNotExportIds } from '../../core/db/do-not-export'
+import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
 import { eventsToNdjson } from '../../core/ndjson-export'
 import { buildTargetWalkthrough } from '../../core/walkthrough-export'
 import { exportBundle } from '../../core/bundle-export'
@@ -42,11 +44,13 @@ function scopeForActiveProject(ctx: IpcContext): { targets: string[]; excludeTar
 /** Build RedactExportOpts from the sharing flag and project config. */
 function redactOpts(ctx: IpcContext, sharing?: boolean): RedactExportOpts {
   const scope = scopeForActiveProject(ctx)
-  if (!sharing) return { scope }
+  const doNotExportIds = getDoNotExportIds()
+  if (!sharing) return { scope, doNotExportIds }
   const project = ctx.getActiveProject()
   const cfg = project ? loadConfig(getProjectPath(project)) : undefined
   return {
     scope,
+    doNotExportIds,
     maskMetadata: true,
     blacklist: cfg?.network?.blacklist ?? []
   }
@@ -67,7 +71,7 @@ function sliceExport(ctx: IpcContext, name: string, payload: unknown): string | 
 export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('har:export', (_e, opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => {
     if (!ctx.getActiveProject()) return null
-    return exportHar({ ...opts, scope: scopeForActiveProject(ctx) })
+    return exportHar({ ...opts, scope: scopeForActiveProject(ctx), doNotExportIds: getDoNotExportIds() })
   })
 
   // --- Evidence bundle ---
@@ -164,7 +168,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const events = (opts?.scopeOnly || opts?.sharing) && scope
       ? queryScopeFilteredEvents(scope.targets).events
       : queryEvents({ limit: -1 })
-    const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: shouldScrub })
+    const ndjson = eventsToNdjson(events, { scope, scrubOperatorPii: shouldScrub, doNotExportIds: getDoNotExportIds() })
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -178,7 +182,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (!ctx.getActiveProject()) return null
     const project = ctx.getActiveProject()!
     const projectDir = getProjectPath(project)
-    let md = buildTargetWalkthrough({ scope: scopeForActiveProject(ctx), generatedAt: new Date().toISOString() })
+    let md = buildTargetWalkthrough({ scope: scopeForActiveProject(ctx), doNotExportIds: getDoNotExportIds(), generatedAt: new Date().toISOString() })
     if (opts?.sharing) md = scrubOperatorPii(md)
     const outDir = path.join(projectDir, 'exports')
     fs.mkdirSync(outDir, { recursive: true })
@@ -254,6 +258,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const { events: scopeEvents, truncated } = queryScopeFilteredEvents(scopeTargets)
     const rOpts: RedactExportOpts = {
       scope: { targets: scopeTargets, excludeTargets: config.scope?.excludeTargets },
+      doNotExportIds: getDoNotExportIds(),
       ...(opts?.sharing ? { maskMetadata: true, blacklist: config.network?.blacklist ?? [] } : {})
     }
     const events = redactEventsForExport(scopeEvents, rOpts)
@@ -276,5 +281,60 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (opts?.sharing) content = scrubOperatorPii(content)
     fs.writeFileSync(filePath, content)
     return filePath
+  })
+
+  // --- Export preview (dry-run stats) ---
+  ipcMain.handle('data:exportPreview', (_e, opts?: SharingOpts) => {
+    const project = ctx.getActiveProject()
+    if (!project) return null
+    const scope = scopeForActiveProject(ctx)
+    const doNotExportIds = getDoNotExportIds()
+    const events = queryEvents({ limit: -1 })
+    let total = events.length
+    let dropped = 0
+    let personalDropped = 0
+    let blacklisted = 0
+    let outOfScope = 0
+    let inScope = 0
+    let sanitized = 0
+
+    const cfg = loadConfig(getProjectPath(project))
+    const bl = opts?.sharing ? (cfg.network?.blacklist ?? []) : []
+    const rOpts: RedactExportOpts = {
+      scope, doNotExportIds,
+      ...(opts?.sharing ? { maskMetadata: true, blacklist: bl } : {})
+    }
+
+    let withBodyRefs = 0
+    let screenshotEvents = 0
+
+    for (const e of events) {
+      if (doNotExportIds.has(e.id)) { dropped++; continue }
+      if (isPersonalDomain(e.targetId, scope)) { personalDropped++; continue }
+      if (opts?.sharing && bl.length > 0 && e.targetId && bl.includes(e.targetId)) { blacklisted++; continue }
+      const r = redactEventForExport(e, rOpts)
+      if (!r) { dropped++; continue }
+      if (isOutOfScope(e.targetId, scope)) outOfScope++
+      else inScope++
+      if (r.data !== e.data) sanitized++
+      if (e.agentType === 'screenshot') screenshotEvents++
+      if (e.data.request_body_ref || e.data.response_body_ref) withBodyRefs++
+    }
+
+    return {
+      total,
+      included: total - dropped - personalDropped - blacklisted,
+      dropped,
+      personalDropped,
+      blacklisted,
+      outOfScope,
+      inScope,
+      sanitized,
+      doNotExportCount: doNotExportIds.size,
+      hasScope: !!scope && scope.targets.length > 0,
+      sharing: !!opts?.sharing,
+      withBodyRefs,
+      screenshotEvents
+    }
   })
 }

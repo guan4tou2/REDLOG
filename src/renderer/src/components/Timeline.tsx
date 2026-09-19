@@ -60,6 +60,24 @@ const isMacPlatform = isMac
 // literal t() call: test/i18n-keys.test.ts can only see those, and a table of
 // key STRINGS would leave all four unchecked — which is exactly how a key that
 // renders as `marker.amendErr.notFound` to the operator gets shipped.
+function ipToLong(ip: string): number {
+  return ip.split('.').reduce((acc, oct) => (acc << 8) + parseInt(oct), 0) >>> 0
+}
+
+function matchesScopePattern(target: string, pattern: string): boolean {
+  if (pattern.startsWith('*.')) {
+    const bare = pattern.slice(2)
+    return target === bare || target.endsWith('.' + bare)
+  }
+  if (pattern.includes('/')) {
+    const [net, bits] = pattern.split('/')
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(target)) return false
+    const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0
+    return (ipToLong(target) & mask) === (ipToLong(net) & mask)
+  }
+  return target === pattern
+}
+
 function amendErrorWhy(code: string, t: (k: string) => string): string | undefined {
   switch (code) {
     case 'not-found': return t('marker.amendErr.notFound')
@@ -71,7 +89,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 }
 
 export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
-  const { filter: sharedFilter } = useSharedFilter()
+  const { filter: sharedFilter, scopeTargets } = useSharedFilter()
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -126,6 +144,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // a partner not yet paged in is simply absent — a graceful no-op.
   const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
   const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
+  const [dneFlag, setDneFlag] = useState(false)
   // §6: the Inspector is a separate layer from the selection. They used to be
   // the same state, so an operator could not walk the timeline by keyboard
   // without a panel covering a third of it — and closing the panel lost their
@@ -503,7 +522,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // applies to the actively-focused event.
   useEffect(() => {
     setShowJson(false)
+    setDneFlag(false)
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
+    if (selectedEvent?.id) {
+      void window.redlog.events.isDoNotExport(selectedEvent.id).then(setDneFlag)
+    }
   }, [selectedEvent?.id])
 
   // Detail-panel drag-to-resize. Handle at the top edge of the panel — drag
@@ -1024,6 +1047,16 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
     return set
   }, [events, effectiveTarget])
+
+  const scopeMatches = useMemo(() => {
+    if (!sharedFilter.inScopeOnly || scopeTargets.length === 0) return null
+    const set = new Set<string>()
+    for (const e of events) {
+      if (!e.targetId) { set.add(e.id); continue }
+      if (scopeTargets.some((p) => matchesScopePattern(e.targetId!, p))) set.add(e.id)
+    }
+    return set
+  }, [events, sharedFilter.inScopeOnly, scopeTargets])
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => {
@@ -2624,13 +2657,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
                   } else if (anomalyFilter) {
                     dimmed = !c.events.some((e) => badgesById.has(e.id))
-                  } else if (targetMatches || filterMatches) {
-                    // Compose: when both a target focus and a text filter
-                    // are active, a cluster stays lit only if it has an
-                    // event satisfying both.
+                  } else if (targetMatches || filterMatches || scopeMatches) {
+                    // Compose: when target focus, text filter, or scope
+                    // filter are active, a cluster stays lit only if it
+                    // has an event satisfying all active conditions.
                     dimmed = !c.events.some((e) =>
                       (!targetMatches || targetMatches.has(e.id)) &&
-                      (!filterMatches || filterMatches.has(e.id)))
+                      (!filterMatches || filterMatches.has(e.id)) &&
+                      (!scopeMatches || scopeMatches.has(e.id)))
                   }
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
@@ -2949,6 +2983,22 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               <TierBadge tier={selectedEvent.tier} variant="detail" show={tierChip} />
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                  dneFlag
+                    ? 'border-red-500/60 bg-red-500/15 text-red-300'
+                    : 'border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border'
+                }`}
+                title={dneFlag ? t('timeline.doNotExportHint') : t('timeline.doNotExport')}
+                onClick={() => {
+                  void window.redlog.events.toggleDoNotExport(selectedEvent.id).then((v) => {
+                    if (v !== null) setDneFlag(v)
+                  })
+                }}
+              >
+                {dneFlag ? t('timeline.doNotExportActive') : t('timeline.doNotExport')}
+              </button>
             </div>
           </div>
           <p className="text-xs text-redlog-text mt-1.5 font-mono leading-relaxed">{titleOf(selectedEvent)}</p>

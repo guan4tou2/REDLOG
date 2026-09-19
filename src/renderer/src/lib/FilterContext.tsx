@@ -10,6 +10,7 @@ export interface SharedFilter {
   targetId: string | null
   agentType: string | null
   timeRange: TimeRange | null
+  inScopeOnly: boolean
 }
 
 interface FilterContextValue {
@@ -17,29 +18,34 @@ interface FilterContextValue {
   setTargetId: (id: string | null) => void
   setAgentType: (type: string | null) => void
   setTimeRange: (range: TimeRange | null) => void
+  setInScopeOnly: (v: boolean) => void
   clearAll: () => void
   activeCount: number
   knownTargets: Array<{ target: string; eventCount: number }>
   knownAgentTypes: string[]
+  scopeTargets: string[]
 }
 
-const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null }
+const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
 
 const FilterContext = createContext<FilterContextValue>({
   filter: EMPTY,
   setTargetId: () => {},
   setAgentType: () => {},
   setTimeRange: () => {},
+  setInScopeOnly: () => {},
   clearAll: () => {},
   activeCount: 0,
   knownTargets: [],
-  knownAgentTypes: []
+  knownAgentTypes: [],
+  scopeTargets: []
 })
 
 export function FilterProvider({ children }: { children: ReactNode }): JSX.Element {
   const [filter, setFilter] = useState<SharedFilter>(EMPTY)
   const [knownTargets, setKnownTargets] = useState<Array<{ target: string; eventCount: number }>>([])
   const [knownAgentTypes, setKnownAgentTypes] = useState<string[]>([])
+  const [scopeTargets, setScopeTargets] = useState<string[]>([])
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -51,6 +57,13 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
       .distinctAgentTypes?.()
       .then((types) => setKnownAgentTypes(types ?? []))
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.redlog.config.get().then((c) => {
+      const cfg = c as { scope?: { targets?: string[] } } | null
+      setScopeTargets(cfg?.scope?.targets ?? [])
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -77,17 +90,21 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const setTimeRange = useCallback((range: TimeRange | null) => {
     setFilter((prev) => ({ ...prev, timeRange: range }))
   }, [])
+  const setInScopeOnly = useCallback((v: boolean) => {
+    setFilter((prev) => ({ ...prev, inScopeOnly: v }))
+  }, [])
   const clearAll = useCallback(() => setFilter(EMPTY), [])
 
   const activeCount = (filter.targetId ? 1 : 0)
     + (filter.agentType ? 1 : 0)
     + (filter.timeRange ? 1 : 0)
+    + (filter.inScopeOnly ? 1 : 0)
 
   const value = useMemo(() => ({
-    filter, setTargetId, setAgentType, setTimeRange, clearAll,
-    activeCount, knownTargets, knownAgentTypes
-  }), [filter, setTargetId, setAgentType, setTimeRange, clearAll,
-       activeCount, knownTargets, knownAgentTypes])
+    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets
+  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
+       activeCount, knownTargets, knownAgentTypes, scopeTargets])
 
   return <FilterContext value={value}>{children}</FilterContext>
 }

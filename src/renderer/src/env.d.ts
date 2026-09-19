@@ -11,6 +11,22 @@ interface ProjectMeta {
   dbSize?: number
 }
 
+interface ExportPreview {
+  total: number
+  included: number
+  dropped: number
+  personalDropped: number
+  blacklisted: number
+  outOfScope: number
+  inScope: number
+  sanitized: number
+  doNotExportCount: number
+  hasScope: boolean
+  sharing: boolean
+  withBodyRefs: number
+  screenshotEvents: number
+}
+
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
@@ -162,6 +178,8 @@ interface RedLogAPI {
     onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
+    toggleDoNotExport: (eventId: string) => Promise<boolean | null>
+    isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
@@ -240,6 +258,7 @@ interface RedLogAPI {
     exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => Promise<string | null>
     exportWalkthrough?: (opts?: { sharing?: boolean }) => Promise<string | null>
     revealPath?: (target: string) => Promise<boolean>
+    exportPreview?: (opts?: { sharing?: boolean }) => Promise<ExportPreview | null>
   }
   visibility: {
     /** §22 disclosure signals, or null with no project open. Optional-called

@@ -1,4 +1,4 @@
-import { redactEventForExport } from './redact-export'
+import { redactEventForExport, type RedactExportOpts } from './redact-export'
 import { operatorPiiReplacements } from './operator-pii'
 import type { RedLogEvent } from './db/events'
 import type { ScopeForSanitize } from './scope-sanitize'
@@ -25,6 +25,7 @@ export interface NdjsonExportOpts {
    *  hostname — so a log shared into a multi-user store can't be traced past
    *  the pseudonym. Off by default: a single-operator export keeps attribution. */
   scrubOperatorPii?: boolean
+  doNotExportIds?: Set<string>
 }
 
 /** One redacted event → one JSON line. Prepends `@timestamp` (ISO 8601 from the
@@ -33,7 +34,8 @@ export function eventsToNdjson(events: RedLogEvent[], opts: NdjsonExportOpts = {
   const reps = opts.scrubOperatorPii ? operatorPiiReplacements() : []
   const out: string[] = []
   for (const e of events) {
-    const red = redactEventForExport(e, opts.scope)
+    const rOpts: RedactExportOpts = { scope: opts.scope, doNotExportIds: opts.doNotExportIds }
+    const red = redactEventForExport(e, rOpts)
     if (!red) continue
     const withTs = { '@timestamp': new Date(red.timestamp).toISOString(), ...red }
     let line = JSON.stringify(withTs)
