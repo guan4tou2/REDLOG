@@ -15,6 +15,7 @@ import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { matchesScopePattern } from '../lib/timelineScopeMatch'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
+import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
@@ -933,21 +934,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   }, [events, sharedFilter.inScopeOnly, scopeTargets])
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
-  const effectsById = useMemo(() => {
-    const m = new Map<string, string[]>()
-    for (const e of events) {
-      const causes = (e.data as { _causes?: unknown } | undefined)?._causes
-      if (Array.isArray(causes)) {
-        for (const c of causes) {
-          if (typeof c !== 'string') continue
-          const arr = m.get(c)
-          if (arr) arr.push(e.id)
-          else m.set(c, [e.id])
-        }
-      }
-    }
-    return m
-  }, [events])
+  const effectsById = useMemo(() => buildEffectsIndex(events), [events])
   // ── What each marker says now (design turn 8b) ─────────────────────────
   //
   // TDZ contract, and it is not theoretical — the e2e has caught this exact
@@ -1000,28 +987,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // event — so a withdrawn violation looks withdrawn on the track without the
   // original row being touched. Same slot and same TDZ contract as the fold
   // memos above: nothing higher may name these.
-  const violationStanding = useMemo(() => {
-    const cleared = new Set<string>()
-    const superseded = new Set<string>()
-    const latestBySource = new Map<string, string>()
-    for (const e of events) {
-      if (e.agentType !== 'system') continue
-      const d = (e.data ?? {}) as Record<string, unknown>
-      if (d.subtype === 'scope_cleared') {
-        if (typeof d.violation_id === 'string') cleared.add(d.violation_id)
-        continue
-      }
-      if (d.subtype !== 'scope_violation') continue
-      const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
-      const src = typeof causes[0] === 'string' ? (causes[0] as string) : null
-      if (!src) continue
-      // `events` is newest-first, so the FIRST row seen for a source event is
-      // the latest one and everything after it has been superseded.
-      if (latestBySource.has(src)) superseded.add(e.id)
-      else latestBySource.set(src, e.id)
-    }
-    return { cleared, superseded }
-  }, [events])
+  const violationStanding = useMemo(() => computeViolationStanding(events), [events])
 
   const badgesById = useMemo(() => {
     const m = new Map<string, EventBadge[]>()
