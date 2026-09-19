@@ -31,6 +31,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
   // Scope target list from project config — used to compute the inScope column
   // on each target. Empty when config isn't set (in which case every target
   // shows as "in-scope" since there's no rule to violate).
@@ -80,16 +83,32 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     setLoading(false)
   }
 
+  const PAGE_SIZE = 200
+
   const loadEvidence = useCallback(async (target: string) => {
     if (selected === target) {
       setSelected(null)
       setEvidence([])
+      setHasMore(false)
+      setNextCursor(null)
       return
     }
     setSelected(target)
-    const matched = await window.redlog.events.query({ targetId: target, limit: 500 })
-    setEvidence(matched.sort((a, b) => b.timestamp - a.timestamp))
+    const page = await window.redlog.events.queryTargetPage({ targetId: target, limit: PAGE_SIZE })
+    setEvidence(page.items)
+    setHasMore(page.hasMore)
+    setNextCursor(page.nextCursor)
   }, [selected])
+
+  const loadMore = useCallback(async () => {
+    if (!selected || !nextCursor || loadingMore) return
+    setLoadingMore(true)
+    const page = await window.redlog.events.queryTargetPage({ targetId: selected, limit: PAGE_SIZE, cursor: nextCursor })
+    setEvidence((prev) => [...prev, ...page.items])
+    setHasMore(page.hasMore)
+    setNextCursor(page.nextCursor)
+    setLoadingMore(false)
+  }, [selected, nextCursor, loadingMore])
 
   // The filtered target list must be fully built BEFORE the keyboard hook
   // reads its length. These were interleaved — `listNav` sat inside the
@@ -241,6 +260,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                           </span>
                         ))}
                       </div>
+                      <p className="text-redlog-text-dim text-xs mb-1">
+                        {t('targets.loaded', { loaded: evidence.length, total: tgt.eventCount })}
+                      </p>
                       {evidence.slice(0, 20).map((e) => (
                         <div key={e.id} className="flex items-start gap-2 text-xs">
                           <span className={`font-mono font-bold w-4 shrink-0 ${agentColor[e.agentType] || 'text-redlog-text-dim'}`}>
@@ -254,11 +276,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                             {e.agentType === 'screenshot' && `Screenshot: ${e.data.filename as string}`}
                             {e.agentType === 'clipboard' && `Clipboard: ${(e.data.content as string)?.slice(0, 60) || ''}`}
                             {e.agentType === 'file_transfer' && `${e.data.direction}: ${e.data.filename || e.data.localPath || e.data.remotePath}`}
-                            {/* An amendment carries `severity` and `title` under the same
-                                names as a marker, so a severity-only correction would read
-                                '[critical] undefined' here. Defensive only — this page
-                                aggregates on target and `marker:create` sets none, so only
-                                markers POSTed with a target_id reach it at all. */}
                             {e.agentType === 'marker' && (isMarkerAmendment(e)
                               ? t('marker.amendmentRow', {
                                   title: String((e.data as Record<string, unknown>).markerId ?? ''),
@@ -270,8 +287,17 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                           </span>
                         </div>
                       ))}
-                      {evidence.length > 20 && (
+                      {evidence.length > 20 && !hasMore && (
                         <p className="text-redlog-text-faint text-xs">{t('targets.andMore', { count: evidence.length - 20 })}</p>
+                      )}
+                      {hasMore && (
+                        <button
+                          onClick={loadMore}
+                          disabled={loadingMore}
+                          className="mt-2 text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint"
+                        >
+                          {loadingMore ? t('targets.loading') : t('targets.loadMore', { loaded: evidence.length, total: tgt.eventCount })}
+                        </button>
                       )}
                     </>
                   )}

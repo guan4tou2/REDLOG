@@ -3,6 +3,7 @@ import type { IpcContext } from './types'
 import {
   queryEvents, queryEventById, queryByFlowId, searchEvents,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
+  queryTargetEventsPage,
   distinctHosts, hostCausalChain, insertEvent,
   type RedLogEvent, type EventTierFilter
 } from '../../core/db/events'
@@ -28,6 +29,11 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:aggregateTargets', () =>
     ctx.getActiveProject() ? aggregateTargets() : [])
+
+  ipcMain.handle('events:queryTargetPage', (_e, opts: { targetId: string; limit?: number; cursor?: string | null }) =>
+    ctx.getActiveProject() && typeof opts?.targetId === 'string'
+      ? queryTargetEventsPage(opts)
+      : { items: [], hasMore: false, nextCursor: null })
 
   ipcMain.handle('events:distinctHosts', () =>
     ctx.getActiveProject() ? distinctHosts() : [])
