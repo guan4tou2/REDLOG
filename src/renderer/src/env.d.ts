@@ -158,6 +158,11 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => Promise<RedLogEvent[]>
+    searchPage: (opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
     distinctAgentTypes: () => Promise<string[]>
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */

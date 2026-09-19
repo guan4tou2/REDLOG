@@ -536,6 +536,110 @@ function toMatchQuery(raw: string): string | null {
     .join(' ')
 }
 
+export function searchEventsPage(opts: {
+  query: string
+  limit?: number
+  cursor?: string | null
+  agentType?: string
+  since?: number
+  before?: number
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const match = toMatchQuery(opts.query)
+  if (!match) return { items: [], hasMore: false, nextCursor: null }
+
+  const limit = opts.limit ?? 100
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+
+  const chainedExtra: string[] = []
+  const loggedExtra: string[] = []
+  const chainedParams: unknown[] = []
+  const loggedParams: unknown[] = []
+
+  if (opts.agentType) {
+    chainedExtra.push('e.agent_type = ?')
+    loggedExtra.push('e.agent_type = ?')
+    chainedParams.push(opts.agentType)
+    loggedParams.push(opts.agentType)
+  }
+  if (opts.since != null) {
+    chainedExtra.push('e.timestamp >= ?')
+    loggedExtra.push('e.timestamp >= ?')
+    chainedParams.push(opts.since)
+    loggedParams.push(opts.since)
+  }
+  if (opts.before != null) {
+    chainedExtra.push('e.timestamp <= ?')
+    loggedExtra.push('e.timestamp <= ?')
+    chainedParams.push(opts.before)
+    loggedParams.push(opts.before)
+  }
+
+  if (cursor) {
+    const cc = buildPerArmCursorWhere(cursor, 'chained')
+    chainedExtra.push(cc.sql.replace(/\browid\b/g, 'e.rowid'))
+    chainedParams.push(...cc.params)
+
+    const lc = buildPerArmCursorWhere(cursor, 'logged')
+    loggedExtra.push(lc.sql.replace(/\browid\b/g, 'e.rowid'))
+    loggedParams.push(...lc.params)
+  }
+
+  const chainedWhere = chainedExtra.length ? ' AND ' + chainedExtra.join(' AND ') : ''
+  const loggedWhere = loggedExtra.length ? ' AND ' + loggedExtra.join(' AND ') : ''
+
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
+               e.monotonic_ns, e.ntp_offset_ms, e.signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events e
+        JOIN events_fts ON events_fts.rowid = e.rowid
+        WHERE events_fts MATCH ?${chainedWhere}
+        ORDER BY e.timestamp DESC, e.rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data,
+               NULL AS hash, NULL AS prev_hash, e.created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged e
+        JOIN events_logged_fts ON events_logged_fts.rowid = e.rowid
+        WHERE events_logged_fts MATCH ?${loggedWhere}
+        ORDER BY e.timestamp DESC, e.rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  const bind = [
+    match, ...chainedParams, perArmLimit,
+    match, ...loggedParams, perArmLimit,
+    limit + 1
+  ]
+
+  try {
+    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+    const page = toQueryPage(rows, limit, (row) => ({
+      ts: row.timestamp as number,
+      row: row._row as number,
+      tier: row.tier as 'chained' | 'logged'
+    }))
+    return { ...page, items: page.items.map(rowToEvent) }
+  } catch {
+    return { items: [], hasMore: false, nextCursor: null }
+  }
+}
+
 export function searchEvents(query: string, limit = 100, opts?: { agentType?: string; since?: number; before?: number }): RedLogEvent[] {
   const db = getReadonlyDB()
   const match = toMatchQuery(query)

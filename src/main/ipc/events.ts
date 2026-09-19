@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventById, queryByFlowId, searchEvents,
+  queryEvents, queryEventById, queryByFlowId, searchEvents, searchEventsPage,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
   distinctHosts, hostCausalChain, insertEvent,
@@ -23,6 +23,11 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) =>
     ctx.getActiveProject() ? searchEvents(query, limit, opts) : [])
+
+  ipcMain.handle('events:searchPage', (_e, opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) =>
+    ctx.getActiveProject() && typeof opts?.query === 'string'
+      ? searchEventsPage(opts)
+      : { items: [], hasMore: false, nextCursor: null })
 
   ipcMain.handle('events:distinctAgentTypes', () =>
     ctx.getActiveProject() ? distinctAgentTypes() : [])
