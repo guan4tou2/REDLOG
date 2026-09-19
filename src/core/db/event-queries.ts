@@ -250,6 +250,81 @@ export function queryTargetEventsPage(opts: {
   return { ...page, items: page.items.map(rowToEvent) }
 }
 
+export function queryScreenshotPage(opts: {
+  limit?: number
+  cursor?: string | null
+  trigger?: string | null
+}): QueryPage<RedLogEvent> {
+  const db = getReadonlyDB()
+  const limit = opts.limit ?? 100
+  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+
+  const baseConds = ["agent_type = 'screenshot'"]
+  const baseParams: unknown[] = []
+
+  if (opts.trigger) {
+    baseConds.push("json_extract(data, '$.trigger') = ?")
+    baseParams.push(opts.trigger)
+  }
+
+  const chainedConds = [...baseConds]
+  const loggedConds = [...baseConds]
+  const chainedParams = [...baseParams]
+  const loggedParams = [...baseParams]
+
+  if (cursor) {
+    const cc = buildPerArmCursorWhere(cursor, 'chained')
+    chainedConds.push(cc.sql)
+    chainedParams.push(...cc.params)
+
+    const lc = buildPerArmCursorWhere(cursor, 'logged')
+    loggedConds.push(lc.sql)
+    loggedParams.push(...lc.params)
+  }
+
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+               monotonic_ns, ntp_offset_ms, signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events
+        WHERE ${chainedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data,
+               NULL AS hash, NULL AS prev_hash, created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged
+        WHERE ${loggedConds.join(' AND ')}
+        ORDER BY timestamp DESC, rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  const bind = [...chainedParams, perArmLimit, ...loggedParams, perArmLimit, limit + 1]
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+
+  const page = toQueryPage(rows, limit, (row) => ({
+    ts: row.timestamp as number,
+    row: row._row as number,
+    tier: row.tier as 'chained' | 'logged'
+  }))
+
+  return { ...page, items: page.items.map(rowToEvent) }
+}
+
 // v0.6.96 Bug-2: O(1)-ish lookup by event id. Prior code did
 // `queryEvents({ limit: 5000 }).find(e => e.id === X)` for every replay /
 // slice request — for events older than the newest 5000, the find returned
