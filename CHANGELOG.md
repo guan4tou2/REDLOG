@@ -26,6 +26,10 @@ Security:
 Performance:
 - `scrubCast` 記憶體從 O(filesize) 降為 O(64KB) chunked I/O
 
+UX improvements:
+- ExportMenu 空專案時停用所有匯出按鈕 + 提示「尚無事件可匯出」
+- 分享用模式下證據包區塊提示 maskScope 為獨立控制
+
 Bug fixes:
 - StatusBar pause timer unmount 清理
 - EventMarker Cmd+Enter double-save 防護

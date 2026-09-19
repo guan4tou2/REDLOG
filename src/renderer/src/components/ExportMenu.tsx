@@ -68,13 +68,15 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     }
   }
 
-  const Option = ({ label, count, onPick }: {
-    label: string; count?: number; onPick: () => void
+  const empty = totalCount === 0
+
+  const Option = ({ label, count, onPick, disabled: off }: {
+    label: string; count?: number; onPick: () => void; disabled?: boolean
   }): JSX.Element => (
     <button
       onClick={onPick}
-      disabled={busy}
-      className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40"
+      disabled={busy || off}
+      className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40 disabled:cursor-not-allowed"
     >
       <span className="block text-xs text-redlog-text">{label}</span>
       {typeof count === 'number' && (
@@ -138,20 +140,26 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             <div className="border-t border-redlog-border my-1" />
 
             {/* ── Format options ── */}
+            {empty && (
+              <p className="px-3 py-1 text-xs text-redlog-text-faint italic">{t('export.empty')}</p>
+            )}
             {viewExport && (
               <Option
                 label={viewExport.label}
                 count={viewExport.count}
+                disabled={empty}
                 onPick={() => void run(viewExport.label, () => viewExport.run(sharingOpts))}
               />
             )}
             <Option
               label={t('export.all')}
               count={totalCount}
+              disabled={empty}
               onPick={() => void run(t('export.all'), () => window.redlog.data.exportJson(sharingOpts))}
             />
             <Option
               label={t('export.ndjson')}
+              disabled={empty}
               onPick={() => void run(t('export.ndjson'), () => {
                 const api = window.redlog.data as { exportNdjson?: (o?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean }) => Promise<string | null> }
                 return api.exportNdjson?.(sharingOpts) ?? Promise.resolve(null)
@@ -162,6 +170,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
             {/* ── Evidence bundle (separate — different semantics) ── */}
             <Option
               label={t('export.bundle')}
+              disabled={empty}
               onPick={() => void (async () => {
                 setBusy(true)
                 try {
@@ -205,6 +214,11 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 {maskScope ? t('export.maskScope') : t('export.maskScopeOff')}
               </span>
             </label>
+            {sharing && (
+              <p className="px-3 pb-1 text-xs text-redlog-text-faint leading-tight">
+                {t('export.bundleScopeIndependent')}
+              </p>
+            )}
           </div>
         </>
       )}
