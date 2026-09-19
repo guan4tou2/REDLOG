@@ -207,17 +207,43 @@ It's a thin query-result envelope:
 interface QueryPage<T> {
   items: T[]
   hasMore: boolean
-  cursor: string | null  // opaque, encodes (timestamp, created_at) keyset
+  nextCursor: string | null  // opaque, encodes (timestamp, _row, tier) keyset
 }
 ```
 
-Plus a shared `buildCursorWhere()` that:
-- Encodes/decodes `(timestamp, created_at)` as the keyset
-- Generates the `WHERE (timestamp < ? OR (timestamp = ? AND created_at < ?))` clause
-- Works with the existing `ORDER BY timestamp DESC, _row DESC`
-- Handles both tiers via the existing UNION ALL pattern
+### Cursor key = `(timestamp, _row, tier)`
 
-And a `hasMore` detection via `LIMIT + 1` fetch:
+The cursor MUST use the same columns as the canonical ORDER BY:
+
+```sql
+ORDER BY timestamp DESC, _row DESC, tier_rank DESC
+```
+
+- `_row` = SQLite `rowid`, unique per table but NOT globally unique across
+  `events` + `events_logged` — two rows from different tiers can share the
+  same `(timestamp, _row)`.
+- `tier_rank` is the final tie-break: `chained=1, logged=0`.
+- `(rowid, tier)` IS globally unique because `rowid` is unique per table.
+
+**NOT `created_at`**: both tiers set `created_at = Date.now()` at write time,
+which is not strictly monotonic (same-millisecond writes, NTP correction).
+
+### Cursor WHERE predicate (3-level keyset)
+
+```sql
+WHERE (timestamp < :ts)
+   OR (timestamp = :ts AND _row < :row)
+   OR (timestamp = :ts AND _row = :row AND tier_rank < :tierRank)
+```
+
+### `_row` stays OUT of `RedLogEvent`
+
+`_row` is SQLite pagination metadata. The cursor key is extracted from the
+raw SQL result BEFORE `rowToEvent()`, passed to `encodeCursor()`, and the
+opaque string travels to the renderer. The domain event model is not polluted.
+
+### `LIMIT + 1` for `hasMore`
+
 - Request `limit + 1` rows from DB
 - If `limit + 1` rows come back → `hasMore = true`, return first `limit`
 - Otherwise → `hasMore = false`, return all rows
@@ -226,6 +252,7 @@ And a `hasMore` detection via `LIMIT + 1` fetch:
 - `COUNT(*)` on every query — expensive, usually unnecessary
 - OFFSET-based pagination — drift risk with append-only data
 - Generic repository/framework — the 3 query shapes are too different
+- `created_at` as cursor key — not strictly monotonic
 
 ---
 
