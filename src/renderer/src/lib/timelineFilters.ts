@@ -3,6 +3,7 @@ import { groupAmendments, foldMarker } from './markerFold'
 import { eventTitle } from './eventTitle'
 import { matchesScopePattern } from './timelineScopeMatch'
 import { fuzzyScore } from './timelineEvents'
+import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './timelineDomain'
 
 /**
  * Pre-built lowercase search bag per event id — nine string coercions,
@@ -153,4 +154,40 @@ export function computePaletteResults(
   }
   items.sort((a, b) => (b.score - a.score) || (b.ts - a.ts))
   return items.slice(0, 20)
+}
+
+// ── Lane distribution ───────────────────────────────────────────────
+
+/**
+ * Distribute events into per-lane buckets. One pass over the event set.
+ */
+export function distributeLaneEvents(
+  events: readonly RedLogEvent[],
+  pluginTypes: PluginEventType[] | undefined
+): Record<LaneId, RedLogEvent[]> {
+  const map = Object.fromEntries(LANES.map((l) => [l, [] as RedLogEvent[]])) as Record<LaneId, RedLogEvent[]>
+  for (const e of events) map[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)].push(e)
+  return map
+}
+
+/**
+ * Group events by the row they render in. A collapsed band's row
+ * absorbs every event from its constituent lanes; hidden lanes'
+ * events fall out entirely.
+ */
+export function distributeRowEvents(
+  events: readonly RedLogEvent[],
+  visibleRows: readonly string[],
+  collapsedBands: ReadonlySet<string>,
+  pluginTypes: PluginEventType[] | undefined
+): Record<string, RedLogEvent[]> {
+  const map: Record<string, RedLogEvent[]> = {}
+  for (const r of visibleRows) map[r] = []
+  for (const e of events) {
+    const lane = toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)
+    const key = collapsedBands.has(BAND_OF[lane]) ? BAND_OF[lane] : lane
+    const bucket = map[key]
+    if (bucket) bucket.push(e)
+  }
+  return map
 }
