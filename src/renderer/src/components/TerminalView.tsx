@@ -167,13 +167,13 @@ export default function TerminalView(): JSX.Element {
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
             <span title={tab.label} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
             {tab.alive && tab.castRecording === true && (
-              <span className="text-[10px] font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>rec</span>
+              <span className="text-xs font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>rec</span>
             )}
             {tab.alive && tab.castTruncated === true && (
-              <span className="text-[10px] font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>trunc</span>
+              <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>trunc</span>
             )}
             {tab.alive && tab.castRecording === false && tab.castTruncated !== true && (
-              <span className="text-[10px] font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>no rec</span>
+              <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>no rec</span>
             )}
             {tab.cwd && tab.alive && (
               <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>

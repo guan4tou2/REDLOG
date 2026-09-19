@@ -182,7 +182,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 {typeof s.data.sha256 === 'string' && (
                   <button
                     onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(s.data.sha256 as string) }}
-                    className="text-[10px] font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
+                    className="text-xs font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
                     title={`SHA-256: ${s.data.sha256 as string}`}
                   >
                     {(s.data.sha256 as string).slice(0, 12)}
