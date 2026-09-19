@@ -1,6 +1,7 @@
 import { getReadonlyDB } from './index'
 import type { RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
+import { matchPattern } from '../scope-evaluator'
 
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
 const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
@@ -53,7 +54,7 @@ export function queryScopeFilteredEvents(scopeTargets: string[]): { events: RedL
       allEvents.push(...batch)
     } else {
       for (const e of batch) {
-        if (e.targetId ? scopeTargets.some((t) => matchTarget(e.targetId!, t)) : ALLOWED_NO_TARGET_TYPES.has(e.agentType)) {
+        if (e.targetId ? scopeTargets.some((t) => matchPattern(e.targetId!, t)) : ALLOWED_NO_TARGET_TYPES.has(e.agentType)) {
           allEvents.push(e)
         }
       }
@@ -223,15 +224,7 @@ export function hostCausalChain(host: string, opts: { chainLimit?: number } = {}
   }
 }
 
+/** @deprecated Use `matchPattern` from `core/scope-evaluator` directly. */
 export function matchTarget(target: string, pattern: string): boolean {
-  const t = target.toLowerCase()
-  const p = pattern.toLowerCase()
-  if (p.startsWith('*.')) {
-    const domain = p.slice(2)
-    return t === domain || t.endsWith('.' + domain)
-  }
-  if (p.includes('/')) {
-    return t.startsWith(p.split('/')[0])
-  }
-  return t === p || t.includes(p)
+  return matchPattern(target, pattern)
 }
