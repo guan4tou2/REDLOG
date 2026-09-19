@@ -20,7 +20,7 @@ function installBridge(): void {
   }
 }
 
-const open = (): void => { fireEvent.click(screen.getByTitle('Export')) }
+const open = (): void => { fireEvent.click(screen.getByLabelText('Export')) }
 const clickBundle = (): void => { fireEvent.click(screen.getByText('Evidence bundle (with verifier)')) }
 
 describe('ExportMenu — out-of-scope mask override (A2)', () => {
