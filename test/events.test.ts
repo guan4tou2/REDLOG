@@ -327,4 +327,41 @@ describeDB('queryScopeFilteredEvents', () => {
     const filtered = queryScopeFilteredEvents(['*.example.com'])
     expect(filtered.events.length).toBe(1)
   })
+
+  // --- SPEC: Export Event Selection (P0 #2) ---
+  // Domain invariant: Export operates on the complete persisted event population
+  // (events ∪ events_logged) unless policy explicitly excludes an event.
+
+  it('includes logged-tier events (scanner:http_response) for in-scope target', () => {
+    insertEvent('shell', { subtype: 'command_end', command: 'curl 10.0.0.1' }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200, url: 'http://10.0.0.1/' }, { targetId: '10.0.0.1' })
+    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
+    expect(filtered.events.length).toBe(2)
+  })
+
+  it('includes logged-tier dns events for in-scope target', () => {
+    insertEvent('dns', { subtype: 'dns_query', query: 'example.com' }, { targetId: 'example.com' })
+    const filtered = queryScopeFilteredEvents(['example.com'])
+    expect(filtered.events.length).toBe(1)
+  })
+
+  it('excludes out-of-scope logged-tier events', () => {
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '192.168.1.1' })
+    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
+    expect(filtered.events.length).toBe(1)
+  })
+
+  it('includes both tiers when scope is empty (no filtering)', () => {
+    insertEvent('shell', { subtype: 'command_end', command: 'whoami' }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
+    const filtered = queryScopeFilteredEvents([])
+    expect(filtered.events.length).toBe(2)
+  })
+
+  it('excludes system agent_type from logged tier', () => {
+    insertEvent('system', { subtype: 'process_monitor_saturated' })
+    const filtered = queryScopeFilteredEvents([])
+    expect(filtered.events.length).toBe(0)
+  })
 })

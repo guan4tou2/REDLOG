@@ -16,19 +16,38 @@ export function queryScopeFilteredEvents(scopeTargets: string[]): { events: RedL
   let offset = 0
   let truncated = false
   const MAX_ROWS = 500_000
+
+  const where = `
+    WHERE (
+      target_id IS NOT NULL
+      OR agent_type IN (${allowedPlaceholders})
+    )
+    AND agent_type NOT IN (${excludedPlaceholders})
+  `
+  const whereParams = [...allowedNoTarget, ...excluded]
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const sql = `
-      SELECT * FROM events
-      WHERE (
-        target_id IS NOT NULL
-        OR agent_type IN (${allowedPlaceholders})
+      SELECT * FROM (
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+               monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+        FROM events ${where}
+        UNION ALL
+        SELECT rowid AS _row,
+               id, timestamp, engagement_id, session_id, operator_id, agent_type,
+               hostname, source_ip, target_id, data,
+               NULL AS hash, NULL AS prev_hash, created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier
+        FROM events_logged ${where}
       )
-      AND agent_type NOT IN (${excludedPlaceholders})
-      ORDER BY timestamp DESC
+      ORDER BY timestamp DESC, _row DESC
       LIMIT ? OFFSET ?
     `
-    const rows = db.prepare(sql).all(...allowedNoTarget, ...excluded, PAGE, offset) as Array<Record<string, unknown>>
+    const rows = db.prepare(sql).all(...whereParams, ...whereParams, PAGE, offset) as Array<Record<string, unknown>>
     const batch = rows.map(rowToEvent)
     if (scopeTargets.length === 0) {
       allEvents.push(...batch)
