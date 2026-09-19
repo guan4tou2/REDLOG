@@ -1784,7 +1784,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W])
+  }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
 
   // v0.6.91 W3: palette result set — fuzzy match query against events, marker
   // titles, distinct operator names, and distinct hosts. Capped at 20 items.
