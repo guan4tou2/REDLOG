@@ -13,6 +13,9 @@ const SRC = fs.readFileSync(
 const SESSION_BANDS_SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineSessionBands.ts'), 'utf-8'
 )
+const FILTERS_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineFilters.ts'), 'utf-8'
+)
 
 // Capture through the closing dependency array, not just up to it — a
 // non-greedy match that stops at `}, [` cuts the deps off, which is half of
@@ -28,16 +31,19 @@ describe('per-batch work (W19)', () => {
     // Measured on a real 131,833-event project: 116 ms to build, and it ran on
     // every flush whether or not anything was being filtered. It was the most
     // expensive thing on the panel by a factor of three.
-    const body = memoBody('searchIndex')
-    expect(body, 'must bail before the loop when no query is active')
-      .toMatch(/if \(!filterQueryDebounced\.trim\(\)\) return idx/)
-    // The guard has to come before the loop, not after it.
-    expect(body.indexOf('return idx')).toBeLessThan(body.indexOf('for (const e of events)'))
+    // Logic extracted to timelineFilters.ts — verify delegation and that the
+    // extracted module still has the bail-before-loop guard.
+    expect(SRC, 'Timeline delegates to buildSearchIndex')
+      .toMatch(/buildSearchIndex\(/)
+    expect(FILTERS_SRC, 'must bail before the loop when no query is active')
+      .toMatch(/if \(!query\.trim\(\)\) return idx/)
+    expect(FILTERS_SRC.indexOf('return idx')).toBeLessThan(FILTERS_SRC.indexOf('for (const e of events)'))
   })
 
   it('the index rebuilds when the query changes', () => {
     // Making it lazy without this dep would leave the index empty forever.
-    expect(memoBody('searchIndex')).toMatch(/\}, \[events, operatorNames, filterQueryDebounced\]/)
+    expect(SRC).toMatch(/buildSearchIndex\(events, operatorNames, filterQueryDebounced\)/)
+    expect(SRC).toMatch(/\[events, operatorNames, filterQueryDebounced\]/)
   })
 
   it('flushes coalesce once the event set is large', () => {

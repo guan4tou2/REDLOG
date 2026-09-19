@@ -12,10 +12,10 @@ import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
-import { matchesScopePattern } from '../lib/timelineScopeMatch'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
+import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches } from '../lib/timelineFilters'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
@@ -856,82 +856,26 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // EVERY character typed — the memo listed `filterQuery` in its deps, so a
   // 100k-event engagement redid all of that between keypresses. Now typing
   // only walks an array of prebuilt strings.
-  const searchIndex = useMemo(() => {
-    const idx = new Map<string, string>()
-    // v0.11.7 (AUDIT W19): built only while a filter is active.
-    //
-    // This is the most expensive memo on the panel — nine string coercions, a
-    // join, a lowercase and an eventTitle() call per event. Measured on a real
-    // 131,833-event project: **126 ms**, and it ran on every flush whether or
-    // not anything was being filtered, which is almost always.
-    //
-    // Returning early costs one comparison when idle and changes nothing when
-    // typing: the index is rebuilt on the first keystroke, and the query is
-    // already debounced 120 ms so that happens once, not per character.
-    if (!filterQueryDebounced.trim()) return idx
-    // A corrected marker must be findable by what it says NOW as well as by
-    // what it said when it was written — searching the current title and being
-    // shown only the correction, with the finding itself missing, reads as the
-    // finding having been deleted. The fold is computed here rather than read
-    // from `foldById` on purpose: this memo sits above that one, and its
-    // dependency list is pinned by test/timeline-flush.test.ts because adding
-    // to it would undo the W19 idle-bail. Free either way — the loop below is
-    // already skipped whenever no filter is active.
-    const amendmentsByMarker = groupAmendments(events)
-    for (const e of events) {
-      const d = e.data as Record<string, unknown> | undefined
-      const mine = amendmentsByMarker.get(e.id)
-      idx.set(e.id, [
-        String(d?.command ?? ''),
-        String(d?.url ?? ''),
-        String(d?.host ?? ''),
-        String(d?.title ?? ''),
-        String(d?.subtype ?? ''),
-        e.agentType === 'marker' ? String(d?.title ?? '') : '',
-        mine ? foldMarker(e, mine).effective.title : '',
-        e.operatorId,
-        operatorNames[e.operatorId] ?? '',
-        eventTitle(e)
-      ].join('').toLowerCase())
-    }
-    return idx
-  }, [events, operatorNames, filterQueryDebounced])
+  const searchIndex = useMemo(
+    () => buildSearchIndex(events, operatorNames, filterQueryDebounced),
+    [events, operatorNames, filterQueryDebounced]
+  )
 
 
-  const filterMatches = useMemo(() => {
-    const q = filterQueryDebounced.trim().toLowerCase()
-    if (!q) return null
-    const set = new Set<string>()
-    for (const [id, bag] of searchIndex) if (bag.includes(q)) set.add(id)
-    return set
-  }, [searchIndex, filterQueryDebounced])
+  const filterMatches = useMemo(
+    () => computeFilterMatches(searchIndex, filterQueryDebounced),
+    [searchIndex, filterQueryDebounced]
+  )
 
-  // Events that touched the focused target. Touched is intentionally broad:
-  // an event carrying this target as its target_id, or naming it as the
-  // endpoint it connected to / requested / violated scope against - the
-  // operator asking what happened to a host wants the connection, the
-  // request and the scope violation, not only the extractor-tagged rows.
-  const targetMatches = useMemo(() => {
-    if (!effectiveTarget) return null
-    const t = effectiveTarget.toLowerCase()
-    const set = new Set<string>()
-    for (const e of events) {
-      const d = e.data as Record<string, unknown> | undefined
-      const fields = [e.targetId, d?.detectedTarget, d?.remote_addr, d?.host, d?.dest_ip, d?.dest_host, d?.target]
-      if (fields.some((v) => typeof v === 'string' && v.toLowerCase() === t)) set.add(e.id)
-    }
-    return set
-  }, [events, effectiveTarget])
+  const targetMatches = useMemo(
+    () => computeTargetMatches(events, effectiveTarget),
+    [events, effectiveTarget]
+  )
 
-  const scopeMatches = useMemo(() => {
-    if (!sharedFilter.inScopeOnly || scopeTargets.length === 0) return null
-    const set = new Set<string>()
-    for (const e of events) {
-      if (!e.targetId) { set.add(e.id); continue }
-      if (scopeTargets.some((p) => matchesScopePattern(e.targetId!, p))) set.add(e.id)
-    }
-    return set
-  }, [events, sharedFilter.inScopeOnly, scopeTargets])
+  const scopeMatches = useMemo(
+    () => computeScopeMatches(events, scopeTargets, sharedFilter.inScopeOnly),
+    [events, scopeTargets, sharedFilter.inScopeOnly]
+  )
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => buildEffectsIndex(events), [events])
