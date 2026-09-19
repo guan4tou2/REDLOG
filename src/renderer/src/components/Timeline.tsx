@@ -38,7 +38,7 @@ import { eventTitle } from '../lib/eventTitle'
 import { TierBadge } from './TierBadge'
 import { ReplayCommand } from './ReplayCommand'
 import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail } from './TimelineEventDetails'
-import HttpDetail from './HttpDetail'
+import { HttpDetail } from './HttpDetail'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
