@@ -3,7 +3,8 @@ import {
   buildSearchIndex,
   computeFilterMatches,
   computeTargetMatches,
-  computeScopeMatches
+  computeScopeMatches,
+  computePaletteResults
 } from '../src/renderer/src/lib/timelineFilters'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
@@ -156,5 +157,65 @@ describe('computeScopeMatches', () => {
     const events = [evt('a', 'shell', {}, { targetId: '192.168.1.1' })]
     const result = computeScopeMatches(events, ['10.0.20.15'], true)!
     expect(result.has('a')).toBe(false)
+  })
+})
+
+describe('computePaletteResults', () => {
+  const titleFn = (e: RedLogEvent) => {
+    const d = e.data as Record<string, unknown> | undefined
+    return String(d?.title ?? d?.command ?? e.agentType)
+  }
+
+  it('returns empty when query is blank', () => {
+    const events = [evt('a', 'shell', { command: 'whoami' })]
+    expect(computePaletteResults(events, {}, '', titleFn)).toEqual([])
+    expect(computePaletteResults(events, {}, '  ', titleFn)).toEqual([])
+  })
+
+  it('matches events by command field', () => {
+    const events = [
+      evt('a', 'shell', { command: 'nmap -sV 10.0.0.1' }),
+      evt('b', 'shell', { command: 'ls -la' })
+    ]
+    const results = computePaletteResults(events, {}, 'nmap', titleFn)
+    expect(results.length).toBe(1)
+    expect(results[0].kind).toBe('event')
+    expect('event' in results[0] && results[0].event.id).toBe('a')
+  })
+
+  it('matches operators by name and id', () => {
+    const events = [evt('a', 'shell')]
+    const results = computePaletteResults(events, { 'op-1': 'Alice' }, 'alice', titleFn)
+    const opItems = results.filter((r) => r.kind === 'operator')
+    expect(opItems.length).toBe(1)
+    expect(opItems[0].label).toBe('Alice')
+  })
+
+  it('matches distinct hosts', () => {
+    const events = [
+      evt('a', 'scanner', { host: 'web01.internal' }),
+      evt('b', 'scanner', { host: 'web01.internal' })
+    ]
+    const results = computePaletteResults(events, {}, 'web01', titleFn)
+    const hostItems = results.filter((r) => r.kind === 'host')
+    expect(hostItems.length).toBe(1)
+    expect(hostItems[0].label).toBe('web01.internal')
+  })
+
+  it('caps results at 20', () => {
+    const events = Array.from({ length: 30 }, (_, i) =>
+      evt(`e${i}`, 'shell', { command: `cmd${i}` })
+    )
+    const results = computePaletteResults(events, {}, 'cmd', titleFn)
+    expect(results.length).toBe(20)
+  })
+
+  it('sorts by score descending, then timestamp descending', () => {
+    const events = [
+      evt('a', 'shell', { command: 'abc' }),
+      evt('b', 'shell', { command: 'abcdef' })
+    ]
+    const results = computePaletteResults(events, {}, 'abc', titleFn)
+    expect(results.length).toBe(2)
   })
 })
