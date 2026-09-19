@@ -141,25 +141,107 @@ export type SystemEventData =
   | SystemBrowserLaunchedData
   | { subtype: string; [key: string]: unknown }
 
+// ── Scanner shared sub-types ─────────────────────────────────────────
+
+export interface InlineBody {
+  data?: string
+  encoding?: 'text' | 'base64'
+  size?: number
+  sha256?: string
+  truncated?: boolean
+  content_type?: string
+}
+
+export interface HttpBodyRef {
+  sha256: string
+  size: number
+  file: string
+  encoding: 'text' | 'base64'
+  truncated?: boolean
+}
+
+export interface TlsInfo {
+  tls_version?: string
+  alpn?: string
+  cipher?: string
+  cert_subject?: string
+  cert_issuer?: string
+  cert_san?: string[]
+  cert_serial?: string
+  ja3?: string
+  ja3_raw?: string
+}
+
+export interface HttpTiming {
+  connect_ms?: number
+  tls_ms?: number
+  send_ms?: number
+  wait_ms?: number
+  receive_ms?: number
+  total_ms?: number
+}
+
 // ── Scanner ──────────────────────────────────────────────────────────
 
 export interface ScannerHttpResponseData {
   subtype: 'http_response'
+  flow_id?: string
   method?: string
   url?: string
   host?: string
   status?: number
+  content_length?: number
+  content_type?: string
+  response_headers?: string[][]
+  response_preview?: string
+  response_body?: InlineBody
+  response_body_ref?: HttpBodyRef
   duration_ms?: number
-  size?: number
+  tls?: TlsInfo
+  timing?: HttpTiming
+  http_version?: string
+  stream_id?: number
+  set_cookies?: unknown[]
   remote_addr?: string
   remote_port?: number
+  _causes?: string[]
 }
 
 export interface ScannerHttpRequestStartData {
   subtype: 'http_request_start'
+  flow_id?: string
   method?: string
   url?: string
+  path?: string
   host?: string
+  port?: number
+  scheme?: string
+  request_headers?: string[][]
+  params?: Record<string, unknown>
+  request_body_preview?: string
+  request_body?: InlineBody
+  request_body_ref?: HttpBodyRef
+  http_version?: string
+  stream_id?: number
+  cookies?: unknown[]
+}
+
+export interface ScannerWsMessageData {
+  subtype: 'ws_message'
+  flow_id?: string
+  ws_preview?: string
+  ws_body?: InlineBody
+  ws_body_ref?: HttpBodyRef
+  direction?: string
+}
+
+export interface ScannerTcpMessageData {
+  subtype: 'tcp_message'
+  flow_id?: string
+  tcp_preview?: string
+  tcp_body?: InlineBody
+  tcp_body_ref?: HttpBodyRef
+  direction?: string
 }
 
 export interface ScannerConnectionData {
@@ -173,6 +255,8 @@ export interface ScannerConnectionData {
 export type ScannerEventData =
   | ScannerHttpResponseData
   | ScannerHttpRequestStartData
+  | ScannerWsMessageData
+  | ScannerTcpMessageData
   | ScannerConnectionData
   | { subtype: string; [key: string]: unknown }
 
