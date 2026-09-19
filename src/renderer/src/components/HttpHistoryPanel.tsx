@@ -3,7 +3,7 @@ import { hostOutOfScope } from '../lib/scope'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronRight, ChevronDown, X } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { formatTime } from '../lib/time'
+import { formatTime, formatSize } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
@@ -30,11 +30,7 @@ interface HttpFlow {
   causeEventId: string | null
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
+const formatBytes = formatSize
 
 const STATUS_COLORS: Record<string, string> = {
   '2': 'text-green-400',

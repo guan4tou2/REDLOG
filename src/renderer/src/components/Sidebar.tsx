@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRef, useCallback } from 'react'
 import {
   Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair,
   Ban, Gem, Flag, Bookmark, Search, ArrowLeftRight, Settings as SettingsIcon, type LucideIcon
@@ -34,21 +34,11 @@ const NAV_ICON_STROKE = 1.5
 // key that works can never disagree. See src/renderer/src/lib/sidebarOrder.ts.
 import { DEFAULT_ORDER, shortcutNumberFor, type SidebarViewId } from '../lib/sidebarOrder'
 import { isMac } from '../lib/platform'
+import { useAppCounts } from '../lib/useAppCounts'
 
 export default function Sidebar({ active, onNavigate, visibleViews }: SidebarProps): JSX.Element {
-  const [lootCount, setLootCount] = useState(0)
-  const [scopeViolations, setScopeViolations] = useState(0)
+  const { lootCount, scopeViolations } = useAppCounts()
   const { t } = useI18n()
-
-  useEffect(() => {
-    window.redlog.loot.getCount().then(setLootCount)
-    window.redlog.scope.getViolationCount().then(setScopeViolations)
-    const unsub = window.redlog.events.onNew(() => {
-      window.redlog.loot.getCount().then(setLootCount)
-      window.redlog.scope.getViolationCount().then(setScopeViolations)
-    })
-    return unsub
-  }, [])
 
   // §4: 12% tint + same-colour text, the same vocabulary the badges elsewhere
   // use. Only danger fills, and a count is not danger — two solid blocks on

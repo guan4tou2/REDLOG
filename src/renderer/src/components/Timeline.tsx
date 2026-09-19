@@ -31,7 +31,8 @@ import {
 import { eventTitle } from '../lib/eventTitle'
 import { TierBadge } from './TierBadge'
 import { ReplayCommand } from './ReplayCommand'
-import { CommandEndDetail, AgentTurnDetail, ScannerDetail, BrowserConsoleDetail } from './TimelineEventDetails'
+import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail } from './TimelineEventDetails'
+import HttpDetail from './HttpDetail'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -464,27 +465,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
   }, [paletteOpen])
 
-  // v0.6.91 S1: saved views — list + save + delete. Loaded lazily when the
-  // dropdown opens the first time; kept fresh across saves/deletes. `views`
-  // API is optional in the preload contract so a stale renderer bundle
-  // doesn't crash the panel — the dropdown just stays disabled.
-  const [savedViews, setSavedViews] = useState<SavedTimelineView[] | null>(null)
-  const [viewsOpen, setViewsOpen] = useState(false)
   // Overflow for the low-frequency view/audit controls (session dividers,
   // timezone, auditor view) so the toolbar row groups by effect instead of
   // listing eight flat toggles (DESIGN-core-and-capture.md §6).
   const [moreOpen, setMoreOpen] = useState(false)
-  const [viewsName, setViewsName] = useState('')
-  // v0.6.96 Clean-3: `views` is now non-optional in env.d.ts (preload always
-  // exports it). The old cast is gone; direct access is type-safe.
-  const viewsApi = window.redlog.views
-  const refreshViews = useCallback(async (): Promise<void> => {
-    if (!viewsApi?.list) return
-    try { setSavedViews((await viewsApi.list()) ?? []) } catch { setSavedViews([]) }
-  }, [viewsApi])
-  useEffect(() => {
-    if (viewsOpen && savedViews === null) void refreshViews()
-  }, [viewsOpen, savedViews, refreshViews])
 
   // v0.6.91 W1 mutual exclusion: enabling any of the three dim modes clears
   // the others. Kept as a set of effects so keyboard, click, and event-listener
@@ -1871,59 +1855,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     setPaletteQuery('')
   }, [scrollToEvent])
 
-  // v0.6.91 S1: save current Timeline state as a named view. Snapshots the
-  // minimap window (in wall-clock ms), zoom, hidden lanes, and filter query.
-  const saveCurrentView = useCallback(async (name: string): Promise<void> => {
-    if (!viewsApi?.save) return
-    const trimmed = name.trim()
-    if (!trimmed) return
-    const span = (timeEnd - timeStart) || 1
-    const winStart = Math.round(fromX((view.left / 100) * TRACK_W))
-    const winEnd = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-    try {
-      await viewsApi.save({
-        name: trimmed,
-        state: {
-          timeStart: winStart,
-          timeEnd: winEnd,
-          zoom,
-          hiddenLanes: [...hiddenLanes],
-          filterQuery
-        }
-      })
-      setViewsName('')
-      await refreshViews()
-      toast('Saved', 'success')
-    } catch (e) {
-      toast(t('timeline.saveFailed'), {
-        type: 'error',
-        why: t('timeline.saveFailedWhy'),
-        detail: String((e as Error)?.message ?? e)
-      })
-    }
-  }, [viewsApi, timeStart, timeEnd, view, zoom, hiddenLanes, filterQuery, refreshViews, t])
-
-  const applyView = useCallback((v: SavedTimelineView) => {
-    const s = v.state ?? {}
-    if (typeof s.zoom === 'number' && s.zoom >= 0.25 && s.zoom <= 6) setZoom(s.zoom)
-    if (Array.isArray(s.hiddenLanes)) {
-      setHiddenLanes(new Set(s.hiddenLanes.filter((l): l is LaneId => LANES.includes(l as LaneId))))
-    }
-    if (typeof s.filterQuery === 'string') setFilterQuery(s.filterQuery)
-    // Time-window restore — schedule the same pendingView handshake the
-    // minimap-drag path uses so the scroll lands after the next TRACK_W paint.
-    if (typeof s.timeStart === 'number' && typeof s.timeEnd === 'number' && s.timeEnd > s.timeStart) {
-      pendingView.current = { t0: s.timeStart }
-    }
-    setViewsOpen(false)
-  }, [])
-
-  const deleteView = useCallback(async (id: string) => {
-    if (!viewsApi?.delete) return
-    try { await viewsApi.delete(id) } catch { /* ignore */ }
-    await refreshViews()
-  }, [viewsApi, refreshViews])
-
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
     // Respect the current mask/reveal state (audit finding #2). If the panel
@@ -3199,7 +3130,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               the raw-JSON toggle: unformatted, redaction-masked, in a 120px
               box. Same treatment as shell and agent events now. */}
           {selectedEvent.agentType === 'scanner' && (
-            <ScannerDetail data={selectedEvent.data as Record<string, unknown>} eventId={selectedEvent.id} />
+            <HttpDetail data={selectedEvent.data as Record<string, unknown>} eventId={selectedEvent.id} />
           )}
           {selectedEvent.agentType === 'browser' && (
             <BrowserConsoleDetail data={selectedEvent.data as Record<string, unknown>} />

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { useTick } from '../lib/useTick'
 
 // The dark/setup onboarding block: the three core sources as an ordered
 // checklist, plus one primary CTA derived from readiness.nextStep. This is the
@@ -210,11 +211,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // Now we compute against Date.now() at render time and force a rerender
   // once a second. Under-1-second precision doesn't matter for a
   // capture-freshness readout so cadence stays cheap.
-  const [nowTick, setNowTick] = useState(Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNowTick(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
+  const nowTick = useTick()
   const fmtAge = (ts: number | null, now: number): string => {
     if (!ts) return '—'
     const sec = Math.max(0, Math.round((now - ts) / 1000))

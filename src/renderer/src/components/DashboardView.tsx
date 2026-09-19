@@ -8,6 +8,7 @@ import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
 import { toast } from './Toast'
 import { currentShortcutOrder } from '../hooks/useAppShortcuts'
+import { useAppCounts } from '../lib/useAppCounts'
 
 export type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 
@@ -81,11 +82,8 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean }): JSX.Element {
-  const [eventCount, setEventCount] = useState(0)
-  const [lootCount, setLootCount] = useState(0)
+  const { eventCount, lootCount, scopeViolations, scopeConfigured, loading: countsLoading } = useAppCounts()
   const [chainLen, setChainLen] = useState(0)
-  const [scopeViolations, setScopeViolations] = useState(0)
-  const [scopeConfigured, setScopeConfigured] = useState(true)
   // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
   // start at 0 / null so the card doesn't flash a spurious "no logged
   // rows" line while the initial fetch is in flight.
@@ -97,24 +95,22 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
   // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
   const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [localLoading, setLocalLoading] = useState(true)
   // Fixed since §5.3 — no state, no subscription. It was both when the
   // sidebar could be dragged.
   const shortcutOrder = currentShortcutOrder()
 
+  const loading = countsLoading || localLoading
+
   const { t } = useI18n()
 
   useEffect(() => {
-    // Core cards — the dashboard's "loading" resolves on these only, so a
-    // failing/missing add-on API can never wedge it on the loading skeleton.
+    // Dashboard-specific fetches — the shared counts (eventCount, lootCount,
+    // scopeViolations, scopeConfigured) come from useAppCounts.
     Promise.all([
-      window.redlog.events.getCount().then(setEventCount).catch(() => {}),
-      window.redlog.loot.getCount().then(setLootCount).catch(() => {}),
       window.redlog.chain.length().then(setChainLen).catch(() => {}),
-      window.redlog.scope.getViolationCount().then(setScopeViolations).catch(() => {}),
-      window.redlog.scope.isConfigured().then(setScopeConfigured).catch(() => {}),
       window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)).catch(() => {})
-    ]).then(() => setLoading(false))
+    ]).then(() => setLocalLoading(false))
 
     // Capture health is non-critical and loaded separately + guarded, so a
     // stale preload (missing the namespace) or a slow check never blocks load.
@@ -135,13 +131,9 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
       } catch { /* older preload */ }
     }
     loadAnchor()
-    // v0.7.5 G3: refresh the event-count tile on every incoming event.
-    // Dogfood found the tile stuck at its mount-time snapshot after the
-    // transcript tailer ingested ~10K events post-open. `getCount()` is
-    // cheap thanks to v0.6.97 C's in-memory count cache, so re-calling
-    // per event just reads the cached value + rerenders one number.
-    // Loot count updated too — same class of stale-after-batch bug for
-    // the tile even though loot events are lower-rate.
+    // v0.7.5 G3: refresh dashboard-specific counts on every incoming event.
+    // The shared counts (eventCount, lootCount, scopeViolations) are refreshed
+    // by useAppCounts's own onNew subscription.
     //
     // v0.7.6 H2: chainLen was ALSO stuck at mount snapshot — the
     // v0.7.5 dogfood surfaced the "⚠ 證據鏈 10396 ≠ 事件 28338" scary
@@ -149,18 +141,16 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
     // the same table (`WHERE hash IS NOT NULL` for chainLen, `COUNT(*)`
     // for events); with the tailer hashing every insert, they always
     // match on-disk. Refreshing chainLen here closes the drift.
-    const refreshCounts = (): void => {
-      window.redlog.events.getCount().then(setEventCount).catch(() => {})
+    const refreshLocalCounts = (): void => {
       window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
       window.redlog.events.getLatestLoggedTs?.().then(setLatestLoggedTs).catch(() => {})
-      window.redlog.loot.getCount().then(setLootCount).catch(() => {})
       window.redlog.chain.length().then(setChainLen).catch(() => {})
     }
     // Seed the tier split on first paint so the card doesn't wait for
     // the first onNew tick to fill in.
     window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
     window.redlog.events.getLatestLoggedTs?.().then(setLatestLoggedTs).catch(() => {})
-    const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor(); refreshCounts() })
+    const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor(); refreshLocalCounts() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); clearInterval(anchorTimer) }
   }, [])

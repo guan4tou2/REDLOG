@@ -241,7 +241,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                           className="text-xs text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500/40"
                           title={t('targets.addToScope')}
                           aria-label={t('targets.addToScope')}
-                        >+ 範圍</button>
+                        >{t('targets.addToScope')}</button>
                       </>
                     )}
                     {selected === tgt.target

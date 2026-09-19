@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
-import { formatTime } from '../lib/time'
+import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { AlignLeft } from 'lucide-react'
 import { useSharedFilter } from '../lib/FilterContext'
@@ -53,12 +53,7 @@ interface Block {
 
 const MAX_INLINE = 4096
 
-function fmtBytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0 B'
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
+const fmtBytes = formatSize
 
 const KIND_COLOR: Record<Kind, string> = {
   shell: '#22c55e',
