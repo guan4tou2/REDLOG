@@ -10,7 +10,7 @@ import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
-import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
+import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
@@ -1007,19 +1007,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
   useEffect(() => { maxZoomRef.current = maxZoom }, [maxZoom])
-  const clusters = useMemo(() => {
-    const out: Array<{ key: string; lane: LaneId; li: number; x: number; y: number; events: RedLogEvent[] }> = []
-    visibleRows.forEach((rowKey, li) => {
-      const evs = rowEvents[rowKey]
-      if (!evs || !evs.length) return
-      for (const bucket of bucketByPixel(evs, (e) => toX(displayTs(e)), CLUSTER_PX)) {
-        const x = bucket.reduce((a, e) => a + toX(displayTs(e)), 0) / bucket.length
-        const colorLane = toLane(bucket[0].agentType, bucket[0].data?.subtype as string | undefined, pluginTypes)
-        out.push({ key: `${rowKey}-${bucket[0].id}`, lane: colorLane, li, x, y: li * laneH + laneH / 2, events: bucket })
-      }
-    })
-    return out
-  }, [visibleRows, rowEvents, toX, laneH, pluginTypes])
+  const clusters = useMemo(
+    () => buildClusters(visibleRows, rowEvents, toX, laneH, CLUSTER_PX, pluginTypes),
+    [visibleRows, rowEvents, toX, laneH, pluginTypes]
+  )
 
   const sessionBands = useMemo<SessionBand[]>(() => {
     if (!sessionDividers) return []
@@ -1046,17 +1037,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // array — far cheaper than the DOM nodes it removes. The buffer is one
   // viewport on each side, which is what stops nodes popping in during a drag
   // and covers the gap between a scroll event and this state landing.
-  const visibleClusters = useMemo(() => {
-    if (TRACK_W <= 0) return clusters
-    const leftPx = (view.left / 100) * TRACK_W
-    const widthPx = (view.width / 100) * TRACK_W
-    if (widthPx <= 0) return clusters
-    const from = leftPx - widthPx
-    const to = leftPx + widthPx * 2
-    // Nothing to gain once the whole track fits — skip the pass entirely.
-    if (from <= 0 && to >= TRACK_W) return clusters
-    return clusters.filter((c) => c.x >= from && c.x <= to)
-  }, [clusters, view.left, view.width, TRACK_W])
+  const visibleClusters = useMemo(
+    () => filterVisibleClusters(clusters, TRACK_W, view.left, view.width),
+    [clusters, view.left, view.width, TRACK_W]
+  )
 
   const updateView = useCallback(() => {
     const el = scrollRef.current

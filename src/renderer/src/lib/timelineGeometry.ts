@@ -6,6 +6,9 @@
 // out verbatim: the density-driven zoom ceiling and the pixel-bucket clustering.
 // Both are pure, so they get tested without a DOM.
 
+import type { RedLogEvent } from '../../../core/db/event-types'
+import { type LaneId, type PluginEventType, toLane, displayTs } from './timelineDomain'
+
 /**
  * Bucket items that land within the same CLUSTER_PX-wide column into one group,
  * walking left to right. A new bucket starts when floor(x / clusterPx) changes.
@@ -75,4 +78,52 @@ export function computeMaxZoom(p: MaxZoomParams): number {
   if (!Number.isFinite(tightest)) return 6
   const neededTrackW = (timeSpan / tightest) * clusterPx
   return Math.max(6, Math.min(maxTrackW / minBaseTrackW, neededTrackW / minBaseTrackW))
+}
+
+// ── Cluster building ───────────────────────────────────────────────
+
+export interface TimelineCluster {
+  key: string
+  lane: LaneId
+  li: number
+  x: number
+  y: number
+  events: RedLogEvent[]
+}
+
+export function buildClusters(
+  visibleRows: readonly string[],
+  rowEvents: Readonly<Record<string, RedLogEvent[]>>,
+  toX: (ts: number) => number,
+  laneH: number,
+  clusterPx: number,
+  pluginTypes: PluginEventType[] | undefined
+): TimelineCluster[] {
+  const out: TimelineCluster[] = []
+  visibleRows.forEach((rowKey, li) => {
+    const evs = rowEvents[rowKey]
+    if (!evs || !evs.length) return
+    for (const bucket of bucketByPixel(evs, (e) => toX(displayTs(e)), clusterPx)) {
+      const x = bucket.reduce((a, e) => a + toX(displayTs(e)), 0) / bucket.length
+      const colorLane = toLane(bucket[0].agentType, bucket[0].data?.subtype as string | undefined, pluginTypes)
+      out.push({ key: `${rowKey}-${bucket[0].id}`, lane: colorLane, li, x, y: li * laneH + laneH / 2, events: bucket })
+    }
+  })
+  return out
+}
+
+export function filterVisibleClusters(
+  clusters: readonly TimelineCluster[],
+  trackW: number,
+  viewLeft: number,
+  viewWidth: number
+): TimelineCluster[] {
+  if (trackW <= 0) return clusters as TimelineCluster[]
+  const leftPx = (viewLeft / 100) * trackW
+  const widthPx = (viewWidth / 100) * trackW
+  if (widthPx <= 0) return clusters as TimelineCluster[]
+  const from = leftPx - widthPx
+  const to = leftPx + widthPx * 2
+  if (from <= 0 && to >= trackW) return clusters as TimelineCluster[]
+  return clusters.filter((c) => c.x >= from && c.x <= to)
 }
