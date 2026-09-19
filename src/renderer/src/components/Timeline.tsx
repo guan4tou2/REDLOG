@@ -13,15 +13,15 @@ import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, bucketByPixel } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
-import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
+import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
 import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents } from '../lib/timelineFilters'
 import { TimelinePalette } from './TimelinePalette'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import type { PaletteItem } from '../lib/timelineFilters'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
-  isMarkerAmendment, isMarkerOriginal, foldMarker, groupAmendments,
-  AMENDABLE_FIELDS, type MarkerFold, type MarkerValues
+  isMarkerAmendment,
+  AMENDABLE_FIELDS, type MarkerValues
 } from '../lib/markerFold'
 import { MarkerDetail } from './MarkerDetail'
 import { isHookSource, isHousekeeping } from '../lib/housekeeping'
@@ -29,10 +29,10 @@ import { isMac } from '../lib/platform'
 import { useContributeExport } from '../lib/exportScope'
 import {
   LANES, type LaneId, BANDS, type BandId, BAND_OF, EXTERNAL_ONLY_LANES, LANE_COLORS,
-  type PluginEventType, type DotShape, type EventBadge, IO_MARK_COLOR,
+  type PluginEventType, type DotShape, IO_MARK_COLOR,
   displayTs, toLane, eventCompare, binarySearchInsert,
   axisLabel, formatBehind, ioMark, dotShape, shapeTitle, ioTitle,
-  computeBadges, subagentIndentPx, walkFocusChain
+  subagentIndentPx, walkFocusChain
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
 import { TierBadge } from './TierBadge'
@@ -869,17 +869,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   //
   // One walk of `events`, whose body is a type test — the marker lane is a
   // rounding error next to a scan's traffic, and this memo runs on every flush.
-  const foldById = useMemo(() => {
-    const folds = new Map<string, MarkerFold>()
-    const byMarker = groupAmendments(events)
-    if (byMarker.size === 0) return folds
-    for (const e of events) {
-      if (!isMarkerOriginal(e)) continue
-      const mine = byMarker.get(e.id)
-      if (mine) folds.set(e.id, foldMarker(e, mine))
-    }
-    return folds
-  }, [events])
+  const foldById = useMemo(() => buildFoldIndex(events), [events])
 
   // The one place a marker's displayed text is decided. Every consumer calls
   // this rather than `eventTitle` so a corrected finding never shows the words
@@ -913,14 +903,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // memos above: nothing higher may name these.
   const violationStanding = useMemo(() => computeViolationStanding(events), [events])
 
-  const badgesById = useMemo(() => {
-    const m = new Map<string, EventBadge[]>()
-    for (const e of events) {
-      const b = computeBadges(e, brokenAtId, violationStanding.cleared, violationStanding.superseded)
-      if (b.length) m.set(e.id, b)
-    }
-    return m
-  }, [events, brokenAtId, violationStanding])
+  const badgesById = useMemo(
+    () => buildBadgeIndex(events, brokenAtId, violationStanding.cleared, violationStanding.superseded),
+    [events, brokenAtId, violationStanding]
+  )
   const anomalyCount = badgesById.size
 
   // Restore-from-storage: if a focus anchor id was saved in a previous session

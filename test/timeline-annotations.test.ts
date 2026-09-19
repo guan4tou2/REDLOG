@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildEffectsIndex, computeViolationStanding } from '../src/renderer/src/lib/timelineAnnotations'
+import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../src/renderer/src/lib/timelineAnnotations'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
 function evt(id: string, agentType: string, data: Record<string, unknown> = {}): RedLogEvent {
@@ -79,5 +79,44 @@ describe('computeViolationStanding', () => {
     ]
     const { superseded } = computeViolationStanding(events)
     expect(superseded.size).toBe(0)
+  })
+})
+
+describe('buildFoldIndex', () => {
+  it('returns empty map when no markers', () => {
+    const events = [evt('a', 'shell')]
+    expect(buildFoldIndex(events).size).toBe(0)
+  })
+
+  it('returns empty map when no amendments', () => {
+    const events = [evt('m1', 'marker', { title: 'SQLi', severity: 'high' })]
+    expect(buildFoldIndex(events).size).toBe(0)
+  })
+
+  it('folds amendments into original marker', () => {
+    const events = [
+      evt('m1', 'marker', { title: 'SQLi', severity: 'high' }),
+      evt('a1', 'marker', { subtype: 'amended', markerId: 'm1', title: 'SQLi confirmed', severity: 'critical' })
+    ]
+    const folds = buildFoldIndex(events)
+    expect(folds.size).toBe(1)
+    const fold = folds.get('m1')!
+    expect(fold.effective.title).toBe('SQLi confirmed')
+    expect(fold.effective.severity).toBe('critical')
+    expect(fold.amendCount).toBe(1)
+  })
+})
+
+describe('buildBadgeIndex', () => {
+  it('returns empty map for normal events', () => {
+    const events = [evt('a', 'shell')]
+    expect(buildBadgeIndex(events, null, new Set(), new Set()).size).toBe(0)
+  })
+
+  it('badges the event at broken chain point', () => {
+    const events = [evt('a', 'shell')]
+    const badges = buildBadgeIndex(events, 'a', new Set(), new Set())
+    expect(badges.has('a')).toBe(true)
+    expect(badges.get('a')!.length).toBeGreaterThan(0)
   })
 })
