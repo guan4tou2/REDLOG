@@ -37,6 +37,17 @@ export default function ScopePage({
           placeholder={t('settings.excludePlaceholder')}
         />
       </FieldGroup>
+      <FieldGroup title={t('settings.personalDomains')}>
+        <ListField
+          label={t('settings.personalDomainsLabel')}
+          items={config.scope.personalDomains ?? []}
+          onChange={(items) => setConfig({ ...config, scope: { ...config.scope, personalDomains: items } })}
+          placeholder={t('settings.personalDomainsPlaceholder')}
+        />
+        <p className="text-xs text-redlog-text-faint mt-1 leading-relaxed">
+          {t('settings.personalDomainsHint')}
+        </p>
+      </FieldGroup>
       <FieldGroup title={t('settings.scopeFile')}>
         <Field
           label={t('settings.scopeFileLabel')}

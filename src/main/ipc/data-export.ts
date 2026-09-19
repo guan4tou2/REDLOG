@@ -32,11 +32,11 @@ export interface SharingOpts {
  * swap applies regardless of scope; passing this also masks out-of-scope
  * bodies. Undefined only when no project is open (nothing to export anyway).
  */
-function scopeForActiveProject(ctx: IpcContext): { targets: string[]; excludeTargets?: string[] } | undefined {
+function scopeForActiveProject(ctx: IpcContext): { targets: string[]; excludeTargets?: string[]; personalDomains?: string[] } | undefined {
   const project = ctx.getActiveProject()
   if (!project) return undefined
   const cfg = loadConfig(getProjectPath(project))
-  return { targets: snapshotScope(cfg).targets, excludeTargets: cfg.scope?.excludeTargets }
+  return { targets: snapshotScope(cfg).targets, excludeTargets: cfg.scope?.excludeTargets, personalDomains: cfg.scope?.personalDomains }
 }
 
 /** Build RedactExportOpts from the sharing flag and project config. */
@@ -83,7 +83,7 @@ export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const maskOutOfScope = opts?.maskOutOfScope !== false
       const snap = snapshotScope(cfg)
       const bundle = exportBundle(cfg.engagement.id, {
-        scope: { targets: snap.targets, excludeTargets: cfg.scope?.excludeTargets },
+        scope: { targets: snap.targets, excludeTargets: cfg.scope?.excludeTargets, personalDomains: cfg.scope?.personalDomains },
         maskOutOfScope
       })
       return { ok: true, outDir: bundle.outDir, manifest: bundle.manifest }

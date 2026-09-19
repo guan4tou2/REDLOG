@@ -1,5 +1,5 @@
 import { getSanitizedFields } from './sanitize'
-import { scopeMaskReplacements, scopeMetadataReplacements, isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
+import { scopeMaskReplacements, scopeMetadataReplacements, isOutOfScope, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
 import type { RedLogEvent } from './db/events'
 
 // The redaction every export MUST funnel through before event data leaves
@@ -53,6 +53,10 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
     ? { scope: scopeOrOpts }
     : (scopeOrOpts as RedactExportOpts | undefined) ?? {}
   const { scope, maskMetadata, blacklist } = opts
+
+  // Personal/local traffic: always dropped — these rows should never leave
+  // the local machine regardless of export mode (merge or delivery).
+  if (isPersonalDomain(e.targetId, scope)) return null
 
   // Operator-infrastructure exclusion: events targeting the operator's own IPs
   // are excluded entirely in sharing mode — they reveal infra, not findings.
