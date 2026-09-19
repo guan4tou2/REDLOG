@@ -114,18 +114,11 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     abortRef.current = ac
     setSearching(true)
     const seq = ++searchSeqRef.current
-    const searchOpts: Record<string, unknown> = {}
+    const searchOpts: { agentType?: string; since?: number; before?: number } = {}
     if (effectiveTypeFilter) searchOpts.agentType = effectiveTypeFilter
-    window.redlog.events.search(q, 200, searchOpts as { agentType?: string }).then(async (r) => {
-      // Client-side time filter from shared FilterBar
-      if (sharedFilter.timeRange) {
-        const { since, before } = sharedFilter.timeRange
-        r = r.filter((e) => {
-          if (since && e.timestamp < since) return false
-          if (before && e.timestamp > before) return false
-          return true
-        })
-      }
+    if (sharedFilter.timeRange?.since) searchOpts.since = sharedFilter.timeRange.since
+    if (sharedFilter.timeRange?.before) searchOpts.before = sharedFilter.timeRange.before
+    window.redlog.events.search(q, 200, searchOpts).then(async (r) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
       // `searchEvents` is a LIKE over each row's own bytes, so a marker
       // corrected since it was written matches its OLD title only, and the new

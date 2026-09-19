@@ -20,7 +20,7 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:getLatestLoggedTs', () =>
     ctx.getActiveProject() ? getLatestLoggedTs() : null)
 
-  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string }) =>
+  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) =>
     ctx.getActiveProject() ? searchEvents(query, limit, opts) : [])
 
   ipcMain.handle('events:distinctAgentTypes', () =>

@@ -5,6 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let getEventCount: typeof import('../src/core/db/events').getEventCount
@@ -17,6 +18,7 @@ try {
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
+  getDB = dbMod.getDB
   insertEventRaw = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
   getEventCount = eventsMod.getEventCount
@@ -290,6 +292,60 @@ describeDB('searchEvents', () => {
     insertEvent('shell', { command: 'whoami' })
     const results = searchEvents('nmap')
     expect(results.length).toBe(1)
+  })
+
+  // --- SPEC: Search Query Semantics ---
+  // Domain invariant: time range filter is SQL WHERE, not post-LIMIT client filter.
+  // Uses raw INSERT to set specific timestamps (events table trigger blocks UPDATE).
+
+  function rawInsert(table: 'events' | 'events_logged', ts: number, data: Record<string, unknown>): string {
+    const db = getDB()
+    const id = `test-${Math.random().toString(36).slice(2, 10)}`
+    const agentType = (data.agent_type as string) ?? 'shell'
+    db.prepare(`
+      INSERT INTO ${table} (id, timestamp, engagement_id, session_id, operator_id,
+        agent_type, subtype, hostname, source_ip, target_id, data, created_at
+        ${table === 'events' ? ', hash, prev_hash, signature' : ''})
+      VALUES (?, ?, 'test-eng', 'test-sess', 'test-op',
+        ?, ?, '', '', ?, ?, ?
+        ${table === 'events' ? ", 'h', 'p', 's'" : ''})
+    `).run(id, ts, agentType, data.subtype ?? null, data.target_id ?? null, JSON.stringify(data), ts)
+    return id
+  }
+
+  it('since/before filter at SQL level — older match found even when newer matches exist', () => {
+    const oldId = rawInsert('events', 1000, { command: 'findme target' })
+    for (let i = 0; i < 5; i++) {
+      rawInsert('events', 9000 + i, { command: `findme noise${i}` })
+    }
+    const all = searchEvents('findme', 200)
+    expect(all.length).toBe(6)
+    const ranged = searchEvents('findme', 200, { since: 500, before: 1500 })
+    expect(ranged.length).toBe(1)
+    expect(ranged[0].id).toBe(oldId)
+  })
+
+  it('since/before works on logged tier (scanner events)', () => {
+    const earlyId = rawInsert('events_logged', 1000, {
+      agent_type: 'scanner', subtype: 'http_response', status: 200, url: 'http://target/early'
+    })
+    rawInsert('events_logged', 5000, {
+      agent_type: 'scanner', subtype: 'http_response', status: 200, url: 'http://target/late'
+    })
+    const ranged = searchEvents('target', 200, { since: 0, before: 3000 })
+    expect(ranged.length).toBe(1)
+    expect(ranged[0].id).toBe(earlyId)
+  })
+
+  it('agentType + timeRange + text compose correctly', () => {
+    const shellOldId = rawInsert('events', 500, { command: 'scan target' })
+    rawInsert('events_logged', 500, {
+      agent_type: 'scanner', subtype: 'http_response', url: 'http://target/'
+    })
+    rawInsert('events', 2000, { command: 'scan target again' })
+    const results = searchEvents('target', 200, { agentType: 'shell', since: 0, before: 1000 })
+    expect(results.length).toBe(1)
+    expect(results[0].id).toBe(shellOldId)
   })
 })
 
