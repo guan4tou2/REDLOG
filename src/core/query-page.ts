@@ -20,27 +20,28 @@ export interface CursorKey {
 
 const TIER_RANK: Record<string, number> = { chained: 1, logged: 0 }
 
+const CURSOR_VERSION = 1
+
 export function encodeCursor(key: CursorKey): string {
-  return Buffer.from(JSON.stringify(key)).toString('base64url')
+  return Buffer.from(JSON.stringify({ v: CURSOR_VERSION, ...key })).toString('base64url')
 }
 
 export function decodeCursor(opaque: string): CursorKey | null {
   try {
     const parsed = JSON.parse(Buffer.from(opaque, 'base64url').toString())
-    if (
-      typeof parsed.ts !== 'number' ||
-      typeof parsed.row !== 'number' ||
-      (parsed.tier !== 'chained' && parsed.tier !== 'logged')
-    ) return null
-    return parsed as CursorKey
+    if (parsed.v !== CURSOR_VERSION) return null
+    if (!Number.isSafeInteger(parsed.ts) || parsed.ts < 0) return null
+    if (!Number.isSafeInteger(parsed.row) || parsed.row < 1) return null
+    if (parsed.tier !== 'chained' && parsed.tier !== 'logged') return null
+    return { ts: parsed.ts, row: parsed.row, tier: parsed.tier }
   } catch {
     return null
   }
 }
 
-// Builds the WHERE clause fragment for keyset pagination.
-// The cursor condition implements: "strictly before this position in the
-// canonical (timestamp DESC, _row DESC, tier_rank DESC) ordering."
+// Builds the WHERE clause fragment for keyset pagination at the OUTER level
+// of a UNION ALL (where _row and tier_rank are resolved column names from
+// the subquery, not aliases of the same SELECT).
 //
 // Expands to:
 //   (timestamp < :ts)
@@ -58,6 +59,39 @@ export function buildCursorWhere(
   return {
     sql: `(timestamp < ? OR (timestamp = ? AND _row < ?) OR (timestamp = ? AND _row = ? AND ${tierExpr} < ?))`,
     params: [cursor.ts, cursor.ts, cursor.row, cursor.ts, cursor.row, rank]
+  }
+}
+
+// Per-arm cursor predicate for use INSIDE each UNION arm's WHERE clause.
+// Uses `rowid` (the real SQLite column) instead of the `_row` alias, and
+// resolves the tier_rank comparison at build time since each arm's rank is
+// a known constant.
+//
+// This is required when per-arm LIMIT is used: without pushing the cursor
+// into each arm, the arm returns its top-N rows regardless of cursor
+// position, and the outer cursor filter loses rows past the per-arm cap.
+export function buildPerArmCursorWhere(
+  cursor: CursorKey,
+  armTier: 'chained' | 'logged'
+): { sql: string; params: unknown[] } {
+  const cursorRank = TIER_RANK[cursor.tier] ?? 0
+  const armRank = TIER_RANK[armTier]
+
+  if (armRank < cursorRank) {
+    // This arm's tier_rank is strictly less than cursor's, so at the exact
+    // (cursor.ts, cursor.row), a row from this arm appears AFTER the cursor
+    // in DESC order → include it (rowid <= instead of <).
+    return {
+      sql: '(timestamp < ? OR (timestamp = ? AND rowid <= ?))',
+      params: [cursor.ts, cursor.ts, cursor.row]
+    }
+  }
+
+  // armRank >= cursorRank: at (cursor.ts, cursor.row), this arm's row is
+  // at or before the cursor in DESC order → exclude it (strict <).
+  return {
+    sql: '(timestamp < ? OR (timestamp = ? AND rowid < ?))',
+    params: [cursor.ts, cursor.ts, cursor.row]
   }
 }
 
