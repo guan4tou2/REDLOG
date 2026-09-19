@@ -7,7 +7,6 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
-import { timelineShortcuts } from '../lib/shortcuts'
 import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
@@ -17,6 +16,7 @@ import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands
 import { buildEffectsIndex, computeViolationStanding } from '../lib/timelineAnnotations'
 import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents } from '../lib/timelineFilters'
 import { TimelinePalette } from './TimelinePalette'
+import { TimelineHelpModal } from './TimelineHelpModal'
 import type { PaletteItem } from '../lib/timelineFilters'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
@@ -1601,52 +1601,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         onActivate={activatePaletteItem}
         t={t}
       />
-      {/* v0.9.3 U2: keyboard-shortcut cheatsheet modal. Same overlay
-          pattern as the ⌘K palette — Escape and backdrop click both
-          close. Grouped so operators can scan by task ("I want to
-          filter" → look at the filter row) instead of memorising a
-          flat list. */}
-      {showHelp && (
-        <div
-          data-testid="timeline-help"
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowHelp(false) }}
-        >
-          <div className="w-[560px] max-w-[92vw] rounded-lg border border-redlog-border bg-redlog-bg shadow-2xl overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-redlog-border">
-              <span className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim">{t('timeline.help.title')}</span>
-              <button
-                onClick={() => setShowHelp(false)}
-                className="ml-auto text-xs text-redlog-text-dim hover:text-redlog-text leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-white/10"
-                aria-label={t('timeline.help.close')}
-                title={t('timeline.help.close')}
-              >×</button>
-            </div>
-            <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
-              {/* Rendered from lib/shortcuts.ts, not restated here. The
-                  app-level cheatsheet on the Dashboard had already drifted
-                  four bindings behind by being written twice; this panel was
-                  the second copy waiting to do the same. */}
-              {timelineShortcuts(isMacPlatform).map((group) => (
-                <div key={group.label}>
-                  <div className="text-xs font-mono uppercase tracking-wider text-redlog-text-dim mb-1">{t(group.label)}</div>
-                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                    {group.rows.map((row) => (
-                      <div key={row.keys} className="contents">
-                        <kbd className="font-mono text-xs text-redlog-text bg-redlog-elevated border border-redlog-border rounded px-1.5 py-0.5 whitespace-nowrap">{row.keys}</kbd>
-                        <span className="text-redlog-text-dim">{t(row.label)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="px-3 py-1.5 border-t border-redlog-border text-xs font-mono text-redlog-text-dim text-center">
-              {t('timeline.help.footer')}
-            </div>
-          </div>
-        </div>
-      )}
+      <TimelineHelpModal open={showHelp} onClose={() => setShowHelp(false)} isMac={isMacPlatform} t={t} />
       {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
