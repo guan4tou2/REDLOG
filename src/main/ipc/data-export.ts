@@ -108,7 +108,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   const events = queryEvents(query)
   const blacklist = request.sharing ? (cfg.network?.blacklist ?? []) : []
   const rOpts: RedactExportOpts = {
-    scope,
+    scope: request.maskOutOfScope ? scope : undefined,
     doNotExportIds,
     ...(request.sharing ? { maskMetadata: true, blacklist } : {})
   }
@@ -127,7 +127,7 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
     if (!redacted) continue
     selectedEventIds.push(event.id)
     selectedEvents.push(redacted)
-    if (isOutOfScope(event.targetId, scope)) maskedOutOfScope++
+    if (request.maskOutOfScope && isOutOfScope(event.targetId, scope)) maskedOutOfScope++
     if (redacted.data !== event.data) sanitized++
   }
   const attachmentCounts = request.format === 'bundle'
@@ -165,6 +165,18 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   return plan
 }
 
+function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan, 'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts'> {
+  return {
+    id: plan.id,
+    fingerprint: plan.fingerprint,
+    expiresAt: plan.expiresAt,
+    request: plan.request,
+    snapshot: plan.snapshot,
+    capabilities: plan.capabilities,
+    counts: plan.counts
+  }
+}
+
 export function registerDataExportIpc(
   ipcMain: IpcMain,
   ctx: IpcContext,
@@ -173,7 +185,7 @@ export function registerDataExportIpc(
   const exportPlans = options.planRegistry ?? new ExportPlanRegistry()
   ipcMain.handle('data:resolveExportPlan', (_e, request: ExportRequest) => {
     try {
-      return { ok: true as const, plan: resolveExportPlan(ctx, request, exportPlans) }
+      return { ok: true as const, plan: exportPlanPreview(resolveExportPlan(ctx, request, exportPlans)) }
     } catch (error) {
       return { ok: false as const, error: (error as Error)?.message ?? String(error) }
     }
@@ -190,7 +202,7 @@ export function registerDataExportIpc(
       const selectedIds = new Set(plan.selectedEventIds)
       const available = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
       const planRedaction: RedactExportOpts = {
-        scope: plan.scopeSnapshot,
+        scope: plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined,
         ...(plan.request.sharing ? { maskMetadata: true, blacklist: plan.scopeSnapshot.blacklist ?? [] } : {})
       }
       const approvedNow = redactEventsForExport(available, planRedaction)
@@ -222,7 +234,7 @@ export function registerDataExportIpc(
         if (plan.request.scrubPii) content = scrubOperatorPii(content)
         fs.writeFileSync(artifactPath, content)
       } else if (plan.request.format === 'ndjson') {
-        const scope = plan.scopeSnapshot
+        const scope = plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
         const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => plan.selectedEventIds.includes(event.id))
         const content = eventsToNdjson(events, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set() })
         const outDir = path.join(getProjectPath(project), 'exports')
@@ -261,7 +273,7 @@ export function registerDataExportIpc(
         artifactPath = sliceExport(ctx, `timeline-${new Date(subset.since).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`, {
           window: { fromMs: subset.since, toMs: subset.before },
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint },
-          ...sliceWithAmendments(redactEventsForExport(events, { scope: plan.scopeSnapshot }), redactEventsForExport(amendments, { scope: plan.scopeSnapshot }))
+          ...sliceWithAmendments(redactEventsForExport(events, planRedaction), redactEventsForExport(amendments, planRedaction))
         })
       } else {
         return { ok: false as const, error: 'unsupported-format' }

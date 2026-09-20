@@ -69,6 +69,13 @@
 - [X] T032 Reject execution when approved Event or attachment inputs disappear or actual written counts differ from the plan per FR-002, FR-007 and SC-003 (partial)
 - [X] T033 Stop JSON execution from re-reading mutable current config as approved policy metadata per FR-002 and Constitution V (contradicts)
 
+## Phase 7: Delivery review follow-ups
+
+- [X] T034 Review and complete the delivery contract for format semantics, empty results, lifecycle, keyboard behavior, high-volume expectations and partial output failure.
+- [X] T035 Add a failing regression for raw out-of-scope bundle approval, then make preview, execution validation and artifact generation share `maskOutOfScope` semantics.
+- [X] T036 Stage Evidence Bundle output under an explicit `.partial-*` directory and publish the final directory name only after its manifest is complete; verify the failure path with an injected manifest-write error.
+- [X] T037 Keep selected Event IDs and integrity digests in the main process, return a bounded public plan projection over IPC, and show the approved data snapshot in confirmation UI.
+
 ## Dependencies
 
 `T001–T002 → T003–T007 → US1 (T008–T013) → US2 (T014–T019) → US3 (T020–T025) → T026–T030`.

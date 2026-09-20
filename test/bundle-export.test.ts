@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -45,6 +45,7 @@ describeDB('evidence bundle export', () => {
     ins('marker', { title: 'finding', severity: 'info' })
   })
   afterEach(() => {
+    vi.restoreAllMocks()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })
@@ -81,6 +82,20 @@ describeDB('evidence bundle export', () => {
     const actual = crypto.createHash('sha256')
       .update(fs.readFileSync(path.join(outDir, 'manifest.json'))).digest('hex')
     expect(declared).toBe(actual)
+  })
+
+  it('publishes the final bundle name only after the manifest is complete', () => {
+    const outRoot = path.join(dir, 'atomic-out')
+    const write = fs.writeFileSync.bind(fs)
+    vi.spyOn(fs, 'writeFileSync').mockImplementation(((file: fs.PathOrFileDescriptor, data: string | NodeJS.ArrayBufferView, options?: never) => {
+      if (typeof file === 'string' && path.basename(file) === 'manifest.json') throw new Error('simulated manifest failure')
+      return write(file, data, options)
+    }) as typeof fs.writeFileSync)
+
+    expect(() => exportBundle('eng', { outRoot })).toThrow('simulated manifest failure')
+    const names = fs.readdirSync(outRoot)
+    expect(names.some((name) => /^bundle-.*\.partial-/.test(name))).toBe(true)
+    expect(names.every((name) => name.includes('.partial-'))).toBe(true)
   })
 
   it('events.jsonl holds one parseable event per line, oldest first', () => {

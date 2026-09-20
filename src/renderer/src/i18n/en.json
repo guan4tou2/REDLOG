@@ -876,6 +876,7 @@
   "export.preview.subsetBounded": "Current bounded view",
   "export.preview.policy": "Policy",
   "export.preview.fingerprint": "Plan fingerprint",
+  "export.preview.boundary": "Data snapshot",
   "export.preview.unsupportedAttachments": "Referenced attachments not included",
   "transcript.copyMd": "Copy as Markdown",
   "castSearch.heading": "Terminal recordings",

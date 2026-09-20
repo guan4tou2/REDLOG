@@ -24,6 +24,8 @@ function installBridge(failResolve = false): void {
           ok: true,
           plan: {
             id: 'plan-1', fingerprint: 'abc', expiresAt: Date.now() + 1000,
+            snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
+            capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: false, attachments: true },
             request: { ...request, format: 'bundle', subset: { kind: 'all' }, sharing: false, scopeOnly: false, scrubPii: false, maskOutOfScope: request.maskOutOfScope !== false },
             counts: {
               examined: 10, included: 8, excludedDoNotExport: 1,

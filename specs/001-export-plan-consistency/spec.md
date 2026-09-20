@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-19
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: Ensure every export preview describes the same selected evidence,
 policy, attachments, and dataset boundary that execution will produce.
@@ -102,6 +102,25 @@ notice with refreshed counts.
 - Export fails after some files are written but before the artifact is complete.
 - The project receives high-volume events continuously during preview.
 
+### Format Contract Matrix
+
+| Format | Selection contract | Empty selection | Attachments |
+|---|---|---|---|
+| JSON | Complete eligible Events from both tiers at the approved snapshot | Confirmation is disabled; no artifact | Not included and disclosed as unsupported |
+| NDJSON | Complete eligible Events from both tiers at the approved snapshot | Confirmation is disabled; no artifact | Not included and disclosed as unsupported |
+| Evidence Bundle | Complete eligible Events from both tiers plus resolved Evidence files | Confirmation is disabled; no bundle directory | Included, missing and unattributed files counted separately |
+| HAR | Logged-tier HTTP flows inside the approved time/target bounds | Confirmation is disabled; no HAR | Not applicable |
+| Timeline slice | Events and amendments inside the approved time/target bounds | Confirmation is disabled; no slice | Not included and disclosed as unsupported |
+
+“Same resolved selection” means the preview, execution result and manifest use
+the same sorted Event IDs, two-tier row bounds, scope snapshot, policy outcomes,
+attachment inventory and plan fingerprint. Event counts and Evidence attachment
+counts are compared independently.
+
+Masking changes exported field values while retaining the Event; sanitization
+uses an approved replacement; exclusion removes an Event or Evidence item;
+unsupported means the selected format cannot apply or carry that behavior.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -137,6 +156,27 @@ notice with refreshed counts.
   preview and export.
 - **FR-014**: All export formats exposed by the application MUST either comply
   with this contract or explicitly declare their narrower selection semantics.
+- **FR-015**: A resolved plan MUST be single-use, bound to the active project,
+  kept only in main-process memory, expire 15 minutes after resolution, and be
+  invalid after application restart. Expiry, restart, project switching, or a
+  second execution attempt MUST require a new preview.
+- **FR-016**: The confirmation surface MUST trap focus while open, support
+  keyboard navigation, close or return one level on Escape, expose loading via
+  an accessible busy state, expose failures as alerts, and keep confirmation
+  disabled while loading, after failure, or for an empty selection.
+- **FR-017**: If execution fails after creating part of an output, RedLog MUST
+  not return that path as a completed artifact or display success. Any partial
+  path that cannot be removed MUST be visibly marked incomplete and excluded
+  from the result manifest.
+- **FR-018**: Dataset mutations after preview have these outcomes: later inserts
+  are excluded by the approved row bounds; disappearance or mutation of a
+  selected Event or Evidence file rejects execution; project or policy/scope
+  changes reject execution unless the plan already contains the complete frozen
+  policy input needed by that adapter; amendments follow the same approved
+  selection rule as their source view.
+- **FR-019**: Legacy export handlers MAY remain for callers not yet migrated,
+  but only `data:resolveExportPlan` followed by `data:executeExportPlan` may be
+  labelled or presented as an approved-preview export.
 
 ### Key Entities
 
@@ -167,6 +207,12 @@ notice with refreshed counts.
   code or external documentation.
 - **SC-006**: Existing JSON, NDJSON, HAR, Evidence Bundle, and Timeline slice
   exports retain their documented valid use cases after migration.
+- **SC-007**: Resolving a preview over 100,000 Events completes without sending
+  full Event payloads to the renderer; the renderer receives only counts,
+  policy metadata, boundaries and an opaque plan identifier.
+- **SC-008**: Keyboard-only tests can open the export menu, select a format,
+  observe loading or an error, return with Escape, and keep focus within the
+  open surface.
 
 ## Assumptions
 
@@ -181,3 +227,16 @@ notice with refreshed counts.
   or narrow the approved result.
 - The feature does not add cloud delivery, case management, report authoring,
   or a new export format.
+
+## Authority and Lifecycle
+
+`docs/domain/SPEC-export-event-selection.md` is authoritative for Event and
+Evidence eligibility semantics. This feature owns only resolution lifecycle,
+preview projection, execution binding and result reporting. If the two differ,
+the domain specification must be amended first and this feature must reference
+that reviewed amendment.
+
+From the operator's perspective, approval begins when preview resolution
+succeeds and ends on the first execution attempt, after 15 minutes, when the
+active project changes, or when the application restarts. A failed or consumed
+plan is never silently retried; the UI returns the operator to a fresh preview.

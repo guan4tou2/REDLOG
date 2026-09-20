@@ -31,7 +31,15 @@ interface ResolvedExportPlan {
   id: string
   fingerprint: string
   expiresAt: number
+  snapshot: ExportSnapshot
   request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
+  capabilities: {
+    snapshot: boolean
+    boundedSubset: boolean
+    scopeMasking: boolean
+    piiScrubbing: boolean
+    attachments: boolean
+  }
   counts: {
     examined: number
     included: number
