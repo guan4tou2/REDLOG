@@ -10,7 +10,19 @@ import { getProjectDir } from '../../core/db/index'
 import { queryEvents, queryMarkerAmendments, queryScopeFilteredEvents, type RedLogEvent } from '../../core/db/events'
 import { listBookmarks } from '../../core/db/bookmarks'
 import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
-import { takeExportSnapshot, type ExportSnapshot } from '../../core/export-plan'
+import {
+  ExportPlanRegistry,
+  capabilitiesFor,
+  countExportAttachments,
+  countReferencedAttachments,
+  createExportPlan,
+  fingerprintValue,
+  normalizeExportRequest,
+  takeExportSnapshot,
+  type ExportPlan,
+  type ExportRequest,
+  type ExportSnapshot
+} from '../../core/export-plan'
 import { getDoNotExportIds } from '../../core/db/do-not-export'
 import { isOutOfScope, isPersonalDomain } from '../../core/scope-sanitize'
 import { eventsToNdjson } from '../../core/ndjson-export'
@@ -69,7 +81,211 @@ function sliceExport(ctx: IpcContext, name: string, payload: unknown): string | 
   return filePath
 }
 
-export function registerDataExportIpc(ipcMain: IpcMain, ctx: IpcContext): void {
+function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: ExportPlanRegistry): ExportPlan {
+  const project = ctx.getActiveProject()
+  if (!project) throw new Error('no-active-project')
+  const request = normalizeExportRequest(rawRequest)
+  const capabilities = capabilitiesFor(request.format)
+  if (request.scrubPii && !capabilities.piiScrubbing) {
+    throw new Error(`unsupported-policy: ${request.format} cannot scrub operator PII`)
+  }
+  if (request.subset.kind !== 'all' && !['har', 'timeline'].includes(request.format)) {
+    throw new Error('unsupported-policy: bounded subset')
+  }
+  const cfg = loadConfig(getProjectPath(project))
+  const scopeSnap = snapshotScope(cfg)
+  const scope = {
+    targets: scopeSnap.targets,
+    excludeTargets: scopeSnap.excludeTargets,
+    personalDomains: scopeSnap.personalDomains
+  }
+  const doNotExportIds = getDoNotExportIds()
+  const snapshot = takeExportSnapshot()
+  const formatQuery = request.format === 'har' ? { agentType: 'scanner', tier: 'logged' as const } : {}
+  const query = request.subset.kind === 'time-range'
+    ? { limit: -1, snapshot, since: request.subset.since, before: request.subset.before, targetId: request.subset.targetId, ...formatQuery }
+    : { limit: -1, snapshot, ...formatQuery }
+  const events = queryEvents(query)
+  const blacklist = request.sharing ? (cfg.network?.blacklist ?? []) : []
+  const rOpts: RedactExportOpts = {
+    scope,
+    doNotExportIds,
+    ...(request.sharing ? { maskMetadata: true, blacklist } : {})
+  }
+  let excludedDoNotExport = 0
+  let excludedPersonal = 0
+  let excludedBlacklist = 0
+  let maskedOutOfScope = 0
+  let sanitized = 0
+  const selectedEventIds: string[] = []
+  const selectedEvents: RedLogEvent[] = []
+  for (const event of events) {
+    if (doNotExportIds.has(event.id)) { excludedDoNotExport++; continue }
+    if (isPersonalDomain(event.targetId, scope)) { excludedPersonal++; continue }
+    if (request.sharing && event.targetId && blacklist.includes(event.targetId)) { excludedBlacklist++; continue }
+    const redacted = redactEventForExport(event, rOpts)
+    if (!redacted) continue
+    selectedEventIds.push(event.id)
+    selectedEvents.push(redacted)
+    if (isOutOfScope(event.targetId, scope)) maskedOutOfScope++
+    if (redacted.data !== event.data) sanitized++
+  }
+  const attachmentCounts = request.format === 'bundle'
+    ? countExportAttachments(getProjectPath(project), selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope })
+    : { included: 0, missing: 0, unattributed: 0 }
+  const plan = createExportPlan({
+    projectId: project.id,
+    request,
+    snapshot,
+    scopeSnapshot: {
+      targets: scopeSnap.targets,
+      excludeTargets: scopeSnap.excludeTargets,
+      personalDomains: scopeSnap.personalDomains,
+      blacklist,
+      ...(scopeSnap.scopeFileSha256 ? { sourceHash: scopeSnap.scopeFileSha256 } : {})
+    },
+    counts: {
+      examined: events.length,
+      included: selectedEventIds.length,
+      excludedDoNotExport,
+      excludedPersonal,
+      excludedBlacklist,
+      maskedOutOfScope,
+      sanitized,
+      attachmentsIncluded: attachmentCounts.included,
+      attachmentsMissing: attachmentCounts.missing,
+      attachmentsUnattributed: attachmentCounts.unattributed,
+      unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents)
+    },
+    selectedEventIds,
+    selectedEvidenceDigest: fingerprintValue(selectedEvents),
+    policyFingerprint: fingerprintValue(cfg)
+  })
+  plans.put(plan)
+  return plan
+}
+
+export function registerDataExportIpc(
+  ipcMain: IpcMain,
+  ctx: IpcContext,
+  options: { planRegistry?: ExportPlanRegistry } = {}
+): void {
+  const exportPlans = options.planRegistry ?? new ExportPlanRegistry()
+  ipcMain.handle('data:resolveExportPlan', (_e, request: ExportRequest) => {
+    try {
+      return { ok: true as const, plan: resolveExportPlan(ctx, request, exportPlans) }
+    } catch (error) {
+      return { ok: false as const, error: (error as Error)?.message ?? String(error) }
+    }
+  })
+
+  ipcMain.handle('data:executeExportPlan', (_e, input?: { planId?: string }) => {
+    const project = ctx.getActiveProject()
+    if (!project) return { ok: false as const, error: 'no-active-project' }
+    if (!input?.planId) return { ok: false as const, error: 'invalid-request' }
+    const claimed = exportPlans.claim(input.planId, project.id)
+    if (!claimed.ok) return claimed
+    const plan = claimed.plan
+    try {
+      const selectedIds = new Set(plan.selectedEventIds)
+      const available = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => selectedIds.has(event.id))
+      const planRedaction: RedactExportOpts = {
+        scope: plan.scopeSnapshot,
+        ...(plan.request.sharing ? { maskMetadata: true, blacklist: plan.scopeSnapshot.blacklist ?? [] } : {})
+      }
+      const approvedNow = redactEventsForExport(available, planRedaction)
+      if (approvedNow.length !== plan.selectedEventIds.length || fingerprintValue(approvedNow) !== plan.selectedEvidenceDigest) {
+        return { ok: false as const, error: 'source-unavailable' }
+      }
+      if (plan.request.format === 'json' && fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) {
+        return { ok: false as const, error: 'policy-changed' }
+      }
+      if (plan.request.format === 'bundle') {
+        const attachments = countExportAttachments(getProjectPath(project), approvedNow, {
+          scope: plan.scopeSnapshot,
+          maskOutOfScope: plan.request.maskOutOfScope
+        })
+        if (attachments.included !== plan.counts.attachmentsIncluded || attachments.missing !== plan.counts.attachmentsMissing || attachments.unattributed !== plan.counts.attachmentsUnattributed) {
+          return { ok: false as const, error: 'source-unavailable' }
+        }
+      }
+      let artifactPath: string | null = null
+      if (plan.request.format === 'json') {
+        const projectDir = getProjectPath(project)
+        const config = loadConfig(projectDir)
+        const events = redactEventsForExport(queryEvents({ limit: -1, snapshot: plan.snapshot }), planRedaction)
+          .filter((event) => plan.selectedEventIds.includes(event.id))
+        const outDir = path.join(projectDir, 'exports')
+        fs.mkdirSync(outDir, { recursive: true })
+        artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`)
+        let content = JSON.stringify({ config, events, exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint } }, null, 2)
+        if (plan.request.scrubPii) content = scrubOperatorPii(content)
+        fs.writeFileSync(artifactPath, content)
+      } else if (plan.request.format === 'ndjson') {
+        const scope = plan.scopeSnapshot
+        const events = queryEvents({ limit: -1, snapshot: plan.snapshot }).filter((event) => plan.selectedEventIds.includes(event.id))
+        const content = eventsToNdjson(events, { scope, scrubOperatorPii: plan.request.scrubPii, doNotExportIds: new Set() })
+        const outDir = path.join(getProjectPath(project), 'exports')
+        fs.mkdirSync(outDir, { recursive: true })
+        artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.ndjson`)
+        fs.writeFileSync(artifactPath, content)
+      } else if (plan.request.format === 'bundle') {
+        const cfg = loadConfig(getProjectPath(project))
+        const result = exportBundle(cfg.engagement.id, {
+          scope: plan.scopeSnapshot,
+          maskOutOfScope: plan.request.maskOutOfScope,
+          snapshot: plan.snapshot,
+          includeEventIds: new Set(plan.selectedEventIds),
+          exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts }
+        })
+        artifactPath = result.outDir
+      } else if (plan.request.format === 'har') {
+        const subset = plan.request.subset
+        const content = exportHar({
+          ...(subset.kind === 'time-range' ? { since: subset.since, before: subset.before, targetId: subset.targetId } : {}),
+          snapshot: plan.snapshot,
+          scope: plan.scopeSnapshot,
+          doNotExportIds: new Set()
+        })
+        const outDir = path.join(getProjectPath(project), 'exports')
+        fs.mkdirSync(outDir, { recursive: true })
+        artifactPath = path.join(outDir, `redlog-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.har`)
+        fs.writeFileSync(artifactPath, content)
+      } else if (plan.request.format === 'timeline') {
+        const subset = plan.request.subset
+        if (subset.kind !== 'time-range') return { ok: false as const, error: 'invalid-request' }
+        const events = queryEvents({ limit: -1, since: subset.since, before: subset.before, targetId: subset.targetId, snapshot: plan.snapshot })
+          .filter((event) => plan.selectedEventIds.includes(event.id))
+        const markerIds = markerIdsIn(events)
+        const amendments = markerIds.length > 0 ? queryMarkerAmendments(markerIds) : []
+        artifactPath = sliceExport(ctx, `timeline-${new Date(subset.since).toISOString().replace(/[:.]/g, '-').slice(0, 19)}`, {
+          window: { fromMs: subset.since, toMs: subset.before },
+          exportPlan: { id: plan.id, fingerprint: plan.fingerprint },
+          ...sliceWithAmendments(redactEventsForExport(events, { scope: plan.scopeSnapshot }), redactEventsForExport(amendments, { scope: plan.scopeSnapshot }))
+        })
+      } else {
+        return { ok: false as const, error: 'unsupported-format' }
+      }
+      if (artifactPath && plan.request.format !== 'bundle') {
+        fs.writeFileSync(`${artifactPath}.manifest.json`, JSON.stringify({
+          exportPlan: {
+            id: plan.id,
+            fingerprint: plan.fingerprint,
+            request: plan.request,
+            snapshot: plan.snapshot,
+            scopeSnapshot: plan.scopeSnapshot
+          },
+          actualCounts: plan.counts,
+          artifactPath: path.basename(artifactPath),
+          completedAt: new Date().toISOString()
+        }, null, 2))
+      }
+      return { ok: true as const, planId: plan.id, fingerprint: plan.fingerprint, artifactPath, counts: plan.counts, warnings: [] }
+    } catch (error) {
+      return { ok: false as const, planId: plan.id, fingerprint: plan.fingerprint, error: (error as Error)?.message ?? String(error) }
+    }
+  })
+
   ipcMain.handle('har:export', (_e, opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => {
     if (!ctx.getActiveProject()) return null
     return exportHar({ ...opts, scope: scopeForActiveProject(ctx), doNotExportIds: getDoNotExportIds() })

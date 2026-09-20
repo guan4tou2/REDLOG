@@ -2,6 +2,7 @@ import { queryEvents, type RedLogEvent } from './db/events'
 import { readBody, type BodyRef } from './http-body-store'
 import { redactEventsForExport, type RedactExportOpts } from './redact-export'
 import type { ScopeForSanitize } from './scope-sanitize'
+import type { ExportSnapshot } from './export-plan'
 
 interface HarEntry {
   startedDateTime: string
@@ -127,6 +128,7 @@ export function exportHar(opts?: {
    *  swap applies regardless (see redact-export.ts). */
   scope?: ScopeForSanitize
   doNotExportIds?: Set<string>
+  snapshot?: ExportSnapshot
 }): string {
   const rOpts: RedactExportOpts = { scope: opts?.scope, doNotExportIds: opts?.doNotExportIds }
   const events = redactEventsForExport(queryEvents({
@@ -135,6 +137,7 @@ export function exportHar(opts?: {
     limit: opts?.limit ?? 50000,
     since: opts?.since,
     before: opts?.before,
+    snapshot: opts?.snapshot,
     ...(opts?.targetId ? { targetId: opts.targetId } : {})
   }), rOpts)
 

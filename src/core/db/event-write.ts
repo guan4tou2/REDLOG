@@ -261,7 +261,7 @@ export function canonicalStringify(v: unknown): string {
 // is to hash the logged tier and anchor the hash; this is that hash, in a single
 // index-ordered streaming scan (O(1) memory, canonical-key hashing like the
 // chain), so an export carries a verifiable snapshot with zero write-path cost.
-export function loggedTierDigest(): {
+export function loggedTierDigest(maxRowId?: number): {
   count: number
   sha256: string
   oldest: number | null
@@ -274,8 +274,9 @@ export function loggedTierDigest(): {
   const rows = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, created_at
-     FROM events_logged ORDER BY created_at ASC, rowid ASC`
-  ).iterate() as IterableIterator<Record<string, unknown>>
+     FROM events_logged${maxRowId === undefined ? '' : ' WHERE rowid <= ?'}
+     ORDER BY created_at ASC, rowid ASC`
+  ).iterate(...(maxRowId === undefined ? [] : [maxRowId])) as IterableIterator<Record<string, unknown>>
   const h = crypto.createHash('sha256')
   let count = 0
   let oldest: number | null = null

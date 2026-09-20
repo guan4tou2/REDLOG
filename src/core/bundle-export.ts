@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
-import type { ExportSnapshot } from './export-plan'
+import type { ExportCounts, ExportSnapshot } from './export-plan'
 import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
@@ -42,6 +42,7 @@ interface ManifestPayload {
   sanitizedOutOfScope: number
   personalDropped: number
   doNotExportDropped: number
+  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
   /** v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.7.2): row
    *  counts per tier. `chained` matches chainHead.eventCount — that IS the
    *  count the OTS anchor covers. `logged` is the events_logged row count
@@ -90,6 +91,10 @@ export interface ExportBundleOpts {
    *  legitimately need the pre-redaction content. */
   includeAgentTranscripts?: boolean
   snapshot?: ExportSnapshot
+  /** Exact event selection approved by ExportPlan. When present, later policy
+   * changes cannot silently widen or narrow the bundle. */
+  includeEventIds?: ReadonlySet<string>
+  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
 }
 
 export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024): void {
@@ -170,12 +175,16 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
 
   // v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): fold one cheap digest over
   // the logged tier and append it as a chained `system.logged_tier_digest`
-  // event BEFORE the events.jsonl dump below — so the snapshot ships inside this
-  // bundle's chained tier and the next OTS anchor covers it. This wires §8's own
+  // event BEFORE the events.jsonl dump below for legacy unplanned exports, so
+  // the snapshot ships inside that bundle's chained tier and the next OTS
+  // anchor covers it. Planned exports cannot append a post-approval event to
+  // their frozen selection; they record the bounded digest in the manifest.
+  // This wires §8's own
   // escape hatch ("hash the logged tier and anchor the hash") into the automatic
   // anchor loop instead of leaving it a manual step, without touching the hot
   // logged write path. Skipped on an empty tier, mirroring the retention sweep's
-  // "no rows → no event" rule. NB: this is a snapshot of the LIVE logged tier;
+  // "no rows → no event" rule. With ExportSnapshot this is bounded to the
+  // exact logged tier approved by the operator; legacy exports use the live tier.
   // the byte integrity of the (possibly sanitized) events_logged.jsonl copy is
   // the separate files[].sha256 entry recorded further down.
   // Resolve the signing operator up front: the digest snapshot below is a
@@ -185,8 +194,8 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // bundle is unsigned and the snapshot is skipped, not force-attributed.
   const primary = getPrimaryOperator()
 
-  const loggedDigest = loggedTierDigest()
-  if (loggedDigest.count > 0 && primary) {
+  const loggedDigest = loggedTierDigest(opts.snapshot?.loggedMaxRowId)
+  if (!opts.snapshot && loggedDigest.count > 0 && primary) {
     const ev = insertEvent('system', {
       subtype: 'logged_tier_digest',
       count: loggedDigest.count,
@@ -225,11 +234,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const survivingBodyRefs = new Set<string>()
   const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
-    if (doNotExportIds.has(row.id as string)) {
+    if (opts.includeEventIds && !opts.includeEventIds.has(row.id as string)) continue
+    if (!opts.includeEventIds && doNotExportIds.has(row.id as string)) {
       doNotExportDropped++
       continue
     }
-    if (isPersonalDomain(row.target_id as string | null, opts.scope)) {
+    if (!opts.includeEventIds && isPersonalDomain(row.target_id as string | null, opts.scope)) {
       personalDropped++
       continue
     }
@@ -295,11 +305,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   ).iterate(...(snap ? [snap.loggedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   let loggedRowCount = 0
   for (const row of loggedIter) {
-    if (doNotExportIds.has(row.id as string)) {
+    if (opts.includeEventIds && !opts.includeEventIds.has(row.id as string)) continue
+    if (!opts.includeEventIds && doNotExportIds.has(row.id as string)) {
       doNotExportDropped++
       continue
     }
-    if (isPersonalDomain(row.target_id as string | null, opts.scope)) {
+    if (!opts.includeEventIds && isPersonalDomain(row.target_id as string | null, opts.scope)) {
       personalDropped++
       continue
     }
@@ -451,7 +462,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     if (bodyFiles.length > 0) {
       let dirCreated = false
       for (const name of bodyFiles) {
-        if (scope && survivingBodyRefs.size > 0) {
+        if (scope) {
           const hash = name.replace(/\.body$/, '')
           if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; continue }
         }
@@ -599,7 +610,23 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     files.push({ path: 'README.md', ...sha256File(readmeDest) })
   }
 
-  const head = computeChainHead()
+  // A planned export must describe the same chain boundary the operator
+  // previewed.  Using the live head here would let an event inserted between
+  // preview and execution leak into manifest metadata even though events.jsonl
+  // is correctly bounded by the snapshot.
+  const head = snap
+    ? (() => {
+        const countRow = db.prepare(
+          'SELECT COUNT(*) AS count FROM events WHERE rowid <= ? AND hash IS NOT NULL'
+        ).get(snap.chainedMaxRowId) as { count: number }
+        const row = db.prepare(
+          `SELECT id, hash FROM events
+           WHERE rowid <= ? AND hash IS NOT NULL
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`
+        ).get(snap.chainedMaxRowId) as { id: string; hash: string } | undefined
+        return row ? { hash: row.hash, headEventId: row.id, eventCount: countRow.count } : null
+      })()
+    : computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
@@ -636,6 +663,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     sanitizedOutOfScope: outOfScopeMasked,
     personalDropped,
     doNotExportDropped,
+    exportPlan: opts.exportPlan,
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },
@@ -643,9 +671,8 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     } : undefined,
     eventSourceBreakdown: sourceBreakdown,
     tiers: {
-      // chained = chainHead.eventCount when the head exists; both are
-      // definitionally the count the OTS anchor covers. It now also counts the
-      // system.logged_tier_digest event emitted above, so the anchor covers it.
+      // For planned exports both values describe the approved snapshot. Legacy
+      // exports use the live head, including the digest event emitted above.
       chained: head?.eventCount ?? 0,
       logged: loggedRowCount,
       // §7.5: the anchored snapshot of the logged tier taken above. Surfaced

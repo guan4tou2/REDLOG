@@ -1120,17 +1120,23 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     [events, hiddenLanes, pluginTypes, vp]
   )
 
-  const sliceExportRun = useCallback(async (opts?: { sharing?: boolean }) => {
-    const from = Math.round(fromX((view.left / 100) * TRACK_W))
-    const to = Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
-    return window.redlog.data.exportTimelineSlice?.(from, to, opts) ?? null
-  }, [fromX, view.left, view.width, TRACK_W])
-
   const sliceCount = useMemo(() => computeSliceCount(events, vp), [events, vp])
+  const sliceExportRequest = useMemo<ExportRequest>(() => ({
+    format: 'timeline',
+    subset: {
+      kind: 'time-range',
+      since: Math.round(fromX((view.left / 100) * TRACK_W)),
+      before: Math.round(fromX(((view.left + view.width) / 100) * TRACK_W))
+    }
+  }), [fromX, view.left, view.width, TRACK_W])
 
   useContributeExport(
     events.length > 0
-      ? { label: t('timeline.exportSlice'), run: sliceExportRun, count: sliceCount }
+      ? {
+          label: t('timeline.exportSlice'),
+          request: sliceExportRequest,
+          count: sliceCount
+        }
       : null
   )
 
@@ -2675,4 +2681,3 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     </div>
   )
 }
-

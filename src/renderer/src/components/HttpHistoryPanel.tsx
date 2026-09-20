@@ -584,22 +584,29 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const sortArrow = (col: typeof sortCol) =>
     sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : ''
 
-  const harExportRun = useCallback(async (_opts?: { sharing?: boolean }) => {
-    const opts: { since?: number; before?: number; targetId?: string } = {}
-    if (hostFilter) opts.targetId = hostFilter
-    if (filtered.length > 0) {
-      const timestamps = filtered.map(f => f.timestamp).filter(Boolean)
-      if (timestamps.length > 0) {
-        opts.since = Math.min(...timestamps)
-        opts.before = Math.max(...timestamps) + 1
+  const harExportRequest = useMemo<ExportRequest | null>(() => {
+    if (filtered.length === 0) return null
+    const timestamps = filtered.map((flow) => flow.timestamp)
+    return {
+      format: 'har',
+      subset: {
+        kind: 'time-range',
+        since: Math.min(...timestamps),
+        before: Math.max(...timestamps) + 1,
+        ...(hostFilter ? { targetId: hostFilter } : {})
       }
     }
-    return window.redlog.har.export(opts)
-  }, [hostFilter, filtered])
+  }, [filtered, hostFilter])
 
   useContributeExport(
     filtered.length > 0
-      ? { label: t('httpHistory.exportHar'), run: harExportRun, count: filtered.length }
+      ? {
+          label: t('httpHistory.exportHar'),
+          request: {
+            ...(harExportRequest ?? { format: 'har', subset: { kind: 'all' } })
+          },
+          count: filtered.length
+        }
       : null
   )
 

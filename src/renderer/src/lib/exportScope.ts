@@ -16,7 +16,9 @@ export interface ViewExport {
   /** What the operator will recognise this subset as, in the menu. */
   label: string
   /** Resolves to the written path, or null if the operator cancelled. */
-  run: (opts?: { sharing?: boolean }) => Promise<string | null>
+  run?: (opts?: { sharing?: boolean }) => Promise<string | null>
+  /** Declarative selection used by the canonical preview/execute plan. */
+  request?: ExportRequest
   /** Events in this subset, for the preview line. Omit if not countable. */
   count?: number
 }
@@ -53,15 +55,16 @@ export function useContributeExport(entry: ViewExport | null): void {
   const label = entry?.label
   const count = entry?.count
   const run = entry?.run
+  const request = entry?.request
   useEffect(() => {
-    if (!label || !run) {
+    if (!label || (!run && !request)) {
       return
     }
-    current = { label, run, count }
+    current = { label, run, request, count }
     emit()
     return () => {
       current = null
       emit()
     }
-  }, [label, count, run])
+  }, [label, count, run, request])
 }
