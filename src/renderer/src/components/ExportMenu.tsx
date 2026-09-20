@@ -11,7 +11,8 @@ export interface ExportMenuProps {
 
 interface PendingExport {
   label: string
-  fn: (snapshot?: ExportSnapshot) => Promise<string | null>
+  request?: ExportRequest
+  fn?: (snapshot?: ExportSnapshot) => Promise<string | null>
   sharing?: boolean
 }
 
@@ -24,6 +25,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const [maskScope, setMaskScope] = useState(true)
   const [pending, setPending] = useState<PendingExport | null>(null)
   const [preview, setPreview] = useState<ExportPreview | null>(null)
+  const [resolvedPlan, setResolvedPlan] = useState<ResolvedExportPlan | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const panel = useRef<HTMLDivElement | null>(null)
   useFocusTrap(panel, open)
@@ -44,21 +47,54 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     setPending(p)
     setPreviewLoading(true)
     setPreview(null)
+    setResolvedPlan(null)
+    setPreviewError(null)
     try {
+      if (p.request) {
+        const resolved = await window.redlog.data.resolveExportPlan(p.request)
+        if (!resolved.ok) throw new Error(resolved.error)
+        setResolvedPlan(resolved.plan)
+        setPreview({
+          total: resolved.plan.counts.examined,
+          included: resolved.plan.counts.included,
+          dropped: resolved.plan.counts.excludedDoNotExport,
+          personalDropped: resolved.plan.counts.excludedPersonal,
+          blacklisted: resolved.plan.counts.excludedBlacklist,
+          outOfScope: resolved.plan.counts.maskedOutOfScope,
+          inScope: Math.max(0, resolved.plan.counts.included - resolved.plan.counts.maskedOutOfScope),
+          sanitized: resolved.plan.counts.sanitized,
+          doNotExportCount: resolved.plan.counts.excludedDoNotExport,
+          hasScope: false,
+          sharing: resolved.plan.request.sharing,
+          withBodyRefs: resolved.plan.counts.attachmentsIncluded,
+          screenshotEvents: 0,
+          snapshot: { chainedMaxRowId: 0, loggedMaxRowId: 0, takenAt: 0 }
+        })
+        return
+      }
       const result = await window.redlog.data.exportPreview?.({ sharing: p.sharing })
       setPreview(result ?? null)
-    } catch {
+      if (!result) setPreviewError(t('toast.exportFailedWhy'))
+    } catch (error) {
       setPreview(null)
+      setPreviewError(String((error as Error)?.message ?? error))
     } finally {
       setPreviewLoading(false)
     }
-  }, [])
+  }, [t])
 
   const confirmExport = async (): Promise<void> => {
     if (!pending) return
     setBusy(true)
     try {
-      const path = await pending.fn(preview?.snapshot)
+      let path: string | null = null
+      if (resolvedPlan) {
+        const result = await window.redlog.data.executeExportPlan({ planId: resolvedPlan.id })
+        if (!result.ok) throw new Error(result.error)
+        path = result.artifactPath
+      } else if (pending.fn) {
+        path = await pending.fn(preview?.snapshot)
+      }
       if (path) toast(t('export.done', { label: pending.label }), { type: 'success', why: path })
       else toast(t('export.failed', { label: pending.label }), { type: 'error', why: t('toast.exportFailedWhy') })
     } catch (e) {
@@ -71,6 +107,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       setBusy(false)
       setPending(null)
       setPreview(null)
+      setResolvedPlan(null)
+      setPreviewError(null)
       setOpen(false)
     }
   }
@@ -153,7 +191,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
           >
             {pending ? (
               /* ── Preview panel ── */
-              <div>
+              <div aria-busy={previewLoading} aria-live="polite">
                 <button
                   onClick={() => { setPending(null); setPreview(null) }}
                   className="flex items-center gap-1 px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text w-full"
@@ -166,6 +204,32 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   <p className="px-3 py-3 text-xs text-redlog-text-faint text-center">{t('export.preview.loading')}</p>
                 ) : preview ? (
                   <div className="py-1">
+                    {resolvedPlan && (
+                      <div className="px-3 pb-2 mb-1 border-b border-redlog-border text-xs space-y-1">
+                        <div className="flex justify-between gap-3">
+                          <span className="text-redlog-text-dim">{t('export.preview.format')}</span>
+                          <span className="font-mono text-redlog-text">{resolvedPlan.request.format.toUpperCase()}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-redlog-text-dim">{t('export.preview.subset')}</span>
+                          <span className="text-right text-redlog-text">
+                            {resolvedPlan.request.subset.kind === 'all'
+                              ? t('export.preview.subsetAll')
+                              : t('export.preview.subsetBounded')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-redlog-text-dim">{t('export.preview.policy')}</span>
+                          <span className="text-right text-redlog-text">
+                            {resolvedPlan.request.sharing ? t('export.preset.delivery') : t('export.preset.merge')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-3" title={resolvedPlan.fingerprint}>
+                          <span className="text-redlog-text-dim">{t('export.preview.fingerprint')}</span>
+                          <span className="font-mono text-redlog-text">{resolvedPlan.fingerprint.slice(0, 12)}</span>
+                        </div>
+                      </div>
+                    )}
                     <PreviewRow label={t('export.preview.total')} value={preview.total} />
                     <PreviewRow label={t('export.preview.inScope')} value={preview.inScope} />
                     <PreviewRow label={t('export.preview.outOfScope')} value={preview.outOfScope} warn />
@@ -175,6 +239,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                     <PreviewRow label={t('export.preview.sanitized')} value={preview.sanitized} />
                     <PreviewRow label={t('export.preview.bodyRefs')} value={preview.withBodyRefs} />
                     <PreviewRow label={t('export.preview.screenshots')} value={preview.screenshotEvents} />
+                    {resolvedPlan && <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />}
                     <div className="border-t border-redlog-border mt-1 pt-1">
                       <div className="flex justify-between text-xs px-3 py-0.5 font-medium">
                         <span className="text-redlog-text">{t('export.preview.included')}</span>
@@ -191,11 +256,15 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                       </button>
                     </div>
                   </div>
+                ) : previewError ? (
+                  <div role="alert" className="px-3 py-2 text-xs text-red-400">
+                    {t('export.failed', { label: pending.label })}: {previewError}
+                  </div>
                 ) : (
                   <div className="px-3 py-2">
                     <button
                       onClick={() => void confirmExport()}
-                      disabled={busy}
+                      disabled
                       className="w-full px-3 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       {busy ? '…' : t('export.preview.confirm')}
@@ -215,13 +284,15 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   <Option
                     label={viewExport.label}
                     disabled={empty}
-                    onPick={() => void loadPreview({ label: viewExport.label, sharing, fn: () => viewExport.run({ sharing }) })}
+                    onPick={() => void loadPreview(viewExport.request
+                      ? { label: viewExport.label, sharing, request: { ...viewExport.request, sharing } }
+                      : { label: viewExport.label, sharing, fn: () => viewExport.run?.({ sharing }) ?? Promise.resolve(null) })}
                   />
                 )}
                 <Option
                   label={t('export.all')}
                   disabled={empty}
-                  onPick={() => void loadPreview({ label: t('export.all'), sharing, fn: (snap) => window.redlog.data.exportJson({ sharing, snapshot: snap }) })}
+                  onPick={() => void loadPreview({ label: t('export.all'), sharing, request: { format: 'json', sharing } })}
                 />
                 <Option
                   label={t('export.ndjson')}
@@ -229,10 +300,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   onPick={() => void loadPreview({
                     label: t('export.ndjson'),
                     sharing,
-                    fn: (snap) => {
-                      const api = window.redlog.data as { exportNdjson?: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null> }
-                      return api.exportNdjson?.({ sharing, snapshot: snap }) ?? Promise.resolve(null)
-                    }
+                    request: { format: 'ndjson', sharing }
                   })}
                 />
 
@@ -244,12 +312,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   onPick={() => void loadPreview({
                     label: t('export.bundle'),
                     sharing,
-                    fn: async (snap) => {
-                      const api = window.redlog.data as { exportBundle?: (opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => Promise<{ ok: boolean; outDir?: string; error?: string }> }
-                      if (!api.exportBundle) return null
-                      const r = await api.exportBundle({ maskOutOfScope: maskScope, snapshot: snap })
-                      return r.ok && r.outDir ? r.outDir : null
-                    }
+                    request: { format: 'bundle', sharing, maskOutOfScope: maskScope }
                   })}
                 />
                 <label className="flex items-start gap-2 px-3 py-1.5 text-xs cursor-pointer">

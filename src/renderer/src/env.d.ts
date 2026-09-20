@@ -17,6 +17,38 @@ interface ExportSnapshot {
   takenAt: number
 }
 
+type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
+type ExportSubset = { kind: 'all' } | { kind: 'time-range'; since: number; before: number; targetId?: string }
+interface ExportRequest {
+  format: ExportFormat
+  subset?: ExportSubset
+  sharing?: boolean
+  maskOutOfScope?: boolean
+  scopeOnly?: boolean
+  scrubPii?: boolean
+}
+interface ResolvedExportPlan {
+  id: string
+  fingerprint: string
+  expiresAt: number
+  request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
+  counts: {
+    examined: number
+    included: number
+    excludedDoNotExport: number
+    excludedPersonal: number
+    excludedBlacklist: number
+    maskedOutOfScope: number
+    sanitized: number
+    attachmentsIncluded: number
+    attachmentsMissing: number
+    attachmentsUnattributed: number
+    unsupported: number
+  }
+}
+type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
+type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }
+
 interface ExportPreview {
   total: number
   included: number
@@ -270,6 +302,8 @@ interface RedLogAPI {
     stop: () => Promise<{ stopped: boolean }>
   }
   data: {
+    resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
+    executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
     exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
     exportBundle?: (opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => Promise<{ outDir: string; manifest: unknown } | null>
     exportScopeFiltered?: (opts?: { sharing?: boolean }) => Promise<string | null>

@@ -2,7 +2,7 @@
 
 > Domain: Evidence / Engagement / Handoff
 > Invariant: Export selection must operate across ALL persisted event tiers.
-> Status: P0 — `queryScopeFilteredEvents` currently only queries `events` table, missing entire `events_logged` tier.
+> Status: Implemented and regression-tested across both tiers. ExportPlan migration in progress under `specs/001-export-plan-consistency/`.
 
 ## Domain Concepts
 
@@ -108,3 +108,24 @@ Then:
 ∀ event e ∈ (events ∪ events_logged):
   eligible(e, scope) ↔ e ∈ queryScopeFilteredEvents(scope).events
 ```
+
+## ExportPlan Contract
+
+Every file-producing export exposed by the main menu resolves an immutable
+plan before confirmation. The plan records the normalized format/subset,
+two-tier row boundary, scope and sharing inputs, selected Event IDs, policy
+outcome counts, expiry, and a SHA-256 fingerprint. Execution accepts the plan
+identifier instead of reconstructing those choices in the renderer.
+
+Current format semantics:
+
+| Format | Dataset boundary | Bounded view | Attachments | Sharing PII scrub |
+|---|---|---|---|---|
+| JSON | Chained + logged snapshot | No | No | Yes |
+| NDJSON | Chained + logged snapshot | No | No | Yes |
+| Evidence Bundle | Chained + logged snapshot and approved IDs | No | Yes | Unsupported; resolution is blocked |
+| HAR | Logged scanner snapshot | Time + target | Body references only | Unsupported; resolution is blocked |
+| Timeline slice | Chained + logged snapshot | Time + target | No | Yes |
+
+An unsupported requested protection is an explicit preview failure. It must not
+fall back to a legacy export or produce a success state.

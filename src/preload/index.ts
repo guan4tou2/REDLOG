@@ -187,6 +187,8 @@ const api: RedLogAPI = {
     stop: () => ipcRenderer.invoke('browser:stop')
   },
   data: {
+    resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
+    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
     exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportJson', opts),
     exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
     exportScopeFiltered: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportScopeFiltered', opts),

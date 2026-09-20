@@ -35,7 +35,7 @@ function rendererFiles(): string[] {
 describe('one export control', () => {
   it('calls the file-writing export APIs from exactly one component', () => {
     const callers = rendererFiles().filter((f) =>
-      /window\.redlog\.data\.export(Json|Bundle|ScopeFiltered)\b/.test(fs.readFileSync(f, 'utf-8'))
+      /window\.redlog\.data\.(executeExportPlan|exportJson|exportBundle|exportScopeFiltered)\b/.test(fs.readFileSync(f, 'utf-8'))
     )
     expect(callers.map((f) => path.basename(f))).toEqual(['ExportMenu.tsx'])
   })

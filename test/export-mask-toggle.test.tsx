@@ -11,11 +11,36 @@ import { ExportMenu } from '../src/renderer/src/components/ExportMenu'
 // silently default to raw.
 
 let lastOpts: { maskOutOfScope?: boolean } | undefined
-function installBridge(): void {
+let executeCalls = 0
+function installBridge(failResolve = false): void {
   lastOpts = undefined
+  executeCalls = 0
   ;(window as unknown as { redlog: unknown }).redlog = {
     data: {
-      exportBundle: async (opts?: { maskOutOfScope?: boolean }) => { lastOpts = opts; return { ok: true, outDir: '/tmp/b' } },
+      resolveExportPlan: async (request: { maskOutOfScope?: boolean }) => {
+        lastOpts = request
+        if (failResolve) return { ok: false, error: 'selection-failed' }
+        return {
+          ok: true,
+          plan: {
+            id: 'plan-1', fingerprint: 'abc', expiresAt: Date.now() + 1000,
+            request: { ...request, format: 'bundle', subset: { kind: 'all' }, sharing: false, scopeOnly: false, scrubPii: false, maskOutOfScope: request.maskOutOfScope !== false },
+            counts: {
+              examined: 10, included: 8, excludedDoNotExport: 1,
+              excludedPersonal: 1, excludedBlacklist: 0, maskedOutOfScope: 2,
+              sanitized: 3, attachmentsIncluded: 0, attachmentsMissing: 0,
+              attachmentsUnattributed: 0, unsupported: 0
+            }
+          }
+        }
+      },
+      executeExportPlan: async () => {
+        executeCalls++
+        return {
+          ok: true, planId: 'plan-1', fingerprint: 'abc', artifactPath: '/tmp/b', warnings: [],
+          counts: { examined: 10, included: 8, excludedDoNotExport: 1, excludedPersonal: 1, excludedBlacklist: 0, maskedOutOfScope: 2, sanitized: 3, attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0, unsupported: 0 }
+        }
+      },
       exportPreview: async () => ({
         total: 10, included: 8, dropped: 1, personalDropped: 1,
         blacklisted: 0, outOfScope: 2, inScope: 6, sanitized: 3,
@@ -45,7 +70,7 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
     expect(screen.getByText(/masked \(recommended\)/i)).toBeTruthy()
     clickBundle()
     await clickConfirm()
-    await waitFor(() => expect(lastOpts).toEqual({ maskOutOfScope: true }))
+    await waitFor(() => expect(lastOpts).toMatchObject({ format: 'bundle', maskOutOfScope: true }))
   })
 
   it('unchecking ships raw out-of-scope content, with a warning label', async () => {
@@ -56,6 +81,17 @@ describe('ExportMenu — out-of-scope mask override (A2)', () => {
     expect(screen.getByText(/including out-of-scope content raw/i)).toBeTruthy()
     clickBundle()
     await clickConfirm()
-    await waitFor(() => expect(lastOpts).toEqual({ maskOutOfScope: false }))
+    await waitFor(() => expect(lastOpts).toMatchObject({ format: 'bundle', maskOutOfScope: false }))
+  })
+
+  it('shows preview failure and cannot execute an unreviewed export', async () => {
+    installBridge(true)
+    render(<I18nProvider><ExportMenu /></I18nProvider>)
+    open()
+    clickBundle()
+    expect((await screen.findByRole('alert')).textContent).toContain('selection-failed')
+    const confirm = screen.getAllByText('Export').find((node) => node.closest('button')?.classList.contains('bg-red-600'))
+    expect(confirm).toBeUndefined()
+    expect(executeCalls).toBe(0)
   })
 })
