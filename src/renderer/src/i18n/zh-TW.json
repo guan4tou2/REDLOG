@@ -876,6 +876,7 @@
   "export.preview.subsetBounded": "目前限定檢視",
   "export.preview.policy": "交付策略",
   "export.preview.fingerprint": "計畫指紋",
+  "export.preview.boundary": "資料快照",
   "export.preview.unsupportedAttachments": "僅保留參照、未包含的附件",
   "transcript.copyMd": "複製為 Markdown",
   "castSearch.heading": "終端機錄影",

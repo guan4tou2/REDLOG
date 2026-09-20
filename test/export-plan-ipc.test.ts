@@ -93,6 +93,18 @@ describe('export plan IPC contract', () => {
     })
   })
 
+  it('keeps selected IDs and integrity digests in the main process', () => {
+    addEvent('events', 'private-plan-id', 1000)
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'json' } as never) as {
+      ok: true; plan: Record<string, unknown>
+    }
+    expect(resolved.ok).toBe(true)
+    expect(resolved.plan).not.toHaveProperty('selectedEventIds')
+    expect(resolved.plan).not.toHaveProperty('selectedEvidenceDigest')
+    expect(resolved.plan).not.toHaveProperty('policyFingerprint')
+    expect(JSON.stringify(resolved.plan)).not.toContain('private-plan-id')
+  })
+
   it('executes NDJSON from the approved snapshot', () => {
     addEvent('events', 'ndjson-before', 1000)
     const resolved = handlers.get('data:resolveExportPlan')?.({}, { format: 'ndjson' } as never) as { ok: true; plan: { id: string } }
@@ -166,6 +178,33 @@ describe('export plan IPC contract', () => {
       exportPlan: { id: string; fingerprint: string }
     }
     expect(manifest.exportPlan).toMatchObject({ id: resolved.plan.id, fingerprint: resolved.plan.fingerprint })
+  })
+
+  it('uses the approved raw out-of-scope policy in both bundle preview and execution', () => {
+    fs.writeFileSync(path.join(dir, 'config.yaml'), [
+      'engagement:',
+      '  id: eng-1',
+      'scope:',
+      '  targets:',
+      '    - allowed.test',
+      '  excludeTargets: []',
+      '  personalDomains: []'
+    ].join('\n'))
+    addEvent('events', 'outside', 1000, {
+      targetId: 'outside.test',
+      data: { command: 'curl https://outside.test/private' }
+    })
+
+    const resolved = handlers.get('data:resolveExportPlan')?.({}, {
+      format: 'bundle', maskOutOfScope: false
+    } as never) as { ok: true; plan: { id: string; counts: { maskedOutOfScope: number } } }
+    expect(resolved.plan.counts.maskedOutOfScope).toBe(0)
+
+    const executed = handlers.get('data:executeExportPlan')?.({}, {
+      planId: resolved.plan.id
+    } as never) as { ok: true; artifactPath: string }
+    const row = JSON.parse(fs.readFileSync(path.join(executed.artifactPath, 'events.jsonl'), 'utf8').trim()) as { data: string }
+    expect(JSON.parse(row.data).command).toBe('curl https://outside.test/private')
   })
 
   it('keeps HAR inside the approved target, time and snapshot bounds', () => {

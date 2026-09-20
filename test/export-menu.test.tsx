@@ -7,6 +7,8 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 function plan(included: number): ResolvedExportPlan {
   return {
     id: 'plan-1', fingerprint: '1234567890abcdef', expiresAt: Date.now() + 1000,
+    snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
+    capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
     request: { format: 'json', subset: { kind: 'all' }, sharing: true, maskOutOfScope: true, scopeOnly: false, scrubPii: true },
     counts: {
       examined: included, included, excludedDoNotExport: 0, excludedPersonal: 0,
@@ -53,5 +55,6 @@ describe('ExportMenu plan preview', () => {
     await waitFor(() => expect(screen.getByText('Entire approved snapshot')).toBeTruthy())
     expect(screen.getByText('For sharing')).toBeTruthy()
     expect(screen.getByText('1234567890ab')).toBeTruthy()
+    expect(screen.getByText('Data snapshot')).toBeTruthy()
   })
 })

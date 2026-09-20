@@ -228,6 +228,12 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                           <span className="text-redlog-text-dim">{t('export.preview.fingerprint')}</span>
                           <span className="font-mono text-redlog-text">{resolvedPlan.fingerprint.slice(0, 12)}</span>
                         </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-redlog-text-dim">{t('export.preview.boundary')}</span>
+                          <span className="text-right text-redlog-text">
+                            {new Date(resolvedPlan.snapshot.takenAt).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     )}
                     <PreviewRow label={t('export.preview.total')} value={preview.total} />

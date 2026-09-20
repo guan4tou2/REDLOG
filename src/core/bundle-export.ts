@@ -166,7 +166,15 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const outRoot = opts.outRoot
   const projectDir = getProjectDir()
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const bundleDir = path.join(outRoot ?? path.join(projectDir, 'exports'), `bundle-${ts}`)
+  const bundleRoot = outRoot ?? path.join(projectDir, 'exports')
+  const baseBundleDir = path.join(bundleRoot, `bundle-${ts}`)
+  let finalBundleDir = baseBundleDir
+  let suffix = 2
+  while (fs.existsSync(finalBundleDir)) finalBundleDir = `${baseBundleDir}-${suffix++}`
+  // Build under an unmistakably incomplete name. A failed copy or manifest
+  // write can leave useful diagnostics behind, but recipients and callers must
+  // never mistake that directory for a completed evidence bundle.
+  const bundleDir = `${finalBundleDir}.partial-${process.pid}-${crypto.randomBytes(4).toString('hex')}`
   fs.mkdirSync(bundleDir, { recursive: true })
 
   const files: ManifestFile[] = []
@@ -700,5 +708,6 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     )
   }
 
-  return { outDir: bundleDir, manifest }
+  fs.renameSync(bundleDir, finalBundleDir)
+  return { outDir: finalBundleDir, manifest }
 }
