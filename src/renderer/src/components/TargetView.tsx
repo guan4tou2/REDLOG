@@ -6,7 +6,7 @@ import { toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
 import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
-import { matchPattern as matchesScope } from '../../../core/scope-evaluator'
+import { hostInScope } from '../lib/scope'
 
 interface TargetEntry {
   target: string
@@ -38,6 +38,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // on each target. Empty when config isn't set (in which case every target
   // shows as "in-scope" since there's no rule to violate).
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
   const selectedRef = useRef(selected)
   selectedRef.current = selected
   const { t } = useI18n()
@@ -47,8 +48,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     // auto-save (v0.6.21) doesn't broadcast, but any nav back to this view
     // will re-mount and pick up the current config.
     window.redlog.config.get().then((c) => {
-      const cfg = c as { scope?: { targets?: string[] } } | null
+      const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
       setScopeTargets(cfg?.scope?.targets ?? [])
+      setExcludeTargets(cfg?.scope?.excludeTargets ?? [])
     }).catch(() => {})
     loadTargets()
     const unsub = window.redlog.events.onNew((evt) => {
@@ -67,7 +69,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
 
   // Reclassify existing targets whenever scope config changes (e.g. operator
   // added a scope entry after seeing an out-of-scope hit).
-  useEffect(() => { if (targets.length > 0) loadTargets() }, [scopeTargets])
+  useEffect(() => { if (targets.length > 0) loadTargets() }, [scopeTargets, excludeTargets])
 
   async function loadTargets(): Promise<void> {
     // Counts + first/last-seen are aggregated in SQL over the whole timeline
@@ -85,7 +87,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       firstSeen: r.firstSeen,
       lastSeen: r.lastSeen,
       eventCount: r.eventCount,
-      inScope: scopeTargets.length === 0 ? true : scopeTargets.some((p) => matchesScope(r.target, p))
+      inScope: hostInScope(r.target, scopeTargets, excludeTargets)
     }))
     setTargets(list)
     setLoading(false)

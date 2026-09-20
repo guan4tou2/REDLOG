@@ -6,7 +6,7 @@ import { formatTime } from '../lib/time'
 
 export function FilterBar(): JSX.Element | null {
   const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets } = useSharedFilter()
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
@@ -49,7 +49,7 @@ export function FilterBar(): JSX.Element | null {
             onClear={() => setTimeRange(null)}
           />
         )}
-        {scopeTargets.length > 0 && (
+        {(scopeTargets.length > 0 || scopeExcludeTargets.length > 0) && (
           <button
             onClick={() => setInScopeOnly(!filter.inScopeOnly)}
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${

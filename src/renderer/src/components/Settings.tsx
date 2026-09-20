@@ -48,6 +48,7 @@ export default function Settings(): JSX.Element {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       window.redlog.config.save(config).then(() => {
+        window.dispatchEvent(new CustomEvent('redlog:config-saved'))
         setSaved(true)
         setTimeout(() => setSaved(false), 1500)
       }).catch(() => toast(t('toast.saveFailed'), 'error'))

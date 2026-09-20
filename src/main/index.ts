@@ -61,6 +61,7 @@ import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
+import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
 import { registerDataExportIpc } from './ipc/data-export'
 import {
@@ -643,94 +644,29 @@ function startProject(project: ProjectMeta): void {
     if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
   } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
 
-  // v0.6.87 A2: replay shell-hook spool. Any commands run in an external shell
-  // while RedLog was closed were spooled to ~/.redlog/pending/*.json — replay
-  // them into the current chain now.
-  // P0 data-safety: mismatched engagement → quarantine, never write to current DB.
-  // NDA engagements must not leak client A's commands into client B's evidence chain.
-  try {
-    const spoolDir = path.join(homedir(), '.redlog', 'pending')
-    const quarantineDir = path.join(homedir(), '.redlog', 'quarantined')
-    if (fs.existsSync(spoolDir)) {
-      const files = fs.readdirSync(spoolDir).filter((f) => f.endsWith('.json')).sort()
-      let replayed = 0
-      let quarantined = 0
-      for (const f of files) {
-        const full = path.join(spoolDir, f)
-        try {
-          const raw = fs.readFileSync(full, 'utf8')
-          const payload = JSON.parse(raw)
-          const agentType = String(payload?.agent_type || '')
-          const data = payload?.data && typeof payload.data === 'object' ? payload.data : null
-          if (agentType && data) {
-            const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
-            const mismatched = ident?.engagementId != null && ident.engagementId !== engagementId
-            if (mismatched) {
-              fs.mkdirSync(quarantineDir, { recursive: true })
-              fs.renameSync(full, path.join(quarantineDir, f))
-              quarantined++
-              continue
-            }
-            const useEngagement = ident?.engagementId || engagementId
-            const useOperator = ident?.operatorId || operatorId
-            const ev = insertEvent(agentType, {
-              ...data,
-              recovered_from_spool: true,
-              ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
-            }, { engagementId: useEngagement, operatorId: useOperator })
-            if (ev) { eventBus.publish(ev); replayed++ }
-          }
-          fs.unlinkSync(full)
-        } catch (e) {
-          try { fs.renameSync(full, full + '.bad') } catch { /* */ }
-        }
-      }
-      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
-      if (quarantined > 0) console.log(`[hook-spool] quarantined ${quarantined} mismatched event(s) — open the original project to replay them`)
+  // Replay only records belonging to the active engagement. Mismatches remain
+  // recoverable on disk and are picked up when their owning project opens.
+  // Also scan the old quarantined directory once so files moved there by
+  // v0.15.1 regain the promised recovery path.
+  const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
+    if (!currentEngagementId || !currentOperatorId) return
+    const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): void => {
+      const ev = insertEvent(agentType, data, { engagementId: spoolEngagement, operatorId: spoolOperator })
+      if (ev) eventBus.publish(ev)
     }
-  } catch (e) { console.error('[hook-spool] replay failed:', e) }
+    let replayed = 0
+    for (const directory of [path.join(homedir(), '.redlog', 'pending'), path.join(homedir(), '.redlog', 'quarantined')]) {
+      replayed += replaySpoolDirectory(directory, {
+        engagementId: currentEngagementId,
+        operatorId: currentOperatorId
+      }, emit, limit).replayed
+    }
+    if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+  }
+  try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
   spoolDrainTimer = setInterval(() => {
-    if (!currentEngagementId || !currentOperatorId) return
-    try {
-      const spoolPath = path.join(homedir(), '.redlog', 'pending')
-      if (!fs.existsSync(spoolPath)) return
-      const files = fs.readdirSync(spoolPath).filter((f) => f.endsWith('.json')).sort().slice(0, 200)
-      if (files.length === 0) return
-      const qDir = path.join(homedir(), '.redlog', 'quarantined')
-      let count = 0
-      let qCount = 0
-      for (const f of files) {
-        const full = path.join(spoolPath, f)
-        try {
-          const raw = fs.readFileSync(full, 'utf8')
-          const payload = JSON.parse(raw)
-          const at = String(payload?.agent_type || '')
-          const d = payload?.data && typeof payload.data === 'object' ? payload.data : null
-          if (at && d) {
-            const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
-            const mismatched = ident?.engagementId != null && ident.engagementId !== currentEngagementId
-            if (mismatched) {
-              fs.mkdirSync(qDir, { recursive: true })
-              fs.renameSync(full, path.join(qDir, f))
-              qCount++
-              continue
-            }
-            const useEng = ident?.engagementId || currentEngagementId!
-            const useOp = ident?.operatorId || currentOperatorId!
-            const ev = insertEvent(at, {
-              ...d,
-              recovered_from_spool: true,
-              ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
-            }, { engagementId: useEng, operatorId: useOp })
-            if (ev) { eventBus.publish(ev); count++ }
-          }
-          fs.unlinkSync(full)
-        } catch { try { fs.renameSync(full, full + '.bad') } catch { /* */ } }
-      }
-      if (count > 0) console.log(`[hook-spool] drained ${count} spooled event(s)`)
-      if (qCount > 0) console.log(`[hook-spool] quarantined ${qCount} mismatched event(s)`)
-    } catch { /* */ }
+    try { drainSpool(200) } catch { /* next interval retries preserved files */ }
   }, 30_000)
 
   alertRuntime.start()
@@ -1269,6 +1205,10 @@ app.whenReady().then(() => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
     const oldConfig = loadConfig(projectDir)
+    // The project id is the durable attribution boundary used by spool replay
+    // and every Event row. Renderer state, imported profiles and direct IPC
+    // calls may update other settings, but cannot rename this identity.
+    newConfig.engagement.id = oldConfig.engagement.id
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     saveConfig(projectDir, newConfig)

@@ -77,7 +77,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 }
 
 export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
-  const { filter: sharedFilter, scopeTargets } = useSharedFilter()
+  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets } = useSharedFilter()
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -853,8 +853,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   )
 
   const scopeMatches = useMemo(
-    () => computeScopeMatches(events, scopeTargets, sharedFilter.inScopeOnly),
-    [events, scopeTargets, sharedFilter.inScopeOnly]
+    () => computeScopeMatches(events, scopeTargets, scopeExcludeTargets, sharedFilter.inScopeOnly),
+    [events, scopeTargets, scopeExcludeTargets, sharedFilter.inScopeOnly]
   )
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)

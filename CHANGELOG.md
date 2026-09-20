@@ -3,6 +3,16 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## Unreleased
+
+- Approved export plans bind preview and execution to one snapshot and policy.
+- Spool replay defers mismatched engagements without writing the active DB and
+  recovers them when their owning project opens.
+- Scope excludes now apply consistently to Targets and shared in-scope filters.
+- Project creation accepts exclude targets and no longer drops advanced setup
+  after the dialog closes.
+- Engagement ID is read-only after project creation.
+
 ## v0.15.1 — 2026-09-19
 
 **Option D 匯出去識別化 + QA / 安全 / 效能 / UIUX 合規修復。**

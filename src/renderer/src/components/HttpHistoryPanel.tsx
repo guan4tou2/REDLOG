@@ -345,7 +345,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   onOpenInTimeline?: (eventId: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
-  const { filter: sharedFilter } = useSharedFilter()
+  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets: excludeTargets } = useSharedFilter()
   const [flows, setFlows] = useState<HttpFlow[]>([])
   const [loading, setLoading] = useState(true)
   const [filterText, setFilterText] = useState('')
@@ -376,15 +376,6 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   // §7a: mark out-of-scope (non-attack) hosts. Scope comes from project config;
   // an empty allow list means nothing is "out of scope" (no rule to violate),
   // so the marker never appears on an unscoped engagement.
-  const [scopeTargets, setScopeTargets] = useState<string[]>([])
-  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
-  useEffect(() => {
-    window.redlog.config.get().then((c) => {
-      const s = (c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null)?.scope
-      setScopeTargets(s?.targets ?? [])
-      setExcludeTargets(s?.excludeTargets ?? [])
-    }).catch(() => {})
-  }, [])
   const outOfScope = useCallback(
     (host: string) => hostOutOfScope(host, scopeTargets, excludeTargets),
     [scopeTargets, excludeTargets]
@@ -508,6 +499,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     if (sharedFilter.targetId) {
       list = list.filter(f => f.host === sharedFilter.targetId)
     }
+    if (sharedFilter.inScopeOnly) list = list.filter((f) => !outOfScope(f.host))
     if (sharedFilter.timeRange) {
       const { since, before } = sharedFilter.timeRange
       list = list.filter(f => {
@@ -523,7 +515,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
       return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return list
-  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc, sharedFilter.targetId, sharedFilter.timeRange])
+  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, outOfScope])
 
   // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
   // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size

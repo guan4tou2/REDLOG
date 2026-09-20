@@ -1,7 +1,7 @@
 import type { RedLogEvent } from '../../../core/db/event-types'
 import { groupAmendments, foldMarker } from './markerFold'
 import { eventTitle } from './eventTitle'
-import { matchesScopePattern } from './timelineScopeMatch'
+import { hostInScope } from './scope'
 import { fuzzyScore } from './timelineEvents'
 import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './timelineDomain'
 
@@ -80,13 +80,14 @@ export function computeTargetMatches(
 export function computeScopeMatches(
   events: readonly RedLogEvent[],
   scopeTargets: readonly string[],
+  excludeTargets: readonly string[],
   inScopeOnly: boolean
 ): Set<string> | null {
-  if (!inScopeOnly || scopeTargets.length === 0) return null
+  if (!inScopeOnly || (scopeTargets.length === 0 && excludeTargets.length === 0)) return null
   const set = new Set<string>()
   for (const e of events) {
     if (!e.targetId) { set.add(e.id); continue }
-    if (scopeTargets.some((p) => matchesScopePattern(e.targetId!, p))) set.add(e.id)
+    if (hostInScope(e.targetId, [...scopeTargets], [...excludeTargets])) set.add(e.id)
   }
   return set
 }

@@ -29,6 +29,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     return () => window.removeEventListener('keydown', onKey)
   }, [showAdvanced])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
   const [warnOnViolation, setWarnOnViolation] = useState(true)
@@ -61,9 +62,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      const initialConfig = (showAdvanced && (scopeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0))
+      const initialConfig = (scopeTargets.length > 0 || excludeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0)
         ? {
-          scope: { targets: scopeTargets, excludeTargets: [], warnOnViolation, scopeFile: null },
+          scope: { targets: scopeTargets, excludeTargets, warnOnViolation, scopeFile: null },
           network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
@@ -202,10 +203,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           >
             <ChevronRight size={14} className="text-redlog-muted" aria-hidden />
             {t('project.advancedSetup')}
-            {(scopeTargets.length + whitelist.length + blacklist.length > 0) && (
+            {(scopeTargets.length + excludeTargets.length + whitelist.length + blacklist.length > 0) && (
               <span className="ml-1 text-redlog-text-dim">
                 ({t('project.advancedSummary', {
                   scope: scopeTargets.length,
+                  exclude: excludeTargets.length,
                   safe: whitelist.length,
                   exposed: blacklist.length
                 })})
@@ -249,6 +251,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                   items={scopeTargets}
                   onChange={setScopeTargets}
                   placeholder={t('project.scopePlaceholder')}
+                />
+                <MiniListField
+                  label={t('project.excludeTargets')}
+                  items={excludeTargets}
+                  onChange={setExcludeTargets}
+                  placeholder={t('project.excludePlaceholder')}
                 />
                 <MiniListField
                   label={t('project.whitelist')}
