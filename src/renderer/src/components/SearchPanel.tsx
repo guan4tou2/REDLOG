@@ -5,6 +5,7 @@ import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
 import { useSharedFilter } from '../lib/FilterContext'
+import { hostInScope } from '../lib/scope'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -101,7 +102,7 @@ interface SearchPanelProps {
 }
 
 export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.Element {
-  const { filter: sharedFilter } = useSharedFilter()
+  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets } = useSharedFilter()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<RedLogEvent[]>([])
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
@@ -122,7 +123,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   queryRef.current = query
   const { t } = useI18n()
 
-  const filtered = results
+  const filtered = sharedFilter.inScopeOnly
+    ? results.filter((event) => !event.targetId || hostInScope(event.targetId, scopeTargets, scopeExcludeTargets))
+    : results
   const listNav = useListKeyboard({
     count: filtered.length,
     onActivate: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },

@@ -22,7 +22,7 @@ export default function GeneralPage({
   return (
     <>
       <FieldGroup title={t('settings.engagement')}>
-        <Field label={t('settings.id')} value={config.engagement.id} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, id: v } })} />
+        <Field label={t('settings.id')} value={config.engagement.id} onChange={() => {}} readOnly />
         <Field label={t('settings.name')} value={config.engagement.name} onChange={(v) => setConfig({ ...config, engagement: { ...config.engagement, name: v } })} />
       </FieldGroup>
       <FieldGroup title={t('settings.operatorGroup')}>

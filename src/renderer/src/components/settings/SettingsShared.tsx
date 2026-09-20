@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useI18n } from '../../i18n'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
@@ -74,17 +74,20 @@ export function FieldGroup({ title, children }: { title: string; children: React
   )
 }
 
-export function Field({ label, value, onChange, type = 'text' }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string
+export function Field({ label, value, onChange, type = 'text', readOnly = false }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; readOnly?: boolean
 }): JSX.Element {
+  const id = useId()
   return (
     <div>
-      <label className="text-xs text-redlog-text-dim block mb-1">{label}</label>
+      <label htmlFor={id} className="text-xs text-redlog-text-dim block mb-1">{label}</label>
       <input
+        id={id}
         type={type}
         value={value}
+        readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+        className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim cursor-not-allowed' : 'text-redlog-text focus:border-red-500'}`}
       />
     </div>
   )
@@ -129,4 +132,3 @@ export function ListField({ label, items, onChange, placeholder }: {
     </div>
   )
 }
-

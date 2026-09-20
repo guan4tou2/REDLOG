@@ -5,6 +5,7 @@ import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { AlignLeft } from 'lucide-react'
 import { useSharedFilter } from '../lib/FilterContext'
+import { hostInScope } from '../lib/scope'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -30,6 +31,7 @@ interface Ev {
   timestamp: number
   agentType: string
   operatorId: string
+  targetId?: string | null
   data?: Record<string, unknown>
 }
 
@@ -247,7 +249,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   onOpenInTimeline?: (id: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
-  const { filter: sharedFilter } = useSharedFilter()
+  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets } = useSharedFilter()
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
@@ -325,10 +327,14 @@ export default function TranscriptView({ onOpenInTimeline }: {
         if (since && b.ts < since) return false
         if (before && b.ts > before) return false
       }
+      if (sharedFilter.inScopeOnly) {
+        const targets = b.events.map((event) => event.targetId).filter((target): target is string => !!target)
+        if (targets.length > 0 && !targets.some((target) => hostInScope(target, scopeTargets, scopeExcludeTargets))) return false
+      }
       if (!q) return true
       return `${b.actor}${b.input}${b.output ?? ''}${b.meta ?? ''}`.toLowerCase().includes(q)
     })
-  }, [blocks, query, kinds, sharedFilter.timeRange])
+  }, [blocks, query, kinds, sharedFilter.timeRange, sharedFilter.inScopeOnly, scopeTargets, scopeExcludeTargets])
 
   const toggleKind = (k: Kind): void => setKinds((prev) => {
     const next = new Set(prev)

@@ -24,6 +24,7 @@ interface FilterContextValue {
   knownTargets: Array<{ target: string; eventCount: number }>
   knownAgentTypes: string[]
   scopeTargets: string[]
+  scopeExcludeTargets: string[]
 }
 
 const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
@@ -38,7 +39,8 @@ const FilterContext = createContext<FilterContextValue>({
   activeCount: 0,
   knownTargets: [],
   knownAgentTypes: [],
-  scopeTargets: []
+  scopeTargets: [],
+  scopeExcludeTargets: []
 })
 
 export function FilterProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -46,6 +48,7 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [knownTargets, setKnownTargets] = useState<Array<{ target: string; eventCount: number }>>([])
   const [knownAgentTypes, setKnownAgentTypes] = useState<string[]>([])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [scopeExcludeTargets, setScopeExcludeTargets] = useState<string[]>([])
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -60,10 +63,14 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   }, [])
 
   useEffect(() => {
-    window.redlog.config.get().then((c) => {
-      const cfg = c as { scope?: { targets?: string[] } } | null
+    const refreshScope = (): void => { window.redlog.config.get().then((c) => {
+      const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
       setScopeTargets(cfg?.scope?.targets ?? [])
-    }).catch(() => {})
+      setScopeExcludeTargets(cfg?.scope?.excludeTargets ?? [])
+    }).catch(() => {}) }
+    refreshScope()
+    window.addEventListener('redlog:config-saved', refreshScope)
+    return () => window.removeEventListener('redlog:config-saved', refreshScope)
   }, [])
 
   useEffect(() => {
@@ -102,9 +109,9 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
 
   const value = useMemo(() => ({
     filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets
   }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
-       activeCount, knownTargets, knownAgentTypes, scopeTargets])
+       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets])
 
   return <FilterContext value={value}>{children}</FilterContext>
 }

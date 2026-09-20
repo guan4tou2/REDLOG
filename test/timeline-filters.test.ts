@@ -139,29 +139,35 @@ describe('computeTargetMatches', () => {
 describe('computeScopeMatches', () => {
   it('returns null when inScopeOnly is false', () => {
     const events = [evt('a', 'shell', {}, { targetId: '10.0.20.15' })]
-    expect(computeScopeMatches(events, ['10.0.20.0/24'], false)).toBeNull()
+    expect(computeScopeMatches(events, ['10.0.20.0/24'], [], false)).toBeNull()
   })
 
   it('returns null when scopeTargets is empty', () => {
     const events = [evt('a', 'shell', {}, { targetId: '10.0.20.15' })]
-    expect(computeScopeMatches(events, [], true)).toBeNull()
+    expect(computeScopeMatches(events, [], [], true)).toBeNull()
   })
 
   it('includes events without targetId', () => {
     const events = [evt('a', 'system')]
-    const result = computeScopeMatches(events, ['10.0.20.15'], true)!
+    const result = computeScopeMatches(events, ['10.0.20.15'], [], true)!
     expect(result.has('a')).toBe(true)
   })
 
   it('includes events matching scope pattern', () => {
     const events = [evt('a', 'shell', {}, { targetId: '10.0.20.15' })]
-    const result = computeScopeMatches(events, ['10.0.20.15'], true)!
+    const result = computeScopeMatches(events, ['10.0.20.15'], [], true)!
     expect(result.has('a')).toBe(true)
   })
 
   it('excludes out-of-scope events', () => {
     const events = [evt('a', 'shell', {}, { targetId: '192.168.1.1' })]
-    const result = computeScopeMatches(events, ['10.0.20.15'], true)!
+    const result = computeScopeMatches(events, ['10.0.20.15'], [], true)!
+    expect(result.has('a')).toBe(false)
+  })
+
+  it('lets an explicit exclude override an allow match', () => {
+    const events = [evt('a', 'shell', {}, { targetId: '10.0.20.15' })]
+    const result = computeScopeMatches(events, ['10.0.20.0/24'], ['10.0.20.15'], true)!
     expect(result.has('a')).toBe(false)
   })
 })
