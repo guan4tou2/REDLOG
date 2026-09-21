@@ -14,17 +14,12 @@ export interface RedLogEvent {
   createdAt: number
   monotonicNs?: string | null
   ntpOffsetMs?: number | null
-  // v0.6.89: base64 raw 64-byte Ed25519 signature over the canonical JSON
-  // used for `hash`. Nullable — operators created pre-v0.6.89 (or when
-  // keygen fails) write unsigned rows, which the chain hash still protects.
+  // Base64 raw 64-byte Ed25519 signature over the canonical JSON used for
+  // `hash`. Nullable when the signing key is unavailable; the chain hash
+  // still protects unsigned rows.
   signature?: string | null
-  // v0.13.0: tier this event was written to. `chained` = the primary
-  // hash-chained + signed + anchored path (unchanged from earlier
-  // versions). `logged` = supporting-evidence table (`events_logged`);
-  // no hash / signature / anchor. Rows constructed by legacy callers
-  // without setting this default to `chained`. See
-  // docs/DESIGN-two-tier-chain.md.
-  tier?: EventTier
+  /** Storage and integrity tier for this event. */
+  tier: EventTier
 }
 
 /** v0.13.0 tier identifiers. `chained` and `logged` name the two DB tables;
@@ -81,11 +76,6 @@ export function rowToEvent(row: Record<string, unknown>): RedLogEvent {
     monotonicNs: (row.monotonic_ns as string | null) ?? null,
     ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null,
     signature: (row.signature as string | null) ?? null,
-    // v0.13.0: honour tier hint from the SELECT (queryEvents adds
-    // `'chained' AS tier`/`'logged' AS tier`; queryEventById spreads
-    // it in). Rows without a hint default to `chained` — every legacy
-    // row lives in `events`, so this default is correct for any query
-    // path that pre-dates the two-tier split.
-    tier: ((row.tier as 'chained' | 'logged' | undefined) ?? 'chained')
+    tier: row.tier as EventTier
   }
 }

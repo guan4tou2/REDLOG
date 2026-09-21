@@ -53,7 +53,7 @@ describeDB('evidence bundle export', () => {
   it('every file in the manifest exists and matches its recorded sha256', () => {
     seedFile('screenshots', 'a.jpg', 'jpegbytes')
     seedFile('casts', 's.cast', '{"version":2}\n')
-    const { outDir, manifest } = exportBundle('eng')
+    const { outDir, manifest } = exportBundle('eng', {})
 
     expect(manifest.files.length).toBeGreaterThan(0)
     for (const f of manifest.files) {
@@ -66,7 +66,7 @@ describeDB('evidence bundle export', () => {
   })
 
   it('ships a self-contained verifier so a third party needs nothing from us', () => {
-    const { outDir } = exportBundle('eng')
+    const { outDir } = exportBundle('eng', {})
     for (const f of ['events.jsonl', 'manifest.json', 'manifest.sha256', 'redlog-verify.py', 'README.md']) {
       expect(fs.existsSync(path.join(outDir, f)), `${f} missing from bundle`).toBe(true)
     }
@@ -77,7 +77,7 @@ describeDB('evidence bundle export', () => {
   })
 
   it('manifest.sha256 covers manifest.json exactly', () => {
-    const { outDir } = exportBundle('eng')
+    const { outDir } = exportBundle('eng', {})
     const declared = fs.readFileSync(path.join(outDir, 'manifest.sha256'), 'utf-8').trim().split(/\s+/)[0]
     const actual = crypto.createHash('sha256')
       .update(fs.readFileSync(path.join(outDir, 'manifest.json'))).digest('hex')
@@ -99,7 +99,7 @@ describeDB('evidence bundle export', () => {
   })
 
   it('events.jsonl holds one parseable event per line, oldest first', () => {
-    const { outDir } = exportBundle('eng')
+    const { outDir } = exportBundle('eng', {})
     const lines = fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8').trim().split('\n')
     expect(lines.length).toBeGreaterThanOrEqual(2)
     const parsed = lines.map((l) => JSON.parse(l) as { createdAt?: number; created_at?: number })
@@ -126,7 +126,7 @@ describeDB('evidence bundle export', () => {
 
   it('excludes agent transcripts by default — they can contain pasted secrets', () => {
     seedFile('agent-transcripts', 'claude-1.jsonl', '{"text":"my api key is sk-SECRET"}\n')
-    const { outDir, manifest } = exportBundle('eng')
+    const { outDir, manifest } = exportBundle('eng', {})
     expect(fs.existsSync(path.join(outDir, 'agent-transcripts'))).toBe(false)
     expect(JSON.stringify(manifest.files)).not.toContain('agent-transcripts')
   })
@@ -138,7 +138,7 @@ describeDB('evidence bundle export', () => {
   })
 
   it('never exports operator token hashes', () => {
-    const { outDir } = exportBundle('eng')
+    const { outDir } = exportBundle('eng', {})
     const opsPath = path.join(outDir, 'operators.json')
     if (!fs.existsSync(opsPath)) return
     const raw = fs.readFileSync(opsPath, 'utf-8')
@@ -147,7 +147,7 @@ describeDB('evidence bundle export', () => {
   })
 
   it('records the chain head so the bundle can be tied to the live chain', () => {
-    const { manifest } = exportBundle('eng')
+    const { manifest } = exportBundle('eng', {})
     expect(manifest.chainHead?.hash).toMatch(/^[a-f0-9]{64}$/)
     expect(manifest.chainHead?.eventCount).toBeGreaterThanOrEqual(2)
   })
@@ -155,7 +155,7 @@ describeDB('evidence bundle export', () => {
   it('copies screenshots and casts alongside their hashes', () => {
     seedFile('screenshots', 'shot.jpg', 'IMG')
     seedFile('casts', 'term.cast', 'CAST')
-    const { outDir, manifest } = exportBundle('eng')
+    const { outDir, manifest } = exportBundle('eng', {})
     expect(fs.readFileSync(path.join(outDir, 'screenshots', 'shot.jpg'), 'utf-8')).toBe('IMG')
     expect(fs.readFileSync(path.join(outDir, 'casts', 'term.cast'), 'utf-8')).toBe('CAST')
     const listed = manifest.files.map((f) => f.path)
@@ -232,7 +232,7 @@ describeDB('private bookmarks stay out of the bundle', () => {
   // an untouched bundle verifies, a tampered evidence file fails.
   it('the python verifier passes a clean bundle and fails a tampered evidence file', () => {
     seedFile('screenshots', 'shot.jpg', 'REAL-IMAGE-BYTES')
-    const { outDir } = exportBundle('eng')
+    const { outDir } = exportBundle('eng', {})
     const child = require('node:child_process') as typeof import('node:child_process')
     const verifier = path.join(outDir, 'redlog-verify.py')
     if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape

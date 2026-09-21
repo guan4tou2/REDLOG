@@ -38,7 +38,7 @@ export const EVIDENCE_SQL = `
   AND NOT (agent_type = 'terminal' AND subtype = 'session_start')
   AND NOT (
     agent_type = 'shell' AND subtype IN ('command_start','command','command_end')
-    AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%')
+    AND (json_extract(data,'$.command') LIKE '%shell-bash-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-zsh-hook.zsh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%')
   )
 `
 
@@ -53,7 +53,7 @@ const HOUSEKEEPING_SQL = `
     (agent_type = 'system' AND subtype IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND subtype = 'session_start')
     OR (agent_type = 'terminal' AND subtype = 'session_start')
-    OR (agent_type = 'shell' AND subtype IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-preexec-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
+    OR (agent_type = 'shell' AND subtype IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-bash-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-zsh-hook.zsh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
   )
 `
 
@@ -61,10 +61,9 @@ export function queryEvents(opts: {
   agentType?: string
   limit?: number
   since?: number
-  // Pagination anchor: return events strictly older than this WALL-CLOCK
-  // timestamp. Kept for compatibility but the Timeline pager now prefers
-  // `beforeCreatedAt` because wall-clock can regress on NTP correction and
-  // silently skip a newly-arrived event that landed with an older ts.
+  // Time-range upper bound: return events strictly older than this wall-clock
+  // timestamp. Pagination uses `beforeCreatedAt` because wall-clock time can
+  // regress on NTP correction.
   before?: number
   // Preferred pager anchor — created_at is monotonic within a run (Date.now
   // at write instant, but callers can't rewind DB insertion order) so walking

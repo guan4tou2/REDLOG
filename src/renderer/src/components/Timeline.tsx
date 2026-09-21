@@ -96,15 +96,11 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // v0.14 §9.2: auditor-view state hoisted above the `events` useMemo so
   // the filter can compose in one place. Persistence + per-project scoping
   // lives further down alongside the other filter state (see below).
-  const [auditorView, setAuditorView] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-auditor-view') === '1' } catch { return false }
-  })
+  const [auditorView, setAuditorView] = useState(false)
   const events = useMemo(
     () => {
       const base = filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns)
-      // When auditor view is on, drop logged-tier rows. Missing `tier`
-      // defaults to chained (matches the audit chain on disk and the
-      // v0.14.0 TierBadge fallback), so historical pre-v0.13 rows survive.
+      // When auditor view is on, drop logged-tier rows.
       return auditorView ? base.filter((e) => e.tier !== 'logged') : base
     },
     [rawEvents, collapseAgentTurns, auditorView]
@@ -177,14 +173,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // when the project id resolves, in the effect below.
   const [collapsedBands, setCollapsedBands] = useState<Set<BandId>>(() => new Set(BANDS.map((b) => b.id)))
   const bandsLoadedFor = useRef<string | null>(null)
-  const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(() => {
-    try {
-      const raw = localStorage.getItem('redlog-timeline-hidden-lanes')
-      if (!raw) return new Set()
-      const arr = JSON.parse(raw)
-      return new Set((Array.isArray(arr) ? arr : []).filter((l): l is LaneId => LANES.includes(l as LaneId)))
-    } catch { return new Set() }
-  })
+  const [hiddenLanes, setHiddenLanes] = useState<Set<LaneId>>(() => new Set())
   const [showJson, setShowJson] = useState(false)
   // v0.9.3 U2: keyboard-shortcut cheatsheet modal. Every hotkey RedLog has
   // added since v0.6.90 was previously invisible unless a teammate told you.
@@ -216,27 +205,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // `verifyResult` (feature 5) is the last full-chain-verify outcome; read
   // from the module cache on mount and refreshed via a window event.
   const [focusChain, setFocusChain] = useState<Set<string> | null>(null)
-  const [focusAnchorId, setFocusAnchorId] = useState<string | null>(() => {
-    try { return localStorage.getItem('redlog-timeline-focus-anchor') } catch { return null }
-  })
-  // v0.6.98 E: per-project anomaly filter. Pre-v0.6.98 the localStorage key
-  // was global — flipping the filter on in Project A followed you into
-  // Project B, which made triage confusing (why is my clean project showing
-  // half its events dimmed?). Fix: append `:${projectId}` once known, with
-  // one-shot migration from the legacy unscoped key on first mount per
-  // project. Initial state uses the unscoped key for pre-v0.6.98 continuity
-  // — it settles into the project-scoped value on the second render tick,
-  // after project.active() resolves.
-  //
-  // v0.6.100 F5: `projectIdForKeys` also holds the sentinel `__global__` when
-  // `project.active()` resolves null (no active project — first-launch, DMG
-  // demo, tests). Pre-v0.6.100 that state silently dropped every scoped
-  // write. Sentinel means the user's toggles still persist; they just live
-  // under a common key until a project is opened.
-  // v0.6.100 F6: `migrationAppliedFor` records the projectId (or sentinel)
-  // we've already migrated for so a mid-triage user edit — filter-query
-  // typing, focus toggle — doesn't get clobbered when project.active()
-  // arrives seconds later. Migration only runs once per (project, mount).
+  const [focusAnchorId, setFocusAnchorId] = useState<string | null>(null)
+  // Project state is keyed by project id. The `__global__` sentinel covers
+  // first-run and test screens where no project is active.
   const [projectIdForKeys, setProjectIdForKeys] = useState<string | null>(null)
   // Project-scoped band-collapse load (placed AFTER projectIdForKeys is
   // declared — its dep array evaluates during render, so an earlier placement
@@ -253,10 +224,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     } catch { setCollapsedBands(new Set(BANDS.map((b) => b.id))) }
   }, [projectIdForKeys])
 
-  const migrationAppliedFor = useRef<string | null>(null)
-  const [anomalyFilter, setAnomalyFilter] = useState<boolean>(() => {
-    try { return localStorage.getItem('redlog-timeline-anomaly-filter') === '1' } catch { return false }
-  })
+  const settingsLoadedFor = useRef<string | null>(null)
+  const [anomalyFilter, setAnomalyFilter] = useState(false)
   useEffect(() => {
     // v0.6.100 F5: fall back to `__global__` sentinel when there's no active
     // project (or the call rejects). Anything downstream that reads
@@ -267,42 +236,20 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       .catch(() => setProjectIdForKeys('__global__'))
   }, [])
   useEffect(() => {
-    // v0.6.98 E + v0.6.99 A: reload / migrate every per-project key once the
-    // project id lands. Keys covered here are project-scoped (event ids,
-    // in-progress filter text, lane visibility for this engagement). Keys
-    // that stay global — zoom, detail-h, follow-mode, session-dividers, tz
-    // — are UI/display preferences that shouldn't reset when opening a
-    // different project. Each key migrates from its legacy unscoped form
-    // ONCE per project so operators upgrading from < v0.6.98 don't lose
-    // whatever they had set on the project they open first.
-    // v0.6.100 F6: skip if we've already migrated for this project — the
-    // ref guards against clobbering in-flight user edits. Without this,
-    // typing into the filter-query box between mount and project.active()
-    // resolution would be overwritten with the legacy value when this
-    // effect fires.
     if (!projectIdForKeys) return
-    if (migrationAppliedFor.current === projectIdForKeys) return
-    migrationAppliedFor.current = projectIdForKeys
-    const migrate = <T,>(base: string, decode: (s: string) => T, apply: (v: T) => void): void => {
+    if (settingsLoadedFor.current === projectIdForKeys) return
+    settingsLoadedFor.current = projectIdForKeys
+    const load = <T,>(base: string, decode: (s: string) => T, apply: (v: T) => void): void => {
       try {
-        const scoped = `${base}:${projectIdForKeys}`
-        const stored = localStorage.getItem(scoped)
-        if (stored !== null) {
-          apply(decode(stored))
-        } else {
-          const legacy = localStorage.getItem(base)
-          if (legacy !== null) {
-            localStorage.setItem(scoped, legacy)
-            apply(decode(legacy))
-          }
-        }
+        const stored = localStorage.getItem(`${base}:${projectIdForKeys}`)
+        if (stored !== null) apply(decode(stored))
       } catch { /* ignore */ }
     }
-    migrate('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
-    migrate('redlog-timeline-auditor-view', (s) => s === '1', setAuditorView)
-    migrate('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
-    migrate('redlog-timeline-filter-query', (s) => s, setFilterQuery)
-    migrate('redlog-timeline-hidden-lanes', (s) => {
+    load('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
+    load('redlog-timeline-auditor-view', (s) => s === '1', setAuditorView)
+    load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
+    load('redlog-timeline-filter-query', (s) => s, setFilterQuery)
+    load('redlog-timeline-hidden-lanes', (s) => {
       try {
         const arr = JSON.parse(s)
         return new Set((Array.isArray(arr) ? arr : []).filter((l): l is LaneId => LANES.includes(l as LaneId)))
@@ -320,8 +267,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return () => window.removeEventListener(VERIFY_UPDATED_EVENT, onUpdate)
   }, [])
   useEffect(() => {
-    // v0.6.99 A: scoped write once projectId is known. Legacy key untouched
-    // so the migration path continues to find it on other project opens.
     if (!projectIdForKeys) return
     try {
       const scoped = `redlog-timeline-focus-anchor:${projectIdForKeys}`
@@ -330,9 +275,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     } catch { /* ignore */ }
   }, [focusAnchorId, projectIdForKeys])
   useEffect(() => {
-    // v0.6.98 E: hold writes until projectId lands, then write only to the
-    // scoped key. The legacy global key is left alone so the migration
-    // path above still finds it on other project opens.
     if (!projectIdForKeys) return
     try {
       localStorage.setItem(`redlog-timeline-anomaly-filter:${projectIdForKeys}`, anomalyFilter ? '1' : '0')
@@ -366,11 +308,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   useEffect(() => { setTargetFocus(focusTarget ?? null) }, [focusTarget])
   const effectiveTarget = sharedFilter.targetId ?? targetFocus
 
-  const [filterQuery, setFilterQuery] = useState<string>(() => {
-    try { return localStorage.getItem('redlog-timeline-filter-query') || '' } catch { return '' }
-  })
+  const [filterQuery, setFilterQuery] = useState('')
   useEffect(() => {
-    // v0.6.99 A: scoped write. Legacy key untouched (migration on next open).
     if (!projectIdForKeys) return
     try {
       const scoped = `redlog-timeline-filter-query:${projectIdForKeys}`
@@ -413,7 +352,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   )
   const [projectTz, setProjectTz] = useState<string | null>(null)
   useEffect(() => {
-    window.redlog.config?.get?.().then((c) => {
+    window.redlog.config.get().then((c) => {
       const cfg = c as { engagement?: { timezone?: string } } | null | undefined
       const tzName = cfg?.engagement?.timezone
       setProjectTz(typeof tzName === 'string' && tzName ? tzName : null)
@@ -484,12 +423,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // will render its rows in the scanner lane with the plugin's colour.
   const [pluginTypes, setPluginTypes] = useState<PluginEventType[]>([])
   useEffect(() => {
-    try {
-      const p = window.redlog.plugins?.eventTypes?.()
-      if (p && typeof (p as Promise<unknown>).then === 'function') {
-        (p as Promise<PluginEventType[]>).then((types) => setPluginTypes(types ?? [])).catch(() => {})
-      }
-    } catch { /* older preload */ }
+    void window.redlog.plugins.eventTypes()
+      .then((types) => setPluginTypes(types.map((type) => ({
+        agentType: type.agentType,
+        label: type.label ?? type.agentType,
+        lane: type.lane,
+        pluginId: type.pluginId ?? 'unknown'
+      }))))
+      .catch(() => {})
   }, [])
 
   // On new selection: snap the detail panel back to the top, collapse the JSON
@@ -528,7 +469,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [detailPanelPx])
 
-  // Known operator ids, held in a ref so the onNew guard below reads the
+  // Known operator ids, held in a ref so the event guard below reads the
   // CURRENT set. It used to read the `operatorNames` state, which the []-dep
   // effect captured empty on first render — so `!operatorNames[id]` was always
   // true and every incoming event fired an operators.list() IPC + a full
@@ -545,8 +486,8 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       }).catch(() => {})
     }
     load()
-    const unsub = window.redlog.events.onNew((e) => {
-      if (e.operatorId && !knownOperatorsRef.current.has(e.operatorId)) load()
+    const unsub = window.redlog.events.onNewBatch((events) => {
+      if (events.some((e) => e.operatorId && !knownOperatorsRef.current.has(e.operatorId))) load()
     })
     return unsub
   }, [])
@@ -705,8 +646,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     // v0.6.95 P0-4c + P1-12: batch listener + sorted-insert. Main sends
     // `events:new-batch` with an Array<RedLogEvent> once per frame per burst;
     // this handler folds them into the sorted array in one shot, then does a
-    // single setEvents / re-render. Falls back to `onNew` per-event only if
-    // the batch channel isn't wired (older preload — shouldn't happen).
+    // single setEvents / re-render.
     let scheduled = false
     const flush = (): void => {
       scheduled = false
@@ -746,23 +686,13 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       if (sortedRef.current.length > BIG_SET) window.setTimeout(flush, SLOW_FLUSH_MS)
       else requestAnimationFrame(flush)
     }
-    const unsubBatch = window.redlog.events.onNewBatch
-      ? window.redlog.events.onNewBatch((events) => {
-          if (!events?.length) return
-          for (const e of events) ingest(e)
-          scheduleFlush()
-        })
-      : null
-    // Keep the per-event subscriber ONLY when the batch channel is missing —
-    // otherwise both channels fire for every event and each row is ingested
-    // twice (second call is a no-op on the sorted array thanks to the map
-    // check, but still wasted work).
-    const unsubSingle = unsubBatch
-      ? null
-      : window.redlog.events.onNew((event) => { ingest(event); scheduleFlush() })
+    const unsubBatch = window.redlog.events.onNewBatch((events) => {
+      if (!events.length) return
+      for (const e of events) ingest(e)
+      scheduleFlush()
+    })
     return () => {
-      unsubBatch?.()
-      unsubSingle?.()
+      unsubBatch()
     }
   }, [])
 
@@ -1223,7 +1153,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       setDetailOpen(true)
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else if (focusTs) {
-      // no matching event (e.g. jumped from a quickmark) — centre on its time
+      // no matching event (e.g. jumped from a bookmark) — centre on its time
       el.scrollLeft = Math.max(0, Math.min(toX(focusTs) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else {
       el.scrollLeft = Math.max(0, Math.min(toX(Date.now()) - el.clientWidth + 80, TRACK_W - el.clientWidth))
@@ -1449,7 +1379,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // this first-level with no undo, because an undo that quietly removed the
   // amendment would be an edit wearing another name. Amend again instead.
   const handleAmend = useCallback(async (markerId: string, changes: Partial<MarkerValues>) => {
-    const res = await window.redlog.marker.amend?.(markerId, changes)
+    const res = await window.redlog.marker.amend(markerId, changes)
     if (res?.ok) {
       toast(t('marker.amendSaved'), 'success')
       return
@@ -1471,7 +1401,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   const resolveOriginal = useCallback(async (markerId: string) => {
     const known = eventsMapRef.current.get(markerId)
     if (known) { setSelectedEvent(known); setDetailOpen(true); scrollToEvent(known); return }
-    const [fetched] = (await window.redlog.events.getById?.([markerId])) ?? []
+    const [fetched] = (await window.redlog.events.getById([markerId])) ?? []
     if (fetched) { setSelectedEvent(fetched); setDetailOpen(true) }
   }, [scrollToEvent])
 
@@ -1963,7 +1893,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               const rect = el.getBoundingClientRect()
               const trackX = (e.clientX - rect.left) + el.scrollLeft
               const ts = Math.round(fromX(trackX))
-              void window.redlog.ui?.contextMenu?.([
+              void window.redlog.ui.contextMenu([
                 { id: 'drop-marker', label: t('timeline.dropMarkerHere', { time: formatTime(ts, { seconds: true }) }) }
               ]).then((picked) => {
                 if (picked === 'drop-marker') onDropMarker(ts)
@@ -2600,10 +2530,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           {selectedEvent.targetId && (
             <p className="text-xs text-redlog-text-dim mt-1 font-mono">{t('timeline.target', { target: selectedEvent.targetId })}</p>
           )}
-          {/* v0.6.89: structured stdout/stderr + metadata split for shell
-              command_end. Falls back to the legacy single-`output` block if
-              stdout/stderr are unset (older captures, or the standard
-              preexec hook which doesn't split streams). */}
+          {/* Structured stdout/stderr + metadata for shell command_end. */}
           {selectedEvent.agentType === 'shell'
             && selectedEvent.data?.subtype === 'command_end'
             && (

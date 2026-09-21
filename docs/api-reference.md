@@ -103,22 +103,22 @@ amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 
 ---
 
-### QuickMarks (private bookmarks)
+### Bookmarks (private operator notes)
 
 > These rows are the operator's private bookmarks, not evidence. They are **not
 > hash-chained, not signed, not attributed to an operator, not redacted, and not
-> included in the evidence bundle** (removed in bundleVersion 3). They are
+> included in the evidence bundle**. They are
 > readable by any bearer token and by any plugin holding the capability, and
 > they can be edited and deleted in place.
 >
 > For something that belongs in the record, write a `marker` event — chained,
 > signed, amendable but never rewritable. See **Markers** above.
 
-#### `GET /api/quickmarks`
+#### `GET /api/bookmarks`
 
-**Response:** `{ quickmarks: QuickMark[] }`
+**Response:** `{ bookmarks: Bookmark[] }`
 
-#### `POST /api/quickmarks`
+#### `POST /api/bookmarks`
 
 **Body:** `{ title, url?, note? }`
 
@@ -126,7 +126,7 @@ amendments (`agent_type: "marker"`, `data.subtype: "amended"`,
 detail pane labels it as auto-captured, so accepting a caller-supplied one would
 let any token holder put chosen provenance on screen.
 
-**Response:** `201` with the created quickmark.
+**Response:** `201` with the created bookmark.
 
 ---
 
@@ -300,8 +300,8 @@ Writes masked bytes to `sanitized_events` table + appends chained `system.saniti
 | GET | `/api/events/search` | yes | Events |
 | GET | `/api/events/count` | yes | Events |
 | POST | `/api/marker` | yes | Markers |
-| GET | `/api/quickmarks` | yes | QuickMarks |
-| POST | `/api/quickmarks` | yes | QuickMarks |
+| GET | `/api/bookmarks` | yes | Bookmarks |
+| POST | `/api/bookmarks` | yes | Bookmarks |
 | POST | `/api/loot/scan` | yes | Loot |
 | POST | `/api/screenshot` | yes | Screenshot |
 | GET | `/api/status` | yes | Status |

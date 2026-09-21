@@ -15,10 +15,8 @@ import { useSyncExternalStore } from 'react'
 export interface ViewExport {
   /** What the operator will recognise this subset as, in the menu. */
   label: string
-  /** Resolves to the written path, or null if the operator cancelled. */
-  run?: (opts?: { sharing?: boolean }) => Promise<string | null>
   /** Declarative selection used by the canonical preview/execute plan. */
-  request?: ExportRequest
+  request: ExportRequest
   /** Events in this subset, for the preview line. Omit if not countable. */
   count?: number
 }
@@ -54,17 +52,16 @@ export function useViewExport(): ViewExport | null {
 export function useContributeExport(entry: ViewExport | null): void {
   const label = entry?.label
   const count = entry?.count
-  const run = entry?.run
   const request = entry?.request
   useEffect(() => {
-    if (!label || (!run && !request)) {
+    if (!label || !request) {
       return
     }
-    current = { label, run, request, count }
+    current = { label, request, count }
     emit()
     return () => {
       current = null
       emit()
     }
-  }, [label, count, run, request])
+  }, [label, count, request])
 }

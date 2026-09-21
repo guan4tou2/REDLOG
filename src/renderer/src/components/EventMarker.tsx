@@ -35,7 +35,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
   // and a later refresh would overwrite what they came to record. Silent on
   // failure — no connector is the normal case.
   useEffect(() => {
-    void window.redlog.cdp?.getTab?.()
+    void window.redlog.cdp.getTab()
       .then((tab) => { if (tab?.url) setUrl(tab.url) })
       .catch(() => { /* no browser connected */ })
   }, [])

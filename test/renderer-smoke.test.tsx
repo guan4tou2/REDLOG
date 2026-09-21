@@ -105,7 +105,7 @@ function installBridge(): void {
       get: async () => ({
         engagement: { id: 'eng', name: 'Engagement' },
         operator: { id: 'op-1', name: 'Operator' },
-        network: { safeIPs: [], exposedIPs: [], checkInterval: 10 },
+        network: { whitelist: [], blacklist: [], checkInterval: 10 },
         scope: { warnOnViolation: true, targets: [], excludeTargets: [], scopeFile: '' },
         screenshot: { quality: 85 },
         terminal: { maxCastBytes: 1024 },
@@ -118,6 +118,7 @@ function installBridge(): void {
     events: {
       query: async () => EVENTS,
       getCount: async () => EVENTS.length,
+      getLatestLoggedTs: async () => null,
       search: async () => EVENTS,
       aggregateTargets: async () => {
         // Mirror the SQL rollup over the mock EVENTS so TargetView still renders
@@ -134,7 +135,6 @@ function installBridge(): void {
         return Array.from(m.values()).sort((a, b) => b.lastSeen - a.lastSeen)
       },
       getById: async (ids: string[]) => EVENTS.filter((e) => ids.includes(e.id as string)),
-      onNew: () => unsub,
       onNewBatch: () => unsub
     },
     marker: {
@@ -147,7 +147,8 @@ function installBridge(): void {
     scope: {
       getViolations: async () => [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }],
       getViolationCount: async () => 1,
-      isConfigured: async () => true
+      isConfigured: async () => true,
+      getLastRecompute: async () => null
     },
     chain: {
       length: async () => EVENTS.length,
@@ -171,8 +172,12 @@ function installBridge(): void {
       launch: async () => ({ ok: true, pid: 1 }),
       stop: async () => ({ stopped: true })
     },
-    data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
+    data: {
+      resolveExportPlan: async () => ({ ok: false, error: 'not configured in smoke test' }),
+      executeExportPlan: async () => ({ ok: false, error: 'not configured in smoke test' })
+    },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
+    plugins: { eventTypes: async () => [] },
     hookConfig: { get: async () => ({ watchPaths: [] }), save: async () => true, pickPath: async () => null },
     operators: {
       list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]

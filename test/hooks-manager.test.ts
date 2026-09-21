@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import fs from 'fs'
-import { detectHooks, getHookInstallPlan, isBrokenShellHook, isLegacyShellHook, installHook } from '../src/core/hooks-manager'
+import { detectHooks, getHookInstallPlan, installHook } from '../src/core/hooks-manager'
 
 // process.platform is non-writable; test the Windows refusal branch by
 // swapping it in-place then restoring.
@@ -34,7 +34,7 @@ describe('hooks-manager guided setup', () => {
     for (const id of ['shell-zsh', 'shell-bash']) {
       const plan = getHookInstallPlan(id)
       expect(plan?.map((file) => file.target.split(/[\\/]/).pop())).toEqual([
-        id === 'shell-zsh' ? 'shell-hook.zsh' : 'shell-preexec-hook.sh',
+        id === 'shell-zsh' ? 'shell-hook.zsh' : 'shell-bash-hook.sh',
         'shell-common.sh'
       ])
       expect(plan?.every((file) => fs.existsSync(file.source))).toBe(true)
@@ -55,24 +55,6 @@ describe('hooks-manager guided setup', () => {
     // the absolute addon path is baked into the copy-paste command
     expect(cmd).toContain(m.hookFile)
     expect(cmd).toContain('mitmproxy-addon.py')
-  })
-
-  it('recognises the pre-v0.6.47 $$$ pid marker as broken', () => {
-    // Both quote styles appeared in the wild — python & POSIX both wrote it.
-    expect(isBrokenShellHook("payload='{\"pid\": $$$}'")).toBe(true)
-    expect(isBrokenShellHook("payload=\"{'pid': $$$}\"")).toBe(true)
-  })
-
-  it('does not flag a hook that has $$ (correct PID substitution)', () => {
-    expect(isBrokenShellHook("payload='{\"pid\": $$}'")).toBe(false)
-    expect(isBrokenShellHook('#!/bin/bash\nset -e\n')).toBe(false)
-  })
-
-  it('recognises only the RedLog-owned legacy shell implementations', () => {
-    expect(isLegacyShellHook('shell-bash', '# --- Zsh hooks ---\n_redlog_send_event() { :; }')).toBe(true)
-    expect(isLegacyShellHook('shell-zsh', '_redlog_api() { :; }\nadd-zsh-hook preexec _redlog_preexec')).toBe(true)
-    expect(isLegacyShellHook('shell-bash', '# my custom RedLog hook')).toBe(false)
-    expect(isLegacyShellHook('shell-powershell', '_redlog_api()')).toBe(false)
   })
 
   it('codex is guided-manual with platform-appropriate steps', () => {

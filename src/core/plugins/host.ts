@@ -28,7 +28,6 @@ const CAP_FOR_METHOD: Record<string, Capability> = {
   'events.query': 'read:events',
   'events.search': 'read:events',
   'events.append': 'write:events',
-  'findings.list': 'read:findings',
   'bookmarks.list': 'read:bookmarks',
   'config.get': 'read:config',
   'net.fetch': 'net:outbound'

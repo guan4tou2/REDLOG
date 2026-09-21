@@ -128,14 +128,14 @@ nmap -sV "$TARGET"
 hooks/redlog-send.sh "nmap -sV $TARGET" command_end "{\"exit_code\":$?}"
 ```
 
-The bash/zsh `shell-preexec-hook.sh` also works inside WSL — source it in your
-WSL distro's `~/.bashrc` or `~/.zshrc`. The hook uses deferred trap arming
+The shell-specific adapters also work inside WSL: source `shell-bash-hook.sh`
+from `~/.bashrc` or `shell-zsh-hook.zsh` from `~/.zshrc`. The Bash hook uses deferred trap arming
 (`_REDLOG_TRAP_ARMED`) so shell init statements are never captured as user
 commands.
 
 > **Important:** When sourcing the hook from Git Bash on Windows, use a POSIX
-> path — `source /c/Users/<you>/.redlog/shell-preexec-hook.sh`, **not**
-> `source C:\Users\<you>\.redlog\shell-preexec-hook.sh` (backslashes are
+> path — `source /c/Users/<you>/.redlog/shell-bash-hook.sh`, **not**
+> `source C:\Users\<you>\.redlog\shell-bash-hook.sh` (backslashes are
 > interpreted as escape characters).
 
 ---

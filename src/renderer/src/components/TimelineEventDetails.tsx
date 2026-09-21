@@ -8,15 +8,11 @@ import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } 
 
 // ── Shell command_end ────────────────────────────────────────────────
 
-/** Structured detail body for a shell command_end event. Renders separate
- *  stdout / stderr collapsible sections when the wrapper populated them,
- *  falls back to a "mixed" section for the legacy `output` field, and
- *  finishes with a compact key=value metadata grid. */
+/** Structured detail body for a shell command_end event. */
 export function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
-  const hasLegacyOutput = !hasStdout && !hasStderr && typeof data.output === 'string'
   return (
     <div className="mt-2 space-y-1.5">
       {hasStdout && (
@@ -39,16 +35,8 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           startOpen={false}
         />
       )}
-      {hasLegacyOutput && (
-        <CollapsibleStream
-          label={t('timeline.detail.stdoutMixed')}
-          content={data.output as string}
-          accent="zinc"
-          startOpen={false}
-        />
-      )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!hasStdout && !hasStderr && !hasLegacyOutput && (
+      {!hasStdout && !hasStderr && (
         <IoAbsenceNote
           builtin={data.source === 'builtin-terminal'}
           io={data.io as Record<string, unknown> | undefined}

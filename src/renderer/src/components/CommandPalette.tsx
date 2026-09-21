@@ -116,7 +116,7 @@ export function CommandPalette({
     // why this half could land ahead of host search.
     window.redlog.operators.list().then(setOperators).catch(() => {})
     // §10 host search: distinct hosts, aggregated in SQL (#65's pattern).
-    window.redlog.events.distinctHosts?.().then(setHosts).catch(() => {})
+    window.redlog.events.distinctHosts().then(setHosts).catch(() => {})
   }, [open])
 
   // Event search is the only part that costs anything, so it is the only part

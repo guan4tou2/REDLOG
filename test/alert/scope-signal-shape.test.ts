@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 // from, not with the code that runs. The tailer's extractor is still mirrored,
 // for now, because it remains private.
 
-import { extractTarget } from '../../src/core/target-extractor'
+import { extractTargetWithProvenance } from '../../src/core/target-extractor'
 import { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL } from '../../src/core/alert/scope-signal'
 import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from '../helpers/builtin-extractors'
 
@@ -28,7 +28,7 @@ function extractTargetFromToolInput(raw: string): string | null {
     try { return new URL(trimmed).hostname || null } catch { return null }
   }
   if (trimmed.startsWith('/') || trimmed.startsWith('~')) return null
-  return extractTarget(trimmed)
+  return extractTargetWithProvenance(trimmed).host
 }
 
 describe('scopeSignalFor — routes producers to (target, source, action)', () => {

@@ -16,7 +16,7 @@ import {
 import { eventBus } from './event-bus'
 import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
-import { extractTarget, extractTargetWithProvenance } from './target-extractor'
+import { extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
@@ -481,16 +481,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    // F4 part B: /api/bookmarks is the current route; /api/quickmarks is kept
-    // as a deprecated alias so installed integrations keep working. The GET
-    // response key follows the route (`bookmarks` vs the legacy `quickmarks`).
-    if ((route === '/api/bookmarks' || route === '/api/quickmarks') && req.method === 'GET') {
+    if (route === '/api/bookmarks' && req.method === 'GET') {
       const list = listBookmarks()
-      json(res, 200, route === '/api/bookmarks' ? { bookmarks: list } : { quickmarks: list })
+      json(res, 200, { bookmarks: list })
       return
     }
 
-    if ((route === '/api/bookmarks' || route === '/api/quickmarks') && req.method === 'POST') {
+    if (route === '/api/bookmarks' && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const mark = createBookmark({
@@ -570,8 +567,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // a small window so echoed prompt/output isn't lost to rounding).
       const startMs = target.timestamp - Math.max(duration, 100)
       // v0.9.6 (T2): prefer the byte range stamped at capture time — O(len)
-      // instead of streaming the file from 0. Falls back to the time window
-      // for pre-v0.9.6 events and unbracketed pairs.
+      // instead of streaming the file from 0. Unbracketed pairs use the time window.
       const io = td.io as { off?: number; len?: number } | undefined
       const bracketed = typeof io?.off === 'number' && typeof io.len === 'number' && io.len > 0
         ? await readCastRange(resolvedCast, io.off, io.len)

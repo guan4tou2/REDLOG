@@ -1,80 +1,82 @@
 import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest'
 import {
-  extractTarget, registerTargetExtractors, unregisterTargetExtractors,
+  registerTargetExtractors, unregisterTargetExtractors,
   extractTargetWithProvenance, listExternalTargetExtractors
 } from '../src/core/target-extractor'
 import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from './helpers/builtin-extractors'
+
+const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
 
 // E1 Option B: built-ins are the bundled pack now, not in core — load it the
 // way the plugin runtime does at startup so these behaviour guards still hold.
 beforeAll(() => { loadBuiltinTargetExtractors() })
 afterAll(() => { unloadBuiltinTargetExtractors() })
 
-describe('extractTarget', () => {
+describe('extractTargetWithProvenance host extraction', () => {
   it('extracts host from ssh command', () => {
-    expect(extractTarget('ssh user@10.0.0.1')).toBe('10.0.0.1')
-    expect(extractTarget('ssh admin@target.example.com')).toBe('target.example.com')
+    expect(extractedHost('ssh user@10.0.0.1')).toBe('10.0.0.1')
+    expect(extractedHost('ssh admin@target.example.com')).toBe('target.example.com')
   })
 
   it('extracts host from nmap command', () => {
-    expect(extractTarget('nmap -sV 192.168.1.1')).toBe('192.168.1.1')
-    expect(extractTarget('nmap -A target.com')).toBe('target.com')
+    expect(extractedHost('nmap -sV 192.168.1.1')).toBe('192.168.1.1')
+    expect(extractedHost('nmap -A target.com')).toBe('target.com')
   })
 
   it('extracts host from curl with URL', () => {
-    expect(extractTarget('curl https://api.example.com/path')).toBe('api.example.com')
-    expect(extractTarget('curl http://10.0.0.1:8080/api')).toBe('10.0.0.1')
+    expect(extractedHost('curl https://api.example.com/path')).toBe('api.example.com')
+    expect(extractedHost('curl http://10.0.0.1:8080/api')).toBe('10.0.0.1')
   })
 
   it('extracts host from sqlmap', () => {
-    expect(extractTarget('sqlmap -u "http://vuln.site/page?id=1"')).toBe('vuln.site')
+    expect(extractedHost('sqlmap -u "http://vuln.site/page?id=1"')).toBe('vuln.site')
   })
 
   it('extracts host from ffuf', () => {
-    expect(extractTarget('ffuf -u https://target.com/FUZZ -w wordlist.txt')).toBe('target.com')
+    expect(extractedHost('ffuf -u https://target.com/FUZZ -w wordlist.txt')).toBe('target.com')
   })
 
   it('extracts host from gobuster', () => {
-    expect(extractTarget('gobuster dir -u http://10.0.0.5 -w list.txt')).toBe('10.0.0.5')
+    expect(extractedHost('gobuster dir -u http://10.0.0.5 -w list.txt')).toBe('10.0.0.5')
   })
 
   it('extracts host from nikto', () => {
-    expect(extractTarget('nikto -h target.example.com')).toBe('target.example.com')
+    expect(extractedHost('nikto -h target.example.com')).toBe('target.example.com')
   })
 
   it('extracts host from hydra', () => {
-    expect(extractTarget('hydra -l admin -P pass.txt 10.0.0.1 ssh')).toBe('10.0.0.1')
+    expect(extractedHost('hydra -l admin -P pass.txt 10.0.0.1 ssh')).toBe('10.0.0.1')
   })
 
   it('extracts host from ping', () => {
-    expect(extractTarget('ping 8.8.8.8')).toBe('8.8.8.8')
-    expect(extractTarget('ping google.com')).toBe('google.com')
+    expect(extractedHost('ping 8.8.8.8')).toBe('8.8.8.8')
+    expect(extractedHost('ping google.com')).toBe('google.com')
   })
 
   it('extracts host from scp', () => {
-    expect(extractTarget('scp file.txt user@10.0.0.1:/tmp/')).toBe('10.0.0.1')
+    expect(extractedHost('scp file.txt user@10.0.0.1:/tmp/')).toBe('10.0.0.1')
   })
 
   it('extracts host from nuclei', () => {
-    expect(extractTarget('nuclei -u https://target.com -t cves/')).toBe('target.com')
+    expect(extractedHost('nuclei -u https://target.com -t cves/')).toBe('target.com')
   })
 
   it('extracts host from impacket', () => {
-    expect(extractTarget('impacket-psexec admin@10.0.0.1')).toBe('10.0.0.1')
+    expect(extractedHost('impacket-psexec admin@10.0.0.1')).toBe('10.0.0.1')
   })
 
   it('extracts RHOSTS from metasploit set command', () => {
-    expect(extractTarget('set RHOSTS 10.0.0.0/24')).toBe('10.0.0.0/24')
+    expect(extractedHost('set RHOSTS 10.0.0.0/24')).toBe('10.0.0.0/24')
   })
 
   it('returns null for commands without targets', () => {
-    expect(extractTarget('ls -la')).toBeNull()
-    expect(extractTarget('cat /etc/passwd')).toBeNull()
-    expect(extractTarget('whoami')).toBeNull()
+    expect(extractedHost('ls -la')).toBeNull()
+    expect(extractedHost('cat /etc/passwd')).toBeNull()
+    expect(extractedHost('whoami')).toBeNull()
   })
 
   it('extracts from unknown command with URL', () => {
-    expect(extractTarget('xh https://api.target.com/v1')).toBe('api.target.com')
+    expect(extractedHost('xh https://api.target.com/v1')).toBe('api.target.com')
   })
 
   // v0.6.64 regression tests — fallback must NOT run DOMAIN_RE across arbitrary
@@ -82,45 +84,45 @@ describe('extractTarget', () => {
   // targets panel as if they were hosts.
   describe('unknown-command fallback (://-scheme required)', () => {
     it('does not treat python module-paths as targets', () => {
-      expect(extractTarget('python -c "import json.dumps"')).toBeNull()
-      expect(extractTarget('python3 -m http.server')).toBeNull()
+      expect(extractedHost('python -c "import json.dumps"')).toBeNull()
+      expect(extractedHost('python3 -m http.server')).toBeNull()
     })
 
     it('does not treat sourced hook paths as targets', () => {
-      expect(extractTarget('source ~/.redlog/shell-preexec-hook.sh')).toBeNull()
-      expect(extractTarget('. /opt/hooks/wrapper.sh')).toBeNull()
+      expect(extractedHost('source ~/.redlog/shell-bash-hook.sh')).toBeNull()
+      expect(extractedHost('. /opt/hooks/wrapper.sh')).toBeNull()
     })
 
     it('does not treat filenames-with-extensions as targets', () => {
-      expect(extractTarget('cat notes.txt')).toBeNull()
-      expect(extractTarget('open report.pdf')).toBeNull()
+      expect(extractedHost('cat notes.txt')).toBeNull()
+      expect(extractedHost('open report.pdf')).toBeNull()
     })
 
     it('still extracts host when an unknown command carries an http(s) URL', () => {
-      expect(extractTarget('xh https://api.target.com/v1')).toBe('api.target.com')
-      expect(extractTarget('unknown-tool http://192.168.1.1:8080/foo')).toBe('192.168.1.1')
+      expect(extractedHost('xh https://api.target.com/v1')).toBe('api.target.com')
+      expect(extractedHost('unknown-tool http://192.168.1.1:8080/foo')).toBe('192.168.1.1')
     })
   })
 
   describe('empty / degenerate / huge input', () => {
     it('empty and whitespace-only commands return null', () => {
-      expect(extractTarget('')).toBeNull()
-      expect(extractTarget('   ')).toBeNull()
-      expect(extractTarget('\t\n')).toBeNull()
+      expect(extractedHost('')).toBeNull()
+      expect(extractedHost('   ')).toBeNull()
+      expect(extractedHost('\t\n')).toBeNull()
     })
 
     it('finishes quickly on a large command string', () => {
       const noise = 'a'.repeat(50_000)
       const start = Date.now()
       // Unknown command with no URL — must not run DOMAIN_RE across the 50K blob.
-      expect(extractTarget(`echo ${noise}`)).toBeNull()
+      expect(extractedHost(`echo ${noise}`)).toBeNull()
       expect(Date.now() - start).toBeLessThan(200)
     })
 
     it('accepts commands whose target has an unusual port suffix', () => {
-      expect(extractTarget('ssh admin@target.example.com')).toBe('target.example.com')
+      expect(extractedHost('ssh admin@target.example.com')).toBe('target.example.com')
       // scp with :path — capture stops before the colon.
-      expect(extractTarget('scp file.txt operator@10.1.2.3:/tmp/x')).toBe('10.1.2.3')
+      expect(extractedHost('scp file.txt operator@10.1.2.3:/tmp/x')).toBe('10.1.2.3')
     })
   })
 
@@ -137,7 +139,7 @@ describe('extractTarget', () => {
         { cmd: '^nmap\\s', extract: 'plugin-target-([a-z0-9]+)' }
       ])
       expect(n).toBe(1)
-      expect(extractTarget('nmap plugin-target-alpha01 10.0.0.9')).toBe('alpha01')
+      expect(extractedHost('nmap plugin-target-alpha01 10.0.0.9')).toBe('alpha01')
     })
 
     it('bad regex is silently skipped, the count reflects only what compiled', () => {
@@ -146,7 +148,7 @@ describe('extractTarget', () => {
         { cmd: '^unit-good\\s', extract: '(\\S+)$' }
       ])
       expect(n).toBe(1)
-      expect(extractTarget('unit-good end-token')).toBe('end-token')
+      expect(extractedHost('unit-good end-token')).toBe('end-token')
     })
 
     it('unregistering an unknown plugin id is a no-op (idempotent)', () => {
@@ -157,10 +159,10 @@ describe('extractTarget', () => {
       registerTargetExtractors('unit-x', [{ cmd: '^rescan\\s', extract: '--to\\s+(\\S+)' }])
       registerTargetExtractors('unit-x', [{ cmd: '^rescan\\s', extract: '--to\\s+(\\S+)' }])
       // Two identical entries; both fire but return the same thing.
-      expect(extractTarget('rescan --to host.local')).toBe('host.local')
+      expect(extractedHost('rescan --to host.local')).toBe('host.local')
       unregisterTargetExtractors('unit-x')
       // After unregister, plugin no longer contributes — fallback fires.
-      expect(extractTarget('rescan --to host.local')).toBeNull()
+      expect(extractedHost('rescan --to host.local')).toBeNull()
     })
   })
 
@@ -225,13 +227,13 @@ describe('extractTarget', () => {
       expect(list[0].extract).toBe('--t\\s+(\\S+)')
     })
 
-    it('extractTarget backward-compat shim still returns just the host string', () => {
+    it('returns host and provenance through the canonical result shape', () => {
       registerTargetExtractors('audit-ext', [
         { cmd: '^probe\\s', extract: '(\\S+)$' }
       ])
-      expect(extractTarget('probe target.example')).toBe('target.example')
-      expect(extractTarget('ssh user@10.0.0.1')).toBe('10.0.0.1')
-      expect(extractTarget('nothing here')).toBeNull()
+      expect(extractedHost('probe target.example')).toBe('target.example')
+      expect(extractedHost('ssh user@10.0.0.1')).toBe('10.0.0.1')
+      expect(extractedHost('nothing here')).toBeNull()
     })
   })
 })

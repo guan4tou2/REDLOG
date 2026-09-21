@@ -122,18 +122,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
     if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
-    const allow = profile.network?.whitelist ?? profile.network?.safeIPs
+    const allow = profile.network?.whitelist
     if (allow) setWhitelist(allow)
-    const deny = profile.network?.blacklist ?? profile.network?.exposedIPs
+    const deny = profile.network?.blacklist
     if (deny) setBlacklist(deny)
-    // Migrate legacy 'log' → warnings off; 'warn' or unset → on. Direct boolean wins.
     if (profile.scope?.warnOnViolation !== undefined) setWarnOnViolation(profile.scope.warnOnViolation)
-    else if (profile.scope?.enforcement) setWarnOnViolation(profile.scope.enforcement !== 'log')
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
   }
 
-  // v0.14 picker layout: the pre-v0.14 fixed 480px column left huge empty
+  // The fixed 480px column left excessive empty
   // gutters on wide displays and cramped-feeling recent-projects rows.
   // Research (JetBrains + Cursor welcome screens, Win32 UX guidance) points
   // at a two-column split above ~800px — brand + new project on the left,

@@ -19,5 +19,6 @@
 
 1. Add a failing boundary and manifest contract test.
 2. Extract POSIX common behavior and create bash/zsh adapters.
-3. Make legacy paths delegate and teach the installer about support files.
+3. Route every active caller directly to a shell adapter, teach the installer
+   about support files, and remove historical combined entry points.
 4. Verify hook behavior, manifest parity, build and desktop setup flow.

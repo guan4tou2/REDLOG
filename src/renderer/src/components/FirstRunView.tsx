@@ -53,10 +53,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         .catch(() => { /* the strip simply stays empty */ })
     }
     load()
-    const unsub = window.redlog.events.onNewBatch?.(() => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(load, 300)
-    }) ?? window.redlog.events.onNew(() => {
+    const unsub = window.redlog.events.onNewBatch(() => {
       if (timer) clearTimeout(timer)
       timer = setTimeout(load, 300)
     })

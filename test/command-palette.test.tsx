@@ -10,7 +10,10 @@ import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
 
 const bridge = {
   project: { list: vi.fn(async () => []), open: vi.fn(async () => null) },
-  events: { search: vi.fn(async () => []) },
+  events: {
+    search: vi.fn(async () => []),
+    distinctHosts: vi.fn(async () => [])
+  },
   operators: { list: vi.fn(async () => [
     { id: 'op1', name: 'alice', isPrimary: true, createdAt: 0, revokedAt: null },
     { id: 'op2', name: 'bob', isPrimary: false, createdAt: 0, revokedAt: null },

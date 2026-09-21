@@ -72,7 +72,7 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (!project) return
-    window.redlog.events.getCount().then(setExportableCount).catch(() => {})
+    window.redlog.events.getCount('all').then(setExportableCount).catch(() => {})
   }, [project, view])
 
   // Global marker shortcut (Cmd/Ctrl+Shift+M) is registered in the main process

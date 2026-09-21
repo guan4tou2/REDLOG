@@ -87,8 +87,13 @@ fi
 
 case "$ACTION" in
   install)
-    echo "→ Copying hook to $TARGET..."
-    scp -P "$SSH_PORT" "$SCRIPT_DIR/shell-preexec-hook.sh" "$TARGET:~/.redlog-hook.sh"
+    echo "→ Copying shell adapters to $TARGET..."
+    ssh -p "$SSH_PORT" "$TARGET" "mkdir -p ~/.redlog/hooks"
+    scp -P "$SSH_PORT" \
+      "$SCRIPT_DIR/shell-common.sh" \
+      "$SCRIPT_DIR/shell-bash-hook.sh" \
+      "$SCRIPT_DIR/shell-zsh-hook.zsh" \
+      "$TARGET:~/.redlog/hooks/"
     # Push the token file too (mode 600) so the remote hook can authenticate.
     # We DON'T push the port file — the port on the remote is always the
     # tunnel's own port (6660), regardless of what the local machine listens on.
@@ -97,9 +102,10 @@ case "$ACTION" in
     echo "6660" | ssh -p "$SSH_PORT" "$TARGET" "cat > ~/.redlog/api-port && chmod 600 ~/.redlog/api-port"
 
     # Add source line to the remote shell rc if not already there.
-    SOURCE_LINE='[ -f ~/.redlog-hook.sh ] && source ~/.redlog-hook.sh'
-    ssh -p "$SSH_PORT" "$TARGET" "grep -qF 'redlog-hook.sh' ~/.bashrc 2>/dev/null || echo '$SOURCE_LINE' >> ~/.bashrc"
-    ssh -p "$SSH_PORT" "$TARGET" "grep -qF 'redlog-hook.sh' ~/.zshrc 2>/dev/null || echo '$SOURCE_LINE' >> ~/.zshrc"
+    BASH_SOURCE_LINE='[ -f ~/.redlog/hooks/shell-bash-hook.sh ] && source ~/.redlog/hooks/shell-bash-hook.sh'
+    ZSH_SOURCE_LINE='[ -f ~/.redlog/hooks/shell-zsh-hook.zsh ] && source ~/.redlog/hooks/shell-zsh-hook.zsh'
+    ssh -p "$SSH_PORT" "$TARGET" "grep -qF 'shell-bash-hook.sh' ~/.bashrc 2>/dev/null || echo '$BASH_SOURCE_LINE' >> ~/.bashrc"
+    ssh -p "$SSH_PORT" "$TARGET" "grep -qF 'shell-zsh-hook.zsh' ~/.zshrc 2>/dev/null || echo '$ZSH_SOURCE_LINE' >> ~/.zshrc"
 
     echo ""
     echo "✔ Hook installed on $TARGET"
@@ -125,8 +131,8 @@ case "$ACTION" in
 
   uninstall)
     echo "→ Removing hook from $TARGET..."
-    ssh -p "$SSH_PORT" "$TARGET" "rm -f ~/.redlog-hook.sh ~/.redlog/api-token ~/.redlog/api-port"
-    ssh -p "$SSH_PORT" "$TARGET" "sed -i.bak '/redlog-hook.sh/d' ~/.bashrc ~/.zshrc 2>/dev/null || true"
+    ssh -p "$SSH_PORT" "$TARGET" "rm -rf ~/.redlog/hooks ~/.redlog/api-token ~/.redlog/api-port"
+    ssh -p "$SSH_PORT" "$TARGET" "sed -i.bak '/shell-bash-hook.sh/d; /shell-zsh-hook.zsh/d' ~/.bashrc ~/.zshrc 2>/dev/null || true"
     echo "✔ Removed"
     ;;
 

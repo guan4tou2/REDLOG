@@ -43,11 +43,9 @@ interface ManifestPayload {
   personalDropped: number
   doNotExportDropped: number
   exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
-  /** v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.7.2): row
-   *  counts per tier. `chained` matches chainHead.eventCount — that IS the
-   *  count the OTS anchor covers. `logged` is the events_logged row count
-   *  bundled in `events_logged.jsonl`. Only present on bundleVersion >= 2. */
-  tiers?: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
+  /** Row counts per tier. `chained` matches chainHead.eventCount and is the
+   *  count the OTS anchor covers. `logged` is the events_logged row count. */
+  tiers: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
   attachmentScopePolicy?: {
     screenshots: { included: number; excludedOutOfScope: number; unattributed: number }
     casts: { included: number; scopeFiltered: false; reason: string }
@@ -159,10 +157,7 @@ export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]
   } finally { fs.closeSync(fd) }
 }
 
-export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
-  const opts: ExportBundleOpts = typeof outRootOrOpts === 'string'
-    ? { outRoot: outRootOrOpts }
-    : (outRootOrOpts ?? {})
+export function exportBundle(engagementId: string, opts: ExportBundleOpts): EvidenceBundle {
   const outRoot = opts.outRoot
   const projectDir = getProjectDir()
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -183,7 +178,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
 
   // v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): fold one cheap digest over
   // the logged tier and append it as a chained `system.logged_tier_digest`
-  // event BEFORE the events.jsonl dump below for legacy unplanned exports, so
+  // event BEFORE the events.jsonl dump below for direct API exports, so
   // the snapshot ships inside that bundle's chained tier and the next OTS
   // anchor covers it. Planned exports cannot append a post-approval event to
   // their frozen selection; they record the bounded digest in the manifest.
@@ -192,7 +187,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // anchor loop instead of leaving it a manual step, without touching the hot
   // logged write path. Skipped on an empty tier, mirroring the retention sweep's
   // "no rows → no event" rule. With ExportSnapshot this is bounded to the
-  // exact logged tier approved by the operator; legacy exports use the live tier.
+  // exact logged tier approved by the operator; direct exports use the live tier.
   // the byte integrity of the (possibly sanitized) events_logged.jsonl copy is
   // the separate files[].sha256 entry recorded further down.
   // Resolve the signing operator up front: the digest snapshot below is a
@@ -581,11 +576,6 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       'The verifier below walks `events.jsonl` only; the logged tier is present',
       'for completeness but is not part of the audit-verified chain.',
       '',
-      "Bundles before v3 also carried `quickmarks.json`. Those rows are the",
-      "operator's private bookmarks — never chained, never signed, editable in",
-      'place, and never checked by this verifier. They are deliberately not',
-      'included here; nothing in this bundle depends on them.',
-      '',
       '## Verify (macOS / Linux)',
       '',
       '```',
@@ -639,17 +629,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
   const manifest: ManifestPayload = {
-    // v0.13.0: bump 1 → 2. The bundle layout gains `events_logged.jsonl`
-    // and the manifest gains `tiers`. External bundle consumers keying
-    // on `bundleVersion === 1` need to update; the bundled
-    // `redlog-verify.py` accepts both versions and ignores the logged
-    // tier when it's absent (v1 bundles have no events_logged.jsonl).
-    // v3: `quickmarks.json` is gone. It shipped here for two years as a
-    // sibling of events.jsonl while being none of the things this bundle
-    // claims: not chained, not signed, not anchored, not attributed to an
-    // operator, editable in place, and never opened by the bundled verifier.
-    // Those rows are private bookmarks and now stay on the operator's machine.
-    // Consumers keying on `bundleVersion` should expect it absent from v3.
+    // Current evidence-bundle schema identifier.
     bundleVersion: 3,
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
@@ -679,8 +659,8 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     } : undefined,
     eventSourceBreakdown: sourceBreakdown,
     tiers: {
-      // For planned exports both values describe the approved snapshot. Legacy
-      // exports use the live head, including the digest event emitted above.
+      // Planned exports describe the approved snapshot. Direct exports use
+      // the live head, including the digest event emitted above.
       chained: head?.eventCount ?? 0,
       logged: loggedRowCount,
       // §7.5: the anchored snapshot of the logged tier taken above. Surfaced

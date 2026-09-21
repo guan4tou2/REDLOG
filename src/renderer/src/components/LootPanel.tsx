@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
-import { toast } from './Toast'
 import { Gem } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/time'
@@ -28,8 +27,8 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
 
   useEffect(() => {
     loadLoot().then(() => setLoading(false))
-    const unsub = window.redlog.events.onNew((evt) => {
-      if (evt.agentType === 'loot') {
+    const unsub = window.redlog.events.onNewBatch((events) => {
+      if (events.some((evt) => evt.agentType === 'loot')) {
         loadLoot()
       }
     })
@@ -115,19 +114,8 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
 
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
-      <div className="flex items-center justify-between">
+      <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('loot.title', { count: visibleMatchCount })}</h2>
-        {lootEvents.length > 0 && (
-          <button
-            onClick={async () => {
-              const p = await (window.redlog.data as { exportLoot?: () => Promise<string | null> }).exportLoot?.()
-              if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-            title={t('loot.exportHint')}
-          >{t('loot.export')}</button>
-        )}
       </div>
 
       {/* Filter + dedup chips (only when there's enough loot to matter) */}

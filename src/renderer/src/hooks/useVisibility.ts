@@ -49,7 +49,7 @@ export function useVisibility(
 
   // Fetch initial visibility signals (project fetch stays in App).
   useEffect(() => {
-    void (window.redlog.visibility?.signals?.().catch(() => null) ?? Promise.resolve(null))
+    void (window.redlog.visibility.signals().catch(() => null) ?? Promise.resolve(null))
       .then((signals) => {
         setVisSignals((signals as VisibilitySignals | null) ?? ALL_DISCLOSED)
       })
@@ -61,11 +61,11 @@ export function useVisibility(
   useEffect(() => {
     if (!project || visibility.complete) return
     let timer: ReturnType<typeof setTimeout> | null = null
-    const unsub = window.redlog.events.onNewBatch?.((batch: unknown[]) => {
+    const unsub = window.redlog.events.onNewBatch((batch: unknown[]) => {
       if (!shouldRefetch(visSignals ?? EMPTY_SIGNALS, batch as Parameters<typeof shouldRefetch>[1])) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        void window.redlog.visibility?.signals?.()
+        void window.redlog.visibility.signals()
           .then((sig) => { if (sig) setVisSignals(sig as VisibilitySignals) })
           .catch(() => { /* a probe failure only delays a page appearing */ })
       }, 500)

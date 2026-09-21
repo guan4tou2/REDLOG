@@ -52,7 +52,7 @@ test.describe.serial('recording pause semantics', () => {
   test('a paused POST answers 200 so the shell hook does not spool it', async () => {
     await setRecording(false)
     const res = await post('shell', { subtype: 'command_end', command: 'secret-while-paused', exit_code: 0 })
-    // `curl -sf` in shell-preexec-hook.sh treats any non-2xx as failure and
+    // `curl -sf` in shell-common.sh treats any non-2xx as failure and
     // writes the payload to ~/.redlog/pending/, which RedLog replays on the
     // next project open — the paused command would reach the chain anyway.
     expect(res.status, 'non-2xx would make the hook spool and replay this later').toBe(200)

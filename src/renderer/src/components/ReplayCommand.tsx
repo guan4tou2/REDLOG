@@ -32,7 +32,7 @@ export function ReplayCommand({ eventId, mode = 'command' }: { eventId: string; 
         setInDrawer(true)
         return
       }
-      // Command replay (and empty/legacy session slices) stay inline as text.
+      // Command replay and empty session slices stay inline as text.
       setText(r.text ?? '')
       setExpanded(true)
     } finally {

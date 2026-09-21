@@ -38,7 +38,7 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions,
   getCastPosition
 } from './terminal-manager'
-import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -646,21 +646,16 @@ function startProject(project: ProjectMeta): void {
 
   // Replay only records belonging to the active engagement. Mismatches remain
   // recoverable on disk and are picked up when their owning project opens.
-  // Also scan the old quarantined directory once so files moved there by
-  // v0.15.1 regain the promised recovery path.
   const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
     if (!currentEngagementId || !currentOperatorId) return
     const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): void => {
       const ev = insertEvent(agentType, data, { engagementId: spoolEngagement, operatorId: spoolOperator })
       if (ev) eventBus.publish(ev)
     }
-    let replayed = 0
-    for (const directory of [path.join(homedir(), '.redlog', 'pending'), path.join(homedir(), '.redlog', 'quarantined')]) {
-      replayed += replaySpoolDirectory(directory, {
-        engagementId: currentEngagementId,
-        operatorId: currentOperatorId
-      }, emit, limit).replayed
-    }
+    const replayed = replaySpoolDirectory(path.join(homedir(), '.redlog', 'pending'), {
+      engagementId: currentEngagementId,
+      operatorId: currentOperatorId
+    }, emit, limit).replayed
     if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
   }
   try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
@@ -814,22 +809,6 @@ function startProject(project: ProjectMeta): void {
     }
   })
   onApiProjectOpen()
-
-  // Silently repair any pre-v0.6.47 shell hook still sitting in ~/.redlog/.
-  // If nothing needs upgrading this is a no-op. Emits a system event when
-  // it does upgrade so operators see the change in the timeline instead of
-  // having a file mutate under them without record.
-  try {
-    const { upgraded, failed } = autoUpgradeInstalledHooks()
-    if (upgraded.length > 0 || failed.length > 0) {
-      insertEvent('system', {
-        subtype: 'hook_auto_upgrade',
-        upgraded,
-        failed,
-        reason: 'pre-v0.6.47 $$$ pid bug'
-      }, { engagementId, operatorId })
-    }
-  } catch { /* best effort — never block startup */ }
 
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
@@ -1162,7 +1141,7 @@ app.whenReady().then(() => {
   })
 
   // Hook-config lives in ~/.redlog/hook-config.json — outside the project so
-  // it applies across every project (user's Claude Code hook is global).
+  // transcript watch paths apply across every project.
   // The two gates are readable/writable through this IPC pair so the
   // Settings ▸ 整合 panel can maintain the watchPaths whitelist without
   // shelling out.
@@ -1289,12 +1268,7 @@ app.whenReady().then(() => {
 
   // --- Events (extracted to ipc/events.ts) ---
 
-  // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
-  // still fires `events:new` per-event (overlay
-  // pivot HUD subscribe to it), but the renderer's Timeline drains
-  // `events:new-batch` on a single frame per burst. A 200 evt/s mitmproxy
-  // scan collapses from 200 IPC hops to ~12 (60 fps) with one setEvents
-  // call per hop instead of one per event.
+  // Coalesce event bursts into one renderer delivery per event-loop turn.
   let batchBuffer: RedLogEvent[] = []
   let batchScheduled = false
   const flushBatch = (): void => {
@@ -1305,10 +1279,6 @@ app.whenReady().then(() => {
     send(mainWindow, 'events:new-batch', drained)
   }
   eventBus.on('event', (event) => {
-    // Per-event channel stays — the overlay HUD and any external subscriber
-    // that doesn't want to buffer keeps its existing shape.
-    send(mainWindow, 'events:new', event)
-    // Batch channel — Timeline listens here and rebuilds once per frame.
     batchBuffer.push(event)
     if (!batchScheduled) {
       batchScheduled = true

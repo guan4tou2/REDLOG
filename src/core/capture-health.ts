@@ -65,17 +65,14 @@ export interface CaptureHealth {
   dbErrorTotal: number
   /** Timestamp of the first DB error in this session, or null. */
   dbErrorFirstAt: number | null
-  /** v0.6.89 P1-A: most recent chain-sample failure. Pins verdict to `dark`
+  /** Most recent chain-sample failure. Pins verdict to `dark`
    *  for the TTL window even if all sources are otherwise healthy — a
    *  broken chain is worse than a dark capture, since it means historical
    *  audit rows have been tampered with.
    *
-   *  v0.7.6 H3: `eventTimestamp` carries the broken row's own creation
+   *  `eventTimestamp` carries the broken row's own creation
    *  time so the Dashboard can render "6d old" alongside the eventId —
-   *  operators can tell at a glance whether the flag is a fresh
-   *  regression or a pre-v0.7.x historical event they can't do anything
-   *  about (see the 2026-08-01 `system/ip_transition` case that
-   *  triggered this UX change). */
+   *  operators can tell at a glance whether the flag is fresh or historical. */
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   /** Timestamp of the most-recent verifyRandomSample that returned ok:true.
    *  Dashboard renders this as "sampled Xm ago" so operators can see the

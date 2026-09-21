@@ -7,14 +7,17 @@ import {
   cwdPassesGate,
   isSelfExcludedCwd,
   readTranscriptCwd,
-  registerSession,
-  catchUpSession,
   _sessionsForTest,
   stopAgentTailer,
-  configureAgentTailer
+  configureAgentTailer,
+  claudeCodeAdapter,
+  type AgentTailerConfig
 } from '../src/main/services/agent-transcript-tailer'
 import {
-  registerSession as hostRegisterSession
+  registerSession as hostRegisterSession,
+  catchUpSession as hostCatchUpSession,
+  registerAdapter,
+  configureHost
 } from '../src/main/services/tailer-host'
 import type { ParsedTurn } from '../src/main/services/tailer-host'
 import { initDB, closeDB } from '../src/core/db/index'
@@ -23,8 +26,24 @@ import { createOperator, generateToken } from '../src/core/db/operators'
 
 let scratch: string
 const OP = 'operator-1'
+let hostConfigured = false
+
+function registerSession(sourcePath: string, cfg: AgentTailerConfig): void {
+  if (cfg.claudeProjectsDir) claudeCodeAdapter.transcriptGlob = path.join(cfg.claudeProjectsDir, '**', '*.jsonl')
+  registerAdapter(claudeCodeAdapter)
+  if (!hostConfigured) {
+    configureHost({ ...cfg, enabled: true })
+    hostConfigured = true
+  }
+  hostRegisterSession('claude-code', sourcePath)
+}
+
+function catchUpSession(sessionId: string): void {
+  hostCatchUpSession('claude-code', sessionId)
+}
 
 beforeEach(() => {
+  hostConfigured = false
   scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tailer-'))
   initDB(scratch)
   createOperator({ id: OP, name: 'Operator 1', token: generateToken() })
@@ -169,7 +188,7 @@ describe('cwdPassesGate', () => {
     expect(cwdPassesGate('/tmp/proj', ['/tmp/proj'])).toBe(false)
     expect(cwdPassesGate('/tmp/other', ['/tmp/proj'])).toBe(true)
   })
-  it('respects legacy watchPaths whitelist', () => {
+  it('respects the watchPaths allowlist', () => {
     expect(cwdPassesGate('/tmp/proj/x', [], ['/tmp/proj'])).toBe(true)
     expect(cwdPassesGate('/tmp/other', [], ['/tmp/proj'])).toBe(false)
   })
@@ -263,7 +282,7 @@ describe('catchUpSession — end-to-end', () => {
     expect(asst.data.usage_tokens_in).toBe(5)
 
     // Re-run catchUp with unchanged file → no new events (uuid dedup).
-    catchUpSession(s.sessionId, cfgSnap)
+    catchUpSession(s.sessionId)
     const rows2 = queryEvents({ agentType: 'agent', limit: 100 })
     expect(rows2.length).toBe(rows.length)
 
@@ -272,7 +291,7 @@ describe('catchUpSession — end-to-end', () => {
       type: 'user', uuid: 'u5', parentUuid: 'u4',
       message: { role: 'user', content: [{ type: 'text', text: 'thanks' }] }
     }) + '\n')
-    catchUpSession(s.sessionId, cfgSnap)
+    catchUpSession(s.sessionId)
     const rows3 = queryEvents({ agentType: 'agent', limit: 100 })
     expect(rows3.length).toBe(rows.length + 1)
   })
@@ -297,7 +316,7 @@ describe('catchUpSession — end-to-end', () => {
       JSON.stringify({ type: 'user', uuid: 'u9', cwd: '/tmp/p', isCompactSummary: true,
         message: { role: 'user', content: [{ type: 'text', text: 'summary' }] } })
     ].join('\n') + '\n')
-    catchUpSession(sid, cfgSnap)
+    catchUpSession(sid)
     const rows = queryEvents({ agentType: 'agent', limit: 100 })
     expect(rows.some((r) => r.data.subtype === 'transcript_compacted')).toBe(true)
     expect(rows.some((r) => r.data.subtype === 'compact_summary')).toBe(true)
@@ -326,7 +345,7 @@ describe('catchUpSession — end-to-end', () => {
     // Complete the partial line.
     const rest = 'ant","content":[{"type":"text","text":"ok"}]}}\n'
     fs.appendFileSync(source, rest)
-    catchUpSession(sid, cfgSnap)
+    catchUpSession(sid)
     rows = queryEvents({ agentType: 'agent', limit: 100 })
     expect(rows.filter((r) => r.data.subtype === 'assistant_message').length).toBe(1)
   })
@@ -358,10 +377,7 @@ describe('catchUpSession — end-to-end', () => {
     expect(compact!.data.has_thinking).toBeUndefined()
   })
 
-  it('registerSession shim does NOT emit session_end for prior sessions (v0.8.0.1 F2)', () => {
-    // Register session A, then session B with a fresh cfg. The old shim
-    // called configureHost → restartAll → unregisterSession(A) which fired
-    // a spurious session_end for A even though A was still live.
+  it('registering a second session does not end the first session', () => {
     const claudeDir = path.join(scratch, 'claude-projects', '-tmp-ab')
     fs.mkdirSync(claudeDir, { recursive: true })
     const sidA = 'ffffffff-aaaa-cccc-dddd-000000000006'

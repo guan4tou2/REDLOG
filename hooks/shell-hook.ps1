@@ -38,7 +38,7 @@ function _RedLogTimestamp {
 }
 
 # v0.6.94 A: spool the payload to disk when RedLog is unreachable so events
-# don't silently vanish. Matches hooks/shell-preexec-hook.sh lines 105-127
+# don't silently vanish. Matches the POSIX transport in hooks/shell-common.sh.
 # behaviour. main/index.ts:441-469 drains this directory on next project open
 # (glob-matches *.json, agnostic to bash vs PowerShell writer).
 function _RedLogSpoolPayload {

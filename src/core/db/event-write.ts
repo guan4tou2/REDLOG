@@ -166,21 +166,16 @@ export function invalidateChainHeadCache(): void {
   cachedLastHash = SENTINEL_UNSEEDED
 }
 
-/** Long-standing name for the same thing; kept so existing callers and tests
- *  are untouched. */
-export const _resetLastHashCache = invalidateChainHeadCache
-
-// v0.6.97 C: row-count cache. getEventCount is called on every StatusBar tick
-// (5s poll) and every dashboard render — pre-v0.6.97 that was a full
-// `SELECT COUNT(*)` per call. With 200k+ rows the scan takes 40-80ms and
+// Row-count cache. getEventCount is called on every StatusBar tick and every
+// dashboard render. With 200k+ rows a full scan takes 40-80ms and
 // blocks the main thread. Now: seed once via COUNT, then increment on every
 // successful insert. Any write path that mutates the events table outside
 // insertEvent (rebuild, DELETE via a bypassed trigger, migration) must call
-// `_resetEventCountCache` — mirror of the prev-hash cache invariant. Reset
+// `resetEventCountCache` — mirror of the prev-hash cache invariant. Reset
 // on project switch via resetSession too.
 let cachedEventCount: number | null = null
 
-export function _resetEventCountCache(): void {
+export function resetEventCountCache(): void {
   cachedEventCount = null
 }
 
@@ -235,8 +230,7 @@ export function assertEventsAppendOnly(): void {
 // might hash differently even though not a byte of user data changed.
 // This walker sorts every object's keys recursively; array order is
 // preserved (that IS semantic content). Strings are JSON-escaped normally.
-// New events land with canonical-hashed rows; verifyChainFull tries the
-// canonical shape first and falls back to legacy shapes for old rows.
+// Every event is hashed with this canonical representation.
 export function canonicalStringify(v: unknown): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v)
   if (Array.isArray(v)) return '[' + v.map(canonicalStringify).join(',') + ']'
@@ -418,7 +412,7 @@ function insertChainedEvent(
     // pivot-close detection. Key structurally on (subtype, command, terminalId).
     //
     // v0.6.86 also dedups across shell↔agent: a Claude Code hook (`agent`)
-    // shelling out to `ls` also gets caught by shell-preexec-hook (`shell`),
+    // shelling out to `ls` also gets caught by the active shell adapter,
     // producing two rows for the same intent. When (command, terminal_id) or
     // (command, pid) match across types within 2s, whichever fires second is
     // dropped. Kept subtype-sensitive so a `command_end` from either source can
@@ -494,12 +488,11 @@ function insertChainedEvent(
     prevHash,
     createdAt: now,
     monotonicNs: paddedMono,
-    ntpOffsetMs: getNtpOffsetMs()
+    ntpOffsetMs: getNtpOffsetMs(),
+    tier: 'chained'
   }
 
-  // v0.6.88 P0-A: canonical serialisation for hash. New rows land as
-  // hash-shape "v0.6.88". verifyChainFull tries this shape first, then
-  // falls back to legacy JSON.stringify shapes for pre-existing rows.
+  // Canonical serialisation for the hash and signature payload.
   const canonicalForHash = canonicalStringify({ ...event, hash: undefined, prevHash })
   const hash = crypto
     .createHash('sha256')
@@ -507,9 +500,8 @@ function insertChainedEvent(
     .digest('hex')
   event.hash = hash
 
-  // v0.6.89: sign the same canonical JSON with the operator's Ed25519 key.
-  // Returns null when the key file is missing (pre-v0.6.89 operator, wiped
-  // key, or filesystem error); the row still lands — chain hash keeps it
+  // Sign the same canonical JSON with the operator's Ed25519 key.
+  // Returns null when the key file is missing or inaccessible; the row still lands — chain hash keeps it
   // integrity-protected, verifyChainFull flags it "unsigned" not "broken".
   const signature = signEvent(canonicalForHash, event.operatorId)
   event.signature = signature

@@ -54,7 +54,7 @@ describeDB('insertEvent — two-tier dispatch (v0.13.0)', () => {
     }, { operatorId, engagementId: 'test' })
     expect(ev).not.toBeNull()
     expect(ev!.hash).toBeTruthy()
-    expect(ev!.tier).toBeUndefined()  // chained arm doesn't stamp tier — rowToEvent defaults it
+    expect(ev!.tier).toBe('chained')
 
     const db = getDB()
     const chainedRows = db.prepare('SELECT id FROM events').all() as Array<{ id: string }>

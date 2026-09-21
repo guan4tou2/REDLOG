@@ -94,7 +94,7 @@ export default function TerminalView(): JSX.Element {
     // per visit. `terminal:spawn` is idempotent per id and replays the
     // scrollback, so re-attaching is exactly what the operator wants: the
     // session they left, with its history.
-    void (window.redlog.terminal.list?.() ?? Promise.resolve([]))
+    void (window.redlog.terminal.list() ?? Promise.resolve([]))
       .then((live: Array<{ id: string; pid: number; recording?: boolean; castTruncated?: boolean }>) => {
         if (!Array.isArray(live) || live.length === 0) { addTab(); return }
         setTabs(live.map((s, i) => ({
@@ -113,15 +113,21 @@ export default function TerminalView(): JSX.Element {
   // cwd; we match by terminalId and stamp the label. Cheap because command_end
   // is at most one per prompt.
   useEffect(() => {
-    return window.redlog.events.onNew((evt) => {
-      if (evt.agentType !== 'shell') return
-      const d = evt.data as { subtype?: string; source?: string; terminalId?: string; cwd?: string; exit_code?: number }
-      if (d.source !== 'builtin-terminal' || d.subtype !== 'command_end' || !d.terminalId) return
-      setTabs((prev) => prev.map((tab) => tab.id === d.terminalId
+    return window.redlog.events.onNewBatch((events) => {
+      const updates = events.flatMap((evt) => {
+        if (evt.agentType !== 'shell') return []
+        const d = evt.data as { subtype?: string; source?: string; terminalId?: string; cwd?: string; exit_code?: number }
+        return d.source === 'builtin-terminal' && d.subtype === 'command_end' && d.terminalId ? [d] : []
+      })
+      if (!updates.length) return
+      setTabs((prev) => prev.map((tab) => {
+        const d = updates.slice().reverse().find((update) => update.terminalId === tab.id)
+        return d
         // Split on either separator so a Windows `C:\Users\foo\proj` doesn't
         // render as one giant tab label. Audit P1-3 (WINDOWS_COMPAT_AUDIT.md).
         ? { ...tab, cwd: d.cwd?.split(/[\\/]/).pop() || tab.cwd, lastExit: d.exit_code }
-        : tab))
+        : tab
+      }))
     })
   }, [])
 
@@ -461,7 +467,7 @@ function TerminalPane({ id, active, onPid, onCastState, onExit, fontSize, onSear
       term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
       onExit()
     })
-    const unsubCast = window.redlog.terminal.onCastState?.(id, onCastState)
+    const unsubCast = window.redlog.terminal.onCastState(id, onCastState)
     const dispInput = term.onData((data) => {
       window.redlog.terminal.write(id, data)
     })

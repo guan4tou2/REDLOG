@@ -112,23 +112,21 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
       window.redlog.config.get().then((c) => setConfig(c as Record<string, Record<string, unknown>>)).catch(() => {})
     ]).then(() => setLocalLoading(false))
 
-    // Capture health is non-critical and loaded separately + guarded, so a
-    // stale preload (missing the namespace) or a slow check never blocks load.
+    // Capture health is non-critical and loaded separately so a slow check
+    // never blocks the dashboard.
     const loadCapture = (): void => {
-      try { window.redlog.capture?.health?.()?.then(setCapture).catch(() => {}) } catch { /* older preload */ }
+      void window.redlog.capture.health().then(setCapture).catch(() => {})
     }
     // v0.9.7: let the card re-poll right after an install / toggle instead of
     // waiting out the 5s cycle — the button would otherwise look inert.
     refreshCaptureRef.current = loadCapture
     loadCapture()
-    // Anchor age poll — same guarded pattern as capture health.
+    // Anchor age poll — same non-blocking pattern as capture health.
     const loadAnchor = (): void => {
-      try {
-        window.redlog.chain?.anchors?.()?.then((list) => {
-          const first = list?.[0]
-          if (first) setLastAnchor({ createdAt: first.createdAt, status: first.status })
-        }).catch(() => {})
-      } catch { /* older preload */ }
+      void window.redlog.chain.anchors().then((list) => {
+        const first = list[0]
+        if (first) setLastAnchor({ createdAt: first.createdAt, status: first.status })
+      }).catch(() => {})
     }
     loadAnchor()
     // v0.7.5 G3: refresh dashboard-specific counts on every incoming event.
@@ -143,14 +141,14 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
     // match on-disk. Refreshing chainLen here closes the drift.
     const refreshLocalCounts = (): void => {
       window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
-      window.redlog.events.getLatestLoggedTs?.().then(setLatestLoggedTs).catch(() => {})
+      window.redlog.events.getLatestLoggedTs().then(setLatestLoggedTs).catch(() => {})
       window.redlog.chain.length().then(setChainLen).catch(() => {})
     }
     // Seed the tier split on first paint so the card doesn't wait for
     // the first onNew tick to fill in.
     window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
-    window.redlog.events.getLatestLoggedTs?.().then(setLatestLoggedTs).catch(() => {})
-    const unsub = window.redlog.events.onNew(() => { loadCapture(); loadAnchor(); refreshLocalCounts() })
+    window.redlog.events.getLatestLoggedTs().then(setLatestLoggedTs).catch(() => {})
+    const unsub = window.redlog.events.onNewBatch(() => { loadCapture(); loadAnchor(); refreshLocalCounts() })
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); clearInterval(anchorTimer) }
   }, [])
@@ -239,15 +237,13 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
             } else {
               anchorSub = baseSub
             }
-            // v0.6.89 P1-A: append last-sample-verify age. A broken sample
+            // Append last-sample-verify age. A broken sample
             // shows "sample BROKEN" in the same sub-line and forces the tile
             // red — the CaptureHealthCard also flips to dark, so the operator
             // gets two independent signals.
             if (capture?.lastSampleBroken) {
-              // v0.7.6 H3: append the broken row's own age so the operator
-              // can tell a stale historical row (pre-v0.7.x) from a fresh
-              // regression. If eventTimestamp is missing (older callsite)
-              // the message degrades to the pre-v0.7.6 "sample BROKEN".
+              // Append the broken row's own age so the operator can tell a
+              // stale historical row from a fresh regression.
               const ets = capture.lastSampleBroken.eventTimestamp
               let ageLabel = ''
               if (typeof ets === 'number' && ets > 0) {

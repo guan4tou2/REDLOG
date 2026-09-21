@@ -105,10 +105,9 @@ function restart(): void {
   runPs().then((rows) => {
     knownProcs = new Map(rows.map((r) => [r.pid, { pid: r.pid, ppid: r.ppid, command: r.command, startedAt: Date.now() }]))
   }).catch((err) => {
-    // v0.6.96 CP-2: Alpine / BusyBox `ps` doesn't accept the procps
+    // Alpine / BusyBox `ps` doesn't accept the procps
     // `-eo pid=,ppid=,etime=,command=` syntax and errors immediately —
-    // pre-v0.6.96 that swallowed silently and the lane looked broken with
-    // no reason. Emit a one-shot advisory mirroring the Windows path so
+    // syntax. Emit a one-shot advisory mirroring the Windows path so
     // the operator sees why nothing shows up.
     try {
       const ev = ingestEvent('system', {

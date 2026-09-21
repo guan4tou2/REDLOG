@@ -236,12 +236,10 @@ Port + token live at `~/.redlog/api-port` and `~/.redlog/api-token`. Curl
 timeouts must be short (`--connect-timeout 1 --max-time 2`) so a paused or
 gone RedLog doesn't wedge the agent's tool loop.
 
-Read the two hooks you already have — they cover both extremes:
+Read the current shell adapter and wrapper patterns:
 
-- [`hooks/claude-code-hook.sh`](../hooks/claude-code-hook.sh) — Tier A. Reads
-  Claude Code's stdin JSON payload, applies redaction, POSTs. Also implements
-  the two-gate privacy filter (recording state + cwd exclusion) that any
-  new agent hook is welcome to inherit.
+- [`hooks/shell-common.sh`](../hooks/shell-common.sh) — shared transport,
+  redaction gate, recording-state check, and spool behavior for POSIX shells.
 - [`hooks/codex-wrapper.sh`](../hooks/codex-wrapper.sh) — Tier B. Wraps every
   shell command spawned by Codex; fires a command_start before and a
   command_end after with exit code + duration.
@@ -328,7 +326,7 @@ capability declared in the manifest and granted by the operator:
 | `ctx.events.query(args)` | `read:events` | query the timeline |
 | `ctx.events.search(args)` | `read:events` | keyword search |
 | `ctx.events.append(args)` | `write:events` | append an event (attributed to the plugin) |
-| `ctx.findings.list(args)` | `read:findings` | read loot/quickmarks |
+| `ctx.bookmarks.list(args)` | `read:bookmarks` | read bookmarks |
 | `ctx.config.get()` | `read:config` | read engagement/scope/redaction config |
 | `ctx.fetch(args)` | `net:outbound` | outbound HTTP (⚠️ exfil surface) |
 | `ctx.log(msg)` | — | write to RedLog's log |
