@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { eventBus } from '../../core/event-bus'
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { notePortPid, socketCausesFor } from '../../core/socket-attribution'
 import { noteDbError } from '../../core/capture-health'
 import {
@@ -101,13 +101,12 @@ function announceLimit(): void {
   if (announcedLimit) return
   announcedLimit = true
   try {
-    const ev = insertEvent('system', {
+    const ev = ingestEvent('system', {
       subtype: 'connection_capture_started',
       description: 'Connection capture records established connections only; ' +
         'SYN scans (nmap -sS) complete no handshake and are not visible here.',
       poll_ms: Math.max(1000, cfg.pollMs ?? DEFAULT_POLL_MS)
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 
@@ -191,14 +190,13 @@ function emitOpen(c: Connection): void {
     }
     const causes = socketCausesFor('scanner', data)
     if (causes.length > 0) data._causes = causes
-    const ev = insertEvent('scanner', data, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
-    if (ev) eventBus.publish(ev)
+    const ev = ingestEvent('scanner', data, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 
 function emitClose(c: Connection, durationMs: number): void {
   try {
-    const ev = insertEvent('scanner', {
+    const ev = ingestEvent('scanner', {
       subtype: 'connection_end',
       proto: c.proto,
       remote_addr: c.remoteAddr,
@@ -207,19 +205,17 @@ function emitClose(c: Connection, durationMs: number): void {
       detectedTarget: c.remoteAddr,
       duration_sec: Math.max(0, Math.round(durationMs / 1000))
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId, targetId: c.remoteAddr })
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 
 function emitSaturated(count: number): void {
   try {
-    const ev = insertEvent('system', {
+    const ev = ingestEvent('system', {
       subtype: 'connection_monitor_saturated',
       count,
       description: `Connection monitor over budget: ${count} changes in one poll; ` +
         'recording the count, not each row (a wide scan opens thousands of short connections).'
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('connection-monitor', e) }
 }
 

@@ -47,7 +47,7 @@ import * as os from 'os'
 import * as crypto from 'crypto'
 import chokidar, { FSWatcher } from 'chokidar'
 
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { extractTarget } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
@@ -564,7 +564,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       if (!s.parentMissingAdvisoryFired) {
         s.parentMissingAdvisoryFired = true
         try {
-          const ev = insertEvent('agent', {
+          const ev = ingestEvent('agent', {
             subtype: 'transcript_parent_missing',
             session_id: s.sessionId,
             agent: s.agentKind,
@@ -574,7 +574,6 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
             pending_full: true,
             description: `Pending-parent buffer full (>${MAX_PENDING_CHILDREN}). Later children with missing parents emit without _causes rather than deferring indefinitely.`
           }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-          if (ev) eventBus.publish(ev)
         } catch (e) { noteDbError('tailer-host', e) }
       }
     }
@@ -695,7 +694,7 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
   }
 
   try {
-    const ev = insertEvent('agent', data, {
+    const ev = ingestEvent('agent', data, {
       engagementId: cfg.engagementId,
       operatorId: cfg.operatorId
     })
@@ -703,7 +702,6 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       s.redlogIdByUuid.set(t.uuid, ev.id)
       s.turnsEmitted++
       if (subtype === 'tool_call') s.toolCallsEmitted++
-      eventBus.publish(ev)
       // v0.12.0: hand tool_call events to the alert subsystem so agent-
       // driven activity registers in the Scope report the same way shell
       // and http do. Extraction uses the same picker as the sensitive-
@@ -797,7 +795,7 @@ function catchUpJsonl(s: SessionState): void {
     s.bytesAppendedSinceSnapshot = 0
     s.runningHash = crypto.createHash('sha256')
     try {
-      const ev = insertEvent('agent', {
+      const ev = ingestEvent('agent', {
         subtype: 'transcript_compacted',
         session_id: s.sessionId,
         agent: s.agentKind,
@@ -806,7 +804,6 @@ function catchUpJsonl(s: SessionState): void {
         new_source_bytes: sourceSize,
         description: 'Source transcript shrunk (likely /compact, /clear, or adapter-specific reset). Sidecar reset; subsequent per-turn events are tagged post_compact=true.'
       }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-      if (ev) eventBus.publish(ev)
     } catch (e) { noteDbError('tailer-host', e) }
     sidecarSize = 0
   }
@@ -845,7 +842,7 @@ function catchUpJsonl(s: SessionState): void {
   if (!eventBus.paused) {
     if (s.pauseSkippedLines > 0) {
       try {
-        const ev = insertEvent('system', {
+        const ev = ingestEvent('system', {
           subtype: 'capture_gap',
           agent: s.agentKind,
           session_id: s.sessionId,
@@ -854,7 +851,6 @@ function catchUpJsonl(s: SessionState): void {
           gap_ended_at: Date.now(),
           description: `Recording was paused; ${s.pauseSkippedLines} transcript line(s) consumed but not ingested. Raw data preserved in sidecar.`
         }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-        if (ev) eventBus.publish(ev, { bypassPause: true })
       } catch (e) { noteDbError('tailer-host', e) }
       s.pauseSkippedLines = 0
       s.pauseStartedAt = null
@@ -942,14 +938,13 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
     if (!s.driftAdvisoryFired.has('<parse_error>')) {
       s.driftAdvisoryFired.add('<parse_error>')
       try {
-        const ev = insertEvent('agent', {
+        const ev = ingestEvent('agent', {
           subtype: 'transcript_schema_drift',
           session_id: s.sessionId,
           agent: s.agentKind,
           unknown_type: '<parse_error>',
           description: 'Adapter.parseUnit() threw. See stderr for details.'
         }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-        if (ev) eventBus.publish(ev)
       } catch (err) { noteDbError('tailer-host', err) }
     }
     noteDbError('tailer-host', e)
@@ -967,14 +962,13 @@ function processUnit(s: SessionState, rawContent: string, sourcePath: string): v
         s.driftAdvisoryFired.add(turn.type)
         const safeType = String(turn.type).slice(0, 100).replace(/[\x00-\x1f]/g, '')
         try {
-          const ev = insertEvent('agent', {
+          const ev = ingestEvent('agent', {
             subtype: 'transcript_schema_drift',
             session_id: s.sessionId,
             agent: s.agentKind,
             unknown_type: safeType,
             description: `Encountered a transcript line type not in the adapter whitelist. Skipping only this type.`
           }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-          if (ev) eventBus.publish(ev)
         } catch (e) { noteDbError('tailer-host', e) }
       }
       continue
@@ -998,7 +992,7 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
   try { sidecarSize = fs.statSync(s.sidecarPath).size } catch { return }
   const sha = s.runningHash.copy().digest('hex')
   try {
-    const ev = insertEvent('agent', {
+    const ev = ingestEvent('agent', {
       subtype: 'transcript_snapshot',
       session_id: s.sessionId,
       agent: s.agentKind,
@@ -1011,13 +1005,12 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
       tool_calls_emitted: s.toolCallsEmitted,
       reason
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('tailer-host', e) }
 
   if (!s.toolGapAdvisoryFired && s.toolCallsSeen >= 10 && s.toolCallsEmitted === 0) {
     s.toolGapAdvisoryFired = true
     try {
-      const ev = insertEvent('agent', {
+      const ev = ingestEvent('agent', {
         subtype: 'transcript_tool_gap',
         session_id: s.sessionId,
         agent: s.agentKind,
@@ -1025,7 +1018,6 @@ function emitSnapshot(s: SessionState, reason: 'idle' | 'session_close' | 'perio
         tool_calls_emitted: s.toolCallsEmitted,
         description: `Parser saw ${s.toolCallsSeen} tool_use turns in source but emitted 0 tool_call events. The transcript format may have changed — tool activity is not being recorded.`
       }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-      if (ev) eventBus.publish(ev)
     } catch (e) { noteDbError('tailer-host', e) }
   }
 
@@ -1227,7 +1219,7 @@ function unregisterSession(key: string): void {
   if (!eventBus.paused) {
     emitSnapshot(s, 'session_close')
     try {
-      const ev = insertEvent('agent', {
+      const ev = ingestEvent('agent', {
         subtype: 'session_end',
         agent: s.agentKind,
         session_id: s.sessionId,
@@ -1235,7 +1227,6 @@ function unregisterSession(key: string): void {
         lines_seen: s.linesSeen,
         description: 'Transcript source removed or tailer shutting down; no more events for this session.'
       }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-      if (ev) eventBus.publish(ev)
     } catch (e) { noteDbError('tailer-host', e) }
   }
   sessions.delete(key)

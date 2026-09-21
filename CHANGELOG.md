@@ -12,6 +12,9 @@ for full commit body + generated notes.
 - Project creation accepts exclude targets and no longer drops advanced setup
   after the dialog closes.
 - Engagement ID is read-only after project creation.
+- Built-in capture producers now enter through one ingest policy, so pause,
+  publication, causal links, target extraction and derived evidence no longer
+  depend on which in-process source observed the activity.
 
 ## v0.15.1 — 2026-09-19
 

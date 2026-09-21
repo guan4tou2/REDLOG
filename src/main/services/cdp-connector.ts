@@ -1,6 +1,6 @@
 import http from 'http'
 import WebSocket from 'ws'
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 import { extractTarget } from '../../core/target-extractor'
@@ -147,7 +147,7 @@ async function pollNavigations(): Promise<void> {
     try {
       const targetHost = safeHost(url)
       const detectedTarget = targetHost ? extractTarget(url) : undefined
-      const ev = insertEvent('http_navigation', {
+      const ev = ingestEvent('http_navigation', {
         subtype: 'navigation',
         url,
         prev_url: prev ?? null,
@@ -160,7 +160,6 @@ async function pollNavigations(): Promise<void> {
         engagementId, operatorId,
         targetId: detectedTarget ?? undefined
       })
-      if (ev) eventBus.publish(ev)
     } catch (e) {
       // additive; never break polling — but surface the error to capture-health
       // so a persistently-failing CDP capture path stops being invisible.
@@ -352,11 +351,10 @@ function handleCdpEvent(
   try {
     const targetHost = sess.host
     const detectedTarget = targetHost ? extractTarget(sess.url) : undefined
-    const ev = insertEvent('browser', data, {
+    const ev = ingestEvent('browser', data, {
       engagementId, operatorId,
       targetId: detectedTarget ?? undefined
     })
-    if (ev) eventBus.publish(ev)
   } catch (e) {
     noteDbError('cdp-console', e)
   }
