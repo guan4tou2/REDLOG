@@ -110,21 +110,46 @@ describeDB('tailer seed index', () => {
   })
 
   it('costs one scan for many sessions, not one per session', () => {
-    // The property that matters. With N sessions the old shape ran N full
-    // scans of the agent bucket; the index runs one. Compared as a ratio so
-    // the test is not a wall-clock threshold on CI hardware.
+    // The property that matters, counted rather than timed. This used to
+    // compare wall-clock: one pass against 60 per-session queries, asserting a
+    // ratio above 3. The ratio is the right idea and the clock is the wrong
+    // instrument — vitest runs test files in parallel, so a scheduler hiccup
+    // during the single-pass measurement collapses the ratio and the suite
+    // goes red for a reason that has nothing to do with the code. It did,
+    // intermittently, and cost a while to catch precisely because it passed on
+    // a re-run.
+    //
+    // What the production change actually did is issue one query instead of
+    // N. Count the executions and the claim is exact and cannot flake.
     seed(60, 8)
-    const t0 = process.hrtime.bigint()
-    buildIndex()
-    const single = Number(process.hrtime.bigint() - t0) / 1e6
 
-    const t1 = process.hrtime.bigint()
-    for (let s = 0; s < 60; s++) perSession(`s-${s}`, 'claude-code')
-    const perSessionTotal = Number(process.hrtime.bigint() - t1) / 1e6
+    const db = getDB()
+    const realPrepare = db.prepare.bind(db)
+    let executions = 0
+    const counting = (sql: string): ReturnType<typeof realPrepare> => {
+      const st = realPrepare(sql)
+      const realAll = st.all.bind(st)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(st as any).all = (...args: unknown[]) => { executions++; return realAll(...args) }
+      return st
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(db as any).prepare = counting
 
-    expect(
-      perSessionTotal / Math.max(single, 0.01),
-      `one pass ${single.toFixed(1)}ms vs ${perSessionTotal.toFixed(1)}ms across 60 sessions`
-    ).toBeGreaterThan(3)
+    try {
+      executions = 0
+      buildIndex()
+      const indexExecutions = executions
+
+      executions = 0
+      for (let s = 0; s < 60; s++) perSession(`s-${s}`, 'claude-code')
+      const perSessionExecutions = executions
+
+      expect(indexExecutions, 'the seed index is one query, whatever the session count').toBe(1)
+      expect(perSessionExecutions, 'the old shape is one query per session').toBe(60)
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(db as any).prepare = realPrepare
+    }
   })
 })
