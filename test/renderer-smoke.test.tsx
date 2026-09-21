@@ -273,6 +273,30 @@ describe('renderer views render without throwing', () => {
     expect(shellLabels.length).toBeGreaterThan(0)
   })
 
+  it('HUD restores pointer interaction before expand and hide actions', async () => {
+    const bridge = (window as unknown as { redlog: { overlay: Record<string, ReturnType<typeof vi.fn>> } }).redlog
+    bridge.overlay.mouseEnter = vi.fn()
+    bridge.overlay.mouseLeave = vi.fn()
+    bridge.overlay.setExpanded = vi.fn()
+    bridge.overlay.hide = vi.fn()
+
+    const { container } = render(<I18nProvider><OverlayApp /></I18nProvider>)
+    const expand = await screen.findByRole('button', { name: /show details|顯示詳細資訊/i })
+    const root = container.firstElementChild as HTMLElement
+
+    fireEvent.mouseEnter(root)
+    expect(bridge.overlay.mouseEnter).toHaveBeenCalledOnce()
+
+    fireEvent.click(expand)
+    expect(bridge.overlay.setExpanded).toHaveBeenCalledWith(true)
+
+    fireEvent.click(screen.getByRole('button', { name: /hide hud|隱藏 hud/i }))
+    expect(bridge.overlay.hide).toHaveBeenCalledOnce()
+
+    fireEvent.mouseLeave(root)
+    expect(bridge.overlay.mouseLeave).toHaveBeenCalledOnce()
+  })
+
   // #49: the capture card lists a plugin producer read-only with its own label
   // and a "plugin" tag. It shows in the full inventory (manage), not the
   // compact problems view. Renders the actual UI I shipped, not just the mock.
