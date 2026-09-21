@@ -198,6 +198,13 @@ Or per-project in `.claude/settings.json`:
 
 Works with ANY agent that spawns a shell process. Hooks into zsh `preexec`/`precmd` or bash `DEBUG` trap.
 
+The installed integration uses a small adapter for each supported shell:
+`shell-bash-hook.sh` and `shell-zsh-hook.zsh` contain only lifecycle handling;
+both source `shell-common.sh` for transport, offline spool, project identity and
+`redlog-run`. PowerShell keeps its language-native adapter while emitting the
+same shell event fields. Fish, Nushell and cmd.exe are not currently advertised
+as automatic-hook targets.
+
 **Setup:**
 
 ```bash

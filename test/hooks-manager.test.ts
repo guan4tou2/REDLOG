@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { detectHooks, isBrokenShellHook, installHook } from '../src/core/hooks-manager'
+import fs from 'fs'
+import { detectHooks, getHookInstallPlan, isBrokenShellHook, isLegacyShellHook, installHook } from '../src/core/hooks-manager'
 
 // process.platform is non-writable; test the Windows refusal branch by
 // swapping it in-place then restoring.
@@ -29,6 +30,17 @@ describe('hooks-manager guided setup', () => {
     }
   })
 
+  it('installs each POSIX adapter beside the shared runtime it sources', () => {
+    for (const id of ['shell-zsh', 'shell-bash']) {
+      const plan = getHookInstallPlan(id)
+      expect(plan?.map((file) => file.target.split(/[\\/]/).pop())).toEqual([
+        id === 'shell-zsh' ? 'shell-hook.zsh' : 'shell-preexec-hook.sh',
+        'shell-common.sh'
+      ])
+      expect(plan?.every((file) => fs.existsSync(file.source))).toBe(true)
+    }
+  })
+
   it('mitmproxy is guided-manual with a runnable mitmdump command', () => {
     const m = byId('mitmproxy')
     expect(m.installMethod).toBe('manual')
@@ -54,6 +66,13 @@ describe('hooks-manager guided setup', () => {
   it('does not flag a hook that has $$ (correct PID substitution)', () => {
     expect(isBrokenShellHook("payload='{\"pid\": $$}'")).toBe(false)
     expect(isBrokenShellHook('#!/bin/bash\nset -e\n')).toBe(false)
+  })
+
+  it('recognises only the RedLog-owned legacy shell implementations', () => {
+    expect(isLegacyShellHook('shell-bash', '# --- Zsh hooks ---\n_redlog_send_event() { :; }')).toBe(true)
+    expect(isLegacyShellHook('shell-zsh', '_redlog_api() { :; }\nadd-zsh-hook preexec _redlog_preexec')).toBe(true)
+    expect(isLegacyShellHook('shell-bash', '# my custom RedLog hook')).toBe(false)
+    expect(isLegacyShellHook('shell-powershell', '_redlog_api()')).toBe(false)
   })
 
   it('codex is guided-manual with platform-appropriate steps', () => {

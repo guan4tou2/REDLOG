@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
@@ -52,6 +52,17 @@ test.describe.serial('the first run', () => {
     await page.waitForTimeout(500)
     expect(await page.locator('text=/capture|Capture/').count()).toBeGreaterThan(0)
     await expect(page.getByText('commands only · redlog-run adds stdout/stderr').first()).toBeVisible()
+    await page.click('[data-testid="first-run-more-sources"]')
+  })
+
+  test('installs the selected shell adapter with its shared runtime', async () => {
+    await page.click('[data-testid="first-run-more-sources"]')
+    await page.getByRole('button', { name: /all sources/ }).click()
+    await page.getByRole('button', { name: 'install', exact: true }).first().click()
+    await expect.poll(() => existsSync(join(tmpHome, '.redlog', 'shell-common.sh'))).toBe(true)
+    const adapterInstalled = existsSync(join(tmpHome, '.redlog', 'shell-hook.zsh')) ||
+      existsSync(join(tmpHome, '.redlog', 'shell-preexec-hook.sh'))
+    expect(adapterInstalled).toBe(true)
     await page.click('[data-testid="first-run-more-sources"]')
   })
 

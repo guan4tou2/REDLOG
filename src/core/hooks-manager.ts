@@ -1,6 +1,6 @@
 import { execSync, spawn, spawnSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
 import { isDisabled } from './plugins/state'
@@ -14,6 +14,8 @@ export interface PluginManifest {
   emits?: string[]
   requires: string[]
   hookFile: string
+  /** Files installed beside hookFile, such as a shared shell transport. */
+  supportFiles?: string[]
   installMethod: 'claude-settings' | 'shell-source' | 'manual'
   installTarget?: string
   shellRcFile?: string
@@ -91,7 +93,8 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     description: 'Captures commands and exit codes from zsh',
     agentType: 'shell',
     requires: [],
-    hookFile: 'shell/redlog-hook.zsh',
+    hookFile: 'hooks/shell-zsh-hook.zsh',
+    supportFiles: ['hooks/shell-common.sh'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-hook.zsh'),
     shellRcFile: '.zshrc'
@@ -102,7 +105,8 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     description: 'Captures commands via preexec/precmd hooks',
     agentType: 'shell',
     requires: [],
-    hookFile: 'hooks/shell-preexec-hook.sh',
+    hookFile: 'hooks/shell-bash-hook.sh',
+    supportFiles: ['hooks/shell-common.sh'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-preexec-hook.sh'),
     shellRcFile: '.bashrc'
@@ -172,6 +176,7 @@ function loadStarterPack(): PluginManifest[] | null {
         agentType: e.agentType,
         requires: Array.isArray(e.requires) ? (e.requires as string[]) : [],
         hookFile: e.hookFile,
+        supportFiles: Array.isArray(e.supportFiles) ? (e.supportFiles as string[]) : undefined,
         installMethod: e.installMethod as PluginManifest['installMethod'],
         installTarget,
         shellRcFile: typeof e.shellRcFile === 'string' ? e.shellRcFile : undefined,
@@ -226,13 +231,17 @@ function allManifests(): PluginManifest[] {
 
 // Absolute path to a manifest's hook script source. Plugin captures resolve
 // inside the plugin dir; built-ins resolve against the shipped hooks/ or shell/.
-function srcPathFor(plugin: PluginManifest): string {
-  if (plugin._dir) return join(plugin._dir, plugin.hookFile)
+function srcPathForRelative(plugin: PluginManifest, relative: string): string {
+  if (plugin._dir) return join(plugin._dir, relative)
   const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
   const shellDir = resolveDir(SHELL_DIR, join(__dirname, '../../shell'))
-  return plugin.hookFile.startsWith('shell/')
-    ? join(shellDir, plugin.hookFile.replace('shell/', ''))
-    : join(hooksDir, plugin.hookFile.replace('hooks/', ''))
+  return relative.startsWith('shell/')
+    ? join(shellDir, relative.replace('shell/', ''))
+    : join(hooksDir, relative.replace('hooks/', ''))
+}
+
+function srcPathFor(plugin: PluginManifest): string {
+  return srcPathForRelative(plugin, plugin.hookFile)
 }
 
 // For shell-source plugin captures without an explicit target, drop the hook in
@@ -241,6 +250,22 @@ function installTargetFor(plugin: PluginManifest): string {
   if (plugin.installTarget) return plugin.installTarget
   const base = plugin.hookFile.split(/[\\/]/).pop() ?? `${plugin.id}.sh`
   return join(homedir(), '.redlog', base)
+}
+
+/** Resolve the complete, reviewable file set for a hook installation. The
+ * adapter and every declared support file are colocated so relative sourcing
+ * behaves the same in the repository and under ~/.redlog. */
+export function getHookInstallPlan(pluginId: string): Array<{ source: string; target: string }> | null {
+  const plugin = allManifests().find((candidate) => candidate.id === pluginId)
+  if (!plugin || plugin.installMethod !== 'shell-source') return null
+  const target = installTargetFor(plugin)
+  return [
+    { source: srcPathFor(plugin), target },
+    ...(plugin.supportFiles ?? []).map((relative) => ({
+      source: srcPathForRelative(plugin, relative),
+      target: join(dirname(target), relative.split(/[\\/]/).pop() ?? relative)
+    }))
+  ]
 }
 
 // Which shell rc a shell-source hook appends to. Explicit wins; otherwise pick
@@ -557,10 +582,14 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         }
       }
       try {
-        const dest = installTargetFor(plugin)
-        const src = srcPathFor(plugin)
+        const plan = getHookInstallPlan(plugin.id)
+        if (!plan || plan.length === 0) throw new Error('Empty hook install plan')
+        const dest = plan[0].target
         mkdirSync(join(homedir(), '.redlog'), { recursive: true })
-        if (existsSync(src)) copyFileSync(src, dest)
+        for (const file of plan) {
+          if (!existsSync(file.source)) throw new Error(`Missing hook file: ${file.source}`)
+          copyFileSync(file.source, file.target)
+        }
         const rcFile = shellRcFor(plugin)
         const rcPath = join(homedir(), rcFile)
         let content = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
@@ -642,6 +671,19 @@ export function isBrokenShellHook(installed: string): boolean {
     || installed.includes('"pid": $$$')
 }
 
+/** Recognise the two RedLog-owned pre-adapter implementations. The markers
+ * are deliberately specific so startup never replaces an operator-authored
+ * hook that merely happens to mention RedLog. */
+export function isLegacyShellHook(pluginId: string, installed: string): boolean {
+  if (pluginId === 'shell-bash') {
+    return installed.includes('# --- Zsh hooks ---') && installed.includes('_redlog_send_event()')
+  }
+  if (pluginId === 'shell-zsh') {
+    return installed.includes('_redlog_api()') && installed.includes('add-zsh-hook preexec _redlog_preexec')
+  }
+  return false
+}
+
 // Called from main-process startup after the API server is up.
 export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: string[] } {
   const upgraded: string[] = []
@@ -650,11 +692,11 @@ export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: strin
     if (plugin.installMethod !== 'shell-source') continue
     const dest = installTargetFor(plugin)
     if (!existsSync(dest)) continue
-    const src = srcPathFor(plugin)
-    if (!existsSync(src)) continue
+    const plan = getHookInstallPlan(plugin.id)
+    if (!plan || plan.some((file) => !existsSync(file.source))) continue
     try {
       const installed = readFileSync(dest, 'utf-8')
-      const bundled = readFileSync(src, 'utf-8')
+      const bundled = readFileSync(plan[0].source, 'utf-8')
       // Normalise CRLF → LF before compare so a Windows editor rewriting
       // the installed copy with `\r\n` isn't treated as an upgrade candidate.
       // Audit P2-4.
@@ -663,8 +705,8 @@ export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: strin
       // the known-broken markers, or has an old shebang line we've since
       // superseded. Anything else might be a user modification and we
       // shouldn't clobber it silently.
-      if (!isBrokenShellHook(installed)) continue
-      copyFileSync(src, dest)
+      if (!isBrokenShellHook(installed) && !isLegacyShellHook(plugin.id, installed)) continue
+      for (const file of plan) copyFileSync(file.source, file.target)
       upgraded.push(`${plugin.id} → ${dest}`)
     } catch (e) {
       failed.push(`${plugin.id}: ${(e as Error).message}`)
