@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { spawn } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -107,5 +107,28 @@ exit $?
 
     expect(exitCode).toBe(9)
     expect(stdout).toBe('OFFLINE_OK')
+  })
+
+  it.skipIf(spawnSync('zsh', ['-c', 'exit 0']).status !== 0)('loads the shared wrapper through the zsh adapter', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-run-zsh-'))
+    tempDirs.push(home)
+    const adapter = path.resolve('hooks/shell-zsh-hook.zsh')
+    const script = `source "$1" >/dev/null
+redlog-run sh -c 'printf ZSH_OK; exit 6'
+exit $?
+`
+    const child = spawn('zsh', ['-c', script, 'zsh', adapter], {
+      env: { ...process.env, HOME: home, SHELL: '/bin/zsh' },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let stdout = ''
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('close', resolve)
+    })
+
+    expect(exitCode).toBe(6)
+    expect(stdout).toBe('ZSH_OK')
   })
 })

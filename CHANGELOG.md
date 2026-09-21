@@ -17,6 +17,8 @@ for full commit body + generated notes.
   depend on which in-process source observed the activity.
 - POSIX `redlog-run` now streams stdout/stderr while capturing them, and Capture
   Health states that the ordinary external-shell hook records metadata only.
+- Bash and zsh now use thin lifecycle adapters over one shared sender, spool,
+  identity and `redlog-run` runtime; legacy hook paths delegate compatibly.
 
 ## v0.15.1 — 2026-09-19
 

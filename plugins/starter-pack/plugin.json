@@ -13,7 +13,8 @@
       "description": "Captures commands and exit codes from zsh",
       "agentType": "shell",
       "requires": [],
-      "hookFile": "shell/redlog-hook.zsh",
+      "hookFile": "hooks/shell-zsh-hook.zsh",
+      "supportFiles": ["hooks/shell-common.sh"],
       "installMethod": "shell-source",
       "installTarget": "~/.redlog/shell-hook.zsh",
       "shellRcFile": ".zshrc"
@@ -24,7 +25,8 @@
       "description": "Captures commands via preexec/precmd hooks",
       "agentType": "shell",
       "requires": [],
-      "hookFile": "hooks/shell-preexec-hook.sh",
+      "hookFile": "hooks/shell-bash-hook.sh",
+      "supportFiles": ["hooks/shell-common.sh"],
       "installMethod": "shell-source",
       "installTarget": "~/.redlog/shell-preexec-hook.sh",
       "shellRcFile": ".bashrc"
