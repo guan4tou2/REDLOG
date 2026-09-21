@@ -58,7 +58,7 @@ describe.skipIf(!available)('visibility signals', () => {
       ins('system', { subtype: 'api_started' })
       ins('shell', { subtype: 'session_start' })
       ins('shell', { subtype: 'session_end' })
-      ins('shell', { subtype: 'command_start', command: '/x/shell-preexec-hook.sh install' })
+      ins('shell', { subtype: 'command_start', command: '/x/shell-bash-hook.sh install' })
       expect(sig().evidenceSeen).toBe(false)
     })
 

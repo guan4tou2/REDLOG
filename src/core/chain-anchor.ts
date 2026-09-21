@@ -406,11 +406,11 @@ export interface FullVerifyResult {
   anchor: ChainAnchor | null
   anchorMatchesWalkedHead: boolean
   clockAnomalies: ClockAnomaly[]
-  // v0.6.89: per-event Ed25519 signature roll-up.
+  // Per-event Ed25519 signature roll-up.
   //   signedCount   — rows with a signature that verifies against the
   //                   operator's DB-stored public key.
-  //   unsignedCount — rows without a signature (legacy pre-v0.6.89, or an
-  //                   operator without a signing key). Not a failure signal
+  //   unsignedCount — rows without a signature because the operator signing
+  //                   key was unavailable. Not a failure signal
   //                   on its own — chain hash still protects them.
   //   badSignatureAtEventId — first row whose signature is present but does
   //                   NOT verify. That IS a tamper signal; also causes ok=false.
@@ -456,7 +456,6 @@ interface WalkerState {
   signedCount: number
   unsignedCount: number
   badSignatureAtEventId: string | null
-  seenNonNullPrevHash: boolean
   lookupPubKey: (opId: string) => string | null
 }
 
@@ -481,172 +480,48 @@ export interface HashableRow {
   ntp_offset_ms: number | null
 }
 
-export interface HashShapes {
-  v01: Record<string, unknown>
-  v02: Record<string, unknown>
-  /** v0.2 with `prevHash` in its ORIGINAL position — before `createdAt`. See
-   *  buildHashShapes for why the position is load-bearing. */
-  v02Inline: Record<string, unknown>
-  /** v0.6 (monotonic + ntp) with the same original ordering. */
-  v06Inline: Record<string, unknown>
-  v06: () => Record<string, unknown>
-  v06Null: Record<string, unknown>
-}
-
-// v0.7.1 P3: single source of truth for the hash shape list. Called by
-// both verifyRowHash (full walk) and the random-sample loop; if a new
-// shape is ever added, this is the only place to touch. The `v06` variant
-// stays a thunk — its content depends on whether monotonic_ns / ntp_offset_ms
-// are present, and lazy evaluation avoids the mutation-during-spread hazard.
-export function buildHashShapes(row: HashableRow, parsedData: unknown): HashShapes {
-  const v01: Record<string, unknown> = {
-    id: row.id, timestamp: row.timestamp,
-    engagementId: row.engagement_id, sessionId: row.session_id,
-    operatorId: row.operator_id, agentType: row.agent_type,
-    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
-    data: parsedData, hash: undefined, createdAt: row.created_at
-  }
-  const v02: Record<string, unknown> = { ...v01, prevHash: row.prev_hash }
-  // v0.11.3: the same fields, with `prevHash` where commit 33a2c86 actually
-  // put it — inline in the event literal, BEFORE `createdAt`:
-  //
-  //   const event = { …, data, prevHash, createdAt }
-  //   sha256(JSON.stringify({ ...event, hash: undefined, prevHash }))
-  //
-  // `v02` above reconstructs it as `{ ...v01, prevHash }`, which appends
-  // prevHash AFTER createdAt. `JSON.stringify` serialises in insertion order,
-  // so the two produce different bytes for identical data — and every row
-  // written between 33a2c86 and the move to canonicalStringify verifies under
-  // this ordering and no other.
-  //
-  // This is the `chain_sample_broken` root cause left open since v0.7.5. The
-  // deferred note guessed at a corrupted row; nothing was corrupt. Confirmed
-  // by rebuilding the shape from that commit and re-hashing the row the
-  // sampler flagged in a real 2026-07-28 project: exact match on the stored
-  // hash, where the current v02 differs from the first byte.
-  //
-  // Ordering only matters for the JSON.stringify shapes. canonicalStringify
-  // (v0.6.88 onward) sorts keys, which is precisely why it was adopted.
-  const v02Inline: Record<string, unknown> = {
-    id: row.id, timestamp: row.timestamp,
-    engagementId: row.engagement_id, sessionId: row.session_id,
-    operatorId: row.operator_id, agentType: row.agent_type,
-    hostname: row.hostname, sourceIP: row.source_ip, targetId: row.target_id,
+function canonicalHashPayload(row: HashableRow, parsedData: unknown): Record<string, unknown> {
+  return {
+    id: row.id,
+    timestamp: row.timestamp,
+    engagementId: row.engagement_id,
+    sessionId: row.session_id,
+    operatorId: row.operator_id,
+    agentType: row.agent_type,
+    hostname: row.hostname,
+    sourceIP: row.source_ip,
+    targetId: row.target_id,
     data: parsedData,
     prevHash: row.prev_hash,
     createdAt: row.created_at,
+    monotonicNs: row.monotonic_ns,
+    ntpOffsetMs: row.ntp_offset_ms,
+    tier: 'chained',
     hash: undefined
   }
-  // f1f7c70 then appended monotonicNs / ntpOffsetMs to that same literal, so
-  // they land AFTER createdAt while prevHash stays before it. Rows written
-  // between f1f7c70 and canonicalStringify verify only under this ordering.
-  // The columns are written unconditionally here — the source read them from
-  // functions that always returned a value, so a NULL column means the value
-  // was null at insert, not that the key was absent.
-  const v06Inline: Record<string, unknown> = {
-    ...v02Inline,
-    monotonicNs: row.monotonic_ns ?? null,
-    ntpOffsetMs: row.ntp_offset_ms ?? null,
-    hash: undefined
-  }
-  const v06 = (): Record<string, unknown> => {
-    const o: Record<string, unknown> = { ...v02 }
-    if (row.monotonic_ns != null) o.monotonicNs = row.monotonic_ns
-    if (row.ntp_offset_ms != null) o.ntpOffsetMs = row.ntp_offset_ms
-    return o
-  }
-  const v06Null: Record<string, unknown> = {
-    ...v02, monotonicNs: row.monotonic_ns ?? null, ntpOffsetMs: row.ntp_offset_ms ?? null
-  }
-  return { v01, v02, v02Inline, v06Inline, v06, v06Null }
 }
 
-// Rebuild each hash shape lazily. `label` names the shape so we can log which
-// one matched; `build` computes SHA-256 on demand. We try canonical first
-// (~99% of rows on a modern chain), then progressively older shapes. The
-// first match wins and no later shapes get hashed.
 function verifyRowHash(row: WalkRow, parsedData: unknown):
-  { matched: { label: string; canonicalJsonForSig: string | null } | null; attemptLabels: string[] } {
-  // v0.7.1 P3: shape objects now come from the shared buildHashShapes
-  // helper; the sample-verify path uses the same source. The `build:`
-  // callbacks below expect thunks, so v01/v06Null land in a lambda for
-  // parity with v06 (which is already a thunk because its content depends
-  // on optional column presence).
-  const shapes = buildHashShapes(row, parsedData)
-  const shapeV02 = shapes.v02
-  const shapeV06 = shapes.v06
-  const shapeV06Null = (): Record<string, unknown> => shapes.v06Null
-  const shapeV01 = (): Record<string, unknown> => shapes.v01
-
-  const target = row.hash
-  const attempts: Array<{
-    label: string
-    build: () => Record<string, unknown>
-    hash: (o: Record<string, unknown>) => string
-    canonical: (o: Record<string, unknown>) => string | null
-  }> = [
-    // Newest-first — v0.6.88 canonical dominates on any modern chain.
-    { label: 'v0.6.88',       build: shapeV06Null, hash: (o) => canonicalSha(o), canonical: (o) => canonicalStringify(o) },
-    { label: 'v0.6.88+strip', build: shapeV06,     hash: (o) => canonicalSha(o), canonical: (o) => canonicalStringify(o) },
-    { label: 'v0.6',          build: shapeV06,     hash: (o) => jsonSha(o),      canonical: () => null },
-    { label: 'v0.6+null',     build: shapeV06Null, hash: (o) => jsonSha(o),      canonical: () => null },
-    { label: 'v0.2',          build: () => shapeV02, hash: (o) => jsonSha(o),    canonical: () => null },
-    { label: 'v0.6-inline',   build: () => shapes.v06Inline, hash: (o) => jsonSha(o), canonical: () => null },
-    { label: 'v0.2-inline',   build: () => shapes.v02Inline, hash: (o) => jsonSha(o), canonical: () => null },
-    { label: 'v0.1',          build: shapeV01,     hash: (o) => jsonSha(o),      canonical: () => null }
-  ]
-  const attemptLabels: string[] = []
-  for (const a of attempts) {
-    const obj = a.build()
-    const h = a.hash(obj)
-    attemptLabels.push(`${a.label}=${h.slice(0, 8)}`)
-    if (h === target) {
-      return { matched: { label: a.label, canonicalJsonForSig: a.canonical(obj) }, attemptLabels }
-    }
-  }
-  return { matched: null, attemptLabels }
+  { matched: { label: string; canonicalJsonForSig: string } | null; attemptLabels: string[] } {
+  const payload = canonicalHashPayload(row, parsedData)
+  const canonical = canonicalStringify(payload)
+  const computed = crypto.createHash('sha256').update(canonical).digest('hex')
+  return computed === row.hash
+    ? { matched: { label: 'canonical', canonicalJsonForSig: canonical }, attemptLabels: [`canonical=${computed.slice(0, 8)}`] }
+    : { matched: null, attemptLabels: [`canonical=${computed.slice(0, 8)}`] }
 }
-
-const jsonSha = (obj: Record<string, unknown>): string =>
-  crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
-const canonicalSha = (obj: Record<string, unknown>): string =>
-  crypto.createHash('sha256').update(canonicalStringify(obj)).digest('hex')
 
 // Returns a FullVerifyResult if this row breaks the chain (caller should
 // return it immediately); null otherwise. State is mutated in place so the
 // walker can resume with the same counters.
 function processRow(row: WalkRow, state: WalkerState, currentHeadHash: string | null, anchor: ChainAnchor | null): FullVerifyResult | null {
   state.walked++
-  // A pre-v0.2 event has no prev_hash column at all — the migration added
-  // the column but populated existing rows with NULL rather than backfilling
-  // the actual prior-event hash. NULL prev_hash is legitimate ONLY for the
-  // leading (pre-migration) rows, before any row with prev_hash appears.
-  if (row.prev_hash != null) {
-    state.seenNonNullPrevHash = true
-    if (row.prev_hash !== state.expectedPrev) {
-      return {
-        ok: false,
-        walked: state.walked,
-        brokenAtEventId: row.id,
-        brokenReason: `prev_hash mismatch (expected ${state.expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
-        currentHead: currentHeadHash,
-        anchor,
-        anchorMatchesWalkedHead: false,
-        clockAnomalies: state.clockAnomalies,
-        signedCount: state.signedCount,
-        unsignedCount: state.unsignedCount,
-        badSignatureAtEventId: state.badSignatureAtEventId
-      }
-    }
-  } else if (state.seenNonNullPrevHash) {
-    // v0.6.93 P0-A: NULL prev_hash after we've already crossed the
-    // migration boundary = forgery. Silent-forgery vector documented in
-    // the v0.6.92.1 security audit.
+  if (row.prev_hash !== state.expectedPrev) {
     return {
       ok: false,
       walked: state.walked,
       brokenAtEventId: row.id,
-      brokenReason: 'NULL prev_hash after migration boundary (v0.6.93 forgery-check)',
+      brokenReason: `prev_hash mismatch (expected ${state.expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
       currentHead: currentHeadHash,
       anchor,
       anchorMatchesWalkedHead: false,
@@ -657,9 +532,6 @@ function processRow(row: WalkRow, state: WalkerState, currentHeadHash: string | 
     }
   }
 
-  // Rebuild hash shapes lazily and short-circuit on the first match. Most
-  // events on a modern chain match the first (v0.6.88 canonical) shape, so
-  // legacy shapes never need to be computed.
   const parsedData = JSON.parse(row.data)
   const { matched, attemptLabels } = verifyRowHash(row, parsedData)
   if (!matched) {
@@ -678,11 +550,9 @@ function processRow(row: WalkRow, state: WalkerState, currentHeadHash: string | 
     }
   }
 
-  // v0.6.89: per-event Ed25519 signature check. Only rows whose stored hash
-  // matched the v0.6.88 canonical shape have a canonical string we can verify
-  // against — older shapes never carried signatures anyway.
+  // Verify the Ed25519 signature over the canonical payload.
   if (row.signature) {
-    if (matched.label.startsWith('v0.6.88') && matched.canonicalJsonForSig) {
+    if (matched.canonicalJsonForSig) {
       const pubKey = state.lookupPubKey(row.operator_id)
       if (!pubKey) {
         state.unsignedCount++
@@ -765,7 +635,6 @@ function initWalkerState(): WalkerState {
     signedCount: 0,
     unsignedCount: 0,
     badSignatureAtEventId: null,
-    seenNonNullPrevHash: false,
     // v0.6.89: cache operator → public key lookups. verifyChainFull walks the
     // full events table; a typical operator set is <20, so a Map keyed by
     // operator_id is cheaper than a JOIN and lets us surface "no pubkey" as
@@ -859,25 +728,15 @@ export async function verifyChainFullAsync(): Promise<FullVerifyResult> {
   }
 }
 
-// v0.6.89 P1-A: read-path sampling verify. verifyChainFull walks the whole
+// Read-path sampling verify. verifyChainFull walks the whole
 // chain and is Settings-button-only; a chain-aware attacker that edits N rows,
 // recomputes hashes forward, and rebuilds the OTS-anchored region has time
 // before the operator manually verifies. Sampling turns detection into a
 // probability: run K random rows on every project open + every 5 minutes,
 // and the odds of tampering escaping N runs shrinks exponentially.
 //
-// Each sampled row re-hashes across the same shape variants verifyChainFull
-// tries (canonical/v0.6.88/v0.6/v0.6+null/v0.2/v0.1) and — for rows that
-// carry a prev_hash (v0.2+) — verifies the link against the ACTUAL previous
-// row's stored hash. Pre-v0.2 rows have a null prev_hash from the migration;
-// treat null as a legacy migration state, not tampering, exactly like
-// verifyChainFull does.
-//
-// v0.7.1 P3: the per-row shape building lives in the shared `buildHashShapes`
-// helper (defined next to verifyRowHash). Both callers rebuild the same 4
-// shape variants via one call; only the attempts loop differs between them
-// (full walk also derives canonicalJsonForSig for signature verify, sample
-// doesn't need it). Any future shape change is a single-file edit.
+// Each sampled row uses the same canonical payload as verifyChainFull and
+// verifies its link against the actual previous row's stored hash.
 export interface RandomSampleResult {
   ok: boolean
   sampled: number
@@ -973,36 +832,11 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     `SELECT hash FROM events WHERE (created_at, rowid) < (?, ?) ORDER BY created_at DESC, rowid DESC LIMIT 1`
   )
 
-  // v0.6.93 P0-A: query the migration boundary — the earliest rowid whose
-  // prev_hash is NOT NULL. Rows sampled AFTER this rowid must carry a
-  // non-NULL prev_hash; a NULL there is post-migration forgery (see
-  // verifyChainFull for the full-walk version of this check).
-  const firstNonNullRow = db.prepare(
-    `SELECT MIN(rowid) AS rid FROM events WHERE prev_hash IS NOT NULL`
-  ).get() as { rid: number | null } | undefined
-  const migrationBoundaryRid = firstNonNullRow?.rid ?? Number.MAX_SAFE_INTEGER
-
-  const jsonSha = (obj: Record<string, unknown>): string =>
-    crypto.createHash('sha256').update(JSON.stringify(obj)).digest('hex')
-  const canonicalSha = (obj: Record<string, unknown>): string =>
-    crypto.createHash('sha256').update(canonicalStringify(obj)).digest('hex')
-
   for (const row of rows) {
-    // Re-hash the row under every legal shape (same list as verifyChainFull).
     let parsedData: unknown
     try { parsedData = JSON.parse(row.data) } catch {
       return { ok: false, sampled: rows.length, brokenAtEventId: row.id, brokenReason: 'data column is not valid JSON' }
     }
-    // v0.9.8: share verifyRowHash's lazy, newest-first shape walk instead of
-    // computing all six eagerly. The old code built an array of six hashes and
-    // only then called .some() on it — so every sampled row paid five wasted
-    // SHA-256 passes over its full serialised body, because any modern chain
-    // matches the first shape. On a transcript-heavy project where
-    // `tool_result` rows average 3.8 KB and reach 107 KB, that was the entire
-    // cost of the sample: 3.7 s for 100 rows. verifyRowHash has short-
-    // circuited since v0.7.1; only this path was left behind.
-    // The sampler's SELECT omits `signature` — it verifies the hash, not the
-    // signature — so the row is a WalkRow minus that one column.
     const { matched, attemptLabels } = verifyRowHash({ signature: null, ...row }, parsedData)
     if (!matched) {
       return {
@@ -1013,41 +847,14 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
       }
     }
 
-    // v0.6.93 P0-A: NULL prev_hash after the migration boundary = forgery.
-    // Pre-boundary NULLs are legitimate legacy rows (v0.1/v0.2); post-
-    // boundary NULLs are the exact attack vector the v0.6.92.1 audit called
-    // out (attacker hashes under shapeV01 to fool the shape-tolerant walk).
-    if (row.prev_hash == null) {
-      if (row.rid >= migrationBoundaryRid) {
-        return {
-          ok: false,
-          sampled: rows.length,
-          brokenAtEventId: row.id,
-          brokenReason: 'NULL prev_hash after migration boundary (v0.6.93 forgery-check)'
-        }
-      }
-    }
-    // Link verify: skip when the row itself has NULL prev_hash (legitimate
-    // pre-migration state — the boundary check above already gated it).
-    // For rows that DO carry a prev_hash, the immediately preceding row
-    // (by created_at + rowid) must exist and match.
-    if (row.prev_hash != null) {
-      const prev = prevLookup.get(row.created_at, row.rid) as { hash: string } | undefined
-      if (!prev) {
-        return {
-          ok: false,
-          sampled: rows.length,
-          brokenAtEventId: row.id,
-          brokenReason: `prev_hash points at ${row.prev_hash.slice(0, 16)}... but no preceding row exists`
-        }
-      }
-      if (prev.hash !== row.prev_hash) {
-        return {
-          ok: false,
-          sampled: rows.length,
-          brokenAtEventId: row.id,
-          brokenReason: `prev_hash mismatch (expected ${prev.hash.slice(0, 16)}..., got ${row.prev_hash.slice(0, 16)}...)`
-        }
+    const prev = prevLookup.get(row.created_at, row.rid) as { hash: string } | undefined
+    const expectedPrev = prev?.hash ?? null
+    if (row.prev_hash !== expectedPrev) {
+      return {
+        ok: false,
+        sampled: rows.length,
+        brokenAtEventId: row.id,
+        brokenReason: `prev_hash mismatch (expected ${expectedPrev?.slice(0, 16) ?? 'null'}..., got ${row.prev_hash?.slice(0, 16) ?? 'null'}...)`
       }
     }
   }

@@ -11,7 +11,7 @@
 import type { RedLogEvent } from '../../../core/db/events'
 
 export function isHookSource(cmd: unknown): boolean {
-  return typeof cmd === 'string' && /shell-preexec-hook\.sh|shell-hook\.ps1/.test(cmd)
+  return typeof cmd === 'string' && /shell-bash-hook\.sh|shell-zsh-hook\.zsh|shell-hook\.ps1/.test(cmd)
 }
 
 export function isHousekeeping(e: RedLogEvent): boolean {

@@ -53,10 +53,7 @@ const api: RedLogAPI = {
   },
   events: {
     query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
-    // v0.13.0: optional tier arg — StatusBar's chained·logged split reads
-    // both to show the two-tier row count. Undefined = 'chained' (audit
-    // count) preserved for legacy callers.
-    getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
+    getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => ipcRenderer.invoke('events:search', query, limit, opts),
     searchPage: (opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) =>
@@ -91,16 +88,7 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
-    onNew: (cb: (event: RedLogEvent) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, event: RedLogEvent) => cb(event)
-      ipcRenderer.on('events:new', handler)
-      return () => ipcRenderer.removeListener('events:new', handler)
-    },
-    // v0.6.95 P0-4c: batch listener for coalesced deliveries. The main-side
-    // event bus buffers incoming events and flushes an Array<RedLogEvent> via
-    // this channel each frame (~16 ms), collapsing burst traffic (mitmproxy
-    // scans, cast replay) from N IPC hops to one. `events:new` still fires
-    // per-event for backward compat with subscribers that don't care to batch.
+    // The main process coalesces burst traffic into one delivery per turn.
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, events: RedLogEvent[]) => cb(events)
       ipcRenderer.on('events:new-batch', handler)
@@ -119,10 +107,6 @@ const api: RedLogAPI = {
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
       ipcRenderer.invoke('httpBody:read', ref) as Promise<string | null>
-  },
-  har: {
-    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) =>
-      ipcRenderer.invoke('har:export', opts) as Promise<string | null>
   },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),
@@ -189,17 +173,7 @@ const api: RedLogAPI = {
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
     executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
-    exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportJson', opts),
-    exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
-    exportScopeFiltered: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportScopeFiltered', opts),
-    exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
-    exportLoot: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportLoot', opts),
-    exportViolations: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportViolations', opts),
-    exportTimelineSlice: (from: number, to: number, opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to, ...opts }),
-    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean; snapshot?: ExportSnapshot }) => ipcRenderer.invoke('data:exportNdjson', opts),
-    exportWalkthrough: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportWalkthrough', opts) as Promise<string | null>,
-    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target),
-    exportPreview: (opts?: { sharing?: boolean }) => ipcRenderer.invoke('data:exportPreview', opts)
+    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),

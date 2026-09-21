@@ -51,8 +51,7 @@ export default function OverlayApp(): JSX.Element {
     // Width tracks the clamped scale (the panel renders at the clamped scale,
     // not the raw config value) and stays inside the same band main enforces —
     // see hudWindowWidth. Height is measured; hudWindowHeight adds the chrome.
-    if (h) (window.redlog.overlay as { autosize?: (h: number, w?: number) => void })
-      ?.autosize?.(hudWindowHeight(h), hudWindowWidth(scale, emphasizeIp))
+    if (h) window.redlog.overlay.autosize!(hudWindowHeight(h), hudWindowWidth(scale, emphasizeIp))
   })
 
   useEffect(() => {
@@ -104,7 +103,7 @@ export default function OverlayApp(): JSX.Element {
   useEffect(() => {
     if (status?.ipSafety === 'exposed' && !expanded) {
       setExpanded(true)
-      window.redlog.overlay?.setExpanded?.(true)
+      window.redlog.overlay.setExpanded!(true)
     }
   }, [status?.ipSafety])
 
@@ -135,11 +134,11 @@ export default function OverlayApp(): JSX.Element {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [expanded, interactive, pinned, status?.ipSafety])
 
-  const collapse = (): void => { setExpanded(false); window.redlog.overlay?.setExpanded?.(false) }
+  const collapse = (): void => { setExpanded(false); window.redlog.overlay.setExpanded!(false) }
   const toggleExpand = (): void => {
     const next = !expanded
     setExpanded(next)
-    window.redlog.overlay?.setExpanded?.(next)
+    window.redlog.overlay.setExpanded!(next)
   }
 
   // fs = font-size scaler; ip = extra emphasis for the external IP.
@@ -147,8 +146,7 @@ export default function OverlayApp(): JSX.Element {
   // useful. `autosize` picks up the new content height on every render so the
   // window still fits without clipping.
   const doInstantMark = async (): Promise<void> => {
-    const api = window.redlog.overlay as { instantMark?: () => Promise<{ ok: boolean }> } | undefined
-    const r = await api?.instantMark?.()
+    const r = await window.redlog.overlay.instantMark!()
     if (!r?.ok) return
     setJustMarked(true)
     if (markedTimerRef.current) clearTimeout(markedTimerRef.current)
@@ -209,8 +207,8 @@ export default function OverlayApp(): JSX.Element {
   const dimStyle: React.CSSProperties = passThrough ? { opacity: passThroughOpacity } : {}
   return (
     <div
-      onMouseEnter={() => window.redlog.overlay?.mouseEnter?.()}
-      onMouseLeave={() => window.redlog.overlay?.mouseLeave?.()}
+      onMouseEnter={() => window.redlog.overlay.mouseEnter!()}
+      onMouseLeave={() => window.redlog.overlay.mouseLeave!()}
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
     >
       {/* frame (neon edge) */}
@@ -245,7 +243,7 @@ export default function OverlayApp(): JSX.Element {
                 (§21 — icon-only controls must be focusable; the focus ring is
                 the .hudBtn rule in the <style> block). */}
             <button data-testid="hud-expand" type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
-            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
+            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
           </div>
 
           {/* measured content — window auto-sizes to this */}
@@ -382,7 +380,7 @@ export default function OverlayApp(): JSX.Element {
                     <button
                       type="button"
                       className="hudBtn"
-                      onClick={() => window.redlog.overlay?.quickMark?.()}
+                      onClick={() => window.redlog.overlay.quickMark!()}
                       style={{ flex: 1, padding: '6px 0', fontSize: fs(10), fontWeight: 700, letterSpacing: '0.12em', color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55`, clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', textShadow: `0 0 7px ${CYAN}55`, transition: 'background 0.12s' }}
                       title={`${t('overlay.markDetailHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
                     >
@@ -407,7 +405,7 @@ export default function OverlayApp(): JSX.Element {
                 <button
                   type="button"
                   className="hudBtn"
-                  onClick={() => window.redlog.overlay?.setPassThrough?.(true)}
+                  onClick={() => window.redlog.overlay.setPassThrough!(true)}
                   style={{ padding: `${px(6)}px ${px(11)}px`, fontSize: fs(11), fontWeight: 700, color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)', clipPath: BTN_CLIP, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s' }}
                   title={`${t('overlay.passThrough')} — ${t('overlay.passThroughHint')}`}
                   aria-label={t('overlay.passThrough')}

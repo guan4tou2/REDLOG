@@ -88,7 +88,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
 
     if (e.agentType === 'shell' && sub === 'command_end') {
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
-      const inlineOut = [d.stdout, d.stderr, d.output].filter((x) => typeof x === 'string').join('')
+      const inlineOut = [d.stdout, d.stderr].filter((x) => typeof x === 'string').join('')
       const exitRaw = d.exit_code
       const exitKnown = exitRaw != null
       const exit = exitKnown ? Number(exitRaw) : null
@@ -289,15 +289,13 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
-    try {
-      void window.redlog.operators?.list?.().then((ops) => {
-        const m: Record<string, string> = {}
-        for (const o of (ops ?? []) as Array<{ id: string; name: string }>) m[o.id] = o.name
-        setNames(m)
-      }).catch(() => {})
-    } catch { /* older preload */ }
+    void window.redlog.operators.list().then((ops) => {
+      const m: Record<string, string> = {}
+      for (const o of ops as Array<{ id: string; name: string }>) m[o.id] = o.name
+      setNames(m)
+    }).catch(() => {})
   }, [])
-  useEffect(() => window.redlog.events.onNewBatch?.(() => { void load() }), [load])
+  useEffect(() => window.redlog.events.onNewBatch(() => { void load() }), [load])
 
   const blocks = useMemo(() => buildBlocks(events, names), [events, names])
 

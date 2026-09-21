@@ -164,11 +164,10 @@ export function listExternalTargetExtractors(): Array<{
   }))
 }
 
-/** v0.9.1: extract with provenance. When a plugin extractor matches,
+/** Extract with provenance. When a plugin extractor matches,
  *  returns `pluginId` + `extractorName` alongside the host so callers
  *  can stamp attribution onto shell events. Built-in matches return
- *  neither field — event shape stays byte-identical to pre-v0.9.1
- *  for built-in extraction (no chain-hash regression). */
+ *  neither field. */
 export function extractTargetWithProvenance(command: string): {
   host: string | null
   pluginId?: string
@@ -204,18 +203,10 @@ export function extractTargetWithProvenance(command: string): {
   // Fallback: only when the command carries an explicit URL scheme (http:// or
   // https://). Was previously calling extractUrlHost() unconditionally, which
   // ran DOMAIN_RE across any shell string — so `python -c "import json.dumps"`
-  // recorded a target of `json.dumps`, `source ~/.redlog/shell-preexec-hook.sh`
-  // recorded `shell-preexec-hook.sh`, and `ls foo.txt` recorded `foo.txt`.
+  // recorded a target of `json.dumps`, `source ~/.redlog/shell-bash-hook.sh`
+  // recorded `shell-bash-hook.sh`, and `ls foo.txt` recorded `foo.txt`.
   // Requiring `://` cuts the false positives without losing real cases
   // (docker/curl/wget with a URL in the middle still get caught here).
   if (/https?:\/\//i.test(trimmed)) return { host: extractUrlHost(trimmed) }
   return { host: null }
 }
-
-/** Thin backward-compatible wrapper — returns just the host. Callers that
- *  don't want to record attribution (e.g. CDP target-id resolution) can
- *  keep using this shape unchanged. */
-export function extractTarget(command: string): string | null {
-  return extractTargetWithProvenance(command).host
-}
-

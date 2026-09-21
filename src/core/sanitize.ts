@@ -75,7 +75,8 @@ function eventById(id: string): RedLogEvent | null {
     prevHash: (row.prev_hash as string | null) ?? null,
     createdAt: row.created_at as number,
     monotonicNs: (row.monotonic_ns as string | null) ?? null,
-    ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null
+    ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null,
+    tier: 'chained'
   }
 }
 

@@ -20,7 +20,7 @@ let tmpHome: string
 interface AmendBridge {
   events: {
     search: (q: string, limit?: number) => Promise<Array<{ id: string; data: Record<string, unknown> }>>
-    getCount: () => Promise<number>
+    getCount: (tier: 'chained' | 'logged' | 'all') => Promise<number>
   }
   chain: { verify: (o?: { full?: boolean }) => Promise<{ ok: boolean }> }
   marker: { create: (d: Record<string, unknown>) => Promise<{ id: string } | null> }
@@ -143,7 +143,7 @@ test.describe.serial('amending a marker', () => {
   })
 
   test('a marker written while recording is paused still appears, with its drop point', async () => {
-    const before = await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.events.getCount())
+    const before = await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.events.getCount('chained'))
     // The bridge exposes a toggle, not pause/resume — flip it and flip it back.
     await page.evaluate(async () => {
       const r = (window as unknown as { redlog: AmendBridge }).redlog
@@ -156,7 +156,7 @@ test.describe.serial('amending a marker', () => {
     await page.waitForTimeout(1500)
     // In the chain, and on the track without a reload — the fanout is not
     // dropped just because capture is paused (§10).
-    expect(await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.events.getCount())).toBeGreaterThan(before)
+    expect(await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.events.getCount('chained'))).toBeGreaterThan(before)
     expect(await page.locator('[data-timeline-event][title*="written while paused"]').count()).toBeGreaterThan(0)
     await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.recording.toggle())
   })

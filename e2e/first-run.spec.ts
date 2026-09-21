@@ -61,7 +61,7 @@ test.describe.serial('the first run', () => {
     await page.getByRole('button', { name: 'install', exact: true }).first().click()
     await expect.poll(() => existsSync(join(tmpHome, '.redlog', 'shell-common.sh'))).toBe(true)
     const adapterInstalled = existsSync(join(tmpHome, '.redlog', 'shell-hook.zsh')) ||
-      existsSync(join(tmpHome, '.redlog', 'shell-preexec-hook.sh'))
+      existsSync(join(tmpHome, '.redlog', 'shell-bash-hook.sh'))
     expect(adapterInstalled).toBe(true)
     await page.click('[data-testid="first-run-more-sources"]')
   })

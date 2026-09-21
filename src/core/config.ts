@@ -227,14 +227,12 @@ export interface RedLogConfig {
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
     emitThinking?: boolean
   }
-  /** v0.13.0: retention policy for row-level and file-level pruning. Row-
-   *  level `loggedTier` is new; file-level `castKeepDays` /
-   *  `screenshots.keepDays` moved into this parent for consistency (still
-   *  read from their prior locations for backward-compat). See
+  /** Retention policy for row-level pruning. File retention remains under
+   *  the terminal and screenshots sections. See
    *  docs/DESIGN-logged-tier-retention.md. */
   retention?: {
-    /** Row-level retention on the events_logged table. Age-based sweep only
-     *  in v0.13.0. The design doc reserves `maxSizeGb` + `maxRowCount`
+    /** Row-level retention on the events_logged table. The design doc
+     *  reserves `maxSizeGb` + `maxRowCount`
      *  ceilings for a follow-up; they are intentionally NOT declared here
      *  so an operator who sets them can't get a silent no-op. See design
      *  doc §7.1 for the second-pass shape. */
@@ -381,33 +379,11 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result
 }
 
-function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown> {
-  const network = parsed.network as Record<string, unknown> | undefined
-  if (network) {
-    // whitelist (safe/attack IPs): vpnIPs → safeIPs → whitelist
-    if (network.vpnIPs && !network.whitelist && !network.safeIPs) { network.whitelist = network.vpnIPs; delete network.vpnIPs }
-    if (network.safeIPs && !network.whitelist) { network.whitelist = network.safeIPs; delete network.safeIPs }
-    // blacklist (your own IPs): dailyIPs → exposedIPs → blacklist
-    if (network.dailyIPs && !network.blacklist && !network.exposedIPs) { network.blacklist = network.dailyIPs; delete network.dailyIPs }
-    if (network.exposedIPs && !network.blacklist) { network.blacklist = network.exposedIPs; delete network.exposedIPs }
-  }
-  // scope.enforcement: 'warn'|'log' → scope.warnOnViolation: boolean.
-  // The old 'log' mode was misleading — it didn't actually log, it silently did
-  // nothing. Treat both as "warnings on" so existing users get the safer default
-  // instead of silently losing the badge; they can turn it off in Settings.
-  const scope = parsed.scope as Record<string, unknown> | undefined
-  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope)) {
-    scope.warnOnViolation = scope.enforcement === 'warn' || scope.enforcement === undefined
-    delete scope.enforcement
-  }
-  return parsed
-}
-
 export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = migrateConfig(yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>)
+    const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
     return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return { ...DEFAULT_CONFIG }

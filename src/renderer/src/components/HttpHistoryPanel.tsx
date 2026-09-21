@@ -441,10 +441,11 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
 
   useEffect(() => {
     loadFlows()
-    const unsub = window.redlog.events.onNew((evt) => {
-      const sub = (evt as RedLogEvent).data?.subtype as string
-      if ((evt as RedLogEvent).agentType === 'scanner' &&
-        (sub === 'http_request_start' || sub === 'http_response')) {
+    const unsub = window.redlog.events.onNewBatch((events) => {
+      if (events.some((evt) => {
+        const sub = evt.data?.subtype as string
+        return evt.agentType === 'scanner' && (sub === 'http_request_start' || sub === 'http_response')
+      })) {
         debouncedLoadFlows()
       }
     })

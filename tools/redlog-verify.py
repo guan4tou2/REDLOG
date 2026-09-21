@@ -71,35 +71,6 @@ def canonical_stringify(v: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Legacy shape stringify — parity with JS `JSON.stringify(obj)` for insertion
-# ---------------------------------------------------------------------------
-def js_stringify_ordered(pairs: List[Tuple[str, Any]]) -> str:
-    """Emit `{"k1":v1,"k2":v2,...}` in the given order.
-
-    Values that are None-valued and explicitly passed as such are emitted as
-    `null`. Values passed as the sentinel `_UNDEFINED` are dropped (JS
-    JSON.stringify drops object properties whose value is `undefined`).
-    Nested objects/arrays use canonical_stringify since none of the legacy
-    shapes cared about nested ordering (the `data` payload's keys are already
-    fixed at write time).
-    """
-    parts = []
-    for k, val in pairs:
-        if val is _UNDEFINED:
-            continue
-        parts.append(json.dumps(k, ensure_ascii=False) + ":" + canonical_stringify(val))
-    return "{" + ",".join(parts) + "}"
-
-
-class _Sentinel:
-    def __repr__(self) -> str:  # pragma: no cover
-        return "<undefined>"
-
-
-_UNDEFINED = _Sentinel()
-
-
-# ---------------------------------------------------------------------------
 # Ed25519 signature verification — optional
 # ---------------------------------------------------------------------------
 def _load_ed25519_verifier():
@@ -130,21 +101,14 @@ def _load_ed25519_verifier():
 
 
 # ---------------------------------------------------------------------------
-# Chain replay — matches the 6 hash shapes in chain-anchor.ts:verifyChainFull
+# Chain replay — matches the canonical payload in chain-anchor.ts
 # ---------------------------------------------------------------------------
 def _sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def _rebuild_shapes(row: Dict[str, Any]) -> List[Tuple[str, str]]:
-    """Return [(label, sha256_hex), ...] in newest-first order — same order
-    as chain-anchor.ts:verifyChainFull attempts.
-
-    Each shape reconstructs the object that was hashed at write time from
-    the snake_case DB row columns.
-    """
-    # row['data'] arrives as a string (bundle-export.ts writes each SQL row
-    # as JSON with the `data` column left as-is). Parse it into an object.
+def _rebuild_shapes(row: Dict[str, Any]) -> Tuple[List[Tuple[str, str]], Dict[str, str]]:
+    """Rebuild the single canonical payload used by the current writer."""
     data_field = row.get("data")
     if isinstance(data_field, str):
         try:
@@ -154,87 +118,25 @@ def _rebuild_shapes(row: Dict[str, Any]) -> List[Tuple[str, str]]:
     else:
         parsed_data = data_field
 
-    rid = row.get("id")
-    ts = row.get("timestamp")
-    eng = row.get("engagement_id")
-    sess = row.get("session_id")
-    op = row.get("operator_id")
-    at = row.get("agent_type")
-    host = row.get("hostname")
-    src_ip = row.get("source_ip")
-    tgt = row.get("target_id")
-    prev = row.get("prev_hash")
-    created = row.get("created_at")
-    mono = row.get("monotonic_ns")
-    ntp = row.get("ntp_offset_ms")
-
-    # v0.1 shape — no prevHash, no monotonicNs/ntpOffsetMs (in insertion order)
-    shape_v01_pairs: List[Tuple[str, Any]] = [
-        ("id", rid), ("timestamp", ts),
-        ("engagementId", eng), ("sessionId", sess),
-        ("operatorId", op), ("agentType", at),
-        ("hostname", host), ("sourceIP", src_ip), ("targetId", tgt),
-        ("data", parsed_data),
-        ("hash", _UNDEFINED),
-        ("createdAt", created),
-    ]
-
-    # v0.2 shape — same + prevHash between hash-undefined and createdAt.
-    shape_v02_pairs: List[Tuple[str, Any]] = [
-        ("id", rid), ("timestamp", ts),
-        ("engagementId", eng), ("sessionId", sess),
-        ("operatorId", op), ("agentType", at),
-        ("hostname", host), ("sourceIP", src_ip), ("targetId", tgt),
-        ("data", parsed_data),
-        ("hash", _UNDEFINED),
-        ("prevHash", prev),
-        ("createdAt", created),
-    ]
-
-    # v0.6 shape — v0.2 + monotonicNs/ntpOffsetMs when non-null (matches
-    # `if (row.monotonic_ns != null) shapeV06.monotonicNs = row.monotonic_ns`).
-    shape_v06_pairs = list(shape_v02_pairs)
-    if mono is not None:
-        shape_v06_pairs.append(("monotonicNs", mono))
-    if ntp is not None:
-        shape_v06_pairs.append(("ntpOffsetMs", ntp))
-
-    # v0.6+null — always includes monotonicNs/ntpOffsetMs, even as null.
-    shape_v06_null_pairs = list(shape_v02_pairs)
-    shape_v06_null_pairs.append(("monotonicNs", mono))
-    shape_v06_null_pairs.append(("ntpOffsetMs", ntp))
-
-    # Build the two "object shapes" for canonical hashing. Order irrelevant
-    # for canonical (keys are sorted), so we can pass them as dicts.
-    def pairs_to_dict(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
-        # Drop _UNDEFINED entries — canonical_stringify never emits them anyway
-        # since we filter here, but keep parity with the JS `hash: undefined`
-        # drop rule.
-        return {k: v for k, v in pairs if v is not _UNDEFINED}
-
-    canonical_v06_null = canonical_stringify(pairs_to_dict(shape_v06_null_pairs))
-    canonical_v06_strip = canonical_stringify(pairs_to_dict(shape_v06_pairs))
-
-    legacy_v06 = js_stringify_ordered(shape_v06_pairs)
-    legacy_v06_null = js_stringify_ordered(shape_v06_null_pairs)
-    legacy_v02 = js_stringify_ordered(shape_v02_pairs)
-    legacy_v01 = js_stringify_ordered(shape_v01_pairs)
-
-    # Order: chain-anchor.ts tries canonical (v0.6.88) first, then strip
-    # variant, then legacy shapes in newest-first order.
-    return [
-        ("v0.6.88", _sha256_hex(canonical_v06_null)),
-        ("v0.6.88+strip", _sha256_hex(canonical_v06_strip)),
-        ("v0.6", _sha256_hex(legacy_v06)),
-        ("v0.6+null", _sha256_hex(legacy_v06_null)),
-        ("v0.2", _sha256_hex(legacy_v02)),
-        ("v0.1", _sha256_hex(legacy_v01)),
-    ], {
-        # Canonical JSON string per shape — needed if we go on to verify the
-        # signature (only defined for v0.6.88 shapes).
-        "v0.6.88": canonical_v06_null,
-        "v0.6.88+strip": canonical_v06_strip,
+    payload = {
+        "id": row.get("id"),
+        "timestamp": row.get("timestamp"),
+        "engagementId": row.get("engagement_id"),
+        "sessionId": row.get("session_id"),
+        "operatorId": row.get("operator_id"),
+        "agentType": row.get("agent_type"),
+        "hostname": row.get("hostname"),
+        "sourceIP": row.get("source_ip"),
+        "targetId": row.get("target_id"),
+        "data": parsed_data,
+        "prevHash": row.get("prev_hash"),
+        "createdAt": row.get("created_at"),
+        "monotonicNs": row.get("monotonic_ns"),
+        "ntpOffsetMs": row.get("ntp_offset_ms"),
+        "tier": "chained",
     }
+    canonical = canonical_stringify(payload)
+    return [("canonical", _sha256_hex(canonical))], {"canonical": canonical}
 
 
 # ---------------------------------------------------------------------------
@@ -293,11 +195,9 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
 
     walked = 0
     expected_prev: Optional[str] = None
-    seen_non_null_prev = False
     signed_ok = 0
     signed_no_pubkey = 0
     signed_skipped_no_dep = 0
-    signed_wrong_shape = 0
     unsigned = 0
     bad_sig_at: Optional[str] = None
     last_hash: Optional[str] = None
@@ -308,20 +208,10 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         rid = row.get("id", f"<line {lineno}>")
 
         row_prev = row.get("prev_hash")
-        if row_prev is not None:
-            seen_non_null_prev = True
-            if row_prev != expected_prev:
-                print(
-                    f"CHAIN BROKEN at event {rid}: prev_hash mismatch "
-                    f"(expected {expected_prev!r}, got {row_prev!r})",
-                    file=sys.stderr,
-                )
-                return 1
-        elif seen_non_null_prev:
-            # Same silent-forgery check as v0.6.93 P0-A.
+        if row_prev != expected_prev:
             print(
-                f"CHAIN BROKEN at event {rid}: NULL prev_hash after migration "
-                f"boundary (silent-forgery vector, see v0.6.93 audit).",
+                f"CHAIN BROKEN at event {rid}: prev_hash mismatch "
+                f"(expected {expected_prev!r}, got {row_prev!r})",
                 file=sys.stderr,
             )
             return 1
@@ -348,16 +238,10 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
             )
             return 1
 
-        # Signature verification — only rows hashed under a v0.6.88 canonical
-        # shape have a canonical JSON string we can verify against.
+        # Signature verification uses the same canonical payload.
         sig_b64 = row.get("signature")
         if sig_b64:
-            if not matched_label.startswith("v0.6.88"):
-                # Older shape — no canonical string exists. Legacy rows never
-                # carried signatures, so this is unexpected but non-fatal:
-                # treat as unsigned so we don't break replay.
-                signed_wrong_shape += 1
-            elif ed_verify is None:
+            if ed_verify is None:
                 signed_skipped_no_dep += 1
             else:
                 op_id = row.get("operator_id", "")
@@ -403,13 +287,10 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         ).hexdigest()
         head_ok = recomputed == manifest_head_hash
 
-    # v0.13.0: bundleVersion >= 2 ships `events_logged.jsonl` (supporting
-    # evidence tier — not hash-chained, not signed, not anchored). The
-    # verifier ignores it for chain purposes and reports the row count so
-    # the reader knows the bundle carries footprint context. v1 bundles
-    # have no such file; the check is best-effort so v1 verification is
-    # unchanged.
-    bundle_version = manifest.get("bundleVersion", 1)
+    # `events_logged.jsonl` is supporting evidence: it is not hash-chained,
+    # signed, or anchored. Report its row count but exclude it from chain
+    # verification.
+    bundle_version = manifest["bundleVersion"]
     logged_path = bundle_dir / "events_logged.jsonl"
     logged_rows: Optional[int] = None
     if logged_path.exists():
@@ -478,8 +359,6 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"Signatures       : {signed_ok} verified")
         if signed_no_pubkey:
             print(f"  no pubkey       : {signed_no_pubkey} (operator missing signerPubKey)")
-        if signed_wrong_shape:
-            print(f"  legacy shape    : {signed_wrong_shape}")
     if unsigned:
         print(f"Unsigned events  : {unsigned}")
     if bad_sig_at:

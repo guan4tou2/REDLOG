@@ -53,13 +53,14 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       setExcludeTargets(cfg?.scope?.excludeTargets ?? [])
     }).catch(() => {})
     loadTargets()
-    const unsub = window.redlog.events.onNew((evt) => {
-      if (evt.targetId || evt.data?.detectedTarget) loadTargets()
+    const unsub = window.redlog.events.onNewBatch((events) => {
+      if (events.some((evt) => evt.targetId || evt.data?.detectedTarget)) loadTargets()
       const sel = selectedRef.current
-      if (sel && evt.targetId === sel) {
+      const additions = sel ? events.filter((evt) => evt.targetId === sel) : []
+      if (additions.length) {
         setEvidence((prev) => {
-          if (prev.some((e) => e.id === evt.id)) return prev
-          return [evt, ...prev]
+          const known = new Set(prev.map((e) => e.id))
+          return [...additions.filter((event) => !known.has(event.id)).reverse(), ...prev]
         })
       }
     })

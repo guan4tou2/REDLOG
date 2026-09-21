@@ -112,7 +112,7 @@ export function useAppShortcuts(
                 : e.key === 'ArrowDown' ? 'br'
                   : 'bl'
           e.preventDefault()
-          window.redlog.overlay.moveToCorner?.(corner)
+          window.redlog.overlay.moveToCorner(corner)
         }
       }
     }

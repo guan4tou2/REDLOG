@@ -43,11 +43,9 @@ describe('shell adapter boundaries', () => {
     expect(zsh).not.toMatch(/curl -sf|active-identity\.json|pending/)
   })
 
-  it('keeps the old combined hook as a compatibility delegator only', () => {
-    const legacy = read('hooks/shell-preexec-hook.sh')
-    expect(legacy).toContain('shell-bash-hook.sh')
-    expect(legacy).toContain('shell-zsh-hook.zsh')
-    expect(legacy).not.toContain('_redlog_send_event()')
+  it('does not ship historical combined hook entry points', () => {
+    expect(fs.existsSync(path.resolve('hooks/shell-preexec-hook.sh'))).toBe(false)
+    expect(fs.existsSync(path.resolve('shell/redlog-hook.zsh'))).toBe(false)
   })
 
   it('keeps PowerShell on the shared shell event and output field contract', () => {

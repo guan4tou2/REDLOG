@@ -23,7 +23,7 @@
 
 import { getDB } from './db/index'
 import {
-  insertEvent, invalidateChainHeadCache, _resetEventCountCache, type RedLogEvent
+  insertEvent, invalidateChainHeadCache, resetEventCountCache, type RedLogEvent
 } from './db/events'
 import { getSanitizedFields } from './sanitize'
 import { eventBus } from './event-bus'
@@ -338,7 +338,7 @@ export async function runScopeRecompute(opts: RunOptions): Promise<RecomputeResu
     // else runs, or the next insert anywhere in the app chains onto a row the
     // rollback removed.
     invalidateChainHeadCache()
-    _resetEventCountCache()
+    resetEventCountCache()
     noteDbError('scope-recompute', e)
     return { ran: false }
   }

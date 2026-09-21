@@ -48,10 +48,8 @@ export default function AgentsPanel({
   )
 }
 
-// Exclusion list for the Claude Code hook. Default is "record every Bash
-// tool call from Claude" — that's the point of an AI audit trail. Users
-// can opt paths OUT here for personal/hobby folders they don't want on the
-// chain. Recording state gate (Settings > ...) still applies globally.
+// Inclusion list for agent transcript tailers. An empty list records every
+// discovered session; operators can limit capture to engagement directories.
 export function HookWatchPathsPanel({ t }: { t: (k: string, v?: Record<string, string | number>) => string }): JSX.Element {
   const [watchPaths, setWatchPaths] = useState<string[]>([])
   const [draft, setDraft] = useState('')

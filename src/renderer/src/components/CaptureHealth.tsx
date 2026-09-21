@@ -282,7 +282,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
               <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
-                <span className="block truncate">{s.label ?? SOURCE_LABEL[s.id] ?? s.id}</span>
+                <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
+                  {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
+                </span>
                 {s.id === 'shell-hook' && (
                   <span className="block text-xs text-redlog-text-faint">
                     {t('capture.shellHookCapability')}
@@ -360,10 +362,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             </p>
           )}
         </div>
-        {/* v0.14.3 §9.5: two-tier chain-health footer. Renders only when
-         *  the logged tier has at least one row — mirrors the StatusBar
-         *  behaviour so pre-v0.13 projects and empty engagements stay
-         *  visually identical to before. Chained is the brighter number
+        {/* Two-tier chain-health footer. Renders only when the logged tier
+         *  has at least one row. Chained is the brighter number
          *  (audit chain); logged renders muted (supporting evidence).
          *  "Last fed" is the newest logged-row age — a slow tick is fine
          *  because it uses the same 1s nowTick as the source-row ages. */}

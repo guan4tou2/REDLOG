@@ -49,8 +49,6 @@ export interface PluginInfo {
 }
 
 const HOOKS_DIR = join(__dirname, '../../../hooks')
-const SHELL_DIR = join(__dirname, '../../../shell')
-
 function resolveDir(primary: string, fallback: string): string {
   return existsSync(primary) ? primary : fallback
 }
@@ -62,31 +60,6 @@ function resolveDir(primary: string, fallback: string): string {
 // in sync; a parity test guards that. Kept as code, not deleted, precisely so
 // the critical path has no single point of failure.
 export const STARTER_PACK_FALLBACK: PluginManifest[] = [
-  // v0.7.3 A: retired. The `hooks/claude-code-hook.sh` script is now a
-  // no-op stub (see the file header for the transition rationale); its
-  // former per-Bash `claude_code_bash` event ingest is subsumed by
-  // `src/main/services/agent-transcript-tailer.ts` which watches the
-  // Claude Code transcript JSONL directly and emits `agent.tool_call`
-  // + `agent.tool_result` for EVERY tool (not just Bash), the full
-  // tool_input, up to 100KB of tool_result, plus the user prompt and
-  // assistant response text.
-  //
-  // Entry left commented rather than deleted so anyone grepping for
-  // "claude-code" lands here and sees the pointer. New installs do NOT
-  // wire ~/.claude/settings.json; existing wired installs still work
-  // (the stub script exits 0) — they just waste one process spawn per
-  // Bash call until the operator re-runs the install flow.
-  //
-  // {
-  //   id: 'claude-code',
-  //   name: 'Claude Code',
-  //   description: 'Captures Bash tool calls from Claude Code sessions',
-  //   agentType: 'shell',
-  //   requires: ['claude'],
-  //   hookFile: 'hooks/claude-code-hook.sh',
-  //   installMethod: 'claude-settings',
-  //   claudeSettingsMatcher: 'claude-code-hook'
-  // },
   {
     id: 'shell-zsh',
     name: 'Zsh Shell',
@@ -108,7 +81,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     hookFile: 'hooks/shell-bash-hook.sh',
     supportFiles: ['hooks/shell-common.sh'],
     installMethod: 'shell-source',
-    installTarget: join(homedir(), '.redlog', 'shell-preexec-hook.sh'),
+    installTarget: join(homedir(), '.redlog', 'shell-bash-hook.sh'),
     shellRcFile: '.bashrc'
   },
   {
@@ -144,7 +117,8 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     description: 'Captures commands from WSL bash sessions — auto-resolves Windows token path',
     agentType: 'shell',
     requires: [],
-    hookFile: 'hooks/shell-preexec-hook.sh',
+    hookFile: 'hooks/shell-bash-hook.sh',
+    supportFiles: ['hooks/shell-common.sh'],
     installMethod: 'manual'
   }
 ]
@@ -230,14 +204,11 @@ function allManifests(): PluginManifest[] {
 }
 
 // Absolute path to a manifest's hook script source. Plugin captures resolve
-// inside the plugin dir; built-ins resolve against the shipped hooks/ or shell/.
+// inside the plugin dir; built-ins resolve against the shipped hooks directory.
 function srcPathForRelative(plugin: PluginManifest, relative: string): string {
   if (plugin._dir) return join(plugin._dir, relative)
   const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
-  const shellDir = resolveDir(SHELL_DIR, join(__dirname, '../../shell'))
-  return relative.startsWith('shell/')
-    ? join(shellDir, relative.replace('shell/', ''))
-    : join(hooksDir, relative.replace('hooks/', ''))
+  return join(hooksDir, relative.replace('hooks/', ''))
 }
 
 function srcPathFor(plugin: PluginManifest): string {
@@ -443,12 +414,11 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
       }
       return [
         {
-          label: 'Wrap a whole shell the agent will use — every command it runs is captured',
-          command: `"${hookFile}"`
+          label: 'Point Codex CLI at the command wrapper',
+          command: `SHELL="${hookFile}" codex run "scan the target"`
         },
         {
-          label: 'Or point Codex CLI at the wrapper as its shell',
-          command: `SHELL="${hookFile}" codex run "scan the target"`
+          label: 'For an interactive shell, install its Bash or Zsh hook from this page'
         }
       ]
     case 'shell-powershell':
@@ -650,67 +620,4 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
     case 'manual':
       return { success: false, message: `Manual removal required for ${plugin.name}` }
   }
-}
-
-// Auto-upgrade previously-installed shell-source hook files.
-//
-// Reason: the shell hook shipped with a `'pid': $$$` typo from v0.6.20
-// through v0.6.46. Any user who installed the shell hook during that
-// window has a copy of the buggy script sitting at `~/.redlog/…`, and
-// their preexec/precmd chain still calls it — every command_start /
-// command_end silently no-ops because the embedded python `$$$` fails to
-// parse. Once RedLog runs after v0.6.47, quietly overwrite the installed
-// file with the fresh bundled copy so future commands log again. Idempotent
-// (no-op if content already matches).
-//
-// Extracted so unit tests can exercise the "should this file get overwritten?"
-// decision without touching the user's real ~/.redlog files. See
-// autoUpgradeInstalledHooks below for the full flow.
-export function isBrokenShellHook(installed: string): boolean {
-  return installed.includes("'pid': $$$")
-    || installed.includes('"pid": $$$')
-}
-
-/** Recognise the two RedLog-owned pre-adapter implementations. The markers
- * are deliberately specific so startup never replaces an operator-authored
- * hook that merely happens to mention RedLog. */
-export function isLegacyShellHook(pluginId: string, installed: string): boolean {
-  if (pluginId === 'shell-bash') {
-    return installed.includes('# --- Zsh hooks ---') && installed.includes('_redlog_send_event()')
-  }
-  if (pluginId === 'shell-zsh') {
-    return installed.includes('_redlog_api()') && installed.includes('add-zsh-hook preexec _redlog_preexec')
-  }
-  return false
-}
-
-// Called from main-process startup after the API server is up.
-export function autoUpgradeInstalledHooks(): { upgraded: string[]; failed: string[] } {
-  const upgraded: string[] = []
-  const failed: string[] = []
-  for (const plugin of allManifests()) {
-    if (plugin.installMethod !== 'shell-source') continue
-    const dest = installTargetFor(plugin)
-    if (!existsSync(dest)) continue
-    const plan = getHookInstallPlan(plugin.id)
-    if (!plan || plan.some((file) => !existsSync(file.source))) continue
-    try {
-      const installed = readFileSync(dest, 'utf-8')
-      const bundled = readFileSync(plan[0].source, 'utf-8')
-      // Normalise CRLF → LF before compare so a Windows editor rewriting
-      // the installed copy with `\r\n` isn't treated as an upgrade candidate.
-      // Audit P2-4.
-      if (installed.replace(/\r\n/g, '\n') === bundled.replace(/\r\n/g, '\n')) continue
-      // Heuristic: only overwrite when the installed version has one of
-      // the known-broken markers, or has an old shebang line we've since
-      // superseded. Anything else might be a user modification and we
-      // shouldn't clobber it silently.
-      if (!isBrokenShellHook(installed) && !isLegacyShellHook(plugin.id, installed)) continue
-      for (const file of plan) copyFileSync(file.source, file.target)
-      upgraded.push(`${plugin.id} → ${dest}`)
-    } catch (e) {
-      failed.push(`${plugin.id}: ${(e as Error).message}`)
-    }
-  }
-  return { upgraded, failed }
 }

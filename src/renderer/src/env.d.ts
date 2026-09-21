@@ -98,8 +98,7 @@ interface RedLogEvent {
   createdAt: number
   monotonicNs?: string | null
   ntpOffsetMs?: number | null
-  /** v0.13.0 two-tier. Absent on rows written before it existed. */
-  tier?: 'chained' | 'logged'
+  tier: 'chained' | 'logged'
 }
 
 interface BookmarkContext {
@@ -199,7 +198,7 @@ interface RedLogAPI {
     /** v0.13.0: optional tier. Omitted (or 'chained') = the chained/audit
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
-    getCount: (tier?: import('../../core/db/events').EventTierFilter) => Promise<number>
+    getCount: (tier: import('../../core/db/events').EventTierFilter) => Promise<number>
     /** v0.14.3 §9.5: timestamp of the newest logged-tier row, or null
      *  if none have been written. Drives the CaptureHealthCard "last
      *  fed" freshness readout without pulling row bodies. */
@@ -228,16 +227,15 @@ interface RedLogAPI {
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
     hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
-    searchCasts?: (query: string, limit?: number) => Promise<Array<{
+    searchCasts: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string
     }>>
-    castIndexStatus?: () => Promise<{ total: number; indexed: number; pending: number }>
+    castIndexStatus: () => Promise<{ total: number; indexed: number; pending: number }>
     readCastRange: (castRel: string, off: number, len: number) => Promise<{
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>
-    onNew: (cb: (event: RedLogEvent) => void) => () => void
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>
@@ -245,9 +243,6 @@ interface RedLogAPI {
   }
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
-  }
-  har: {
-    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => Promise<string | null>
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
@@ -312,22 +307,10 @@ interface RedLogAPI {
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
     executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
-    exportJson: (opts?: { sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
-    exportBundle?: (opts?: { maskOutOfScope?: boolean; snapshot?: ExportSnapshot }) => Promise<{ outDir: string; manifest: unknown } | null>
-    exportScopeFiltered?: (opts?: { sharing?: boolean }) => Promise<string | null>
-    exportMarks?: () => Promise<string | null>
-    exportLoot?: (opts?: { sharing?: boolean }) => Promise<string | null>
-    exportViolations?: (opts?: { sharing?: boolean }) => Promise<string | null>
-    exportTimelineSlice?: (from: number, to: number, opts?: { sharing?: boolean }) => Promise<string | null>
-    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean; sharing?: boolean; snapshot?: ExportSnapshot }) => Promise<string | null>
-    exportWalkthrough?: (opts?: { sharing?: boolean }) => Promise<string | null>
-    revealPath?: (target: string) => Promise<boolean>
-    exportPreview?: (opts?: { sharing?: boolean }) => Promise<ExportPreview | null>
+    revealPath: (target: string) => Promise<boolean>
   }
   visibility: {
-    /** §22 disclosure signals, or null with no project open. Optional-called
-     *  everywhere: an older preload has no such namespace, and the renderer
-     *  must degrade to showing everything rather than to showing nothing. */
+    /** §22 disclosure signals, or null with no project open. */
     signals: () => Promise<{
       evidenceSeen: boolean
       transcriptSeen: boolean
@@ -356,10 +339,10 @@ interface RedLogAPI {
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
-    onCastState?: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
-    replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
-    replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
-    replayAtTime?: (atMs: number) => Promise<{ ok: boolean; events?: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number; error?: string }>
+    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
+    replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
+    replaySession: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
+    replayAtTime: (atMs: number) => Promise<{ ok: boolean; events?: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number; error?: string }>
   }
   overlay: {
     toggle: () => void
@@ -368,7 +351,7 @@ interface RedLogAPI {
     isVisible: () => Promise<boolean>
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
-    moveToCorner?: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
+    moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
     instantMark?: () => Promise<{ ok: boolean; id?: string }>
@@ -503,8 +486,8 @@ interface ChainAnchorInfo {
 interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
-  network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string; personalDomains?: string[] }
+  network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
+  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
   screenshot?: { quality?: number; intervalSec?: number }
   overlay?: {
     showMarkButton?: boolean

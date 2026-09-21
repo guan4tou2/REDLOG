@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
-import { toast } from './Toast'
 import { DEFAULT_CDP_PORT } from '../lib/defaults'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
@@ -29,19 +28,11 @@ function getTagColor(title: string): typeof TAG_COLORS[0] {
 }
 
 const PINNED_KEY = 'redlog-bookmarks-pinned'
-const LEGACY_PINNED_KEY = 'redlog-marks-pinned'
 
-/** Read the pin set, carrying over the pre-rename key once so nobody loses
- *  their pins to a vocabulary change. */
 function readPinned(): string[] {
   try {
     const current = localStorage.getItem(PINNED_KEY)
-    if (current !== null) return JSON.parse(current) as string[]
-    const legacy = localStorage.getItem(LEGACY_PINNED_KEY)
-    if (legacy === null) return []
-    localStorage.setItem(PINNED_KEY, legacy)
-    localStorage.removeItem(LEGACY_PINNED_KEY)
-    return JSON.parse(legacy) as string[]
+    return current === null ? [] : JSON.parse(current) as string[]
   } catch { return [] }
 }
 
@@ -138,19 +129,6 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
               {t('bookmarks.title', { count: marks.length })}
             </span>
-            {marks.length > 0 && (
-              <button
-                onClick={async () => {
-                  const p = await (window.redlog.data as { exportMarks?: () => Promise<string | null> }).exportMarks?.()
-                  if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-                  else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
-                }}
-                className="px-2 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-                title={t('bookmarks.exportHint')}
-              >
-                {t('bookmarks.export')}
-              </button>
-            )}
             <button
               onClick={quickCapture}
               className="px-2 py-1 text-xs bg-redlog-accent/20 text-redlog-accent rounded hover:bg-redlog-accent/30 font-semibold"

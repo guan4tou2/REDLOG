@@ -98,7 +98,9 @@ function resolveShellHook(shell: string): string | null {
   ]
   const dir = candidates.find(d => fs.existsSync(d))
   if (!dir) return null
-  const file = /powershell|pwsh/i.test(shell) ? 'shell-hook.ps1' : 'shell-preexec-hook.sh'
+  const file = /powershell|pwsh/i.test(shell)
+    ? 'shell-hook.ps1'
+    : /zsh/i.test(shell) ? 'shell-zsh-hook.zsh' : 'shell-bash-hook.sh'
   const p = path.join(dir, file)
   return fs.existsSync(p) ? p : null
 }

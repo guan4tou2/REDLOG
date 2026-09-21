@@ -13,8 +13,6 @@ files:
 extraResources:
   - from: hooks
     to: hooks
-  - from: shell
-    to: shell
   # 🔴 plugin isolation runner — forked into a utilityProcess for trusted plugins
   - from: resources/plugin-runner.js
     to: plugin-runner.js

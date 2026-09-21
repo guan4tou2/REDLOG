@@ -178,31 +178,14 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the **shell hook** (covers commands in *your own* terminal) AND the Claude Code hook (covers only Claude Code's Bash tool). The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions are captured by the built-in transcript tailer, which records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
-**Claude Code (PostToolUse hook):**
-
-```jsonc
-// ~/.claude/settings.json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [{ "command": "/path/to/redlog/hooks/claude-code-hook.sh" }]
-      }
-    ]
-  }
-}
-```
-
-Every Bash tool call (command + output preview + session ID) is sent to RedLog's timeline.
-
-**Any agent via shell preexec (zsh/bash):**
+**Any agent via shell hook (zsh/bash):**
 
 ```bash
-# Add to ~/.zshrc or ~/.bashrc
-source /path/to/redlog/hooks/shell-preexec-hook.sh
+# Add the matching adapter to the shell profile
+source /path/to/redlog/hooks/shell-zsh-hook.zsh  # ~/.zshrc
+source /path/to/redlog/hooks/shell-bash-hook.sh  # ~/.bashrc
 ```
 
 Captures every command with start/end timestamps, exit code, and duration. Works with Claude Code, Codex, Cursor, OpenCode, or any tool that spawns a shell.
@@ -240,8 +223,8 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
 | GET | `/api/events/search` | Full-text search (`?q=...&limit=N`) |
 | GET | `/api/events/count` | Event count |
 | POST | `/api/marker` | Create a marker event |
-| GET | `/api/quickmarks` | List bookmarks |
-| POST | `/api/quickmarks` | Create bookmark |
+| GET | `/api/bookmarks` | List bookmarks |
+| POST | `/api/bookmarks` | Create bookmark |
 | POST | `/api/loot/scan` | Scan text for secrets |
 | POST | `/api/screenshot` | Trigger manual capture |
 | GET | `/api/whoami` | Operator identity for this token |
@@ -261,7 +244,7 @@ redlog_event "agent" '{"subtype":"scan_complete"}'
 redlog_search "password"                # search events
 redlog_scope                            # check scope
 redlog_loot "root:x:0:0:..."           # scan for creds
-redlog_quickmark "Interesting endpoint" "https://..."
+redlog_bookmark "Interesting endpoint" "https://..."
 redlog_screenshot                       # manual capture
 ```
 
@@ -318,8 +301,9 @@ Overlay Window
   └── IP status always-on-top widget (click-through + draggable)
 
 Hooks
-  ├── claude-code-hook.sh   Claude Code PostToolUse hook
-  ├── shell-preexec-hook.sh zsh/bash preexec integration
+  ├── shell-zsh-hook.zsh   zsh preexec/precmd integration
+  ├── shell-bash-hook.sh   bash DEBUG/PROMPT_COMMAND integration
+  ├── shell-common.sh      shared transport, spool and redlog-run
   └── codex-wrapper.sh      Shell wrapper for Codex/GPT
 ```
 
@@ -360,8 +344,9 @@ src/
       styles/index.css       Tailwind + custom scrollbar
       env.d.ts               TypeScript declarations for preload API
 hooks/
-  claude-code-hook.sh        Claude Code PostToolUse → RedLog
-  shell-preexec-hook.sh      zsh/bash preexec → RedLog
+  shell-zsh-hook.zsh         zsh preexec/precmd → RedLog
+  shell-bash-hook.sh         bash DEBUG/PROMPT_COMMAND → RedLog
+  shell-common.sh            shared POSIX transport and redlog-run
   codex-wrapper.sh           shell wrapper for any agent
 cli/
   redlog-cli.js              CLI tool for external integration

@@ -48,7 +48,7 @@ import * as crypto from 'crypto'
 import chokidar, { FSWatcher } from 'chokidar'
 
 import { ingestEvent } from '../../core/ingest'
-import { extractTarget } from '../../core/target-extractor'
+import { extractTargetWithProvenance } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError } from '../../core/capture-health'
@@ -228,8 +228,7 @@ export interface TailerHostConfig {
    *  thinking blocks (Claude Code). Off by default — content is large
    *  and mostly meta. */
   emitThinking?: boolean
-  /** Same as claude-code-hook.sh's `~/.redlog/hook-config.json`
-   *  `excludedPaths` — if a session's cwd matches any of these prefixes,
+  /** If a session's cwd matches any of these prefixes,
    *  tailing is skipped. */
   excludedPaths?: string[]
   /** Whitelist mode. When non-empty, ONLY sessions whose cwd matches one
@@ -309,9 +308,9 @@ function coalescedCatchUp(agentKind: string, sid: string): void {
 // ─── Session ID registry (Hybrid D Phase 1) ────────────────────────────────
 //
 // When the registry is empty (no skill / MCP call has registered a session),
-// ALL sessions pass — backward compatible. Once any session registers, ONLY
+// ALL sessions pass until a session is explicitly selected. Once any session registers, ONLY
 // registered session IDs are captured. This gives the operator session-level
-// precision without breaking existing workflows.
+// precision while keeping automatic discovery useful by default.
 
 const sessionRegistry = new Set<string>()
 
@@ -518,10 +517,10 @@ function extractTargetFromToolInput(raw: string): string | null {
     } catch { return null }
   }
   // File paths shouldn't route through the shell extractor either — an
-  // absolute path just happens to start with a slash that extractTarget's
+  // absolute path just happens to start with a slash that the extractor's
   // heuristics don't want.
   if (trimmed.startsWith('/') || trimmed.startsWith('~')) return null
-  return extractTarget(trimmed)
+  return extractTargetWithProvenance(trimmed).host
 }
 
 // ─── Emit ───────────────────────────────────────────────────────────────────
@@ -1233,16 +1232,6 @@ function unregisterSession(key: string): void {
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
-
-/** Mutate the host config WITHOUT tearing down active watchers/sessions.
- *  Used by test-mode `registerSession(source, cfg)` shims that want to
- *  inject configuration for a single upcoming register call — a full
- *  `configureHost` there would fire a spurious `session_end` for every
- *  live session (v0.8.0.1 F2). Production callers hitting real config
- *  changes should use `configureHost` so watchers rebind. */
-export function setHostConfig(next: Partial<TailerHostConfig>): void {
-  cfg = { ...cfg, ...next }
-}
 
 export function configureHost(next: Partial<TailerHostConfig>): void {
   cfg = { ...cfg, ...next }

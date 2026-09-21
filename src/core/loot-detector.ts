@@ -124,7 +124,7 @@ export class LootDetector {
   }
 
   /**
-   * v0.6.89: run the regex sweep + dedup bookkeeping WITHOUT emitting a loot
+   * Run the regex sweep + dedup bookkeeping WITHOUT emitting a loot
    * event. The caller is responsible for calling `emit()` afterwards. This
    * lets the api-server run the scan pre-insert (to feed matches into the
    * redaction denylist) but only fire the loot event AFTER the shell event
@@ -135,8 +135,7 @@ export class LootDetector {
     // Built-in patterns carry no plugin attribution; only external ones do.
     // We iterate them separately (rather than a flat concat) so we can
     // stamp `pluginId` / `patternName` only where they apply — falsy fields
-    // are stripped by the emit path, so built-in loot events keep the
-    // exact same shape they had pre-v0.9.0 (no chain-hash surprise).
+    // are stripped by the emit path.
     for (const { type, pattern, confidence } of LOOT_PATTERNS) {
       const re = new RegExp(pattern.source, pattern.flags)
       let m: RegExpExecArray | null
@@ -172,8 +171,8 @@ export class LootDetector {
   }
 
   /**
-   * v0.6.89: emit a loot event for previously-found matches. Called by
-   * `scan()` for backward compat, and by the api-server explicitly after
+   * Emit a loot event for previously-found matches. Called by `scan()` for
+   * immediate detection, and by the ingest pipeline explicitly after
    * the shell command_end has been inserted so `_causes` can point at it.
    */
   emit(matches: LootMatch[], opts: { targetId?: string; source?: string; causeEventId?: string }): void {

@@ -15,7 +15,7 @@ import { deleteBookmarksOlderThan } from './db/bookmarks'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
-import { matchTarget } from './db/events'
+import { matchPattern } from './scope-evaluator'
 import { planEviction, type BodyEntry } from './body-eviction'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
@@ -391,7 +391,7 @@ function pinnedFiles(scopeTargets: string[]): Set<string> {
   for (const row of rows) {
     const target = row.target_id as string | null
     if (!target) continue
-    if (!scopeTargets.some((p) => matchTarget(target, p))) continue
+    if (!scopeTargets.some((p) => matchPattern(target, p))) continue
     for (let i = 0; i < REF_FIELDS.length; i++) {
       const file = row[`f${i}`] as string | null
       if (file) pinned.add(file)
@@ -442,7 +442,7 @@ function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]
   for (const row of rows) {
     const target = row.target_id as string | null
     if (!target) continue
-    if (!scopeTargets.some((p) => matchTarget(target, p))) continue
+    if (!scopeTargets.some((p) => matchPattern(target, p))) continue
     const p = row.p as string | null
     if (p) pinned.add(path.basename(p))
     const fn = row.fn as string | null

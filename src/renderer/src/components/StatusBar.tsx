@@ -51,10 +51,10 @@ export default function StatusBar(): JSX.Element {
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
     // v0.13.0: the logged-tier count for the chained·logged split is
     // StatusBar-specific. The shared counts (eventCount, lootCount,
-    // scopeViolations) are refreshed by useAppCounts's own onNew subscription.
-    const unsubEvent = window.redlog.events.onNew((event) => {
-      const tier = (event as { tier?: import('../../../core/db/events').EventTier } | undefined)?.tier
-      if (tier === 'logged') setLoggedCount((c) => c + 1)
+    // scopeViolations) are refreshed by useAppCounts's own batch subscription.
+    const unsubEvent = window.redlog.events.onNewBatch((events) => {
+      const added = events.filter((event) => event.tier === 'logged').length
+      if (added) setLoggedCount((c) => c + added)
     })
     const unsubRec = window.redlog.recording.onChange((r) => {
       setRecording(r)
@@ -71,14 +71,13 @@ export default function StatusBar(): JSX.Element {
     // visible indicator so operators on the Timeline view still see a change
     // from healthy → partial → dark.
     //
-    // v0.6.86: also fire a one-shot toast on healthy → partial/dark transitions
+    // Fire a one-shot toast on healthy → partial/dark transitions
     // so operators get an active notification, not just a passive dot colour
     // change. Held in a ref (not state) so the previous verdict survives across
     // re-renders and we only toast on the transition itself.
     let prevVerdict: 'healthy' | 'partial' | 'dark' | null = null
     const loadCapture = (): void => {
-      try {
-        window.redlog.capture?.health?.()?.then((h) => {
+      void window.redlog.capture.health().then((h) => {
           if (!h || typeof h !== 'object' || !('verdict' in h)) return
           const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
           const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
@@ -109,7 +108,6 @@ export default function StatusBar(): JSX.Element {
           }
           prevVerdict = verdict
         }).catch(() => {})
-      } catch { /* older preload */ }
     }
     loadCapture()
     const healthTimer = setInterval(loadCapture, 30_000)
@@ -308,18 +306,17 @@ export default function StatusBar(): JSX.Element {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        {/* v0.13.0: chained · logged split. Chained (audit-tier) reads
+        {/* Chained · logged split. Chained (audit-tier) reads
          *  brighter — that's the count anchors + verifier care about.
          *  Logged renders one tier dimmer (redlog-text-dim against the chained
          *  count's redlog-text-dim) to signal "footprint, not evidence".
          *  Both tiers clear 4.5:1 on the bar's surface — these are numbers
          *  an auditor reads, so neither may sink into decoration. They used
-         *  to render at 2.6:1 and 1.9:1. Hidden entirely when logged is zero, so pre-v0.13
-         *  projects still show the single-number shape they always had.
+         *  to render at 2.6:1 and 1.9:1. Hidden entirely when logged is zero.
          *  Title tooltip explains the two-tier story for auditors
          *  hovering to figure out what the second number is.
          *
-         *  v0.14 §9.4: when the logged tier is non-zero, the counter is
+         *  When the logged tier is non-zero, the counter is
          *  clickable and dispatches `redlog:auditor-view:toggle` — the
          *  Timeline picks it up and flips its auditor-view chip. When
          *  the logged tier is empty there is nothing to hide, so the

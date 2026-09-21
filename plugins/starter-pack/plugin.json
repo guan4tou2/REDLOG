@@ -28,7 +28,7 @@
       "hookFile": "hooks/shell-bash-hook.sh",
       "supportFiles": ["hooks/shell-common.sh"],
       "installMethod": "shell-source",
-      "installTarget": "~/.redlog/shell-preexec-hook.sh",
+      "installTarget": "~/.redlog/shell-bash-hook.sh",
       "shellRcFile": ".bashrc"
     },
     {
@@ -64,7 +64,8 @@
       "description": "Captures commands from WSL bash sessions — auto-resolves Windows token path",
       "agentType": "shell",
       "requires": [],
-      "hookFile": "hooks/shell-preexec-hook.sh",
+      "hookFile": "hooks/shell-bash-hook.sh",
+      "supportFiles": ["hooks/shell-common.sh"],
       "installMethod": "manual"
     }
   ]

@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { toast } from './Toast'
 import { useViewExport } from '../lib/exportScope'
+import { formatDateTime } from '../lib/time'
 
 export interface ExportMenuProps {
   totalCount?: number
@@ -11,9 +12,7 @@ export interface ExportMenuProps {
 
 interface PendingExport {
   label: string
-  request?: ExportRequest
-  fn?: (snapshot?: ExportSnapshot) => Promise<string | null>
-  sharing?: boolean
+  request: ExportRequest
 }
 
 export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
@@ -50,11 +49,10 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     setResolvedPlan(null)
     setPreviewError(null)
     try {
-      if (p.request) {
-        const resolved = await window.redlog.data.resolveExportPlan(p.request)
-        if (!resolved.ok) throw new Error(resolved.error)
-        setResolvedPlan(resolved.plan)
-        setPreview({
+      const resolved = await window.redlog.data.resolveExportPlan(p.request)
+      if (!resolved.ok) throw new Error(resolved.error)
+      setResolvedPlan(resolved.plan)
+      setPreview({
           total: resolved.plan.counts.examined,
           included: resolved.plan.counts.included,
           dropped: resolved.plan.counts.excludedDoNotExport,
@@ -69,12 +67,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
           withBodyRefs: resolved.plan.counts.attachmentsIncluded,
           screenshotEvents: 0,
           snapshot: { chainedMaxRowId: 0, loggedMaxRowId: 0, takenAt: 0 }
-        })
-        return
-      }
-      const result = await window.redlog.data.exportPreview?.({ sharing: p.sharing })
-      setPreview(result ?? null)
-      if (!result) setPreviewError(t('toast.exportFailedWhy'))
+      })
     } catch (error) {
       setPreview(null)
       setPreviewError(String((error as Error)?.message ?? error))
@@ -87,14 +80,10 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     if (!pending) return
     setBusy(true)
     try {
-      let path: string | null = null
-      if (resolvedPlan) {
-        const result = await window.redlog.data.executeExportPlan({ planId: resolvedPlan.id })
-        if (!result.ok) throw new Error(result.error)
-        path = result.artifactPath
-      } else if (pending.fn) {
-        path = await pending.fn(preview?.snapshot)
-      }
+      if (!resolvedPlan) throw new Error('export plan unavailable')
+      const result = await window.redlog.data.executeExportPlan({ planId: resolvedPlan.id })
+      if (!result.ok) throw new Error(result.error)
+      const path = result.artifactPath
       if (path) toast(t('export.done', { label: pending.label }), { type: 'success', why: path })
       else toast(t('export.failed', { label: pending.label }), { type: 'error', why: t('toast.exportFailedWhy') })
     } catch (e) {
@@ -231,7 +220,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         <div className="flex justify-between gap-3">
                           <span className="text-redlog-text-dim">{t('export.preview.boundary')}</span>
                           <span className="text-right text-redlog-text">
-                            {new Date(resolvedPlan.snapshot.takenAt).toLocaleString()}
+                            {formatDateTime(resolvedPlan.snapshot.takenAt, { seconds: true })}
                           </span>
                         </div>
                       </div>
@@ -290,22 +279,19 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   <Option
                     label={viewExport.label}
                     disabled={empty}
-                    onPick={() => void loadPreview(viewExport.request
-                      ? { label: viewExport.label, sharing, request: { ...viewExport.request, sharing } }
-                      : { label: viewExport.label, sharing, fn: () => viewExport.run?.({ sharing }) ?? Promise.resolve(null) })}
+                    onPick={() => void loadPreview({ label: viewExport.label, request: { ...viewExport.request, sharing } })}
                   />
                 )}
                 <Option
                   label={t('export.all')}
                   disabled={empty}
-                  onPick={() => void loadPreview({ label: t('export.all'), sharing, request: { format: 'json', sharing } })}
+                  onPick={() => void loadPreview({ label: t('export.all'), request: { format: 'json', sharing } })}
                 />
                 <Option
                   label={t('export.ndjson')}
                   disabled={empty}
                   onPick={() => void loadPreview({
                     label: t('export.ndjson'),
-                    sharing,
                     request: { format: 'ndjson', sharing }
                   })}
                 />
@@ -317,7 +303,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                   disabled={empty}
                   onPick={() => void loadPreview({
                     label: t('export.bundle'),
-                    sharing,
                     request: { format: 'bundle', sharing, maskOutOfScope: maskScope }
                   })}
                 />

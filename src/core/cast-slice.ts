@@ -116,10 +116,8 @@ export async function readCastSlice(castPath: string, startMs: number, endMs: nu
  *
  *  `command_end` now carries `io: {off, len}` — the exact span of the cast
  *  that this command produced, captured from the live write position at
- *  O(1) cost. Reading that span is O(len); the time-window path has to stream
- *  from byte 0 every call, so a long session re-reads a growing prefix per
- *  command. The time path stays as the fallback for events recorded before
- *  v0.9.6 and for sessions where the pair could not be bracketed.
+ *  O(1) cost. Reading that span is O(len); the time-window path handles
+ *  sessions where the command pair could not be bracketed.
  *
  *  The range may start or end mid-line, since offsets are recorded between
  *  writes rather than on line boundaries. Partial lines at either edge are

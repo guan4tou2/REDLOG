@@ -75,7 +75,7 @@ async function resolveAndFold(
 
   let rows = rawItems
   if (orphaned.length > 0) {
-    const originals = (await window.redlog.events.getById?.([...new Set(orphaned)])) ?? []
+    const originals = (await window.redlog.events.getById([...new Set(orphaned)])) ?? []
     for (const o of originals) markerIds.add(o.id)
     const seen = new Set<string>()
     rows = rawItems.flatMap((e) => {
@@ -89,7 +89,7 @@ async function resolveAndFold(
   }
 
   const amendments = markerIds.size > 0
-    ? (await window.redlog.marker.amendments?.([...markerIds])) ?? []
+    ? (await window.redlog.marker.amendments([...markerIds])) ?? []
     : []
   const newFolds = buildFolds(rows, amendments)
   return { rows, newFolds }
@@ -172,7 +172,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setSearching(false)
     })
     const castSeq = seq
-    window.redlog.events.searchCasts?.(q, 50)
+    window.redlog.events.searchCasts(q, 50)
       .then((r) => { if (castSeq === searchSeqRef.current) setCastHits(r ?? []) })
       .catch(() => { if (castSeq === searchSeqRef.current) setCastHits([]) })
   }, [buildSearchOpts])
@@ -200,7 +200,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   }, [nextCursor, loadingMore, buildSearchOpts])
 
   useEffect(() => {
-    window.redlog.events.castIndexStatus?.()
+    window.redlog.events.castIndexStatus()
       .then((s) => setCastPending(s?.pending ?? 0))
       .catch(() => { /* older main process; treat as fully indexed */ })
   }, [])

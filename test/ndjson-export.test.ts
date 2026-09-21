@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { operatorPiiReplacements } from '../src/core/ndjson-export'
+import { operatorPiiReplacements } from '../src/core/operator-pii'
 
 // The operator-PII scrub is pure given explicit identifiers — test it without a
 // DB so it's deterministic regardless of the machine the suite runs on.

@@ -22,12 +22,10 @@ and installation behavior so choosing a shell does not silently weaken capture.
 2. **Given** bash or zsh records a command, **when** it sends lifecycle events,
    **then** transport, project identity, spool behavior and `redlog-run` come
    from one common implementation.
-3. **Given** an existing built-in terminal, wrapper or legacy hook path sources
-   `shell-preexec-hook.sh`, **when** it loads, **then** it delegates to the
-   matching bash or zsh adapter.
-4. **Given** an unsupported POSIX shell loads the compatibility entry point,
-   **when** no adapter matches, **then** it reports the supported-shell boundary
-   instead of claiming capture is active.
+3. **Given** a built-in terminal, WSL setup or wrapper selects a shell, **when**
+   capture starts, **then** it loads that shell's adapter directly.
+4. **Given** the application is packaged, **when** its hook inventory is
+   inspected, **then** no historical combined hook entry point is shipped.
 
 ## Requirements
 
@@ -35,7 +33,7 @@ and installation behavior so choosing a shell does not silently weaken capture.
 - **FR-002**: POSIX adapters MUST share one sender, spool, identity and `redlog-run` implementation.
 - **FR-003**: The hook installer MUST deploy every support file required by an installed adapter.
 - **FR-004**: The starter-pack manifest and its fallback MUST declare identical adapter and support-file paths.
-- **FR-005**: Historical combined hook entry points MUST remain compatibility delegators and MUST NOT retain a second transport implementation.
+- **FR-005**: Historical combined hook entry points MUST NOT be shipped or referenced by active installation paths.
 - **FR-006**: PowerShell remains a language-native adapter but MUST retain the common shell event and structured-output field contract.
 
 ## Failure and Edge Cases
@@ -43,7 +41,7 @@ and installation behavior so choosing a shell does not silently weaken capture.
 - A missing shared runtime causes a visible source error rather than a false active message.
 - Installing one POSIX adapter must not depend on the other adapter.
 - Removing an adapter may leave the small shared runtime for another adapter; it must not remove a runtime still in use.
-- Existing manual WSL and built-in terminal paths continue through the legacy delegator until separately migrated.
+- Existing profiles that source removed historical paths must be reinstalled using the shell-specific adapter.
 
 ## Success Criteria
 

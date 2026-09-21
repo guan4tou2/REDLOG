@@ -34,7 +34,7 @@ exit 0
 `)
     fs.chmodSync(curl, 0o755)
 
-    const hook = path.resolve('hooks/shell-preexec-hook.sh')
+    const hook = path.resolve('hooks/shell-bash-hook.sh')
     const script = `source "$1"
 redlog-run sh -c 'printf REDLOG_FIRST; sleep 1; printf REDLOG_SECOND; printf REDLOG_ERR >&2; exit 7'
 exit $?
@@ -69,8 +69,11 @@ exit $?
     expect(stdout).toContain('REDLOG_FIRSTREDLOG_SECOND')
     expect(stderr).toContain('REDLOG_ERR')
     expect(firstSeenAt).not.toBeNull()
-    expect(firstSeenAt! - started).toBeLessThan(700)
     expect(finishedAt - started).toBeGreaterThanOrEqual(900)
+    // Assert the observable contract: the first chunk arrives while the
+    // command is still running. An absolute spawn-time threshold is unstable
+    // when the full suite starts many workers concurrently.
+    expect(finishedAt - firstSeenAt!).toBeGreaterThan(200)
 
     const payloads = fs.readFileSync(payloadFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
     const end = payloads.find((payload) => payload.data?.subtype === 'command_end')
@@ -89,7 +92,7 @@ exit $?
   it('runs transparently when RedLog credentials are unavailable', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-run-offline-'))
     tempDirs.push(home)
-    const hook = path.resolve('hooks/shell-preexec-hook.sh')
+    const hook = path.resolve('hooks/shell-bash-hook.sh')
     const script = `source "$1" >/dev/null
 redlog-run sh -c 'printf OFFLINE_OK; exit 9'
 exit $?

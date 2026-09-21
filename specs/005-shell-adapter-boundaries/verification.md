@@ -12,7 +12,7 @@ legacy entry point still owned transport and lifecycle behavior.
 ## Automated Gates
 
 - Adapter boundary, output wrapper, hook manager, plugin and housekeeping
-  tests: 43/43 passed.
+  tests: 74 focused tests and 30 integration tests passed.
 - Bash and zsh syntax checks: passed.
 - TypeScript project check: passed.
 - Production Electron/Vite build: passed.

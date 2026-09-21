@@ -223,8 +223,3 @@ export function hostCausalChain(host: string, opts: { chainLimit?: number } = {}
     chain: rows.map(rowToEvent)
   }
 }
-
-/** @deprecated Use `matchPattern` from `core/scope-evaluator` directly. */
-export function matchTarget(target: string, pattern: string): boolean {
-  return matchPattern(target, pattern)
-}

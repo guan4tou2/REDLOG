@@ -40,20 +40,22 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   }, [triggerFilter, loadPage])
 
   useEffect(() => {
-    return window.redlog.events.onNew((event) => {
-      if (event.agentType === 'screenshot') {
-        const tf = triggerFilterRef.current
-        if (!tf || event.data?.trigger === tf) {
-          setScreenshots((prev) => {
-            if (prev.some((e) => e.id === event.id)) return prev
-            return [event, ...prev]
-          })
+    return window.redlog.events.onNewBatch((events) => {
+      for (const event of events) {
+        if (event.agentType === 'screenshot') {
+          const tf = triggerFilterRef.current
+          if (!tf || event.data?.trigger === tf) {
+            setScreenshots((prev) => {
+              if (prev.some((e) => e.id === event.id)) return prev
+              return [event, ...prev]
+            })
+          }
         }
-      }
-      if (event.agentType === 'system' && event.data?.subtype === 'screenshot_deleted') {
-        const causes = event.data?._causes as string[] | undefined
-        const src = causes?.[0] || (event.data?.source_event as string | undefined)
-        if (src) setDeletedIds((prev) => { const n = new Set(prev); n.add(src); return n })
+        if (event.agentType === 'system' && event.data?.subtype === 'screenshot_deleted') {
+          const causes = event.data?._causes as string[] | undefined
+          const src = causes?.[0] || (event.data?.source_event as string | undefined)
+          if (src) setDeletedIds((prev) => { const n = new Set(prev); n.add(src); return n })
+        }
       }
     })
   }, [])

@@ -87,11 +87,11 @@ DB so `session_end` still writes, then unwinds every monitor and calls `closeDB(
 | `operators` | `token_hash` (sha256 of the bearer token) + `signer_pub_key`. |
 | `chain_anchors` | OpenTimestamps anchors + calendar receipts. |
 | `sanitized_events` | Layer-4 redaction: `(source_event_id, field) → replacement`. Never an UPDATE on `events`. |
-| `quickmarks` | Private bookmarks — the 書籤 page. Not chained, not signed, not attributed, editable in place, and **not in the evidence bundle** (removed in bundleVersion 3). Not evidence. |
+| `bookmarks` | Private bookmarks — the 書籤 page. Not chained, not signed, not attributed, editable in place, and not evidence. |
 | `event_annotations` | Created but currently unused — no read/write path exists. |
 
 Indexes: `timestamp`, `agent_type`, `engagement_id`, `target_id`,
-`created_at`, plus one each on quickmarks / operator token / anchors /
+`created_at`, plus one each on bookmarks / operator token / anchors /
 sanitized source.
 
 ### Migration strategy
@@ -131,7 +131,9 @@ Two reserved internal keys:
 The canonical path, shell hook → chain → UI:
 
 ```
-hooks/shell-preexec-hook.sh   zsh preexec/precmd · bash DEBUG trap
+hooks/shell-zsh-hook.zsh     zsh preexec/precmd adapter
+hooks/shell-bash-hook.sh     bash DEBUG/PROMPT_COMMAND adapter
+hooks/shell-common.sh        shared transport, spool and redlog-run
   ├ resolve ~/.redlog/{api-port,api-token}  (WSL: via cmd.exe + wslpath)
   ├ python3 builds the JSON payload
   ├ curl POST /api/events  --connect-timeout 1 --max-time 2
@@ -260,7 +262,7 @@ Two tiers, decided by `manifest.ts:PRIVILEGED_KEYS`:
 | 🔴 privileged | `tailers`, (`exporters`, `monitors` reserved) | yes |
 
 Privileged code runs in `utilityProcess.fork()` with a capability-scoped RPC
-surface (`read:events`, `write:events`, `read:findings`, `read:config`,
+surface (`read:events`, `write:events`, `read:bookmarks`, `read:config`,
 `net:outbound`), a 30 s per-call timeout, and no access to the DB handle or
 signing keys. Trust is pinned to a content hash covering the manifest plus
 every privileged code file; changing either the code or the requested

@@ -15,8 +15,8 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:query', (_e, opts) =>
     ctx.getActiveProject() ? queryEvents(opts) : [])
 
-  ipcMain.handle('events:getCount', (_e, tier?: EventTierFilter) =>
-    ctx.getActiveProject() ? getEventCount(tier ? { tier } : undefined) : 0)
+  ipcMain.handle('events:getCount', (_e, tier: EventTierFilter) =>
+    ctx.getActiveProject() ? getEventCount({ tier }) : 0)
 
   ipcMain.handle('events:getLatestLoggedTs', () =>
     ctx.getActiveProject() ? getLatestLoggedTs() : null)

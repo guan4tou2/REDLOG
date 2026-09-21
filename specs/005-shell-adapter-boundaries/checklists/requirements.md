@@ -1,6 +1,6 @@
 # Specification Quality Checklist: Shell Adapter Boundaries
 
-**Purpose**: Review whether shell support remains small, canonical and migration-safe
+**Purpose**: Review whether shell support remains small and canonical
 **Created**: 2026-09-21
 **Feature**: [spec.md](../spec.md)
 
@@ -8,14 +8,14 @@
 
 ## Completeness and Boundaries
 
-- [ ] CHK001 Are lifecycle, transport, installation and compatibility responsibilities assigned to one owner each? [Completeness, Spec §FR-001–FR-005]
-- [ ] CHK002 Are the three supported shells named without implying fish, Nushell or cmd support? [Boundary, Spec §FR-006, §Out of Scope]
-- [ ] CHK003 Is PowerShell parity defined at the event contract rather than shared implementation level? [Clarity, Spec §FR-006]
+- [x] CHK001 Are lifecycle, transport and installation responsibilities assigned to one owner each? [Completeness, Spec §FR-001–FR-005]
+- [x] CHK002 Are the three supported shells named without implying fish, Nushell or cmd support? [Boundary, Spec §FR-006, §Out of Scope]
+- [x] CHK003 Is PowerShell parity defined at the event contract rather than shared implementation level? [Clarity, Spec §FR-006]
 
 ## Failure and Migration Coverage
 
-- [ ] CHK004 Are missing runtime, wrong shell, legacy entry points and shared-file removal addressed? [Coverage, Spec §Failure and Edge Cases]
-- [ ] CHK005 Can adapter thinness and manifest parity be objectively guarded? [Measurability, Spec §SC-001–SC-003]
+- [x] CHK004 Are missing runtime, wrong shell, removed entry points and shared-file removal addressed? [Coverage, Spec §Failure and Edge Cases]
+- [x] CHK005 Can adapter thinness and manifest parity be objectively guarded? [Measurability, Spec §SC-001–SC-003]
 
 ## Notes
 

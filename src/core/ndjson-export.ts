@@ -3,9 +3,6 @@ import { operatorPiiReplacements } from './operator-pii'
 import type { RedLogEvent } from './db/events'
 import type { ScopeForSanitize } from './scope-sanitize'
 
-// Re-export for backward compat — existing callers import from here.
-export { operatorPiiReplacements } from './operator-pii'
-
 // NDJSON (newline-delimited JSON) export — one redacted event per line, the
 // native shape for a shared log store (ELK / Filebeat / Logstash), where the
 // full evidence bundle (report, verifier, sidecars) is the wrong artifact and a

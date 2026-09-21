@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ScopePolicy, classifyScopeTarget, isReportable, alertFloorFor } from '../../src/core/alert/policies'
-import { matchTarget } from '../../src/core/db/events'
+import { matchPattern } from '../../src/core/scope-evaluator'
 import type { TargetHitSignal } from '../../src/core/alert/signal'
 
 function hit(target: string): TargetHitSignal {
@@ -161,9 +161,9 @@ describe('the pure classifier is the same classifier', () => {
     expect(classifyScopeTarget('www.example.com', scope).distance).toBe('in_scope')
   })
 
-  it('matchTarget and classifyScopeTarget now agree (unified canonical evaluator)', () => {
+  it('matchPattern and classifyScopeTarget agree (unified canonical evaluator)', () => {
     // Both now delegate to matchPattern: no substring, case-insensitive.
-    expect(matchTarget('a.evil.example', 'evil')).toBe(false)
+    expect(matchPattern('a.evil.example', 'evil')).toBe(false)
     expect(classifyScopeTarget('a.evil.example', { targets: ['evil'], excludeTargets: [] }).distance)
       .not.toBe('in_scope')
   })

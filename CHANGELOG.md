@@ -18,7 +18,9 @@ for full commit body + generated notes.
 - POSIX `redlog-run` now streams stdout/stderr while capturing them, and Capture
   Health states that the ordinary external-shell hook records metadata only.
 - Bash and zsh now use thin lifecycle adapters over one shared sender, spool,
-  identity and `redlog-run` runtime; legacy hook paths delegate compatibly.
+  identity and `redlog-run` runtime. The historical combined
+  `shell-preexec-hook.sh` and `shell/redlog-hook.zsh` entry points were removed;
+  existing profiles must install/source the matching shell-specific adapter.
 
 ## v0.15.1 — 2026-09-19
 
