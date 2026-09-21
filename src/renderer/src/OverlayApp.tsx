@@ -209,6 +209,8 @@ export default function OverlayApp(): JSX.Element {
   const dimStyle: React.CSSProperties = passThrough ? { opacity: passThroughOpacity } : {}
   return (
     <div
+      onMouseEnter={() => window.redlog.overlay?.mouseEnter?.()}
+      onMouseLeave={() => window.redlog.overlay?.mouseLeave?.()}
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
     >
       {/* frame (neon edge) */}
@@ -242,8 +244,8 @@ export default function OverlayApp(): JSX.Element {
                 announced as controls, matching the mark/pin buttons below
                 (§21 — icon-only controls must be focusable; the focus ring is
                 the .hudBtn rule in the <style> block). */}
-            <button type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
-            <button type="button" className="hudBtn" onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
+            <button data-testid="hud-expand" type="button" className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? t('overlay.collapse') : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
+            <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay?.hide()} style={iconBtn} title={t('overlay.hide')} aria-label={t('overlay.hide')}>✕</button>
           </div>
 
           {/* measured content — window auto-sizes to this */}
