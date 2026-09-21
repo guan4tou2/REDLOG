@@ -40,6 +40,7 @@
   "capture.dark": "什麼都沒在記",
   "capture.openHooks": "設定擷取 →",
   "capture.shellHook": "Shell hook（你的終端機）",
+  "capture.shellHookCapability": "只記錄指令 · redlog-run 另加 stdout/stderr",
   "capture.mitmproxy": "mitmproxy（HTTP + DNS）",
   "capture.builtinTerminal": "RedLog 終端機",
   "capture.browserConsole": "瀏覽器 console（CDP）",

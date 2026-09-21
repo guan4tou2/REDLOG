@@ -227,7 +227,14 @@ source /path/to/redlog/hooks/shell-preexec-hook.sh
 2. `PROMPT_COMMAND` fires after each command
 3. Same event emission as zsh
 
-**Performance:** Negligible. The `curl` call runs in background and has a 1-second timeout. If RedLog isn't running, the hook silently does nothing.
+**Output coverage:** The ordinary hook records command metadata only. Prefix a
+command with `redlog-run` to stream stdout/stderr to the terminal while also
+including capped, separated output in the `command_end` event. Interactive TUI
+sessions should use RedLog's built-in terminal so the PTY is recorded.
+
+**Performance:** Event delivery has short connection and request deadlines. If
+RedLog is unavailable, metadata is spooled locally; `redlog-run` still executes
+the wrapped command normally.
 
 ### 1c. Codex/GPT Wrapper
 

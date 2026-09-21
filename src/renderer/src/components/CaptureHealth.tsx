@@ -76,8 +76,13 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
                 return (
                   <li key={s.id} className="flex items-center gap-2 text-xs">
                     <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
-                    <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
-                      {STEP_LABEL[s.id] ?? s.id}
+                    <span className={`min-w-0 ${s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}`}>
+                      <span>{STEP_LABEL[s.id] ?? s.id}</span>
+                      {s.id === 'shell-hook' && (
+                        <span className="block text-xs text-redlog-text-faint">
+                          {t('capture.shellHookCapability')}
+                        </span>
+                      )}
                     </span>
                     <span className="ml-auto text-xs font-mono text-redlog-text-faint">
                       {t(`capture.step.${s.status}`)}
@@ -276,8 +281,13 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
-                {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
+              <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
+                <span className="block truncate">{s.label ?? SOURCE_LABEL[s.id] ?? s.id}</span>
+                {s.id === 'shell-hook' && (
+                  <span className="block text-xs text-redlog-text-faint">
+                    {t('capture.shellHookCapability')}
+                  </span>
+                )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
               </span>
               <span className="text-redlog-text-faint text-xs">

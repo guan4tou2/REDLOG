@@ -128,9 +128,9 @@ highest value-per-line change in this document.
 `preexec` and `precmd`, so full parity is not achievable through the hook
 alone. Three honest steps instead:
 
-1. Make `redlog-run` discoverable — document it in the capture-health card
-   ("external shell: commands captured, output not") rather than only in a
-   comment inside the hook script.
+1. ~~Make `redlog-run` discoverable~~ — shipped: Capture Health and hook startup
+   state that the ordinary external-shell hook records command metadata only
+   and that `redlog-run` adds streamed stdout/stderr capture.
 2. Offer an opt-in `script(1)`-based session recorder for external shells
    that produces a `.cast`-equivalent, reusing the same `io_ref` plumbing.
 3. **Mark the absence.** A `command_end` with no `io` and

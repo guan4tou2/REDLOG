@@ -194,11 +194,9 @@ fi
 
 # --- Opt-in structured capture wrapper ---
 # Usage: redlog-run <command> [args...]
-# Runs the given command with stdout and stderr captured into separate
-# temp files (each truncated at 100 KB), sends command_start / command_end
-# with the structured `stdout` / `stderr` / `*_bytes` / `*_truncated`
-# fields, and passes the output through to the user's terminal so nothing
-# looks different from running the command bare.
+# Runs the given command with stdout and stderr streamed through separate
+# tee processes into temp files. The terminal receives bytes while the command
+# is still running; command_end carries the existing capped structured fields.
 #
 # The normal preexec/precmd hooks will ALSO fire for the `redlog-run`
 # invocation itself. That's fine — the wrapper's command_end lands after
@@ -218,17 +216,37 @@ redlog-run() {
 
   local cmd_string="$*"
   local start_ts=${EPOCHSECONDS:-$(date +%s)}
-  local stdout_file stderr_file
+  local stdout_file stderr_file pipe_dir stdout_pipe stderr_pipe
   stdout_file=$(mktemp -t redlog-stdout.XXXXXX) || { command "$@"; return $?; }
   stderr_file=$(mktemp -t redlog-stderr.XXXXXX) || { rm -f "$stdout_file"; command "$@"; return $?; }
+  pipe_dir=$(mktemp -d -t redlog-stream.XXXXXX) || {
+    rm -f "$stdout_file" "$stderr_file"
+    command "$@"
+    return $?
+  }
+  stdout_pipe="$pipe_dir/stdout"
+  stderr_pipe="$pipe_dir/stderr"
+  if ! mkfifo "$stdout_pipe" "$stderr_pipe"; then
+    rm -f "$stdout_file" "$stderr_file"
+    rm -rf "$pipe_dir"
+    command "$@"
+    return $?
+  fi
 
   # Emit command_start so the timeline shows the row entering flight.
   _redlog_send_event "command_start" "$cmd_string"
 
-  # Run the command with stream splitting. Use `command` to avoid infinite
-  # recursion if a user aliases the target name back to redlog-run.
-  command "$@" 1>"$stdout_file" 2>"$stderr_file"
+  # Stream each descriptor back to the same terminal descriptor while teeing
+  # the bytes to disk. Named pipes let us wait for both tee processes before
+  # reading the files, avoiding a race at command exit.
+  tee "$stdout_file" <"$stdout_pipe" &
+  local stdout_tee_pid=$!
+  tee "$stderr_file" <"$stderr_pipe" >&2 &
+  local stderr_tee_pid=$!
+  command "$@" 1>"$stdout_pipe" 2>"$stderr_pipe"
   local exit_code=$?
+  wait "$stdout_tee_pid" 2>/dev/null || true
+  wait "$stderr_tee_pid" 2>/dev/null || true
   local end_ts=${EPOCHSECONDS:-$(date +%s)}
   local duration=$(( end_ts - start_ts ))
 
@@ -238,11 +256,6 @@ redlog-run() {
   stderr_bytes=$(wc -c <"$stderr_file" 2>/dev/null | tr -d ' ')
   stdout_bytes=${stdout_bytes:-0}
   stderr_bytes=${stderr_bytes:-0}
-
-  # Pass output through to the user's terminal (before we build/send the
-  # event) so the shell feels normal even if the send is slow.
-  cat "$stdout_file"
-  cat "$stderr_file" >&2
 
   # Build the event JSON in python. Python reads the temp files DIRECTLY —
   # this avoids every quoting/argv-size/binary hazard of stuffing 100 KB
@@ -297,11 +310,13 @@ print(json.dumps({
   _redlog_send_event "command_end" "$cmd_string" "$extra"
 
   rm -f "$stdout_file" "$stderr_file"
+  rm -rf "$pipe_dir"
   return $exit_code
 }
 
 if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
-  echo "[redlog] shell hook active (WSL: ${WSL_DISTRO_NAME}) — commands will be logged to RedLog timeline"
+  echo "[redlog] shell hook active (WSL: ${WSL_DISTRO_NAME}) — command metadata will be logged to RedLog timeline"
 else
-  echo "[redlog] shell hook active — commands will be logged to RedLog timeline"
+  echo "[redlog] shell hook active — command metadata will be logged to RedLog timeline"
 fi
+echo "[redlog] tip: prefix a command with 'redlog-run' to stream and capture stdout/stderr"

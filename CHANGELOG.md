@@ -15,6 +15,8 @@ for full commit body + generated notes.
 - Built-in capture producers now enter through one ingest policy, so pause,
   publication, causal links, target extraction and derived evidence no longer
   depend on which in-process source observed the activity.
+- POSIX `redlog-run` now streams stdout/stderr while capturing them, and Capture
+  Health states that the ordinary external-shell hook records metadata only.
 
 ## v0.15.1 — 2026-09-19
 
