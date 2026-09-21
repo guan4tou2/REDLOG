@@ -66,6 +66,25 @@ describeDB('ingest', () => {
     expect(secondPass.companions).toHaveLength(0)
   })
 
+  it('the migration helper publishes one primary event and keeps canonical enrichment', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const received: Array<{ id: string }> = []
+    const listener = (event: { id: string }): void => { received.push(event) }
+    eventBus.on('event', listener)
+    try {
+      const event = ingestMod.ingestEvent('shell', {
+        subtype: 'command_start', command: 'curl https://10.0.0.37/status', terminal_id: 'migration-test', pid: 37
+      }, base)
+      await new Promise(resolve => queueMicrotask(resolve))
+
+      expect(event).not.toBeNull()
+      expect(event!.data.detectedTarget).toBe('10.0.0.37')
+      expect(received.filter((candidate) => candidate.id === event!.id)).toHaveLength(1)
+    } finally {
+      eventBus.off('event', listener)
+    }
+  })
+
   it('stores the raw bytes and folds their digest into the hashed data', () => {
     const rawBytes = Buffer.from(JSON.stringify({ agent_type: 'scanner', host: '10.0.0.9', port: 445 }))
     const r = ingestMod.ingest({

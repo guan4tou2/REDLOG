@@ -1,5 +1,5 @@
 import { statSync } from 'fs'
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 
@@ -130,7 +130,7 @@ function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file
     } catch { /* just deleted between event + stat */ }
   }
   try {
-    const ev = insertEvent('file_transfer', {
+    const ev = ingestEvent('file_transfer', {
       subtype,
       path: absPath,
       size,
@@ -138,7 +138,6 @@ function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file
       is_dir: isDir || undefined,
       source: 'file-watcher'
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) {
     noteDbError('file-watcher', e)
   }

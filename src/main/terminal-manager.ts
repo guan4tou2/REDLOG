@@ -4,7 +4,7 @@ import os from 'os'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { insertEvent } from '../core/db/events'
+import { ingestEvent } from '../core/ingest'
 import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
@@ -68,7 +68,7 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   }
 
   try {
-    const event = insertEvent('shell', {
+    const event = ingestEvent('shell', {
       subtype: 'session_end',
       source: 'builtin-terminal',
       terminalId: session.id,
@@ -82,7 +82,6 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
       // v0.6.89: point at the session_start we captured above.
       ...(session.startEventId ? { _causes: [session.startEventId] } : {})
     }, { engagementId: session.engagementId, operatorId: session.operatorId })
-    if (event) eventBus.publish(event)
   } catch (e) {
     // Session_end write is the recording integrity chain's signal that a
     // recording was closed cleanly — losing it means the cast SHA is missing
@@ -176,7 +175,7 @@ export function recoverOrphanSessions(): number {
       try { tid = String(JSON.parse(row.start_data)?.terminalId ?? '') } catch { continue }
       if (!tid) continue
       try {
-        const ev = insertEvent('shell', {
+        const ev = ingestEvent('shell', {
           subtype: 'session_end',
           source: 'builtin-terminal',
           terminalId: tid,
@@ -185,7 +184,7 @@ export function recoverOrphanSessions(): number {
           recovered: true,
           description: 'orphan session recovered on app start'
         }, { engagementId, operatorId })
-        if (ev) { eventBus.publish(ev); recovered++ }
+        if (ev) recovered++
       } catch (e) { noteDbError('orphan-session-recovery', e) }
     }
   } catch (e) { noteDbError('orphan-session-recovery', e) }
@@ -331,7 +330,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
 
   sessions.set(id, session)
 
-  const event = insertEvent('shell', {
+  const event = ingestEvent('shell', {
     subtype: 'session_start',
     source: 'builtin-terminal',
     terminalId: id,
@@ -340,7 +339,6 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castPath
   }, { engagementId: session.engagementId, operatorId: session.operatorId })
   if (event) {
-    eventBus.publish(event)
     session.startEventId = event.id
   }
 

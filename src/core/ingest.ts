@@ -86,6 +86,17 @@ export interface IngestResult {
   companions: RedLogEvent[]
 }
 
+/** Migration-friendly canonical entry point for in-process producers. It has
+ * the DB primitive's call shape while still executing the complete ingest
+ * policy. New code should prefer `ingest()` when it needs skip/companion data. */
+export function ingestEvent(
+  agentType: string,
+  data: Record<string, unknown>,
+  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+): RedLogEvent | null {
+  return ingest({ agentType, data, ...opts }).event
+}
+
 // ── The pipeline ────────────────────────────────────────────────────────────
 
 export function ingest(input: IngestInput): IngestResult {
