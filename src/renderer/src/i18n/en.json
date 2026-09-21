@@ -40,6 +40,7 @@
   "capture.dark": "Recording nothing",
   "capture.openHooks": "Set up capture →",
   "capture.shellHook": "Shell hook (your terminal)",
+  "capture.shellHookCapability": "commands only · redlog-run adds stdout/stderr",
   "capture.mitmproxy": "mitmproxy (HTTP + DNS)",
   "capture.builtinTerminal": "RedLog terminal",
   "capture.browserConsole": "Browser console (CDP)",

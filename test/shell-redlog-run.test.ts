@@ -1,0 +1,111 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { spawn } from 'child_process'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+
+const tempDirs: string[] = []
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
+})
+
+describe('POSIX redlog-run', () => {
+  it('streams output before exit and preserves separated event payloads', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-run-'))
+    tempDirs.push(home)
+    const redlogDir = path.join(home, '.redlog')
+    const binDir = path.join(home, 'bin')
+    const payloadFile = path.join(home, 'payloads.jsonl')
+    fs.mkdirSync(redlogDir)
+    fs.mkdirSync(binDir)
+    fs.writeFileSync(path.join(redlogDir, 'api-port'), '6660')
+    fs.writeFileSync(path.join(redlogDir, 'api-token'), 'test-token')
+
+    const curl = path.join(binDir, 'curl')
+    fs.writeFileSync(curl, `#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-d" ]; then
+    shift
+    printf '%s\\n' "$1" >> "$REDLOG_TEST_PAYLOADS"
+  fi
+  shift
+done
+exit 0
+`)
+    fs.chmodSync(curl, 0o755)
+
+    const hook = path.resolve('hooks/shell-preexec-hook.sh')
+    const script = `source "$1"
+redlog-run sh -c 'printf REDLOG_FIRST; sleep 1; printf REDLOG_SECOND; printf REDLOG_ERR >&2; exit 7'
+exit $?
+`
+    const started = Date.now()
+    const child = spawn('bash', ['-c', script, 'bash', hook], {
+      env: {
+        ...process.env,
+        HOME: home,
+        PATH: `${binDir}:${process.env.PATH ?? ''}`,
+        REDLOG_TEST_PAYLOADS: payloadFile
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let firstSeenAt: number | null = null
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString()
+      if (firstSeenAt === null && stdout.includes('REDLOG_FIRST')) firstSeenAt = Date.now()
+    })
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
+
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('close', resolve)
+    })
+    const finishedAt = Date.now()
+
+    expect(exitCode).toBe(7)
+    expect(stdout).toContain('REDLOG_FIRSTREDLOG_SECOND')
+    expect(stderr).toContain('REDLOG_ERR')
+    expect(firstSeenAt).not.toBeNull()
+    expect(firstSeenAt! - started).toBeLessThan(700)
+    expect(finishedAt - started).toBeGreaterThanOrEqual(900)
+
+    const payloads = fs.readFileSync(payloadFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+    const end = payloads.find((payload) => payload.data?.subtype === 'command_end')
+    expect(end?.data).toMatchObject({
+      exit_code: 7,
+      stdout: 'REDLOG_FIRSTREDLOG_SECOND',
+      stderr: 'REDLOG_ERR',
+      stdout_bytes: 25,
+      stderr_bytes: 10,
+      stdout_truncated: false,
+      stderr_truncated: false,
+      captured_by: 'redlog-run'
+    })
+  })
+
+  it('runs transparently when RedLog credentials are unavailable', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-run-offline-'))
+    tempDirs.push(home)
+    const hook = path.resolve('hooks/shell-preexec-hook.sh')
+    const script = `source "$1" >/dev/null
+redlog-run sh -c 'printf OFFLINE_OK; exit 9'
+exit $?
+`
+    const child = spawn('bash', ['-c', script, 'bash', hook], {
+      env: { ...process.env, HOME: home },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let stdout = ''
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString() })
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      child.once('error', reject)
+      child.once('close', resolve)
+    })
+
+    expect(exitCode).toBe(9)
+    expect(stdout).toBe('OFFLINE_OK')
+  })
+})

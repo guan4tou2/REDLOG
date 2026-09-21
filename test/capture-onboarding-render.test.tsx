@@ -72,6 +72,11 @@ describe('CaptureHealthCard onboarding', () => {
     expect(within(el).getByText('Install shell hook')).toBeTruthy()
   })
 
+  it('states that the ordinary shell hook is metadata-only and names the output path', () => {
+    const el = draw(DARK)
+    expect(el.textContent).toContain('commands only · redlog-run adds stdout/stderr')
+  })
+
   it('points at the wired source once one is set up, not the next unset one', () => {
     // Chosen by state rather than position: the installed hook needs a
     // command, the untouched tailer needs turning on first. The shorter step

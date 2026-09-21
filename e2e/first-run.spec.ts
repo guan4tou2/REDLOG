@@ -51,6 +51,7 @@ test.describe.serial('the first run', () => {
     await page.click('[data-testid="first-run-more-sources"]')
     await page.waitForTimeout(500)
     expect(await page.locator('text=/capture|Capture/').count()).toBeGreaterThan(0)
+    await expect(page.getByText('commands only · redlog-run adds stdout/stderr').first()).toBeVisible()
     await page.click('[data-testid="first-run-more-sources"]')
   })
 
