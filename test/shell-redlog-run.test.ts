@@ -9,7 +9,13 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true })
 })
 
-describe('POSIX redlog-run', () => {
+// The suite spawns a real bash and drops a `#!/bin/sh` curl shim on PATH, so
+// it is POSIX by construction — the describe has said so since it was written.
+// Nothing enforced it, so the windows-latest leg of the CI matrix ran it, the
+// shim never executed, and the assertion failed on the payload file that was
+// therefore never written. The failure looked like a product bug in
+// `redlog-run` and was a missing platform guard.
+describe.skipIf(process.platform === 'win32')('POSIX redlog-run', () => {
   // These spawn a real bash and run the hook end to end. Alone the file takes
   // ~3.4s, which fits under vitest's 5s default — but vitest runs files in
   // parallel, and under that load the first one goes over and fails as a
