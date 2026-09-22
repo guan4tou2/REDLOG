@@ -31,6 +31,7 @@ import type { ParsedQuery, QueryCondition } from '../src/core/query/contract'
 let initDB: typeof import('../src/core/db').initDB
 let closeDB: typeof import('../src/core/db').closeDB
 let insertEvent: typeof import('../src/core/db/event-write').insertEvent
+let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
 let available = false
 
@@ -38,9 +39,11 @@ try {
   const db = await import('../src/core/db')
   const write = await import('../src/core/db/event-write')
   const queries = await import('../src/core/db/event-queries')
+  const bodyIndex = await import('../src/core/http-body-index')
   initDB = db.initDB
   closeDB = db.closeDB
   insertEvent = write.insertEvent
+  closeHttpBodyIndex = bodyIndex.closeHttpBodyIndex
   executeEventQuery = queries.executeEventQuery
   available = true
 } catch { /* native SQLite unavailable */ }
@@ -85,6 +88,9 @@ function withTempDb(name: string): void {
     initDB(dir)
   })
   afterEach(() => {
+    // A text query opens the http-body index; Windows refuses to unlink
+    // an open file, so leaving it open fails the cleanup, not the assertion.
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })
