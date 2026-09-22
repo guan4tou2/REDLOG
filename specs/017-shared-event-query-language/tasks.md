@@ -4,41 +4,48 @@
 
 - [ ] T001 Add failing parser tests: conditions, residual text, colon-bearing
       text such as URLs, unrecognised prefixes, conditions-only queries.
-- [ ] T002 Add failing tests for exact event, session and tool-use resolution,
-      including a near match that must not be substituted.
-- [ ] T003 Add failing tests that the same query text selects the same events on
-      both surfaces under one shared filter.
-- [ ] T004 Add failing Search non-regression tests over queries valid today.
-- [ ] T005 Add failing tests for cross-page pair completion and for a pair that
-      stays unresolved.
+- [ ] T002 Add failing tests for exact event, session and transcript-UUID
+      resolution, including a near match that must not be substituted.
+- [ ] T003 Add failing tests for session-scoped tool-use resolution, including
+      the same tool-use ID present in two sessions.
+- [ ] T004 Add failing tests that a condition is not satisfied by its value
+      appearing as text elsewhere in the record.
+- [ ] T005 Add failing tests for cross-page pair completion, for a bounded
+      lookup count per page, and for a pair that stays unresolved.
 - [ ] T006 Add failing tests separating unparsable, failed, no-match and
       not-yet-indexed.
 
 ## Phase 2 — Query contract
 
 - [ ] T007 Implement the parse: recognised conditions plus residual free text.
-- [ ] T008 Evaluate the contract at the persistence layer beneath the caller's
-      shared filter, limit and cursor.
-- [ ] T009 Return the parse with the results so surfaces can display it.
+- [ ] T008 Add the indexes the conditions require: `session_id`, and an
+      expression index for `tool_use_id` in `data`.
+- [ ] T009 Implement intersecting evaluation — FTS for terms, field predicates
+      for conditions — beneath the caller's shared filter, limit and cursor.
+- [ ] T010 Implement session scoping for a bare tool-use condition and report
+      the resolved session.
+- [ ] T011 Return the parse with the results so surfaces can display it.
 
-## Phase 3 — Surfaces
+## Phase 3 — Transcript
 
-- [ ] T010 Move Search onto the contract with no change to its selected events.
-- [ ] T011 Move the Transcript text box onto the contract per bucket, keeping
+- [ ] T012 Move the Transcript text box onto the contract per bucket, keeping
       balance, `hasMore` and cursor.
-- [ ] T012 Show on both surfaces which tokens were read as conditions.
-- [ ] T013 Complete absent tool counterparts by tool-use ID and mark pairs that
-      stay unresolved.
-- [ ] T014 Keep source and receipt time distinguishable through the projection.
-- [ ] T015 Restart cursors on query and filter change; restore the unqueried
+- [ ] T013 Show which tokens were read as conditions, including the session a
+      tool-use condition resolved within.
+- [ ] T014 Complete absent counterparts in one batched lookup per page and mark
+      pairs that stay unresolved.
+- [ ] T015 Keep source and receipt time distinguishable through the projection.
+- [ ] T016 Restart cursors on query and filter change; restore the unqueried
       view when the query is cleared.
-- [ ] T016 Make the completeness indicator describe the queried dataset, and
+- [ ] T017 Render unparsable, failed, no-match and not-yet-indexed as four
+      distinct recoverable states; Spec 009 covers only load failure and empty.
+- [ ] T018 Make the completeness indicator describe the queried dataset, and
       label any filter still bound to loaded evidence.
 
 ## Phase 4 — Verification
 
-- [ ] T017 Run focused tests, typecheck, the full suite and build.
-- [ ] T018 Run the Search and Transcript desktop journeys.
-- [ ] T019 Update `docs/domain/glossary.md` with the query-language terms.
-- [ ] T020 Record the supersession in Specs 008 and 009.
-- [ ] T021 Analyze and converge artifacts; record verification and mark Verified.
+- [ ] T019 Run focused tests, typecheck, the full suite and build.
+- [ ] T020 Run the Transcript desktop journey.
+- [ ] T021 Update `docs/domain/glossary.md` with the query-language terms.
+- [ ] T022 Record in Spec 009 that its local-text-filter exception is superseded.
+- [ ] T023 Analyze and converge artifacts; record verification and mark Verified.
