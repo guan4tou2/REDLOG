@@ -657,9 +657,11 @@ function startProject(project: ProjectMeta): void {
   // recoverable on disk and are picked up when their owning project opens.
   const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
     if (!currentEngagementId || !currentOperatorId) return
-    const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): void => {
+    if (eventBus.paused) return
+    const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
       const ev = insertEvent(agentType, data, { engagementId: spoolEngagement, operatorId: spoolOperator })
       if (ev) eventBus.publish(ev)
+      return ev !== null
     }
     const replayed = replaySpoolDirectory(path.join(homedir(), '.redlog', 'pending'), {
       engagementId: currentEngagementId,
