@@ -239,11 +239,18 @@ const api: RedLogAPI = {
   },
   recording: {
     get: (): Promise<boolean> => ipcRenderer.invoke('recording:get'),
+    getMode: () => ipcRenderer.invoke('recording:getMode'),
+    setMode: (mode: 'recording' | 'paused' | 'reporting') => ipcRenderer.invoke('recording:setMode', mode),
     toggle: (): Promise<boolean> => ipcRenderer.invoke('recording:toggle'),
     onChange: (cb: (recording: boolean) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, r: boolean) => cb(r)
       ipcRenderer.on('recording:changed', handler)
       return () => ipcRenderer.removeListener('recording:changed', handler)
+    },
+    onModeChange: (cb: (mode: 'recording' | 'paused' | 'reporting') => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, mode: 'recording' | 'paused' | 'reporting') => cb(mode)
+      ipcRenderer.on('recording:modeChanged', handler)
+      return () => ipcRenderer.removeListener('recording:modeChanged', handler)
     }
   },
   pivots: {

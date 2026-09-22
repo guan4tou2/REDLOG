@@ -57,6 +57,15 @@ while capture is stopped and verify REDLOG does not inject stale variables.
   contract.
 - **FR-007**: Manual external proxies and custom browser proxy URLs MUST remain
   usable; REDLOG only auto-manages loopback URLs matching its configured port.
+- **FR-008**: Managed proxy port configuration MUST have one source of truth;
+  changing it MUST restart the owned process and route loopback browser and new
+  terminal traffic to the new endpoint.
+- **FR-009**: Capture Health MUST distinguish process readiness from traffic
+  freshness, so a listening but unused proxy is not presented as contradictory.
+- **FR-010**: REDLOG MUST expose whether mitmproxy's HTTPS CA exists and its
+  path, but MUST NOT modify the operating-system trust store.
+- **FR-011**: An owned proxy that exits unexpectedly MUST append a failure event
+  to the active project and stop routing newly opened terminal panes to it.
 
 ## Out of Scope
 

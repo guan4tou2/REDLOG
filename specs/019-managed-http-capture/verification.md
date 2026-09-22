@@ -34,6 +34,13 @@
 - The shipped addon remains the sole HTTP event producer, preserving event
   schema, body sidecars, spool and provenance behavior.
 - UI states and errors are available in English and Traditional Chinese.
+- Project config owns the managed port; saving a changed port restarts the
+  process, loopback browser launches use its live URL, and remote proxies remain
+  external.
+- Capture Health says process readiness and traffic freshness separately.
+- Settings reports the HTTPS CA path/readiness without changing OS trust.
+- A running child that exits transitions to failed, is written to the Timeline,
+  and is no longer injected into newly created terminals.
 - Transparent interception, bundled Python runtime and non-HTTP protocols stay
   outside this feature.
 
