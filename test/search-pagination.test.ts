@@ -5,6 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let getDB: typeof import('../src/core/db/index').getDB
 let searchEventsPage: typeof import('../src/core/db/event-queries').searchEventsPage
 
@@ -14,6 +15,7 @@ try {
   const queryMod = await import('../src/core/db/event-queries')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
+  closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   getDB = dbMod.getDB
   searchEventsPage = queryMod.searchEventsPage
   dbAvailable = true
@@ -52,6 +54,13 @@ describeDB('searchEventsPage', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    // `closeDB()` closes the project DB and its read-only twin, but not
+    // `http-body-index.db` — a second SQLite file `linkHttpBodyEvent()` opens
+    // lazily. POSIX unlinks an open file happily; Windows answers EBUSY, so
+    // the rmSync below threw and every test in this file failed on teardown
+    // while its assertions had all passed. `http-body-search.test.ts` already
+    // closes it; these files simply did not.
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })

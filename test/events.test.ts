@@ -5,6 +5,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
@@ -18,6 +19,7 @@ try {
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
+  closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   getDB = dbMod.getDB
   insertEventRaw = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
@@ -42,6 +44,13 @@ describeDB('insertEvent', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    // `closeDB()` closes the project DB and its read-only twin, but not
+    // `http-body-index.db` — a second SQLite file `linkHttpBodyEvent()` opens
+    // lazily. POSIX unlinks an open file happily; Windows answers EBUSY, so
+    // the rmSync below threw and every test in this file failed on teardown
+    // while its assertions had all passed. `http-body-search.test.ts` already
+    // closes it; these files simply did not.
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -80,6 +89,7 @@ describeDB('shell dedup', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -150,6 +160,7 @@ describeDB('monotonic_ns padding', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -173,6 +184,7 @@ describeDB('queryEvents excludeHousekeeping', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -200,6 +212,7 @@ describeDB('evidence chain', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -237,6 +250,7 @@ describeDB('queryEvents', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -280,6 +294,7 @@ describeDB('getEventCount', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -301,6 +316,7 @@ describeDB('searchEvents', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -373,6 +389,7 @@ describeDB('queryScopeFilteredEvents', () => {
     initDB(tmpDir)
   })
   afterEach(() => {
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
