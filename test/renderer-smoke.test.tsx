@@ -117,6 +117,8 @@ function installBridge(): void {
     },
     events: {
       query: async () => EVENTS,
+      queryPage: async () => ({ items: EVENTS, hasMore: false, nextCursor: null }),
+      queryHttpFlowPage: async () => ({ items: EVENTS, flowCount: EVENTS.length, hasMore: false, nextCursor: null }),
       getCount: async () => EVENTS.length,
       getLatestLoggedTs: async () => null,
       search: async () => EVENTS,

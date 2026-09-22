@@ -220,6 +220,9 @@ export function initDB(projectDir: string): Database.Database {
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_logged_source_ts ON events_logged(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_http_flow
+    ON events_logged(json_extract(data, '$.flow_id'), timestamp DESC)
+    WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)
 
   // FTS5 full-text search indexes for events + events_logged.
   // External-content tables: the index references the source rows directly

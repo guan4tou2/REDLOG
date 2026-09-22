@@ -27,7 +27,8 @@ function rawInsert(
   table: 'events' | 'events_logged',
   ts: number,
   agentType: string,
-  data: Record<string, unknown> = {}
+  data: Record<string, unknown> = {},
+  targetId = ''
 ): string {
   const db = getDB()
   const id = `ev-${Math.random().toString(36).slice(2, 10)}`
@@ -37,9 +38,9 @@ function rawInsert(
       agent_type, subtype, hostname, source_ip, target_id, data, created_at
       ${table === 'events' ? ', hash, prev_hash, signature' : ''})
     VALUES (?, ?, 'test-eng', 'test-sess', 'test-op',
-      ?, ?, '', '', '', ?, ?
+      ?, ?, '', '', ?, ?, ?
       ${table === 'events' ? ", 'h', 'p', 's'" : ''})
-  `).run(id, ts, agentType, data.subtype ?? null, dataStr, ts)
+  `).run(id, ts, agentType, data.subtype ?? null, targetId, dataStr, ts)
   return id
 }
 
@@ -170,6 +171,51 @@ describeDB('searchEventsPage', () => {
       }
       expect(allIds.length).toBeGreaterThan(0)
       expect(new Set(allIds).size).toBe(allIds.length)
+    })
+  })
+
+  describe('shared target and scope filters run before LIMIT', () => {
+    it('fills the first page from in-scope matches behind newer excluded rows', () => {
+      for (let i = 0; i < 120; i++) {
+        rawInsert('events_logged', 10_000 - i, 'scanner', { url: `https://noise.example/shared-${i}` }, 'noise.example')
+      }
+      for (let i = 0; i < 25; i++) {
+        rawInsert('events', 8_000 - i, 'shell', { command: `shared target-${i}` }, '10.10.10.10')
+      }
+
+      const page = searchEventsPage({
+        query: 'shared',
+        limit: 20,
+        inScopeOnly: true,
+        scope: { targets: ['10.10.10.0/24'], excludeTargets: [] }
+      })
+
+      expect(page.items).toHaveLength(20)
+      expect(page.items.every((event) => event.targetId === '10.10.10.10')).toBe(true)
+      expect(page.hasMore).toBe(true)
+    })
+
+    it('applies targetId before pagination across both tiers', () => {
+      for (let i = 0; i < 40; i++) rawInsert('events', 5_000 - i, 'shell', { command: `needle other-${i}` }, 'other.test')
+      for (let i = 0; i < 12; i++) rawInsert('events_logged', 4_000 - i, 'scanner', { url: `https://wanted.test/needle/${i}` }, 'wanted.test')
+
+      const page = searchEventsPage({ query: 'needle', limit: 10, targetId: 'wanted.test' })
+      expect(page.items).toHaveLength(10)
+      expect(page.items.every((event) => event.targetId === 'wanted.test')).toBe(true)
+      expect(page.hasMore).toBe(true)
+    })
+
+    it('keeps targetless evidence and lets excludes override targets', () => {
+      rawInsert('events', 3_000, 'marker', { title: 'scopeproof targetless' })
+      rawInsert('events', 2_999, 'shell', { command: 'scopeproof allowed' }, 'api.target.test')
+      rawInsert('events', 2_998, 'shell', { command: 'scopeproof excluded' }, 'admin.target.test')
+
+      const page = searchEventsPage({
+        query: 'scopeproof',
+        inScopeOnly: true,
+        scope: { targets: ['*.target.test'], excludeTargets: ['admin.target.test'] }
+      })
+      expect(page.items.map((event) => event.targetId)).toEqual(['', 'api.target.test'])
     })
   })
 

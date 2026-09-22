@@ -1,19 +1,39 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventById, queryByFlowId, searchEvents, searchEventsPage,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryByFlowId, searchEvents, searchEventsPage,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
   distinctHosts, hostCausalChain, insertEvent,
-  type RedLogEvent, type EventTierFilter
+  type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
 } from '../../core/db/events'
+import { loadConfig, snapshotScope } from '../../core/config'
+import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 import { eventBus } from '../../core/event-bus'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
-  ipcMain.handle('events:query', (_e, opts) =>
-    ctx.getActiveProject() ? queryEvents(opts) : [])
+  const withActiveScope = <T extends EventFilter>(opts: T): T => {
+    if (!opts.inScopeOnly) return opts
+    const project = ctx.getActiveProject()
+    if (!project) return opts
+    const scope = snapshotScope(loadConfig(getProjectPath(project)))
+    return { ...opts, scope: { targets: scope.targets, excludeTargets: scope.excludeTargets } }
+  }
+
+  ipcMain.handle('events:query', (_e, opts: EventQueryOptions) =>
+    ctx.getActiveProject() ? queryEvents(withActiveScope(opts ?? {})) : [])
+
+  ipcMain.handle('events:queryPage', (_e, opts: EventFilter & { limit?: number; cursor?: string | null }) =>
+    ctx.getActiveProject()
+      ? queryEventsPage(withActiveScope(opts ?? {}))
+      : { items: [], hasMore: false, nextCursor: null })
+
+  ipcMain.handle('events:queryHttpFlowPage', (_e, opts: EventFilter & { limit?: number; cursor?: string | null }) =>
+    ctx.getActiveProject()
+      ? queryHttpFlowPage(withActiveScope(opts ?? {}))
+      : { items: [], flowCount: 0, hasMore: false, nextCursor: null })
 
   ipcMain.handle('events:getCount', (_e, tier: EventTierFilter) =>
     ctx.getActiveProject() ? getEventCount({ tier }) : 0)
@@ -21,12 +41,12 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:getLatestLoggedTs', () =>
     ctx.getActiveProject() ? getLatestLoggedTs() : null)
 
-  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) =>
-    ctx.getActiveProject() ? searchEvents(query, limit, opts) : [])
+  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: EventFilter) =>
+    ctx.getActiveProject() ? searchEvents(query, limit, withActiveScope(opts ?? {})) : [])
 
-  ipcMain.handle('events:searchPage', (_e, opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) =>
+  ipcMain.handle('events:searchPage', (_e, opts: EventFilter & { query: string; limit?: number; cursor?: string | null }) =>
     ctx.getActiveProject() && typeof opts?.query === 'string'
-      ? searchEventsPage(opts)
+      ? searchEventsPage(withActiveScope(opts))
       : { items: [], hasMore: false, nextCursor: null })
 
   ipcMain.handle('events:distinctAgentTypes', () =>

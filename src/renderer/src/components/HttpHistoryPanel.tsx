@@ -8,7 +8,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
-import { useSharedFilter } from '../lib/FilterContext'
+import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 
 interface HttpFlow {
   flowId: string
@@ -57,6 +57,41 @@ function parentCommandOf(
   if (!Array.isArray(causes) || causes.length === 0) return null
   const self = new Set([request?.id, response?.id].filter(Boolean) as string[])
   return causes.find((c) => !self.has(c)) ?? null
+}
+
+function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
+  const flowMap = new Map<string, { request: RedLogEvent | null; response: RedLogEvent | null }>()
+  for (const evt of events) {
+    const sub = evt.data?.subtype as string
+    const fid = evt.data?.flow_id as string
+    if (!fid || (sub !== 'http_request_start' && sub !== 'http_response')) continue
+    if (!flowMap.has(fid)) flowMap.set(fid, { request: null, response: null })
+    const entry = flowMap.get(fid)!
+    if (sub === 'http_request_start') entry.request = evt
+    else entry.response = evt
+  }
+  return [...flowMap.entries()].map(([flowId, { request, response }]) => {
+    const req = request?.data
+    const resp = response?.data
+    return {
+      flowId,
+      method: String(req?.method ?? resp?.method ?? ''),
+      url: String(req?.url ?? resp?.url ?? ''),
+      host: String(req?.host ?? resp?.host ?? ''),
+      status: typeof resp?.status === 'number' ? resp.status : null,
+      contentType: String(resp?.content_type ?? ''),
+      size: typeof resp?.content_length === 'number' ? resp.content_length : null,
+      durationMs: typeof resp?.duration_ms === 'number' ? resp.duration_ms : null,
+      timestamp: request?.timestamp ?? response?.timestamp ?? 0,
+      requestEventId: request?.id ?? null,
+      responseEventId: response?.id ?? null,
+      hasRequestBody: !!(req?.request_body || req?.request_body_ref),
+      hasResponseBody: !!(resp?.response_body || resp?.response_body_ref),
+      httpVersion: String(resp?.http_version ?? req?.http_version ?? ''),
+      streamId: typeof resp?.stream_id === 'number' ? resp.stream_id : null,
+      causeEventId: parentCommandOf(request, response)
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +383,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const { filter: sharedFilter, scopeTargets, scopeExcludeTargets: excludeTargets } = useSharedFilter()
   const [flows, setFlows] = useState<HttpFlow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [filterText, setFilterText] = useState('')
   const [methodFilter, setMethodFilter] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
@@ -381,57 +419,46 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     [scopeTargets, excludeTargets]
   )
 
-  const loadFlows = useCallback(async () => {
-    const events = await window.redlog.events.query({
-      agentType: 'scanner',
-      limit: 5000,
-      tier: 'logged'
-    })
-
-    const flowMap = new Map<string, {
-      request: RedLogEvent | null
-      response: RedLogEvent | null
-    }>()
-
-    for (const evt of events) {
-      const sub = evt.data?.subtype as string
-      const fid = evt.data?.flow_id as string
-      if (!fid) continue
-      if (sub !== 'http_request_start' && sub !== 'http_response') continue
-
-      if (!flowMap.has(fid)) flowMap.set(fid, { request: null, response: null })
-      const entry = flowMap.get(fid)!
-      if (sub === 'http_request_start') entry.request = evt
-      else entry.response = evt
+  const loadSeqRef = useRef(0)
+  const nextCursorRef = useRef<string | null>(null)
+  const loadFlows = useCallback(async (append = false) => {
+    if (sharedFilter.agentType && sharedFilter.agentType !== 'scanner') {
+      setFlows([])
+      setHasMore(false)
+      nextCursorRef.current = null
+      setLoadError(null)
+      setLoading(false)
+      return
     }
-
-    const result: HttpFlow[] = []
-    for (const [flowId, { request, response }] of flowMap) {
-      const req = request?.data
-      const resp = response?.data
-      result.push({
-        flowId,
-        method: String(req?.method ?? resp?.method ?? ''),
-        url: String(req?.url ?? resp?.url ?? ''),
-        host: String(req?.host ?? resp?.host ?? ''),
-        status: typeof resp?.status === 'number' ? resp.status : null,
-        contentType: String(resp?.content_type ?? ''),
-        size: typeof resp?.content_length === 'number' ? resp.content_length : null,
-        durationMs: typeof resp?.duration_ms === 'number' ? resp.duration_ms : null,
-        timestamp: request?.timestamp ?? response?.timestamp ?? 0,
-        requestEventId: request?.id ?? null,
-        responseEventId: response?.id ?? null,
-        hasRequestBody: !!(req?.request_body || req?.request_body_ref),
-        hasResponseBody: !!(resp?.response_body || resp?.response_body_ref),
-        httpVersion: String(resp?.http_version ?? req?.http_version ?? ''),
-        streamId: typeof resp?.stream_id === 'number' ? resp.stream_id : null,
-        causeEventId: parentCommandOf(request, response)
+    const seq = append ? loadSeqRef.current : ++loadSeqRef.current
+    if (append) setLoadingMore(true)
+    else {
+      setLoading(true)
+      setFlows([])
+      setHasMore(false)
+      nextCursorRef.current = null
+    }
+    setLoadError(null)
+    try {
+      const page = await window.redlog.events.queryHttpFlowPage({
+        ...toEventFilter(sharedFilter),
+        agentType: 'scanner',
+        limit: 500,
+        ...(append && nextCursorRef.current ? { cursor: nextCursorRef.current } : {})
       })
+      if (seq !== loadSeqRef.current) return
+      const result = eventsToFlows(page.items)
+      setFlows((current) => append
+        ? [...new Map([...current, ...result].map((flow) => [flow.flowId, flow])).values()]
+        : result)
+      setHasMore(page.hasMore)
+      nextCursorRef.current = page.nextCursor
+    } catch (error: unknown) {
+      if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
     }
-
-    setFlows(result)
-    setLoading(false)
-  }, [])
+  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
@@ -497,26 +524,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     if (hostFilter) {
       list = list.filter(f => f.host === hostFilter)
     }
-    if (sharedFilter.targetId) {
-      list = list.filter(f => f.host === sharedFilter.targetId)
-    }
-    if (sharedFilter.inScopeOnly) list = list.filter((f) => !outOfScope(f.host))
-    if (sharedFilter.timeRange) {
-      const { since, before } = sharedFilter.timeRange
-      list = list.filter(f => {
-        if (since && f.timestamp < since) return false
-        if (before && f.timestamp > before) return false
-        return true
-      })
-    }
-
     list = [...list].sort((a, b) => {
       const va = a[sortCol] ?? 0
       const vb = b[sortCol] ?? 0
       return sortAsc ? (va as number) - (vb as number) : (vb as number) - (va as number)
     })
     return list
-  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, outOfScope])
+  }, [flows, filterTextDebounced, methodFilter, statusFilter, hostFilter, sortCol, sortAsc])
 
   // §9 虛擬列表: window the flow table so a 10k-flow proxy session keeps ~30
   // <tr> mounted, not 10k. Rows are single-line and uniform, so a fixed size
@@ -684,6 +698,23 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
               ))}
             </select>
           </>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
+        <span data-testid="http-completeness" className={hasMore ? 'text-amber-400' : 'text-emerald-500'}>
+          {t(hasMore ? 'httpHistory.recentSubset' : 'httpHistory.complete')}
+        </span>
+        {hasMore && (
+          <button type="button" onClick={() => void loadFlows(true)} disabled={loadingMore} className="text-blue-400 underline disabled:text-redlog-text-faint">
+            {loadingMore ? t('httpHistory.loadingMore') : t('httpHistory.loadMore')}
+          </button>
+        )}
+        {loadError && (
+          <span data-testid="http-load-error" role="alert" className="text-red-300">
+            {t('httpHistory.loadFailed')}{' '}
+            <button type="button" onClick={() => void loadFlows(flows.length > 0)} className="underline">{t('common.retry')}</button>
+          </span>
         )}
       </div>
 

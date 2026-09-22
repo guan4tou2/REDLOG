@@ -194,7 +194,13 @@ interface RedLogAPI {
     pickPath: () => Promise<string | null>
   }
   events: {
-    query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
+    query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
+    queryPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
+    queryHttpFlowPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<import('../../core/db/events').HttpFlowPage>
     /** v0.13.0: optional tier. Omitted (or 'chained') = the chained/audit
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
@@ -203,8 +209,8 @@ interface RedLogAPI {
      *  if none have been written. Drives the CaptureHealthCard "last
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
-    search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => Promise<RedLogEvent[]>
-    searchPage: (opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) => Promise<{
+    search: (query: string, limit?: number, opts?: import('../../core/db/events').EventFilter) => Promise<RedLogEvent[]>
+    searchPage: (opts: import('../../core/db/events').EventFilter & { query: string; limit?: number; cursor?: string | null }) => Promise<{
       items: RedLogEvent[]
       hasMore: boolean
       nextCursor: string | null

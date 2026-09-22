@@ -4,8 +4,7 @@ import { toast } from './Toast'
 import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { AlignLeft } from 'lucide-react'
-import { useSharedFilter } from '../lib/FilterContext'
-import { hostInScope } from '../lib/scope'
+import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 
 /**
  * v0.11.2 (design note T5): the Timeline read vertically.
@@ -54,6 +53,21 @@ interface Block {
 }
 
 const MAX_INLINE = 4096
+
+const TRANSCRIPT_BUCKETS: Array<{ agentType: string; limit: number }> = [
+  { agentType: 'agent', limit: 800 },
+  { agentType: 'shell', limit: 400 },
+  { agentType: 'scanner', limit: 300 },
+  { agentType: 'system', limit: 200 },
+  { agentType: 'marker', limit: 100 },
+  { agentType: 'loot', limit: 100 },
+  { agentType: 'pivot', limit: 100 },
+]
+
+interface BucketPageState {
+  nextCursor: string | null
+  hasMore: boolean
+}
 
 const fmtBytes = formatSize
 
@@ -249,43 +263,97 @@ export default function TranscriptView({ onOpenInTimeline }: {
   onOpenInTimeline?: (id: string, ts: number) => void
 }): JSX.Element {
   const { t } = useI18n()
-  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets } = useSharedFilter()
+  const { filter: sharedFilter } = useSharedFilter()
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
   const [kinds, setKinds] = useState<Set<Kind>>(new Set())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [bucketPages, setBucketPages] = useState<Record<string, BucketPageState>>({})
   const bodyRef = useRef<HTMLDivElement>(null)
+  const loadSeqRef = useRef(0)
+
+  const buckets = useMemo(() => sharedFilter.agentType
+    ? TRANSCRIPT_BUCKETS.filter((bucket) => bucket.agentType === sharedFilter.agentType)
+    : TRANSCRIPT_BUCKETS, [sharedFilter.agentType])
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current
     setLoading(true)
+    setLoadingOlder(false)
+    setLoadError(null)
+    setEvents([])
+    setBucketPages({})
     try {
       // Balanced per-type query so high-volume types (HTTP/scanner) don't
       // crowd out AI conversation and shell events.
-      const buckets: Array<{ agentType?: string; limit: number }> = [
-        { agentType: 'agent', limit: 800 },
-        { agentType: 'shell', limit: 400 },
-        { agentType: 'scanner', limit: 300 },
-        { agentType: 'system', limit: 200 },
-        { agentType: 'marker', limit: 100 },
-        { agentType: 'loot', limit: 100 },
-        { agentType: 'pivot', limit: 100 },
-      ]
       const results = await Promise.all(
-        buckets.map((b) => window.redlog.events.query(b) as Promise<Ev[]>)
+        buckets.map(async (bucket) => ({
+          bucket,
+          page: await window.redlog.events.queryPage({
+          ...toEventFilter(sharedFilter),
+            ...bucket,
+          })
+        }))
       )
+      if (seq !== loadSeqRef.current) return
       const seen = new Set<string>()
       const merged: Ev[] = []
-      for (const batch of results) {
-        for (const e of batch) {
+      const pages: Record<string, BucketPageState> = {}
+      for (const { bucket, page } of results) {
+        pages[bucket.agentType] = { nextCursor: page.nextCursor, hasMore: page.hasMore }
+        for (const e of page.items as Ev[]) {
           if (!seen.has(e.id)) { seen.add(e.id); merged.push(e) }
         }
       }
       merged.sort((a, b) => a.timestamp - b.timestamp)
       setEvents(merged)
-    } finally { setLoading(false) }
-  }, [])
+      setBucketPages(pages)
+    } catch (error: unknown) {
+      if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (seq === loadSeqRef.current) setLoading(false)
+    }
+  }, [buckets, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder) return
+    const seq = loadSeqRef.current
+    const pending = buckets.filter((bucket) => bucketPages[bucket.agentType]?.hasMore && bucketPages[bucket.agentType]?.nextCursor)
+    if (pending.length === 0) return
+    setLoadingOlder(true)
+    setLoadError(null)
+    try {
+      const results = await Promise.all(pending.map(async (bucket) => ({
+        bucket,
+        page: await window.redlog.events.queryPage({
+          ...toEventFilter(sharedFilter),
+          ...bucket,
+          cursor: bucketPages[bucket.agentType].nextCursor,
+        })
+      })))
+      if (seq !== loadSeqRef.current) return
+      setEvents((current) => {
+        const byId = new Map(current.map((event) => [event.id, event]))
+        for (const { page } of results) for (const event of page.items as Ev[]) byId.set(event.id, event)
+        return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp)
+      })
+      setBucketPages((current) => {
+        const next = { ...current }
+        for (const { bucket, page } of results) {
+          next[bucket.agentType] = { nextCursor: page.nextCursor, hasMore: page.hasMore }
+        }
+        return next
+      })
+    } catch (error: unknown) {
+      if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setLoadingOlder(false)
+    }
+  }, [bucketPages, buckets, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -298,6 +366,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   useEffect(() => window.redlog.events.onNewBatch(() => { void load() }), [load])
 
   const blocks = useMemo(() => buildBlocks(events, names), [events, names])
+  const hasMore = Object.values(bucketPages).some((page) => page.hasMore)
 
   const autoExpandedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
@@ -320,19 +389,10 @@ export default function TranscriptView({ onOpenInTimeline }: {
     const q = query.trim().toLowerCase()
     return blocks.filter((b) => {
       if (kinds.size && !kinds.has(b.kind)) return false
-      if (sharedFilter.timeRange) {
-        const { since, before } = sharedFilter.timeRange
-        if (since && b.ts < since) return false
-        if (before && b.ts > before) return false
-      }
-      if (sharedFilter.inScopeOnly) {
-        const targets = b.events.map((event) => event.targetId).filter((target): target is string => !!target)
-        if (targets.length > 0 && !targets.some((target) => hostInScope(target, scopeTargets, scopeExcludeTargets))) return false
-      }
       if (!q) return true
       return `${b.actor}${b.input}${b.output ?? ''}${b.meta ?? ''}`.toLowerCase().includes(q)
     })
-  }, [blocks, query, kinds, sharedFilter.timeRange, sharedFilter.inScopeOnly, scopeTargets, scopeExcludeTargets])
+  }, [blocks, query, kinds])
 
   const toggleKind = (k: Kind): void => setKinds((prev) => {
     const next = new Set(prev)
@@ -349,6 +409,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     // The one report-adjacent thing RedLog can offer without becoming a
     // reporting tool: a verbatim transcript, not an assessment.
     const lines: string[] = ['# RedLog transcript', '']
+    if (hasMore) lines.push(`> ${t('transcript.partialMarkdown')}`, '')
     for (const b of shown) {
       lines.push(`## ${new Date(b.ts).toISOString()} — ${b.actor}${b.meta ? ` (${b.meta})` : ''}`, '')
       lines.push('```', b.input, '```', '')
@@ -370,7 +431,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
         detail: String((e as Error)?.message ?? e)
       })
     }
-  }, [shown, t])
+  }, [hasMore, shown, t])
 
   const KINDS: Kind[] = ['shell', 'agent-turn', 'agent-tool', 'http', 'marker', 'loot']
 
@@ -379,6 +440,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
       <div className="flex items-center gap-2 px-4 py-2 border-b border-redlog-border/60 shrink-0">
         <h1 className="text-sm font-semibold text-redlog-text">{t('transcript.title')}</h1>
         <span className="text-xs text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
+        {!loading && (!loadError || events.length > 0) && (
+          <span data-testid="transcript-completeness" className={`text-xs ${hasMore ? 'text-amber-400' : 'text-emerald-500'}`}>
+            {t(hasMore ? 'transcript.recentSubset' : 'transcript.complete')}
+          </span>
+        )}
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -411,7 +477,21 @@ export default function TranscriptView({ onOpenInTimeline }: {
 
       <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2">
         {loading && <p className="text-xs text-redlog-text-faint">{t('transcript.loading')}</p>}
-        {!loading && shown.length === 0 && (
+        {!loading && loadError && (
+          <div data-testid="transcript-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            <div>{t(events.length > 0 ? 'transcript.loadOlderFailed' : 'transcript.loadFailed')}</div>
+            <div className="mt-1 truncate font-mono text-redlog-text-faint" title={loadError}>{loadError}</div>
+            <button type="button" onClick={() => void (events.length > 0 ? loadOlder() : load())} className="mt-2 text-red-300 underline hover:text-red-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
+        {!loading && hasMore && (
+          <button type="button" onClick={() => void loadOlder()} disabled={loadingOlder} className="w-full rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/10 disabled:text-redlog-text-faint">
+            {loadingOlder ? t('transcript.loadingOlder') : t('transcript.loadOlder')}
+          </button>
+        )}
+        {!loading && !loadError && shown.length === 0 && (
           <EmptyState
             icon={AlignLeft}
             title={t('transcript.empty')}
