@@ -7,7 +7,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, isAgentTailerEnabled, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
@@ -810,7 +810,10 @@ function startProject(project: ProjectMeta): void {
       }
     }
     configureAgentTailer({
-      enabled: config.agentTailer?.enabled ?? true,
+      // Agent transcripts can include unrelated work from the operator's home
+      // directory. Capture is therefore opt-in for every project; a partial or
+      // hand-written config must never turn it on implicitly.
+      enabled: isAgentTailerEnabled(config),
       engagementId, operatorId,
       excludedPaths, watchPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
