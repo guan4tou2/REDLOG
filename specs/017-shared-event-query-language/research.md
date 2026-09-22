@@ -19,6 +19,13 @@
   `session_id` is a column needing one index; `tool_use_id` sits in the `data`
   JSON and needs an expression index. Transcript UUID was originally excluded
   and is included precisely because it is the cheapest of the four.
+- **"Session" names two different identifiers.** The `session_id` column is
+  RedLog's per-process capture session; `event-write.ts` already records that
+  no consumer filters on it and that it survives a project reopen incorrectly.
+  The identifier an operator actually holds — from an AI transcript, from the
+  Timeline detail panel — is `data.session_id`, the agent's session. A draft
+  that indexed the column would have shipped a condition that matches nothing
+  an operator pastes. Found by writing the seeding for the resolution tests.
 - **Tool-use IDs are unique only within a session.** `buildBlocks` already pairs
   on `${session_id}:${tool_use_id}`. An earlier draft of this spec required a
   bare tool-use ID to resolve "exactly", which the data does not support; a
