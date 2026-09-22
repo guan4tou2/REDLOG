@@ -5,7 +5,7 @@
 - [x] No clarification markers remain.
 - [x] Failure and ambiguity states are explicit.
 - [x] Scope names what is excluded, not only what is included.
-- [x] Success criteria are measurable.
+- [x] Success criteria are measurable, including the bounded lookup count.
+- [x] Identifier uniqueness is stated per field rather than assumed uniform.
 - [x] Superseded prior decisions are identified by spec.
-- [x] The cost of changing already-Verified behaviour is stated, with a
-      non-regression obligation placed in the first task phase.
+- [x] The follow-on migration is named so this feature's boundary is explicit.
