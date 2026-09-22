@@ -225,11 +225,6 @@ interface RedLogAPI {
     toolCounterparts: (
       keys: import('../../core/db/events').ToolPairKey[]
     ) => Promise<RedLogEvent[]>
-    searchPage: (opts: import('../../core/db/events').EventFilter & { query: string; limit?: number; cursor?: string | null }) => Promise<{
-      items: RedLogEvent[]
-      hasMore: boolean
-      nextCursor: string | null
-    }>
     distinctAgentTypes: () => Promise<string[]>
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */

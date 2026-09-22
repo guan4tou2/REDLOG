@@ -53,7 +53,9 @@ describe('shared event filter wiring', () => {
   it('main attaches active-project scope instead of trusting renderer rules', () => {
     const source = read('src/main/ipc/events.ts')
     expect(source).toMatch(/snapshotScope\(loadConfig\(getProjectPath\(project\)\)\)/)
-    expect(source).toMatch(/searchEventsPage\(withActiveScope\(opts\)\)/)
+    // Spec 018 moved Search onto the query contract; the rule this guards —
+    // main attaches scope, it is never taken from the renderer — is the same.
+    expect(source).toMatch(/filter: withActiveScope\(req\.filter/)
     expect(source).toMatch(/queryEvents\(withActiveScope\(opts/)
   })
 })

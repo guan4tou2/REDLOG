@@ -84,12 +84,6 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
     toolCounterparts: (keys: import('../core/db/events').ToolPairKey[]) =>
       ipcRenderer.invoke('events:toolCounterparts', keys) as Promise<import('../core/db/events').RedLogEvent[]>,
-    searchPage: (opts: import('../core/db/events').EventFilter & { query: string; limit?: number; cursor?: string | null }) =>
-      ipcRenderer.invoke('events:searchPage', opts) as Promise<{
-        items: import('../core/db/events').RedLogEvent[]
-        hasMore: boolean
-        nextCursor: string | null
-      }>,
     distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
     queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) =>
