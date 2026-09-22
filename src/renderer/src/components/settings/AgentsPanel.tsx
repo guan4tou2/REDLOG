@@ -9,7 +9,7 @@ export default function AgentsPanel({
   config: ConfigState
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
-  const at = (config.agentTailer ?? { enabled: true, emitThinking: false }) as { enabled: boolean; emitThinking?: boolean }
+  const at = (config.agentTailer ?? { enabled: false, emitThinking: false }) as { enabled: boolean; emitThinking?: boolean }
   const patch = (delta: Partial<typeof at>): void => {
     setConfig({ ...config, agentTailer: { ...at, ...delta } })
   }

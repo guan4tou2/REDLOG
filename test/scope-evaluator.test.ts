@@ -98,14 +98,34 @@ describe('matchPattern', () => {
     expect(matchPattern('::1', '::1')).toBe(true)
   })
 
-  it('IPv6 CIDR falls back to exact on address part', () => {
+  it('IPv6 CIDR matches the complete prefix', () => {
     expect(matchPattern('fe80::1', 'fe80::1/64')).toBe(true)
-    expect(matchPattern('fe80::2', 'fe80::1/64')).toBe(false)
+    expect(matchPattern('fe80::2', 'fe80::1/64')).toBe(true)
+    expect(matchPattern('fe81::1', 'fe80::1/64')).toBe(false)
+    expect(matchPattern('2001:db8:0:1::9', '2001:db8::/48')).toBe(true)
+    expect(matchPattern('2001:db9::1', '2001:db8::/48')).toBe(false)
+  })
+
+  it('IPv6 CIDR supports /0 and /128 boundaries', () => {
+    expect(matchPattern('fd00::1', '::/0')).toBe(true)
+    expect(matchPattern('2001:db8::1', '2001:db8::1/128')).toBe(true)
+    expect(matchPattern('2001:db8::2', '2001:db8::1/128')).toBe(false)
+  })
+
+  it('rejects malformed IPv6 addresses and prefix lengths', () => {
+    expect(matchPattern('2001:db8::1', '2001:db8::/129')).toBe(false)
+    expect(matchPattern('2001:db8::1', '2001:db8::/-1')).toBe(false)
+    expect(matchPattern('2001:db8::zz', '2001:db8::/64')).toBe(false)
   })
 
   // --- Malformed ---
   it('malformed CIDR bits > 32 does not match', () => {
     expect(matchPattern('10.0.0.1', '10.0.0.0/33')).toBe(false)
+  })
+
+  it('rejects IPv4 octets outside 0-255', () => {
+    expect(matchPattern('10.0.0.1', '999.0.0.0/8')).toBe(false)
+    expect(matchPattern('999.0.0.1', '10.0.0.0/8')).toBe(false)
   })
 
   it('empty pattern matches nothing', () => {

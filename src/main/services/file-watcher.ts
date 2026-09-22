@@ -111,6 +111,10 @@ async function restartFileWatcher(): Promise<void> {
     watcher.on('addDir', (p) => emit(p, 'file_created', true))
     watcher.on('unlinkDir', (p) => emit(p, 'file_deleted', true))
     watcher.on('error', () => { /* watcher self-recovers; ignore */ })
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 1_000)
+      watcher?.on('ready', () => { clearTimeout(timer); resolve() })
+    })
   } catch (e) {
     console.error('[file-watcher] failed to start:', e)
     watcher = null

@@ -22,6 +22,7 @@ describe('loadConfig', () => {
     expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
     expect(config.scope.warnOnViolation).toBe(true)
+    expect(config.agentTailer?.enabled).toBe(false)
   })
 
   it('merges partial config with defaults', () => {

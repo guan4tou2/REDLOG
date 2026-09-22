@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 // v0.6.89 P0-A: `_causes` upstream-event lookup for events that arrive via
 // /api/events (or any other post-hoc insertion path). Each event pair follows
 // a "start emits linker; end refers to linker" pattern:
@@ -31,6 +33,7 @@ class BoundedMap<V> {
   get(key: string): V | undefined { return this.m.get(key) }
   delete(key: string): void { this.m.delete(key) }
   size(): number { return this.m.size }
+  values(): V[] { return [...this.m.values()] }
   clear(): void { this.m.clear() }
 }
 
@@ -39,9 +42,19 @@ const httpFlowMap = new BoundedMap<string>()
 
 // `${terminalId}|${pid}|${command}` → shell.command_start event id
 const shellStartMap = new BoundedMap<string>()
+type CommandCorrelation = { eventId: string; cwd: string; endedAt?: number }
+export type RelatedCommandCandidate = {
+  event_id: string
+  method: 'cwd-overlap' | 'cwd-near-command-end'
+  state: 'active' | 'recent'
+}
+const activeShellCommands = new BoundedMap<CommandCorrelation>()
+const recentShellCommands = new BoundedMap<CommandCorrelation>()
+const RECENT_COMMAND_GRACE_MS = 2_000
 
 function shellKey(data: Record<string, unknown>): string | null {
-  const tid = data.terminal_id != null ? String(data.terminal_id) : ''
+  const tidValue = data.terminal_id ?? data.terminalId
+  const tid = tidValue != null ? String(tidValue) : ''
   const pid = data.pid != null ? String(data.pid) : ''
   const cmd = data.command != null ? String(data.command) : ''
   if (!cmd) return null
@@ -62,7 +75,12 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
   }
   if (agentType === 'shell' && data.subtype === 'command_start') {
     const key = shellKey(data)
-    if (key) shellStartMap.set(key, eventId)
+    if (key) {
+      shellStartMap.set(key, eventId)
+      if (typeof data.cwd === 'string' && data.cwd.trim()) {
+        activeShellCommands.set(key, { eventId, cwd: path.resolve(data.cwd) })
+      }
+    }
     return
   }
 }
@@ -90,6 +108,9 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
     const key = shellKey(data)
     if (key) {
       const id = shellStartMap.get(key)
+      const active = activeShellCommands.get(key)
+      activeShellCommands.delete(key)
+      if (active) recentShellCommands.set(key, { ...active, endedAt: Date.now() })
       if (id) {
         shellStartMap.delete(key)
         return [id]
@@ -100,8 +121,35 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
   return []
 }
 
-/** Test helper. */
-export function _resetCausesResolver(): void {
+/** Cwd/time overlap is an investigation hint, not proof that a process wrote
+ * a file. Keep it out of `_causes` and retain every plausible candidate. */
+export function relatedCommandCandidates(data: Record<string, unknown>, now = Date.now()): RelatedCommandCandidate[] {
+  if (data.source !== 'file-watcher') return []
+  if ((data.subtype !== 'file_created' && data.subtype !== 'file_modified')
+    || data.is_dir === true || typeof data.path !== 'string') return []
+  const filePath = path.resolve(data.path)
+  const inside = ({ cwd }: CommandCorrelation): boolean => {
+    const relative = path.relative(cwd, filePath)
+    return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  }
+  const active = activeShellCommands.values()
+    .filter(inside)
+    .map(({ eventId, cwd }) => ({ eventId, cwd, method: 'cwd-overlap' as const, state: 'active' as const }))
+  const recent = recentShellCommands.values()
+    .filter((candidate) => candidate.endedAt != null && now - candidate.endedAt <= RECENT_COMMAND_GRACE_MS && inside(candidate))
+    .map(({ eventId, cwd }) => ({ eventId, cwd, method: 'cwd-near-command-end' as const, state: 'recent' as const }))
+  return [...active, ...recent]
+    .sort((a, b) => b.cwd.length - a.cwd.length || a.eventId.localeCompare(b.eventId))
+    .map(({ eventId, method, state }) => ({ event_id: eventId, method, state }))
+}
+
+/** Clear process-local correlation state when an engagement closes. */
+export function resetCausesResolver(): void {
   httpFlowMap.clear()
   shellStartMap.clear()
+  activeShellCommands.clear()
+  recentShellCommands.clear()
 }
+
+/** Test alias. */
+export const _resetCausesResolver = resetCausesResolver

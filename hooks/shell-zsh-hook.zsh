@@ -15,7 +15,8 @@ unset _redlog_adapter_dir
 _redlog_preexec() {
   _REDLOG_LAST_CMD="$1"
   _REDLOG_CMD_START=$EPOCHSECONDS
-  _redlog_send_event "command_start" "$1"
+  _redlog_send_event "command_start" "$1" \
+    "{\"cwd\":\"${PWD//\"/\\\"}\"}"
 }
 
 _redlog_precmd() {

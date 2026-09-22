@@ -54,3 +54,4 @@ Investigation        Handoff
 3. **Export Completeness**: Export selection 必須涵蓋所有 persisted event tier。Preview 和 actual export 必須使用相同的 selection policy。
 4. **Scope Canonical Evaluation**: Scope evaluation 必須使用唯一的 canonical evaluator，不允許多份 copy 有不同 semantics。
 5. **Cause Provenance**: Derived event 必須保留對 causing event(s) 的 provenance reference。
+6. **Observed Artifact Correlation**: cwd 與時間重疊只能形成明確標示為推測的 command candidate，不得寫成 `_causes`。多個候選必須全部保留；只有 producer 提供直接來源證據時才能建立 cause。

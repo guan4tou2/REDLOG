@@ -49,7 +49,8 @@ import { startProxyBypassDetector, stopProxyBypassDetector } from './services/pr
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, setPluginHost } from '../core/plugins'
-import { configureIngest } from '../core/ingest'
+import { configureIngest, ingestEvent } from '../core/ingest'
+import { resetCausesResolver } from '../core/causes-resolver'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
@@ -513,8 +514,7 @@ function startProject(project: ProjectMeta): void {
     }),
     searchEvents: (a) => searchEvents(String(a.query ?? ''), Math.min(Number(a.limit) || 20, 200)),
     appendEvent: (pluginId, a) => {
-      const ev = insertEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
-      if (ev) eventBus.publish(ev)
+      const ev = ingestEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
       return { ok: !!ev }
     },
     listFindings: () => listBookmarks(),
@@ -955,6 +955,7 @@ function stopProject(): void {
   activeProject = null
   currentEngagementId = null
   currentOperatorId = null
+  resetCausesResolver()
   configureIngest({ activeTarget: null })
 }
 

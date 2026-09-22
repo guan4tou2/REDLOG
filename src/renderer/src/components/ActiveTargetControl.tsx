@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Crosshair, X } from 'lucide-react'
 import { useI18n } from '../i18n'
 
@@ -6,6 +6,9 @@ export function ActiveTargetControl(): JSX.Element {
   const [active, setActive] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [known, setKnown] = useState<string[]>([])
+  const [saveError, setSaveError] = useState(false)
+  const savingRef = useRef(false)
+  const skipBlurRef = useRef(false)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -28,11 +31,21 @@ export function ActiveTargetControl(): JSX.Element {
   }, [])
 
   const commit = async (value: string): Promise<void> => {
+    if (savingRef.current) return
+    savingRef.current = true
+    setSaveError(false)
     const target = value.trim() || null
-    const result = await window.redlog.targetContext.set(target)
-    if (!result.ok) { setDraft(active ?? ''); return }
-    setActive(result.target)
-    setDraft(result.target ?? '')
+    try {
+      const result = await window.redlog.targetContext.set(target)
+      if (!result.ok) { setDraft(active ?? ''); setSaveError(true); return }
+      setActive(result.target)
+      setDraft(result.target ?? '')
+    } catch {
+      setDraft(active ?? '')
+      setSaveError(true)
+    } finally {
+      savingRef.current = false
+    }
   }
 
   return (
@@ -50,10 +63,13 @@ export function ActiveTargetControl(): JSX.Element {
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') { event.preventDefault(); void commit(draft); event.currentTarget.blur() }
+          if (event.key === 'Enter') { event.preventDefault(); skipBlurRef.current = true; void commit(draft); event.currentTarget.blur() }
           if (event.key === 'Escape') { setDraft(active ?? ''); event.currentTarget.blur() }
         }}
-        onBlur={() => { if (draft.trim() !== (active ?? '')) void commit(draft) }}
+        onBlur={() => {
+          if (skipBlurRef.current) { skipBlurRef.current = false; return }
+          if (draft.trim() !== (active ?? '')) void commit(draft)
+        }}
         placeholder={t('activeTarget.none')}
         className="w-40 rounded border border-redlog-border bg-redlog-surface px-2 py-0.5 font-mono text-redlog-text placeholder-redlog-text-faint focus:border-redlog-accent focus:outline-none"
       />
@@ -69,6 +85,7 @@ export function ActiveTargetControl(): JSX.Element {
           className="rounded p-0.5 text-redlog-text-faint hover:bg-white/10 hover:text-redlog-text"
         ><X size={12} aria-hidden /></button>
       )}
+      {saveError && <span role="status" className="text-xs text-red-300">{t('activeTarget.saveFailed')}</span>}
     </div>
   )
 }

@@ -3,11 +3,43 @@
 // must use this module instead of rolling its own matcher.
 
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/
-const IPV6_RE = /^[0-9a-f:]+$/i
 const IPV4_MAPPED_V6 = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i
 
-function isIPv4(s: string): boolean { return IPV4_RE.test(s) }
-function isIPv6(s: string): boolean { return s.includes(':') && IPV6_RE.test(s) }
+function isIPv4(s: string): boolean {
+  return IPV4_RE.test(s) && s.split('.').every((octet) => {
+    const value = Number(octet)
+    return Number.isInteger(value) && value >= 0 && value <= 255
+  })
+}
+
+function ipv6ToBigInt(raw: string): bigint | null {
+  let value = raw.toLowerCase()
+  const zone = value.indexOf('%')
+  if (zone !== -1) value = value.slice(0, zone)
+  if (!value.includes(':') || (value.match(/::/g)?.length ?? 0) > 1) return null
+
+  const convertIpv4Tail = (parts: string[]): string[] | null => {
+    const tail = parts[parts.length - 1]
+    if (!tail?.includes('.')) return parts
+    const octets = tail.split('.').map(Number)
+    if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null
+    return [...parts.slice(0, -1), ((octets[0] << 8) | octets[1]).toString(16), ((octets[2] << 8) | octets[3]).toString(16)]
+  }
+
+  const halves = value.split('::')
+  const left = convertIpv4Tail(halves[0] ? halves[0].split(':') : [])
+  const right = convertIpv4Tail(halves.length === 2 && halves[1] ? halves[1].split(':') : [])
+  if (!left || !right) return null
+  const valid = (part: string): boolean => /^[0-9a-f]{1,4}$/.test(part)
+  if (![...left, ...right].every(valid)) return null
+  const missing = 8 - left.length - right.length
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) return null
+  const groups = halves.length === 2 ? [...left, ...Array(missing).fill('0'), ...right] : left
+  if (groups.length !== 8) return null
+  return groups.reduce((result, group) => (result << 16n) | BigInt(parseInt(group, 16)), 0n)
+}
+
+function isIPv6(s: string): boolean { return ipv6ToBigInt(s) !== null }
 
 function ipv4ToLong(ip: string): number {
   return ip.split('.').reduce((a, o) => (a << 8) + parseInt(o, 10), 0) >>> 0
@@ -78,7 +110,13 @@ export function matchPattern(subject: string, pattern: string): boolean {
     // IPv6 CIDR
     if (isIPv6(network)) {
       if (!isIPv6(s)) return false
-      return s === network
+      if (isNaN(bits) || bits < 0 || bits > 128) return false
+      if (bits === 0) return true
+      const subjectValue = ipv6ToBigInt(s)
+      const networkValue = ipv6ToBigInt(network)
+      if (subjectValue === null || networkValue === null) return false
+      const shift = BigInt(128 - bits)
+      return (subjectValue >> shift) === (networkValue >> shift)
     }
 
     // IPv4 CIDR
