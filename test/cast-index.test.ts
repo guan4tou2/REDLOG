@@ -95,6 +95,18 @@ describe.skipIf(!available)('cast full-text index', () => {
     expect(mod!.searchCasts('filtered', 10, dir).length).toBe(1)
   })
 
+  it('does not index resize geometry as terminal text', async () => {
+    fs.writeFileSync(cast('resize.cast'), [
+      JSON.stringify({ version: 2, width: 80, height: 24, timestamp: 1_700_000_000 }),
+      JSON.stringify([0.1, 'o', 'visible output']),
+      JSON.stringify([0.2, 'r', '120x40']),
+      ''
+    ].join('\n'))
+    await mod!.indexCast(cast('resize.cast'), dir)
+    expect(mod!.searchCasts('visible', 10, dir)).toHaveLength(1)
+    expect(mod!.searchCasts('120x40', 10, dir)).toHaveLength(0)
+  })
+
   it('treats punctuation as text, not as query syntax', async () => {
     // FTS5 MATCH reads bare `-` and `"` as operators. An operator searching
     // for `-sV` or an IP would otherwise get a syntax error or silence.

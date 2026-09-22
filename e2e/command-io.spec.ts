@@ -17,6 +17,7 @@ let token = ''
 interface TermBridge {
   spawn: (id: string, cols: number, rows: number) => Promise<unknown>
   write: (id: string, data: string) => void
+  resize: (id: string, cols: number, rows: number) => void
   kill: (id: string) => void
 }
 
@@ -48,6 +49,9 @@ test.describe.serial('command I/O capture', () => {
     await page.waitForTimeout(2500)
     await page.evaluate(() => {
       const t = (window as unknown as { redlog: { terminal: TermBridge } }).redlog.terminal
+      t.resize('io-test', 120, 40)
+      t.resize('io-test', 120, 40)
+      t.resize('io-test', 0, 0)
       t.write('io-test', 'echo REDLOG_IO_MARKER_OUTPUT\r')
     })
     await page.waitForTimeout(3000)
@@ -73,6 +77,24 @@ test.describe.serial('command I/O capture', () => {
     if (existsSync(castsDir)) walk(castsDir)
     expect(found.length, 'no .cast file produced by the pty session').toBeGreaterThan(0)
     expect(statSync(found[0]).size).toBeGreaterThan(0)
+  })
+
+  test('terminal geometry changes are persisted in asciicast v2', async () => {
+    const castsDir = join(tmpHome, '.redlog', 'projects')
+    const found: string[] = []
+    const walk = (d: string): void => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, e.name)
+        if (e.isDirectory()) walk(p)
+        else if (e.name.endsWith('.cast')) found.push(p)
+      }
+    }
+    walk(castsDir)
+    const castPath = found.find((file) => file.endsWith('_io-test.cast'))
+    expect(castPath, 'io-test cast was not found').toBeTruthy()
+    const frames = readFileSync(castPath!, 'utf8').trim().split('\n').slice(1).map((line) => JSON.parse(line) as unknown[])
+    const resizeFrames = frames.filter((frame) => frame[1] === 'r')
+    expect(resizeFrames).toEqual([[expect.any(Number), 'r', '120x40']])
   })
 
   test('command_end carries an io byte range into the chain', async () => {

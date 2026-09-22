@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryByFlowId, searchEvents, searchEventsPage,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, searchEvents, searchEventsPage,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
   distinctHosts, hostCausalChain, insertEvent,
@@ -78,6 +78,11 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getActiveProject() && Array.isArray(ids)
       ? ids.slice(0, 200).map((id) => queryEventById(String(id))).filter((e): e is RedLogEvent => e !== null)
       : [])
+
+  ipcMain.handle('events:causalChain', (_e, anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
+    ctx.getActiveProject() && typeof anchorId === 'string'
+      ? queryEventCausalChain(anchorId, opts ?? {})
+      : { anchorId, anchorFound: false, events: [], edges: [], unavailableCauseIds: [], truncated: false })
 
   ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
     const engId = ctx.getCurrentEngagementId()

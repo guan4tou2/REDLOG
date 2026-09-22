@@ -17,6 +17,7 @@ import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
 import { matchPattern } from './scope-evaluator'
 import { planEviction, type BodyEntry } from './body-eviction'
+import { pruneHttpBodyIndex } from './http-body-index'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
 // upstream event so focus chain walks light up the "originally recorded here
@@ -85,6 +86,9 @@ function sweepDir(
       // searchable.
       if (auditSubtype === 'cast_pruned') {
         try { pruneCast(name) } catch (e) { noteDbError('retention-cast-index', e) }
+      }
+      if (auditSubtype === 'http_body_pruned') {
+        try { pruneHttpBodyIndex(path.basename(name, '.body')) } catch (e) { noteDbError('retention-body-index', e) }
       }
       try {
         const ev = insertEvent('system', {
@@ -336,6 +340,7 @@ export function sweepBodyStore(
   for (const file of plan.evict) {
     try {
       fs.unlinkSync(path.join(dir, file))
+      pruneHttpBodyIndex(path.basename(file, '.body'), projectDir)
       evicted++
       freedBytes += stat.get(file)?.sizeBytes ?? 0
     } catch { /* already gone — fine */ }
