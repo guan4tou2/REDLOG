@@ -35,7 +35,7 @@
 
 ## Phase 3 — Transcript
 
-- [ ] T012 Move the Transcript text box onto the contract per bucket, keeping
+- [x] T012 Move the Transcript text box onto the contract per bucket, keeping
       balance, `hasMore` and cursor.
 - [ ] T013 Show which tokens were read as conditions, including the session a
       tool-use condition resolved within.

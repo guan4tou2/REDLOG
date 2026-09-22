@@ -5,6 +5,7 @@ import { writeClipboard } from '../lib/clipboard'
 import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { UnappliedFilterNotice } from './FilterNotice'
+import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { AlignLeft } from 'lucide-react'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 
@@ -269,6 +270,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [events, setEvents] = useState<Ev[]>([])
   const [names, setNames] = useState<Record<string, string>>({})
   const [query, setQuery] = useState('')
+  const [activeQuery, setActiveQuery] = useState('')
   const [kinds, setKinds] = useState<Set<Kind>>(new Set())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -277,6 +279,20 @@ export default function TranscriptView({ onOpenInTimeline }: {
   const [bucketPages, setBucketPages] = useState<Record<string, BucketPageState>>({})
   const bodyRef = useRef<HTMLDivElement>(null)
   const loadSeqRef = useRef(0)
+
+  useEffect(() => {
+    const id = setTimeout(() => setActiveQuery(query), 300)
+    return () => clearTimeout(id)
+  }, [query])
+
+  // Spec 017: the parse happens here, so the surface can show how it read the
+  // query and a half-typed condition never becomes a store query at all.
+  const parse: ParseOutcome | null = useMemo(
+    () => (activeQuery.trim() ? parseQuery(activeQuery) : null),
+    [activeQuery]
+  )
+  const backendQuery = parse?.ok ? parse.parsed : null
+  const parseFailed = parse !== null && !parse.ok
 
   const buckets = useMemo(() => sharedFilter.agentType
     ? TRANSCRIPT_BUCKETS.filter((bucket) => bucket.agentType === sharedFilter.agentType)
@@ -295,10 +311,16 @@ export default function TranscriptView({ onOpenInTimeline }: {
       const results = await Promise.all(
         buckets.map(async (bucket) => ({
           bucket,
-          page: await window.redlog.events.queryPage({
-          ...toEventFilter(sharedFilter),
-            ...bucket,
-          })
+          page: backendQuery
+            ? await window.redlog.events.runQuery({
+              parsed: backendQuery,
+              filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
+              limit: bucket.limit
+            })
+            : await window.redlog.events.queryPage({
+              ...toEventFilter(sharedFilter),
+              ...bucket,
+            })
         }))
       )
       if (seq !== loadSeqRef.current) return
@@ -319,7 +341,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [buckets, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder) return
@@ -331,11 +353,18 @@ export default function TranscriptView({ onOpenInTimeline }: {
     try {
       const results = await Promise.all(pending.map(async (bucket) => ({
         bucket,
-        page: await window.redlog.events.queryPage({
-          ...toEventFilter(sharedFilter),
-          ...bucket,
-          cursor: bucketPages[bucket.agentType].nextCursor,
-        })
+        page: backendQuery
+          ? await window.redlog.events.runQuery({
+            parsed: backendQuery,
+            filter: { ...toEventFilter(sharedFilter), agentType: bucket.agentType },
+            limit: bucket.limit,
+            cursor: bucketPages[bucket.agentType].nextCursor
+          })
+          : await window.redlog.events.queryPage({
+            ...toEventFilter(sharedFilter),
+            ...bucket,
+            cursor: bucketPages[bucket.agentType].nextCursor,
+          })
       })))
       if (seq !== loadSeqRef.current) return
       setEvents((current) => {
@@ -355,7 +384,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       setLoadingOlder(false)
     }
-  }, [bucketPages, buckets, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+  }, [bucketPages, buckets, backendQuery, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -387,14 +416,14 @@ export default function TranscriptView({ onOpenInTimeline }: {
     }
   }, [blocks])
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return blocks.filter((b) => {
-      if (kinds.size && !kinds.has(b.kind)) return false
-      if (!q) return true
-      return `${b.actor}${b.input}${b.output ?? ''}${b.meta ?? ''}`.toLowerCase().includes(q)
-    })
-  }, [blocks, query, kinds])
+  const shown = useMemo(
+    // Text is matched by the store now. Filtering again over the rendered
+    // block would drop a row whose match lies in a field the block does not
+    // show, making the answer depend on the presentation. Kind stays local and
+    // is labelled as such.
+    () => blocks.filter((b) => !kinds.size || kinds.has(b.kind)),
+    [blocks, kinds]
+  )
 
   const toggleKind = (k: Kind): void => setKinds((prev) => {
     const next = new Set(prev)

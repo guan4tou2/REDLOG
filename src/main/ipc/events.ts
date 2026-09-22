@@ -2,6 +2,7 @@ import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, searchEvents, searchEventsPage,
+  executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
   distinctHosts, hostCausalChain, insertEvent,
@@ -43,6 +44,18 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: EventFilter) =>
     ctx.getActiveProject() ? searchEvents(query, limit, withActiveScope(opts ?? {})) : [])
+
+  // Spec 017. The renderer parses and sends the result, so it can show how the
+  // query was read without a round trip and a parse failure never becomes a
+  // query. Scope is still attached here: a renderer-supplied predicate narrows,
+  // it never widens past the active project's scope snapshot.
+  ipcMain.handle('events:runQuery', (_e, req: EventQueryRequest) =>
+    ctx.getActiveProject()
+      ? executeEventQuery({ ...req, filter: withActiveScope(req.filter ?? {}) })
+      : { items: [], hasMore: false, nextCursor: null })
+
+  ipcMain.handle('events:toolCounterparts', (_e, keys: ToolPairKey[]) =>
+    ctx.getActiveProject() ? fetchToolCounterparts(keys ?? []) : [])
 
   ipcMain.handle('events:searchPage', (_e, opts: EventFilter & { query: string; limit?: number; cursor?: string | null }) =>
     ctx.getActiveProject() && typeof opts?.query === 'string'
