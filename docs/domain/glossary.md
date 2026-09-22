@@ -27,6 +27,11 @@
 | **Sanitization** | Export 時的 scope-aware 清理——out-of-scope event 的 operator PII 移除。只在 export copy 上操作。 |
 | **Personal Domain** | Operator 標記為個人用途的 domain（例如 gmail.com），export 時完全排除。 |
 | **Do-Not-Export** | 由 operator 標記或 policy 決定完全排除出 export 的 event。 |
+| **Event Query** | 由 structured conditions 與 free text 組成、在 persistence layer 對完整 filtered dataset 求值的查詢。條件與文字採交集語意。 |
+| **Agent Session** | AI agent 自己記錄於 event data 的 session identity，可由 `session:` condition 查詢；不同於 RedLog process 的 Capture Session。 |
+| **Capture Session** | RedLog 程序執行期間的內部 session identity，用於 provenance 與 clock checks，不是操作者查詢的 agent session。 |
+| **Source Time** | Producer 宣告事件發生的時間（event `timestamp`）。 |
+| **Receipt Time** | RedLog 將事件持久化的時間（event `createdAt`）；延遲補送時可與 Source Time 不同。 |
 
 ## Bounded Contexts
 
@@ -55,3 +60,5 @@ Investigation        Handoff
 4. **Scope Canonical Evaluation**: Scope evaluation 必須使用唯一的 canonical evaluator，不允許多份 copy 有不同 semantics。
 5. **Cause Provenance**: Derived event 必須保留對 causing event(s) 的 provenance reference。
 6. **Observed Artifact Correlation**: cwd 與時間重疊只能形成明確標示為推測的 command candidate，不得寫成 `_causes`。多個候選必須全部保留；只有 producer 提供直接來源證據時才能建立 cause。
+7. **Query Intersection**: Event Query 的 structured conditions 必須對 stored fields 求值，free text 必須走全文索引；兩者同時存在時全部條件都必須成立。
+8. **Time Provenance**: Investigation surface 不得把 Source Time 與 Receipt Time 合併成一個未標示的時間。

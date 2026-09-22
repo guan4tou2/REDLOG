@@ -105,7 +105,10 @@ describe('file-watcher / command correlation integration', () => {
       fs.writeFileSync(path.join(watchedDir, 'result.xml'), '<nmaprun/>')
 
       let fileEvent: ReturnType<typeof queryEvents>[number] | undefined
-      const deadline = Date.now() + 3_000
+      // A loaded CI host can delay the native notification even after chokidar
+      // is ready. The product correlates against mtime, so waiting here does
+      // not widen the two-second evidence window.
+      const deadline = Date.now() + 10_000
       while (!fileEvent && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50))
         fileEvent = queryEvents({ agentType: 'file_transfer', limit: 20 })
@@ -123,5 +126,5 @@ describe('file-watcher / command correlation integration', () => {
       fs.rmSync(projectDir, { recursive: true, force: true })
       fs.rmSync(watchedDir, { recursive: true, force: true })
     }
-  })
+  }, 15_000)
 })

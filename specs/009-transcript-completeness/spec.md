@@ -60,4 +60,7 @@ previous evidence, still reports incompleteness, and offers retry.
 
 - Balanced per-type bucket sizes remain in place to prevent high-volume HTTP
   evidence from starving shell or agent evidence.
-- Local content filters operate over loaded evidence and are labeled accordingly.
+- Kind filters operate over loaded evidence and are labeled accordingly.
+- Spec 017 supersedes this feature's former local-text-filter exception: text
+  now uses the shared persistence-layer Event Query contract across the whole
+  filtered dataset.

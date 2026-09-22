@@ -129,7 +129,13 @@ export function ingest(input: IngestInput): IngestResult {
     const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
     data._causes = [...new Set([...existing, ...causeIds])]
   }
-  const relatedCommands = relatedCommandCandidates(data)
+  // Filesystem delivery can lag behind the write under load. Correlate with
+  // the file's observed modification time when it is usable, while keeping
+  // createdAt as the independent RedLog receipt time.
+  const observedAt = typeof data.mtime === 'number' && Number.isFinite(data.mtime)
+    ? data.mtime
+    : Date.now()
+  const relatedCommands = relatedCommandCandidates(data, observedAt)
   if (relatedCommands.length > 0) {
     const existing = Array.isArray(data.related_commands) ? data.related_commands : []
     const combined = [...existing, ...relatedCommands]
