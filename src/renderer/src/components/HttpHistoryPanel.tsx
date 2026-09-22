@@ -9,6 +9,10 @@ import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
+import { UnappliedFilterNotice } from './FilterNotice'
+
+/** HTTP flows are recorded by the proxy, which publishes as `scanner`. */
+const HTTP_FLOW_AGENT_TYPE = 'scanner'
 
 interface HttpFlow {
   flowId: string
@@ -422,7 +426,10 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
   const loadSeqRef = useRef(0)
   const nextCursorRef = useRef<string | null>(null)
   const loadFlows = useCallback(async (append = false) => {
-    if (sharedFilter.agentType && sharedFilter.agentType !== 'scanner') {
+    // A type chip this view cannot serve empties it rather than answering
+    // with the wrong source type. UnappliedFilterNotice says so on screen;
+    // without it the empty list read as "no HTTP traffic was recorded".
+    if (sharedFilter.agentType && sharedFilter.agentType !== HTTP_FLOW_AGENT_TYPE) {
       setFlows([])
       setHasMore(false)
       nextCursorRef.current = null
@@ -442,7 +449,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     try {
       const page = await window.redlog.events.queryHttpFlowPage({
         ...toEventFilter(sharedFilter),
-        agentType: 'scanner',
+        // Only reached when the chip is absent or already this type — the
+        // guard at the top of loadFlows returns before here otherwise.
+        agentType: HTTP_FLOW_AGENT_TYPE,
         limit: 500,
         ...(append && nextCursorRef.current ? { cursor: nextCursorRef.current } : {})
       })
@@ -700,6 +709,13 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           </>
         )}
       </div>
+
+      {sharedFilter.agentType && sharedFilter.agentType !== HTTP_FLOW_AGENT_TYPE && (
+        <UnappliedFilterNotice
+          title={t('filter.unappliedTitle', { condition: `${t('filter.type')}: ${sharedFilter.agentType}` })}
+          reason={t('filter.unappliedHttpType')}
+        />
+      )}
 
       <div className="flex items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
         <span data-testid="http-completeness" className={hasMore ? 'text-amber-400' : 'text-emerald-500'}>

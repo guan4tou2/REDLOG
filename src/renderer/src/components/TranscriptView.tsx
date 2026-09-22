@@ -4,6 +4,7 @@ import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
+import { UnappliedFilterNotice } from './FilterNotice'
 import { AlignLeft } from 'lucide-react'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 
@@ -491,11 +492,22 @@ export default function TranscriptView({ onOpenInTimeline }: {
           </button>
         )}
         {!loading && !loadError && shown.length === 0 && (
-          <EmptyState
-            icon={AlignLeft}
-            title={t('transcript.empty')}
-            reason={t('transcript.emptyReason')}
-          />
+          buckets.length === 0
+            ? (
+              <UnappliedFilterNotice
+                title={t('filter.unappliedTitle', { condition: `${t('filter.type')}: ${sharedFilter.agentType}` })}
+                reason={t('filter.unappliedTranscriptType', {
+                  types: TRANSCRIPT_BUCKETS.map((bucket) => bucket.agentType).join(', ')
+                })}
+              />
+            )
+            : (
+              <EmptyState
+                icon={AlignLeft}
+                title={t('transcript.empty')}
+                reason={t('transcript.emptyReason')}
+              />
+            )
         )}
         {shown.map((b) => {
           const revealed = expanded.has(b.id)
