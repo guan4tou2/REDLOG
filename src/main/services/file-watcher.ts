@@ -111,9 +111,9 @@ async function restartFileWatcher(): Promise<void> {
     watcher.on('addDir', (p) => emit(p, 'file_created', true))
     watcher.on('unlinkDir', (p) => emit(p, 'file_deleted', true))
     watcher.on('error', () => { /* watcher self-recovers; ignore */ })
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 1_000)
-      watcher?.on('ready', () => { clearTimeout(timer); resolve() })
+    await new Promise<void>((resolve, reject) => {
+      watcher?.on('ready', () => resolve())
+      watcher?.on('error', (error) => reject(error))
     })
   } catch (e) {
     console.error('[file-watcher] failed to start:', e)
@@ -134,7 +134,7 @@ function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file
     } catch { /* just deleted between event + stat */ }
   }
   try {
-    const ev = ingestEvent('file_transfer', {
+    ingestEvent('file_transfer', {
       subtype,
       path: absPath,
       size,
