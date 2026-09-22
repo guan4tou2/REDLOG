@@ -49,6 +49,25 @@ jobs:
       - name: Vitest
         run: npm test
 
+      - name: Upload the unit report on failure
+        # The suite has an intermittent failure that lands on a different file
+        # each run, passes in isolation, and shows up roughly once in ten. That
+        # is very hard to reproduce by hand — twelve consecutive clean runs was
+        # one attempt — and CI runs the suite far more often than anyone does
+        # locally. The JUnit report carries the failure message and stack, so
+        # the next occurrence is diagnosable from the artifact instead of
+        # needing to happen again on someone's machine.
+        #
+        # Per-leg name: ubuntu and windows would otherwise overwrite each
+        # other, and which platform failed is half the signal.
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: unit-report-${{ matrix.os }}
+          path: test-results/unit-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build (renderer + main + preload)
         run: npm run build
 
