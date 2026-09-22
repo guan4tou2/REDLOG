@@ -10,6 +10,12 @@ afterEach(() => {
 })
 
 describe('POSIX redlog-run', () => {
+  // These spawn a real bash and run the hook end to end. Alone the file takes
+  // ~3.4s, which fits under vitest's 5s default — but vitest runs files in
+  // parallel, and under that load the first one goes over and fails as a
+  // timeout rather than on anything it asserts. Same shape as the tailer-seed
+  // flake: a real-process test on the default budget. 30s is generous on
+  // purpose; a genuine hang still ends the run, a busy CI box does not.
   it('streams output before exit and preserves separated event payloads', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-run-'))
     tempDirs.push(home)
@@ -87,7 +93,7 @@ exit $?
       stderr_truncated: false,
       captured_by: 'redlog-run'
     })
-  })
+  }, 30_000)
 
   it('runs transparently when RedLog credentials are unavailable', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-run-offline-'))
@@ -133,5 +139,5 @@ exit $?
 
     expect(exitCode).toBe(6)
     expect(stdout).toBe('ZSH_OK')
-  })
+  }, 30_000)
 })
