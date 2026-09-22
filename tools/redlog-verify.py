@@ -8,9 +8,11 @@ directory (or a .zip file) and validates:
   1. The SHA-256 hash chain across every event.
   2. Each event's Ed25519 signature (when present) against the operator's
      public key in operators.json. This step requires the optional
-     `cryptography` package (`pip install cryptography`); the verifier
-     prints a warning and skips signature verification if not installed —
-     the hash chain still catches most tampering.
+     `cryptography` package — run the verifier as
+     `uv run --with cryptography redlog-verify.py <bundle>` to supply it
+     without installing anything. Without it the verifier prints a warning
+     and skips signature verification; the hash chain still catches most
+     tampering.
 
 Exit code 0 = chain intact (signature verification may have been skipped).
 Exit code 1 = chain broken or a signature verification failed.
@@ -189,7 +191,8 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(
             "NOTE: cryptography module not installed — signature verification "
             "will be skipped. Hash chain will still be validated. To enable "
-            "signature checks: pip install cryptography",
+            "signature checks, rerun as: uv run --with cryptography "
+            "redlog-verify.py <bundle>",
             file=sys.stderr,
         )
 

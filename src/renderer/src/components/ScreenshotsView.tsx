@@ -4,6 +4,7 @@ import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 import { formatTime } from '../lib/time'
 import { useI18n } from '../i18n'
 
@@ -200,7 +201,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 </div>
                 {typeof s.data.sha256 === 'string' && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); void navigator.clipboard.writeText(s.data.sha256 as string) }}
+                    onClick={(e) => { e.stopPropagation(); void writeClipboard(s.data.sha256 as string) }}
                     className="text-xs font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
                     title={`SHA-256: ${s.data.sha256 as string}`}
                   >

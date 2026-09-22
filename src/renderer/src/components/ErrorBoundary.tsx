@@ -2,6 +2,7 @@ import { Component, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
 import { buildDiagnostics, issueUrl } from '../lib/diagnostics'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 import { Button } from './Button'
 
 // The screen an operator sees when a view crashes mid-engagement
@@ -123,10 +124,10 @@ function FatalScreen({ error, label, projectName, onRetry, onGoHome }: {
           <div className="flex gap-2 mt-2">
             <button
               onClick={() => {
-                navigator.clipboard.writeText(diagnostics).then(
-                  () => toast(t('toast.copied'), 'success'),
-                  () => toast(t('transcript.copyFailed'), { type: 'error', why: t('transcript.copyFailedWhy') })
-                )
+                void writeClipboard(diagnostics).then((ok) => {
+                  if (ok) toast(t('toast.copied'), 'success')
+                  else toast(t('transcript.copyFailed'), { type: 'error', why: t('transcript.copyFailedWhy') })
+                })
               }}
               className="px-3 py-1.5 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover"
             >

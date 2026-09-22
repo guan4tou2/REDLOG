@@ -70,7 +70,9 @@ describe('one export control', () => {
     // would have made the count tidier and the action worse.
     const transcript = R('src/renderer/src/components/TranscriptView.tsx')
     expect(transcript).toMatch(/copyAsMarkdown/)
-    expect(transcript).toMatch(/clipboard\.writeText/)
+    // Clipboard writes go through lib/clipboard's main-process bridge; the
+    // renderer's Async Clipboard API is denied by the permission handler.
+    expect(transcript).toMatch(/writeClipboard/)
     expect(transcript).not.toMatch(/window\.redlog\.data\.export/)
   })
 })

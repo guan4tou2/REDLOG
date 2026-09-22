@@ -381,15 +381,15 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
     case 'mitmproxy':
       return [
         {
-          label: 'Install mitmproxy (skip if already installed)',
-          command: 'pip install mitmproxy'
+          label: 'Install mitmproxy with uv (skip if already installed)',
+          command: 'uv tool install mitmproxy'
         },
         {
           label: process.platform === 'win32'
-            ? 'Ensure the pip Scripts directory is in your PATH (restart terminal after running this)'
+            ? 'Put uv-installed tools on your PATH (restart terminal after running this)'
             : 'Verify mitmdump is on your PATH',
           command: process.platform === 'win32'
-            ? 'python -c "import sysconfig; print(sysconfig.get_path(\'scripts\'))"'
+            ? 'uv tool update-shell'
             : 'which mitmdump'
         },
         {

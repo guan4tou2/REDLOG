@@ -25,6 +25,15 @@ for full commit body + generated notes.
   adapters instead of looking for the removed combined hook.
 - File watcher create/modify events now show cwd/time-overlapping commands as
   explicitly uncertain candidates; they never turn that inference into a causal claim.
+- Copy and paste work again everywhere in the app. The renderer's permission
+  handler denies Chromium's Async Clipboard API, so every `navigator.clipboard`
+  call was rejecting; the Hooks and Timeline copy buttons reported success
+  anyway. Clipboard access now goes through the main process, and a failed copy
+  says so.
+- Python setup commands are stated for uv instead of pip: mitmproxy and the
+  OpenTimestamps client as `uv tool install`, and the bundle verifier's optional
+  `cryptography` plus the pcap agent's `scapy` as `uv run --with`, which needs
+  no install step or virtualenv.
 
 ## v0.15.1 — 2026-09-19
 

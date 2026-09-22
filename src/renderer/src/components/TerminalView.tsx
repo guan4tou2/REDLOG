@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
+import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
 import { usePersistentState } from '../lib/usePersistentState'
 
@@ -442,9 +443,9 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
       { id: 'clear', label: t('terminal.ctxClear') }
     ])
     if (picked === 'copy') {
-      if (hasSelection) navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+      if (hasSelection) void writeClipboard(term.getSelection())
     } else if (picked === 'paste') {
-      navigator.clipboard.readText().then((txt) => window.redlog.terminal.write(id, txt)).catch(() => {})
+      void readClipboard().then((txt) => { if (txt) window.redlog.terminal.write(id, txt) })
     } else if (picked === 'selectAll') {
       term.selectAll()
     } else if (picked === 'clear') {
@@ -511,12 +512,12 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
     term.attachCustomKeyEventHandler((e) => {
       if (!(e.metaKey || e.ctrlKey) || e.type !== 'keydown') return true
       if (e.key === 'c' && term.hasSelection()) {
-        navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+        void writeClipboard(term.getSelection())
         e.preventDefault()
         return false
       }
       if (e.key === 'v') {
-        navigator.clipboard.readText().then((t) => window.redlog.terminal.write(id, t)).catch(() => {})
+        void readClipboard().then((txt) => { if (txt) window.redlog.terminal.write(id, txt) })
         e.preventDefault()
         return false
       }
