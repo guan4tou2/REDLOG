@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { useTick } from '../lib/useTick'
 
 // The dark/setup onboarding block: the three core sources as an ordered
 // checklist, plus one primary CTA derived from readiness.nextStep. This is the
@@ -75,8 +76,13 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
                 return (
                   <li key={s.id} className="flex items-center gap-2 text-xs">
                     <span className={`shrink-0 ${g.cls}`} aria-hidden>{g.mark}</span>
-                    <span className={s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}>
-                      {STEP_LABEL[s.id] ?? s.id}
+                    <span className={`min-w-0 ${s.status === 'active' ? 'text-redlog-text' : 'text-redlog-text-dim'}`}>
+                      <span>{STEP_LABEL[s.id] ?? s.id}</span>
+                      {s.id === 'shell-hook' && (
+                        <span className="block text-xs text-redlog-text-faint">
+                          {t('capture.shellHookCapability')}
+                        </span>
+                      )}
                     </span>
                     <span className="ml-auto text-xs font-mono text-redlog-text-faint">
                       {t(`capture.step.${s.status}`)}
@@ -210,11 +216,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // Now we compute against Date.now() at render time and force a rerender
   // once a second. Under-1-second precision doesn't matter for a
   // capture-freshness readout so cadence stays cheap.
-  const [nowTick, setNowTick] = useState(Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNowTick(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
+  const nowTick = useTick()
   const fmtAge = (ts: number | null, now: number): string => {
     if (!ts) return '—'
     const sec = Math.max(0, Math.round((now - ts) / 1000))
@@ -279,8 +281,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot(s.state)}`} />
-              <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 truncate ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
-                {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
+              <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
+                <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
+                  {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
+                </span>
+                {s.id === 'shell-hook' && (
+                  <span className="block text-xs text-redlog-text-faint">
+                    {t('capture.shellHookCapability')}
+                  </span>
+                )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
               </span>
               <span className="text-redlog-text-faint text-xs">
@@ -353,10 +362,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             </p>
           )}
         </div>
-        {/* v0.14.3 §9.5: two-tier chain-health footer. Renders only when
-         *  the logged tier has at least one row — mirrors the StatusBar
-         *  behaviour so pre-v0.13 projects and empty engagements stay
-         *  visually identical to before. Chained is the brighter number
+        {/* Two-tier chain-health footer. Renders only when the logged tier
+         *  has at least one row. Chained is the brighter number
          *  (audit chain); logged renders muted (supporting evidence).
          *  "Last fed" is the newest logged-row age — a slow tick is fine
          *  because it uses the same 1s nowTick as the source-row ages. */}
@@ -375,6 +382,15 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                 {fmtAge(tierSplit.lastLoggedTs, nowTick)}
               </span>
             </div>
+          </div>
+        )}
+        {capture.proxyEnv && (
+          <div className="mt-2 pt-2 border-t border-redlog-border/70 flex items-center gap-2 text-xs font-mono">
+            <span className="text-emerald-500/80">●</span>
+            <span className="text-redlog-text-dim uppercase tracking-[0.1em]">{t('capture.proxyDetected')}</span>
+            <span className="text-redlog-text-faint truncate" title={capture.proxyEnv.httpsProxy ?? capture.proxyEnv.httpProxy}>
+              {capture.proxyEnv.httpsProxy ?? capture.proxyEnv.httpProxy}
+            </span>
           </div>
         )}
       </div>

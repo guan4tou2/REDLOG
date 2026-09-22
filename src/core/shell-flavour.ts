@@ -18,15 +18,29 @@ const POSIX_SHELLS = ['bash', 'zsh', 'sh', 'ksh', 'dash']
  * Classify a shell by its executable name.
  *
  * Deliberately not platform-dependent: `bash.exe` shipped by Git for Windows,
- * MSYS2 or Cygwin is a POSIX shell and takes the POSIX hook, exactly like
- * `/bin/bash` does. The hook itself dispatches on `$ZSH_VERSION` /
- * `$BASH_VERSION`, never on the platform, and Git Bash sources the mixed
- * `C:/…/hooks/shell-preexec-hook.sh` form without complaint — verified on
- * Windows 11 before this stopped being treated as impossible.
+ * MSYS2 or Cygwin is a POSIX shell, exactly like `/bin/bash`. Adapter selection
+ * is a separate decision because bash and zsh now have distinct lifecycle
+ * hooks. Git Bash accepts the mixed `C:/…/hooks/shell-bash-hook.sh` form —
+ * verified on Windows 11 before this stopped being treated as impossible.
  */
 export function shellFlavour(shell: string): ShellFlavour {
   const base = (shell.split(/[\\/]/).pop() ?? shell).replace(/\.exe$/i, '').toLowerCase()
   if (base === 'powershell' || base === 'pwsh') return 'powershell'
   if (POSIX_SHELLS.includes(base)) return 'posix'
   return 'none'
+}
+
+/** Return the current lifecycle adapter shipped for a shell executable.
+ *
+ * POSIX is a transport family, not one lifecycle contract: bash and zsh use
+ * different hook APIs. Keep that choice beside shell classification so the
+ * built-in terminal cannot drift back to a removed combined-hook path.
+ */
+export function shellAdapterFilename(shell: string, innerShell?: string): string | null {
+  const effectiveShell = innerShell || shell
+  const base = (effectiveShell.split(/[\\/]/).pop() ?? effectiveShell).replace(/\.exe$/i, '').toLowerCase()
+  if (base === 'powershell' || base === 'pwsh') return 'shell-hook.ps1'
+  if (base === 'zsh') return 'shell-zsh-hook.zsh'
+  if (base === 'bash') return 'shell-bash-hook.sh'
+  return null
 }

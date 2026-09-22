@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
+import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
 import { usePersistentState } from '../lib/usePersistentState'
 
@@ -22,6 +23,8 @@ interface Tab {
   // the last thing that ran failed.
   cwd?: string
   lastExit?: number
+  castRecording?: boolean
+  castTruncated?: boolean
 }
 
 let tabCounter = 0
@@ -109,11 +112,12 @@ export default function TerminalView(): JSX.Element {
     // per visit. `terminal:spawn` is idempotent per id and replays the
     // scrollback, so re-attaching is exactly what the operator wants: the
     // session they left, with its history.
-    void (window.redlog.terminal.list?.() ?? Promise.resolve([]))
-      .then((live: Array<{ id: string; pid: number }>) => {
+    void (window.redlog.terminal.list() ?? Promise.resolve([]))
+      .then((live: Array<{ id: string; pid: number; recording?: boolean; castTruncated?: boolean }>) => {
         if (!Array.isArray(live) || live.length === 0) { addTab(); return }
         setTabs(live.map((s, i) => ({
-          id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true
+          id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true,
+          castRecording: s.recording, castTruncated: s.castTruncated
         })))
         setActiveTab(live[0].id)
         tabCounter = Math.max(tabCounter, live.length)
@@ -135,15 +139,21 @@ export default function TerminalView(): JSX.Element {
   // cwd; we match by terminalId and stamp the label. Cheap because command_end
   // is at most one per prompt.
   useEffect(() => {
-    return window.redlog.events.onNew((evt) => {
-      if (evt.agentType !== 'shell') return
-      const d = evt.data as { subtype?: string; source?: string; terminalId?: string; cwd?: string; exit_code?: number }
-      if (d.source !== 'builtin-terminal' || d.subtype !== 'command_end' || !d.terminalId) return
-      setTabs((prev) => prev.map((tab) => tab.id === d.terminalId
+    return window.redlog.events.onNewBatch((events) => {
+      const updates = events.flatMap((evt) => {
+        if (evt.agentType !== 'shell') return []
+        const d = evt.data as { subtype?: string; source?: string; terminalId?: string; cwd?: string; exit_code?: number }
+        return d.source === 'builtin-terminal' && d.subtype === 'command_end' && d.terminalId ? [d] : []
+      })
+      if (!updates.length) return
+      setTabs((prev) => prev.map((tab) => {
+        const d = updates.slice().reverse().find((update) => update.terminalId === tab.id)
+        return d
         // Split on either separator so a Windows `C:\Users\foo\proj` doesn't
         // render as one giant tab label. Audit P1-3 (WINDOWS_COMPAT_AUDIT.md).
         ? { ...tab, cwd: d.cwd?.split(/[\\/]/).pop() || tab.cwd, lastExit: d.exit_code }
-        : tab))
+        : tab
+      }))
     })
   }, [])
 
@@ -188,6 +198,15 @@ export default function TerminalView(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
             <span title={tab.label} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
+            {tab.alive && tab.castRecording === true && (
+              <span className="text-xs font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>rec</span>
+            )}
+            {tab.alive && tab.castTruncated === true && (
+              <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>trunc</span>
+            )}
+            {tab.alive && tab.castRecording === false && tab.castTruncated !== true && (
+              <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>no rec</span>
+            )}
             {tab.cwd && tab.alive && (
               <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwd}>~/{tab.cwd}</span>
             )}
@@ -364,6 +383,7 @@ export default function TerminalView(): JSX.Element {
               onSearch={() => setSearchOpen(true)}
               shellId={tab.shellId}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
+              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
               onSearchAddon={(addon) => { paneSearchRefs.current.set(tab.id, addon) }}
             />
@@ -384,11 +404,12 @@ export default function TerminalView(): JSX.Element {
   )
 }
 
-function TerminalPane({ id, active, shellId, onPid, onExit, fontSize, onSearch, onSearchAddon }: {
+function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSize, onSearch, onSearchAddon }: {
   id: string
   active: boolean
   shellId?: string
   onPid: (pid: number) => void
+  onCastState: (state: { recording: boolean; castTruncated: boolean }) => void
   onExit: () => void
   fontSize: number
   onSearch: () => void
@@ -422,9 +443,9 @@ function TerminalPane({ id, active, shellId, onPid, onExit, fontSize, onSearch, 
       { id: 'clear', label: t('terminal.ctxClear') }
     ])
     if (picked === 'copy') {
-      if (hasSelection) navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+      if (hasSelection) void writeClipboard(term.getSelection())
     } else if (picked === 'paste') {
-      navigator.clipboard.readText().then((txt) => window.redlog.terminal.write(id, txt)).catch(() => {})
+      void readClipboard().then((txt) => { if (txt) window.redlog.terminal.write(id, txt) })
     } else if (picked === 'selectAll') {
       term.selectAll()
     } else if (picked === 'clear') {
@@ -491,12 +512,12 @@ function TerminalPane({ id, active, shellId, onPid, onExit, fontSize, onSearch, 
     term.attachCustomKeyEventHandler((e) => {
       if (!(e.metaKey || e.ctrlKey) || e.type !== 'keydown') return true
       if (e.key === 'c' && term.hasSelection()) {
-        navigator.clipboard.writeText(term.getSelection()).catch(() => {})
+        void writeClipboard(term.getSelection())
         e.preventDefault()
         return false
       }
       if (e.key === 'v') {
-        navigator.clipboard.readText().then((t) => window.redlog.terminal.write(id, t)).catch(() => {})
+        void readClipboard().then((txt) => { if (txt) window.redlog.terminal.write(id, txt) })
         e.preventDefault()
         return false
       }
@@ -527,6 +548,7 @@ function TerminalPane({ id, active, shellId, onPid, onExit, fontSize, onSearch, 
       term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
       onExit()
     })
+    const unsubCast = window.redlog.terminal.onCastState(id, onCastState)
     const dispInput = term.onData((data) => {
       window.redlog.terminal.write(id, data)
     })
@@ -544,9 +566,10 @@ function TerminalPane({ id, active, shellId, onPid, onExit, fontSize, onSearch, 
     requestAnimationFrame(() => {
       try { fitAddon.fit() } catch {}
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24, shellId)
-        .then(({ pid, shell, hookSourced }) => {
-          onPid(pid)
-          if (!hookSourced) setUnhookedShell(shell)
+        .then((r) => {
+          onPid(r.pid)
+          onCastState({ recording: r.recording, castTruncated: r.castTruncated })
+          if (!r.hookSourced) setUnhookedShell(r.shell)
         })
         .catch(() => {})
     })
@@ -555,6 +578,7 @@ function TerminalPane({ id, active, shellId, onPid, onExit, fontSize, onSearch, 
       resizeObserver.disconnect()
       unsubData()
       unsubExit()
+      unsubCast?.()
       dispInput.dispose()
       dispResize.dispose()
       term.dispose()

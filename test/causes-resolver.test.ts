@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { noteStartEvent, resolveIncomingCauses, _resetCausesResolver } from '../src/core/causes-resolver'
+import { noteStartEvent, relatedCommandCandidates, resolveIncomingCauses, _resetCausesResolver } from '../src/core/causes-resolver'
 
 describe('causes-resolver', () => {
   beforeEach(() => {
@@ -60,6 +60,68 @@ describe('causes-resolver', () => {
     it('returns empty for non-end subtypes', () => {
       const causes = resolveIncomingCauses('shell', { subtype: 'session_start' })
       expect(causes).toEqual([])
+    })
+  })
+
+  describe('watched file correlation', () => {
+    it('reports cwd overlap as an uncertain candidate, never a cause', () => {
+      noteStartEvent('shell', {
+        subtype: 'command_start', terminalId: 't1', pid: 41,
+        command: 'nmap -oA loot/scan 10.0.0.8', cwd: '/work'
+      }, 'evt-command')
+
+      const file = {
+        subtype: 'file_created', source: 'file-watcher', path: '/work/loot/scan.xml'
+      }
+      expect(resolveIncomingCauses('file_transfer', file)).toEqual([])
+      expect(relatedCommandCandidates(file)).toEqual([{
+        event_id: 'evt-command', method: 'cwd-overlap', state: 'active'
+      }])
+    })
+
+    it('does not link paths outside the command cwd or deletion events', () => {
+      noteStartEvent('shell', {
+        subtype: 'command_start', terminalId: 't1', pid: 42, command: 'tool', cwd: '/work'
+      }, 'evt-command')
+      expect(relatedCommandCandidates({
+        subtype: 'file_created', source: 'file-watcher', path: '/other/result.txt'
+      })).toEqual([])
+      expect(relatedCommandCandidates({
+        subtype: 'file_deleted', source: 'file-watcher', path: '/work/result.txt'
+      })).toEqual([])
+    })
+
+    it('keeps every matching command visible instead of guessing one cause', () => {
+      noteStartEvent('shell', {
+        subtype: 'command_start', terminalId: 'outer', pid: 1, command: 'outer', cwd: '/work'
+      }, 'evt-outer')
+      noteStartEvent('shell', {
+        subtype: 'command_start', terminalId: 'inner', pid: 2, command: 'inner', cwd: '/work/loot'
+      }, 'evt-inner')
+      expect(relatedCommandCandidates({
+        subtype: 'file_modified', source: 'file-watcher', path: '/work/loot/result.txt'
+      }).map((candidate) => candidate.event_id)).toEqual(['evt-inner', 'evt-outer'])
+
+      noteStartEvent('shell', {
+        subtype: 'command_start', terminalId: 'inner-2', pid: 3, command: 'also-inner', cwd: '/work/loot'
+      }, 'evt-inner-2')
+      expect(relatedCommandCandidates({
+        subtype: 'file_modified', source: 'file-watcher', path: '/work/loot/ambiguous.txt'
+      }).map((candidate) => candidate.event_id)).toEqual(['evt-inner', 'evt-inner-2', 'evt-outer'])
+    })
+
+    it('retains a bounded post-command candidate for delayed watcher delivery', () => {
+      const command = { terminalId: 't1', pid: 43, command: 'gobuster -o loot/out.txt', cwd: '/work' }
+      noteStartEvent('shell', { subtype: 'command_start', ...command }, 'evt-command')
+      expect(resolveIncomingCauses('shell', { subtype: 'command_end', ...command })).toEqual(['evt-command'])
+      expect(relatedCommandCandidates({
+        subtype: 'file_created', source: 'file-watcher', path: '/work/loot/out.txt'
+      })).toEqual([{
+        event_id: 'evt-command', method: 'cwd-near-command-end', state: 'recent'
+      }])
+      expect(relatedCommandCandidates({
+        subtype: 'file_created', source: 'file-watcher', path: '/work/loot/out.txt'
+      }, Date.now() + 2_001)).toEqual([])
     })
   })
 

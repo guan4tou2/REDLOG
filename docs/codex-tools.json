@@ -136,8 +136,8 @@
     {
       "type": "function",
       "function": {
-        "name": "redlog_quickmark",
-        "description": "Create a QuickMark bookmark for a URL, finding, or point of interest.",
+        "name": "redlog_bookmark",
+        "description": "Create a private bookmark for a URL or point of interest.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -287,8 +287,8 @@
     {
       "type": "function",
       "function": {
-        "name": "redlog_quickmarks_list",
-        "description": "List all QuickMark bookmarks in the current project.",
+        "name": "redlog_bookmarks_list",
+        "description": "List all private bookmarks in the current project.",
         "parameters": {
           "type": "object",
           "properties": {}

@@ -1,5 +1,5 @@
 import { statSync } from 'fs'
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 
@@ -111,6 +111,10 @@ async function restartFileWatcher(): Promise<void> {
     watcher.on('addDir', (p) => emit(p, 'file_created', true))
     watcher.on('unlinkDir', (p) => emit(p, 'file_deleted', true))
     watcher.on('error', () => { /* watcher self-recovers; ignore */ })
+    await new Promise<void>((resolve, reject) => {
+      watcher?.on('ready', () => resolve())
+      watcher?.on('error', (error) => reject(error))
+    })
   } catch (e) {
     console.error('[file-watcher] failed to start:', e)
     watcher = null
@@ -130,7 +134,7 @@ function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file
     } catch { /* just deleted between event + stat */ }
   }
   try {
-    const ev = insertEvent('file_transfer', {
+    ingestEvent('file_transfer', {
       subtype,
       path: absPath,
       size,
@@ -138,7 +142,6 @@ function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file
       is_dir: isDir || undefined,
       source: 'file-watcher'
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) {
     noteDbError('file-watcher', e)
   }

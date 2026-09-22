@@ -35,7 +35,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
   // and a later refresh would overwrite what they came to record. Silent on
   // failure — no connector is the normal case.
   useEffect(() => {
-    void window.redlog.cdp?.getTab?.()
+    void window.redlog.cdp.getTab()
       .then((tab) => { if (tab?.url) setUrl(tab.url) })
       .catch(() => { /* no browser connected */ })
   }, [])
@@ -93,6 +93,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
         tabIndex={-1}
         className="bg-redlog-surface border border-redlog-border rounded-lg w-[420px] p-4 space-y-3 outline-none"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !saving) handleSave() }}
       >
         <h3 className="text-sm font-semibold text-redlog-text">
           {t('marker.title')}
@@ -109,7 +110,7 @@ export default function EventMarker({ onClose, atTimestamp }: EventMarkerProps):
           placeholder={t('marker.placeholder')}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); if (!saving) handleSave() } }}
           className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-sm text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
         />
 

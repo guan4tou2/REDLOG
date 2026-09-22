@@ -131,9 +131,9 @@ out-of-scope 的無關資料同等對待。
 |---|---|---|
 | `db/findings.ts` · `QuickMark` 型別、`FindingsView.tsx` | `bookmarks.ts` · `Bookmark`、`BookmarksView.tsx` | 否,純內部,前後端同時改 |
 | `quickmarks:*` IPC + preload bridge | `bookmarks:*` | 否 |
-| `GET\|POST /api/quickmarks` | `/api/bookmarks` | **是**,舊路由保留一段 |
-| CLI `quickmark`/`quickmarks` 動詞 | `bookmark` | **是**,舊動詞保留 |
-| 外掛能力 `read:findings` + `findings.list` | `read:bookmarks` | **是**,活在第三方 manifest 裡 |
+| `GET\|POST /api/quickmarks` | `/api/bookmarks` | 否，尚未正式發佈，直接移除 |
+| CLI `quickmark`/`quickmarks` 動詞 | `bookmark` | 否，尚未正式發佈，直接移除 |
+| 外掛能力 `read:findings` + `findings.list` | `read:bookmarks` | 否，尚未正式發佈，直接移除 |
 | SQL 表名 `quickmarks` | `bookmarks` | **需人決定**(見下) |
 
 **SQL 表名要人決定。** `ALTER TABLE quickmarks RENAME TO bookmarks` 是一行 migration,但舊版本

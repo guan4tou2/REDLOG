@@ -10,28 +10,25 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, queryByFlowId, queryMarkerAmendments, screenshotsReferencedByMarker, getEventCount, getLootCount, getLatestLoggedTs, searchEvents, distinctAgentTypes, aggregateTargets, distinctHosts, hostCausalChain, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
 import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor } from './services/cdp-connector'
 import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
-import { createHash } from 'crypto'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
 import { LootDetector } from '../core/loot-detector'
-import { getChainLength } from '../core/evidence-chain'
-import { anchorNow, listAnchors, startAnchorLoop, stopAnchorLoop, verifyLatestAnchor, verifyChainFullAsync, upgradeAnchor, upgradeAllPending, verifyRandomSample } from '../core/chain-anchor'
-import { startNtpLoop, stopNtpLoop, getNtpOffsetMs, getLastNtpQuery } from '../core/clock'
+import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
+import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
-import { amendMarker } from '../core/marker-amend'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
 import type { ScopeSnapshot } from '../core/scope-recompute'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
-import { readBody as readHttpBody, resetBodiesDirCache, type BodyRef } from '../core/http-body-store'
+import { resetBodiesDirCache } from '../core/http-body-store'
 import {
   listProjects, createProject, openProject, deleteProject, renameProject,
   getProjectDir as getProjectPath, ProjectMeta
@@ -41,7 +38,7 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook, autoUpgradeInstalledHooks } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -52,7 +49,8 @@ import { startProxyBypassDetector, stopProxyBypassDetector } from './services/pr
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, setPluginHost } from '../core/plugins'
-import { configureIngest } from '../core/ingest'
+import { configureIngest, ingestEvent } from '../core/ingest'
+import { resetCausesResolver } from '../core/causes-resolver'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
@@ -64,7 +62,10 @@ import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
+import { closeHttpBodyIndex } from '../core/http-body-index'
+import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
+import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
 import {
   registerOverlayIpc, setOverlayPassThrough, stopOverlayMouseTracking,
@@ -74,6 +75,11 @@ import {
 import { registerTerminalIpc } from './ipc/terminal'
 import { registerPluginsIpc } from './ipc/plugins'
 import { registerOperatorsIpc } from './ipc/operators'
+import { registerEventsIpc } from './ipc/events'
+import { registerChainIpc } from './ipc/chain'
+import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
+import { registerViewsIpc } from './ipc/views'
+import { registerTargetContextIpc } from './ipc/target-context'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -158,7 +164,7 @@ function toggleRecording(): boolean {
 // is empty), so every marker producer runs `redactFields` over these before the
 // insert — otherwise `redlog-cli sanitize` reports success on a marker note and
 // ships the secret anyway.
-const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
+// MARKER_TEXT_FIELDS imported from ./ipc/markers
 
 // Opens the marker dialog in the main window — shared by the global shortcut,
 // the tray menu, and the HUD's "detailed" button. Steals focus by design: the
@@ -509,8 +515,7 @@ function startProject(project: ProjectMeta): void {
     }),
     searchEvents: (a) => searchEvents(String(a.query ?? ''), Math.min(Number(a.limit) || 20, 200)),
     appendEvent: (pluginId, a) => {
-      const ev = insertEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
-      if (ev) eventBus.publish(ev)
+      const ev = ingestEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
       return { ok: !!ev }
     },
     listFindings: () => listBookmarks(),
@@ -566,7 +571,8 @@ function startProject(project: ProjectMeta): void {
   configureIngest({
     lootDetector,
     alertRuntime: { dispatchTargetHit: (input) => alertRuntime.dispatchTargetHit(input) },
-    castProbe: getCastPosition
+    castProbe: getCastPosition,
+    activeTarget: config.engagement.activeTarget ?? null
   })
 
   // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
@@ -647,81 +653,26 @@ function startProject(project: ProjectMeta): void {
   // the answer (#100 is the reason that distinction matters).
   void discoverShells().catch(() => { /* probing is best effort */ })
 
-  // v0.6.87 A2: replay shell-hook spool. Any commands run in an external shell
-  // while RedLog was closed were spooled to ~/.redlog/pending/*.json — replay
-  // them into the current chain now.
-  // Audit 2026-09-18: spool files now carry `_identity` from the project that was
-  // open when the event was spooled. Mismatched events are flagged, not silently
-  // attributed to the current project.
-  try {
-    const spoolDir = path.join(homedir(), '.redlog', 'pending')
-    if (fs.existsSync(spoolDir)) {
-      const files = fs.readdirSync(spoolDir).filter((f) => f.endsWith('.json')).sort()
-      let replayed = 0
-      let unattributed = 0
-      for (const f of files) {
-        const full = path.join(spoolDir, f)
-        try {
-          const raw = fs.readFileSync(full, 'utf8')
-          const payload = JSON.parse(raw)
-          const agentType = String(payload?.agent_type || '')
-          const data = payload?.data && typeof payload.data === 'object' ? payload.data : null
-          if (agentType && data) {
-            const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
-            const useEngagement = ident?.engagementId || engagementId
-            const useOperator = ident?.operatorId || operatorId
-            const mismatched = ident?.engagementId != null && ident.engagementId !== engagementId
-            const ev = insertEvent(agentType, {
-              ...data,
-              recovered_from_spool: true,
-              ...(mismatched ? { spool_attribution: 'mismatched', spool_original_engagement: ident!.engagementId } : {}),
-              ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
-            }, { engagementId: useEngagement, operatorId: useOperator })
-            if (ev) { eventBus.publish(ev); replayed++ }
-            if (mismatched || !ident?.engagementId) unattributed++
-          }
-          fs.unlinkSync(full)
-        } catch (e) {
-          try { fs.renameSync(full, full + '.bad') } catch { /* */ }
-        }
-      }
-      if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)${unattributed > 0 ? ` (${unattributed} unattributed)` : ''}`)
+  // Replay only records belonging to the active engagement. Mismatches remain
+  // recoverable on disk and are picked up when their owning project opens.
+  const drainSpool = (limit = Number.POSITIVE_INFINITY): void => {
+    if (!currentEngagementId || !currentOperatorId) return
+    if (eventBus.paused) return
+    const emit = ({ agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
+      const ev = insertEvent(agentType, data, { engagementId: spoolEngagement, operatorId: spoolOperator })
+      if (ev) eventBus.publish(ev)
+      return ev !== null
     }
-  } catch (e) { console.error('[hook-spool] replay failed:', e) }
+    const replayed = replaySpoolDirectory(path.join(homedir(), '.redlog', 'pending'), {
+      engagementId: currentEngagementId,
+      operatorId: currentOperatorId
+    }, emit, limit).replayed
+    if (replayed > 0) console.log(`[hook-spool] replayed ${replayed} spooled event(s)`)
+  }
+  try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
 
   spoolDrainTimer = setInterval(() => {
-    if (!currentEngagementId || !currentOperatorId) return
-    try {
-      const spoolPath = path.join(homedir(), '.redlog', 'pending')
-      if (!fs.existsSync(spoolPath)) return
-      const files = fs.readdirSync(spoolPath).filter((f) => f.endsWith('.json')).sort().slice(0, 200)
-      if (files.length === 0) return
-      let count = 0
-      for (const f of files) {
-        const full = path.join(spoolPath, f)
-        try {
-          const raw = fs.readFileSync(full, 'utf8')
-          const payload = JSON.parse(raw)
-          const at = String(payload?.agent_type || '')
-          const d = payload?.data && typeof payload.data === 'object' ? payload.data : null
-          if (at && d) {
-            const ident = payload?._identity as { engagementId?: string; operatorId?: string } | undefined
-            const useEng = ident?.engagementId || currentEngagementId!
-            const useOp = ident?.operatorId || currentOperatorId!
-            const mismatched = ident?.engagementId != null && ident.engagementId !== currentEngagementId
-            const ev = insertEvent(at, {
-              ...d,
-              recovered_from_spool: true,
-              ...(mismatched ? { spool_attribution: 'mismatched', spool_original_engagement: ident!.engagementId } : {}),
-              ...(!ident?.engagementId ? { spool_attribution: 'unattributed' } : {})
-            }, { engagementId: useEng, operatorId: useOp })
-            if (ev) { eventBus.publish(ev); count++ }
-          }
-          fs.unlinkSync(full)
-        } catch { try { fs.renameSync(full, full + '.bad') } catch { /* */ } }
-      }
-      if (count > 0) console.log(`[hook-spool] drained ${count} spooled event(s)`)
-    } catch { /* */ }
+    try { drainSpool(200) } catch { /* next interval retries preserved files */ }
   }, 30_000)
 
   alertRuntime.start()
@@ -870,22 +821,6 @@ function startProject(project: ProjectMeta): void {
   })
   onApiProjectOpen()
 
-  // Silently repair any pre-v0.6.47 shell hook still sitting in ~/.redlog/.
-  // If nothing needs upgrading this is a no-op. Emits a system event when
-  // it does upgrade so operators see the change in the timeline instead of
-  // having a file mutate under them without record.
-  try {
-    const { upgraded, failed } = autoUpgradeInstalledHooks()
-    if (upgraded.length > 0 || failed.length > 0) {
-      insertEvent('system', {
-        subtype: 'hook_auto_upgrade',
-        upgraded,
-        failed,
-        reason: 'pre-v0.6.47 $$$ pid bug'
-      }, { engagementId, operatorId })
-    }
-  } catch { /* best effort — never block startup */ }
-
   insertEvent('system', { subtype: 'session_start' }, { engagementId, operatorId })
 
   // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
@@ -1011,6 +946,7 @@ function stopProject(): void {
   stopOpsecMonitor()
   screenshotAgent.stop()
   closeCastIndex()
+  closeHttpBodyIndex()
   // Audit 2026-09-18 P1: finalize all terminal sessions BEFORE closing the DB
   // so session_end events (with cast SHA-256) land in the chain. Without this,
   // terminals survive the project switch with stale identity and their close
@@ -1022,6 +958,8 @@ function stopProject(): void {
   activeProject = null
   currentEngagementId = null
   currentOperatorId = null
+  resetCausesResolver()
+  configureIngest({ activeTarget: null })
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each
@@ -1141,6 +1079,7 @@ app.whenReady().then(() => {
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
   registerContextMenuIpc(ipcMain)
+  registerClipboardIpc(ipcMain)
 
   // Shared context for extracted IPC handler modules.
   const ipcCtx: IpcContext = {
@@ -1158,6 +1097,11 @@ app.whenReady().then(() => {
   registerTerminalIpc(ipcMain, ipcCtx)
   registerPluginsIpc(ipcMain, ipcCtx)
   registerOperatorsIpc(ipcMain, ipcCtx)
+  registerEventsIpc(ipcMain, ipcCtx)
+  registerChainIpc(ipcMain, ipcCtx)
+  registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
+  registerViewsIpc(ipcMain, ipcCtx)
+  registerTargetContextIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1213,7 +1157,7 @@ app.whenReady().then(() => {
   })
 
   // Hook-config lives in ~/.redlog/hook-config.json — outside the project so
-  // it applies across every project (user's Claude Code hook is global).
+  // transcript watch paths apply across every project.
   // The two gates are readable/writable through this IPC pair so the
   // Settings ▸ 整合 panel can maintain the watchPaths whitelist without
   // shelling out.
@@ -1256,11 +1200,21 @@ app.whenReady().then(() => {
     if (!activeProject) return false
     const projectDir = getProjectPath(activeProject)
     const oldConfig = loadConfig(projectDir)
+    // The project id is the durable attribution boundary used by spool replay
+    // and every Event row. Renderer state, imported profiles and direct IPC
+    // calls may update other settings, but cannot rename this identity.
+    newConfig.engagement.id = oldConfig.engagement.id
+    // Active target has a dedicated, audited IPC. A Settings form may have
+    // loaded its config before the title-bar target changed; preserving the
+    // latest stored value prevents that stale form from silently reverting
+    // attribution context on its next auto-save.
+    newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     saveConfig(projectDir, newConfig)
     currentEngagementId = newConfig.engagement.id
     currentOperatorId = newConfig.operator.id
+    configureIngest({ activeTarget: newConfig.engagement.activeTarget ?? null })
     // Audit trail — log security-relevant setting changes so a reviewer can see
     // when scope loosened or the IP blacklist changed. Only diffs the fields
     // that affect enforcement or attribution; cosmetic changes stay silent.
@@ -1334,56 +1288,9 @@ app.whenReady().then(() => {
   // only sees actual verdict changes; this listener is UI-only.
   alertRuntime.onIpTick(() => broadcastIPStatus(alertRuntime.ipStatus()))
 
-  // --- Events ---
-  ipcMain.handle('events:query', (_e, opts) => activeProject ? queryEvents(opts) : [])
-  ipcMain.handle('events:getCount', (_e, tier?: import('../core/db/events').EventTierFilter) => activeProject ? getEventCount(tier ? { tier } : undefined) : 0)
-  ipcMain.handle('events:getLatestLoggedTs', () => activeProject ? getLatestLoggedTs() : null)
-  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: { agentType?: string }) => activeProject ? searchEvents(query, limit, opts) : [])
-  ipcMain.handle('events:distinctAgentTypes', () => activeProject ? distinctAgentTypes() : [])
-  ipcMain.handle('events:aggregateTargets', () => activeProject ? aggregateTargets() : [])
-  ipcMain.handle('events:distinctHosts', () => activeProject ? distinctHosts() : [])
-  // 10a Inspector 〈相關〉: a host's curated causal chain + header aggregate.
-  ipcMain.handle('events:hostChain', (_e, host: string, opts?: { chainLimit?: number }) =>
-    activeProject ? hostCausalChain(host, opts ?? {}) : null)
+  // --- Events (extracted to ipc/events.ts) ---
 
-  ipcMain.handle('events:queryByFlowId', (_e, flowId: string) => activeProject ? queryByFlowId(flowId) : [])
-  // `queryEventById` has existed since v0.6.96 with no way to reach it from the
-  // renderer. The Timeline pages newest-first, 200 rows at a time, and an
-  // amendment is by construction newer than the marker it corrects — so on any
-  // fresh timeline the correction is on screen while its marker is thousands of
-  // rows back. Without a way to fetch it, the Inspector draws the red
-  // 「chain broken」 chip on the ordinary default path.
-  ipcMain.handle('events:getById', (_e, ids: string[]) =>
-    activeProject && Array.isArray(ids)
-      ? ids.slice(0, 200).map((id) => queryEventById(String(id))).filter((e): e is RedLogEvent => e !== null)
-      : [])
-  // Four-layer redaction, layer 3 — reveal action logs a chained event so
-  // the audit trail shows raw secret bytes were viewed, by whom, when.
-  ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
-    if (!currentEngagementId || !currentOperatorId) return { ok: false, error: 'no active project' }
-    try {
-      const ev = insertEvent('system', {
-        subtype: 'secret_revealed',
-        source_event: sourceEventId,
-        fields: Array.isArray(fields) ? fields : []
-      }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-      if (ev) eventBus.publish(ev)
-      return { ok: true, id: ev?.id }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-  ipcMain.handle('httpBody:read', (_e, ref: BodyRef) => {
-    if (!activeProject) return null
-    return readHttpBody(ref)
-  })
-
-  // v0.6.95 P0-4c: batch buffer for coalesced IPC deliveries. Every event
-  // still fires `events:new` per-event (overlay
-  // pivot HUD subscribe to it), but the renderer's Timeline drains
-  // `events:new-batch` on a single frame per burst. A 200 evt/s mitmproxy
-  // scan collapses from 200 IPC hops to ~12 (60 fps) with one setEvents
-  // call per hop instead of one per event.
+  // Coalesce event bursts into one renderer delivery per event-loop turn.
   let batchBuffer: RedLogEvent[] = []
   let batchScheduled = false
   const flushBatch = (): void => {
@@ -1394,10 +1301,6 @@ app.whenReady().then(() => {
     send(mainWindow, 'events:new-batch', drained)
   }
   eventBus.on('event', (event) => {
-    // Per-event channel stays — the overlay HUD and any external subscriber
-    // that doesn't want to buffer keeps its existing shape.
-    send(mainWindow, 'events:new', event)
-    // Batch channel — Timeline listens here and rebuilds once per frame.
     batchBuffer.push(event)
     if (!batchScheduled) {
       batchScheduled = true
@@ -1420,98 +1323,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('pivots:getActive', () => getActivePivots())
 
-  // --- Markers ---
-  ipcMain.handle('marker:create', (_e, data: Record<string, unknown>) => {
-    if (!activeProject) return null
-    const config = loadConfig(getProjectPath(activeProject))
-    // The payload is rebuilt field by field rather than spread, so an untrusted
-    // renderer cannot smuggle `_causes` or a forged subtype into a chained row.
-    // That cost `atTimestamp` for a while: the Timeline's 〈在此落標記〉 sends it
-    // (EventMarker.tsx) and this handler silently dropped it, so an in-app
-    // marker always landed at wall-clock while an e2e seeding over REST — the
-    // one path that did carry it — stayed green.
-    const at = data.atTimestamp
-    const event = insertEvent('marker', redactFields({
-      title: data.title,
-      notes: data.notes,
-      severity: data.severity ?? 'info',
-      category: data.category ?? 'custom',
-      ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {}),
-      // Where the mark points, the web analogue of `atTimestamp`. Same
-      // omit-when-absent shape as that field, for the same reason: this rebuild
-      // is what silently ate `atTimestamp` for several releases.
-      ...(typeof data.url === 'string' && data.url.trim()
-        ? { url: data.url.trim().slice(0, 2048) }
-        : {})
-    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id })
-    // `marker` is pause-exempt at insert (PAUSE_EXEMPT_AGENT_TYPES) because §10
-    // promises that an explicit "write this down" records while recording is
-    // paused. The default publish gate would then drop the fanout, leaving the
-    // row in the chain but absent from the timeline until the next reload — so
-    // the operator writes a marker, sees nothing, and writes it again.
-    if (event) eventBus.publish(event, { bypassPause: true })
-    return event
-  })
-
-  ipcMain.handle('marker:amend', (_e, markerId: string, changes: Record<string, unknown>) => {
-    if (!activeProject) return { ok: false, error: 'no-active-project' }
-    const config = loadConfig(getProjectPath(activeProject))
-    const result = amendMarker(String(markerId), changes ?? {}, {
-      engagementId: config.engagement.id,
-      operatorId: config.operator.id
-    })
-    // Same reason as marker:create — an amendment records while paused, so its
-    // fanout must not be dropped or the operator writes a correction and sees
-    // the old text stare back.
-    if (result.ok) eventBus.publish(result.event, { bypassPause: true })
-    return result
-  })
-
-  ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
-    activeProject && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
-
-  // --- Screenshots ---
-  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string) => screenshotAgent.captureNow('manual', causeEventId))
-  // v0.6.98 B: `screenshot:read` handler removed. v0.6.97 B moved every
-  // renderer read onto the `redlog-screenshot://` custom protocol, and this
-  // IPC had no in-tree callers left. Dropping it shrinks the attack surface
-  // — a compromised renderer with `filePath` control can no longer coax a
-  // base64-encoded read of any file under `<projectDir>/screenshots/`.
-  // Delete only the underlying JPEG. The screenshot EVENT stays in the DB —
-  // rewriting it would break the hash chain (which is the whole point of the
-  // chain). Emits a system.screenshot_deleted event so the audit trail names
-  // when a file was purged, by whom, and its sha256 for later verification.
-  ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
-    try {
-      const screenshotDir = path.join(getProjectDir(), 'screenshots')
-      const resolved = path.resolve(filePath)
-      if (!isInsideDir(screenshotDir, resolved)) return { ok: false, error: 'path outside project' }
-      let sha256: string | null = null
-      try { sha256 = createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
-      fs.unlinkSync(resolved)
-      if (currentEngagementId && currentOperatorId) {
-        const ev = insertEvent('system', {
-          subtype: 'screenshot_deleted',
-          source_event: eventId,  // v0.6.88: legacy field name (kept for backward compat)
-          _causes: [eventId],     // v0.6.89: canonical `_causes` for focus chain walks
-          path: path.basename(resolved),
-          sha256_pre_delete: sha256
-        }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
-        if (ev) eventBus.publish(ev)
-      }
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
-
-  // 2d batch-delete guard (design §12 / §28.7): of a batch of screenshot event
-  // ids, which are referenced by a marker. The renderer uses this to pick the
-  // confirmation tier — a plain checkbox when nothing is cited, type-to-confirm
-  // when a finding points at one. The delete itself still goes through
-  // screenshot:deleteFile one file at a time, each writing an audited tombstone.
-  ipcMain.handle('screenshot:markerReferenced', (_e, ids: unknown) =>
-    activeProject && Array.isArray(ids) ? screenshotsReferencedByMarker(ids.map(String)) : [])
+  // --- Markers + Screenshots (extracted to ipc/markers.ts) ---
 
   // --- Scope ---
   // Read from the chain, not from the in-process log the alert runtime keeps.
@@ -1527,28 +1339,7 @@ app.whenReady().then(() => {
   // flags are monotonic, so a mature project costs no queries at all.
   ipcMain.handle('visibility:signals', () => (activeProject ? getVisibilitySignals() : null))
 
-  // --- Evidence Chain ---
-  ipcMain.handle('chain:length', () => activeProject ? getChainLength() : 0)
-  ipcMain.handle('chain:anchors', () => activeProject ? listAnchors() : [])
-  ipcMain.handle('chain:anchorNow', async () => activeProject ? await anchorNow() : null)
-  ipcMain.handle('chain:verify', async (_e, opts?: { full?: boolean }) => {
-    if (!activeProject) return { ok: false, anchor: null, currentHead: null }
-    // v0.6.95 P0-4a: full verify now uses the async variant that yields to
-    // the event loop every ASYNC_CHUNK_ROWS rows, so the renderer stays
-    // responsive and IPC deliveries keep flowing during a 100k-row walk.
-    return opts?.full ? await verifyChainFullAsync() : verifyLatestAnchor()
-  })
-  ipcMain.handle('chain:upgrade', async (_e, id?: string) => {
-    if (!activeProject) return null
-    if (id) return await upgradeAnchor(id)
-    return await upgradeAllPending()
-  })
-
-  ipcMain.handle('clock:status', () => ({
-    ntpOffsetMs: getNtpOffsetMs(),
-    lastQueryAt: getLastNtpQuery(),
-    hostWallMs: Date.now()
-  }))
+  // --- Evidence Chain + Clock (extracted to ipc/chain.ts) ---
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => activeProject ? getLootCount() : 0)
@@ -1574,55 +1365,7 @@ app.whenReady().then(() => {
   ipcMain.handle('bookmarks:update', (_e, id: string, data) => activeProject ? updateBookmark(id, data) : false)
   ipcMain.handle('bookmarks:delete', (_e, id: string) => activeProject ? deleteBookmark(id) : false)
 
-  // --- Saved Timeline views ---
-  // A "view" is a named snapshot of Timeline UI state — zoom, time window,
-  // hidden lanes, filter query. Stored per-project so operators reviewing an
-  // engagement can jump back to "the credential-dump moment" or "the day-2
-  // recon window" without redoing the zoom + filter dance every time.
-  //
-  // Modelled on the Bookmarks IPC pattern (small JSON payload, list/save/delete)
-  // but kept as a flat JSON file rather than a SQLite table — cheap, easy to
-  // hand-edit, and there's no query pattern beyond "list all".
-  const viewsFile = (): string | null => {
-    if (!activeProject) return null
-    return path.join(getProjectPath(activeProject), 'views.json')
-  }
-  const readViews = (): Array<Record<string, unknown>> => {
-    const p = viewsFile()
-    if (!p || !fs.existsSync(p)) return []
-    try { const arr = JSON.parse(fs.readFileSync(p, 'utf-8')); return Array.isArray(arr) ? arr : [] } catch { return [] }
-  }
-  const writeViews = (views: Array<Record<string, unknown>>): void => {
-    const p = viewsFile()
-    if (!p) return
-    fs.mkdirSync(path.dirname(p), { recursive: true })
-    fs.writeFileSync(p, JSON.stringify(views, null, 2) + '\n', 'utf-8')
-  }
-  ipcMain.handle('views:list', () => readViews())
-  ipcMain.handle('views:save', (_e, data: { name: string; state: Record<string, unknown> }) => {
-    const list = readViews()
-    const id = `view-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-    const entry = {
-      id,
-      name: (data.name || 'Untitled').toString().slice(0, 120),
-      createdAt: Date.now(),
-      state: data.state ?? {}
-    }
-    list.unshift(entry)
-    // Cap at 100 saved views per project — anything more is either forgotten
-    // clutter or someone using this as a real database. The list UI would be
-    // useless past that anyway.
-    if (list.length > 100) list.length = 100
-    writeViews(list)
-    return entry
-  })
-  ipcMain.handle('views:delete', (_e, id: string) => {
-    const list = readViews()
-    const next = list.filter((v) => v.id !== id)
-    if (next.length === list.length) return false
-    writeViews(next)
-    return true
-  })
+  // --- Saved Timeline views (extracted to ipc/views.ts) ---
 
   // --- Proxied browser ---
   ipcMain.handle('browser:detect', () => detectBrowser())

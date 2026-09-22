@@ -1,6 +1,6 @@
 import { aggregateTargets, hostCausalChain, type RedLogEvent } from './db/events'
-import { redactEventForExport } from './redact-export'
-import type { ScopeForSanitize } from './scope-sanitize'
+import { redactEventForExport, type RedactExportOpts } from './redact-export'
+import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 
 // Per-target Markdown walkthrough — the report skeleton an OSCP candidate, a red
 // team's attack narrative, and a purple team's by-target write-up all need, and
@@ -85,10 +85,14 @@ export function targetWalkthroughMarkdown(
 /** DB-backed assembly: every target (busiest last-seen first, capped), each with
  *  its redacted causal chain, formatted to Markdown. */
 export function buildTargetWalkthrough(
-  opts: { scope?: ScopeForSanitize; targetLimit?: number; chainLimit?: number; generatedAt?: string } = {}
+  opts: { scope?: ScopeForSanitize; doNotExportIds?: Set<string>; targetLimit?: number; chainLimit?: number; generatedAt?: string } = {}
 ): string {
   const targetLimit = opts.targetLimit ?? 200
-  const targets = aggregateTargets().slice(0, targetLimit)
+  const allTargets = aggregateTargets().slice(0, targetLimit)
+  const targets = opts.scope
+    ? allTargets.filter((t) => !isOutOfScope(t.target, opts.scope))
+    : allTargets
+  const rOpts: RedactExportOpts = { scope: opts.scope, doNotExportIds: opts.doNotExportIds }
   const sections: WalkthroughSection[] = targets.map((t) => {
     const c = hostCausalChain(t.target, { chainLimit: opts.chainLimit })
     return {
@@ -97,7 +101,7 @@ export function buildTargetWalkthrough(
       operatorCount: c.operatorCount,
       firstSeen: c.firstSeen,
       lastSeen: c.lastSeen,
-      chain: c.chain.map((e) => redactEventForExport(e, opts.scope))
+      chain: c.chain.map((e) => redactEventForExport(e, rOpts)).filter((e): e is RedLogEvent => e !== null)
     }
   })
   return targetWalkthroughMarkdown(sections, { generatedAt: opts.generatedAt })

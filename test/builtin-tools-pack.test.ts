@@ -1,7 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { loadPlugins } from '../src/core/plugins/loader'
 import { applyContributions, removeContributions } from '../src/core/plugins/contributions'
-import { extractTarget, extractTargetWithProvenance, listExternalTargetExtractors } from '../src/core/target-extractor'
+import { extractTargetWithProvenance, listExternalTargetExtractors } from '../src/core/target-extractor'
+
+const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
 
 // E1 Option B end-to-end: the built-in tool→target table is the bundled
 // `builtin-tools` pack, discovered and applied through the real plugin loader —
@@ -29,20 +31,20 @@ describe('builtin-tools pack (E1 Option B)', () => {
 
   it('once applied, core extracts targets for the built-in tools', () => {
     applyContributions(pack())
-    expect(extractTarget('nmap -sV 192.168.1.1')).toBe('192.168.1.1')
-    expect(extractTarget('curl https://api.example.com/path')).toBe('api.example.com')
-    expect(extractTarget('sqlmap -u "http://vuln.site/page?id=1"')).toBe('vuln.site')
+    expect(extractedHost('nmap -sV 192.168.1.1')).toBe('192.168.1.1')
+    expect(extractedHost('curl https://api.example.com/path')).toBe('api.example.com')
+    expect(extractedHost('sqlmap -u "http://vuln.site/page?id=1"')).toBe('vuln.site')
     // Built-in matches carry no provenance — event shape stays byte-identical.
     expect(extractTargetWithProvenance('ssh user@10.0.0.1').pluginId).toBeUndefined()
   })
 
   it('is removable — disabling the pack drops the built-in extractors', () => {
     applyContributions(pack())
-    expect(extractTarget('nmap -sV 192.168.1.1')).toBe('192.168.1.1')
+    expect(extractedHost('nmap -sV 192.168.1.1')).toBe('192.168.1.1')
     removeContributions('builtin-tools')
     // With the pack gone, core no longer recognises nmap (no URL to fall back
     // on) — the whole point of Option B: no tool knowledge left in core.
-    expect(extractTarget('nmap -sV 192.168.1.1')).toBeNull()
+    expect(extractedHost('nmap -sV 192.168.1.1')).toBeNull()
     expect(listExternalTargetExtractors().filter((e) => e.pluginId === 'builtin-tools')).toHaveLength(0)
   })
 })

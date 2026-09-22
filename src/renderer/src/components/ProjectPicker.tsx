@@ -29,6 +29,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     return () => window.removeEventListener('keydown', onKey)
   }, [showAdvanced])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
+  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
   const [warnOnViolation, setWarnOnViolation] = useState(true)
@@ -61,9 +62,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      const initialConfig = (showAdvanced && (scopeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0))
+      const initialConfig = (scopeTargets.length > 0 || excludeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0)
         ? {
-          scope: { targets: scopeTargets, excludeTargets: [], warnOnViolation, scopeFile: null },
+          scope: { targets: scopeTargets, excludeTargets, warnOnViolation, scopeFile: null },
           network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
@@ -121,18 +122,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
     if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
-    const allow = profile.network?.whitelist ?? profile.network?.safeIPs
+    const allow = profile.network?.whitelist
     if (allow) setWhitelist(allow)
-    const deny = profile.network?.blacklist ?? profile.network?.exposedIPs
+    const deny = profile.network?.blacklist
     if (deny) setBlacklist(deny)
-    // Migrate legacy 'log' → warnings off; 'warn' or unset → on. Direct boolean wins.
     if (profile.scope?.warnOnViolation !== undefined) setWarnOnViolation(profile.scope.warnOnViolation)
-    else if (profile.scope?.enforcement) setWarnOnViolation(profile.scope.enforcement !== 'log')
     setShowAdvanced(true)
     toast(t('toast.profileImported'), 'success')
   }
 
-  // v0.14 picker layout: the pre-v0.14 fixed 480px column left huge empty
+  // The fixed 480px column left excessive empty
   // gutters on wide displays and cramped-feeling recent-projects rows.
   // Research (JetBrains + Cursor welcome screens, Win32 UX guidance) points
   // at a two-column split above ~800px — brand + new project on the left,
@@ -202,10 +201,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           >
             <ChevronRight size={14} className="text-redlog-muted" aria-hidden />
             {t('project.advancedSetup')}
-            {(scopeTargets.length + whitelist.length + blacklist.length > 0) && (
+            {(scopeTargets.length + excludeTargets.length + whitelist.length + blacklist.length > 0) && (
               <span className="ml-1 text-redlog-text-dim">
                 ({t('project.advancedSummary', {
                   scope: scopeTargets.length,
+                  exclude: excludeTargets.length,
                   safe: whitelist.length,
                   exposed: blacklist.length
                 })})
@@ -249,6 +249,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                   items={scopeTargets}
                   onChange={setScopeTargets}
                   placeholder={t('project.scopePlaceholder')}
+                />
+                <MiniListField
+                  label={t('project.excludeTargets')}
+                  items={excludeTargets}
+                  onChange={setExcludeTargets}
+                  placeholder={t('project.excludePlaceholder')}
                 />
                 <MiniListField
                   label={t('project.whitelist')}
@@ -376,9 +382,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         })()}
         </div>{/* end two-column grid */}
 
-        <p className="text-redlog-muted text-xs text-center font-mono">
-          {t('project.description')}
-        </p>
       </div>
       </div>
     </div>

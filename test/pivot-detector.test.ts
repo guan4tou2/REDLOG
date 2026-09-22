@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { detectPivot } from '../src/core/pivot-detector'
-import { extractTarget } from '../src/core/target-extractor'
+import { extractTargetWithProvenance } from '../src/core/target-extractor'
+
+const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
 import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from './helpers/builtin-extractors'
 
 // Two cases below call extractTarget on built-in tools (proxychains, sshuttle),
@@ -132,9 +134,9 @@ describe('detectPivot edge cases', () => {
 
 describe('target extractor knows pivot tools', () => {
   it('catalogs the downstream host behind proxychains', () => {
-    expect(extractTarget('proxychains4 nmap -sT 10.10.10.5')).toBe('10.10.10.5')
+    expect(extractedHost('proxychains4 nmap -sT 10.10.10.5')).toBe('10.10.10.5')
   })
   it('catalogs the sshuttle jump host', () => {
-    expect(extractTarget('sshuttle -r admin@jump.corp 10.10.0.0/16')).toBe('jump.corp')
+    expect(extractedHost('sshuttle -r admin@jump.corp 10.10.0.0/16')).toBe('jump.corp')
   })
 })

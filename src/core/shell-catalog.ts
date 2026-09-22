@@ -93,9 +93,9 @@ export function buildShellCatalog(probe: ShellProbe): ShellOption[] {
       if (INTERNAL_WSL_DISTROS.has(distro.toLowerCase())) continue
       push({
         id: `wsl:${distro}`,
-        label: `WSL · ${distro}`,
+        label: `WSL · ${distro} · Bash`,
         command: 'wsl.exe',
-        args: ['-d', distro],
+        args: ['-d', distro, '--', '/bin/bash'],
         flavour: 'posix',
         wslDistro: distro
       })

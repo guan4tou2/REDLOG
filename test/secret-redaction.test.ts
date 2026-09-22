@@ -6,7 +6,7 @@ import { redactSecrets, outputIfPathHiddenByCommand } from '../src/core/secret-r
 // tool_input.command / tool_result.output into the events table.
 //
 // v0.7.3 A note: earlier revisions of this test ran an extracted Python
-// block from claude-code-hook.sh and asserted byte-parity between the
+// transcript capture redactor and asserted stable output for the
 // shell hook's Python and the TS port. The hook was retired in v0.7.3
 // (the tailer subsumes its per-tool ingest), so the parity mechanism is
 // gone — this file now tests the TS redactor as the sole source of truth

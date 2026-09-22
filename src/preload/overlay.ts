@@ -3,9 +3,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 export interface IPStatus {
   externalIP: string | null
   internalIP: string | null
-  isAllowed: boolean
+  ipSafety: 'safe' | 'exposed' | 'unknown'
   lastCheck: number
   error: string | null
+  link?: { type: 'wifi' | 'wired' | 'unknown'; name: string }
 }
 
 contextBridge.exposeInMainWorld('redlog', {

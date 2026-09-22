@@ -23,6 +23,12 @@ const api: RedLogAPI = {
     contextMenu: (items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>) =>
       ipcRenderer.invoke('ui:contextMenu', items) as Promise<string | null>
   },
+  // `navigator.clipboard` is denied by the renderer's permission handler —
+  // see src/main/ipc/clipboard.ts. Renderer code goes through lib/clipboard.
+  clipboard: {
+    writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text) as Promise<boolean>,
+    readText: () => ipcRenderer.invoke('clipboard:readText') as Promise<string>
+  },
   project: {
     list: () => ipcRenderer.invoke('project:list'),
     create: (name: string, initialConfig?: unknown) => ipcRenderer.invoke('project:create', name, initialConfig),
@@ -46,21 +52,52 @@ const api: RedLogAPI = {
     exportProfile: () => ipcRenderer.invoke('config:exportProfile'),
     importProfile: () => ipcRenderer.invoke('config:importProfile')
   },
+  targetContext: {
+    get: () => ipcRenderer.invoke('targetContext:get') as Promise<string | null>,
+    set: (target: string | null) => ipcRenderer.invoke('targetContext:set', target) as Promise<{ ok: boolean; target: string | null }>,
+    onChange: (cb: (target: string | null) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, target: string | null): void => cb(target)
+      ipcRenderer.on('targetContext:changed', handler)
+      return () => ipcRenderer.removeListener('targetContext:changed', handler)
+    }
+  },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,
     pickPath: () => ipcRenderer.invoke('hookConfig:pickPath') as Promise<string | null>
   },
   events: {
-    query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
-    // v0.13.0: optional tier arg — StatusBar's chained·logged split reads
-    // both to show the two-tier row count. Undefined = 'chained' (audit
-    // count) preserved for legacy callers.
-    getCount: (tier?: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
+    query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),
+    queryPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
+    queryHttpFlowPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryHttpFlowPage', opts) as Promise<import('../core/db/events').HttpFlowPage>,
+    getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
-    search: (query: string, limit?: number, opts?: { agentType?: string }) => ipcRenderer.invoke('events:search', query, limit, opts),
+    search: (query: string, limit?: number, opts?: import('../core/db/events').EventFilter) => ipcRenderer.invoke('events:search', query, limit, opts),
+    // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
+    runQuery: (req: import('../core/db/events').EventQueryRequest) =>
+      ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
+    toolCounterparts: (keys: import('../core/db/events').ToolPairKey[]) =>
+      ipcRenderer.invoke('events:toolCounterparts', keys) as Promise<import('../core/db/events').RedLogEvent[]>,
     distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
+    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryTargetPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
+    queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) =>
+      ipcRenderer.invoke('events:queryScreenshotPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
     hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
     // Recordings are searched separately from events — see casts:search in
@@ -73,16 +110,9 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
-    onNew: (cb: (event: RedLogEvent) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, event: RedLogEvent) => cb(event)
-      ipcRenderer.on('events:new', handler)
-      return () => ipcRenderer.removeListener('events:new', handler)
-    },
-    // v0.6.95 P0-4c: batch listener for coalesced deliveries. The main-side
-    // event bus buffers incoming events and flushes an Array<RedLogEvent> via
-    // this channel each frame (~16 ms), collapsing burst traffic (mitmproxy
-    // scans, cast replay) from N IPC hops to one. `events:new` still fires
-    // per-event for backward compat with subscribers that don't care to batch.
+    causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
+      ipcRenderer.invoke('events:causalChain', anchorId, opts) as Promise<import('../core/db/events').EventCausalChain>,
+    // The main process coalesces burst traffic into one delivery per turn.
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, events: RedLogEvent[]) => cb(events)
       ipcRenderer.on('events:new-batch', handler)
@@ -92,15 +122,15 @@ const api: RedLogAPI = {
     // bytes of a redacted span, we log a chained system.secret_revealed event
     // so the audit trail shows who saw what and when.
     logSecretRevealed: (sourceEventId: string, fields: string[]) =>
-      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields)
+      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields),
+    toggleDoNotExport: (eventId: string) =>
+      ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
+    isDoNotExport: (eventId: string) =>
+      ipcRenderer.invoke('events:isDoNotExport', eventId) as Promise<boolean>
   },
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) =>
       ipcRenderer.invoke('httpBody:read', ref) as Promise<string | null>
-  },
-  har: {
-    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) =>
-      ipcRenderer.invoke('har:export', opts) as Promise<string | null>
   },
   marker: {
     create: (data: Record<string, unknown>) => ipcRenderer.invoke('marker:create', data),
@@ -165,15 +195,8 @@ const api: RedLogAPI = {
     stop: () => ipcRenderer.invoke('browser:stop')
   },
   data: {
-    exportJson: () => ipcRenderer.invoke('data:exportJson'),
-    exportBundle: (opts) => ipcRenderer.invoke('data:exportBundle', opts),
-    exportScopeFiltered: () => ipcRenderer.invoke('data:exportScopeFiltered'),
-    exportMarks: () => ipcRenderer.invoke('data:exportMarks'),
-    exportLoot: () => ipcRenderer.invoke('data:exportLoot'),
-    exportViolations: () => ipcRenderer.invoke('data:exportViolations'),
-    exportTimelineSlice: (from: number, to: number) => ipcRenderer.invoke('data:exportTimelineSlice', { from, to }),
-    exportNdjson: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => ipcRenderer.invoke('data:exportNdjson', opts),
-    exportWalkthrough: () => ipcRenderer.invoke('data:exportWalkthrough') as Promise<string | null>,
+    resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
+    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
     revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
   },
   hooks: {
@@ -245,6 +268,12 @@ const api: RedLogAPI = {
     onExit: (id: string, cb: (exitCode: number) => void) => {
       const channel = `terminal:exit:${id}`
       const handler = (_e: Electron.IpcRendererEvent, code: number) => cb(code)
+      ipcRenderer.on(channel, handler)
+      return () => ipcRenderer.removeListener(channel, handler)
+    },
+    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => {
+      const channel = `terminal:castState:${id}`
+      const handler = (_e: Electron.IpcRendererEvent, state: { recording: boolean; castTruncated: boolean }) => cb(state)
       ipcRenderer.on(channel, handler)
       return () => ipcRenderer.removeListener(channel, handler)
     },

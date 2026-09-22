@@ -74,6 +74,10 @@ jobs:
         continue-on-error: true
         run: npx electron-builder --linux --publish never
 
+      - name: Verify packaged capture resources
+        if: matrix.os != 'ubuntu-latest' || success()
+        run: npm run verify:package-resources
+
       - name: Upload installers
         uses: actions/upload-artifact@v5
         continue-on-error: ${{ matrix.os == 'ubuntu-latest' }}

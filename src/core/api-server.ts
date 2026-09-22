@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
-import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
+import { queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { createBookmark, listBookmarks } from './db/bookmarks'
 import {
   ensurePrimaryOperator,
@@ -16,7 +16,7 @@ import {
 import { eventBus } from './event-bus'
 import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
-import { extractTarget, extractTargetWithProvenance } from './target-extractor'
+import { extractTargetWithProvenance } from './target-extractor'
 import { detectPivot } from './pivot-detector'
 import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
@@ -418,13 +418,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (route === '/api/marker' && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const event = insertEvent('marker', {
+      const event = ingest({ agentType: 'marker', data: {
         title: body.title || 'Untitled',
         notes: body.notes || '',
         severity: body.severity || 'info',
         category: body.category || 'external'
-      }, { engagementId, operatorId: operator.id, targetId: (body.target_id || body.targetId) as string | undefined })
-      if (event) eventBus.publish(event)
+      }, engagementId, operatorId: operator.id,
+      targetId: (body.target_id || body.targetId) as string | undefined,
+      envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } }).event
       json(res, 201, event)
       return
     }
@@ -481,16 +482,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return
     }
 
-    // F4 part B: /api/bookmarks is the current route; /api/quickmarks is kept
-    // as a deprecated alias so installed integrations keep working. The GET
-    // response key follows the route (`bookmarks` vs the legacy `quickmarks`).
-    if ((route === '/api/bookmarks' || route === '/api/quickmarks') && req.method === 'GET') {
+    if (route === '/api/bookmarks' && req.method === 'GET') {
       const list = listBookmarks()
-      json(res, 200, route === '/api/bookmarks' ? { bookmarks: list } : { quickmarks: list })
+      json(res, 200, { bookmarks: list })
       return
     }
 
-    if ((route === '/api/bookmarks' || route === '/api/quickmarks') && req.method === 'POST') {
+    if (route === '/api/bookmarks' && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
       const mark = createBookmark({
@@ -570,8 +568,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // a small window so echoed prompt/output isn't lost to rounding).
       const startMs = target.timestamp - Math.max(duration, 100)
       // v0.9.6 (T2): prefer the byte range stamped at capture time — O(len)
-      // instead of streaming the file from 0. Falls back to the time window
-      // for pre-v0.9.6 events and unbracketed pairs.
+      // instead of streaming the file from 0. Unbracketed pairs use the time window.
       const io = td.io as { off?: number; len?: number } | undefined
       const bracketed = typeof io?.off === 'number' && typeof io.len === 'number' && io.len > 0
         ? await readCastRange(resolvedCast, io.off, io.len)

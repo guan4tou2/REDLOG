@@ -86,18 +86,6 @@ export function updateOperatorToken(id: string, token: string): boolean {
   // history without also re-hashing, which breaks the chain), so key rotation
   // needs its own IPC + a supersedes-relation design. Punted from v0.6.89.
   //
-  // We DO backfill a signing key if the operator was created pre-v0.6.89 and
-  // has no key yet — token rotation is a natural "operator touched their
-  // account" moment, so opting them into signing here is low-surprise.
-  if (info.changes > 0) {
-    try {
-      const existing = db.prepare(`SELECT signer_pub_key FROM operators WHERE id = ?`).get(id) as { signer_pub_key: string | null } | undefined
-      if (existing && !existing.signer_pub_key) {
-        const kp = generateOperatorKeyPair(id)
-        db.prepare(`UPDATE operators SET signer_pub_key = ? WHERE id = ?`).run(kp.publicKey, id)
-      }
-    } catch { /* best effort */ }
-  }
   return info.changes > 0
 }
 

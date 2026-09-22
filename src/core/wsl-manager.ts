@@ -80,7 +80,7 @@ export function invalidateWslCache(): void { distroCache = null }
 
 /**
  * Convert a Windows path to its WSL /mnt/ equivalent.
- * e.g. C:\Users\foo\hooks\shell-preexec-hook.sh -> /mnt/c/Users/foo/hooks/shell-preexec-hook.sh
+ * e.g. C:\Users\foo\hooks\shell-bash-hook.sh -> /mnt/c/Users/foo/hooks/shell-bash-hook.sh
  *
  * Reuses the same logic from hooks-manager.ts buildManualSteps('shell-wsl').
  */
@@ -91,14 +91,14 @@ export function windowsPathToWsl(winPath: string): string {
 }
 
 /**
- * Resolve the absolute Windows path to the shell-preexec-hook.sh file.
+ * Resolve the absolute Windows path to a shell-specific adapter.
  * Mirrors how hooks-manager.ts resolves hook files.
  */
-function resolveHookPath(): string {
+function resolveHookPath(shell: 'bash' | 'zsh'): string {
   const hooksDir = join(__dirname, '../../../hooks')
   const fallback = join(__dirname, '../../hooks')
   const dir = existsSync(hooksDir) ? hooksDir : fallback
-  return join(dir, 'shell-preexec-hook.sh')
+  return join(dir, shell === 'zsh' ? 'shell-zsh-hook.zsh' : 'shell-bash-hook.sh')
 }
 
 /**
@@ -209,7 +209,7 @@ export async function checkHookStatus(
     const rcFile = shell === 'bash' ? '.bashrc' : '.zshrc'
     const result = await runWsl([
       '-d', distro, '--', '/bin/bash', '-c',
-      `grep -c "shell-preexec-hook" ~/${rcFile} 2>/dev/null || echo 0`
+      `grep -c "shell-${shell}-hook" ~/${rcFile} 2>/dev/null || echo 0`
     ])
     const count = parseInt(result.stdout.toString().trim() || '0', 10)
     return count > 0 ? 'installed' : 'not-installed'
@@ -271,7 +271,7 @@ export async function installHook(
     return { success: false, message: 'WSL is only available on Windows' }
   }
 
-  const hookPath = resolveHookPath()
+  const hookPath = resolveHookPath(shell)
   if (!existsSync(hookPath)) {
     return { success: false, message: `Hook file not found: ${hookPath}` }
   }
@@ -282,7 +282,7 @@ export async function installHook(
   // Check if already installed
   const checkResult = await runWsl([
     '-d', distro, '--', '/bin/bash', '-c',
-    `grep -c "shell-preexec-hook" ~/${rcFile} 2>/dev/null || echo 0`
+    `grep -c "shell-${shell}-hook" ~/${rcFile} 2>/dev/null || echo 0`
   ])
   const count = parseInt(checkResult.stdout.toString().trim() || '0', 10)
   if (count > 0) {
@@ -319,7 +319,7 @@ export async function uninstallHook(
 
   const result = await runWsl([
     '-d', distro, '--', '/bin/bash', '-c',
-    `sed -i '/RedLog WSL hook/d; /shell-preexec-hook/d' ~/${rcFile}`
+    `sed -i '/RedLog WSL hook/d; /shell-${shell}-hook/d' ~/${rcFile}`
   ])
 
   invalidateWslCache()

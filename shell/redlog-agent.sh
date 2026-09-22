@@ -97,12 +97,12 @@ redlog_config() {
   _redlog_get "/api/config"
 }
 
-# Create a quickmark bookmark
-redlog_quickmark() {
+# Create a private bookmark
+redlog_bookmark() {
   local title="$1"
   local url="${2:-}"
   local note="${3:-}"
-  _redlog_post "/api/quickmarks" \
+  _redlog_post "/api/bookmarks" \
     "{\"title\":$(_json_escape "$title"),\"url\":$(_json_escape "$url"),\"note\":$(_json_escape "$note")}"
 }
 

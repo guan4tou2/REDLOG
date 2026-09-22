@@ -14,6 +14,7 @@ import path from 'path'
 // This repo routinely carries node_modules built for Electron's ABI.
 let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null
+let idxmod: typeof import('../src/core/http-body-index') | null = null
 let amendMod: typeof import('../src/core/marker-amend') | null = null
 let chain: typeof import('../src/core/chain-anchor') | null = null
 let bus: typeof import('../src/core/event-bus') | null = null
@@ -23,6 +24,7 @@ try {
   new D(':memory:').close()
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
+  idxmod = await import('../src/core/http-body-index')
   amendMod = await import('../src/core/marker-amend')
   chain = await import('../src/core/chain-anchor')
   bus = await import('../src/core/event-bus')
@@ -49,6 +51,13 @@ describe.skipIf(!available)('amending a marker', () => {
   })
   afterEach(() => {
     bus!.eventBus.resume()
+    // `closeDB()` closes the project DB and its read-only twin, but not
+    // `http-body-index.db` — a second SQLite file `linkHttpBodyEvent()` opens
+    // lazily. POSIX unlinks an open file happily; Windows answers EBUSY, so
+    // the rmSync below threw and every test in this file failed on teardown
+    // while its assertions had all passed. `http-body-search.test.ts` already
+    // closes it; these files simply did not.
+    idxmod!.closeHttpBodyIndex()
     dbmod!.closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })

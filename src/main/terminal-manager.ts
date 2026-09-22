@@ -4,12 +4,12 @@ import os from 'os'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { insertEvent } from '../core/db/events'
+import { ingestEvent } from '../core/ingest'
 import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
-import { shellFlavour, type ShellFlavour } from '../core/shell-flavour'
+import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
 import { buildShellCatalog, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 
@@ -45,6 +45,8 @@ interface TerminalSession {
   castBytes: number
   castTruncated: boolean
   finalised: boolean
+  cols: number
+  rows: number
   /** What this pane is running, and whether its commands are being recorded.
    *  Kept on the session so a re-attaching renderer gets the same answer as
    *  the one that spawned it. */
@@ -98,7 +100,7 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   }
 
   try {
-    const event = insertEvent('shell', {
+    const event = ingestEvent('shell', {
       subtype: 'session_end',
       source: 'builtin-terminal',
       terminalId: session.id,
@@ -112,7 +114,6 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
       // v0.6.89: point at the session_start we captured above.
       ...(session.startEventId ? { _causes: [session.startEventId] } : {})
     }, { engagementId: session.engagementId, operatorId: session.operatorId })
-    if (event) eventBus.publish(event)
   } catch (e) {
     // Session_end write is the recording integrity chain's signal that a
     // recording was closed cleanly — losing it means the cast SHA is missing
@@ -122,15 +123,15 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   }
 }
 
-function resolveShellHook(flavour: ShellFlavour): string | null {
-  if (flavour === 'none') return null
+function resolveShellHook(shell: string, innerShell?: string): string | null {
+  const file = shellAdapterFilename(shell, innerShell)
+  if (!file) return null
   const candidates = [
     path.join(__dirname, '../../../hooks'),
     path.join(__dirname, '../../hooks')
   ]
   const dir = candidates.find(d => fs.existsSync(d))
   if (!dir) return null
-  const file = flavour === 'powershell' ? 'shell-hook.ps1' : 'shell-preexec-hook.sh'
   const p = path.join(dir, file)
   return fs.existsSync(p) ? p : null
 }
@@ -150,6 +151,34 @@ export function setTerminalWindow(win: BrowserWindow): void {
 function sendToWindow(channel: string, payload: unknown): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try { mainWindow.webContents.send(channel, payload) } catch { /* window tearing down */ }
+}
+
+/** Append one asciicast v2 frame under the session's recording policy.
+ * Output and resize frames share this path so byte accounting, pause and
+ * truncation cannot drift. The live PTY remains usable if the cast fails. */
+function appendCastFrame(session: TerminalSession, type: 'o' | 'r', data: string): boolean {
+  if (eventBus.paused || !session.castStream || session.castTruncated) return false
+  const encoded = JSON.stringify([(Date.now() - session.castStart) / 1000, type, data]) + '\n'
+  const chunkBytes = Buffer.byteLength(encoded)
+  if (session.castBytes + chunkBytes > maxCastBytes) {
+    try {
+      const marker = JSON.stringify([(Date.now() - session.castStart) / 1000, 'o', `\r\n[redlog: cast truncated at ${maxCastBytes} bytes]\r\n`]) + '\n'
+      session.castStream.write(marker)
+      session.castBytes += Buffer.byteLength(marker)
+      session.castStream.end()
+    } catch { /* live terminal must survive a recording failure */ }
+    session.castStream = null
+    session.castTruncated = true
+    sendToWindow(`terminal:castState:${session.id}`, { recording: false, castTruncated: true })
+    return false
+  }
+  try {
+    session.castStream.write(encoded)
+    session.castBytes += chunkBytes
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** v0.9.6 (T2): current write position in a live session's .cast, so a
@@ -207,7 +236,7 @@ export function recoverOrphanSessions(): number {
       try { tid = String(JSON.parse(row.start_data)?.terminalId ?? '') } catch { continue }
       if (!tid) continue
       try {
-        const ev = insertEvent('shell', {
+        const ev = ingestEvent('shell', {
           subtype: 'session_end',
           source: 'builtin-terminal',
           terminalId: tid,
@@ -216,7 +245,7 @@ export function recoverOrphanSessions(): number {
           recovered: true,
           description: 'orphan session recovered on app start'
         }, { engagementId, operatorId })
-        if (ev) { eventBus.publish(ev); recovered++ }
+        if (ev) recovered++
       } catch (e) { noteDbError('orphan-session-recovery', e) }
     }
   } catch (e) { noteDbError('orphan-session-recovery', e) }
@@ -233,6 +262,10 @@ export interface SpawnResult {
   /** False when this pane records no commands: its shell has no hook, or the
    *  hook file is missing from the install. */
   hookSourced: boolean
+  /** Whether this pane's screen recording is running, and whether it has hit
+   *  the cast size cap. */
+  recording: boolean
+  castTruncated: boolean
 }
 
 export function spawnTerminal(id: string, cols: number, rows: number, shellId?: string): SpawnResult {
@@ -245,7 +278,14 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
       const buf = existing.buffer
       setTimeout(() => sendToWindow(`terminal:data:${id}`, buf), 0)
     }
-    return { pid: existing.pty.pid, shell: existing.shell, shellLabel: existing.shellLabel, hookSourced: existing.hookSourced }
+    return {
+      pid: existing.pty.pid,
+      shell: existing.shell,
+      shellLabel: existing.shellLabel,
+      hookSourced: existing.hookSourced,
+      recording: existing.castStream !== null && !existing.castTruncated,
+      castTruncated: existing.castTruncated
+    }
   }
   if (!operatorId) {
     throw new Error('Terminal cannot spawn before configureTerminal() sets an operator identity')
@@ -336,6 +376,8 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     castBytes: castHeaderBytes,
     castTruncated: false,
     finalised: false,
+    cols,
+    rows,
     engagementId,
     operatorId,
     shell,
@@ -355,23 +397,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
       sendToWindow(`terminal:data:${id}`, data)
       return
     }
-    if (session.castStream && !session.castTruncated) {
-      const encoded = JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', data]) + '\n'
-      const chunkBytes = Buffer.byteLength(encoded)
-      if (session.castBytes + chunkBytes > maxCastBytes) {
-        try {
-          session.castStream.write(JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', `\r\n[redlog: cast truncated at ${maxCastBytes} bytes]\r\n`]) + '\n')
-          session.castStream.end()
-        } catch { /* */ }
-        session.castStream = null
-        session.castTruncated = true
-      } else {
-        try {
-          session.castStream.write(encoded)
-          session.castBytes += chunkBytes
-        } catch { /* stream closed */ }
-      }
-    }
+    appendCastFrame(session, 'o', data)
     sendToWindow(`terminal:data:${id}`, data)
   })
 
@@ -386,10 +412,10 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // Resolved before the event is written so `session_start` carries the
   // answer: reading the timeline later, "this pane logged no commands" and
   // "this pane could not log commands" must not look the same.
-  const hookPath = resolveShellHook(flavour)
+  const hookPath = resolveShellHook(shell, wslDistro ? '/bin/bash' : undefined)
   session.hookSourced = hookPath !== null
 
-  const event = insertEvent('shell', {
+  const event = ingestEvent('shell', {
     subtype: 'session_start',
     source: 'builtin-terminal',
     terminalId: id,
@@ -404,7 +430,6 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     // a project switch mid-session cannot re-attribute this row.
   }, { engagementId: session.engagementId, operatorId: session.operatorId })
   if (event) {
-    eventBus.publish(event)
     session.startEventId = event.id
   }
 
@@ -418,7 +443,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     // the belief that a native bash "would still need `cygpath -u` to accept
     // the drive-lettered path" (Audit P1-6). That premise is wrong: Git Bash
     // and MSYS2 accept the mixed form this produces —
-    // `source "C:/…/hooks/shell-preexec-hook.sh"` sources cleanly and defines
+    // `source "C:/…/hooks/shell-bash-hook.sh"` sources cleanly and defines
     // the hook's functions. Verified on Windows 11 / Git for Windows before
     // removing the guard.
     //
@@ -443,7 +468,14 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // recorded". The renderer shows it, because a capture gap the operator
   // cannot see is the one failure mode the product does not allow
   // (docs/PRD-COMPLETION.md §1.5).
-  return { pid: term.pid, shell, shellLabel, hookSourced: hookPath !== null }
+  return {
+    pid: term.pid,
+    shell,
+    shellLabel,
+    hookSourced: hookPath !== null,
+    recording: castStream !== null,
+    castTruncated: false
+  }
 }
 
 export function writeTerminal(id: string, data: string): void {
@@ -451,8 +483,14 @@ export function writeTerminal(id: string, data: string): void {
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): void {
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return
+  const session = sessions.get(id)
+  if (!session || (session.cols === cols && session.rows === rows)) return
   try {
-    sessions.get(id)?.pty.resize(cols, rows)
+    session.pty.resize(cols, rows)
+    session.cols = cols
+    session.rows = rows
+    appendCastFrame(session, 'r', `${cols}x${rows}`)
   } catch {}
 }
 

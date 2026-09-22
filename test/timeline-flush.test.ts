@@ -10,6 +10,12 @@ import path from 'path'
 const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'renderer', 'src', 'components', 'Timeline.tsx'), 'utf-8'
 )
+const SESSION_BANDS_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineSessionBands.ts'), 'utf-8'
+)
+const FILTERS_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'renderer', 'src', 'lib', 'timelineFilters.ts'), 'utf-8'
+)
 
 // Capture through the closing dependency array, not just up to it — a
 // non-greedy match that stops at `}, [` cuts the deps off, which is half of
@@ -25,16 +31,19 @@ describe('per-batch work (W19)', () => {
     // Measured on a real 131,833-event project: 116 ms to build, and it ran on
     // every flush whether or not anything was being filtered. It was the most
     // expensive thing on the panel by a factor of three.
-    const body = memoBody('searchIndex')
-    expect(body, 'must bail before the loop when no query is active')
-      .toMatch(/if \(!filterQueryDebounced\.trim\(\)\) return idx/)
-    // The guard has to come before the loop, not after it.
-    expect(body.indexOf('return idx')).toBeLessThan(body.indexOf('for (const e of events)'))
+    // Logic extracted to timelineFilters.ts — verify delegation and that the
+    // extracted module still has the bail-before-loop guard.
+    expect(SRC, 'Timeline delegates to buildSearchIndex')
+      .toMatch(/buildSearchIndex\(/)
+    expect(FILTERS_SRC, 'must bail before the loop when no query is active')
+      .toMatch(/if \(!query\.trim\(\)\) return idx/)
+    expect(FILTERS_SRC.indexOf('return idx')).toBeLessThan(FILTERS_SRC.indexOf('for (const e of events)'))
   })
 
   it('the index rebuilds when the query changes', () => {
     // Making it lazy without this dep would leave the index empty forever.
-    expect(memoBody('searchIndex')).toMatch(/\}, \[events, operatorNames, filterQueryDebounced\]/)
+    expect(SRC).toMatch(/buildSearchIndex\(events, operatorNames, filterQueryDebounced\)/)
+    expect(SRC).toMatch(/\[events, operatorNames, filterQueryDebounced\]/)
   })
 
   it('flushes coalesce once the event set is large', () => {
@@ -53,11 +62,14 @@ describe('session band labels (V11)', () => {
     // Two terminals open at once is the normal case for an operator with a
     // shell and a listener; both labels drew at their own top-left and neither
     // was readable.
-    const body = memoBody('sessionBands')
-    expect(body, 'greedy interval colouring over x0-sorted bands')
+    // The logic was extracted to timelineSessionBands.ts — verify delegation
+    // and that the extracted module has the actual algorithm.
+    expect(SRC, 'Timeline delegates to buildSessionBands')
+      .toMatch(/buildSessionBands\(/)
+    expect(SESSION_BANDS_SRC, 'greedy interval colouring over x0-sorted bands')
       .toMatch(/rowEnds\.findIndex\(\(end\) => end <= b\.x0\)/)
-    expect(body, 'clearance must account for the label, not just the band')
-      .toMatch(/LABEL_CLEARANCE_PX/)
+    expect(SESSION_BANDS_SRC, 'clearance must account for the label, not just the band')
+      .toMatch(/labelClearancePx/)
   })
 
   it('offsets the label by its row and hides it on a band too narrow to hold it', () => {

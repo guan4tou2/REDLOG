@@ -8,15 +8,11 @@ import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } 
 
 // ── Shell command_end ────────────────────────────────────────────────
 
-/** Structured detail body for a shell command_end event. Renders separate
- *  stdout / stderr collapsible sections when the wrapper populated them,
- *  falls back to a "mixed" section for the legacy `output` field, and
- *  finishes with a compact key=value metadata grid. */
+/** Structured detail body for a shell command_end event. */
 export function CommandEndDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
-  const hasLegacyOutput = !hasStdout && !hasStderr && typeof data.output === 'string'
   return (
     <div className="mt-2 space-y-1.5">
       {hasStdout && (
@@ -39,16 +35,8 @@ export function CommandEndDetail({ data }: { data: Record<string, unknown> }): J
           startOpen={false}
         />
       )}
-      {hasLegacyOutput && (
-        <CollapsibleStream
-          label={t('timeline.detail.stdoutMixed')}
-          content={data.output as string}
-          accent="zinc"
-          startOpen={false}
-        />
-      )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!hasStdout && !hasStderr && !hasLegacyOutput && (
+      {!hasStdout && !hasStderr && (
         <IoAbsenceNote
           builtin={data.source === 'builtin-terminal'}
           io={data.io as Record<string, unknown> | undefined}
@@ -107,9 +95,10 @@ export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<s
  *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
  *  other half so both the request and its return read in one panel. */
 export function AgentTurnDetail(
-  { data, paired }: {
+  { data, paired, allLoaded }: {
     data: Record<string, unknown>
     paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
+    allLoaded?: boolean
   }
 ): JSX.Element {
   const { t } = useI18n()
@@ -160,14 +149,19 @@ export function AgentTurnDetail(
         />
       )}
       {isToolCall && paired?.kind === 'result' && pairedResultOut.length > 0 && (
-        <CollapsibleStream
-          label={t('timeline.detail.agentToolOutput')}
-          content={pairedResultOut}
-          bytes={pairedResultBytes}
-          truncated={paired.data.truncated === true}
-          accent="emerald"
-          startOpen={true}
-        />
+        <>
+          <CollapsibleStream
+            label={t('timeline.detail.agentToolOutput')}
+            content={pairedResultOut}
+            bytes={pairedResultBytes}
+            truncated={paired.data.truncated === true}
+            accent="emerald"
+            startOpen={true}
+          />
+        </>
+      )}
+      {isToolCall && !paired && allLoaded && (
+        <p className="text-xs text-amber-400/80 font-mono px-1 py-0.5">⏳ {t('timeline.detail.toolNoResult')}</p>
       )}
       {isToolResult && paired?.kind === 'call' && pairedCallStr.length > 0 && (
         <CollapsibleStream
@@ -205,12 +199,6 @@ export function AgentTurnDetail(
 }
 
 // ── Scanner (HTTP proxy) ─────────────────────────────────────────────
-
-/** v0.11.2 (T6): alias — the actual component lives in HttpDetail.tsx now,
- *  shared with HttpHistoryPanel. */
-export function ScannerDetail({ data, eventId }: { data: Record<string, unknown>; eventId: string }): JSX.Element {
-  return <HttpDetail data={data} eventId={eventId} />
-}
 
 // ── Browser console ──────────────────────────────────────────────────
 

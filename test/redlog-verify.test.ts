@@ -86,7 +86,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     }
 
     const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-verify-out-'))
-    const bundle = bundleExport.exportBundle('default', outRoot)
+    const bundle = bundleExport.exportBundle('default', { outRoot })
     expect(fs.existsSync(path.join(bundle.outDir, 'events.jsonl'))).toBe(true)
     expect(fs.existsSync(path.join(bundle.outDir, 'manifest.json'))).toBe(true)
     expect(fs.existsSync(path.join(bundle.outDir, 'operators.json'))).toBe(true)
@@ -125,7 +125,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     }
 
     const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-verify-out-t-'))
-    const bundle = bundleExport.exportBundle('default', outRoot)
+    const bundle = bundleExport.exportBundle('default', { outRoot })
 
     // Tamper: rewrite the middle event's data field to something else.
     const eventsPath = path.join(bundle.outDir, 'events.jsonl')

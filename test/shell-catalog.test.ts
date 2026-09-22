@@ -43,7 +43,7 @@ describe('shell catalog', () => {
     const cat = buildShellCatalog(probe({ wslDistros: ['Ubuntu', 'kali'] }))
     const ubuntu = cat.find((s) => s.id === 'wsl:Ubuntu')
     expect(ubuntu).toMatchObject({
-      label: 'WSL · Ubuntu', command: 'wsl.exe', args: ['-d', 'Ubuntu'], flavour: 'posix', wslDistro: 'Ubuntu'
+      label: 'WSL · Ubuntu · Bash', command: 'wsl.exe', args: ['-d', 'Ubuntu', '--', '/bin/bash'], flavour: 'posix', wslDistro: 'Ubuntu'
     })
     expect(cat.some((s) => s.id === 'wsl:kali')).toBe(true)
   })

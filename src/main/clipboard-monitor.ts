@@ -1,6 +1,6 @@
 import { clipboard } from 'electron'
 import { createHash } from 'crypto'
-import { insertEvent } from '../core/db/events'
+import { ingestEvent } from '../core/ingest'
 import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { redact, maskText, getRules } from '../core/redaction'
@@ -65,7 +65,7 @@ async function sample(): Promise<void> {
     } catch { /* additive */ }
   }
   try {
-    const ev = insertEvent('clipboard', {
+    ingestEvent('clipboard', {
       subtype: 'clipboard_changed',
       sha256: hash,
       length: text.length,
@@ -74,7 +74,6 @@ async function sample(): Promise<void> {
       preview,  // null when storePreview is off
       redactionsInPreview: redacted.redacted.length > 0 ? redacted.redacted.length : undefined
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) {
     // DB may not be ready during startup or project close; forward to
     // capture-health so a persistent failure surfaces on StatusBar instead of

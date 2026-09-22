@@ -32,6 +32,8 @@ import type {
 } from './policy'
 import type { Signal, IPChangeSignal, TargetHitSignal } from './signal'
 
+import { matchPattern } from '../scope-evaluator'
+
 // ─── shared helpers (CIDR + domain matching) ────────────────────────────────
 
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/
@@ -266,10 +268,7 @@ export function buildScopeIndexes(targets: readonly string[]): ScopeIndexes {
  * `ScopePolicy` delegates to it, so a stored row re-judged later gets byte-for-
  * byte the verdict the live path would have produced.
  *
- * CASE IS SIGNIFICANT. `matchesDomain` compares exactly, with no lowercasing,
- * so a caller that normalises case before classifying gets a DIFFERENT verdict
- * from the live path. Normalise only when grouping candidates, never before
- * this call.
+ * Case-insensitive via the canonical `matchPattern` from scope-evaluator.
  */
 export function classifyScopeTarget(
   target: string,
@@ -282,15 +281,11 @@ export function classifyScopeTarget(
   }
 
   // Rung 1 (strongest): explicit exclude match.
-  const isExcluded = scope.excludeTargets.some((ex) =>
-    isIPv4(target) ? matchesCIDR(target, ex) : matchesDomain(target, ex)
-  )
+  const isExcluded = scope.excludeTargets.some((ex) => matchPattern(target, ex))
   if (isExcluded) return { distance: 'excluded', authority: 'fact', severity: 'critical' }
 
   // Rung 4 (floor): explicit include match.
-  const isInScope = scope.targets.some((t) =>
-    isIPv4(target) ? matchesCIDR(target, t) : matchesDomain(target, t)
-  )
+  const isInScope = scope.targets.some((t) => matchPattern(target, t))
   if (isInScope) return { distance: 'in_scope', authority: 'fact', severity: 'clean' }
 
   const idx = indexes ?? buildScopeIndexes(scope.targets)

@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
-import { useSharedFilter } from '../lib/FilterContext'
+import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
+import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -28,6 +29,10 @@ function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
   }
   if (e.agentType === 'file_transfer') return `${d.direction}: ${d.filename || d.localPath || d.remotePath}`
   if (e.agentType === 'loot') return `Loot: ${d.type} (${d.confidence})`
+  if (e.agentType === 'agent') {
+    const body = d.full ?? d.preview ?? d.output ?? d.text
+    return body ? `Agent: ${String(body).slice(0, 120)}` : `Agent: ${d.subtype || 'event'}`
+  }
   return `${e.agentType}: ${d.subtype || JSON.stringify(d).slice(0, 60)}`
 }
 
@@ -58,6 +63,48 @@ function hoverTitle(
   return `${shown}\n${t('search.amendedOriginalTitle', { title: String(e.data.title ?? '') })}`
 }
 
+/** Resolve orphaned amendments back to their original markers, then build
+ *  folds for all markers in the result set. Returns the (possibly adjusted)
+ *  rows and the fold map. */
+async function resolveAndFold(
+  rawItems: RedLogEvent[]
+): Promise<{ rows: RedLogEvent[]; newFolds: Map<string, MarkerFold> }> {
+  const markerIds = new Set(
+    rawItems.filter((e) => e.agentType === 'marker' && !isMarkerAmendment(e)).map((e) => e.id)
+  )
+  const orphaned = rawItems
+    .filter(isMarkerAmendment)
+    .map((e) => String((e.data as Record<string, unknown>).markerId ?? ''))
+    .filter((id) => id && !markerIds.has(id))
+
+  let rows = rawItems
+  if (orphaned.length > 0) {
+    const originals = (await window.redlog.events.getById([...new Set(orphaned)])) ?? []
+    for (const o of originals) markerIds.add(o.id)
+    const seen = new Set<string>()
+    rows = rawItems.flatMap((e) => {
+      if (!isMarkerAmendment(e)) return [e]
+      const id = String((e.data as Record<string, unknown>).markerId ?? '')
+      const original = originals.find((o) => o.id === id)
+      if (!original || seen.has(id)) return []
+      seen.add(id)
+      return [original]
+    })
+  }
+
+  const amendments = markerIds.size > 0
+    ? (await window.redlog.marker.amendments([...markerIds])) ?? []
+    : []
+  const newFolds = buildFolds(rows, amendments)
+  return { rows, newFolds }
+}
+
+const PAGE_SIZE = 100
+
+function errorText(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : String(error)
+}
+
 interface SearchPanelProps {
   onOpenInTimeline?: (eventId: string, ts: number) => void
 }
@@ -69,29 +116,26 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
-  // Type-filter chips: null = show all, non-null = only that agentType.
-  // v0.15.1: pushed to backend so the SQL LIMIT applies after the type
-  // filter, not before — prevents dominant types from squeezing out rare ones.
-  // Shared filter agentType takes precedence when set.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const effectiveTypeFilter = sharedFilter.agentType ?? typeFilter
-  // Recordings are searched alongside events (§2.4). Kept as separate state
-  // rather than merged into `results`: an event and a span of terminal output
-  // are not the same kind of thing, and flattening them would mean inventing
-  // a summary line for bytes that already have one.
   const [castHits, setCastHits] = useState<CastHit[]>([])
   const [castPending, setCastPending] = useState(0)
   const [knownTypes, setKnownTypes] = useState<string[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [castError, setCastError] = useState<string | null>(null)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+  const [toolSession, setToolSession] = useState<{ toolUseId: string; sessionId: string; otherSessionIds: string[] } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Audit 2026-09-18 P4: monotonic counter so stale slow responses don't
-  // overwrite newer results.
   const searchSeqRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
+  const queryRef = useRef(query)
+  queryRef.current = query
   const { t } = useI18n()
+  const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
 
-  // Hoisted out of the render IIFE it used to live in so the keyboard hook can
-  // count it. Same keys as every other list (§9); a result row's only action
-  // is "show me this on the Timeline", so Enter and ⌘↩ agree.
   const filtered = results
   const listNav = useListKeyboard({
     count: filtered.length,
@@ -100,95 +144,134 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     onEscape: () => setTypeFilter(null)
   })
 
+  const buildSearchOpts = useCallback(() => {
+    const opts = toEventFilter(sharedFilter)
+    if (effectiveTypeFilter) opts.agentType = effectiveTypeFilter
+    return opts
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+
   const doSearch = useCallback((q: string) => {
-    // Single-char search intents are real (IP octet, short tag) — down from
-    // the prior q<2 gate. 0-char still shows the placeholder hint. Audit P1 #27.
     if (q.length < 1) {
       setResults([])
       setCastHits([])
       setSearched(false)
+      setHasMore(false)
+      setNextCursor(null)
+      setSearchError(null)
+      setCastError(null)
+      setLoadMoreError(null)
+      setToolSession(null)
+      return
+    }
+    const outcome = parseQuery(q)
+    if (!outcome.ok) {
+      abortRef.current?.abort()
+      setResults([])
+      setCastHits([])
+      setSearching(false)
+      setSearched(false)
+      setSearchError(null)
+      setToolSession(null)
       return
     }
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
     setSearching(true)
+    setSearched(false)
+    setSearchError(null)
+    setCastError(null)
+    setLoadMoreError(null)
+    setResults([])
+    setFolds(new Map())
+    setToolSession(null)
+    setHasMore(false)
+    setNextCursor(null)
     const seq = ++searchSeqRef.current
-    const searchOpts: Record<string, unknown> = {}
-    if (effectiveTypeFilter) searchOpts.agentType = effectiveTypeFilter
-    window.redlog.events.search(q, 200, searchOpts as { agentType?: string }).then(async (r) => {
-      // Client-side time filter from shared FilterBar
-      if (sharedFilter.timeRange) {
-        const { since, before } = sharedFilter.timeRange
-        r = r.filter((e) => {
-          if (since && e.timestamp < since) return false
-          if (before && e.timestamp > before) return false
-          return true
-        })
-      }
+    const opts = buildSearchOpts()
+    const eventFilterActive = Boolean(
+      opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly
+    )
+    window.redlog.events.runQuery({
+      parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE
+    }).then(async (page) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
-      // `searchEvents` is a LIKE over each row's own bytes, so a marker
-      // corrected since it was written matches its OLD title only, and the new
-      // one matches the amendment row alone. Showing that bare correction —
-      // with the finding itself missing from the results — reads as the finding
-      // having been deleted, which for this product is the worst possible lie.
-      // So an amendment hit is resolved back to the marker it names.
-      const markerIds = new Set(r.filter((e) => e.agentType === 'marker' && !isMarkerAmendment(e)).map((e) => e.id))
-      const orphaned = r.filter(isMarkerAmendment)
-        .map((e) => String((e.data as Record<string, unknown>).markerId ?? ''))
-        .filter((id) => id && !markerIds.has(id))
-      let rows = r
-      if (orphaned.length > 0) {
-        const originals = (await window.redlog.events.getById?.([...new Set(orphaned)])) ?? []
-        for (const o of originals) markerIds.add(o.id)
-        // The correction stays out of the list; the finding takes its place at
-        // the position the correction held, so result order still tracks the hit.
-        const seen = new Set<string>()
-        rows = r.flatMap((e) => {
-          if (!isMarkerAmendment(e)) return [e]
-          const id = String((e.data as Record<string, unknown>).markerId ?? '')
-          const original = originals.find((o) => o.id === id)
-          if (!original || seen.has(id)) return []
-          seen.add(id)
-          return [original]
-        })
-      }
-      const amendments = markerIds.size > 0
-        ? (await window.redlog.marker.amendments?.([...markerIds])) ?? []
-        : []
-      setFolds(buildFolds(rows, amendments))
+      const { rows, newFolds } = await resolveAndFold(page.items)
+      setFolds(newFolds)
       setResults(rows)
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+      setToolSession(page.toolSession ?? null)
       setSearching(false)
       setSearched(true)
-    }).catch(() => {
-      if (seq !== searchSeqRef.current) return
+    }).catch((error: unknown) => {
+      if (ac.signal.aborted || seq !== searchSeqRef.current) return
+      setSearchError(errorText(error))
       setSearching(false)
+      setSearched(true)
     })
-    // Fired in parallel and settled independently: the recording index can be
-    // slower or absent, and making the event results wait on it would slow
-    // the common case for the rarer one.
-    const castSeq = seq
-    window.redlog.events.searchCasts?.(q, 50)
-      .then((r) => { if (castSeq === searchSeqRef.current) setCastHits(r ?? []) })
-      .catch(() => { if (castSeq === searchSeqRef.current) setCastHits([]) })
-  }, [effectiveTypeFilter, sharedFilter.timeRange])
+    // Cast index rows do not carry target, event type, or project wall-clock
+    // metadata. Hiding them while an event filter is active avoids presenting
+    // unfiltered transcript matches as if they satisfied that filter.
+    setCastHits([])
+    if (!eventFilterActive) {
+      const castSeq = seq
+      window.redlog.events.searchCasts(q, 50)
+        .then((r) => {
+          if (castSeq !== searchSeqRef.current) return
+          setCastHits(r ?? [])
+          setCastError(null)
+        })
+        .catch((error: unknown) => {
+          if (castSeq !== searchSeqRef.current) return
+          setCastHits([])
+          setCastError(errorText(error))
+        })
+    }
+  }, [buildSearchOpts])
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    setLoadMoreError(null)
+    const opts = buildSearchOpts()
+    try {
+      const outcome = parseQuery(queryRef.current)
+      if (!outcome.ok) return
+      const page = await window.redlog.events.runQuery({
+        parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE, cursor: nextCursor
+      })
+      const { rows, newFolds } = await resolveAndFold(page.items)
+      setResults((prev) => [...prev, ...rows])
+      setFolds((prev) => {
+        const merged = new Map(prev)
+        for (const [k, v] of newFolds) merged.set(k, v)
+        return merged
+      })
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+    } catch (error: unknown) {
+      setLoadMoreError(errorText(error))
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [nextCursor, loadingMore, buildSearchOpts])
 
   useEffect(() => {
-    window.redlog.events.castIndexStatus?.()
+    window.redlog.events.castIndexStatus()
       .then((s) => setCastPending(s?.pending ?? 0))
       .catch(() => { /* older main process; treat as fully indexed */ })
   }, [])
 
   useEffect(() => {
-    (window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
-      .distinctAgentTypes?.()
+    window.redlog.events.distinctAgentTypes()
       .then((types) => setKnownTypes(types ?? []))
       .catch(() => {})
   }, [results])
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
-  }, [effectiveTypeFilter, sharedFilter.timeRange])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)
@@ -213,19 +296,57 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
+        {parse?.ok && parse.parsed.tokens.length > 0 && (
+          <div data-testid="search-query-parse" className="mb-2 flex items-center gap-1 text-xs">
+            <span className="text-redlog-text-faint">{t('search.queryReadAs')}</span>
+            {parse.parsed.tokens.map((token, index) => (
+              <span key={index} title={t(token.read === 'condition' ? 'search.queryTokenCondition' : 'search.queryTokenText')}
+                className={`font-mono px-1 py-0.5 rounded border ${token.read === 'condition' ? 'text-indigo-300 border-indigo-500/40 bg-indigo-500/10' : 'text-redlog-text-dim border-redlog-border bg-redlog-surface'}`}>
+                {token.raw}
+              </span>
+            ))}
+          </div>
+        )}
+        {parse && !parse.ok && (
+          <div data-testid="search-query-unparsable" role="status" className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {t('search.queryUnparsable')}
+          </div>
+        )}
+        {toolSession && (
+          <div data-testid="search-tool-session" role="status" className="mb-3 rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
+            {t('search.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}
+          </div>
+        )}
+        {searchError && (
+          <div data-testid="search-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            <div className="font-medium">{t('search.failedTitle')}</div>
+            <div className="mt-1 text-xs text-redlog-text-dim">{t('search.failedBody')}</div>
+            <div className="mt-1 truncate font-mono text-xs text-redlog-text-faint" title={searchError}>{searchError}</div>
+            <button type="button" onClick={() => doSearch(queryRef.current)} className="mt-2 text-xs text-red-300 underline hover:text-red-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
+        {castError && !searchError && searched && (
+          <div data-testid="search-partial-warning" role="status" className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <div className="font-medium">{t('search.partialTitle')}</div>
+            <div className="mt-1 text-redlog-text-dim">{t('search.partialBody')}</div>
+            <button type="button" onClick={() => doSearch(queryRef.current)} className="mt-2 text-xs text-amber-300 underline hover:text-amber-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
         {!searched && !searching && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.hint')}
           </div>
         )}
-        {/* Audit 2026-09-18 P4: clear-filter button outside the results block so
-            it stays visible when the active filter yields zero matches. */}
         {searched && typeFilter && (
           <div className="text-redlog-text-dim text-xs mb-2">
             <button onClick={() => setTypeFilter(null)} className="text-redlog-text-dim hover:text-redlog-text underline">{t('search.clearFilter')}</button>
           </div>
         )}
-        {searched && results.length === 0 && castHits.length === 0 && (
+        {searched && !searchError && results.length === 0 && castHits.length === 0 && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.noResults', { query })}
             {castPending > 0 && (
@@ -235,8 +356,6 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             )}
           </div>
         )}
-        {/* Type filter chips from DB DISTINCT — always visible once a search
-            has run so clearing the filter remains possible even on zero results. */}
         {searched && knownTypes.length > 1 && (
           <div className="flex flex-wrap gap-1 mb-2">
             {knownTypes.map((type) => {
@@ -260,7 +379,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
           return (
           <>
             <div className="text-redlog-text-dim text-xs mb-2">
-              {t('search.results', { count: filtered.length })}
+              {t('search.loaded', { count: filtered.length })}
             </div>
             <div className="space-y-1" {...listNav.containerProps} aria-label={t('search.resultsLabel', { count: filtered.length })}>
               {filtered.map((e, i) => {
@@ -303,6 +422,22 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
                 )
               })}
             </div>
+            {hasMore && (
+              <>
+                {loadMoreError && (
+                  <div data-testid="search-load-more-error" role="alert" className="mt-2 text-center text-xs text-amber-300">
+                    {t('search.loadMoreFailed')}
+                  </div>
+                )}
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="mt-2 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+                >
+                  {loadingMore ? t('search.loading') : t('search.loadMore')}
+                </button>
+              </>
+            )}
           </>
         )})()}
 

@@ -1,5 +1,5 @@
-import os from 'os'
-import { redactEventForExport } from './redact-export'
+import { redactEventForExport, type RedactExportOpts } from './redact-export'
+import { operatorPiiReplacements } from './operator-pii'
 import type { RedLogEvent } from './db/events'
 import type { ScopeForSanitize } from './scope-sanitize'
 
@@ -22,32 +22,7 @@ export interface NdjsonExportOpts {
    *  hostname — so a log shared into a multi-user store can't be traced past
    *  the pseudonym. Off by default: a single-operator export keeps attribution. */
   scrubOperatorPii?: boolean
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/** Regex replacements applied to each serialized event LINE when
- *  scrubOperatorPii is set. Reads the running machine's identifiers at call
- *  time. Home path and hostname are specific enough to replace verbatim; the
- *  username is guarded by word boundaries and a length floor so a short/common
- *  account name doesn't shred unrelated text. */
-export function operatorPiiReplacements(
-  ids: { home?: string; user?: string; host?: string } = {}
-): Array<[RegExp, string]> {
-  const home = ids.home ?? os.homedir()
-  const user = ids.user ?? os.userInfo().username
-  const host = ids.host ?? os.hostname()
-  const reps: Array<[RegExp, string]> = []
-  if (home) {
-    reps.push([new RegExp(escapeRegExp(home), 'g'), '<home>'])
-    // Inside a JSON string a Windows path's backslashes are doubled.
-    if (home.includes('\\')) reps.push([new RegExp(escapeRegExp(home.replace(/\\/g, '\\\\')), 'g'), '<home>'])
-  }
-  if (host) reps.push([new RegExp(escapeRegExp(host), 'g'), '<host>'])
-  if (user && user.length >= 3) reps.push([new RegExp('\\b' + escapeRegExp(user) + '\\b', 'g'), '<user>'])
-  return reps
+  doNotExportIds?: Set<string>
 }
 
 /** One redacted event → one JSON line. Prepends `@timestamp` (ISO 8601 from the
@@ -56,7 +31,9 @@ export function eventsToNdjson(events: RedLogEvent[], opts: NdjsonExportOpts = {
   const reps = opts.scrubOperatorPii ? operatorPiiReplacements() : []
   const out: string[] = []
   for (const e of events) {
-    const red = redactEventForExport(e, opts.scope)
+    const rOpts: RedactExportOpts = { scope: opts.scope, doNotExportIds: opts.doNotExportIds }
+    const red = redactEventForExport(e, rOpts)
+    if (!red) continue
     const withTs = { '@timestamp': new Date(red.timestamp).toISOString(), ...red }
     let line = JSON.stringify(withTs)
     for (const [re, rep] of reps) line = line.replace(re, rep)

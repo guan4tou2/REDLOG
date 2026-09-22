@@ -15,8 +15,9 @@ import { deleteBookmarksOlderThan } from './db/bookmarks'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { pruneCast } from './cast-index'
-import { matchTarget } from './db/events'
+import { matchPattern } from './scope-evaluator'
 import { planEviction, type BodyEntry } from './body-eviction'
+import { pruneHttpBodyIndex } from './http-body-index'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
 // upstream event so focus chain walks light up the "originally recorded here
@@ -85,6 +86,9 @@ function sweepDir(
       // searchable.
       if (auditSubtype === 'cast_pruned') {
         try { pruneCast(name) } catch (e) { noteDbError('retention-cast-index', e) }
+      }
+      if (auditSubtype === 'http_body_pruned') {
+        try { pruneHttpBodyIndex(path.basename(name, '.body')) } catch (e) { noteDbError('retention-body-index', e) }
       }
       try {
         const ev = insertEvent('system', {
@@ -336,6 +340,7 @@ export function sweepBodyStore(
   for (const file of plan.evict) {
     try {
       fs.unlinkSync(path.join(dir, file))
+      pruneHttpBodyIndex(path.basename(file, '.body'), projectDir)
       evicted++
       freedBytes += stat.get(file)?.sizeBytes ?? 0
     } catch { /* already gone — fine */ }
@@ -391,7 +396,7 @@ function pinnedFiles(scopeTargets: string[]): Set<string> {
   for (const row of rows) {
     const target = row.target_id as string | null
     if (!target) continue
-    if (!scopeTargets.some((p) => matchTarget(target, p))) continue
+    if (!scopeTargets.some((p) => matchPattern(target, p))) continue
     for (let i = 0; i < REF_FIELDS.length; i++) {
       const file = row[`f${i}`] as string | null
       if (file) pinned.add(file)
@@ -442,7 +447,7 @@ function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]
   for (const row of rows) {
     const target = row.target_id as string | null
     if (!target) continue
-    if (!scopeTargets.some((p) => matchTarget(target, p))) continue
+    if (!scopeTargets.some((p) => matchPattern(target, p))) continue
     const p = row.p as string | null
     if (p) pinned.add(path.basename(p))
     const fn = row.fn as string | null

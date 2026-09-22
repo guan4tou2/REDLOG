@@ -28,6 +28,7 @@ export interface RedLogConfig {
   engagement: {
     id: string
     name: string
+    activeTarget?: string | null
   }
   operator: {
     id: string
@@ -63,6 +64,11 @@ export interface RedLogConfig {
     warnOnViolation: boolean
     targets: string[]
     excludeTargets: string[]
+    /** Hosts/IPs that are never part of any engagement — personal traffic,
+     *  localhost, update CDNs. Same syntax as excludeTargets (IP, CIDR,
+     *  *.domain). On export these rows are DROPPED entirely (not masked):
+     *  they should not appear in any deliverable or merge pack. */
+    personalDomains: string[]
     scopeFile: string | null
   }
   screenshot: {
@@ -210,10 +216,10 @@ export interface RedLogConfig {
   }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
-   *  per-turn `agent.*` events into the hash chain. On by default —
-   *  operators using RedLog with a local Claude Code session almost
-   *  always want AI audit coverage; a `.redlog-app-root` marker in the
-   *  session's cwd still opts individual repos out. See
+   *  per-turn `agent.*` events into the hash chain. Off by default because
+   *  discovery spans user-level agent transcript locations; the operator
+   *  explicitly enables it for an engagement. A `.redlog-app-root` marker
+   *  in the session's cwd still opts individual repos out. See
    *  src/main/services/agent-transcript-tailer.ts. */
   agentTailer?: {
     enabled: boolean
@@ -222,14 +228,12 @@ export interface RedLogConfig {
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
     emitThinking?: boolean
   }
-  /** v0.13.0: retention policy for row-level and file-level pruning. Row-
-   *  level `loggedTier` is new; file-level `castKeepDays` /
-   *  `screenshots.keepDays` moved into this parent for consistency (still
-   *  read from their prior locations for backward-compat). See
+  /** Retention policy for row-level pruning. File retention remains under
+   *  the terminal and screenshots sections. See
    *  docs/DESIGN-logged-tier-retention.md. */
   retention?: {
-    /** Row-level retention on the events_logged table. Age-based sweep only
-     *  in v0.13.0. The design doc reserves `maxSizeGb` + `maxRowCount`
+    /** Row-level retention on the events_logged table. The design doc
+     *  reserves `maxSizeGb` + `maxRowCount`
      *  ceilings for a follow-up; they are intentionally NOT declared here
      *  so an operator who sets them can't get a silent no-op. See design
      *  doc §7.1 for the second-pass shape. */
@@ -256,7 +260,8 @@ export interface RedLogConfig {
 const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',
-    name: 'Default Engagement'
+    name: 'Default Engagement',
+    activeTarget: null
   },
   operator: {
     id: 'operator-1',
@@ -277,6 +282,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     warnOnViolation: true,
     targets: [],
     excludeTargets: [],
+    personalDomains: ['127.0.0.0/8', '::1', 'localhost'],
     scopeFile: null
   },
   screenshot: {
@@ -345,7 +351,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false
   },
   agentTailer: {
-    enabled: true,
+    enabled: false,
     emitThinking: false
   },
   retention: {
@@ -375,33 +381,11 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result
 }
 
-function migrateConfig(parsed: Record<string, unknown>): Record<string, unknown> {
-  const network = parsed.network as Record<string, unknown> | undefined
-  if (network) {
-    // whitelist (safe/attack IPs): vpnIPs → safeIPs → whitelist
-    if (network.vpnIPs && !network.whitelist && !network.safeIPs) { network.whitelist = network.vpnIPs; delete network.vpnIPs }
-    if (network.safeIPs && !network.whitelist) { network.whitelist = network.safeIPs; delete network.safeIPs }
-    // blacklist (your own IPs): dailyIPs → exposedIPs → blacklist
-    if (network.dailyIPs && !network.blacklist && !network.exposedIPs) { network.blacklist = network.dailyIPs; delete network.dailyIPs }
-    if (network.exposedIPs && !network.blacklist) { network.blacklist = network.exposedIPs; delete network.exposedIPs }
-  }
-  // scope.enforcement: 'warn'|'log' → scope.warnOnViolation: boolean.
-  // The old 'log' mode was misleading — it didn't actually log, it silently did
-  // nothing. Treat both as "warnings on" so existing users get the safer default
-  // instead of silently losing the badge; they can turn it off in Settings.
-  const scope = parsed.scope as Record<string, unknown> | undefined
-  if (scope && 'enforcement' in scope && !('warnOnViolation' in scope)) {
-    scope.warnOnViolation = scope.enforcement === 'warn' || scope.enforcement === undefined
-    delete scope.enforcement
-  }
-  return parsed
-}
-
 export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = migrateConfig(yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>)
+    const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
     return deepMerge(DEFAULT_CONFIG as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return { ...DEFAULT_CONFIG }
@@ -429,6 +413,7 @@ export function saveConfig(projectDir: string, config: RedLogConfig): void {
 export interface ScopeInForce {
   targets: string[]
   excludeTargets: string[]
+  personalDomains: string[]
   scopeFile: string | null
   scopeFileSha256: string | null
   scopeFileEntries: number
@@ -453,6 +438,7 @@ export function snapshotScope(config: RedLogConfig): ScopeInForce {
   return {
     targets,
     excludeTargets: [...(config.scope?.excludeTargets ?? [])],
+    personalDomains: [...(config.scope?.personalDomains ?? [])],
     scopeFile,
     scopeFileSha256,
     scopeFileEntries
