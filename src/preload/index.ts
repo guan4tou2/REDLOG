@@ -194,6 +194,11 @@ const api: RedLogAPI = {
     launch: () => ipcRenderer.invoke('browser:launch'),
     stop: () => ipcRenderer.invoke('browser:stop')
   },
+  httpCapture: {
+    status: () => ipcRenderer.invoke('httpCapture:status'),
+    start: () => ipcRenderer.invoke('httpCapture:start'),
+    stop: () => ipcRenderer.invoke('httpCapture:stop')
+  },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
     executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),

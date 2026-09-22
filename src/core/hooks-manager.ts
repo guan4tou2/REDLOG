@@ -215,6 +215,11 @@ function srcPathFor(plugin: PluginManifest): string {
   return srcPathForRelative(plugin, plugin.hookFile)
 }
 
+export function getCaptureHookPath(pluginId: string): string | null {
+  const plugin = allManifests().find((candidate) => candidate.id === pluginId)
+  return plugin ? srcPathFor(plugin) : null
+}
+
 // For shell-source plugin captures without an explicit target, drop the hook in
 // ~/.redlog under its own basename.
 function installTargetFor(plugin: PluginManifest): string {

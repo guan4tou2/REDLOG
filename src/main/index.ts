@@ -35,10 +35,10 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions, discoverShells,
+  killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
@@ -54,14 +54,15 @@ import { resetCausesResolver } from '../core/causes-resolver'
 import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
-import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
+import { managedHttpProxy, isLoopbackHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { detectLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
-import { closeCastIndex } from '../core/cast-index'
+import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
@@ -115,6 +116,56 @@ let chainSampleTimer: ReturnType<typeof setInterval> | null = null
  *  project close so the timer doesn't fire against a closed DB. */
 let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
+
+function managedProxyPort(config: RedLogConfig): number {
+  const port = Number(config.httpCapture?.port ?? 8080)
+  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 8080
+}
+
+function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_stopped' | 'http_proxy_failed', status: ManagedProxyStatus): void {
+  if (!currentEngagementId || !currentOperatorId) return
+  ingestEvent('system', {
+    subtype,
+    source: 'managed-http-proxy',
+    state: status.state,
+    proxy: status.url,
+    pid: status.pid ?? null,
+    error: status.error ?? null
+  }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+}
+
+async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
+  if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  const addonPath = getCaptureHookPath('mitmproxy')
+  if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
+  const config = loadConfig(getProjectPath(activeProject))
+  const before = managedHttpProxy.status().state
+  const status = await managedHttpProxy.start({
+    addonPath,
+    port: managedProxyPort(config),
+    caPath: path.join(homedir(), '.mitmproxy', 'mitmproxy-ca-cert.pem')
+  })
+  if (status.state === 'running') {
+    if (before !== 'running') publishManagedProxyEvent('http_proxy_started', status)
+  } else {
+    publishManagedProxyEvent('http_proxy_failed', status)
+  }
+  return status
+}
+
+function stopManagedHttpCapture(record = true): ManagedProxyStatus {
+  const before = managedHttpProxy.status()
+  const status = managedHttpProxy.stop()
+  if (record && before.state === 'running') publishManagedProxyEvent('http_proxy_stopped', status)
+  return status
+}
+
+configureManagedProxyHealth(() => managedHttpProxy.status())
+managedHttpProxy.onStatusChange((next, previous) => {
+  if (previous.state === 'running' && next.state === 'failed') {
+    publishManagedProxyEvent('http_proxy_failed', next)
+  }
+})
 
 const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
 
@@ -475,8 +526,7 @@ function startProject(project: ProjectMeta): void {
   // real time, and holding project-open on it would trade a visible stall for
   // an invisible one. The UI reads `casts:status` and says how much is still
   // pending, which is the honest version of the same information.
-  void import('../core/cast-index')
-    .then((m) => m.backfillCastIndex(projectDir))
+  void backfillCastIndex(projectDir)
     .catch(() => { /* index is rebuildable; never block opening a project */ })
 
   screenshotAgent.configure({
@@ -562,6 +612,11 @@ function startProject(project: ProjectMeta): void {
   setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+  configureTerminalProxy(() => {
+    const status = managedHttpProxy.status()
+    return status.state === 'running' ? status.url : null
+  })
+  void startManagedHttpCapture()
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
   // The unified ingest() pipeline (used by /api/events and, going forward, the
@@ -928,6 +983,7 @@ function startProject(project: ProjectMeta): void {
 }
 
 function stopProject(): void {
+  stopManagedHttpCapture(false)
   stopAnchorLoop()
   stopNtpLoop()
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
@@ -1244,7 +1300,8 @@ app.whenReady().then(() => {
       excludeTargets: beforeScope.excludeTargets,
       alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
     }, configChangedId)
-    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
+    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id,
+      maxCastBytes: newConfig.terminal?.maxCastBytes })
     configureClipboardMonitor({
       enabled: newConfig.clipboard?.enabled ?? false,
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
@@ -1368,13 +1425,23 @@ app.whenReady().then(() => {
   // --- Saved Timeline views (extracted to ipc/views.ts) ---
 
   // --- Proxied browser ---
+  ipcMain.handle('httpCapture:status', () => managedHttpProxy.status())
+  ipcMain.handle('httpCapture:start', () => startManagedHttpCapture())
+  ipcMain.handle('httpCapture:stop', () => stopManagedHttpCapture())
   ipcMain.handle('browser:detect', () => detectBrowser())
   ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
-  ipcMain.handle('browser:launch', () => {
+  ipcMain.handle('browser:launch', async () => {
     if (!activeProject) return { ok: false, error: 'No project open' }
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
+    if (isLoopbackHttpProxy(browserCfg.proxy)) {
+      const proxy = await startManagedHttpCapture()
+      if (proxy.state !== 'running') {
+        return { ok: false, error: proxy.error || 'HTTP capture proxy is not running' }
+      }
+      browserCfg.proxy = proxy.url ?? browserCfg.proxy
+    }
     const result = launchBrowser(browserCfg, projectDir)
 
     if (result.ok) {
@@ -1577,6 +1644,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  stopManagedHttpCapture(false)
   stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()

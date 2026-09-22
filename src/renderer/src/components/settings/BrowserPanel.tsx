@@ -14,10 +14,13 @@ export default function BrowserPanel({
     binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: DEFAULT_CDP_PORT,
     isolateProfile: true, ignoreCertErrors: true, startUrl: '', extraArgs: []
   }
+  const httpCapture = config.httpCapture ?? { port: 8080 }
   const [detected, setDetected] = useState<string | null>(null)
+  const [proxyStatus, setProxyStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
 
   useEffect(() => {
     window.redlog.browser.detect().then(setDetected).catch(() => setDetected(null))
+    window.redlog.httpCapture.status().then(setProxyStatus).catch(() => {})
   }, [])
 
   const patch = (delta: Partial<typeof b>): void => {
@@ -32,6 +35,37 @@ export default function BrowserPanel({
         {detected ? t('settings.browserDetected', { path: detected }) : t('settings.browserNotFound')}
       </p>
       <Field label={t('settings.browserProxy')} value={b.proxy} onChange={(v) => patch({ proxy: v })} />
+      <Field
+        label={t('settings.httpCapturePort')}
+        value={String(httpCapture.port)}
+        onChange={(v) => setConfig({
+          ...config,
+          httpCapture: { port: Math.min(65535, Math.max(1024, parseInt(v) || 8080)) }
+        })}
+        type="number"
+      />
+      <p className="text-xs text-redlog-text-faint">{t('settings.httpCapturePortHint')}</p>
+      <div className="flex items-center gap-2 text-xs">
+        <span className={proxyStatus.state === 'running' ? 'text-emerald-400' : proxyStatus.state === 'failed' || proxyStatus.state === 'unavailable' ? 'text-red-400' : 'text-redlog-text-faint'}>
+          {t(`httpCapture.state.${proxyStatus.state}`)}{proxyStatus.url ? ` · ${proxyStatus.url}` : ''}
+        </span>
+        <button
+          onClick={async () => setProxyStatus(proxyStatus.state === 'running'
+            ? await window.redlog.httpCapture.stop()
+            : await window.redlog.httpCapture.start())}
+          className="px-2 py-1 bg-redlog-elevated text-redlog-text rounded hover:bg-redlog-elevated-hover"
+        >
+          {proxyStatus.state === 'running' ? t('httpCapture.stop') : t('httpCapture.start')}
+        </button>
+      </div>
+      {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}
+      {proxyStatus.caPath && (
+        <p className={`text-xs break-all ${proxyStatus.certReady ? 'text-redlog-text-faint' : 'text-amber-400'}`}>
+          {proxyStatus.certReady
+            ? t('httpCapture.caReady', { path: proxyStatus.caPath })
+            : t('httpCapture.caMissing', { path: proxyStatus.caPath })}
+        </p>
+      )}
       <Field
         label={t('settings.cdpPort')}
         value={String(b.cdpPort)}

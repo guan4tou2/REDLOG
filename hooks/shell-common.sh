@@ -31,14 +31,14 @@ _redlog_resolve_dir() {
 # --- Resolve reachable host ---
 _redlog_resolve_host() {
   local port="$1"
-  if curl -sf --connect-timeout 1 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
+  if curl --noproxy '*' -sf --connect-timeout 1 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     echo "127.0.0.1"
     return
   fi
   if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
     local gw
     gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
-    if [[ -n "$gw" ]] && curl -sf --connect-timeout 1 "http://${gw}:${port}/api/health" >/dev/null 2>&1; then
+    if [[ -n "$gw" ]] && curl --noproxy '*' -sf --connect-timeout 1 "http://${gw}:${port}/api/health" >/dev/null 2>&1; then
       echo "$gw"
       return
     fi
@@ -102,7 +102,7 @@ print(json.dumps(d))
   mkdir -p "$spool_dir" 2>/dev/null
   local spool_file="$spool_dir/$(date +%s%N).$$.json"
   # Foreground POST with short deadline; if it fails, spool.
-  if ! curl -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
+  if ! curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${port}/api/events" \
         -H "Authorization: Bearer $token" \
         -H "Content-Type: application/json" \
         -d "$payload" \

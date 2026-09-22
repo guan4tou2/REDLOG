@@ -277,6 +277,16 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
             onNavigate={onNavigate}
           />
         )}
+        {capture.managedHttpProxy && (
+          <div className="mb-2 flex items-start gap-2 text-xs">
+            <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${capture.managedHttpProxy.state === 'running' ? 'bg-emerald-500' : capture.managedHttpProxy.state === 'failed' || capture.managedHttpProxy.state === 'unavailable' ? 'bg-red-500' : 'bg-amber-500'}`} />
+            <span className="text-redlog-text-dim">
+              {t(`httpCapture.health.${capture.managedHttpProxy.state}`)}
+              {capture.managedHttpProxy.state === 'running' && ` · ${t('httpCapture.healthTrafficHint')}`}
+              {capture.managedHttpProxy.error && <span className="block text-red-400">{capture.managedHttpProxy.error}</span>}
+            </span>
+          </div>
+        )}
         <div className={manage ? 'grid grid-cols-1 gap-y-1' : 'grid grid-cols-2 gap-x-6 gap-y-1.5'}>
           {shown.map((s) => (
             <div key={s.id} className="flex items-center gap-2 text-xs">

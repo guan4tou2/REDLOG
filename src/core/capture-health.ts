@@ -81,6 +81,19 @@ export interface CaptureHealth {
   /** §3.1: which HTTP proxy env vars are set so the operator can confirm
    *  traffic routing without leaving the app. */
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
+  managedHttpProxy?: {
+    state: 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
+    url: string | null
+    error?: string
+    caPath?: string
+    certReady?: boolean
+  }
+}
+
+let managedProxyStatusProvider: (() => CaptureHealth['managedHttpProxy']) | null = null
+export function configureManagedProxyHealth(provider: () => CaptureHealth['managedHttpProxy']): void {
+  managedProxyStatusProvider = provider
+  healthCache = null
 }
 
 // The live DB error tracks "is writing currently broken". It auto-expires
@@ -452,6 +465,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     dbErrorFirstAt: _dbErrorFirstAt,
     lastSampleBroken,
     lastSampleOkAt: _lastSampleOkAt,
-    proxyEnv
+    proxyEnv,
+    managedHttpProxy: managedProxyStatusProvider?.()
   }
 }
