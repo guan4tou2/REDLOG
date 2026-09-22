@@ -46,6 +46,9 @@ jobs:
         # Before Vitest, because a type error makes every test result suspect.
         run: npm run typecheck
 
+      - name: Spec Kit contract gates
+        run: npm run verify:specs
+
       - name: Vitest
         run: npm test
 

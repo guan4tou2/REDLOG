@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-19
 
-**Status**: Implemented
+**Status**: Verified
 
 **Input**: Ensure every export preview describes the same selected evidence,
 policy, attachments, and dataset boundary that execution will produce.
