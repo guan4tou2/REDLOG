@@ -4,12 +4,21 @@ import type { IpcContext } from './types'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { queryEventById } from '../../core/db/events'
 import {
-  spawnTerminal, writeTerminal, resizeTerminal, killTerminal, listTerminals
+  spawnTerminal, writeTerminal, resizeTerminal, killTerminal, listTerminals,
+  discoverShells, cachedShells
 } from '../terminal-manager'
 import { isInsideDir } from '../../core/paths'
 
 export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
-  ipcMain.handle('terminal:spawn', (_e, id: string, cols: number, rows: number) => spawnTerminal(id, cols, rows))
+  ipcMain.handle('terminal:spawn', (_e, id: string, cols: number, rows: number, shellId?: string) =>
+    spawnTerminal(id, cols, rows, shellId))
+  // Async on purpose: discovery shells out to `wsl -l -v`, and the pane that
+  // is about to open must not wait on the main thread for it (#100).
+  ipcMain.handle('terminal:shells', async () => {
+    const cached = cachedShells()
+    return cached.length > 0 ? cached : await discoverShells()
+  })
+  ipcMain.handle('terminal:rediscoverShells', () => discoverShells())
   ipcMain.on('terminal:write', (_e, id: string, data: string) => writeTerminal(id, data))
   ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) => resizeTerminal(id, cols, rows))
   ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
