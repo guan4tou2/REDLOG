@@ -2,32 +2,36 @@
 
 ## Phase 1 — Contracts
 
-- [ ] T001 Add failing parser tests: conditions, residual text, colon-bearing
+- [x] T001 Add failing parser tests: conditions, residual text, colon-bearing
       text such as URLs, unrecognised prefixes, conditions-only queries, a
       recognised prefix written as literal text, and field names in any case.
-- [ ] T001b Add failing tests that free text keeps whole-token matching and a
+- [x] T001b Add tests that free text keeps whole-token matching and a
       prefix-matched final term.
-- [ ] T002 Add failing tests for exact event, session and transcript-UUID
+- [x] T002 Add failing tests for exact event, session and transcript-UUID
       resolution, including a near match that must not be substituted.
-- [ ] T003 Add failing tests for session-scoped tool-use resolution, including
+- [x] T003 Add failing tests for session-scoped tool-use resolution, including
       the same tool-use ID present in two sessions.
-- [ ] T004 Add failing tests that a condition is not satisfied by its value
+- [x] T004 Add failing tests that a condition is not satisfied by its value
       appearing as text elsewhere in the record.
-- [ ] T005 Add failing tests for cross-page pair completion, for a bounded
+- [x] T005 Add failing tests for cross-page pair completion, for a bounded
       lookup count per page, and for a pair that stays unresolved.
-- [ ] T006 Add failing tests separating unparsable, failed and no-match, and
+- [x] T006 Add failing tests separating unparsable, failed and no-match, and
       covering the disclosure that text cannot reach non-inline command output.
 
 ## Phase 2 — Query contract
 
-- [ ] T007 Implement the parse: recognised conditions plus residual free text.
-- [ ] T008 Add expression indexes for the agent session ID and `tool_use_id`
+- [x] T007 Implement the parse: recognised conditions plus residual free text.
+- [x] T008 Add expression indexes for the agent session ID and `tool_use_id`
       within `data`. The `session_id` column is not one of them.
-- [ ] T009 Implement intersecting evaluation — FTS for terms, field predicates
+- [x] T009 Implement intersecting evaluation — FTS for terms, field predicates
       for conditions — beneath the caller's shared filter, limit and cursor.
-- [ ] T010 Implement session scoping for a bare tool-use condition and report
+- [x] T010 Implement session scoping for a bare tool-use condition and report
       the resolved session.
-- [ ] T011 Return the parse with the results so surfaces can display it.
+- [x] T011 Return the parse with the results so surfaces can display it.
+      Satisfied by the call shape rather than by a field: the caller parses and
+      then executes, so it already holds the parse when it renders. The result
+      carries only what the caller could not know — which session a bare
+      tool-use condition resolved within.
 
 ## Phase 3 — Transcript
 
@@ -35,8 +39,8 @@
       balance, `hasMore` and cursor.
 - [ ] T013 Show which tokens were read as conditions, including the session a
       tool-use condition resolved within.
-- [ ] T014 Complete absent counterparts in one batched lookup per page and mark
-      pairs that stay unresolved.
+- [x] T014a Fetch absent counterparts for a page in one batched lookup.
+- [ ] T014b Mark pairs whose counterpart stays unresolved.
 - [ ] T015 Keep source and receipt time distinguishable through the projection.
 - [ ] T016 Restart cursors on query and filter change; restore the unqueried
       view when the query is cleared.

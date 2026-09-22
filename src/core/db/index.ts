@@ -224,6 +224,28 @@ export function initDB(projectDir: string): Database.Database {
     ON events_logged(json_extract(data, '$.flow_id'), timestamp DESC)
     WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)
 
+  // Spec 017: the query language's identifier conditions. The agent session
+  // and tool-use id live in `data`, not in columns — `session_id` the COLUMN
+  // is RedLog's own capture session, which nothing filters on. `events` has a
+  // `transcript_uuid` column already indexed above; `events_logged` does not,
+  // so its transcript condition reads the same value out of `data`.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_agent_session
+    ON events(json_extract(data, '$.session_id'), timestamp DESC)
+    WHERE json_extract(data, '$.session_id') IS NOT NULL`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_agent_session
+    ON events_logged(json_extract(data, '$.session_id'), timestamp DESC)
+    WHERE json_extract(data, '$.session_id') IS NOT NULL`)
+  // Composite, because a tool-use id is unique only within its session.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_tool_use
+    ON events(json_extract(data, '$.tool_use_id'), json_extract(data, '$.session_id'))
+    WHERE json_extract(data, '$.tool_use_id') IS NOT NULL`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_tool_use
+    ON events_logged(json_extract(data, '$.tool_use_id'), json_extract(data, '$.session_id'))
+    WHERE json_extract(data, '$.tool_use_id') IS NOT NULL`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_transcript_uuid
+    ON events_logged(json_extract(data, '$.transcript_uuid'))
+    WHERE json_extract(data, '$.transcript_uuid') IS NOT NULL`)
+
   // FTS5 full-text search indexes for events + events_logged.
   // External-content tables: the index references the source rows directly
   // (no data duplication). AFTER INSERT / AFTER DELETE triggers keep the
