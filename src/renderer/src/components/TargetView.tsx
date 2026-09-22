@@ -39,6 +39,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // shows as "in-scope" since there's no rule to violate).
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const [excludeTargets, setExcludeTargets] = useState<string[]>([])
+  const [activeTarget, setActiveTarget] = useState<string | null>(null)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
   const { t } = useI18n()
@@ -64,7 +65,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         })
       }
     })
-    return unsub
+    void window.redlog.targetContext.get().then(setActiveTarget)
+    const unsubTarget = window.redlog.targetContext.onChange(setActiveTarget)
+    return () => { unsub(); unsubTarget() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -205,6 +208,20 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                 <div className="flex items-center justify-between">
                   <span className="text-redlog-text font-mono text-sm">{tgt.target}</span>
                   <div className="flex items-center gap-2">
+                    {activeTarget === tgt.target ? (
+                      <span className="text-xs text-redlog-accent bg-redlog-accent/10 px-1.5 py-0.5 rounded">
+                        {t('activeTarget.current')}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void window.redlog.targetContext.set(tgt.target)
+                        }}
+                        className="text-xs text-redlog-text-dim hover:text-redlog-accent bg-redlog-elevated px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-accent/40"
+                      >{t('activeTarget.workOn')}</button>
+                    )}
                     <span className="text-redlog-text-dim text-xs">{t('targets.cmds', { count: tgt.eventCount })}</span>
                     {tgt.inScope === false && (
                       <>

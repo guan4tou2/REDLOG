@@ -85,6 +85,40 @@ describeDB('ingest', () => {
     }
   })
 
+  it('uses active target only when producer and enrichment have no target', () => {
+    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
+    const fallback = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'id' }
+    }).event!
+    const detected = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'curl http://10.10.11.99/' }
+    }).event!
+    const explicit = ingestMod.ingest({
+      ...base, agentType: 'marker', targetId: 'manual.example', data: { subtype: 'created', title: 'manual' }
+    }).event!
+    const screenshot = ingestMod.ingest({
+      ...base, agentType: 'screenshot', data: { trigger: 'manual', filename: 'shot.jpg' }
+    }).event!
+    const system = ingestMod.ingest({
+      ...base, agentType: 'system', data: { subtype: 'capture_health' }
+    }).event!
+
+    expect(fallback.targetId).toBe('10.10.11.24')
+    expect(detected.targetId).toBe('10.10.11.99')
+    expect(explicit.targetId).toBe('manual.example')
+    expect(screenshot.targetId).toBe('10.10.11.24')
+    expect(system.targetId).toBeNull()
+  })
+
+  it('clearing active target stops fallback attribution', () => {
+    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
+    ingestMod.configureIngest({ activeTarget: null })
+    const event = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'whoami' }
+    }).event!
+    expect(event.targetId).toBeNull()
+  })
+
   it('stores the raw bytes and folds their digest into the hashed data', () => {
     const rawBytes = Buffer.from(JSON.stringify({ agent_type: 'scanner', host: '10.0.0.9', port: 445 }))
     const r = ingestMod.ingest({

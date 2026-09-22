@@ -77,6 +77,7 @@ import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
 import { registerViewsIpc } from './ipc/views'
+import { registerTargetContextIpc } from './ipc/target-context'
 import type { IpcContext } from './ipc/types'
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
@@ -569,7 +570,8 @@ function startProject(project: ProjectMeta): void {
   configureIngest({
     lootDetector,
     alertRuntime: { dispatchTargetHit: (input) => alertRuntime.dispatchTargetHit(input) },
-    castProbe: getCastPosition
+    castProbe: getCastPosition,
+    activeTarget: config.engagement.activeTarget ?? null
   })
 
   // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
@@ -953,6 +955,7 @@ function stopProject(): void {
   activeProject = null
   currentEngagementId = null
   currentOperatorId = null
+  configureIngest({ activeTarget: null })
 }
 
 // One RedLog at a time. Two instances race for port 6660 and clobber each
@@ -1093,6 +1096,7 @@ app.whenReady().then(() => {
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
   registerViewsIpc(ipcMain, ipcCtx)
+  registerTargetContextIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
   ipcMain.handle('project:list', () => listProjects())
@@ -1195,11 +1199,17 @@ app.whenReady().then(() => {
     // and every Event row. Renderer state, imported profiles and direct IPC
     // calls may update other settings, but cannot rename this identity.
     newConfig.engagement.id = oldConfig.engagement.id
+    // Active target has a dedicated, audited IPC. A Settings form may have
+    // loaded its config before the title-bar target changed; preserving the
+    // latest stored value prevents that stale form from silently reverting
+    // attribution context on its next auto-save.
+    newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     saveConfig(projectDir, newConfig)
     currentEngagementId = newConfig.engagement.id
     currentOperatorId = newConfig.operator.id
+    configureIngest({ activeTarget: newConfig.engagement.activeTarget ?? null })
     // Audit trail — log security-relevant setting changes so a reviewer can see
     // when scope loosened or the IP blacklist changed. Only diffs the fields
     // that affect enforcement or attribution; cosmetic changes stay silent.

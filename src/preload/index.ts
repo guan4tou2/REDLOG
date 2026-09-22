@@ -46,6 +46,15 @@ const api: RedLogAPI = {
     exportProfile: () => ipcRenderer.invoke('config:exportProfile'),
     importProfile: () => ipcRenderer.invoke('config:importProfile')
   },
+  targetContext: {
+    get: () => ipcRenderer.invoke('targetContext:get') as Promise<string | null>,
+    set: (target: string | null) => ipcRenderer.invoke('targetContext:set', target) as Promise<{ ok: boolean; target: string | null }>,
+    onChange: (cb: (target: string | null) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, target: string | null): void => cb(target)
+      ipcRenderer.on('targetContext:changed', handler)
+      return () => ipcRenderer.removeListener('targetContext:changed', handler)
+    }
+  },
   hookConfig: {
     get: () => ipcRenderer.invoke('hookConfig:get') as Promise<{ excludedPaths: string[]; watchPaths?: string[] }>,
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => ipcRenderer.invoke('hookConfig:save', cfg) as Promise<boolean>,

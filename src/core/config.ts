@@ -28,6 +28,7 @@ export interface RedLogConfig {
   engagement: {
     id: string
     name: string
+    activeTarget?: string | null
   }
   operator: {
     id: string
@@ -259,7 +260,8 @@ export interface RedLogConfig {
 const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',
-    name: 'Default Engagement'
+    name: 'Default Engagement',
+    activeTarget: null
   },
   operator: {
     id: 'operator-1',

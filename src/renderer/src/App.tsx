@@ -30,6 +30,7 @@ import type { SidebarViewId } from './lib/sidebarOrder'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
 import { FilterBar } from './components/FilterBar'
+import { ActiveTargetControl } from './components/ActiveTargetControl'
 
 // Extracted components
 import { DashboardView, LaunchBrowserButton } from './components/DashboardView'
@@ -151,6 +152,7 @@ export default function App(): JSX.Element {
           <span className="text-xs">&#9664;</span>
           {project.name}
         </button>
+        <ActiveTargetControl key={project.id} />
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* §10: one export control, in the shell rather than six places.
               Its scope is an option, not a location. */}

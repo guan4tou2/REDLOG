@@ -115,6 +115,11 @@ function installBridge(): void {
       exportProfile: async () => null,
       importProfile: async () => null
     },
+    targetContext: {
+      get: async () => null,
+      set: async (target: string | null) => ({ ok: true, target }),
+      onChange: () => unsub
+    },
     events: {
       query: async () => EVENTS,
       queryPage: async () => ({ items: EVENTS, hasMore: false, nextCursor: null }),
