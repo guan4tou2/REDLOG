@@ -14,6 +14,23 @@ let LootDetector: typeof import('../src/core/loot-detector').LootDetector
 let getEventCount: typeof import('../src/core/db/events').getEventCount
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let dbAvailable = false
+
+// Give this file its own HOME before api-server is imported.
+//
+// `api-server.ts` resolves the global sidecar (`~/.redlog/api-token`,
+// `api-port`) once at module scope from os.homedir(), and `startApiServer`
+// writes both. Pointed at the real home that meant two things: vitest runs
+// files in parallel, so any other file touching those paths raced this one —
+// and `npm test` was reaching into the operator's own RedLog instance. The
+// backup/restore below put them back, but a run killed partway through left a
+// test token in place of the real one.
+//
+// Same fix `per-project-token.test.ts` already carries. It has to happen
+// before the import, which is why the import below is dynamic.
+const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-apihome-'))
+process.env.HOME = FAKE_HOME
+process.env.USERPROFILE = FAKE_HOME
+
 try {
   const dbMod = await import('../src/core/db/index')
   initDB = dbMod.initDB
@@ -29,24 +46,19 @@ try {
 
 const describeDB = dbAvailable ? describe : describe.skip
 
-// startApiServer writes the primary token/port under ~/.redlog; back them up so a
-// local run doesn't disturb a RedLog instance the developer has open.
-const RC = path.join(os.homedir(), '.redlog')
+// The sidecar, inside this file's own home — never the operator's, so there is
+// nothing to back up and nothing another worker can race us for.
+const RC = path.join(FAKE_HOME, '.redlog')
 const TOKEN_PATH = path.join(RC, 'api-token')
 const PORT_PATH = path.join(RC, 'api-port')
 const readIf = (p: string): string | null => { try { return fs.readFileSync(p, 'utf8') } catch { return null } }
-const restore = (p: string, v: string | null): void => { try { v === null ? fs.rmSync(p, { force: true }) : fs.writeFileSync(p, v, { mode: 0o600 }) } catch { /* */ } }
 
 describeDB('api-server', () => {
   let tmpDir: string
   let base: string
   let authHeaders: Record<string, string>
-  let savedToken: string | null
-  let savedPort: string | null
 
   beforeAll(async () => {
-    savedToken = readIf(TOKEN_PATH)
-    savedPort = readIf(PORT_PATH)
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-api-'))
     initDB(tmpDir)
     const loot = new LootDetector()
@@ -66,8 +78,7 @@ describeDB('api-server', () => {
     api.stopApiServer()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
-    restore(TOKEN_PATH, savedToken)
-    restore(PORT_PATH, savedPort)
+    fs.rmSync(FAKE_HOME, { recursive: true, force: true })
   })
 
   it('serves bookmarks on both /api/bookmarks and the deprecated /api/quickmarks (F4 part B)', async () => {
