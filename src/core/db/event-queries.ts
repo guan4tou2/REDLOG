@@ -10,6 +10,7 @@ import {
 import type { ExportSnapshot } from '../export-plan'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
 import { searchHttpBodyEventIds } from '../http-body-index'
+import type { ParsedQuery, QueryCondition } from '../query/contract'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
  * are attached by trusted main-process code when `inScopeOnly` is requested. */
@@ -926,4 +927,224 @@ export function searchEvents(query: string, limit = 100, opts: EventFilter = {})
   } catch {
     return []
   }
+}
+
+
+/**
+ * Spec 017: evaluate a parsed query. Conditions and free text are two
+ * intersecting paths, not one — free text goes to FTS, a condition resolves
+ * against its stored field. The FTS tables index `data` as a single blob, so
+ * an identifier quoted inside unrelated command output is findable there;
+ * satisfying a condition that way would match evidence the operator did not
+ * ask for and call it an exact hit.
+ */
+export interface EventQueryRequest {
+  parsed: ParsedQuery
+  filter?: EventFilter
+  limit?: number
+  cursor?: string | null
+}
+
+/**
+ * A tool-use ID is unique only within a session — `buildBlocks` has always
+ * paired on `${session_id}:${tool_use_id}`. When the operator supplies no
+ * session, one is chosen and reported, together with the sessions that were
+ * not chosen, so the narrowing is visible rather than silent.
+ */
+export interface ToolSessionResolution {
+  toolUseId: string
+  sessionId: string
+  otherSessionIds: string[]
+}
+
+export interface EventQueryResult extends QueryPage<RedLogEvent> {
+  toolSession?: ToolSessionResolution
+}
+
+/**
+ * Condition predicates, per tier. A condition resolves against its stored
+ * field, never against text — `data` is one FTS blob, so an id quoted inside
+ * unrelated output is findable there and would otherwise pass as an exact hit.
+ */
+function appendConditions(
+  conditions: QueryCondition[],
+  sqlParts: string[],
+  params: unknown[],
+  tier: 'chained' | 'logged'
+): void {
+  for (const c of conditions) {
+    switch (c.field) {
+      case 'event':
+        sqlParts.push('e.id = ?')
+        params.push(c.value)
+        break
+      case 'session':
+        sqlParts.push("json_extract(e.data, '$.session_id') = ?")
+        params.push(c.value)
+        break
+      case 'transcript':
+        // `events` carries an indexed column; `events_logged` has no such
+        // column, so the same value is read back out of `data` there.
+        if (tier === 'chained') sqlParts.push('e.transcript_uuid = ?')
+        else sqlParts.push("json_extract(e.data, '$.transcript_uuid') = ?")
+        params.push(c.value)
+        break
+      case 'tool':
+        sqlParts.push("json_extract(e.data, '$.tool_use_id') = ?")
+        params.push(c.value)
+        break
+    }
+  }
+}
+
+/** Sessions containing a tool-use id, newest first. Two tiers, one statement. */
+function sessionsForToolUse(db: ReturnType<typeof getReadonlyDB>, toolUseId: string): string[] {
+  const rows = db.prepare(`
+    SELECT session, MAX(ts) AS ts FROM (
+      SELECT json_extract(data, '$.session_id') AS session, timestamp AS ts
+      FROM events WHERE json_extract(data, '$.tool_use_id') = ?
+      UNION ALL
+      SELECT json_extract(data, '$.session_id') AS session, timestamp AS ts
+      FROM events_logged WHERE json_extract(data, '$.tool_use_id') = ?
+    )
+    WHERE session IS NOT NULL
+    GROUP BY session
+    ORDER BY ts DESC`).all(toolUseId, toolUseId) as Array<{ session: string }>
+  return rows.map((r) => r.session)
+}
+
+export function executeEventQuery(request: EventQueryRequest): EventQueryResult {
+  const db = getReadonlyDB()
+  const filter = request.filter ?? {}
+  const limit = request.limit ?? 100
+  const cursor: CursorKey | null = request.cursor ? decodeCursor(request.cursor) : null
+
+  // A bare tool-use condition has to choose a session, because the id is
+  // unique only within one. Choosing silently would let pair completion join
+  // a call from one session to a result from another, so the choice and the
+  // sessions not chosen both travel back with the page.
+  let conditions = request.parsed.conditions
+  let toolSession: ToolSessionResolution | undefined
+  const tool = conditions.find((c) => c.field === 'tool')
+  if (tool && !conditions.some((c) => c.field === 'session')) {
+    const sessions = sessionsForToolUse(db, tool.value)
+    if (sessions.length > 0) {
+      const [chosen, ...others] = sessions
+      toolSession = { toolUseId: tool.value, sessionId: chosen, otherSessionIds: others }
+      conditions = [...conditions, { field: 'session', value: chosen }]
+    }
+  }
+
+  const match = request.parsed.text.trim() ? toMatchQuery(request.parsed.text) : null
+  const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(request.parsed.text)) : null
+
+  const build = (tier: 'chained' | 'logged'): { where: string; params: unknown[] } => {
+    const parts: string[] = []
+    const params: unknown[] = []
+    if (match) {
+      const ftsTable = tier === 'chained' ? 'events_fts' : 'events_logged_fts'
+      parts.push(`(e.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?)
+                   OR e.id IN (SELECT value FROM json_each(?)))`)
+      params.push(match, bodyIdsJson)
+    }
+    appendConditions(conditions, parts, params, tier)
+    appendEventFilter(filter, parts, params, 'e')
+    if (cursor) {
+      const c = buildPerArmCursorWhere(cursor, tier)
+      parts.push(c.sql.replace(/\browid\b/g, 'e.rowid'))
+      params.push(...c.params)
+    }
+    return { where: parts.length ? 'WHERE ' + parts.join(' AND ') : '', params }
+  }
+
+  const chained = build('chained')
+  const logged = build('logged')
+  const perArmLimit = limit + 1
+
+  const sql = `
+    SELECT * FROM (
+      SELECT * FROM (
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
+               e.monotonic_ns, e.ntp_offset_ms, e.signature,
+               'chained' AS tier, ${TIER_RANK_CHAINED}
+        FROM events e
+        ${chained.where}
+        ORDER BY e.timestamp DESC, e.rowid DESC
+        LIMIT ?
+      )
+      UNION ALL
+      SELECT * FROM (
+        SELECT e.rowid AS _row,
+               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+               e.hostname, e.source_ip, e.target_id, e.data,
+               NULL AS hash, NULL AS prev_hash, e.created_at,
+               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
+               'logged' AS tier, ${TIER_RANK_LOGGED}
+        FROM events_logged e
+        ${logged.where}
+        ORDER BY e.timestamp DESC, e.rowid DESC
+        LIMIT ?
+      )
+    ) ${CANONICAL_ORDER}
+    LIMIT ?`
+
+  // No catch. `searchEventsPage` returns an empty page when its statement
+  // throws, which makes a failed query indistinguishable from an engagement
+  // in which nothing matched — and only the second licenses "this did not
+  // happen". The caller renders the failure; it is not this layer's to hide.
+  const rows = db.prepare(sql).all(
+    ...chained.params, perArmLimit,
+    ...logged.params, perArmLimit,
+    limit + 1
+  ) as Array<Record<string, unknown>>
+
+  const page = toQueryPage(rows, limit, (row) => ({
+    ts: row.timestamp as number,
+    row: row._row as number,
+    tier: row.tier as 'chained' | 'logged'
+  }))
+  return { ...page, items: page.items.map(rowToEvent), ...(toolSession ? { toolSession } : {}) }
+}
+
+/** Identifies one tool exchange. Unique only as a pair; see ToolSessionResolution. */
+export interface ToolPairKey {
+  sessionId: string
+  toolUseId: string
+}
+
+/**
+ * Spec 017: fetch the counterparts for every unpaired tool record on a page in
+ * one pass. A page of the agent bucket holds up to 800 records, so completing
+ * pairs one lookup at a time is N+1 against the store for a single scroll.
+ */
+export function fetchToolCounterparts(keys: ToolPairKey[]): RedLogEvent[] {
+  if (keys.length === 0) return []
+  const db = getReadonlyDB()
+
+  // The keys travel as one JSON array and are joined against, so the statement
+  // count is the same for fifty keys as for five. Matching on the two fields
+  // separately rather than on a concatenation avoids inventing a separator
+  // that an id could itself contain.
+  const keysJson = JSON.stringify(keys.map((k) => ({ s: k.sessionId, t: k.toolUseId })))
+  const arm = (table: string, extra: string): string => `
+    SELECT e.rowid AS _row,
+           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
+           e.hostname, e.source_ip, e.target_id, e.data, ${extra}, e.created_at,
+           '${table === 'events' ? 'chained' : 'logged'}' AS tier,
+           ${table === 'events' ? TIER_RANK_CHAINED : TIER_RANK_LOGGED}
+    FROM ${table} e
+    JOIN json_each(?) k
+      ON json_extract(k.value, '$.s') = json_extract(e.data, '$.session_id')
+     AND json_extract(k.value, '$.t') = json_extract(e.data, '$.tool_use_id')`
+
+  const rows = db.prepare(`
+    SELECT * FROM (
+      ${arm('events', 'e.hash, e.prev_hash, e.monotonic_ns, e.ntp_offset_ms, e.signature')}
+      UNION ALL
+      ${arm('events_logged', 'NULL AS hash, NULL AS prev_hash, NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature')}
+    ) ${CANONICAL_ORDER}`).all(keysJson, keysJson) as Array<Record<string, unknown>>
+
+  return rows.map(rowToEvent)
 }
