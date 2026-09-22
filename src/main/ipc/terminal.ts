@@ -3,6 +3,9 @@ import path from 'path'
 import type { IpcContext } from './types'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { queryEventById } from '../../core/db/events'
+import { queryEvents } from '../../core/db/events'
+import { readCastRange, readCastSlice } from '../../core/cast-slice'
+import { castIndexStatus, searchCasts } from '../../core/cast-index'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal, listTerminals,
   discoverShells, cachedShells
@@ -29,8 +32,6 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // forwards to the same function so the UI doesn't need a token round-trip.
   ipcMain.handle('terminal:replay', async (_e, eventId: string) => {
     try {
-      const { queryEvents } = await import('../../core/db/events')
-      const { readCastSlice } = await import('../../core/cast-slice')
       const target = queryEventById(eventId)
       if (!target) return { ok: false, error: 'event not found' }
       const td = target.data as Record<string, unknown>
@@ -58,8 +59,6 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // that — command_end alone only exposes the local `ssh` line.
   ipcMain.handle('terminal:replaySession', async (_e, eventId: string) => {
     try {
-      const { queryEvents } = await import('../../core/db/events')
-      const { readCastSlice } = await import('../../core/cast-slice')
       const target = queryEventById(eventId)
       if (!target) return { ok: false, error: 'event not found' }
       const td = target.data as Record<string, unknown>
@@ -96,8 +95,6 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // Used by Marker → replay jump (the marker knows WHEN, not WHICH session).
   ipcMain.handle('terminal:replayAtTime', async (_e, atMs: number) => {
     try {
-      const { queryEvents } = await import('../../core/db/events')
-      const { readCastSlice } = await import('../../core/cast-slice')
       const sessions = queryEvents({ agentType: 'shell', limit: 10000 })
         .filter((ev) => ev.data?.source === 'builtin-terminal' && (ev.data?.subtype === 'session_start' || ev.data?.subtype === 'session_end'))
       // Find the session whose start <= atMs and (end >= atMs or no end yet).
@@ -134,12 +131,10 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // hits and letting the operator conclude the bytes are missing.
   ipcMain.handle('casts:search', async (_e, query: string, limit?: number) => {
     if (!ctx.getActiveProject()) return []
-    const { searchCasts } = await import('../../core/cast-index')
     return searchCasts(query, limit)
   })
   ipcMain.handle('casts:status', async () => {
     if (!ctx.getActiveProject()) return { total: 0, indexed: 0, pending: 0 }
-    const { castIndexStatus } = await import('../../core/cast-index')
     return castIndexStatus()
   })
   ipcMain.handle('casts:readRange', async (_e, castRel: string, off: number, len: number) => {
@@ -152,7 +147,6 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const castsDir = path.join(getProjectPath(project), 'casts')
     const full = path.resolve(castsDir, castRel)
     if (!isInsideDir(castsDir, full)) return null
-    const { readCastRange } = await import('../../core/cast-slice')
     return readCastRange(full, off, len)
   })
 }

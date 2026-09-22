@@ -56,11 +56,11 @@ TOKEN=$(<"$TOKEN_FILE")
 # --- Resolve reachable host ---
 if [[ -z "${_REDLOG_HOST:-}" ]]; then
   _REDLOG_HOST="127.0.0.1"
-  if ! curl -sf --connect-timeout 1 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+  if ! curl --noproxy '*' -sf --connect-timeout 1 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
     # WSL2 NAT mode: try the Windows host gateway
     if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
       gw=$(ip route show default 2>/dev/null | awk '{print $3; exit}')
-      if [[ -n "$gw" ]] && curl -sf --connect-timeout 1 "http://${gw}:${PORT}/api/health" >/dev/null 2>&1; then
+      if [[ -n "$gw" ]] && curl --noproxy '*' -sf --connect-timeout 1 "http://${gw}:${PORT}/api/health" >/dev/null 2>&1; then
         _REDLOG_HOST="$gw"
       fi
     fi
@@ -85,7 +85,7 @@ if sys.argv[3]:
 print(json.dumps(d))
 " "$SUBTYPE" "$COMMAND" "$EXTRA" 2>/dev/null) || exit 0
 
-curl -sf -X POST "http://${_REDLOG_HOST}:${PORT}/api/events" \
+curl --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:${PORT}/api/events" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" \

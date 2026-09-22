@@ -321,6 +321,11 @@ interface RedLogAPI {
     launch: () => Promise<BrowserLaunchResult>
     stop: () => Promise<{ stopped: boolean }>
   }
+  httpCapture: {
+    status: () => Promise<ManagedProxyStatus>
+    start: () => Promise<ManagedProxyStatus>
+    stop: () => Promise<ManagedProxyStatus>
+  }
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
     executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
@@ -468,6 +473,7 @@ interface CaptureHealthInfo {
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
+  managedHttpProxy?: ManagedProxyStatus
 }
 
 interface BrowserLaunchResult {
@@ -477,6 +483,15 @@ interface BrowserLaunchResult {
   args?: string[]
   profileDir?: string
   error?: string
+}
+
+interface ManagedProxyStatus {
+  state: 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
+  url: string | null
+  pid?: number
+  error?: string
+  caPath?: string
+  certReady?: boolean
 }
 
 interface OperatorInfo {

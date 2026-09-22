@@ -5,6 +5,15 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- RedLog now starts and owns its local mitmproxy capture process, exposes
+  stopped/starting/running/unavailable/failed states, gates the proxied browser
+  on real readiness, and routes newly opened built-in terminals through the
+  live proxy with standard HTTP(S) proxy environment variables.
+- Vitest 5 worker limits now use the supported top-level configuration instead
+  of the removed `poolOptions` shape.
+- Production bundles no longer request ineffective lazy chunks for cast search,
+  cast replay, or the first-run terminal when those modules are already loaded
+  by another path.
 - Approved export plans bind preview and execution to one snapshot and policy.
 - Spool replay defers mismatched engagements without writing the active DB and
   recovers them when their owning project opens.
