@@ -48,6 +48,8 @@ for full commit body + generated notes.
   no install step or virtualenv.
 - Release packaging now verifies that current shell adapters and plugin
   resources are present and that removed compatibility hooks stay absent.
+- CI rejects a Verified Spec Kit feature with unchecked tasks or missing
+  verification evidence, and rejects executable references to removed hooks.
 
 ## v0.15.1 — 2026-09-19
 
