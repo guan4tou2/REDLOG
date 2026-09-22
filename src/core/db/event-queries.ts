@@ -21,6 +21,8 @@ export interface EventFilter {
   before?: number
   inScopeOnly?: boolean
   scope?: ScopePolicy
+  hidePersonal?: boolean
+  personalDomains?: string[]
 }
 
 function inScopeTargetIds(filter: EventFilter): string[] | null {
@@ -41,6 +43,19 @@ function inScopeTargetIds(filter: EventFilter): string[] | null {
     })
 }
 
+function personalTargetIds(filter: EventFilter): string[] | null {
+  if (!filter.hidePersonal || !filter.personalDomains?.length) return null
+  const db = getReadonlyDB()
+  const rows = db.prepare(`
+    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''
+    UNION
+    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''
+  `).all() as Array<{ target_id: string }>
+  return rows
+    .map((row) => row.target_id)
+    .filter((target) => evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
+}
+
 function appendEventFilter(
   filter: EventFilter,
   conditions: string[],
@@ -56,6 +71,11 @@ function appendEventFilter(
   if (allowed !== null) {
     conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} IN (SELECT value FROM json_each(?)))`)
     params.push(JSON.stringify(allowed))
+  }
+  const personal = personalTargetIds(filter)
+  if (personal?.length) {
+    conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} NOT IN (SELECT value FROM json_each(?)))`)
+    params.push(JSON.stringify(personal))
   }
 }
 
@@ -170,6 +190,11 @@ export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?:
   if (allowed !== null) {
     where.push("(target_id IS NULL OR target_id = '' OR target_id IN (SELECT value FROM json_each(?)))")
     params.push(JSON.stringify(allowed))
+  }
+  const personal = personalTargetIds(opts)
+  if (personal?.length) {
+    where.push("(target_id IS NULL OR target_id = '' OR target_id NOT IN (SELECT value FROM json_each(?)))")
+    params.push(JSON.stringify(personal))
   }
   if (cursor) {
     where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))')

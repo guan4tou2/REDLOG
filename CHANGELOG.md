@@ -5,6 +5,9 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Investigation views now hide configured personal/local targets by default
+  and expose one visible filter chip to reveal them. Rows remain recorded and
+  the delivery-time personal-domain exclusion policy is unchanged.
 - AI agent transcript capture remains opt-in even for partial or hand-written
   project configs, so unrelated sessions under the operator home are not read.
 - Report Mode now pauses new evidence through the canonical write gate while

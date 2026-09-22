@@ -16,11 +16,15 @@ import { eventBus } from '../../core/event-bus'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   const withActiveScope = <T extends EventFilter>(opts: T): T => {
-    if (!opts.inScopeOnly) return opts
+    if (!opts.inScopeOnly && !opts.hidePersonal) return opts
     const project = ctx.getActiveProject()
     if (!project) return opts
     const scope = snapshotScope(loadConfig(getProjectPath(project)))
-    return { ...opts, scope: { targets: scope.targets, excludeTargets: scope.excludeTargets } }
+    return {
+      ...opts,
+      ...(opts.inScopeOnly ? { scope: { targets: scope.targets, excludeTargets: scope.excludeTargets } } : {}),
+      ...(opts.hidePersonal ? { personalDomains: scope.personalDomains } : {})
+    }
   }
 
   ipcMain.handle('events:query', (_e, opts: EventQueryOptions) =>
