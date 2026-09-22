@@ -30,6 +30,9 @@ for full commit body + generated notes.
   call was rejecting; the Hooks and Timeline copy buttons reported success
   anyway. Clipboard access now goes through the main process, and a failed copy
   says so.
+- HTTP History and the Transcript now state on the page when a shared type
+  filter is one they cannot serve. Both emptied themselves silently, which read
+  as "nothing was recorded" instead of "this view does not cover that type".
 - Python setup commands are stated for uv instead of pip: mitmproxy and the
   OpenTimestamps client as `uv tool install`, and the bundle verifier's optional
   `cryptography` plus the pcap agent's `scapy` as `uv run --with`, which needs
