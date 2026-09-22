@@ -17,6 +17,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "verify:package-resources": "node scripts/verify-packaged-resources.mjs",
+    "verify:specs": "node scripts/verify-specs.mjs",
     "typecheck": "tsc -p tsconfig.check.json",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f",

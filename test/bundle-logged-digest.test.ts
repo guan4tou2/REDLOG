@@ -13,6 +13,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let takeExportSnapshot: typeof import('../src/core/export-plan').takeExportSnapshot
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
@@ -23,9 +24,11 @@ try {
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   const bundle = await import('../src/core/bundle-export')
+  const plan = await import('../src/core/export-plan')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
   exportBundle = bundle.exportBundle
+  takeExportSnapshot = plan.takeExportSnapshot
   dbAvailable = true
 } catch { /* better-sqlite3 not compiled */ }
 
@@ -114,5 +117,49 @@ describeDB('bundle export — logged-tier digest (§7.5)', () => {
     const chained = readJsonl(path.join(bundleDir, 'events.jsonl'))
     expect(chained.some((r) => r.data.subtype === 'logged_tier_digest')).toBe(false)
     expect(manifest.tiers?.loggedDigest).toBeUndefined()
+  })
+
+  it('planned export keeps logged digest and chain metadata at the approved snapshot', () => {
+    const before = events.insertEvent(
+      'shell',
+      { subtype: 'command_start', command: 'id' },
+      { engagementId: 'eng-1', operatorId }
+    )!
+    events.insertEvent('dns', { subtype: 'dns_query', query_name: 'before.test' }, { operatorId })
+    const snapshot = takeExportSnapshot()
+
+    events.insertEvent(
+      'shell',
+      { subtype: 'command_end', command: 'id', exitCode: 0 },
+      { engagementId: 'eng-1', operatorId }
+    )
+    events.insertEvent('dns', { subtype: 'dns_query', query_name: 'after.test' }, { operatorId })
+
+    const { outDir: bundleDir, manifest } = exportBundle('eng-1', {
+      outRoot: outDir,
+      snapshot,
+      includeEventIds: new Set([before.id]),
+      exportPlan: {
+        id: 'plan-1',
+        fingerprint: 'f'.repeat(64),
+        counts: {
+          examined: 2, included: 2, excludedDoNotExport: 0,
+          excludedPersonal: 0, excludedBlacklist: 0, maskedOutOfScope: 0,
+          sanitized: 0, attachmentsIncluded: 0, attachmentsMissing: 0,
+          attachmentsUnattributed: 0, unsupported: 0
+        }
+      }
+    })
+
+    const chained = readJsonl(path.join(bundleDir, 'events.jsonl'))
+    const logged = readJsonl(path.join(bundleDir, 'events_logged.jsonl'))
+    expect(chained.map((r) => r.id)).toEqual([before.id])
+    expect(chained.some((r) => r.data.subtype === 'logged_tier_digest')).toBe(false)
+    expect(logged).toHaveLength(0) // exact plan selection excludes the logged row
+    expect(manifest.tiers?.loggedDigest?.count).toBe(1)
+    expect(events.loggedTierDigest(snapshot.loggedMaxRowId).count).toBe(1)
+    expect(events.loggedTierDigest().count).toBe(2)
+    expect(manifest.chainHead).toEqual({ hash: before.hash, eventCount: 1 })
+    expect(manifest.tiers?.chained).toBe(1)
   })
 })

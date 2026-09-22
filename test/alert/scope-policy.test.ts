@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ScopePolicy, classifyScopeTarget, isReportable, alertFloorFor } from '../../src/core/alert/policies'
-import { matchTarget } from '../../src/core/db/events'
+import { matchPattern } from '../../src/core/scope-evaluator'
 import type { TargetHitSignal } from '../../src/core/alert/signal'
 
 function hit(target: string): TargetHitSignal {
@@ -155,20 +155,15 @@ describe('the pure classifier is the same classifier', () => {
     expect(isReportable('excluded', alertFloorFor(false))).toBe(true)
   })
 
-  it('classifies case-sensitively, so a caller must not normalise first', () => {
+  it('classifies case-insensitively (canonical evaluator)', () => {
     const scope = { targets: ['*.Example.com'], excludeTargets: [] }
     expect(classifyScopeTarget('www.Example.com', scope).distance).toBe('in_scope')
-    expect(classifyScopeTarget('www.example.com', scope).distance).not.toBe('in_scope')
+    expect(classifyScopeTarget('www.example.com', scope).distance).toBe('in_scope')
   })
 
-  it('does NOT agree with matchTarget — the two matchers are different questions', () => {
-    // Documented rather than fixed. `matchTarget` (used by retention's body
-    // pinning) is a substring test, so the pattern 'evil' pins anything
-    // containing it; the policy matcher is exact-or-wildcard. A recompute must
-    // use the policy matcher, because parity with the live verdict is the
-    // whole point. Unifying them is a separate, deliberate change. They also
-    // disagree on case: matchTarget lowercases both sides, the policy does not.
-    expect(matchTarget('a.evil.example', 'evil')).toBe(true)
+  it('matchPattern and classifyScopeTarget agree (unified canonical evaluator)', () => {
+    // Both now delegate to matchPattern: no substring, case-insensitive.
+    expect(matchPattern('a.evil.example', 'evil')).toBe(false)
     expect(classifyScopeTarget('a.evil.example', { targets: ['evil'], excludeTargets: [] }).distance)
       .not.toBe('in_scope')
   })

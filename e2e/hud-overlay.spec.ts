@@ -115,6 +115,26 @@ test.describe.serial('HUD overlay geometry', () => {
     expect(fit.need, `content needs ${fit.need}px but the window is ${fit.have}px — it is being clipped`)
       .toBeLessThanOrEqual(fit.have)
   })
+
+  test('pointer can expand and hide the HUD', async () => {
+    const expand = hud.getByTestId('hud-expand')
+    await expand.hover()
+    await expand.click()
+    await expect(expand).toHaveText('▲')
+
+    await hud.getByTestId('hud-hide').click()
+    await expect.poll(() => app.evaluate(async ({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('overlay'))?.isVisible()
+    )).toBe(false)
+
+    // Restore the shared serial fixture for the following HUD checks.
+    await app.evaluate(async ({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('overlay'))?.show()
+    })
+    await expect.poll(() => app.evaluate(async ({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('overlay'))?.isVisible()
+    )).toBe(true)
+  })
 })
 
 // v0.9.7 regression: the v0.9.4 width fix measured `scrollWidth` on a flex

@@ -52,6 +52,7 @@ export function initDB(projectDir: string): Database.Database {
       created_at INTEGER NOT NULL,
       monotonic_ns TEXT,
       ntp_offset_ms INTEGER,
+      signature TEXT,
       -- Envelope (docs/DESIGN-plugin-kernel.md §3-4). raw_ref points at the
       -- verbatim producer bytes in <project>/raw/; mapper names the
       -- (id,version) that derived data; source is the producer id.
@@ -59,7 +60,8 @@ export function initDB(projectDir: string): Database.Database {
       mapper TEXT,
       schema_version INTEGER,
       ts_source INTEGER,
-      source TEXT
+      source TEXT,
+      transcript_uuid TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
@@ -130,7 +132,8 @@ export function initDB(projectDir: string): Database.Database {
       token_hash TEXT NOT NULL UNIQUE,
       is_primary INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      revoked_at INTEGER
+      revoked_at INTEGER,
+      signer_pub_key TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_operator_token ON operators(token_hash);
 
@@ -161,6 +164,14 @@ export function initDB(projectDir: string): Database.Database {
       PRIMARY KEY (source_event_id, field)
     );
     CREATE INDEX IF NOT EXISTS idx_sanitized_source ON sanitized_events(source_event_id);
+
+    -- Operator assertion: "this event must not leave the local DB".
+    -- A side table (not a column) because events rows are immutable.
+    -- INSERT = mark; DELETE = unmark. Both tiers share the same table.
+    CREATE TABLE IF NOT EXISTS do_not_export (
+      event_id   TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
 
     -- v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.3): the
     -- logged tier for supporting evidence -- DNS lookups, HTTP flow
@@ -206,63 +217,93 @@ export function initDB(projectDir: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_events_logged_agent_subtype_ts ON events_logged(agent_type, subtype, timestamp DESC);
   `)
 
-  // Migrate: add columns if missing (older DB versions)
-  const cols = db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>
-  const colNames = new Set(cols.map(c => c.name))
-  if (!colNames.has('prev_hash')) db.exec('ALTER TABLE events ADD COLUMN prev_hash TEXT')
-  if (!colNames.has('monotonic_ns')) db.exec('ALTER TABLE events ADD COLUMN monotonic_ns TEXT')
-  if (!colNames.has('ntp_offset_ms')) db.exec('ALTER TABLE events ADD COLUMN ntp_offset_ms INTEGER')
-  // v0.6.89: per-event Ed25519 signature. Nullable so pre-existing rows keep
-  // working (verifyChainFull marks them "unsigned" rather than "broken");
-  // signed rows carry base64 raw 64-byte Ed25519 sig over the same canonical
-  // JSON string used for the hash.
-  if (!colNames.has('signature')) db.exec('ALTER TABLE events ADD COLUMN signature TEXT')
-  // F4: rename the quickmarks table to bookmarks (the product calls them
-  // bookmarks since PR #32). A project written by an older build has
-  // `quickmarks`; rename it in place so its rows carry over. Guarded so it runs
-  // once — after the CREATE TABLE bookmarks above, both could exist only if a
-  // new build already made `bookmarks`, in which case the old one is stale.
-  {
-    const tbls = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map((t) => t.name))
-    if (tbls.has('quickmarks') && !hasRows(db, 'bookmarks')) {
-      db.exec('DROP TABLE IF EXISTS bookmarks')
-      db.exec('ALTER TABLE quickmarks RENAME TO bookmarks')
-      db.exec('CREATE INDEX IF NOT EXISTS idx_bookmarks_ts ON bookmarks(created_at)')
-    }
-  }
-  // v0.15: envelope columns on both tiers. Nullable; a legacy row simply has
-  // no raw_ref and hashes under the shapes it was written with.
-  for (const table of ['events', 'events_logged']) {
-    const have = new Set((db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name))
-    if (!have.has('raw_ref')) db.exec(`ALTER TABLE ${table} ADD COLUMN raw_ref TEXT`)
-    if (!have.has('mapper')) db.exec(`ALTER TABLE ${table} ADD COLUMN mapper TEXT`)
-    if (!have.has('schema_version')) db.exec(`ALTER TABLE ${table} ADD COLUMN schema_version INTEGER`)
-    if (!have.has('ts_source')) db.exec(`ALTER TABLE ${table} ADD COLUMN ts_source INTEGER`)
-    if (!have.has('source')) db.exec(`ALTER TABLE ${table} ADD COLUMN source TEXT`)
-  }
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_logged_source_ts ON events_logged(source, timestamp DESC)')
-  const opCols = db.prepare("PRAGMA table_info(operators)").all() as Array<{ name: string }>
-  const opColNames = new Set(opCols.map(c => c.name))
-  // Public key mirrored into the DB so verify never touches disk to walk the
-  // chain. Nullable: existing operators keep NULL and their events verify as
-  // "unsigned"; keygen only fires on new / re-set operators. Rewriting old
-  // keys would invalidate the chain of signed rows behind them, so migration
-  // stays hands-off.
-  if (!opColNames.has('signer_pub_key')) db.exec('ALTER TABLE operators ADD COLUMN signer_pub_key TEXT')
+  db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_http_flow
+    ON events_logged(json_extract(data, '$.flow_id'), timestamp DESC)
+    WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)
 
-  // P2-2: denormalized transcript_uuid column on events — eliminates the
-  // json_extract full-table scan in buildSeedIndex (tailer-host.ts).
+  // Spec 017: the query language's identifier conditions. The agent session
+  // and tool-use id live in `data`, not in columns — `session_id` the COLUMN
+  // is RedLog's own capture session, which nothing filters on. `events` has a
+  // `transcript_uuid` column already indexed above; `events_logged` does not,
+  // so its transcript condition reads the same value out of `data`.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_agent_session
+    ON events(json_extract(data, '$.session_id'), timestamp DESC)
+    WHERE json_extract(data, '$.session_id') IS NOT NULL`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_agent_session
+    ON events_logged(json_extract(data, '$.session_id'), timestamp DESC)
+    WHERE json_extract(data, '$.session_id') IS NOT NULL`)
+  // Composite, because a tool-use id is unique only within its session.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_tool_use
+    ON events(json_extract(data, '$.tool_use_id'), json_extract(data, '$.session_id'))
+    WHERE json_extract(data, '$.tool_use_id') IS NOT NULL`)
+  // Deliberately no tool-use or transcript index on the logged tier. A partial
+  // index still evaluates its expression on every insert to decide whether the
+  // row belongs, and the logged tier is the HTTP/DNS capture hot path — but
+  // `tool_call`/`tool_result` and agent transcripts are chained-tier (see
+  // LOGGED_TIER in event-write), so those two indexes would have cost every
+  // proxied request and indexed nothing. The conditions still resolve there;
+  // they scan a set that is empty in practice. The agent session index stays
+  // because `agent:thinking` IS logged and carries one.
+
+  // FTS5 full-text search indexes for events + events_logged.
+  // External-content tables: the index references the source rows directly
+  // (no data duplication). AFTER INSERT / AFTER DELETE triggers keep the
+  // index in sync. events is append-only so only INSERT is needed there;
+  // events_logged also has retention DELETE sweeps.
   {
-    const evCols = new Set((db.prepare("PRAGMA table_info(events)").all() as Array<{ name: string }>).map(c => c.name))
-    if (!evCols.has('transcript_uuid')) {
-      db.exec('ALTER TABLE events ADD COLUMN transcript_uuid TEXT')
-      db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
-      // Backfill existing rows from the JSON data column.
-      db.exec(`UPDATE events SET transcript_uuid = json_extract(data, '$.transcript_uuid') WHERE agent_type = 'agent' AND json_extract(data, '$.transcript_uuid') IS NOT NULL AND transcript_uuid IS NULL`)
+    const tbls = new Set(
+      (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
+    )
+    const hadEventsFts = tbls.has('events_fts')
+
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+        data, target_id, agent_type,
+        content=events, content_rowid=rowid,
+        tokenize='unicode61 remove_diacritics 2',
+        prefix='2 3'
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS events_logged_fts USING fts5(
+        data, target_id, agent_type,
+        content=events_logged, content_rowid=rowid,
+        tokenize='unicode61 remove_diacritics 2',
+        prefix='2 3'
+      );
+    `)
+
+    // Triggers: keep FTS in sync on write. DROP+CREATE so column lists
+    // stay current across upgrades (same pattern as assertEventsAppendOnly).
+    db.exec(`
+      DROP TRIGGER IF EXISTS events_fts_ai;
+      CREATE TRIGGER events_fts_ai AFTER INSERT ON events BEGIN
+        INSERT INTO events_fts(rowid, data, target_id, agent_type)
+        VALUES (new.rowid, new.data, new.target_id, new.agent_type);
+      END;
+
+      DROP TRIGGER IF EXISTS events_logged_fts_ai;
+      CREATE TRIGGER events_logged_fts_ai AFTER INSERT ON events_logged BEGIN
+        INSERT INTO events_logged_fts(rowid, data, target_id, agent_type)
+        VALUES (new.rowid, new.data, new.target_id, new.agent_type);
+      END;
+
+      DROP TRIGGER IF EXISTS events_logged_fts_ad;
+      CREATE TRIGGER events_logged_fts_ad AFTER DELETE ON events_logged BEGIN
+        INSERT INTO events_logged_fts(events_logged_fts, rowid, data, target_id, agent_type)
+        VALUES ('delete', old.rowid, old.data, old.target_id, old.agent_type);
+      END;
+    `)
+
+    // Build the external-content index when it is first created.
+    if (!hadEventsFts) {
+      if (hasRows(db, 'events'))
+        db.exec("INSERT INTO events_fts(events_fts) VALUES('rebuild')")
+      if (hasRows(db, 'events_logged'))
+        db.exec("INSERT INTO events_logged_fts(events_logged_fts) VALUES('rebuild')")
     }
   }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
 
   // v0.6.88 P1-B: install append-only triggers on events table so
   // DELETE / UPDATE-of-immutable-fields raise instead of silently corrupting

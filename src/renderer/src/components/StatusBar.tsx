@@ -6,6 +6,7 @@ import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
 import { appShortcuts } from '../lib/shortcuts'
 import { isMac } from '../lib/platform'
 import { formatTime } from '../lib/time'
+import { useAppCounts } from '../lib/useAppCounts'
 
 // The ⌘. chord, drawn the way this platform writes it. Read from the one
 // shortcut table so the toast cannot drift from the binding (§11).
@@ -14,14 +15,13 @@ const recordingChord =
   appShortcuts([], isMacPlatform).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 
 export default function StatusBar(): JSX.Element {
+  const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
-  const [eventCount, setEventCount] = useState(0)
   const [loggedCount, setLoggedCount] = useState(0)
-  const [lootCount, setLootCount] = useState(0)
-  const [scopeViolations, setScopeViolations] = useState(0)
-  const [scopeConfigured, setScopeConfigured] = useState(true)
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
+  const [pausedAt, setPausedAt] = useState<number | null>(null)
+  const [pauseElapsed, setPauseElapsed] = useState(0)
   const [overlayVisible, setOverlayVisible] = useState(true)
   const [captureVerdict, setCaptureVerdict] = useState<'healthy' | 'partial' | 'dark' | null>(null)
   const [lastEventAt, setLastEventAt] = useState<number | null>(null)
@@ -39,28 +39,28 @@ export default function StatusBar(): JSX.Element {
       if (p?.createdAt) start = p.createdAt
     })
     window.redlog.ip.getStatus().then(setIpStatus)
-    window.redlog.events.getCount().then(setEventCount)
-    // v0.13.0: also fetch the logged-tier count for the chained·logged
-    // split. Legacy .getCount() returns chained (audit) — every existing
-    // caller means that.
+    // v0.13.0: fetch the logged-tier count for the chained·logged split.
+    // The shared counts (eventCount, lootCount, scopeViolations,
+    // scopeConfigured) come from useAppCounts.
     window.redlog.events.getCount('logged').then(setLoggedCount)
-    window.redlog.loot.getCount().then(setLootCount)
-    window.redlog.scope.getViolationCount().then(setScopeViolations)
-    window.redlog.scope.isConfigured().then(setScopeConfigured).catch(() => {})
-    window.redlog.recording.get().then(setRecording)
+    window.redlog.recording.get().then((r) => {
+      setRecording(r)
+      if (!r) setPausedAt(Date.now())
+    })
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
-    const unsubEvent = window.redlog.events.onNew((event) => {
-      // v0.13.0: the tier flag on the incoming event tells us which
-      // counter to bump; unknown-tier (legacy events) default to chained
-      // via rowToEvent's default. Loot / scope counts refetch either way.
-      const tier = (event as { tier?: import('../../../core/db/events').EventTier } | undefined)?.tier
-      if (tier === 'logged') setLoggedCount((c) => c + 1)
-      else setEventCount((c) => c + 1)
-      window.redlog.loot.getCount().then(setLootCount)
-      window.redlog.scope.getViolationCount().then(setScopeViolations)
+    // v0.13.0: the logged-tier count for the chained·logged split is
+    // StatusBar-specific. The shared counts (eventCount, lootCount,
+    // scopeViolations) are refreshed by useAppCounts's own batch subscription.
+    const unsubEvent = window.redlog.events.onNewBatch((events) => {
+      const added = events.filter((event) => event.tier === 'logged').length
+      if (added) setLoggedCount((c) => c + added)
     })
-    const unsubRec = window.redlog.recording.onChange(setRecording)
+    const unsubRec = window.redlog.recording.onChange((r) => {
+      setRecording(r)
+      if (!r) setPausedAt(Date.now())
+      else { setPausedAt(null); setPauseElapsed(0) }
+    })
     window.redlog.overlay.isVisible().then(setOverlayVisible)
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
@@ -71,14 +71,13 @@ export default function StatusBar(): JSX.Element {
     // visible indicator so operators on the Timeline view still see a change
     // from healthy → partial → dark.
     //
-    // v0.6.86: also fire a one-shot toast on healthy → partial/dark transitions
+    // Fire a one-shot toast on healthy → partial/dark transitions
     // so operators get an active notification, not just a passive dot colour
     // change. Held in a ref (not state) so the previous verdict survives across
     // re-renders and we only toast on the transition itself.
     let prevVerdict: 'healthy' | 'partial' | 'dark' | null = null
     const loadCapture = (): void => {
-      try {
-        window.redlog.capture?.health?.()?.then((h) => {
+      void window.redlog.capture.health().then((h) => {
           if (!h || typeof h !== 'object' || !('verdict' in h)) return
           const verdict = (h as { verdict: 'healthy' | 'partial' | 'dark' }).verdict
           const dbErr = (h as { lastDbError?: { source: string; message: string } }).lastDbError
@@ -109,13 +108,21 @@ export default function StatusBar(): JSX.Element {
           }
           prevVerdict = verdict
         }).catch(() => {})
-      } catch { /* older preload */ }
     }
     loadCapture()
     const healthTimer = setInterval(loadCapture, 30_000)
 
     return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
+
+  useEffect(() => {
+    if (pausedAt == null) return
+    const tick = setInterval(() => setPauseElapsed(Math.floor((Date.now() - pausedAt) / 1000)), 1000)
+    return () => clearInterval(tick)
+  }, [pausedAt])
+
+  const PAUSE_WARN_SECS = 300
+  const pauseMins = Math.floor(pauseElapsed / 60)
 
   // Toggle recording and, on failure, say so. A swallowed rejection here is
   // the worst kind: the operator believes capture paused (or resumed) and the
@@ -209,15 +216,16 @@ export default function StatusBar(): JSX.Element {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (some sources active, some idle).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
+        const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
         const dotColor = !recording
-          ? 'bg-redlog-text-dim'
+          ? pauseWarn ? 'bg-amber-500 animate-pulse-slow' : 'bg-redlog-text-dim'
           : captureVerdict === 'dark'
             ? 'bg-amber-500'
             : captureVerdict === 'partial'
               ? 'bg-amber-500 animate-pulse-slow'
               : 'bg-red-500 animate-pulse-slow'
         const labelColor = !recording
-          ? 'text-redlog-text-dim'
+          ? pauseWarn ? 'text-amber-400/80' : 'text-redlog-text-dim'
           : captureVerdict === 'dark' || captureVerdict === 'partial'
             ? 'text-amber-400/80'
             : 'text-red-400/80'
@@ -245,7 +253,8 @@ export default function StatusBar(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
             <span className={labelColor}>{
-              !recording ? t('statusBar.paused')
+              !recording
+                ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
               : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
@@ -297,18 +306,17 @@ export default function StatusBar(): JSX.Element {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        {/* v0.13.0: chained · logged split. Chained (audit-tier) reads
+        {/* Chained · logged split. Chained (audit-tier) reads
          *  brighter — that's the count anchors + verifier care about.
          *  Logged renders one tier dimmer (redlog-text-dim against the chained
          *  count's redlog-text-dim) to signal "footprint, not evidence".
          *  Both tiers clear 4.5:1 on the bar's surface — these are numbers
          *  an auditor reads, so neither may sink into decoration. They used
-         *  to render at 2.6:1 and 1.9:1. Hidden entirely when logged is zero, so pre-v0.13
-         *  projects still show the single-number shape they always had.
+         *  to render at 2.6:1 and 1.9:1. Hidden entirely when logged is zero.
          *  Title tooltip explains the two-tier story for auditors
          *  hovering to figure out what the second number is.
          *
-         *  v0.14 §9.4: when the logged tier is non-zero, the counter is
+         *  When the logged tier is non-zero, the counter is
          *  clickable and dispatches `redlog:auditor-view:toggle` — the
          *  Timeline picks it up and flips its auditor-view chip. When
          *  the logged tier is empty there is nothing to hide, so the

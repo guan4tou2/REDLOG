@@ -15,12 +15,14 @@ bodies belong to the mitmproxy addon, and raw payloads would bloat the store and
 duplicate it.
 
 Usage (needs root/sudo for raw capture; needs scapy):
-    pip install scapy
-    sudo -E python3 hooks/pcap-agent.py -i en0
-    sudo -E python3 hooks/pcap-agent.py -i eth0 --filter "tcp or udp"
+    sudo -E "$(command -v uv)" run --with scapy hooks/pcap-agent.py -i en0
+    sudo -E "$(command -v uv)" run --with scapy hooks/pcap-agent.py -i eth0 --filter "tcp or udp"
+
+`uv run --with` supplies scapy without installing it; uv is spelled out by
+absolute path because sudoers' secure_path drops it from PATH.
 
 Verify without root or a live NIC:
-    python3 hooks/pcap-agent.py --dry-run
+    uv run --with scapy hooks/pcap-agent.py --dry-run
 
 Env: REDLOG_VERBOSE=1 logs each emitted event.
 """
@@ -174,7 +176,11 @@ def run_capture(iface: str | None, bpf: str) -> int:
     try:
         from scapy.all import sniff, IP, IPv6, TCP, UDP  # type: ignore
     except ImportError:
-        print("[redlog-pcap] scapy not installed. Run: pip install scapy", file=sys.stderr)
+        print(
+            "[redlog-pcap] scapy not installed. Rerun as: "
+            'sudo -E "$(command -v uv)" run --with scapy hooks/pcap-agent.py ...',
+            file=sys.stderr,
+        )
         return 2
 
     # Don't capture our own POSTs to the RedLog API.

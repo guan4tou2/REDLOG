@@ -14,7 +14,9 @@ import { PLUGIN_API_VERSION } from '../src/core/plugins/types'
 import { setDisabled } from '../src/core/plugins/state'
 import { grant, isTrusted, revoke } from '../src/core/plugins/trust'
 import { applyContributions, removeContributions } from '../src/core/plugins/contributions'
-import { extractTarget, unregisterTargetExtractors } from '../src/core/target-extractor'
+import { extractTargetWithProvenance, unregisterTargetExtractors } from '../src/core/target-extractor'
+
+const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
 import { getRules, unregisterRedactionRules } from '../src/core/redaction'
 import { detectHooks, unregisterCapturePlugins } from '../src/core/hooks-manager'
 import { methodAllowed } from '../src/core/plugins/host'
@@ -137,7 +139,7 @@ describe('loader + declarative contributions', () => {
 
     applyContributions(p)
     // target extractor now knows the bespoke tool
-    expect(extractTarget('myscan --host 10.0.0.9')).toBe('10.0.0.9')
+    expect(extractedHost('myscan --host 10.0.0.9')).toBe('10.0.0.9')
     // redaction denylist merged
     expect(getRules().denylist).toContain('/S*SECRET*/')
 
@@ -192,12 +194,9 @@ describe('privileged trust gate', () => {
     revoke('tool-plugin')
   })
 
-  it('bookmarks.list is a current alias of the deprecated findings.list (F4 part B)', () => {
-    // Both methods work; each needs its own capability. Old plugins keep
-    // read:findings + findings.list; new ones use read:bookmarks + bookmarks.list.
-    expect(methodAllowed('findings.list', ['read:findings'])).toBe(true)
+  it('exposes only the current bookmarks capability', () => {
     expect(methodAllowed('bookmarks.list', ['read:bookmarks'])).toBe(true)
-    expect(methodAllowed('bookmarks.list', ['read:findings'])).toBe(false) // must hold its own cap
+    expect(methodAllowed('findings.list', ['read:bookmarks'])).toBe(false)
   })
 
   it('capability gate maps ctx methods to caps and denies unknowns', () => {

@@ -61,7 +61,6 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 |---|---|---|---|
 | **Agent transcript tailer** | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Automatic — watches `~/.claude/projects/` JSONL files. Filter with **Settings ▸ Integrations ▸ Watch Paths** (whitelist). | Yes |
 | **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…) | Settings ▸ Hooks ▸ Zsh/Bash → Enable, then `source ~/.zshrc` | Yes — it no-ops when RedLog is closed |
-| **Claude Code hook** | Only Claude Code's **Bash tool** calls (legacy — the transcript tailer above is now the primary capture) | Settings ▸ Hooks ▸ Claude Code → Enable | Yes |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
 | **RedLog terminal** | Commands run inside RedLog's own terminal pane | Built in, always on | — |
@@ -71,7 +70,7 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 **Three things that trip people up:**
 
-1. **The agent transcript tailer is the primary capture for Claude Code.** It watches `~/.claude/projects/` and captures the full session — tool calls, reasoning, user messages. The old PostToolUse hook (section 1a below) only captures Bash calls and is now a legacy fallback.
+1. **The agent transcript tailer captures Claude Code directly.** It watches `~/.claude/projects/` and captures the full session — tool calls, reasoning, and user messages.
 2. **Use watch paths to scope capture.** Without a whitelist, the tailer ingests ALL Claude Code sessions into the current project. Set **Settings ▸ Integrations ▸ Watch Paths** to your engagement's working directory so only relevant sessions are recorded. See [Watch Paths](#watch-paths-whitelist) below.
 3. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
 
@@ -94,7 +93,7 @@ By default, the agent transcript tailer ingests ALL Claude Code sessions into th
 
 | Field | Type | Default | Behavior |
 |-------|------|---------|----------|
-| `watchPaths` | `string[]` | `[]` | **Whitelist.** When non-empty, only sessions whose cwd matches a listed prefix are tailed. Everything else is dropped. When empty, all sessions pass (backward-compatible). |
+| `watchPaths` | `string[]` | `[]` | **Whitelist.** When non-empty, only sessions whose cwd matches a listed prefix are tailed. Everything else is dropped. When empty, all discovered sessions pass. |
 | `excludedPaths` | `string[]` | `[]` | **Blacklist.** Sessions whose cwd matches are skipped. Checked before `watchPaths`. |
 
 **Path matching:** Paths are resolved to absolute with tilde expansion. A session passes if its cwd equals a listed path or starts with it followed by a path separator. Both `/` and `\` are normalized.
@@ -130,82 +129,25 @@ The agent transcript tailer watches `~/.claude/projects/**/*.jsonl` and captures
 
 **Redaction:** `deepRedactStrings()` walks every string value; paths matching `.ssh/`, `.env`, `.aws/` suppress the output field entirely.
 
-> **Note:** The old `PostToolUse` hook (`hooks/claude-code-hook.sh`) is now a no-op stub (`exit 0`). It's kept so existing `~/.claude/settings.json` entries don't break, but the tailer is a strict superset.
-
-### 1a-legacy. Claude Code — PostToolUse Hook (deprecated)
-
-The `claude-code-hook.sh` fires on Bash tool calls only. It was the primary capture before v0.7.2 and is now a stub — the transcript tailer above captures everything it did and more.
-
-**Setup:**
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "command": "/path/to/redlog/hooks/claude-code-hook.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Or per-project in `.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "command": "$PROJECT_DIR/hooks/claude-code-hook.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**What it captures:**
-
-| Field | Source | Example |
-|-------|--------|---------|
-| command | `CLAUDE_TOOL_INPUT.command` | `nmap -sV target.com` |
-| output_preview | `CLAUDE_TOOL_OUTPUT` (first 500 chars) | `Starting Nmap 7.94...` |
-| session_id | `CLAUDE_SESSION_ID` | `abc123-def456` |
-| subtype | hardcoded | `claude_code_bash` |
-
-**Environment variables provided by Claude Code:**
-
-- `CLAUDE_TOOL_NAME` — tool name (we filter for `"Bash"`)
-- `CLAUDE_TOOL_INPUT` — JSON string of tool input parameters
-- `CLAUDE_TOOL_OUTPUT` — JSON string of tool output (PostToolUse only)
-- `CLAUDE_SESSION_ID` — current Claude Code session identifier
-
-**Timeline appearance:** Events appear as `agent` type with subtype `claude_code_bash` in the Timeline swim-lane view.
-
 ### 1b. Shell Preexec Hook (Universal)
 
 Works with ANY agent that spawns a shell process. Hooks into zsh `preexec`/`precmd` or bash `DEBUG` trap.
+
+The installed integration uses a small adapter for each supported shell:
+`shell-bash-hook.sh` and `shell-zsh-hook.zsh` contain only lifecycle handling;
+both source `shell-common.sh` for transport, offline spool, project identity and
+`redlog-run`. PowerShell keeps its language-native adapter while emitting the
+same shell event fields. Fish, Nushell and cmd.exe are not currently advertised
+as automatic-hook targets.
 
 **Setup:**
 
 ```bash
 # Add to ~/.zshrc
-source /path/to/redlog/hooks/shell-preexec-hook.sh
+source /path/to/redlog/hooks/shell-zsh-hook.zsh
 
 # Or add to ~/.bashrc
-source /path/to/redlog/hooks/shell-preexec-hook.sh
+source /path/to/redlog/hooks/shell-bash-hook.sh
 ```
 
 **What it captures:**
@@ -227,7 +169,14 @@ source /path/to/redlog/hooks/shell-preexec-hook.sh
 2. `PROMPT_COMMAND` fires after each command
 3. Same event emission as zsh
 
-**Performance:** Negligible. The `curl` call runs in background and has a 1-second timeout. If RedLog isn't running, the hook silently does nothing.
+**Output coverage:** The ordinary hook records command metadata only. Prefix a
+command with `redlog-run` to stream stdout/stderr to the terminal while also
+including capped, separated output in the `command_end` event. Interactive TUI
+sessions should use RedLog's built-in terminal so the PTY is recorded.
+
+**Performance:** Event delivery has short connection and request deadlines. If
+RedLog is unavailable, metadata is spooled locally; `redlog-run` still executes
+the wrapped command normally.
 
 ### 1c. Codex/GPT Wrapper
 
@@ -242,15 +191,12 @@ SHELL=/path/to/redlog/hooks/codex-wrapper.sh codex run "scan the target"
 # Option 2: Wrap a specific command
 ./hooks/codex-wrapper.sh nmap -sV target.com
 
-# Option 3: Start a wrapped interactive shell
-./hooks/codex-wrapper.sh
-# (loads shell-preexec-hook.sh automatically)
 ```
 
 **How it works:**
 
 - If called with arguments: wraps that single command with start/end events
-- If called without arguments: starts an interactive shell with preexec hooks loaded
+- If called without arguments: exits with instructions to install the matching shell adapter
 - Sets `REDLOG_SHELL_WRAPPED=1` env var so tools can detect the wrapper
 
 ## 2. HTTP API
@@ -290,8 +236,8 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | GET | `/api/events/search` | yes | Full-text search (`?q=&limit=`) |
 | GET | `/api/events/count` | yes | Event count |
 | POST | `/api/marker` | yes | Create marker (`{ title, notes?, severity?, target_id? }`) |
-| GET | `/api/quickmarks` | yes | List bookmarks |
-| POST | `/api/quickmarks` | yes | Create bookmark |
+| GET | `/api/bookmarks` | yes | List bookmarks |
+| POST | `/api/bookmarks` | yes | Create bookmark |
 | POST | `/api/loot/scan` | yes | Scan text for secrets/credentials |
 | POST | `/api/screenshot` | yes | Trigger manual capture |
 | GET | `/api/operators` | yes | List operators (sensitive fields stripped) |
@@ -350,7 +296,7 @@ source /path/to/redlog/shell/redlog-agent.sh
 | `redlog_loot` | Scan for creds | `redlog_loot "root:x:0:0:..."` |
 | `redlog_scope` | Get scope info | `redlog_scope` |
 | `redlog_config` | Get project config | `redlog_config` |
-| `redlog_quickmark` | Bookmark a URL | `redlog_quickmark "Endpoint" "https://..."` |
+| `redlog_bookmark` | Bookmark a URL | `redlog_bookmark "Endpoint" "https://..."` |
 | `redlog_screenshot` | Manual capture | `redlog_screenshot` |
 
 ## 4. Codex / OpenAI Function Calling
@@ -435,7 +381,7 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 For maximum coverage with minimal friction — **hooks first, API only for the gaps** (see [Capture priority](#how-agents-capture-hooks-log)):
 
 1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
-2. **Add the Claude Code PostToolUse hook** — structured Bash tool-call capture.
+2. **Enable the agent transcript tailer** and set the engagement watch path.
 3. **Add the mitmproxy addon** if you're proxying traffic — passive HTTP capture.
 4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use the API for what hooks can't do (markers, scope checks, anchoring).
 5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.

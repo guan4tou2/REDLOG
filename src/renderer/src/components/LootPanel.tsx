@@ -1,23 +1,44 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useI18n } from '../i18n'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useI18n } from '../i18n/I18nContext'
 import { LoadingSpinner } from './Feedback'
-import { toast } from './Toast'
 import { Gem } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
+import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
+
+interface LootEvent {
+  id: string
+  timestamp: number
+  targetId: string | null
+  source: string | null
+  matches: Array<{ type: string; confidence: string; preview: string }>
+}
+
+const PAGE_SIZE = 200
+
+function projectLootEvent(e: { id: string; timestamp: number; targetId?: string | null; data: Record<string, unknown> }): LootEvent {
+  return {
+    id: e.id,
+    timestamp: e.timestamp,
+    targetId: e.targetId ?? null,
+    source: (e.data.source as string) ?? null,
+    matches: (e.data.matches as LootEvent['matches']) ?? []
+  }
+}
 
 export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
-  const [lootEvents, setLootEvents] = useState<Array<{
-    id: string
-    timestamp: number
-    targetId: string | null
-    source: string | null
-    matches: Array<{ type: string; confidence: string; preview: string }>
-  }>>([])
+  const [lootEvents, setLootEvents] = useState<LootEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadError, setLoadError] = useState<'initial' | 'older' | null>(null)
+  const nextCursorRef = useRef<string | null>(null)
+  const loadSeqRef = useRef(0)
+  const loadingOlderRef = useRef(false)
+  const hasMoreRef = useRef(false)
   // Filter by loot type; null = show all. Chips appear at the top with counts.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   // Dedup toggle: same (type, preview) captured from two commands used to
@@ -25,29 +46,82 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   // the operator wants the raw stream (e.g. verifying detection cadence).
   const [dedupOn, setDedupOn] = useState(true)
   const { t } = useI18n()
+  const { filter: sharedFilter } = useSharedFilter()
+
+  const loadLoot = useCallback(async (append: boolean, clearExisting = false): Promise<void> => {
+    if (append && (loadingOlderRef.current || !hasMoreRef.current)) return
+    const seq = append ? loadSeqRef.current : ++loadSeqRef.current
+
+    if (sharedFilter.agentType && sharedFilter.agentType !== 'loot') {
+      if (!append) {
+        setLootEvents([])
+        nextCursorRef.current = null
+        hasMoreRef.current = false
+        setHasMore(false)
+        setLoadError(null)
+        setLoading(false)
+      }
+      return
+    }
+
+    if (append) {
+      loadingOlderRef.current = true
+      setLoadingOlder(true)
+    }
+    else {
+      if (clearExisting) {
+        setLootEvents([])
+        hasMoreRef.current = false
+        setHasMore(false)
+      }
+      setLoading(true)
+      setLoadError(null)
+      nextCursorRef.current = null
+    }
+
+    try {
+      const page = await window.redlog.events.queryPage({
+        ...toEventFilter(sharedFilter),
+        agentType: 'loot',
+        limit: PAGE_SIZE,
+        ...(append && nextCursorRef.current ? { cursor: nextCursorRef.current } : {})
+      })
+      if (seq !== loadSeqRef.current) return
+      const projected = page.items.map(projectLootEvent)
+      setLootEvents((current) => {
+        if (!append) return projected
+        const byId = new Map(current.map((event) => [event.id, event]))
+        for (const event of projected) byId.set(event.id, event)
+        return [...byId.values()]
+      })
+      nextCursorRef.current = page.nextCursor
+      hasMoreRef.current = page.hasMore
+      setHasMore(page.hasMore)
+      setLoadError(null)
+    } catch {
+      if (seq === loadSeqRef.current) setLoadError(append ? 'older' : 'initial')
+    } finally {
+      if (seq === loadSeqRef.current) {
+        setLoading(false)
+        loadingOlderRef.current = false
+        setLoadingOlder(false)
+      }
+    }
+  }, [sharedFilter])
 
   useEffect(() => {
-    loadLoot().then(() => setLoading(false))
-    const unsub = window.redlog.events.onNew((evt) => {
-      if (evt.agentType === 'loot') {
-        loadLoot()
+    // A shared-filter change must not leave rows from the previous predicate
+    // visible while its replacement query is in flight.
+    void loadLoot(false, true)
+    const unsub = window.redlog.events.onNewBatch((events) => {
+      if (events.some((evt) => evt.agentType === 'loot')) {
+        // A live refresh keeps the last known evidence visible until the
+        // replacement succeeds; a transient read failure must not blank it.
+        void loadLoot(false)
       }
     })
     return unsub
-  }, [])
-
-  async function loadLoot(): Promise<void> {
-    const events = await window.redlog.events.query({ agentType: 'loot' })
-    setLootEvents(
-      events.map((e) => ({
-        id: e.id,
-        timestamp: e.timestamp,
-        targetId: e.targetId,
-        source: (e.data.source as string) ?? null,
-        matches: (e.data.matches as Array<{ type: string; confidence: string; preview: string }>) ?? []
-      }))
-    )
-  }
+  }, [loadLoot])
 
   const typeColor: Record<string, string> = {
     password_hash: 'text-red-400',
@@ -107,7 +181,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
     [fullList]
   )
 
-  if (loading) {
+  if (loading && lootEvents.length === 0 && loadError == null) {
     return (
       <LoadingSpinner />
     )
@@ -115,19 +189,13 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
 
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-redlog-text">{t('loot.title', { count: visibleMatchCount })}</h2>
-        {lootEvents.length > 0 && (
-          <button
-            onClick={async () => {
-              const p = await (window.redlog.data as { exportLoot?: () => Promise<string | null> }).exportLoot?.()
-              if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-            title={t('loot.exportHint')}
-          >{t('loot.export')}</button>
-        )}
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-redlog-text">{t('loot.title', { count: visibleMatchCount })}</h2>
+          <span data-testid="loot-completeness" className="text-xs text-redlog-text-faint">
+            {t(hasMore ? 'loot.recentSubset' : 'loot.complete')}
+          </span>
+        </div>
       </div>
 
       {/* Filter + dedup chips (only when there's enough loot to matter) */}
@@ -159,7 +227,14 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         )
       })()}
 
-      {lootEvents.length === 0 ? (
+      {loadError === 'initial' && lootEvents.length === 0 ? (
+        <div data-testid="loot-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <div>{t('loot.loadFailed')}</div>
+          <button type="button" onClick={() => void loadLoot(false, true)} className="mt-2 rounded border border-red-400/40 px-2 py-1 hover:bg-red-500/10">
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : lootEvents.length === 0 ? (
         <EmptyState
           icon={Gem}
           title={t('loot.empty')}
@@ -229,6 +304,27 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             )
           })}
           <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
+          {loadError === 'initial' && (
+            <div data-testid="loot-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              <div>{t('loot.loadFailed')}</div>
+              <button type="button" onClick={() => void loadLoot(false)} className="mt-2 rounded border border-red-400/40 px-2 py-1 hover:bg-red-500/10">
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
+          {loadError === 'older' && (
+            <div data-testid="loot-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              <div>{t('loot.loadOlderFailed')}</div>
+              <button type="button" onClick={() => void loadLoot(true)} className="mt-2 rounded border border-red-400/40 px-2 py-1 hover:bg-red-500/10">
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
+          {hasMore && loadError !== 'older' && (
+            <button type="button" onClick={() => void loadLoot(true)} disabled={loadingOlder} className="w-full rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300 hover:bg-amber-500/10 disabled:text-redlog-text-faint">
+              {loadingOlder ? t('loot.loadingOlder') : t('loot.loadOlder')}
+            </button>
+          )}
         </div>
       )}
     </div>

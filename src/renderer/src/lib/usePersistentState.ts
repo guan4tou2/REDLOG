@@ -3,7 +3,7 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 // One typed home for the "read a scalar from localStorage once on mount, write
 // it back whenever it changes" pattern that a handful of call sites had each
 // re-derived by hand. The load-bearing storage in Timeline.tsx — project-scoped
-// keys, legacy migration, debounced writes — deliberately does NOT use this;
+// keys and debounced writes — deliberately does NOT use this;
 // that logic a generic hook has no business owning.
 //
 // Storage can be missing or blocked (private windows, cleared site data, a

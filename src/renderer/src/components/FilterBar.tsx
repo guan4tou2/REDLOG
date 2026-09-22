@@ -5,8 +5,8 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 
 export function FilterBar(): JSX.Element | null {
-  const { filter, setTargetId, setAgentType, setTimeRange, clearAll,
-    activeCount, knownTargets, knownAgentTypes } = useSharedFilter()
+  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
@@ -29,7 +29,7 @@ export function FilterBar(): JSX.Element | null {
           <Filter size={12} strokeWidth={1.5} />
           <span>{t('filter.title')}</span>
           {activeCount > 0 && (
-            <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium tabular-nums">
+            <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-redlog-elevated text-redlog-text text-xs font-medium tabular-nums">
               {activeCount}
             </span>
           )}
@@ -48,6 +48,19 @@ export function FilterBar(): JSX.Element | null {
             label={`${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}`}
             onClear={() => setTimeRange(null)}
           />
+        )}
+        {(scopeTargets.length > 0 || scopeExcludeTargets.length > 0) && (
+          <button
+            onClick={() => setInScopeOnly(!filter.inScopeOnly)}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+              filter.inScopeOnly
+                ? 'border-red-500/40 bg-red-500/10 text-red-400'
+                : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-accent/30'
+            }`}
+            title={t('filter.inScopeHint')}
+          >
+            {t('filter.inScopeOnly')}
+          </button>
         )}
         {activeCount > 1 && (
           <button
@@ -99,7 +112,7 @@ export function FilterBar(): JSX.Element | null {
                     className={`px-2 py-0.5 rounded text-xs border transition-colors ${
                       active
                         ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-text-faint'
+                        : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-accent/30'
                     }`}
                   >{preset.label}</button>
                 )

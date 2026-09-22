@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
+import { toast } from './Toast'
 import type { ConfigState, HookInfo } from './settings/SettingsShared'
 import { isWindows } from './settings/SettingsShared'
 import WslPanel from './WslPanel'
@@ -47,9 +48,10 @@ export default function Settings(): JSX.Element {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       window.redlog.config.save(config).then(() => {
+        window.dispatchEvent(new CustomEvent('redlog:config-saved'))
         setSaved(true)
         setTimeout(() => setSaved(false), 1500)
-      }).catch(() => {})
+      }).catch(() => toast(t('toast.saveFailed'), 'error'))
     }, 350)
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,10 +165,10 @@ export default function Settings(): JSX.Element {
           <>
             <HooksPanel hooks={hooks} setHooks={setHooks} hookLoading={hookLoading} setHookLoading={setHookLoading} t={t} />
             {isWindows && <WslPanel t={t} />}
-            <AgentsPanel t={t} config={config} setConfig={setConfig} />
+            <HookWatchPathsPanel t={t} />
           </>
         )}
-        {tab === 'agents' && <HookWatchPathsPanel t={t} />}
+        {tab === 'agents' && <AgentsPanel t={t} config={config} setConfig={setConfig} />}
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} />}

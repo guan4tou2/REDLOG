@@ -11,6 +11,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let sweepBodyStore: typeof import('../src/core/retention').sweepBodyStore
 let queryEvents: typeof import('../src/core/db/events').queryEvents
@@ -21,6 +22,7 @@ try {
   const e = await import('../src/core/db/events')
   const r = await import('../src/core/retention')
   initDB = d.initDB; closeDB = d.closeDB
+  closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   insertEvent = e.insertEvent; queryEvents = e.queryEvents
   sweepBodyStore = r.sweepBodyStore
   dbAvailable = true
@@ -57,6 +59,13 @@ describeDB('body store size-pressure eviction', () => {
     fs.mkdirSync(bodiesDir, { recursive: true })
   })
   afterEach(() => {
+    // `closeDB()` closes the project DB and its read-only twin, but not
+    // `http-body-index.db` — a second SQLite file `linkHttpBodyEvent()` opens
+    // lazily. POSIX unlinks an open file happily; Windows answers EBUSY, so
+    // the rmSync below threw and every test in this file failed on teardown
+    // while its assertions had all passed. `http-body-search.test.ts` already
+    // closes it; these files simply did not.
+    closeHttpBodyIndex()
     closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })

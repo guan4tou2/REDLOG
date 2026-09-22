@@ -66,6 +66,102 @@ describeDB('ingest', () => {
     expect(secondPass.companions).toHaveLength(0)
   })
 
+  it('the migration helper publishes one primary event and keeps canonical enrichment', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const received: Array<{ id: string }> = []
+    const listener = (event: { id: string }): void => { received.push(event) }
+    eventBus.on('event', listener)
+    try {
+      const event = ingestMod.ingestEvent('shell', {
+        subtype: 'command_start', command: 'curl https://10.0.0.37/status', terminal_id: 'migration-test', pid: 37
+      }, base)
+      await new Promise(resolve => queueMicrotask(resolve))
+
+      expect(event).not.toBeNull()
+      expect(event!.data.detectedTarget).toBe('10.0.0.37')
+      expect(received.filter((candidate) => candidate.id === event!.id)).toHaveLength(1)
+    } finally {
+      eventBus.off('event', listener)
+    }
+  })
+
+  it('uses active target only when producer and enrichment have no target', () => {
+    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
+    const fallback = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'id' }
+    }).event!
+    const detected = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'curl http://10.10.11.99/' }
+    }).event!
+    const explicit = ingestMod.ingest({
+      ...base, agentType: 'marker', targetId: 'manual.example', data: { subtype: 'created', title: 'manual' }
+    }).event!
+    const screenshot = ingestMod.ingest({
+      ...base, agentType: 'screenshot', data: { trigger: 'manual', filename: 'shot.jpg' }
+    }).event!
+    const system = ingestMod.ingest({
+      ...base, agentType: 'system', data: { subtype: 'capture_health' }
+    }).event!
+
+    expect(fallback.targetId).toBe('10.10.11.24')
+    expect(detected.targetId).toBe('10.10.11.99')
+    expect(explicit.targetId).toBe('manual.example')
+    expect(screenshot.targetId).toBe('10.10.11.24')
+    expect(system.targetId).toBeNull()
+  })
+
+  it('clearing active target stops fallback attribution', () => {
+    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
+    ingestMod.configureIngest({ activeTarget: null })
+    const event = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'whoami' }
+    }).event!
+    expect(event.targetId).toBeNull()
+  })
+
+  it('stores cwd correlation as candidates without changing explicit causes', () => {
+    const command = ingestMod.ingest({
+      ...base, agentType: 'shell',
+      data: { subtype: 'command_start', command: 'nmap -oA loot/scan 10.0.0.9', terminalId: 'artifact-t1', pid: 81, cwd: '/work' }
+    }).event!
+    const file = ingestMod.ingest({
+      ...base, agentType: 'file_transfer',
+      data: {
+        subtype: 'file_created', source: 'file-watcher', path: '/work/loot/scan.xml',
+        _causes: ['evt-explicit']
+      }
+    }).event!
+
+    expect(file.data._causes).toEqual(['evt-explicit'])
+    expect(file.data.related_commands).toEqual([{
+      event_id: command.id, method: 'cwd-overlap', state: 'active'
+    }])
+  })
+
+  it('settles a command end while paused before later file correlation', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const commandData = { command: 'tool -o loot/out', terminalId: 'paused-t1', pid: 82, cwd: '/work' }
+    const command = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', ...commandData }
+    }).event!
+    eventBus.pause('api')
+    try {
+      const end = ingestMod.ingest({
+        ...base, agentType: 'shell', data: { subtype: 'command_end', ...commandData }
+      })
+      expect(end.skipped).toBe('paused')
+    } finally {
+      eventBus.resume('api')
+    }
+    const file = ingestMod.ingest({
+      ...base, agentType: 'file_transfer',
+      data: { subtype: 'file_created', source: 'file-watcher', path: '/work/loot/out' }
+    }).event!
+    expect(file.data.related_commands).toEqual([{
+      event_id: command.id, method: 'cwd-near-command-end', state: 'recent'
+    }])
+  })
+
   it('stores the raw bytes and folds their digest into the hashed data', () => {
     const rawBytes = Buffer.from(JSON.stringify({ agent_type: 'scanner', host: '10.0.0.9', port: 445 }))
     const r = ingestMod.ingest({

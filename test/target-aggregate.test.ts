@@ -13,6 +13,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let aggregateTargets: typeof import('../src/core/db/events').aggregateTargets
+let queryEvents: typeof import('../src/core/db/events').queryEvents
 
 let dbAvailable = false
 try {
@@ -22,6 +23,7 @@ try {
   closeDB = dbMod.closeDB
   insertEventRaw = eventsMod.insertEvent
   aggregateTargets = eventsMod.aggregateTargets
+  queryEvents = eventsMod.queryEvents
   dbAvailable = true
 } catch {
   // better-sqlite3 not compiled for this Node.js version
@@ -45,9 +47,9 @@ describeDB('aggregateTargets', () => {
   })
 
   it('rolls up counts + first/last-seen per target', () => {
-    insertEvent('shell', { command: 'nmap a', detectedTarget: 'a.example.com' })
-    insertEvent('shell', { command: 'nmap a2', detectedTarget: 'a.example.com' })
-    insertEvent('shell', { command: 'curl b', detectedTarget: 'b.example.com' })
+    insertEvent('shell', { command: 'nmap a', detectedTarget: 'a.example.com' }, { targetId: 'a.example.com' })
+    insertEvent('shell', { command: 'nmap a2', detectedTarget: 'a.example.com' }, { targetId: 'a.example.com' })
+    insertEvent('shell', { command: 'curl b', detectedTarget: 'b.example.com' }, { targetId: 'b.example.com' })
     const rows = aggregateTargets()
     const byTgt = Object.fromEntries(rows.map((r) => [r.target, r]))
     expect(byTgt['a.example.com'].eventCount).toBe(2)
@@ -56,24 +58,24 @@ describeDB('aggregateTargets', () => {
   })
 
   it('counts across BOTH tiers — a scanner (logged) hit and a shell (chained) hit on the same target sum', () => {
-    insertEvent('shell', { command: 'x', detectedTarget: 'dual.example.com' })
+    insertEvent('shell', { command: 'x', detectedTarget: 'dual.example.com' }, { targetId: 'dual.example.com' })
     // scanner:http_response routes to events_logged (LOGGED_TIER)
-    insertEvent('scanner', { subtype: 'http_response', detectedTarget: 'dual.example.com' })
+    insertEvent('scanner', { subtype: 'http_response' }, { targetId: 'dual.example.com' })
     const dual = aggregateTargets().find((r) => r.target === 'dual.example.com')
     expect(dual?.eventCount).toBe(2)
   })
 
-  it('excludes events with no detectedTarget', () => {
+  it('excludes events with no target_id', () => {
     insertEvent('shell', { command: 'whoami' })                       // no target
-    insertEvent('shell', { command: 'id', detectedTarget: '' })       // empty target
-    insertEvent('shell', { command: 'ssh', detectedTarget: 'real.com' })
+    insertEvent('shell', { command: 'id' }, { targetId: '' })         // empty target
+    insertEvent('shell', { command: 'ssh', detectedTarget: 'real.com' }, { targetId: 'real.com' })
     const rows = aggregateTargets()
     expect(rows.map((r) => r.target)).toEqual(['real.com'])
   })
 
   it('orders newest-touched first', () => {
-    insertEvent('shell', { command: 'a', detectedTarget: 'first.com' })
-    insertEvent('shell', { command: 'b', detectedTarget: 'second.com' })
+    insertEvent('shell', { command: 'a', detectedTarget: 'first.com' }, { targetId: 'first.com' })
+    insertEvent('shell', { command: 'b', detectedTarget: 'second.com' }, { targetId: 'second.com' })
     const rows = aggregateTargets()
     // second.com was touched last → it leads
     expect(rows[0].target).toBe('second.com')
@@ -83,9 +85,9 @@ describeDB('aggregateTargets', () => {
     // The whole point of M1: the old client rollup capped at 1000 rows, so a
     // busy target came back short and a target seen only in the dropped tail
     // vanished. Insert one sparse target, then 1100 for a busy one.
-    insertEvent('shell', { command: 'seed', detectedTarget: 'sparse.example.com' })
+    insertEvent('shell', { command: 'seed', detectedTarget: 'sparse.example.com' }, { targetId: 'sparse.example.com' })
     for (let i = 0; i < 1100; i++) {
-      insertEvent('shell', { command: `hit ${i}`, detectedTarget: 'busy.example.com' })
+      insertEvent('shell', { command: `hit ${i}`, detectedTarget: 'busy.example.com' }, { targetId: 'busy.example.com' })
     }
     const rows = aggregateTargets()
     const byTgt = Object.fromEntries(rows.map((r) => [r.target, r]))
@@ -96,4 +98,40 @@ describeDB('aggregateTargets', () => {
     // setup cost, not a code slowness. (Same reason bundle-export.test.ts:218
     // carries one.)
   }, 30000)
+
+  // --- SPEC: Target Identity (P0 #1) ---
+  // Domain invariant: Every target-oriented query MUST use the same canonical
+  // target identity semantics. target_id column is canonical.
+
+  it('includes events with target_id but no detectedTarget (scanner/HTTP)', () => {
+    insertEvent('scanner', { subtype: 'http_response', status: 200, host: '10.0.0.1' }, { targetId: '10.0.0.1' })
+    const rows = aggregateTargets()
+    expect(rows.find((r) => r.target === '10.0.0.1')?.eventCount).toBe(1)
+  })
+
+  it('aggregate count matches queryEvents count (canonical identity invariant)', () => {
+    insertEvent('shell', { command: 'nmap 10.0.0.1', detectedTarget: '10.0.0.1' }, { targetId: '10.0.0.1' })
+    insertEvent('shell', { command: 'curl 10.0.0.1', detectedTarget: '10.0.0.1' }, { targetId: '10.0.0.1' })
+    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
+    const agg = aggregateTargets().find((r) => r.target === '10.0.0.1')
+    const detail = queryEvents({ targetId: '10.0.0.1', limit: 10000, tier: 'all' })
+    expect(agg?.eventCount).toBe(detail.length)
+  })
+
+  it('groups case-insensitively', () => {
+    insertEvent('shell', { command: 'a' }, { targetId: 'Example.COM' })
+    insertEvent('shell', { command: 'b' }, { targetId: 'example.com' })
+    const rows = aggregateTargets()
+    const match = rows.filter((r) => r.target.toLowerCase() === 'example.com')
+    expect(match.length).toBe(1)
+    expect(match[0].eventCount).toBe(2)
+  })
+
+  it('excludes events with NULL target_id', () => {
+    insertEvent('marker', { title: 'note' })
+    insertEvent('shell', { command: 'id' }, { targetId: '10.0.0.1' })
+    const rows = aggregateTargets()
+    expect(rows.length).toBe(1)
+    expect(rows[0].target).toBe('10.0.0.1')
+  })
 })

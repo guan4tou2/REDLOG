@@ -4,11 +4,15 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
+import type { ExportCounts, ExportSnapshot } from './export-plan'
 import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
-import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
+import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
+import { BODY_REF_FOR } from './redact-export'
+import { operatorPiiReplacements } from './operator-pii'
+import { getDoNotExportIds } from './db/do-not-export'
 
 interface ManifestFile {
   path: string
@@ -36,16 +40,20 @@ interface ManifestPayload {
   /** PRD A2: how many events had content fields masked because their target
    *  was out of scope (0 when no scope was supplied). */
   sanitizedOutOfScope: number
-  /** v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md sec.7.2): row
-   *  counts per tier. `chained` matches chainHead.eventCount — that IS the
-   *  count the OTS anchor covers. `logged` is the events_logged row count
-   *  bundled in `events_logged.jsonl`. Only present on bundleVersion >= 2. */
-  tiers?: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
+  personalDropped: number
+  doNotExportDropped: number
+  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
+  /** Row counts per tier. `chained` matches chainHead.eventCount and is the
+   *  count the OTS anchor covers. `logged` is the events_logged row count. */
+  tiers: { chained: number; logged: number; loggedDigest?: { count: number; sha256: string } }
   attachmentScopePolicy?: {
     screenshots: { included: number; excludedOutOfScope: number; unattributed: number }
     casts: { included: number; scopeFiltered: false; reason: string }
-    httpBodies: { included: number }
+    httpBodies: { included: number; excludedOutOfScope: number }
   }
+  /** §3.3: per-agent_type event count so consumers know which events are
+   *  AI-reported (agent_type 'agent') versus directly observed. */
+  eventSourceBreakdown?: Record<string, number>
   files: ManifestFile[]
 }
 
@@ -80,16 +88,88 @@ export interface ExportBundleOpts {
    *  is the safe default, and this flag is the opt-in for engagements that
    *  legitimately need the pre-redaction content. */
   includeAgentTranscripts?: boolean
+  snapshot?: ExportSnapshot
+  /** Exact event selection approved by ExportPlan. When present, later policy
+   * changes cannot silently widen or narrow the bundle. */
+  includeEventIds?: ReadonlySet<string>
+  exportPlan?: { id: string; fingerprint: string; counts: ExportCounts }
 }
 
-export function exportBundle(engagementId: string, outRootOrOpts?: string | ExportBundleOpts): EvidenceBundle {
-  const opts: ExportBundleOpts = typeof outRootOrOpts === 'string'
-    ? { outRoot: outRootOrOpts }
-    : (outRootOrOpts ?? {})
+export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]>, chunkSize = 64 * 1024): void {
+  if (reps.length === 0) { fs.copyFileSync(src, dst); return }
+  const fd = fs.openSync(src, 'r')
+  try {
+    const stat = fs.fstatSync(fd)
+    if (stat.size === 0) { fs.writeFileSync(dst, ''); return }
+    const CHUNK = chunkSize
+    const buf = Buffer.alloc(Math.min(CHUNK, stat.size))
+    let headerLine = ''
+    let headerEnd = 0
+    let bytesRead = 0
+    while (bytesRead < stat.size) {
+      const n = fs.readSync(fd, buf, 0, buf.length, bytesRead)
+      if (n === 0) break
+      const nlIdx = buf.indexOf(0x0a, 0)
+      if (nlIdx >= 0 && nlIdx < n) {
+        headerLine += buf.subarray(0, nlIdx).toString('utf-8')
+        headerEnd = bytesRead + nlIdx + 1
+        break
+      }
+      headerLine += buf.subarray(0, n).toString('utf-8')
+      bytesRead += n
+    }
+    if (!headerEnd) { fs.copyFileSync(src, dst); return }
+    let header: Record<string, unknown>
+    try { header = JSON.parse(headerLine) } catch { fs.copyFileSync(src, dst); return }
+    if (header.env && typeof header.env === 'object') {
+      for (const k of Object.keys(header.env as Record<string, unknown>)) {
+        let v = String((header.env as Record<string, string>)[k])
+        for (const [re, rep] of reps) v = v.replace(re, rep)
+        ;(header.env as Record<string, string>)[k] = v
+      }
+    }
+    const out = fs.openSync(dst, 'w')
+    try {
+      const scrubbedHeader = Buffer.from(JSON.stringify(header) + '\n', 'utf-8')
+      fs.writeSync(out, scrubbedHeader)
+      let pos = headerEnd
+      let carry = ''
+      while (pos < stat.size) {
+        const n = fs.readSync(fd, buf, 0, buf.length, pos)
+        if (n === 0) break
+        const chunk = carry + buf.subarray(0, n).toString('utf-8')
+        const lines = chunk.split('\n')
+        carry = lines.pop()!
+        for (let line of lines) {
+          for (const [re, rep] of reps) line = line.replace(re, rep)
+          fs.writeSync(out, line + '\n', undefined, 'utf-8')
+        }
+        pos += n
+      }
+      if (carry) {
+        for (const [re, rep] of reps) carry = carry.replace(re, rep)
+        fs.writeSync(out, carry, undefined, 'utf-8')
+      }
+    } finally { fs.closeSync(out) }
+  } catch (err) {
+    try { fs.unlinkSync(dst) } catch {}
+    throw err
+  } finally { fs.closeSync(fd) }
+}
+
+export function exportBundle(engagementId: string, opts: ExportBundleOpts): EvidenceBundle {
   const outRoot = opts.outRoot
   const projectDir = getProjectDir()
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const bundleDir = path.join(outRoot ?? path.join(projectDir, 'exports'), `bundle-${ts}`)
+  const bundleRoot = outRoot ?? path.join(projectDir, 'exports')
+  const baseBundleDir = path.join(bundleRoot, `bundle-${ts}`)
+  let finalBundleDir = baseBundleDir
+  let suffix = 2
+  while (fs.existsSync(finalBundleDir)) finalBundleDir = `${baseBundleDir}-${suffix++}`
+  // Build under an unmistakably incomplete name. A failed copy or manifest
+  // write can leave useful diagnostics behind, but recipients and callers must
+  // never mistake that directory for a completed evidence bundle.
+  const bundleDir = `${finalBundleDir}.partial-${process.pid}-${crypto.randomBytes(4).toString('hex')}`
   fs.mkdirSync(bundleDir, { recursive: true })
 
   const files: ManifestFile[] = []
@@ -98,12 +178,16 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
 
   // v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): fold one cheap digest over
   // the logged tier and append it as a chained `system.logged_tier_digest`
-  // event BEFORE the events.jsonl dump below — so the snapshot ships inside this
-  // bundle's chained tier and the next OTS anchor covers it. This wires §8's own
+  // event BEFORE the events.jsonl dump below for direct API exports, so
+  // the snapshot ships inside that bundle's chained tier and the next OTS
+  // anchor covers it. Planned exports cannot append a post-approval event to
+  // their frozen selection; they record the bounded digest in the manifest.
+  // This wires §8's own
   // escape hatch ("hash the logged tier and anchor the hash") into the automatic
   // anchor loop instead of leaving it a manual step, without touching the hot
   // logged write path. Skipped on an empty tier, mirroring the retention sweep's
-  // "no rows → no event" rule. NB: this is a snapshot of the LIVE logged tier;
+  // "no rows → no event" rule. With ExportSnapshot this is bounded to the
+  // exact logged tier approved by the operator; direct exports use the live tier.
   // the byte integrity of the (possibly sanitized) events_logged.jsonl copy is
   // the separate files[].sha256 entry recorded further down.
   // Resolve the signing operator up front: the digest snapshot below is a
@@ -113,8 +197,8 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // bundle is unsigned and the snapshot is skipped, not force-attributed.
   const primary = getPrimaryOperator()
 
-  const loggedDigest = loggedTierDigest()
-  if (loggedDigest.count > 0 && primary) {
+  const loggedDigest = loggedTierDigest(opts.snapshot?.loggedMaxRowId)
+  if (!opts.snapshot && loggedDigest.count > 0 && primary) {
     const ev = insertEvent('system', {
       subtype: 'logged_tier_digest',
       count: loggedDigest.count,
@@ -130,12 +214,14 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // 1. events.jsonl (in insertion order)
   const eventsPath = path.join(bundleDir, 'events.jsonl')
   const fd = fs.openSync(eventsPath, 'w')
+  const snap = opts.snapshot
+  const chainedBound = snap ? ' WHERE rowid <= ?' : ''
   const rowIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, hash, prev_hash, created_at,
             monotonic_ns, ntp_offset_ms
-     FROM events ORDER BY created_at ASC, rowid ASC`
-  ).iterate() as IterableIterator<Record<string, unknown>>
+     FROM events${chainedBound} ORDER BY created_at ASC, rowid ASC`
+  ).iterate(...(snap ? [snap.chainedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   // Four-layer redaction, layer 4: when an event has a sanitized replacement
   // in the sanitized_events table, swap the raw field bytes for the sanitized
   // copy AS WRITTEN TO THE BUNDLE. The source DB row is untouched — the swap
@@ -144,9 +230,25 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // the paired system.sanitized event to reconcile.
   let sanitizedRowsWritten = 0
   let outOfScopeMasked = 0
+  let personalDropped = 0
+  let doNotExportDropped = 0
   const scope = opts.maskOutOfScope === false ? undefined : opts.scope
+  const doNotExportIds = getDoNotExportIds()
+  const survivingBodyRefs = new Set<string>()
+  const sourceBreakdown: Record<string, number> = {}
   for (const row of rowIter) {
+    if (opts.includeEventIds && !opts.includeEventIds.has(row.id as string)) continue
+    if (!opts.includeEventIds && doNotExportIds.has(row.id as string)) {
+      doNotExportDropped++
+      continue
+    }
+    if (!opts.includeEventIds && isPersonalDomain(row.target_id as string | null, opts.scope)) {
+      personalDropped++
+      continue
+    }
     const eventId = row.id as string
+    const agentType = (row.agent_type as string) ?? 'unknown'
+    sourceBreakdown[agentType] = (sourceBreakdown[agentType] ?? 0) + 1
     const replacements = getSanitizedFields(eventId)
     let data: Record<string, unknown> | null = null
     if (Object.keys(replacements).length > 0) {
@@ -160,10 +262,27 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       try {
         if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
         const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
-        if (scopeRepl) { for (const [f, v] of Object.entries(scopeRepl)) data[f] = v; outOfScopeMasked++ }
+        if (scopeRepl) {
+          for (const [f, v] of Object.entries(scopeRepl)) data[f] = v
+          for (const f of Object.keys(scopeRepl)) {
+            const ref = BODY_REF_FOR[f]
+            if (ref && ref in data) delete data[ref]
+          }
+          outOfScopeMasked++
+        }
       } catch { /* leave row as-is */ }
     }
     if (data) row.data = JSON.stringify(data)
+    // Collect surviving body-store refs so http-bodies/ can be scope-filtered.
+    try {
+      const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
+      for (const refKey of Object.values(BODY_REF_FOR)) {
+        const ref = d[refKey]
+        if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
+          survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
+        }
+      }
+    } catch { /* parse already failed above; skip */ }
     fs.writeSync(fd, JSON.stringify(row) + '\n')
   }
   fs.closeSync(fd)
@@ -181,13 +300,23 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // sanitized_events_logged bookkeeping table.
   const eventsLoggedPath = path.join(bundleDir, 'events_logged.jsonl')
   const loggedFd = fs.openSync(eventsLoggedPath, 'w')
+  const loggedBound = snap ? ' WHERE rowid <= ?' : ''
   const loggedIter = db.prepare(
     `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
             hostname, source_ip, target_id, data, created_at
-     FROM events_logged ORDER BY created_at ASC, rowid ASC`
-  ).iterate() as IterableIterator<Record<string, unknown>>
+     FROM events_logged${loggedBound} ORDER BY created_at ASC, rowid ASC`
+  ).iterate(...(snap ? [snap.loggedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   let loggedRowCount = 0
   for (const row of loggedIter) {
+    if (opts.includeEventIds && !opts.includeEventIds.has(row.id as string)) continue
+    if (!opts.includeEventIds && doNotExportIds.has(row.id as string)) {
+      doNotExportDropped++
+      continue
+    }
+    if (!opts.includeEventIds && isPersonalDomain(row.target_id as string | null, opts.scope)) {
+      personalDropped++
+      continue
+    }
     const eventId = row.id as string
     const replacements = getSanitizedFields(eventId)
     let data: Record<string, unknown> | null = null
@@ -202,10 +331,27 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       try {
         if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
         const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
-        if (scopeRepl) { for (const [f, v] of Object.entries(scopeRepl)) data[f] = v; outOfScopeMasked++ }
+        if (scopeRepl) {
+          for (const [f, v] of Object.entries(scopeRepl)) data[f] = v
+          for (const f of Object.keys(scopeRepl)) {
+            const ref = BODY_REF_FOR[f]
+            if (ref && ref in data) delete data[ref]
+          }
+          outOfScopeMasked++
+        }
       } catch { /* leave row as-is */ }
     }
     if (data) row.data = JSON.stringify(data)
+    // Collect surviving body-store refs from logged tier too.
+    try {
+      const d = data ?? (JSON.parse(row.data as string) as Record<string, unknown>)
+      for (const refKey of Object.values(BODY_REF_FOR)) {
+        const ref = d[refKey]
+        if (ref && typeof ref === 'object' && typeof (ref as Record<string, unknown>).sha256 === 'string') {
+          survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
+        }
+      }
+    } catch { /* skip */ }
     fs.writeSync(loggedFd, JSON.stringify(row) + '\n')
     loggedRowCount++
   }
@@ -256,15 +402,21 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
       if (!fs.statSync(s).isFile()) continue
-      if (scope) {
+      {
         const target = shotFilenameToTarget.get(name)
-        if (target === undefined) {
-          screenshotsUnattributed++
-        } else if (!target) {
-          screenshotsUnattributed++
-        } else if (isOutOfScope(target, scope)) {
+        if (isPersonalDomain(target ?? null, opts.scope)) {
           screenshotsExcluded++
           continue
+        }
+        if (scope) {
+          if (target === undefined) {
+            screenshotsUnattributed++
+          } else if (!target) {
+            screenshotsUnattributed++
+          } else if (isOutOfScope(target, scope)) {
+            screenshotsExcluded++
+            continue
+          }
         }
       }
       if (!dirCreated) { fs.mkdirSync(dstShots, { recursive: true }); dirCreated = true }
@@ -286,11 +438,12 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   let castsIncluded = 0
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
+    const piiReps = operatorPiiReplacements()
     for (const name of fs.readdirSync(srcCasts)) {
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
-        fs.copyFileSync(s, d)
+        scrubCast(s, d, piiReps)
         const info = sha256File(d)
         files.push({ path: `casts/${name}`, ...info })
         castsIncluded++
@@ -299,14 +452,24 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   }
 
   // 6a. http-bodies/ — copy referenced body files so the bundle is self-contained.
+  // When scope masking is active, only copy files whose sha256 is still
+  // referenced by a surviving *_ref pointer — bodies whose refs were dropped
+  // (because the corresponding content field was scope-masked) are excluded so
+  // a bundle consumer cannot recover the un-redacted original.
   const srcBodies = path.join(projectDir, 'http-bodies')
   let httpBodiesIncluded = 0
+  let httpBodiesExcluded = 0
   if (fs.existsSync(srcBodies)) {
     const dstBodies = path.join(bundleDir, 'http-bodies')
     const bodyFiles = fs.readdirSync(srcBodies).filter((n) => n.endsWith('.body'))
     if (bodyFiles.length > 0) {
-      fs.mkdirSync(dstBodies, { recursive: true })
+      let dirCreated = false
       for (const name of bodyFiles) {
+        if (scope) {
+          const hash = name.replace(/\.body$/, '')
+          if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; continue }
+        }
+        if (!dirCreated) { fs.mkdirSync(dstBodies, { recursive: true }); dirCreated = true }
         const s = path.join(srcBodies, name)
         const d = path.join(dstBodies, name)
         if (fs.statSync(s).isFile()) {
@@ -349,7 +512,7 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
   // v0.6.94 C: ship a standalone chain verifier inside the bundle so the
   // recipient can prove tamper-freedom without installing Node/Electron/
   // better-sqlite3. Python 3 stdlib is enough for the hash chain; Ed25519
-  // signature verification is optional (requires `pip install cryptography`).
+  // signature verification is optional (`uv run --with cryptography`).
   // See tools/redlog-verify.py and docs/CLOUD_SHARE_BUNDLE.md.
   // __dirname resolves differently between dev (src/core/) and packaged
   // builds (out/main/). Try the same two-then-three-parents pattern
@@ -370,8 +533,9 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     const shWrapper = [
       '#!/usr/bin/env bash',
       '# RedLog bundle verifier — thin wrapper around redlog-verify.py.',
-      '# Requires: python3 (stdlib only for hash chain; `pip install cryptography`',
-      '# to also verify Ed25519 signatures).',
+      '# Requires: python3 (stdlib only for the hash chain). To also verify',
+      '# Ed25519 signatures, run the verifier through uv instead:',
+      '#   uv run --with cryptography redlog-verify.py .',
       'set -euo pipefail',
       'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
       'exec python3 "$DIR/redlog-verify.py" "$DIR" "$@"',
@@ -413,11 +577,6 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       'The verifier below walks `events.jsonl` only; the logged tier is present',
       'for completeness but is not part of the audit-verified chain.',
       '',
-      "Bundles before v3 also carried `quickmarks.json`. Those rows are the",
-      "operator's private bookmarks — never chained, never signed, editable in",
-      'place, and never checked by this verifier. They are deliberately not',
-      'included here; nothing in this bundle depends on them.',
-      '',
       '## Verify (macOS / Linux)',
       '',
       '```',
@@ -432,10 +591,11 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
       '',
       'Both wrappers invoke `python3 redlog-verify.py .` — Python 3.8+ stdlib is',
       'enough to verify the SHA-256 hash chain. To also verify each event\'s',
-      'Ed25519 signature, install the optional dependency:',
+      'Ed25519 signature, run the verifier through uv, which supplies the',
+      'optional dependency without installing anything:',
       '',
       '```',
-      'pip install cryptography',
+      'uv run --with cryptography redlog-verify.py .',
       '```',
       '',
       'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',
@@ -450,22 +610,28 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     files.push({ path: 'README.md', ...sha256File(readmeDest) })
   }
 
-  const head = computeChainHead()
+  // A planned export must describe the same chain boundary the operator
+  // previewed.  Using the live head here would let an event inserted between
+  // preview and execution leak into manifest metadata even though events.jsonl
+  // is correctly bounded by the snapshot.
+  const head = snap
+    ? (() => {
+        const countRow = db.prepare(
+          'SELECT COUNT(*) AS count FROM events WHERE rowid <= ? AND hash IS NOT NULL'
+        ).get(snap.chainedMaxRowId) as { count: number }
+        const row = db.prepare(
+          `SELECT id, hash FROM events
+           WHERE rowid <= ? AND hash IS NOT NULL
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`
+        ).get(snap.chainedMaxRowId) as { id: string; hash: string } | undefined
+        return row ? { hash: row.hash, headEventId: row.id, eventCount: countRow.count } : null
+      })()
+    : computeChainHead()
   const lastAnchor = listAnchors(1)[0] ?? null
   const primaryTokenHash = getPrimaryOperatorTokenHash()
 
   const manifest: ManifestPayload = {
-    // v0.13.0: bump 1 → 2. The bundle layout gains `events_logged.jsonl`
-    // and the manifest gains `tiers`. External bundle consumers keying
-    // on `bundleVersion === 1` need to update; the bundled
-    // `redlog-verify.py` accepts both versions and ignores the logged
-    // tier when it's absent (v1 bundles have no events_logged.jsonl).
-    // v3: `quickmarks.json` is gone. It shipped here for two years as a
-    // sibling of events.jsonl while being none of the things this bundle
-    // claims: not chained, not signed, not anchored, not attributed to an
-    // operator, editable in place, and never opened by the bundled verifier.
-    // Those rows are private bookmarks and now stay on the operator's machine.
-    // Consumers keying on `bundleVersion` should expect it absent from v3.
+    // Current evidence-bundle schema identifier.
     bundleVersion: 3,
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
@@ -485,15 +651,18 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     } : null,
     sanitized: { events: sanitizedRowsWritten, totalInDb: countSanitizedEvents() },
     sanitizedOutOfScope: outOfScopeMasked,
+    personalDropped,
+    doNotExportDropped,
+    exportPlan: opts.exportPlan,
     attachmentScopePolicy: scope ? {
       screenshots: { included: screenshotsIncluded, excludedOutOfScope: screenshotsExcluded, unattributed: screenshotsUnattributed },
       casts: { included: castsIncluded, scopeFiltered: false as const, reason: 'casts span multiple targets; automatic trimming unsafe' },
-      httpBodies: { included: httpBodiesIncluded }
+      httpBodies: { included: httpBodiesIncluded, excludedOutOfScope: httpBodiesExcluded }
     } : undefined,
+    eventSourceBreakdown: sourceBreakdown,
     tiers: {
-      // chained = chainHead.eventCount when the head exists; both are
-      // definitionally the count the OTS anchor covers. It now also counts the
-      // system.logged_tier_digest event emitted above, so the anchor covers it.
+      // Planned exports describe the approved snapshot. Direct exports use
+      // the live head, including the digest event emitted above.
       chained: head?.eventCount ?? 0,
       logged: loggedRowCount,
       // §7.5: the anchored snapshot of the logged tier taken above. Surfaced
@@ -521,5 +690,6 @@ export function exportBundle(engagementId: string, outRootOrOpts?: string | Expo
     )
   }
 
-  return { outDir: bundleDir, manifest }
+  fs.renameSync(bundleDir, finalBundleDir)
+  return { outDir: finalBundleDir, manifest }
 }

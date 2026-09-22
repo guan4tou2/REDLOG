@@ -107,7 +107,10 @@ export function createOverlayWindow(saved?: { x: number; y: number } | null): Br
     }
   })
 
-  win.setIgnoreMouseEvents(true, { forward: true })
+  // Start interactive. Explicit pass-through configuration is applied by
+  // startProject immediately after creation; normal mode must never depend on
+  // a forwarded hover event before its controls can be clicked.
+  win.setIgnoreMouseEvents(false)
   // 'screen-saver' is the highest window level — the HUD stays above other
   // always-on-top windows (and over fullscreen apps, via visibleOnFullScreen).
   win.setAlwaysOnTop(true, 'screen-saver')

@@ -144,8 +144,8 @@ Everything below still needs hands on the app.
 - [ ] `log terminal --data '{"subtype":"note","command":"cli-test"}'` inserts
 - [ ] `search test` returns marks
 - [ ] `recording pause` → status = paused; `resume` → recording
-- [ ] `quickmark list` matches Marks panel
-- [ ] `quickmark add "cli mark" --url https://example.com`
+- [ ] `bookmark list` matches Bookmarks panel
+- [ ] `bookmark add "cli bookmark" --url https://example.com`
 - [ ] `replay <event_id>` prints stdout slice for a shell.command_end
 - [ ] `screenshot` triggers capture
 - [ ] `chain status` prints length + last anchor

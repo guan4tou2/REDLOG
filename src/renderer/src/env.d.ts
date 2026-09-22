@@ -11,6 +11,69 @@ interface ProjectMeta {
   dbSize?: number
 }
 
+interface ExportSnapshot {
+  chainedMaxRowId: number
+  loggedMaxRowId: number
+  takenAt: number
+}
+
+type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
+type ExportSubset = { kind: 'all' } | { kind: 'time-range'; since: number; before: number; targetId?: string }
+interface ExportRequest {
+  format: ExportFormat
+  subset?: ExportSubset
+  sharing?: boolean
+  maskOutOfScope?: boolean
+  scopeOnly?: boolean
+  scrubPii?: boolean
+}
+interface ResolvedExportPlan {
+  id: string
+  fingerprint: string
+  expiresAt: number
+  snapshot: ExportSnapshot
+  request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
+  capabilities: {
+    snapshot: boolean
+    boundedSubset: boolean
+    scopeMasking: boolean
+    piiScrubbing: boolean
+    attachments: boolean
+  }
+  counts: {
+    examined: number
+    included: number
+    excludedDoNotExport: number
+    excludedPersonal: number
+    excludedBlacklist: number
+    maskedOutOfScope: number
+    sanitized: number
+    attachmentsIncluded: number
+    attachmentsMissing: number
+    attachmentsUnattributed: number
+    unsupported: number
+  }
+}
+type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
+type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }
+
+interface ExportPreview {
+  total: number
+  included: number
+  dropped: number
+  personalDropped: number
+  blacklisted: number
+  outOfScope: number
+  inScope: number
+  sanitized: number
+  doNotExportCount: number
+  hasScope: boolean
+  sharing: boolean
+  withBodyRefs: number
+  screenshotEvents: number
+  snapshot: ExportSnapshot
+}
+
 interface IPStatus {
   externalIP: string | null
   internalIP: string | null
@@ -35,8 +98,7 @@ interface RedLogEvent {
   createdAt: number
   monotonicNs?: string | null
   ntpOffsetMs?: number | null
-  /** v0.13.0 two-tier. Absent on rows written before it existed. */
-  tier?: 'chained' | 'logged'
+  tier: 'chained' | 'logged'
 }
 
 interface BookmarkContext {
@@ -107,6 +169,10 @@ interface RedLogAPI {
       items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>
     ) => Promise<string | null>
   }
+  clipboard: {
+    writeText: (text: string) => Promise<boolean>
+    readText: () => Promise<string>
+  }
   project: {
     list: () => Promise<ProjectMeta[]>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>
@@ -126,48 +192,74 @@ interface RedLogAPI {
     exportProfile: () => Promise<string | null>
     importProfile: () => Promise<unknown | null>
   }
+  targetContext: {
+    get: () => Promise<string | null>
+    set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
+    onChange: (cb: (target: string | null) => void) => () => void
+  }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>
     pickPath: () => Promise<string | null>
   }
   events: {
-    query: (opts: Record<string, unknown>) => Promise<RedLogEvent[]>
+    query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
+    queryPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
+    queryHttpFlowPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<import('../../core/db/events').HttpFlowPage>
     /** v0.13.0: optional tier. Omitted (or 'chained') = the chained/audit
      *  count — every existing caller means this. 'logged' returns the
      *  supporting-evidence count. 'all' returns both summed. */
-    getCount: (tier?: import('../../core/db/events').EventTierFilter) => Promise<number>
+    getCount: (tier: import('../../core/db/events').EventTierFilter) => Promise<number>
     /** v0.14.3 §9.5: timestamp of the newest logged-tier row, or null
      *  if none have been written. Drives the CaptureHealthCard "last
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
-    search: (query: string, limit?: number, opts?: { agentType?: string }) => Promise<RedLogEvent[]>
+    search: (query: string, limit?: number, opts?: import('../../core/db/events').EventFilter) => Promise<RedLogEvent[]>
+    runQuery: (
+      req: import('../../core/db/events').EventQueryRequest
+    ) => Promise<import('../../core/db/events').EventQueryResult>
+    toolCounterparts: (
+      keys: import('../../core/db/events').ToolPairKey[]
+    ) => Promise<RedLogEvent[]>
     distinctAgentTypes: () => Promise<string[]>
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
+    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
+    queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) => Promise<{
+      items: RedLogEvent[]
+      hasMore: boolean
+      nextCursor: string | null
+    }>
     /** §10: distinct hosts across the timeline for ⌘K host search. */
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
     hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
-    searchCasts?: (query: string, limit?: number) => Promise<Array<{
+    searchCasts: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string
     }>>
-    castIndexStatus?: () => Promise<{ total: number; indexed: number; pending: number }>
+    castIndexStatus: () => Promise<{ total: number; indexed: number; pending: number }>
     readCastRange: (castRel: string, off: number, len: number) => Promise<{
       text: string; bytes: number; truncated: boolean
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>
-    onNew: (cb: (event: RedLogEvent) => void) => () => void
+    causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
+    toggleDoNotExport: (eventId: string) => Promise<boolean | null>
+    isDoNotExport: (eventId: string) => Promise<boolean>
   }
   httpBody: {
     read: (ref: { sha256: string; size: number; file: string; encoding: 'text' | 'base64' }) => Promise<string | null>
-  }
-  har: {
-    export: (opts?: { since?: number; before?: number; targetId?: string; limit?: number }) => Promise<string | null>
   }
   marker: {
     create: (data: Record<string, unknown>) => Promise<RedLogEvent>
@@ -230,21 +322,12 @@ interface RedLogAPI {
     stop: () => Promise<{ stopped: boolean }>
   }
   data: {
-    exportJson: () => Promise<string | null>
-    exportBundle?: (opts?: { maskOutOfScope?: boolean }) => Promise<{ outDir: string; manifest: unknown } | null>
-    exportScopeFiltered?: () => Promise<string | null>
-    exportMarks?: () => Promise<string | null>
-    exportLoot?: () => Promise<string | null>
-    exportViolations?: () => Promise<string | null>
-    exportTimelineSlice?: (from: number, to: number) => Promise<string | null>
-    exportNdjson?: (opts?: { scopeOnly?: boolean; scrubPii?: boolean }) => Promise<string | null>
-    exportWalkthrough?: () => Promise<string | null>
-    revealPath?: (target: string) => Promise<boolean>
+    resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
+    executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
+    revealPath: (target: string) => Promise<boolean>
   }
   visibility: {
-    /** §22 disclosure signals, or null with no project open. Optional-called
-     *  everywhere: an older preload has no such namespace, and the renderer
-     *  must degrade to showing everything rather than to showing nothing. */
+    /** §22 disclosure signals, or null with no project open. */
     signals: () => Promise<{
       evidenceSeen: boolean
       transcriptSeen: boolean
@@ -263,7 +346,7 @@ interface RedLogAPI {
   }
   terminal: {
     spawn: (id: string, cols: number, rows: number, shellId?: string) =>
-      Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean }>
+      Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean; recording: boolean; castTruncated: boolean }>
     shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     rediscoverShells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
@@ -276,8 +359,9 @@ interface RedLogAPI {
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
-    replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
-    replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
+    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
+    replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
+    replaySession: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
     /** A discriminated union, not a bag of optionals: the handler returns
      *  either `{ ok: false, error }` or `{ ok: true, events, … }`, and it
      *  never returns `ok: true` without events. Typing it as
@@ -285,7 +369,7 @@ interface RedLogAPI {
      *  nothing, so the caller was handed `events: … | undefined` for a field
      *  `replayStore.open` requires — TS2322, which is how main stopped
      *  compiling. */
-    replayAtTime?: (atMs: number) => Promise<
+    replayAtTime: (atMs: number) => Promise<
       | { ok: true; events: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number }
       | { ok: false; error: string }
     >
@@ -297,7 +381,7 @@ interface RedLogAPI {
     isVisible: () => Promise<boolean>
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
-    moveToCorner?: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
+    moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
     instantMark?: () => Promise<{ ok: boolean; id?: string }>
@@ -383,6 +467,7 @@ interface CaptureHealthInfo {
   lastDbError?: { source: string; at: number; message: string }
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
+  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
 }
 
 interface BrowserLaunchResult {
@@ -431,8 +516,8 @@ interface ChainAnchorInfo {
 interface RedLogConfigPartial {
   engagement?: { id?: string; name?: string }
   operator?: { id?: string; name?: string }
-  network?: { whitelist?: string[]; blacklist?: string[]; safeIPs?: string[]; exposedIPs?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
-  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; enforcement?: string }
+  network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
+  scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
   screenshot?: { quality?: number; intervalSec?: number }
   overlay?: {
     showMarkButton?: boolean

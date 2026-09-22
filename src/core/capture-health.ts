@@ -65,22 +65,22 @@ export interface CaptureHealth {
   dbErrorTotal: number
   /** Timestamp of the first DB error in this session, or null. */
   dbErrorFirstAt: number | null
-  /** v0.6.89 P1-A: most recent chain-sample failure. Pins verdict to `dark`
+  /** Most recent chain-sample failure. Pins verdict to `dark`
    *  for the TTL window even if all sources are otherwise healthy — a
    *  broken chain is worse than a dark capture, since it means historical
    *  audit rows have been tampered with.
    *
-   *  v0.7.6 H3: `eventTimestamp` carries the broken row's own creation
+   *  `eventTimestamp` carries the broken row's own creation
    *  time so the Dashboard can render "6d old" alongside the eventId —
-   *  operators can tell at a glance whether the flag is a fresh
-   *  regression or a pre-v0.7.x historical event they can't do anything
-   *  about (see the 2026-08-01 `system/ip_transition` case that
-   *  triggered this UX change). */
+   *  operators can tell at a glance whether the flag is fresh or historical. */
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   /** Timestamp of the most-recent verifyRandomSample that returned ok:true.
    *  Dashboard renders this as "sampled Xm ago" so operators can see the
    *  background verify is actually running. */
   lastSampleOkAt?: number | null
+  /** §3.1: which HTTP proxy env vars are set so the operator can confirm
+   *  traffic routing without leaving the app. */
+  proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
 }
 
 // The live DB error tracks "is writing currently broken". It auto-expires
@@ -429,12 +429,29 @@ function computeCaptureHealth(now: number): CaptureHealth {
     null
   )
 
+  const stripCreds = (v: string | undefined): string | undefined => {
+    if (!v) return undefined
+    try {
+      const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v)
+      const normalized = hasScheme ? v : `http://${v}`
+      const u = new URL(normalized)
+      if (!u.username && !u.password) return v
+      u.username = ''; u.password = ''
+      return hasScheme ? u.toString() : u.toString().replace(/^http:\/\//, '')
+    } catch { return v }
+  }
+  const httpProxy = stripCreds(process.env.HTTP_PROXY || process.env.http_proxy || undefined)
+  const httpsProxy = stripCreds(process.env.HTTPS_PROXY || process.env.https_proxy || undefined)
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy || undefined
+  const proxyEnv = (httpProxy || httpsProxy) ? { httpProxy, httpsProxy, noProxy } : undefined
+
   return {
     verdict, recording: everFed, sources: [...sources, ...pluginSources], lastEventAt, checkedAt: now,
     lastDbError,
     dbErrorTotal: _dbErrorTotal,
     dbErrorFirstAt: _dbErrorFirstAt,
     lastSampleBroken,
-    lastSampleOkAt: _lastSampleOkAt
+    lastSampleOkAt: _lastSampleOkAt,
+    proxyEnv
   }
 }

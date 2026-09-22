@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
-import { toast } from './Toast'
 import { Ban } from 'lucide-react'
 import { formatTime, formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
@@ -104,22 +103,25 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   useEffect(() => {
     const refetch = (): void => {
       void window.redlog.scope.getViolations().then((r) => setViolations(r as ViolationRow[]))
-      void window.redlog.scope.getLastRecompute?.().then(setLastRecompute).catch(() => { /* older preload */ })
+      void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
     }
     Promise.all([
       window.redlog.scope.isConfigured().then(setConfigured),
       window.redlog.scope.getViolations().then((r) => setViolations(r as ViolationRow[])),
       window.redlog.chain.length().then(setChainLen)
     ]).then(() => setLoading(false))
-    void window.redlog.scope.getLastRecompute?.().then(setLastRecompute).catch(() => { /* older preload */ })
+    void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
 
     // A recompute publishes hundreds of rows in one tick, so the refetch is
     // narrowed to rows that can actually change this page and then coalesced —
     // otherwise the page re-queries once per written row.
     let timer: ReturnType<typeof setTimeout> | null = null
-    const unsub = window.redlog.events.onNew((event) => {
-      const sub = String((event.data as Record<string, unknown>)?.subtype ?? '')
-      if (event.agentType === 'system' && SCOPE_SUBTYPES.has(sub)) {
+    const unsub = window.redlog.events.onNewBatch((events) => {
+      const affectsScope = events.some((event) => {
+        const sub = String((event.data as Record<string, unknown>)?.subtype ?? '')
+        return event.agentType === 'system' && SCOPE_SUBTYPES.has(sub)
+      })
+      if (affectsScope) {
         if (timer) clearTimeout(timer)
         timer = setTimeout(refetch, 100)
       }
@@ -136,19 +138,8 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
 
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
-      <div className="flex items-center justify-between">
+      <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('scope.title')}</h2>
-        {violations.length > 0 && (
-          <button
-            onClick={async () => {
-              const p = await (window.redlog.data as { exportViolations?: () => Promise<string | null> }).exportViolations?.()
-              if (p) toast(t('toast.exportedTo', { path: p }), 'success')
-              else toast(t('toast.exportFailed'), { type: 'error', why: t('toast.exportFailedWhy') })
-            }}
-            className="px-2.5 py-1 text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40"
-            title={t('scope.exportHint')}
-          >{t('scope.export')}</button>
-        )}
       </div>
 
       {lastRecompute && <RecomputeBanner summary={lastRecompute} onOpenInTimeline={onOpenInTimeline} />}

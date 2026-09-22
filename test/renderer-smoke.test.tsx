@@ -105,7 +105,7 @@ function installBridge(): void {
       get: async () => ({
         engagement: { id: 'eng', name: 'Engagement' },
         operator: { id: 'op-1', name: 'Operator' },
-        network: { safeIPs: [], exposedIPs: [], checkInterval: 10 },
+        network: { whitelist: [], blacklist: [], checkInterval: 10 },
         scope: { warnOnViolation: true, targets: [], excludeTargets: [], scopeFile: '' },
         screenshot: { quality: 85 },
         terminal: { maxCastBytes: 1024 },
@@ -115,9 +115,17 @@ function installBridge(): void {
       exportProfile: async () => null,
       importProfile: async () => null
     },
+    targetContext: {
+      get: async () => null,
+      set: async (target: string | null) => ({ ok: true, target }),
+      onChange: () => unsub
+    },
     events: {
       query: async () => EVENTS,
+      queryPage: async () => ({ items: EVENTS, hasMore: false, nextCursor: null }),
+      queryHttpFlowPage: async () => ({ items: EVENTS, flowCount: EVENTS.length, hasMore: false, nextCursor: null }),
       getCount: async () => EVENTS.length,
+      getLatestLoggedTs: async () => null,
       search: async () => EVENTS,
       aggregateTargets: async () => {
         // Mirror the SQL rollup over the mock EVENTS so TargetView still renders
@@ -134,7 +142,7 @@ function installBridge(): void {
         return Array.from(m.values()).sort((a, b) => b.lastSeen - a.lastSeen)
       },
       getById: async (ids: string[]) => EVENTS.filter((e) => ids.includes(e.id as string)),
-      onNew: () => unsub
+      onNewBatch: () => unsub
     },
     marker: {
       create: async () => EVENTS[0],
@@ -146,7 +154,8 @@ function installBridge(): void {
     scope: {
       getViolations: async () => [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }],
       getViolationCount: async () => 1,
-      isConfigured: async () => true
+      isConfigured: async () => true,
+      getLastRecompute: async () => null
     },
     chain: {
       length: async () => EVENTS.length,
@@ -170,8 +179,13 @@ function installBridge(): void {
       launch: async () => ({ ok: true, pid: 1 }),
       stop: async () => ({ stopped: true })
     },
-    data: { exportJson: async () => '/tmp/x.json', exportScopeFiltered: async () => '/tmp/y.json', exportBundle: async () => null },
+    data: {
+      resolveExportPlan: async () => ({ ok: false, error: 'not configured in smoke test' }),
+      executeExportPlan: async () => ({ ok: false, error: 'not configured in smoke test' })
+    },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) },
+    plugins: { eventTypes: async () => [] },
+    hookConfig: { get: async () => ({ watchPaths: [] }), save: async () => true, pickPath: async () => null },
     operators: {
       list: async () => [{ id: 'op-1', name: 'Operator', isPrimary: true, createdAt: 1, revokedAt: null }]
     },
@@ -269,6 +283,30 @@ describe('renderer views render without throwing', () => {
     // events flowed through toLane()/laneEvents without an undefined bucket.
     const shellLabels = await findAllByText('Shell')
     expect(shellLabels.length).toBeGreaterThan(0)
+  })
+
+  it('HUD restores pointer interaction before expand and hide actions', async () => {
+    const bridge = (window as unknown as { redlog: { overlay: Record<string, ReturnType<typeof vi.fn>> } }).redlog
+    bridge.overlay.mouseEnter = vi.fn()
+    bridge.overlay.mouseLeave = vi.fn()
+    bridge.overlay.setExpanded = vi.fn()
+    bridge.overlay.hide = vi.fn()
+
+    const { container } = render(<I18nProvider><OverlayApp /></I18nProvider>)
+    const expand = await screen.findByRole('button', { name: /show details|顯示詳細資訊/i })
+    const root = container.firstElementChild as HTMLElement
+
+    fireEvent.mouseEnter(root)
+    expect(bridge.overlay.mouseEnter).toHaveBeenCalledOnce()
+
+    fireEvent.click(expand)
+    expect(bridge.overlay.setExpanded).toHaveBeenCalledWith(true)
+
+    fireEvent.click(screen.getByRole('button', { name: /hide hud|隱藏 hud/i }))
+    expect(bridge.overlay.hide).toHaveBeenCalledOnce()
+
+    fireEvent.mouseLeave(root)
+    expect(bridge.overlay.mouseLeave).toHaveBeenCalledOnce()
   })
 
   // #49: the capture card lists a plugin producer read-only with its own label

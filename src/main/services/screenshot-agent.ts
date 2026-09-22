@@ -2,7 +2,7 @@ import { desktopCapturer, screen } from 'electron'
 import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 import { getProjectDir } from '../../core/db/index'
@@ -148,7 +148,7 @@ export class ScreenshotAgent {
       // fs.promises.writeFile off-loads the syscall to libuv's thread pool.
       await fs.promises.writeFile(filepath, jpeg)
 
-      const evt = insertEvent('screenshot', {
+      const evt = ingestEvent('screenshot', {
         trigger,
         filePath: filepath,
         filename,
@@ -169,8 +169,6 @@ export class ScreenshotAgent {
         operatorId: this.operatorId,
         bypassPause: trigger === 'manual'
       })
-      if (evt) eventBus.publish(evt, { bypassPause: trigger === 'manual' })
-
       return filepath
     } catch (e) {
       // Screenshot capture failure — forward to capture-health so a persistent

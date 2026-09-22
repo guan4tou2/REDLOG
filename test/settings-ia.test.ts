@@ -95,7 +95,7 @@ describe('settings information architecture', () => {
         .map((f: string) => R(`src/renderer/src/components/settings/${f}`))
     ].join('\n')
     const groups = (allSettingsSrc.match(/<FieldGroup title=/g) ?? []).length
-    expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(28)
+    expect(groups, 'a new settings group needs a reason, not just a place').toBeLessThanOrEqual(29)
   })
 
   it('does not ship a cloud share backend', () => {

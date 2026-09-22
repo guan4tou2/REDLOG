@@ -615,11 +615,11 @@ first thing everyone asks.
 `enforcement: block` was **removed** — `config.ts` migrates only `'warn' | 'log'`.
 Three reasons, stronger than citing the law:
 
-1. **The seam is fire-and-forget by construction.** `shell/redlog-hook.zsh`
-   `_redlog_preexec` does fire *before* execution — the seam exists — but it posts
-   with `curl -sf ... &!`: backgrounded, response discarded, 1s connect timeout. To
-   gate, the shell would have to *wait on a localhost round-trip before every
-   command*, and a wedged RedLog would wedge the operator's terminal mid-engagement.
+1. **The seam records; it has no allow/deny contract.** The bash/zsh adapters
+   call the shared sender before execution, but the response is used only to
+   decide whether to spool the event. No scope verdict flows back into the
+   shell lifecycle. Turning this into a gate would add a different synchronous
+   control contract where recorder failure could wedge the operator's terminal.
 2. **Coverage is heuristic, and a 70%-coverage gate is worse than none.**
    `extractTargetWithProvenance()` cannot see targets inside pipelines, loops,
    scripts, or custom tooling. A gate the operator *trusts* but that silently passes

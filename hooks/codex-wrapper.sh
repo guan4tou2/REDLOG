@@ -60,8 +60,7 @@ if [[ $# -gt 0 ]]; then
   _send_to_redlog "command_end" "$CMD" "{\"exit_code\":$EXIT_CODE,\"duration_sec\":$DURATION}"
   exit $EXIT_CODE
 else
-  export REDLOG_SHELL_WRAPPED=1
-  echo "[redlog] wrapped shell active — all commands logged to RedLog"
-  source "$(dirname "$0")/shell-preexec-hook.sh"
-  exec "${SHELL:-/bin/zsh}"
+  echo "[redlog] interactive wrapper mode was removed." >&2
+  echo "[redlog] install hooks/shell-bash-hook.sh or hooks/shell-zsh-hook.zsh for interactive capture." >&2
+  exit 2
 fi

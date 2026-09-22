@@ -25,10 +25,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import {
-  configureHost, startHost, stopHost, registerAdapter, setHostConfig,
+  configureHost, startHost, stopHost, registerAdapter,
   isSelfExcludedCwd, cwdPassesGate,
-  catchUpSession as hostCatchUpSession,
-  registerSession as hostRegisterSession,
   type TailerAdapter, type TailerHostConfig, type ParsedTurn,
   _sessionsForTest
 } from './tailer-host'
@@ -405,39 +403,6 @@ function ensureAdaptersRegistered(): void {
   adaptersRegistered = true
 }
 
-// ─── Test compatibility re-exports (kept for existing tests) ────────────────
-
 export {
   isSelfExcludedCwd, cwdPassesGate, _sessionsForTest
-}
-export function catchUpSession(sessionId: string, _cfgSnap?: AgentTailerConfig): void {
-  // v0.8.0 A: kept for test compat. Real work delegated to host.
-  hostCatchUpSession('claude-code', sessionId)
-}
-export function registerSession(sourcePath: string, cfgSnap?: AgentTailerConfig): void {
-  // Test-mode helper: honour claudeProjectsDir override + then hand off to
-  // the host's registerSession under 'claude-code'.
-  //
-  // v0.8.0.1 F2: use setHostConfig (mutate-only) instead of configureHost
-  // (mutate + restartAll). The old shim's configureHost call would
-  // stopHost() every live session and emit a spurious `session_end` for
-  // each — corrupting the audit trail for tests that register two
-  // sessions in sequence.
-  if (cfgSnap?.claudeProjectsDir) {
-    ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
-      path.join(cfgSnap.claudeProjectsDir, '**', '*.jsonl')
-  }
-  ensureAdaptersRegistered()
-  if (cfgSnap) setHostConfig({
-    engagementId: cfgSnap.engagementId,
-    operatorId: cfgSnap.operatorId,
-    excludedPaths: cfgSnap.excludedPaths,
-    watchPaths: cfgSnap.watchPaths,
-    selfExclusionMarker: cfgSnap.selfExclusionMarker,
-    idleFlushMs: cfgSnap.idleFlushMs,
-    previewChars: cfgSnap.previewChars,
-    emitThinking: cfgSnap.emitThinking,
-    enabled: true
-  })
-  hostRegisterSession('claude-code', sourcePath)
 }

@@ -112,7 +112,7 @@ Usage:
   redlog-cli loot <text>
   redlog-cli screenshot
   redlog-cli recording [status|pause|resume|toggle]
-  redlog-cli bookmark [list|add <title> [--url <url>] [--note <text>]]  (alias: quickmark)
+  redlog-cli bookmark [list|add <title> [--url <url>] [--note <text>]]
   redlog-cli replay <event_id>
   redlog-cli status
   redlog-cli health
@@ -284,17 +284,12 @@ Examples:
     }
 
     case 'bookmark':
-    case 'bookmarks':
-    // `quickmark`/`quickmarks` are the pre-F4 names, kept as deprecated aliases.
-    case 'quickmark':
-    case 'quickmarks': {
-      // Both verbs hit /api/bookmarks (the /api/quickmarks route still works
-      // server-side as an alias, but the CLI uses the current one).
+    case 'bookmarks': {
       const sub = positional[0] || 'list'
       if (sub === 'list') {
         const res = await request('GET', '/api/bookmarks')
         if (res.status === 200) {
-          const list = res.data.bookmarks || res.data.quickmarks || []
+          const list = res.data.bookmarks || []
           if (list.length === 0) console.log('(no bookmarks)')
           for (const m of list) console.log(`${m.id}  ${m.title}${m.url ? '  ' + m.url : ''}`)
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }

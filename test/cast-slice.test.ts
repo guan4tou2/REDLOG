@@ -93,6 +93,21 @@ describe('readCastSlice', () => {
     expect(slice.text).toBe('ok1ok2')
   })
 
+  it('preserves output semantics when resize frames are present', async () => {
+    const t0 = 1_700_000_000
+    const p = path.join(dir, 'resized.cast')
+    fs.writeFileSync(p, [
+      JSON.stringify({ version: 2, width: 80, height: 24, timestamp: t0 }),
+      JSON.stringify([0.1, 'o', 'before']),
+      JSON.stringify([0.2, 'r', '120x40']),
+      JSON.stringify([0.3, 'o', 'after']),
+      ''
+    ].join('\n'), 'utf8')
+    const slice = (await readCastSlice(p, 0, 1e13))!
+    expect(slice.text).toBe('beforeafter')
+    expect(slice.events).toEqual([[0.1, 'o', 'before'], [0.3, 'o', 'after']])
+  })
+
   it('stops walking once we pass endMs (order-preserving)', async () => {
     const t0 = 1_700_000_000
     const p = writeCast(dir, t0, [

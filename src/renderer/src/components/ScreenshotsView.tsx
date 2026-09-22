@@ -1,55 +1,81 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Image } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 import { formatTime } from '../lib/time'
 import { useI18n } from '../i18n'
+
+const PAGE_SIZE = 100
 
 export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
   const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  // Track which screenshots have had their file purged in this session so the
-  // grid shows a placeholder + a "(deleted)" hint even before the next reload.
-  // The event STAYS in the DB — we only unlink the JPEG, and a system.
-  // screenshot_deleted audit event is appended (see main:screenshot:deleteFile).
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [triggerFilter, setTriggerFilter] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const triggerFilterRef = useRef(triggerFilter)
+  triggerFilterRef.current = triggerFilter
   const { t } = useI18n()
 
-  useEffect(() => {
-    // Cap of 50 was hardcoded (audit finding #30). Bumped to 500 — matches the
-    // default limit used elsewhere in the app; for engagements with thousands
-    // of shots we'd want pagination but 500 covers the common case cleanly.
-    window.redlog.events.query({ agentType: 'screenshot', limit: 500 }).then((s) => {
-      setScreenshots(s)
-      setLoading(false)
+  const loadPage = useCallback(async (trigger: string | null) => {
+    setLoading(true)
+    const page = await window.redlog.events.queryScreenshotPage({
+      limit: PAGE_SIZE,
+      trigger
     })
-    return window.redlog.events.onNew((event) => {
-      if (event.agentType === 'screenshot') {
-        setScreenshots((prev) => [event, ...prev].slice(0, 500))
-      }
-      // Someone else (e.g. the CLI) deleted a shot's file -> mark it locally too.
-      if (event.agentType === 'system' && event.data?.subtype === 'screenshot_deleted') {
-        // v0.6.96 Clean-4: read _causes[0] instead of legacy source_event.
-        // Both are still written today but this is the last renderer read of
-        // source_event — after v0.7.x we can drop the dual-write in main.
-        const causes = event.data?._causes as string[] | undefined
-        const src = causes?.[0] || (event.data?.source_event as string | undefined)
-        if (src) setDeletedIds((prev) => { const n = new Set(prev); n.add(src); return n })
+    setScreenshots(page.items)
+    setHasMore(page.hasMore)
+    setNextCursor(page.nextCursor)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    void loadPage(triggerFilter)
+  }, [triggerFilter, loadPage])
+
+  useEffect(() => {
+    return window.redlog.events.onNewBatch((events) => {
+      for (const event of events) {
+        if (event.agentType === 'screenshot') {
+          const tf = triggerFilterRef.current
+          if (!tf || event.data?.trigger === tf) {
+            setScreenshots((prev) => {
+              if (prev.some((e) => e.id === event.id)) return prev
+              return [event, ...prev]
+            })
+          }
+        }
+        if (event.agentType === 'system' && event.data?.subtype === 'screenshot_deleted') {
+          const causes = event.data?._causes as string[] | undefined
+          const src = causes?.[0] || (event.data?.source_event as string | undefined)
+          if (src) setDeletedIds((prev) => { const n = new Set(prev); n.add(src); return n })
+        }
       }
     })
   }, [])
 
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    const page = await window.redlog.events.queryScreenshotPage({
+      limit: PAGE_SIZE,
+      cursor: nextCursor,
+      trigger: triggerFilterRef.current
+    })
+    setScreenshots((prev) => [...prev, ...page.items])
+    setHasMore(page.hasMore)
+    setNextCursor(page.nextCursor)
+    setLoadingMore(false)
+  }, [nextCursor, loadingMore])
+
   useEffect(() => {
-    // v0.6.97 B: pull thumbs directly via `redlog-screenshot://` scheme
-    // (main-process protocol.handle registered at whenReady). No IPC round-
-    // trip and no 33% base64 inflation — Chromium streams the JPEG from disk.
-    // The filename basename is all we send; the main handler resolves it
-    // against the project's screenshots dir with an isInsideDir guard.
     screenshots.forEach((s) => {
       if (thumbs[s.id]) return
       const filePath = s.data.filePath as string | undefined
@@ -79,7 +105,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
           {t('screenshots.captureNow')}
         </button>
       </div>
-      {screenshots.length === 0 ? (
+      {screenshots.length === 0 && !hasMore ? (
         <EmptyState
           icon={Image}
           title={t('screenshots.empty')}
@@ -91,12 +117,9 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
           secondary={{ label: t('screenshots.emptyEnable'), onClick: () => onNavigate('settings') }}
         />
       ) : (() => {
-        // Trigger filter (audit #32) — all captures land in one grid mixing
-        // periodic / manual / mark-triggered. Chip toggles narrow the view.
         const triggerCounts = new Map<string, number>()
         for (const s of screenshots) triggerCounts.set(s.data.trigger as string, (triggerCounts.get(s.data.trigger as string) ?? 0) + 1)
         const triggers = [...triggerCounts.entries()].sort((a, b) => b[1] - a[1])
-        const visibleShots = triggerFilter ? screenshots.filter((s) => s.data.trigger === triggerFilter) : screenshots
         return (
         <>
         {triggers.length > 1 && (
@@ -112,8 +135,11 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             ))}
           </div>
         )}
+        <p className="text-redlog-text-dim text-xs mb-2">
+          {t('screenshots.loaded', { count: screenshots.length })}
+        </p>
         <div className="grid grid-cols-3 gap-2">
-          {visibleShots.map((s) => (
+          {screenshots.map((s) => (
             <div
               key={s.id}
               role="button"
@@ -127,12 +153,6 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 {deletedIds.has(s.id) ? (
                   <span className="text-redlog-muted text-xs italic">{t('screenshots.deleted')}</span>
                 ) : thumbs[s.id] ? (
-                  // v0.6.98 A: `loading="lazy"` defers the JPEG fetch/decode
-                  // until the tile nears the viewport (Chromium native, works
-                  // on the `redlog-screenshot://` scheme). `decoding="async"`
-                  // keeps decode off the main thread. With 500 shots in the
-                  // grid this drops steady-state RAM by ~150MB and gets rid
-                  // of the paint stall when opening the panel cold.
                   <img
                     src={thumbs[s.id]}
                     alt=""
@@ -144,7 +164,8 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                   <span className="text-redlog-muted text-xs">{(s.data.filename as string) ?? '...'}</span>
                 )}
               </div>
-              <div className="px-2 py-1 flex items-center justify-between gap-1">
+              <div className="px-2 py-1 flex flex-col gap-0.5">
+                <div className="flex items-center justify-between gap-1">
                 <p title={`${formatTime(s.timestamp, { seconds: true })} — ${String(s.data.trigger ?? '')}`} className="text-xs text-redlog-text-dim flex-1 min-w-0 truncate">
                   {formatTime(s.timestamp, { seconds: true })} &mdash; {s.data.trigger as string}
                   {s.data.diffPercent !== undefined && (
@@ -177,10 +198,29 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                     aria-label={t('screenshots.deleteTitle')}
                   >&times;</button>
                 )}
+                </div>
+                {typeof s.data.sha256 === 'string' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); void writeClipboard(s.data.sha256 as string) }}
+                    className="text-xs font-mono text-redlog-text-faint hover:text-redlog-text truncate text-left transition-colors"
+                    title={`SHA-256: ${s.data.sha256 as string}`}
+                  >
+                    {(s.data.sha256 as string).slice(0, 12)}
+                  </button>
+                )}
               </div>
             </div>
           ))}
         </div>
+        {hasMore && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="mt-3 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+          >
+            {loadingMore ? t('screenshots.loading') : t('screenshots.loadMore')}
+          </button>
+        )}
         </>
         )
       })()}

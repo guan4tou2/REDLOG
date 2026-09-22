@@ -42,6 +42,7 @@ test('folds request/response pairs into single exchanges', async () => {
   await app.evaluate(async ({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]?.setSize(1500, 1000) })
   await openView(page, 'transcript')
   await page.waitForTimeout(1500)
+  await expect(page.getByTestId('transcript-completeness')).toContainText('Loaded set complete')
 
   // Six events in, four exchanges out: the two pairs each collapse to one.
   const blocks = await page.evaluate(() =>

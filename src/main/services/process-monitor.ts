@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { insertEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
 import { noteDbError } from '../../core/capture-health'
 
@@ -105,19 +105,17 @@ function restart(): void {
   runPs().then((rows) => {
     knownProcs = new Map(rows.map((r) => [r.pid, { pid: r.pid, ppid: r.ppid, command: r.command, startedAt: Date.now() }]))
   }).catch((err) => {
-    // v0.6.96 CP-2: Alpine / BusyBox `ps` doesn't accept the procps
+    // Alpine / BusyBox `ps` doesn't accept the procps
     // `-eo pid=,ppid=,etime=,command=` syntax and errors immediately —
-    // pre-v0.6.96 that swallowed silently and the lane looked broken with
-    // no reason. Emit a one-shot advisory mirroring the Windows path so
+    // syntax. Emit a one-shot advisory mirroring the Windows path so
     // the operator sees why nothing shows up.
     try {
-      const ev = insertEvent('system', {
+      const ev = ingestEvent('system', {
         subtype: 'process_monitor_ps_unavailable',
         platform: process.platform,
         error: (err as Error)?.message?.slice(0, 200) || 'unknown',
         description: 'Process monitor: system `ps` not usable (BusyBox / minimal container?). Install procps-ng.'
       }, { engagementId: cfg.engagementId!, operatorId: cfg.operatorId! })
-      if (ev) eventBus.publish(ev)
     } catch { /* additive */ }
     console.warn('[process-monitor] ps unavailable:', (err as Error)?.message)
   })
@@ -149,13 +147,12 @@ async function pollInner(): Promise<void> {
   if (!withinBudget(total)) {
     // Over cap — emit a saturation notice ONCE for the window and drop the rest.
     try {
-      const ev = insertEvent('system', {
+      const ev = ingestEvent('system', {
         subtype: 'process_monitor_saturated',
         count: total,
         window_ms: 60_000,
         description: `Process monitor over budget: ${total} events in the last minute; dropping`
       }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-      if (ev) eventBus.publish(ev)
     } catch { /* additive */ }
     // Still update knownProcs so we don't re-detect these next tick.
     // v0.6.100 F3: exclude our own descendants from knownProcs. Pre-v0.6.100
@@ -260,7 +257,7 @@ function withinBudget(add: number): boolean {
 function emitSpawn(r: PsRow): void {
   try {
     const argv = r.command.split(/\s+/)
-    const ev = insertEvent('process', {
+    const ev = ingestEvent('process', {
       subtype: 'process_spawn',
       pid: r.pid,
       ppid: r.ppid,
@@ -268,7 +265,6 @@ function emitSpawn(r: PsRow): void {
       argv: argv.slice(0, 20),
       started_at: Date.now()
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) {
     noteDbError('process-monitor', e)
   }
@@ -277,7 +273,7 @@ function emitSpawn(r: PsRow): void {
 function emitExit(p: TrackedProc): void {
   try {
     const duration_sec = Math.max(0, Math.round((Date.now() - p.startedAt) / 1000))
-    const ev = insertEvent('process', {
+    const ev = ingestEvent('process', {
       subtype: 'process_exit',
       pid: p.pid,
       ppid: p.ppid,
@@ -285,7 +281,6 @@ function emitExit(p: TrackedProc): void {
       exit_code: null,   // ps -eo doesn't expose exit; caller can join to shell events
       duration_sec
     }, { engagementId: cfg.engagementId, operatorId: cfg.operatorId })
-    if (ev) eventBus.publish(ev)
   } catch (e) {
     noteDbError('process-monitor', e)
   }

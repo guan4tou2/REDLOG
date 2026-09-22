@@ -3,6 +3,103 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## Unreleased
+
+- Approved export plans bind preview and execution to one snapshot and policy.
+- Spool replay defers mismatched engagements without writing the active DB and
+  recovers them when their owning project opens.
+- Identity-free spool files are quarantined instead of inheriting the active
+  project, and replay deletes a file only after persistence accepts the row.
+- Scope excludes now apply consistently to Targets and shared in-scope filters.
+- Project creation accepts exclude targets and no longer drops advanced setup
+  after the dialog closes.
+- Engagement ID is read-only after project creation.
+- Built-in capture producers now enter through one ingest policy, so pause,
+  publication, causal links, target extraction and derived evidence no longer
+  depend on which in-process source observed the activity.
+- POSIX `redlog-run` now streams stdout/stderr while capturing them, and Capture
+  Health states that the ordinary external-shell hook records metadata only.
+- Bash and zsh now use thin lifecycle adapters over one shared sender, spool,
+  identity and `redlog-run` runtime. The historical combined
+  `shell-preexec-hook.sh` and `shell/redlog-hook.zsh` entry points were removed;
+  existing profiles must install/source the matching shell-specific adapter.
+- Built-in Terminal now resolves bash, zsh and PowerShell to those current
+  adapters instead of looking for the removed combined hook.
+- File watcher create/modify events now show cwd/time-overlapping commands as
+  explicitly uncertain candidates; they never turn that inference into a causal claim.
+- Transcript and Search now share one persistence-layer query language for
+  full text plus exact event, agent-session, tool-use and transcript IDs.
+  Both surfaces show how the query was interpreted and keep failures distinct
+  from an empty result.
+- Transcript completes cross-page tool pairs in one batch, labels missing
+  counterparts, and distinguishes source occurrence time from RedLog receipt
+  time. Search results now show useful AI message/output text.
+- Copy and paste work again everywhere in the app. The renderer's permission
+  handler denies Chromium's Async Clipboard API, so every `navigator.clipboard`
+  call was rejecting; the Hooks and Timeline copy buttons reported success
+  anyway. Clipboard access now goes through the main process, and a failed copy
+  says so.
+- HTTP History and the Transcript now state on the page when a shared type
+  filter is one they cannot serve. Both emptied themselves silently, which read
+  as "nothing was recorded" instead of "this view does not cover that type".
+- Python setup commands are stated for uv instead of pip: mitmproxy and the
+  OpenTimestamps client as `uv tool install`, and the bundle verifier's optional
+  `cryptography` plus the pcap agent's `scapy` as `uv run --with`, which needs
+  no install step or virtualenv.
+- Release packaging now verifies that current shell adapters and plugin
+  resources are present and that removed compatibility hooks stay absent.
+- CI rejects a Verified Spec Kit feature with unchecked tasks or missing
+  verification evidence, and rejects executable references to removed hooks.
+
+## v0.15.1 — 2026-09-19
+
+**Option D 匯出去識別化 + QA / 安全 / 效能 / UIUX 合規修復。**
+
+Feature:
+- 匯出安全層：scope-外 metadata 遮蔽、in-scope 敏感值手術式清洗、
+  operatorId 清除、blacklist 基礎設施事件排除（後端基礎設施，無額外 UI）
+- 共用 `operator-pii.ts` 統一所有匯出路徑的 PII scrub
+- CaptureHealth 新增 proxy 狀態顯示
+- TerminalView cast badge 即時更新（rec / trunc / no rec）
+- TranscriptView pending ⏳ indicator
+
+Security:
+- `scrubCast` chunk-boundary PII 洩漏：chunked I/O 改為逐行
+  carry-forward，跨 64KB 邊界的 PII 不再遺漏
+- `scrubCast` catch fallback 不再靜默產出未 scrub 的匯出檔
+- `stripCreds` 修正無 scheme proxy URL 憑證洩漏
+- proxy 憑證不再暴露到 renderer
+
+Performance:
+- `scrubCast` 記憶體從 O(filesize) 降為 O(64KB) chunked I/O
+
+UX improvements:
+- ExportMenu 空專案時停用所有匯出按鈕 + 提示「尚無事件可匯出」
+
+Bug fixes:
+- StatusBar pause timer unmount 清理
+- EventMarker Cmd+Enter double-save 防護
+- Timeline keydown handler stale closure（band 收合後鍵盤導航過期）
+- Timeline tool no-result 假警告（page boundary edge case）
+- `sourceBreakdown` agent_type null → 'unknown'
+
+UIUX §21 compliance:
+- 7 元件 sub-13px 字型 → `text-xs`（§2 floor）
+- FilterBar danger-on-numbers 違規 + 幽靈 token 修正
+- 5 個既有測試同步（events / tailwind-classes / design-rules /
+  danger-not-on-numbers / tool-input-redaction）
+
+Cleanup:
+- 移除 ExportMenu 受眾 preset（「自己留存」/「分享用」segmented control）
+  ——預設行為即自己留存，不需額外 UI；匯出不假設目的對象
+- 移除 ExportMenu 過度設計：假精確大小估算（BYTES_PER_EVENT 魔法常數 +
+  humanSize）、冗長 4 行證據包 toast、未用 ExportScope/ExportFormat 類型
+- 移除 tool disclaimer（AI 來源已由 actor label 標示，文字冗餘）
+- 移除 ProjectPicker 說明段落、精簡 capture/export 文案
+- 清理 24 個死 i18n key
+
+Tests: +5 scrub-cast unit tests；149 files / 1477 tests pass。
+
 ## v0.14.3 — 2026-08-19
 
 **§9.5 chain-health tier split in CaptureHealthCard.** Closes the last

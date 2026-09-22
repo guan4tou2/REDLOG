@@ -1,8 +1,4 @@
-// v0.7.2 A: shared secret redactor. Ported byte-for-byte from the Python
-// block in hooks/claude-code-hook.sh lines 191-202 so the two producers
-// stay in lock-step. `test/secret-redaction.test.ts` runs the SAME golden
-// input through the shell hook and this TS port and asserts identical
-// output — any regex drift trips CI, not production.
+// Shared secret redactor for transcript and tool payloads.
 //
 // NAME NOTE: this file was originally created as `redaction.ts` but the
 // project already had a `src/core/redaction.ts` with an unrelated
@@ -15,9 +11,6 @@
 //   - src/main/services/agent-transcript-tailer.ts (per user_message /
 //     assistant_message / tool_input.command / tool_result.output before
 //     insert into the events table).
-//   - hooks/claude-code-hook.sh keeps its inline Python copy — the hook
-//     runs from a shell, not the Electron main process, so we can't share
-//     the TS at runtime; parity is enforced at CI time instead.
 
 const PATTERNS: Array<[RegExp, string]> = [
   [

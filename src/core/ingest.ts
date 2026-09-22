@@ -18,7 +18,7 @@
 
 import { insertEvent, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
 import { eventBus } from './event-bus'
-import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
+import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver } from './causes-resolver'
 import { socketCausesFor, noteCommandPid } from './socket-attribution'
 import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
@@ -28,6 +28,8 @@ import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
 import { redact, getRules } from './redaction'
 import { extractBodyToSidecar } from './http-body-store'
+import { linkHttpBodyEvent } from './http-body-index'
+import { noteDbError } from './capture-health'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -49,11 +51,14 @@ export type CastProbe = (terminalId: string) => { castPath: string; offset: numb
 let lootDetectorRef: LootDetectorLike | null = null
 let alertRuntimeRef: AlertRuntimeLike | null = null
 let castProbe: CastProbe | null = null
+let activeTarget: string | null = null
+const ACTIVE_TARGET_FALLBACK_TYPES = new Set(['shell', 'marker', 'screenshot'])
 
-export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null }): void {
+export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null; activeTarget?: string | null }): void {
   if (opts.lootDetector !== undefined) lootDetectorRef = opts.lootDetector
   if (opts.alertRuntime !== undefined) alertRuntimeRef = opts.alertRuntime
   if (opts.castProbe !== undefined) castProbe = opts.castProbe
+  if (opts.activeTarget !== undefined) activeTarget = opts.activeTarget?.trim() || null
 }
 
 // command_start byte offset per terminal, so command_end can bracket the
@@ -86,12 +91,28 @@ export interface IngestResult {
   companions: RedLogEvent[]
 }
 
+/** Migration-friendly canonical entry point for in-process producers. It has
+ * the DB primitive's call shape while still executing the complete ingest
+ * policy. New code should prefer `ingest()` when it needs skip/companion data. */
+export function ingestEvent(
+  agentType: string,
+  data: Record<string, unknown>,
+  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput }
+): RedLogEvent | null {
+  return ingest({ agentType, data, ...opts }).event
+}
+
 // ── The pipeline ────────────────────────────────────────────────────────────
 
 export function ingest(input: IngestInput): IngestResult {
   const { agentType, engagementId, operatorId } = input
   const data = input.data
   let targetId = input.targetId
+
+  // Runtime pairs must settle even if the evidence write is paused. Otherwise
+  // a command_end seen during pause leaves a phantom active command that can
+  // be correlated with unrelated files after recording resumes.
+  const lifecycleCauseIds = resolveIncomingCauses(agentType, data)
 
   // 1. Pause gate. Nothing below may run while paused: the derivations emit
   //    their own rows and would leak the very content the operator paused to
@@ -103,16 +124,37 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 2. Causal links from fields the producer already sent (flow_id,
   //    terminal_id + pid).
-  const causeIds = [...resolveIncomingCauses(agentType, data), ...socketCausesFor(agentType, data)]
+  const causeIds = [...lifecycleCauseIds, ...socketCausesFor(agentType, data)]
   if (causeIds.length > 0) {
     const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
     data._causes = [...new Set([...existing, ...causeIds])]
+  }
+  // Filesystem delivery can lag behind the write under load. Correlate with
+  // the file's observed modification time when it is usable, while keeping
+  // createdAt as the independent RedLog receipt time.
+  const observedAt = typeof data.mtime === 'number' && Number.isFinite(data.mtime)
+    ? data.mtime
+    : Date.now()
+  const relatedCommands = relatedCommandCandidates(data, observedAt)
+  if (relatedCommands.length > 0) {
+    const existing = Array.isArray(data.related_commands) ? data.related_commands : []
+    const combined = [...existing, ...relatedCommands]
+    data.related_commands = combined.filter((candidate, index) => {
+      if (!candidate || typeof candidate !== 'object') return true
+      const value = candidate as Record<string, unknown>
+      return combined.findIndex((other) => {
+        if (!other || typeof other !== 'object') return false
+        const compared = other as Record<string, unknown>
+        return compared.event_id === value.event_id && compared.method === value.method && compared.state === value.state
+      }) === index
+    })
   }
 
   // 3. Enrichment stamps + what the companions will need. Only for primary
   //    rows: a companion is already the product of enrichment.
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
   if (plan.targetId && !targetId) targetId = plan.targetId
+  if (!targetId && activeTarget && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType)) targetId = activeTarget
 
   // 4. Redaction spans (docs/redaction-design.md layer 2). Detect only; the
   //    bytes stay so the chain closes over the true text. UI masks, export
@@ -124,6 +166,10 @@ export function ingest(input: IngestInput): IngestResult {
     engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
+
+  if (agentType === 'scanner') {
+    try { linkHttpBodyEvent(event) } catch (error) { noteDbError('http-body-index', error) }
+  }
 
   // 6. Publish — once, here, for every producer.
   eventBus.publish(event, { bypassPause: input.bypassPause })
@@ -362,7 +408,9 @@ function detectRedactions(data: Record<string, unknown>, lootValues: string[]): 
 /** Test helper. */
 export function _resetIngest(): void {
   castOffsetAtStart.clear()
+  resetCausesResolver()
   lootDetectorRef = null
   alertRuntimeRef = null
   castProbe = null
+  activeTarget = null
 }

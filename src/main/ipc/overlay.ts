@@ -50,6 +50,12 @@ export function applyOverlayPassThrough(): void {
     _ctx.send(overlayWindow, 'overlay:interactive', false)
     overlayMouseInside = false
   } else {
+    // Normal HUD mode is interactive. Do not make the whole native window
+    // click-through while waiting for hover detection: if the OS does not
+    // forward that first mouse move, the expand/hide controls can never
+    // receive the event that would restore interaction. Operators who want
+    // clicks to pass through have the explicit pass-through mode above.
+    overlayWindow.setIgnoreMouseEvents(false)
     startOverlayMouseTracking()
   }
   _ctx.send(overlayWindow, 'overlay:passThrough', overlayPassThrough, overlayPassThroughOpacity)
@@ -77,12 +83,10 @@ export function startOverlayMouseTracking(): void {
                    point.y >= bounds.y && point.y <= bounds.y + bounds.height
     if (inside && !overlayMouseInside) {
       overlayMouseInside = true
-      overlayWindow.setIgnoreMouseEvents(false)
       overlayWindow.webContents.send('overlay:interactive', true)
       applyOverlayOpacity()
     } else if (!inside && overlayMouseInside) {
       overlayMouseInside = false
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
       overlayWindow.webContents.send('overlay:interactive', false)
       applyOverlayOpacity()
     }
@@ -193,18 +197,18 @@ export function registerOverlayIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     return ctx.getOverlayWindow()?.isVisible() ?? false
   })
   ipcMain.on('overlay:mouseEnter', () => {
+    if (overlayPassThrough) return
     const overlayWindow = ctx.getOverlayWindow()
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayMouseInside = true
-      overlayWindow.setIgnoreMouseEvents(false)
       overlayWindow.webContents.send('overlay:interactive', true)
     }
   })
   ipcMain.on('overlay:mouseLeave', () => {
+    if (overlayPassThrough) return
     const overlayWindow = ctx.getOverlayWindow()
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayMouseInside = false
-      overlayWindow.setIgnoreMouseEvents(true, { forward: true })
       overlayWindow.webContents.send('overlay:interactive', false)
     }
   })

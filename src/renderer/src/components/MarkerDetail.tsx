@@ -268,10 +268,10 @@ function ReplayAtTime({ atMs }: { atMs: number }): JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      const r = await window.redlog.terminal.replayAtTime?.(atMs)
+      const r = await window.redlog.terminal.replayAtTime(atMs)
       if (!r || !r.ok) { setError(r?.error ?? t('marker.replayAtTime.noSession')); return }
       replayStore.open({
-        events: r.events,
+        events: r.events ?? [],
         truncated: Boolean(r.truncated),
         initialSeekMs: r.seekMs
       })
