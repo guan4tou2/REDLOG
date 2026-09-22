@@ -51,11 +51,14 @@ export type CastProbe = (terminalId: string) => { castPath: string; offset: numb
 let lootDetectorRef: LootDetectorLike | null = null
 let alertRuntimeRef: AlertRuntimeLike | null = null
 let castProbe: CastProbe | null = null
+let activeTarget: string | null = null
+const ACTIVE_TARGET_FALLBACK_TYPES = new Set(['shell', 'marker', 'screenshot'])
 
-export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null }): void {
+export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null; activeTarget?: string | null }): void {
   if (opts.lootDetector !== undefined) lootDetectorRef = opts.lootDetector
   if (opts.alertRuntime !== undefined) alertRuntimeRef = opts.alertRuntime
   if (opts.castProbe !== undefined) castProbe = opts.castProbe
+  if (opts.activeTarget !== undefined) activeTarget = opts.activeTarget?.trim() || null
 }
 
 // command_start byte offset per terminal, so command_end can bracket the
@@ -126,6 +129,7 @@ export function ingest(input: IngestInput): IngestResult {
   //    rows: a companion is already the product of enrichment.
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
   if (plan.targetId && !targetId) targetId = plan.targetId
+  if (!targetId && activeTarget && ACTIVE_TARGET_FALLBACK_TYPES.has(agentType)) targetId = activeTarget
 
   // 4. Redaction spans (docs/redaction-design.md layer 2). Detect only; the
   //    bytes stay so the chain closes over the true text. UI masks, export
@@ -382,4 +386,5 @@ export function _resetIngest(): void {
   lootDetectorRef = null
   alertRuntimeRef = null
   castProbe = null
+  activeTarget = null
 }

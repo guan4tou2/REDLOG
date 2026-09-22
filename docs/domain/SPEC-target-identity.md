@@ -2,7 +2,7 @@
 
 > Domain: Engagement / Evidence
 > Invariant: Every target-oriented query MUST use the same canonical target identity semantics.
-> Status: P0 — `aggregateTargets` keys on `data.detectedTarget` (JSON), detail query keys on `target_id` (column). Can diverge.
+> Status: Implemented — canonical identity and active-target fallback share the ingest boundary.
 
 ## Canonical Definition
 
@@ -11,11 +11,24 @@
 - `target_id` is set at insert time by the ingest pipeline (shell target extraction, HTTP host, CDP URL, connection monitor, API events).
 - `data.detectedTarget` is an **observation metadata** field stamped by the shell enrichment step. It is a subset of `target_id` — never set without `target_id` also being set, but `target_id` can be set without `detectedTarget` (HTTP/scanner/browser events).
 - `data.host` is an HTTP/DNS transport field, not a target identity.
+- `engagement.activeTarget` is operator context, not an observation. Canonical
+  ingest uses it only for shell, marker and screenshot rows when neither an
+  explicit `targetId` nor enrichment found a target. It never overwrites an
+  observed identity or labels unrelated system/health events.
 
 ```
 target_id ⊇ detectedTarget
 target_id ⊇ data.host (for target-bearing events)
 ```
+
+Target assignment precedence at ingest is:
+
+```
+explicit producer target > observed/enriched target > active-target fallback > null
+```
+
+Changing or clearing the active target appends `system.active_target_changed`;
+existing rows are never re-attributed.
 
 ## Normalization
 
@@ -108,6 +121,8 @@ Then:
 4. Events with `target_id` but no `detectedTarget` are included in aggregates
 5. `hostCausalChain` eventCount is >= aggregate eventCount (broader match is OK)
 6. No change to Scope matchers in this fix (separate P1)
+7. Active-target context is project-scoped and cleared from runtime on project close
+8. Explicit or detected targets override active-target context
 
 ## Property
 

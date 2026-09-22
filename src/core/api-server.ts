@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
-import { insertEvent, queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
+import { queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { createBookmark, listBookmarks } from './db/bookmarks'
 import {
   ensurePrimaryOperator,
@@ -418,13 +418,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (route === '/api/marker' && req.method === 'POST') {
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const event = insertEvent('marker', {
+      const event = ingest({ agentType: 'marker', data: {
         title: body.title || 'Untitled',
         notes: body.notes || '',
         severity: body.severity || 'info',
         category: body.category || 'external'
-      }, { engagementId, operatorId: operator.id, targetId: (body.target_id || body.targetId) as string | undefined })
-      if (event) eventBus.publish(event)
+      }, engagementId, operatorId: operator.id,
+      targetId: (body.target_id || body.targetId) as string | undefined,
+      envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } }).event
       json(res, 201, event)
       return
     }

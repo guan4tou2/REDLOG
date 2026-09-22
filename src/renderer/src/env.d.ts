@@ -188,6 +188,11 @@ interface RedLogAPI {
     exportProfile: () => Promise<string | null>
     importProfile: () => Promise<unknown | null>
   }
+  targetContext: {
+    get: () => Promise<string | null>
+    set: (target: string | null) => Promise<{ ok: boolean; target: string | null }>
+    onChange: (cb: (target: string | null) => void) => () => void
+  }
   hookConfig: {
     get: () => Promise<{ excludedPaths: string[]; watchPaths?: string[] }>
     save: (cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => Promise<boolean>

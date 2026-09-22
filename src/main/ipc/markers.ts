@@ -4,6 +4,7 @@ import { createHash } from 'crypto'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import { insertEvent, queryMarkerAmendments, screenshotsReferencedByMarker, type RedLogEvent } from '../../core/db/events'
+import { ingestEvent } from '../../core/ingest'
 import { getProjectDir } from '../../core/project-manager'
 import { loadConfig } from '../../core/config'
 import { redactFields } from '../../core/redaction'
@@ -25,7 +26,7 @@ export function registerMarkersIpc(
     if (!proj) return null
     const config = loadConfig(getProjectDir(proj))
     const at = data.atTimestamp
-    const event = insertEvent('marker', redactFields({
+    const event = ingestEvent('marker', redactFields({
       title: data.title,
       notes: data.notes,
       severity: data.severity ?? 'info',
@@ -34,8 +35,7 @@ export function registerMarkersIpc(
       ...(typeof data.url === 'string' && data.url.trim()
         ? { url: data.url.trim().slice(0, 2048) }
         : {})
-    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id })
-    if (event) eventBus.publish(event, { bypassPause: true })
+    }, MARKER_TEXT_FIELDS), { engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true })
     return event
   })
 
