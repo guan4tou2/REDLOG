@@ -1148,5 +1148,14 @@
   "marker.replayAtTime.noSession": "No active terminal session at this time",
   "terminal.castRecording": "Terminal session is being recorded (.cast)",
   "terminal.castTruncated": "Cast recording hit size limit — output past this point is not captured",
-  "terminal.castNotRecording": "No cast recording for this session"
+  "terminal.castNotRecording": "No cast recording for this session",
+  "transcript.queryReadAs": "Read as",
+  "transcript.queryTokenCondition": "Condition: matched against the stored field",
+  "transcript.queryTokenText": "Text: matched as full text",
+  "transcript.queryUnparsable": "This query was not run",
+  "transcript.queryUnparsable.empty-condition-value": "“{{token}}” is a half-typed condition with no value. Give it one, or wrap it in double quotes to search for it as text.",
+  "transcript.queryUnparsable.unterminated-quote": "“{{token}}” has an unclosed quote.",
+  "transcript.queryToolSession": "Tool-use {{tool}} resolved within session {{session}}",
+  "transcript.queryToolSessionOthers": "The same tool-use ID also occurs in {{count}} other session(s); add a session: condition to choose.",
+  "transcript.queryCoverage": "Text search covers stored event content. Command output that was not captured inline stays in a terminal recording and cannot be matched — no hit is not evidence the output never held it."
 }
