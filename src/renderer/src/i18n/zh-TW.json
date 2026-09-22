@@ -227,6 +227,7 @@
   "terminal.closeTitle": "關閉終端分頁",
   "terminal.restart": "重新啟動這個分頁的 shell(保留位置與名稱)",
   "terminal.lastExit": "上個指令 exit code {{code}}",
+  "terminal.noHook": "這個分頁跑的是 {{shell}}，RedLog 沒有對應的 hook——它的指令「不會」被記錄。畫面錄影仍然有。",
   "terminal.closeConfirm": "關閉「{{label}}」會終止該 PTY session。確定?",
   "terminal.fontSmaller": "縮小字體",
   "terminal.fontLarger": "放大字體",
