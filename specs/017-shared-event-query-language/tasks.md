@@ -3,7 +3,10 @@
 ## Phase 1 — Contracts
 
 - [ ] T001 Add failing parser tests: conditions, residual text, colon-bearing
-      text such as URLs, unrecognised prefixes, conditions-only queries.
+      text such as URLs, unrecognised prefixes, conditions-only queries, a
+      recognised prefix written as literal text, and field names in any case.
+- [ ] T001b Add failing tests that free text keeps whole-token matching and a
+      prefix-matched final term.
 - [ ] T002 Add failing tests for exact event, session and transcript-UUID
       resolution, including a near match that must not be substituted.
 - [ ] T003 Add failing tests for session-scoped tool-use resolution, including
@@ -12,8 +15,8 @@
       appearing as text elsewhere in the record.
 - [ ] T005 Add failing tests for cross-page pair completion, for a bounded
       lookup count per page, and for a pair that stays unresolved.
-- [ ] T006 Add failing tests separating unparsable, failed, no-match and
-      not-yet-indexed.
+- [ ] T006 Add failing tests separating unparsable, failed and no-match, and
+      covering the disclosure that text cannot reach non-inline command output.
 
 ## Phase 2 — Query contract
 
@@ -37,8 +40,9 @@
 - [ ] T015 Keep source and receipt time distinguishable through the projection.
 - [ ] T016 Restart cursors on query and filter change; restore the unqueried
       view when the query is cleared.
-- [ ] T017 Render unparsable, failed, no-match and not-yet-indexed as four
-      distinct recoverable states; Spec 009 covers only load failure and empty.
+- [ ] T017 Render unparsable, failed and no-match as three distinct recoverable
+      states, plus the coverage disclosure; Spec 009 covers only load failure
+      and empty.
 - [ ] T018 Make the completeness indicator describe the queried dataset, and
       label any filter still bound to loaded evidence.
 
