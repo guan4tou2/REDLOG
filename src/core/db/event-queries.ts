@@ -8,6 +8,54 @@ import {
   type QueryPage, type CursorKey
 } from '../query-page'
 import type { ExportSnapshot } from '../export-plan'
+import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
+
+/** Operator-selected predicates shared by investigation surfaces. Scope rules
+ * are attached by trusted main-process code when `inScopeOnly` is requested. */
+export interface EventFilter {
+  targetId?: string
+  agentType?: string
+  since?: number
+  before?: number
+  inScopeOnly?: boolean
+  scope?: ScopePolicy
+}
+
+function inScopeTargetIds(filter: EventFilter): string[] | null {
+  if (!filter.inScopeOnly || !filter.scope) return null
+  const { targets, excludeTargets } = filter.scope
+  if (targets.length === 0 && excludeTargets.length === 0) return null
+  const db = getReadonlyDB()
+  const rows = db.prepare(`
+    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''
+    UNION
+    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''
+  `).all() as Array<{ target_id: string }>
+  return rows
+    .map((row) => row.target_id)
+    .filter((target) => {
+      const decision = evaluateScope(target, { targets, excludeTargets })
+      return decision.status === 'in-scope' || decision.status === 'no-scope'
+    })
+}
+
+function appendEventFilter(
+  filter: EventFilter,
+  conditions: string[],
+  params: unknown[],
+  alias = ''
+): void {
+  const col = (name: string): string => alias ? `${alias}.${name}` : name
+  if (filter.agentType) { conditions.push(`${col('agent_type')} = ?`); params.push(filter.agentType) }
+  if (filter.since != null) { conditions.push(`${col('timestamp')} >= ?`); params.push(filter.since) }
+  if (filter.before != null) { conditions.push(`${col('timestamp')} <= ?`); params.push(filter.before) }
+  if (filter.targetId) { conditions.push(`${col('target_id')} = ?`); params.push(filter.targetId) }
+  const allowed = inScopeTargetIds(filter)
+  if (allowed !== null) {
+    conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} IN (SELECT value FROM json_each(?)))`)
+    params.push(JSON.stringify(allowed))
+  }
+}
 
 // SQL predicate that matches the renderer-side `isHousekeeping()` filter in
 // Timeline.tsx. Kept in sync manually — both hide RedLog plumbing rows that
@@ -57,8 +105,7 @@ const HOUSEKEEPING_SQL = `
   )
 `
 
-export function queryEvents(opts: {
-  agentType?: string
+export interface EventQueryOptions extends EventFilter {
   limit?: number
   since?: number
   // Time-range upper bound: return events strictly older than this wall-clock
@@ -70,7 +117,6 @@ export function queryEvents(opts: {
   // strictly older rows works even under wall-clock backwards jump. v0.6.87
   // audit A1.
   beforeCreatedAt?: number
-  targetId?: string
   // When true, drop RedLog's own housekeeping rows (api_started, shell
   // session_start, hook-source command_start) at the SQL
   // layer. Previously Timeline fetched 200 rows and filtered them to ~30
@@ -83,32 +129,102 @@ export function queryEvents(opts: {
    *  logged-tier-only queries (rare — mostly a debug affordance). */
   tier?: 'all' | 'chained' | 'logged'
   snapshot?: ExportSnapshot
-}): RedLogEvent[] {
+}
+
+export interface HttpFlowPage {
+  items: RedLogEvent[]
+  flowCount: number
+  hasMore: boolean
+  nextCursor: string | null
+}
+
+function encodeHttpFlowCursor(startTs: number, flowId: string): string {
+  return Buffer.from(JSON.stringify({ v: 1, startTs, flowId })).toString('base64url')
+}
+
+function decodeHttpFlowCursor(value?: string | null): { startTs: number; flowId: string } | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString()) as Record<string, unknown>
+    return parsed.v === 1 && Number.isSafeInteger(parsed.startTs) && typeof parsed.flowId === 'string'
+      ? { startTs: parsed.startTs as number, flowId: parsed.flowId }
+      : null
+  } catch { return null }
+}
+
+/** Page complete HTTP flows, never individual rows. Shared time and target
+ * predicates apply to the request start (or earliest surviving flow row when
+ * capture began mid-flow); all request/response rows for selected flows return. */
+export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?: string | null }): HttpFlowPage {
+  const db = getReadonlyDB()
+  const limit = Math.max(1, opts.limit ?? 200)
+  const cursor = decodeHttpFlowCursor(opts.cursor)
+  const where: string[] = []
+  const params: unknown[] = []
+  if (opts.targetId) { where.push('target_id = ?'); params.push(opts.targetId) }
+  if (opts.since != null) { where.push('start_ts >= ?'); params.push(opts.since) }
+  if (opts.before != null) { where.push('start_ts <= ?'); params.push(opts.before) }
+  const allowed = inScopeTargetIds(opts)
+  if (allowed !== null) {
+    where.push("(target_id IS NULL OR target_id = '' OR target_id IN (SELECT value FROM json_each(?)))")
+    params.push(JSON.stringify(allowed))
+  }
+  if (cursor) {
+    where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))')
+    params.push(cursor.startTs, cursor.startTs, cursor.flowId)
+  }
+  const outerWhere = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const heads = db.prepare(`
+    WITH flow_heads AS (
+      SELECT json_extract(data, '$.flow_id') AS flow_id,
+             COALESCE(
+               MIN(CASE WHEN subtype = 'http_request_start' THEN timestamp END),
+               MIN(timestamp)
+             ) AS start_ts,
+             COALESCE(
+               MAX(CASE WHEN subtype = 'http_request_start' THEN target_id END),
+               MAX(target_id)
+             ) AS target_id
+        FROM events_logged
+       WHERE agent_type = 'scanner'
+         AND subtype IN ('http_request_start', 'http_response')
+         AND json_extract(data, '$.flow_id') IS NOT NULL
+       GROUP BY json_extract(data, '$.flow_id')
+    )
+    SELECT flow_id, start_ts FROM flow_heads ${outerWhere}
+    ORDER BY start_ts DESC, flow_id DESC LIMIT ?
+  `).all(...params, limit + 1) as Array<{ flow_id: string; start_ts: number }>
+  const hasMore = heads.length > limit
+  const pageHeads = heads.slice(0, limit)
+  if (pageHeads.length === 0) return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
+  const flowIds = pageHeads.map((row) => row.flow_id)
+  const rows = db.prepare(`
+    SELECT *, 'logged' AS tier FROM events_logged
+     WHERE agent_type = 'scanner'
+       AND subtype IN ('http_request_start', 'http_response')
+       AND json_extract(data, '$.flow_id') IN (SELECT value FROM json_each(?))
+     ORDER BY timestamp DESC, rowid DESC
+  `).all(JSON.stringify(flowIds)) as Array<Record<string, unknown>>
+  const last = pageHeads[pageHeads.length - 1]
+  return {
+    items: rows.map(rowToEvent),
+    flowCount: pageHeads.length,
+    hasMore,
+    nextCursor: hasMore ? encodeHttpFlowCursor(last.start_ts, last.flow_id) : null
+  }
+}
+
+export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
   // Heavy read: route through the cached read-only handle so a large timeline
   // scan doesn't serialise capture writes on the read-write connection.
   const db = getReadonlyDB()
   const conditions: string[] = []
   const params: unknown[] = []
 
-  if (opts.agentType) {
-    conditions.push('agent_type = ?')
-    params.push(opts.agentType)
-  }
-  if (opts.since) {
-    conditions.push('timestamp >= ?')
-    params.push(opts.since)
-  }
-  if (opts.before) {
-    conditions.push('timestamp < ?')
-    params.push(opts.before)
-  }
+  appendEventFilter(opts, conditions, params)
   if (opts.beforeCreatedAt) {
     conditions.push('created_at < ?')
     params.push(opts.beforeCreatedAt)
-  }
-  if (opts.targetId) {
-    conditions.push('target_id = ?')
-    params.push(opts.targetId)
   }
   if (opts.excludeHousekeeping) {
     conditions.push(HOUSEKEEPING_SQL)
@@ -171,35 +287,33 @@ export function queryEvents(opts: {
   return rows.map(rowToEvent)
 }
 
-export function queryTargetEventsPage(opts: {
-  targetId: string
+export function queryEventsPage(opts: EventFilter & {
   limit?: number
   cursor?: string | null
 }): QueryPage<RedLogEvent> {
   const db = getReadonlyDB()
   const limit = opts.limit ?? 200
   const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
+  const chainedConds: string[] = []
+  const loggedConds: string[] = []
+  const chainedParams: unknown[] = []
+  const loggedParams: unknown[] = []
 
-  const baseConds = ['target_id = ?']
-  const baseParams: unknown[] = [opts.targetId]
-
-  const chainedConds = [...baseConds]
-  const loggedConds = [...baseConds]
-  const chainedParams = [...baseParams]
-  const loggedParams = [...baseParams]
+  appendEventFilter(opts, chainedConds, chainedParams)
+  appendEventFilter(opts, loggedConds, loggedParams)
 
   if (cursor) {
-    const cc = buildPerArmCursorWhere(cursor, 'chained')
-    chainedConds.push(cc.sql)
-    chainedParams.push(...cc.params)
-
-    const lc = buildPerArmCursorWhere(cursor, 'logged')
-    loggedConds.push(lc.sql)
-    loggedParams.push(...lc.params)
+    const chainedCursor = buildPerArmCursorWhere(cursor, 'chained')
+    chainedConds.push(chainedCursor.sql)
+    chainedParams.push(...chainedCursor.params)
+    const loggedCursor = buildPerArmCursorWhere(cursor, 'logged')
+    loggedConds.push(loggedCursor.sql)
+    loggedParams.push(...loggedCursor.params)
   }
 
+  const chainedWhere = chainedConds.length ? `WHERE ${chainedConds.join(' AND ')}` : ''
+  const loggedWhere = loggedConds.length ? `WHERE ${loggedConds.join(' AND ')}` : ''
   const perArmLimit = limit + 1
-
   const sql = `
     SELECT * FROM (
       SELECT * FROM (
@@ -208,8 +322,7 @@ export function queryTargetEventsPage(opts: {
                hostname, source_ip, target_id, data, hash, prev_hash, created_at,
                monotonic_ns, ntp_offset_ms, signature,
                'chained' AS tier, ${TIER_RANK_CHAINED}
-        FROM events
-        WHERE ${chainedConds.join(' AND ')}
+        FROM events ${chainedWhere}
         ORDER BY timestamp DESC, rowid DESC
         LIMIT ?
       )
@@ -221,24 +334,33 @@ export function queryTargetEventsPage(opts: {
                NULL AS hash, NULL AS prev_hash, created_at,
                NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
                'logged' AS tier, ${TIER_RANK_LOGGED}
-        FROM events_logged
-        WHERE ${loggedConds.join(' AND ')}
+        FROM events_logged ${loggedWhere}
         ORDER BY timestamp DESC, rowid DESC
         LIMIT ?
       )
     ) ${CANONICAL_ORDER}
     LIMIT ?`
 
-  const bind = [...chainedParams, perArmLimit, ...loggedParams, perArmLimit, limit + 1]
-  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-
+  const rows = db.prepare(sql).all(
+    ...chainedParams, perArmLimit,
+    ...loggedParams, perArmLimit,
+    limit + 1
+  ) as Array<Record<string, unknown>>
   const page = toQueryPage(rows, limit, (row) => ({
     ts: row.timestamp as number,
     row: row._row as number,
     tier: row.tier as 'chained' | 'logged'
   }))
-
   return { ...page, items: page.items.map(rowToEvent) }
+}
+
+export function queryTargetEventsPage(opts: {
+  targetId: string
+  limit?: number
+  cursor?: string | null
+}): QueryPage<RedLogEvent> {
+  if (!opts.targetId) return { items: [], hasMore: false, nextCursor: null }
+  return queryEventsPage(opts)
 }
 
 export function queryScreenshotPage(opts: {
@@ -527,13 +649,10 @@ function toMatchQuery(raw: string): string | null {
     .join(' ')
 }
 
-export function searchEventsPage(opts: {
+export function searchEventsPage(opts: EventFilter & {
   query: string
   limit?: number
   cursor?: string | null
-  agentType?: string
-  since?: number
-  before?: number
 }): QueryPage<RedLogEvent> {
   const db = getReadonlyDB()
   const match = toMatchQuery(opts.query)
@@ -547,24 +666,8 @@ export function searchEventsPage(opts: {
   const chainedParams: unknown[] = []
   const loggedParams: unknown[] = []
 
-  if (opts.agentType) {
-    chainedExtra.push('e.agent_type = ?')
-    loggedExtra.push('e.agent_type = ?')
-    chainedParams.push(opts.agentType)
-    loggedParams.push(opts.agentType)
-  }
-  if (opts.since != null) {
-    chainedExtra.push('e.timestamp >= ?')
-    loggedExtra.push('e.timestamp >= ?')
-    chainedParams.push(opts.since)
-    loggedParams.push(opts.since)
-  }
-  if (opts.before != null) {
-    chainedExtra.push('e.timestamp <= ?')
-    loggedExtra.push('e.timestamp <= ?')
-    chainedParams.push(opts.before)
-    loggedParams.push(opts.before)
-  }
+  appendEventFilter(opts, chainedExtra, chainedParams, 'e')
+  appendEventFilter(opts, loggedExtra, loggedParams, 'e')
 
   if (cursor) {
     const cc = buildPerArmCursorWhere(cursor, 'chained')
@@ -631,25 +734,14 @@ export function searchEventsPage(opts: {
   }
 }
 
-export function searchEvents(query: string, limit = 100, opts?: { agentType?: string; since?: number; before?: number }): RedLogEvent[] {
+export function searchEvents(query: string, limit = 100, opts: EventFilter = {}): RedLogEvent[] {
   const db = getReadonlyDB()
   const match = toMatchQuery(query)
   if (!match) return []
 
   const extraConds: string[] = []
   const extraParams: unknown[] = []
-  if (opts?.agentType) {
-    extraConds.push('e.agent_type = ?')
-    extraParams.push(opts.agentType)
-  }
-  if (opts?.since != null) {
-    extraConds.push('e.timestamp >= ?')
-    extraParams.push(opts.since)
-  }
-  if (opts?.before != null) {
-    extraConds.push('e.timestamp <= ?')
-    extraParams.push(opts.before)
-  }
+  appendEventFilter(opts, extraConds, extraParams, 'e')
 
   const whereExtra = extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''
 

@@ -52,11 +52,19 @@ const api: RedLogAPI = {
     pickPath: () => ipcRenderer.invoke('hookConfig:pickPath') as Promise<string | null>
   },
   events: {
-    query: (opts: Record<string, unknown>) => ipcRenderer.invoke('events:query', opts),
+    query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),
+    queryPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryPage', opts) as Promise<{
+        items: import('../core/db/events').RedLogEvent[]
+        hasMore: boolean
+        nextCursor: string | null
+      }>,
+    queryHttpFlowPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
+      ipcRenderer.invoke('events:queryHttpFlowPage', opts) as Promise<import('../core/db/events').HttpFlowPage>,
     getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
-    search: (query: string, limit?: number, opts?: { agentType?: string; since?: number; before?: number }) => ipcRenderer.invoke('events:search', query, limit, opts),
-    searchPage: (opts: { query: string; limit?: number; cursor?: string | null; agentType?: string; since?: number; before?: number }) =>
+    search: (query: string, limit?: number, opts?: import('../core/db/events').EventFilter) => ipcRenderer.invoke('events:search', query, limit, opts),
+    searchPage: (opts: import('../core/db/events').EventFilter & { query: string; limit?: number; cursor?: string | null }) =>
       ipcRenderer.invoke('events:searchPage', opts) as Promise<{
         items: import('../core/db/events').RedLogEvent[]
         hasMore: boolean

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
+import type { EventFilter } from '../../../core/db/events'
 
 export interface TimeRange {
   since?: number
@@ -11,6 +12,17 @@ export interface SharedFilter {
   agentType: string | null
   timeRange: TimeRange | null
   inScopeOnly: boolean
+}
+
+/** Convert UI state into the canonical cross-process query contract. */
+export function toEventFilter(filter: SharedFilter): EventFilter {
+  return {
+    ...(filter.targetId ? { targetId: filter.targetId } : {}),
+    ...(filter.agentType ? { agentType: filter.agentType } : {}),
+    ...(filter.timeRange?.since != null ? { since: filter.timeRange.since } : {}),
+    ...(filter.timeRange?.before != null ? { before: filter.timeRange.before } : {}),
+    ...(filter.inScopeOnly ? { inScopeOnly: true } : {})
+  }
 }
 
 interface FilterContextValue {

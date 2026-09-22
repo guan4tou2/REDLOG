@@ -4,8 +4,7 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
-import { useSharedFilter } from '../lib/FilterContext'
-import { hostInScope } from '../lib/scope'
+import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -97,12 +96,16 @@ async function resolveAndFold(
 
 const PAGE_SIZE = 100
 
+function errorText(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : String(error)
+}
+
 interface SearchPanelProps {
   onOpenInTimeline?: (eventId: string, ts: number) => void
 }
 
 export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.Element {
-  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets } = useSharedFilter()
+  const { filter: sharedFilter } = useSharedFilter()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<RedLogEvent[]>([])
   const [folds, setFolds] = useState<Map<string, MarkerFold>>(new Map())
@@ -116,6 +119,9 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [castError, setCastError] = useState<string | null>(null)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchSeqRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
@@ -123,9 +129,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   queryRef.current = query
   const { t } = useI18n()
 
-  const filtered = sharedFilter.inScopeOnly
-    ? results.filter((event) => !event.targetId || hostInScope(event.targetId, scopeTargets, scopeExcludeTargets))
-    : results
+  const filtered = results
   const listNav = useListKeyboard({
     count: filtered.length,
     onActivate: (i) => { const e = filtered[i]; if (e) onOpenInTimeline?.(e.id, e.timestamp) },
@@ -134,12 +138,10 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   })
 
   const buildSearchOpts = useCallback(() => {
-    const opts: { agentType?: string; since?: number; before?: number } = {}
+    const opts = toEventFilter(sharedFilter)
     if (effectiveTypeFilter) opts.agentType = effectiveTypeFilter
-    if (sharedFilter.timeRange?.since) opts.since = sharedFilter.timeRange.since
-    if (sharedFilter.timeRange?.before) opts.before = sharedFilter.timeRange.before
     return opts
-  }, [effectiveTypeFilter, sharedFilter.timeRange])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   const doSearch = useCallback((q: string) => {
     if (q.length < 1) {
@@ -148,14 +150,28 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setSearched(false)
       setHasMore(false)
       setNextCursor(null)
+      setSearchError(null)
+      setCastError(null)
+      setLoadMoreError(null)
       return
     }
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
     setSearching(true)
+    setSearched(false)
+    setSearchError(null)
+    setCastError(null)
+    setLoadMoreError(null)
+    setResults([])
+    setFolds(new Map())
+    setHasMore(false)
+    setNextCursor(null)
     const seq = ++searchSeqRef.current
     const opts = buildSearchOpts()
+    const eventFilterActive = Boolean(
+      opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly
+    )
     window.redlog.events.searchPage({
       query: q, limit: PAGE_SIZE, ...opts
     }).then(async (page) => {
@@ -167,19 +183,36 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setNextCursor(page.nextCursor)
       setSearching(false)
       setSearched(true)
-    }).catch(() => {
-      if (seq !== searchSeqRef.current) return
+    }).catch((error: unknown) => {
+      if (ac.signal.aborted || seq !== searchSeqRef.current) return
+      setSearchError(errorText(error))
       setSearching(false)
+      setSearched(true)
     })
-    const castSeq = seq
-    window.redlog.events.searchCasts(q, 50)
-      .then((r) => { if (castSeq === searchSeqRef.current) setCastHits(r ?? []) })
-      .catch(() => { if (castSeq === searchSeqRef.current) setCastHits([]) })
+    // Cast index rows do not carry target, event type, or project wall-clock
+    // metadata. Hiding them while an event filter is active avoids presenting
+    // unfiltered transcript matches as if they satisfied that filter.
+    setCastHits([])
+    if (!eventFilterActive) {
+      const castSeq = seq
+      window.redlog.events.searchCasts(q, 50)
+        .then((r) => {
+          if (castSeq !== searchSeqRef.current) return
+          setCastHits(r ?? [])
+          setCastError(null)
+        })
+        .catch((error: unknown) => {
+          if (castSeq !== searchSeqRef.current) return
+          setCastHits([])
+          setCastError(errorText(error))
+        })
+    }
   }, [buildSearchOpts])
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return
     setLoadingMore(true)
+    setLoadMoreError(null)
     const opts = buildSearchOpts()
     try {
       const page = await window.redlog.events.searchPage({
@@ -194,6 +227,8 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       })
       setHasMore(page.hasMore)
       setNextCursor(page.nextCursor)
+    } catch (error: unknown) {
+      setLoadMoreError(errorText(error))
     } finally {
       setLoadingMore(false)
     }
@@ -206,15 +241,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   }, [])
 
   useEffect(() => {
-    (window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
-      .distinctAgentTypes?.()
+    window.redlog.events.distinctAgentTypes()
       .then((types) => setKnownTypes(types ?? []))
       .catch(() => {})
   }, [results])
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
-  }, [effectiveTypeFilter, sharedFilter.timeRange])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)
@@ -239,6 +273,25 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
+        {searchError && (
+          <div data-testid="search-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            <div className="font-medium">{t('search.failedTitle')}</div>
+            <div className="mt-1 text-xs text-redlog-text-dim">{t('search.failedBody')}</div>
+            <div className="mt-1 truncate font-mono text-xs text-redlog-text-faint" title={searchError}>{searchError}</div>
+            <button type="button" onClick={() => doSearch(queryRef.current)} className="mt-2 text-xs text-red-300 underline hover:text-red-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
+        {castError && !searchError && searched && (
+          <div data-testid="search-partial-warning" role="status" className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <div className="font-medium">{t('search.partialTitle')}</div>
+            <div className="mt-1 text-redlog-text-dim">{t('search.partialBody')}</div>
+            <button type="button" onClick={() => doSearch(queryRef.current)} className="mt-2 text-xs text-amber-300 underline hover:text-amber-200">
+              {t('common.retry')}
+            </button>
+          </div>
+        )}
         {!searched && !searching && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.hint')}
@@ -249,7 +302,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
             <button onClick={() => setTypeFilter(null)} className="text-redlog-text-dim hover:text-redlog-text underline">{t('search.clearFilter')}</button>
           </div>
         )}
-        {searched && results.length === 0 && castHits.length === 0 && (
+        {searched && !searchError && results.length === 0 && castHits.length === 0 && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
             {t('search.noResults', { query })}
             {castPending > 0 && (
@@ -326,13 +379,20 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
               })}
             </div>
             {hasMore && (
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="mt-2 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
-              >
-                {loadingMore ? t('search.loading') : t('search.loadMore')}
-              </button>
+              <>
+                {loadMoreError && (
+                  <div data-testid="search-load-more-error" role="alert" className="mt-2 text-center text-xs text-amber-300">
+                    {t('search.loadMoreFailed')}
+                  </div>
+                )}
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="mt-2 w-full text-xs text-blue-400 hover:text-blue-300 disabled:text-redlog-text-faint py-2"
+                >
+                  {loadingMore ? t('search.loading') : t('search.loadMore')}
+                </button>
+              </>
             )}
           </>
         )})()}

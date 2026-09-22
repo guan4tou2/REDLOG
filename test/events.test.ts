@@ -254,6 +254,24 @@ describeDB('queryEvents', () => {
     const targeted = queryEvents({ targetId: '10.0.0.1' })
     expect(targeted.length).toBe(1)
   })
+
+  it('applies canonical scope before the result limit', () => {
+    for (let i = 0; i < 5; i++) {
+      insertEvent('marker', { title: `eligible-${i}` }, { targetId: `10.10.10.${i + 1}` })
+    }
+    for (let i = 0; i < 30; i++) {
+      insertEvent('marker', { title: `excluded-${i}` }, { targetId: `192.168.50.${i + 1}` })
+    }
+
+    const rows = queryEvents({
+      limit: 5,
+      inScopeOnly: true,
+      scope: { targets: ['10.10.10.0/24'], excludeTargets: [] }
+    })
+
+    expect(rows).toHaveLength(5)
+    expect(rows.every((event) => event.targetId?.startsWith('10.10.10.'))).toBe(true)
+  })
 })
 
 describeDB('getEventCount', () => {
