@@ -32,7 +32,7 @@ import {
   type PluginEventType, type DotShape, IO_MARK_COLOR,
   displayTs, toLane, eventCompare, binarySearchInsert,
   axisLabel, formatBehind, ioMark, dotShape, shapeTitle, ioTitle,
-  subagentIndentPx, walkFocusChain
+  subagentIndentPx
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
 import { TierBadge } from './TierBadge'
@@ -206,6 +206,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // from the module cache on mount and refreshed via a window event.
   const [focusChain, setFocusChain] = useState<Set<string> | null>(null)
   const [focusAnchorId, setFocusAnchorId] = useState<string | null>(null)
+  const [focusMeta, setFocusMeta] = useState<{ loading: boolean; truncated: boolean; unavailable: number; failed: boolean }>({
+    loading: false, truncated: false, unavailable: 0, failed: false
+  })
   // Project state is keyed by project id. The `__global__` sentinel covers
   // first-run and test screens where no project is active.
   const [projectIdForKeys, setProjectIdForKeys] = useState<string | null>(null)
@@ -839,16 +842,48 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   )
   const anomalyCount = badgesById.size
 
-  // Restore-from-storage: if a focus anchor id was saved in a previous session
-  // and it still exists in the current map, compute its chain. Runs whenever
-  // the anchor id changes OR the reverse-effects index changes (i.e. new
-  // events arrived that could extend the chain).
+  // Project-wide causal focus. The old implementation walked only the 200 rows
+  // currently loaded in Timeline, so an ordinary unpaged cause looked like a
+  // broken chain. The backend now traverses both tiers; returned rows are
+  // merged into the existing ordered store before the focus set is applied.
   useEffect(() => {
-    if (!focusAnchorId) { setFocusChain(null); return }
-    const anchor = eventsMapRef.current.get(focusAnchorId)
-    if (!anchor) { setFocusChain(null); return }
-    setFocusChain(walkFocusChain(anchor, eventsMapRef.current, effectsById))
-  }, [focusAnchorId, effectsById])
+    if (!focusAnchorId) {
+      setFocusChain(null)
+      setFocusMeta({ loading: false, truncated: false, unavailable: 0, failed: false })
+      return
+    }
+    let cancelled = false
+    setFocusChain(null)
+    setFocusMeta({ loading: true, truncated: false, unavailable: 0, failed: false })
+    void window.redlog.events.causalChain(focusAnchorId).then((result) => {
+      if (cancelled) return
+      if (!result.anchorFound) {
+        setFocusChain(null)
+        setFocusMeta({ loading: false, truncated: false, unavailable: 0, failed: true })
+        return
+      }
+      let changed = false
+      for (const event of result.events) {
+        if (isHousekeeping(event) || eventsMapRef.current.has(event.id)) continue
+        eventsMapRef.current.set(event.id, event)
+        binarySearchInsert(sortedRef.current, event)
+        changed = true
+      }
+      if (changed) setEvents([...sortedRef.current])
+      setFocusChain(new Set(result.events.map((event) => event.id)))
+      setFocusMeta({
+        loading: false,
+        truncated: result.truncated,
+        unavailable: result.unavailableCauseIds.length,
+        failed: false
+      })
+    }).catch(() => {
+      if (cancelled) return
+      setFocusChain(null)
+      setFocusMeta({ loading: false, truncated: false, unavailable: 0, failed: true })
+    })
+    return () => { cancelled = true }
+  }, [focusAnchorId])
 
   // Mutual exclusion: enabling focus chain implicitly turns anomaly filter off,
   // and vice versa. Done here (rather than at each toggle site) so keyboard
@@ -1245,7 +1280,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         inField,
         hasDetail: detailOpen && !!selectedEvent,
         helpOpen: showHelp,
-        focusActive: focusChain !== null,
+        focusActive: focusAnchorId !== null,
         hasSelection: !!selectedEvent
       })
       if (action === 'none') return
@@ -1331,7 +1366,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, detailOpen, showHelp, focusChain, events, hiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
+  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, hiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
 
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
@@ -1398,11 +1433,18 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // panel pages newest-first 200 rows at a time — so the row this amendment
   // revises is usually not loaded. Fetch it by id rather than telling the
   // operator the chain is broken.
-  const resolveOriginal = useCallback(async (markerId: string) => {
-    const known = eventsMapRef.current.get(markerId)
+  const resolveReferencedEvent = useCallback(async (eventId: string) => {
+    const known = eventsMapRef.current.get(eventId)
     if (known) { setSelectedEvent(known); setDetailOpen(true); scrollToEvent(known); return }
-    const [fetched] = (await window.redlog.events.getById([markerId])) ?? []
-    if (fetched) { setSelectedEvent(fetched); setDetailOpen(true) }
+    const [fetched] = (await window.redlog.events.getById([eventId])) ?? []
+    if (fetched) {
+      eventsMapRef.current.set(fetched.id, fetched)
+      binarySearchInsert(sortedRef.current, fetched)
+      setEvents([...sortedRef.current])
+      setSelectedEvent(fetched)
+      setDetailOpen(true)
+      requestAnimationFrame(() => scrollToEvent(fetched))
+    }
   }, [scrollToEvent])
 
   if (loading && events.length === 0) {
@@ -1465,14 +1507,24 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
-      {focusChain && (
+      {(focusChain || focusMeta.loading || focusMeta.failed) && (
         <div
           data-testid="timeline-focus-badge"
           className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-cyan-500/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
           style={{ top: 6, right: 8 }}
         >
           <span className="text-cyan-300">
-            {t('timeline.focusChain.badge', { count: focusChain.size })}
+            {focusMeta.loading
+              ? t('timeline.focusChain.loading')
+              : focusMeta.failed
+                ? t('timeline.focusChain.failed')
+                : t('timeline.focusChain.badge', { count: focusChain?.size ?? 0 })}
+            {!focusMeta.loading && !focusMeta.failed && focusMeta.unavailable > 0
+              ? ` · ${t('timeline.focusChain.unavailable', { count: focusMeta.unavailable })}`
+              : ''}
+            {!focusMeta.loading && !focusMeta.failed && focusMeta.truncated
+              ? ` · ${t('timeline.focusChain.truncated')}`
+              : ''}
           </span>
           <button
             onClick={() => setFocusAnchorId(null)}
@@ -1486,7 +1538,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
         <div
           data-testid="timeline-target-focus-badge"
           className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-redlog-accent/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
-          style={{ top: focusChain ? 36 : 6, right: 8 }}
+          style={{ top: (focusChain || focusMeta.loading || focusMeta.failed) ? 36 : 6, right: 8 }}
         >
           <span className="text-redlog-accent">
             {t('timeline.targetFocus.badge', { target: effectiveTarget, count: targetMatches?.size ?? 0 })}
@@ -2445,7 +2497,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                         <button
                           key={cid}
                           type="button"
-                          onClick={() => void resolveOriginal(cid)}
+                          onClick={() => void resolveReferencedEvent(cid)}
                           className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
                           title={cid}
                         >
@@ -2454,13 +2506,15 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                       )
                     }
                     return (
-                      <span
+                      <button
                         key={cid}
-                        className="text-xs px-1.5 py-0.5 rounded border border-red-500/50 bg-red-500/15 text-red-300 font-mono"
+                        type="button"
+                        onClick={() => void resolveReferencedEvent(cid)}
+                        className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:text-amber-100 font-mono"
                         title={cid}
                       >
                         {t('timeline.detail.causeNotFound', { id: cid.slice(0, 8) })}
-                      </span>
+                      </button>
                     )
                   }
                   const clane = toLane(cev.agentType, cev.data?.subtype as string | undefined, pluginTypes)
@@ -2573,7 +2627,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               operatorLabel={operatorLabel}
               onAmend={(id, changes) => void handleAmend(id, changes)}
               onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
-              onResolveOriginal={(id) => void resolveOriginal(id)}
+              onResolveOriginal={(id) => void resolveReferencedEvent(id)}
             />
           )}
           {/* Replay this command: only for shell.command_end from a builtin

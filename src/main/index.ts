@@ -61,6 +61,7 @@ import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { closeCastIndex } from '../core/cast-index'
+import { closeHttpBodyIndex } from '../core/http-body-index'
 import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
 import { registerDataExportIpc } from './ipc/data-export'
@@ -935,6 +936,7 @@ function stopProject(): void {
   stopOpsecMonitor()
   screenshotAgent.stop()
   closeCastIndex()
+  closeHttpBodyIndex()
   // Audit 2026-09-18 P1: finalize all terminal sessions BEFORE closing the DB
   // so session_end events (with cast SHA-256) land in the chain. Without this,
   // terminals survive the project switch with stale identity and their close

@@ -21,6 +21,8 @@ interface TerminalSession {
   castBytes: number
   castTruncated: boolean
   finalised: boolean
+  cols: number
+  rows: number
   // v0.6.89 `_causes`: id of the shell.session_start event so finaliseSession
   // can stamp session_end with `_causes: [startEventId]`. Populated after the
   // session_start insertEvent returns. Null when the start insert failed.
@@ -120,6 +122,34 @@ export function setTerminalWindow(win: BrowserWindow): void {
 function sendToWindow(channel: string, payload: unknown): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   try { mainWindow.webContents.send(channel, payload) } catch { /* window tearing down */ }
+}
+
+/** Append one asciicast v2 frame under the session's recording policy.
+ * Output and resize frames share this path so byte accounting, pause and
+ * truncation cannot drift. The live PTY remains usable if the cast fails. */
+function appendCastFrame(session: TerminalSession, type: 'o' | 'r', data: string): boolean {
+  if (eventBus.paused || !session.castStream || session.castTruncated) return false
+  const encoded = JSON.stringify([(Date.now() - session.castStart) / 1000, type, data]) + '\n'
+  const chunkBytes = Buffer.byteLength(encoded)
+  if (session.castBytes + chunkBytes > maxCastBytes) {
+    try {
+      const marker = JSON.stringify([(Date.now() - session.castStart) / 1000, 'o', `\r\n[redlog: cast truncated at ${maxCastBytes} bytes]\r\n`]) + '\n'
+      session.castStream.write(marker)
+      session.castBytes += Buffer.byteLength(marker)
+      session.castStream.end()
+    } catch { /* live terminal must survive a recording failure */ }
+    session.castStream = null
+    session.castTruncated = true
+    sendToWindow(`terminal:castState:${session.id}`, { recording: false, castTruncated: true })
+    return false
+  }
+  try {
+    session.castStream.write(encoded)
+    session.castBytes += chunkBytes
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** v0.9.6 (T2): current write position in a live session's .cast, so a
@@ -287,6 +317,8 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
     castBytes: castHeaderBytes,
     castTruncated: false,
     finalised: false,
+    cols,
+    rows,
     engagementId,
     operatorId
   }
@@ -303,24 +335,7 @@ export function spawnTerminal(id: string, cols: number, rows: number): { pid: nu
       sendToWindow(`terminal:data:${id}`, data)
       return
     }
-    if (session.castStream && !session.castTruncated) {
-      const encoded = JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', data]) + '\n'
-      const chunkBytes = Buffer.byteLength(encoded)
-      if (session.castBytes + chunkBytes > maxCastBytes) {
-        try {
-          session.castStream.write(JSON.stringify([(session.lastActivity - session.castStart) / 1000, 'o', `\r\n[redlog: cast truncated at ${maxCastBytes} bytes]\r\n`]) + '\n')
-          session.castStream.end()
-        } catch { /* */ }
-        session.castStream = null
-        session.castTruncated = true
-        sendToWindow(`terminal:castState:${id}`, { recording: false, castTruncated: true })
-      } else {
-        try {
-          session.castStream.write(encoded)
-          session.castBytes += chunkBytes
-        } catch { /* stream closed */ }
-      }
-    }
+    appendCastFrame(session, 'o', data)
     sendToWindow(`terminal:data:${id}`, data)
   })
 
@@ -373,8 +388,14 @@ export function writeTerminal(id: string, data: string): void {
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): void {
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return
+  const session = sessions.get(id)
+  if (!session || (session.cols === cols && session.rows === rows)) return
   try {
-    sessions.get(id)?.pty.resize(cols, rows)
+    session.pty.resize(cols, rows)
+    session.cols = cols
+    session.rows = rows
+    appendCastFrame(session, 'r', `${cols}x${rows}`)
   } catch {}
 }
 

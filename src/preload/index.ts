@@ -96,6 +96,8 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('casts:readRange', castRel, off, len),
     queryByFlowId: (flowId: string) => ipcRenderer.invoke('events:queryByFlowId', flowId) as Promise<RedLogEvent[]>,
     getById: (ids: string[]) => ipcRenderer.invoke('events:getById', ids) as Promise<RedLogEvent[]>,
+    causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) =>
+      ipcRenderer.invoke('events:causalChain', anchorId, opts) as Promise<import('../core/db/events').EventCausalChain>,
     // The main process coalesces burst traffic into one delivery per turn.
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, events: RedLogEvent[]) => cb(events)

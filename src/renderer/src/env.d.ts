@@ -242,6 +242,7 @@ interface RedLogAPI {
     } | null>
     queryByFlowId: (flowId: string) => Promise<RedLogEvent[]>
     getById: (ids: string[]) => Promise<RedLogEvent[]>
+    causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
     logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>

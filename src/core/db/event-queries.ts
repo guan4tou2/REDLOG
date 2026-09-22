@@ -1,5 +1,5 @@
 import { getDB, getReadonlyDB } from './index'
-import type { RedLogEvent } from './event-types'
+import type { EventCausalChain, EventCausalEdge, RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
 import { _getCachedEventCount, _setCachedEventCount } from './event-write'
 import {
@@ -9,6 +9,7 @@ import {
 } from '../query-page'
 import type { ExportSnapshot } from '../export-plan'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
+import { searchHttpBodyEventIds } from '../http-body-index'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
  * are attached by trusted main-process code when `inScopeOnly` is requested. */
@@ -457,6 +458,150 @@ export function queryEventById(id: string): RedLogEvent | null {
   return logged ? rowToEvent({ ...logged, tier: 'logged' }) : null
 }
 
+function eventCauses(event: RedLogEvent): string[] {
+  const raw = (event.data as { _causes?: unknown })._causes
+  return Array.isArray(raw)
+    ? [...new Set(raw.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+    : []
+}
+
+function queryEventsByIds(ids: string[]): RedLogEvent[] {
+  if (ids.length === 0) return []
+  const db = getDB()
+  const json = JSON.stringify(ids)
+  const rows = db.prepare(`
+    SELECT id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,
+           hostname,source_ip,target_id,data,hash,prev_hash,created_at,
+           monotonic_ns,ntp_offset_ms,signature,'chained' AS tier
+    FROM events WHERE id IN (SELECT value FROM json_each(?))
+    UNION ALL
+    SELECT id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,
+           hostname,source_ip,target_id,data,NULL AS hash,NULL AS prev_hash,created_at,
+           NULL AS monotonic_ns,NULL AS ntp_offset_ms,NULL AS signature,'logged' AS tier
+    FROM events_logged WHERE id IN (SELECT value FROM json_each(?))
+  `).all(json, json) as Array<Record<string, unknown>>
+  return rows.map(rowToEvent)
+}
+
+function queryEffectsOf(ids: string[], limit: number): { events: RedLogEvent[]; overflow: boolean } {
+  if (ids.length === 0 || limit <= 0) return { events: [], overflow: false }
+  const db = getDB()
+  const json = JSON.stringify(ids)
+  const rows = db.prepare(`
+    SELECT * FROM (
+      SELECT e.id,e.timestamp,e.engagement_id,e.session_id,e.operator_id,e.agent_type,e.subtype,
+             e.hostname,e.source_ip,e.target_id,e.data,e.hash,e.prev_hash,e.created_at,
+             e.monotonic_ns,e.ntp_offset_ms,e.signature,'chained' AS tier
+      FROM events e
+      WHERE EXISTS (
+        SELECT 1 FROM json_each(json_extract(e.data, '$._causes')) c
+        WHERE c.type = 'text' AND c.value IN (SELECT value FROM json_each(?))
+      )
+      UNION ALL
+      SELECT e.id,e.timestamp,e.engagement_id,e.session_id,e.operator_id,e.agent_type,e.subtype,
+             e.hostname,e.source_ip,e.target_id,e.data,NULL AS hash,NULL AS prev_hash,e.created_at,
+             NULL AS monotonic_ns,NULL AS ntp_offset_ms,NULL AS signature,'logged' AS tier
+      FROM events_logged e
+      WHERE EXISTS (
+        SELECT 1 FROM json_each(json_extract(e.data, '$._causes')) c
+        WHERE c.type = 'text' AND c.value IN (SELECT value FROM json_each(?))
+      )
+    ) ORDER BY timestamp, created_at, id LIMIT ?
+  `).all(json, json, limit + 1) as Array<Record<string, unknown>>
+  return { events: rows.slice(0, limit).map(rowToEvent), overflow: rows.length > limit }
+}
+
+function hasUnseenCausalNeighbor(
+  frontier: RedLogEvent[],
+  found: ReadonlyMap<string, RedLogEvent>,
+  unavailable: Set<string>
+): boolean {
+  const parentIds = [...new Set(frontier.flatMap(eventCauses))].filter((id) => !found.has(id))
+  const parents = queryEventsByIds(parentIds)
+  const parentFound = new Set(parents.map((event) => event.id))
+  for (const id of parentIds) if (!parentFound.has(id)) unavailable.add(id)
+  if (parents.length > 0) return true
+
+  // At most `found.size` rows can be already known. Asking for one more means
+  // any reachable unseen effect must appear before the bound is exhausted.
+  const effects = queryEffectsOf(frontier.map((event) => event.id), found.size + 1)
+  return effects.overflow || effects.events.some((event) => !found.has(event.id))
+}
+
+/** Traverse the causal component around one event across both storage tiers.
+ * The result is independent of Timeline pagination and deliberately ignores
+ * list filters: hiding linked evidence would make provenance misleading. */
+export function queryEventCausalChain(
+  anchorId: string,
+  opts: { maxDepth?: number; eventLimit?: number } = {}
+): EventCausalChain {
+  const maxDepth = Math.max(0, Math.min(50, Math.trunc(opts.maxDepth ?? 20)))
+  const eventLimit = Math.max(1, Math.min(500, Math.trunc(opts.eventLimit ?? 200)))
+  const anchor = queryEventById(anchorId)
+  if (!anchor) return { anchorId, anchorFound: false, events: [], edges: [], unavailableCauseIds: [], truncated: false }
+
+  const found = new Map<string, RedLogEvent>([[anchor.id, anchor]])
+  const edgeMap = new Map<string, EventCausalEdge>()
+  const unavailable = new Set<string>()
+  let frontier = [anchor]
+  let truncated = false
+
+  for (let depth = 0; frontier.length > 0; depth++) {
+    if (depth >= maxDepth) {
+      truncated = hasUnseenCausalNeighbor(frontier, found, unavailable)
+      break
+    }
+    const frontierIds = new Set(frontier.map((event) => event.id))
+    const parentIds = new Set<string>()
+    for (const effect of frontier) {
+      for (const causeId of eventCauses(effect)) {
+        edgeMap.set(`${causeId}\0${effect.id}`, { causeId, effectId: effect.id })
+        if (!found.has(causeId)) parentIds.add(causeId)
+      }
+    }
+
+    const remaining = eventLimit - found.size
+    if (remaining <= 0) {
+      truncated = hasUnseenCausalNeighbor(frontier, found, unavailable)
+      break
+    }
+    const parents = queryEventsByIds([...parentIds])
+    const parentFound = new Set(parents.map((event) => event.id))
+    for (const id of parentIds) if (!parentFound.has(id)) unavailable.add(id)
+
+    const roomAfterParents = Math.max(0, remaining - parents.length)
+    const effects = queryEffectsOf([...frontierIds], roomAfterParents)
+    if (parents.length > remaining || effects.overflow) truncated = true
+    const candidates = [...parents, ...effects.events]
+    const next: RedLogEvent[] = []
+    for (const event of candidates) {
+      for (const causeId of eventCauses(event)) {
+        if (frontierIds.has(causeId) || found.has(causeId) || parentIds.has(causeId)) {
+          edgeMap.set(`${causeId}\0${event.id}`, { causeId, effectId: event.id })
+        }
+      }
+      if (found.has(event.id)) continue
+      if (found.size >= eventLimit) { truncated = true; break }
+      found.set(event.id, event)
+      next.push(event)
+    }
+    frontier = next
+    if (truncated && found.size >= eventLimit) break
+  }
+
+  const events = [...found.values()].sort((a, b) => a.timestamp - b.timestamp || a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+  const visibleIds = new Set(events.map((event) => event.id))
+  const edges = [...edgeMap.values()].filter((edge) => visibleIds.has(edge.effectId))
+  return {
+    anchorId,
+    anchorFound: true,
+    events,
+    edges,
+    unavailableCauseIds: [...unavailable].sort(),
+    truncated
+  }
+}
+
 /** Every amendment addressed at any of `markerIds`, oldest first.
  *
  *  Both tables are queried even though `marker` is chained and the logged arm is
@@ -657,6 +802,7 @@ export function searchEventsPage(opts: EventFilter & {
   const db = getReadonlyDB()
   const match = toMatchQuery(opts.query)
   if (!match) return { items: [], hasMore: false, nextCursor: null }
+  const bodyIdsJson = JSON.stringify(searchHttpBodyEventIds(opts.query))
 
   const limit = opts.limit ?? 100
   const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
@@ -693,8 +839,8 @@ export function searchEventsPage(opts: EventFilter & {
                e.monotonic_ns, e.ntp_offset_ms, e.signature,
                'chained' AS tier, ${TIER_RANK_CHAINED}
         FROM events e
-        JOIN events_fts ON events_fts.rowid = e.rowid
-        WHERE events_fts MATCH ?${chainedWhere}
+        WHERE (e.rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
+               OR e.id IN (SELECT value FROM json_each(?)))${chainedWhere}
         ORDER BY e.timestamp DESC, e.rowid DESC
         LIMIT ?
       )
@@ -707,8 +853,8 @@ export function searchEventsPage(opts: EventFilter & {
                NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
                'logged' AS tier, ${TIER_RANK_LOGGED}
         FROM events_logged e
-        JOIN events_logged_fts ON events_logged_fts.rowid = e.rowid
-        WHERE events_logged_fts MATCH ?${loggedWhere}
+        WHERE (e.rowid IN (SELECT rowid FROM events_logged_fts WHERE events_logged_fts MATCH ?)
+               OR e.id IN (SELECT value FROM json_each(?)))${loggedWhere}
         ORDER BY e.timestamp DESC, e.rowid DESC
         LIMIT ?
       )
@@ -716,8 +862,8 @@ export function searchEventsPage(opts: EventFilter & {
     LIMIT ?`
 
   const bind = [
-    match, ...chainedParams, perArmLimit,
-    match, ...loggedParams, perArmLimit,
+    match, bodyIdsJson, ...chainedParams, perArmLimit,
+    match, bodyIdsJson, ...loggedParams, perArmLimit,
     limit + 1
   ]
 
@@ -738,6 +884,7 @@ export function searchEvents(query: string, limit = 100, opts: EventFilter = {})
   const db = getReadonlyDB()
   const match = toMatchQuery(query)
   if (!match) return []
+  const bodyIdsJson = JSON.stringify(searchHttpBodyEventIds(query))
 
   const extraConds: string[] = []
   const extraParams: unknown[] = []
@@ -751,8 +898,8 @@ export function searchEvents(query: string, limit = 100, opts: EventFilter = {})
            e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
            e.monotonic_ns, e.ntp_offset_ms, e.signature, 'chained' AS tier
     FROM events e
-    JOIN events_fts ON events_fts.rowid = e.rowid
-    WHERE events_fts MATCH ?${whereExtra}
+    WHERE (e.rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
+           OR e.id IN (SELECT value FROM json_each(?)))${whereExtra}
   `
   const loggedSelect = `
     SELECT e.rowid AS _row,
@@ -762,8 +909,8 @@ export function searchEvents(query: string, limit = 100, opts: EventFilter = {})
            NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
            'logged' AS tier
     FROM events_logged e
-    JOIN events_logged_fts ON events_logged_fts.rowid = e.rowid
-    WHERE events_logged_fts MATCH ?${whereExtra}
+    WHERE (e.rowid IN (SELECT rowid FROM events_logged_fts WHERE events_logged_fts MATCH ?)
+           OR e.id IN (SELECT value FROM json_each(?)))${whereExtra}
   `
 
   const sql = `SELECT * FROM (
@@ -771,7 +918,7 @@ export function searchEvents(query: string, limit = 100, opts: EventFilter = {})
     UNION ALL
     SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
   ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
-  const bind = [match, ...extraParams, limit, match, ...extraParams, limit, limit]
+  const bind = [match, bodyIdsJson, ...extraParams, limit, match, bodyIdsJson, ...extraParams, limit, limit]
 
   try {
     const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>

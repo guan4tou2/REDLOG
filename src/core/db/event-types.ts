@@ -30,6 +30,23 @@ export interface RedLogEvent {
 export type EventTier = 'chained' | 'logged'
 export type EventTierFilter = EventTier | 'all'
 
+export interface EventCausalEdge {
+  causeId: string
+  effectId: string
+}
+
+/** A bounded, project-wide causal component. Missing references are neutral:
+ * absence from the live tables cannot prove whether a producer never wrote the
+ * row or retention removed it. */
+export interface EventCausalChain {
+  anchorId: string
+  anchorFound: boolean
+  events: RedLogEvent[]
+  edges: EventCausalEdge[]
+  unavailableCauseIds: string[]
+  truncated: boolean
+}
+
 /** The envelope schema version new rows are written under (docs/
  *  DESIGN-plugin-kernel.md §3). Bumped when the envelope's shape changes;
  *  a row records the version it was written under and is never backfilled. */

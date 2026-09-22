@@ -28,6 +28,8 @@ import { detectCleanup, detectFileTransfer } from './technique-tagger'
 import { tagCommand } from './command-tagger'
 import { redact, getRules } from './redaction'
 import { extractBodyToSidecar } from './http-body-store'
+import { linkHttpBodyEvent } from './http-body-index'
+import { noteDbError } from './capture-health'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -135,6 +137,10 @@ export function ingest(input: IngestInput): IngestResult {
     engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
+
+  if (agentType === 'scanner') {
+    try { linkHttpBodyEvent(event) } catch (error) { noteDbError('http-body-index', error) }
+  }
 
   // 6. Publish — once, here, for every producer.
   eventBus.publish(event, { bypassPause: input.bypassPause })
