@@ -46,6 +46,8 @@ for full commit body + generated notes.
   OpenTimestamps client as `uv tool install`, and the bundle verifier's optional
   `cryptography` plus the pcap agent's `scapy` as `uv run --with`, which needs
   no install step or virtualenv.
+- Release packaging now verifies that current shell adapters and plugin
+  resources are present and that removed compatibility hooks stay absent.
 
 ## v0.15.1 — 2026-09-19
 
