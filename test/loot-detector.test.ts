@@ -159,7 +159,7 @@ describe('LootDetector class', () => {
     // though there's no DB configured in this test file.
     const m = d.scan('AKIAIOSFODNN7EXAMPLE')
     expect(m.some((x) => x.type === 'aws_key')).toBe(true)
-    expect(d.getLootCount()).toBeGreaterThan(0)
+    expect(d.dedupeCacheSize()).toBeGreaterThan(0)
   })
 
   it('deduplicates: the same value scanned twice yields one match total', () => {
@@ -169,7 +169,7 @@ describe('LootDetector class', () => {
     const second = d.scan(text)
     expect(first.length).toBe(1)
     expect(second.length).toBe(0)
-    expect(d.getLootCount()).toBe(1)
+    expect(d.dedupeCacheSize()).toBe(1)
   })
 
   it('separate instances have independent dedup sets', () => {
@@ -183,7 +183,7 @@ describe('LootDetector class', () => {
   it('empty text returns no matches and does not throw', () => {
     const d = new LootDetector()
     expect(d.scan('')).toEqual([])
-    expect(d.getLootCount()).toBe(0)
+    expect(d.dedupeCacheSize()).toBe(0)
   })
 
   it('plugin patterns are added and honored, then removed by unregister', () => {

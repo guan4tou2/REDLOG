@@ -207,7 +207,17 @@ export class LootDetector {
     return
   }
 
-  getLootCount(): number {
+  /** How many distinct values this detector has already seen, i.e. the size of
+   *  its dedup set.
+   *
+   *  NOT the project's loot count, and the old name — `getLootCount()` — said
+   *  it was. The Dashboard bound its "Loot" tile to this: an in-memory Set on a
+   *  module-scope instance, never read back from the DB, so the tile showed 0
+   *  after every restart while the Loot page listed the real rows, and carried
+   *  the previous engagement's number across a project switch. The count that
+   *  answers "how much loot does this project have" is `getLootCount()` in
+   *  `core/db/event-queries.ts`, which asks the database. */
+  dedupeCacheSize(): number {
     return this.detectedHashes.size
   }
 }

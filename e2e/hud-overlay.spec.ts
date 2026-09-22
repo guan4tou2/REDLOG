@@ -188,45 +188,61 @@ test.describe.serial('HUD size stability', () => {
   // screenshot: a wrapped row is exactly twice the height of an unwrapped one.
   test('expanded panel labels stay on one line at every offered HUD scale', async () => {
     const main2 = app2.windows().find((w) => !w.url().includes('overlay'))!
-    for (const scale of [1.0, 1.25, 1.5]) {
-      await main2.evaluate(async (sc) => {
+
+    const setScale = async (sc: number): Promise<void> => {
+      await main2.evaluate(async (s2) => {
         const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
         const cfg = await api.get()
-        await api.save({ ...cfg, overlay: { ...(cfg.overlay as Record<string, unknown> ?? {}), scale: sc } })
-      }, scale)
+        await api.save({ ...cfg, overlay: { ...(cfg.overlay as Record<string, unknown> ?? {}), scale: s2 } })
+      }, sc)
       await hud2.waitForTimeout(500)
-      await hud2.evaluate(() => {
-        const el = Array.from(document.querySelectorAll('button, div')).find((d) => d.textContent?.trim() === '\u25bc') as HTMLElement | undefined
-        el?.click()
-      })
-      await hud2.waitForTimeout(400)
-
-      const wrapped = await hud2.evaluate(() => {
-        const cells = Array.from(document.querySelectorAll('div')).find((d) =>
-          getComputedStyle(d).display === 'grid' && d.children.length >= 8)
-        if (!cells) return null
-        return Array.from(cells.children).map((c) => {
-          const el = c as HTMLElement
-          const lh = parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height
-          return { text: el.textContent?.trim().slice(0, 14), lines: Math.round(el.getBoundingClientRect().height / lh) }
-        }).filter((x) => x.lines > 1)
-      })
-      expect(wrapped, `labels wrapped at HUD scale ${scale}: ${JSON.stringify(wrapped)}`).toEqual([])
     }
-    // Restore both the scale and the collapsed state. These specs run serially
-    // against one app, so leaving the HUD expanded at scale 1.5 would fail the
-    // compact-size check below for a reason that has nothing to do with what
-    // it is testing.
-    await hud2.evaluate(() => {
-      const el = Array.from(document.querySelectorAll('button, div')).find((d) => d.textContent?.trim() === '\u25b2') as HTMLElement | undefined
-      el?.click()
-    })
-    await main2.evaluate(async () => {
-      const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
-      const cfg = await api.get()
-      await api.save({ ...cfg, overlay: { ...(cfg.overlay as Record<string, unknown> ?? {}), scale: 1 } })
-    })
-    await hud2.waitForTimeout(500)
+    const clickChevron = async (glyph: string): Promise<void> => {
+      await hud2.evaluate((g) => {
+        const el = Array.from(document.querySelectorAll('button, div')).find((d) => d.textContent?.trim() === g) as HTMLElement | undefined
+        el?.click()
+      }, glyph)
+      await hud2.waitForTimeout(400)
+    }
+
+    // The restore belongs in a `finally`.
+    //
+    // It used to sit after the loop, guarded by nothing, under a comment
+    // naming the hazard it did not guard against: these specs share one app,
+    // so a HUD left expanded at scale 1.5 makes the compact-size check below
+    // read a large height. Any `expect` in the loop throwing skipped the
+    // restore and left the HUD that way.
+    //
+    // Today that cannot actually reach the next test — `describe.serial` with
+    // no retries stops the block on the first failure, so the compact-size
+    // check is skipped rather than misled. Verified by forcing the scale-1.5
+    // iteration to fail: the run ends 1 failed / 3 passed and the
+    // compact-size test does not run at all. So this is hardening, not a bug
+    // fix, and it is worth the four lines because all three of the conditions
+    // holding it back are incidental — turning on retries, dropping
+    // `.serial`, or adding a test between the two would each make a HUD left
+    // at the wrong height into a second, misleading failure.
+    try {
+      for (const scale of [1.0, 1.25, 1.5]) {
+        await setScale(scale)
+        await clickChevron('▼')
+
+        const wrapped = await hud2.evaluate(() => {
+          const cells = Array.from(document.querySelectorAll('div')).find((d) =>
+            getComputedStyle(d).display === 'grid' && d.children.length >= 8)
+          if (!cells) return null
+          return Array.from(cells.children).map((c) => {
+            const el = c as HTMLElement
+            const lh = parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height
+            return { text: el.textContent?.trim().slice(0, 14), lines: Math.round(el.getBoundingClientRect().height / lh) }
+          }).filter((x) => x.lines > 1)
+        })
+        expect(wrapped, `labels wrapped at HUD scale ${scale}: ${JSON.stringify(wrapped)}`).toEqual([])
+      }
+    } finally {
+      await clickChevron('▲')   // collapse
+      await setScale(1)
+    }
   })
 
   test('the collapsed HUD stays at its compact size', async () => {
@@ -234,9 +250,18 @@ test.describe.serial('HUD size stability', () => {
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('overlay'))!
       return w.getBounds()
     })
-    // Collapsed at scale 1 is a single row — 440px wide, well under 100px tall.
-    // Runaway growth showed up here first as a window pinned near the cap.
+    // Collapsed at scale 1 is a single row: 440px wide and, measured, 58px
+    // tall — 40pt of content plus HUD_CONTENT_CHROME. Runaway growth showed up
+    // here first as a window pinned near the cap.
+    //
+    // The bound used to be 120, more than twice the real height, which let the
+    // HUD double before this test noticed — and noticing is the only reason it
+    // exists. 80 keeps room for font and DPI differences across the platforms
+    // this runs on while still catching a doubling.
     expect(b.width, 'collapsed HUD should be near its 440px base, not the ceiling').toBeLessThan(560)
-    expect(b.height, 'collapsed HUD should be one row tall').toBeLessThan(120)
+    expect(b.height, 'collapsed HUD should be one row tall').toBeLessThan(80)
+    // And it must not have collapsed to nothing: below the floor the bar is
+    // clipped, which reads as "the HUD is broken" rather than "it is small".
+    expect(b.height, 'collapsed HUD should still clear the height floor').toBeGreaterThanOrEqual(46)
   })
 })

@@ -12,6 +12,10 @@ interface Tab {
   label: string
   pid: number
   alive: boolean
+  /** Catalog id the pane was opened with, or undefined for "whatever the
+   *  old inherited-$SHELL rule picks". Kept per tab so a remount respawns
+   *  the same shell rather than silently switching under the operator. */
+  shellId?: string
   // cwd basename + last-command exit code — audit #16. Both come from the
   // shell hook via `redlog:` OSC 6 escapes that xterm.js dispatches; we set
   // them from TerminalPane so the tab bar shows where a shell is + whether
@@ -26,6 +30,13 @@ let tabCounter = 0
 
 const FONT_SIZE_KEY = 'redlog-terminal-fontsize'
 const DEFAULT_FONT_SIZE = 13
+const SHELL_KEY = 'redlog-terminal-shell'
+
+interface ShellOption {
+  id: string
+  label: string
+  flavour: 'powershell' | 'posix' | 'none'
+}
 
 export default function TerminalView(): JSX.Element {
   const [tabs, setTabs] = useState<Tab[]>([])
@@ -41,19 +52,25 @@ export default function TerminalView(): JSX.Element {
   // holds the current query. Enter → next match, Shift+Enter → previous.
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  // The shells this machine offers, and the one the operator last chose.
+  // Discovery is async in the main process (it enumerates WSL), so the menu
+  // fills in after mount rather than blocking anything.
+  const [shells, setShells] = useState<ShellOption[]>([])
+  const [shellMenuOpen, setShellMenuOpen] = useState(false)
+  const [preferredShell, setPreferredShell] = usePersistentState<string>(SHELL_KEY, '')
   const paneSearchRefs = useRef<Map<string, SearchAddon>>(new Map())
   const { t } = useI18n()
 
-  const addTab = useCallback(() => {
+  const addTab = useCallback((shellId?: string) => {
     const n = ++tabCounter
     const id = `term-${Date.now()}-${n}`
     // Monotonic counter — using tabs.length + 1 caused collisions after close
     // ("Shell 2" reused if tab 3 was closed before adding a new one). Audit P1 #16.
     const label = `${t('terminal.shell')} ${n}`
-    const tab: Tab = { id, label, pid: 0, alive: true }
+    const tab: Tab = { id, label, pid: 0, alive: true, shellId: shellId || preferredShell || undefined }
     setTabs((prev) => [...prev, tab])
     setActiveTab(id)
-  }, [t])
+  }, [t, preferredShell])
 
   const closeTab = useCallback(async (id: string) => {
     // Terminal panes host live PTY sessions (with shell hook capturing every
@@ -106,6 +123,14 @@ export default function TerminalView(): JSX.Element {
       })
       .catch(() => addTab())
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Ask the main process which shells this machine has. Cached there, so
+  // reopening the view is free; the first call on Windows enumerates WSL.
+  useEffect(() => {
+    void (window.redlog.terminal.shells?.() ?? Promise.resolve([]))
+      .then((list) => { if (Array.isArray(list)) setShells(list) })
+      .catch(() => { /* picker falls back to the single + button */ })
   }, [])
 
   // Watch shell events → update tab cwd + last exit code (audit #16). Every
@@ -223,13 +248,62 @@ export default function TerminalView(): JSX.Element {
           </div>
         ))}
         <button
-          onClick={addTab}
+          onClick={() => addTab()}
           className="w-7 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm"
           title={t('terminal.newTab')}
           aria-label={t('terminal.newTab')}
         >
           +
         </button>
+
+        {/* Which shell the next pane opens with. Hidden when the machine only
+            offers one — a menu with a single entry is a decision the operator
+            does not have. */}
+        {shells.length > 1 && (
+          <div className="relative">
+            <button
+              onClick={() => setShellMenuOpen((v) => !v)}
+              data-testid="terminal-shell-menu"
+              aria-haspopup="menu"
+              aria-expanded={shellMenuOpen}
+              className="w-5 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs"
+              title={t('terminal.pickShell')}
+              aria-label={t('terminal.pickShell')}
+            >
+              ▾
+            </button>
+            {shellMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShellMenuOpen(false)} />
+                <div
+                  role="menu"
+                  className="absolute left-0 top-8 z-50 min-w-[210px] rounded-md border border-redlog-border bg-redlog-elevated py-1 shadow-lg"
+                >
+                  {shells.map((sh) => (
+                    <button
+                      key={sh.id}
+                      role="menuitem"
+                      onClick={() => {
+                        setPreferredShell(sh.id)
+                        setShellMenuOpen(false)
+                        addTab(sh.id)
+                      }}
+                      className="w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 text-redlog-text hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:bg-redlog-elevated-hover"
+                    >
+                      <span className="w-3 shrink-0 text-redlog-accent">{preferredShell === sh.id ? '•' : ''}</span>
+                      <span className="flex-1 truncate" title={sh.label}>{sh.label}</span>
+                      {/* The point of the picker: an unhookable shell is
+                          labelled as such before it is chosen, not after. */}
+                      {sh.flavour === 'none' && (
+                        <span className="shrink-0 text-xs text-amber-400">{t('terminal.notRecorded')}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Font-size + search on the right — audit findings #14 (SearchAddon)
             and #15 (font size adjustable). */}
@@ -306,6 +380,7 @@ export default function TerminalView(): JSX.Element {
               active={activeTab === tab.id}
               fontSize={fontSize}
               onSearch={() => setSearchOpen(true)}
+              shellId={tab.shellId}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
               onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
@@ -316,7 +391,7 @@ export default function TerminalView(): JSX.Element {
         {tabs.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <button
-              onClick={addTab}
+              onClick={() => addTab()}
               className="px-4 py-2 rounded-lg bg-redlog-elevated text-redlog-text-dim text-sm hover:bg-redlog-elevated-hover hover:text-redlog-text transition-colors"
             >
               {t('terminal.newTab')}
@@ -328,9 +403,10 @@ export default function TerminalView(): JSX.Element {
   )
 }
 
-function TerminalPane({ id, active, onPid, onCastState, onExit, fontSize, onSearch, onSearchAddon }: {
+function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSize, onSearch, onSearchAddon }: {
   id: string
   active: boolean
+  shellId?: string
   onPid: (pid: number) => void
   onCastState: (state: { recording: boolean; castTruncated: boolean }) => void
   onExit: () => void
@@ -343,6 +419,10 @@ function TerminalPane({ id, active, onPid, onCastState, onExit, fontSize, onSear
   const fitRef = useRef<FitAddon | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
   const { t } = useI18n()
+  // Set only when this pane's shell takes no hook, i.e. its commands are not
+  // being recorded. A capture gap has to be visible where the operator is
+  // working, not just inferable from an empty timeline later.
+  const [unhookedShell, setUnhookedShell] = useState<string | null>(null)
 
   // Right-click menu. xterm keeps its selection in its own model rather than the
   // DOM, so Chromium's context-menu event fires with an empty selection here and
@@ -484,8 +564,12 @@ function TerminalPane({ id, active, onPid, onCastState, onExit, fontSize, onSear
 
     requestAnimationFrame(() => {
       try { fitAddon.fit() } catch {}
-      window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24)
-        .then((r) => { onPid(r.pid); onCastState({ recording: r.recording, castTruncated: r.castTruncated }) })
+      window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24, shellId)
+        .then((r) => {
+          onPid(r.pid)
+          onCastState({ recording: r.recording, castTruncated: r.castTruncated })
+          if (!r.hookSourced) setUnhookedShell(r.shell)
+        })
         .catch(() => {})
     })
 
@@ -519,5 +603,19 @@ function TerminalPane({ id, active, onPid, onCastState, onExit, fontSize, onSear
     }
   }, [active])
 
-  return <div ref={containerRef} className="w-full h-full" onContextMenu={showContextMenu} />
+  return (
+    <div className="w-full h-full flex flex-col">
+      {unhookedShell && (
+        <div
+          role="status"
+          data-testid="terminal-no-hook"
+          className="shrink-0 flex items-start gap-2 px-3 py-1.5 border-b border-redlog-border bg-amber-500/12 text-xs text-redlog-text-dim"
+        >
+          <span className="text-amber-400 shrink-0" aria-hidden="true">⚠</span>
+          <span>{t('terminal.noHook', { shell: unhookedShell.split(/[\\/]/).pop() ?? unhookedShell })}</span>
+        </div>
+      )}
+      <div ref={containerRef} className="flex-1 min-h-0" onContextMenu={showContextMenu} />
+    </div>
+  )
 }

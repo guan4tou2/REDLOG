@@ -35,7 +35,7 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions,
+  killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
 import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
@@ -644,6 +644,11 @@ function startProject(project: ProjectMeta): void {
     const n = recoverOrphanSessions()
     if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
   } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
+
+  // Fill the shell catalog in the background so the picker opens instantly.
+  // Not awaited: on Windows it enumerates WSL, and nothing here depends on
+  // the answer (#100 is the reason that distinction matters).
+  void discoverShells().catch(() => { /* probing is best effort */ })
 
   // Replay only records belonging to the active engagement. Mismatches remain
   // recoverable on disk and are picked up when their owning project opens.

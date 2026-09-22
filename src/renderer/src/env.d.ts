@@ -335,7 +335,10 @@ interface RedLogAPI {
     onChange: (cb: (recording: boolean) => void) => () => void
   }
   terminal: {
-    spawn: (id: string, cols: number, rows: number) => Promise<{ pid: number; recording: boolean; castTruncated: boolean }>
+    spawn: (id: string, cols: number, rows: number, shellId?: string) =>
+      Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean; recording: boolean; castTruncated: boolean }>
+    shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
+    rediscoverShells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
@@ -349,7 +352,17 @@ interface RedLogAPI {
     onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
     replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
     replaySession: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
-    replayAtTime: (atMs: number) => Promise<{ ok: boolean; events?: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number; error?: string }>
+    /** A discriminated union, not a bag of optionals: the handler returns
+     *  either `{ ok: false, error }` or `{ ok: true, events, … }`, and it
+     *  never returns `ok: true` without events. Typing it as
+     *  `{ ok: boolean; events?: … }` meant `if (!r.ok) return` narrowed
+     *  nothing, so the caller was handed `events: … | undefined` for a field
+     *  `replayStore.open` requires — TS2322, which is how main stopped
+     *  compiling. */
+    replayAtTime: (atMs: number) => Promise<
+      | { ok: true; events: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number }
+      | { ok: false; error: string }
+    >
   }
   overlay: {
     toggle: () => void

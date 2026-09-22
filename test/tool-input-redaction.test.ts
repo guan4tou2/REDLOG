@@ -71,14 +71,18 @@ describe('redactToolInput — per-tool allowlist', () => {
     expect(out).not.toBe(input)  // shallow copy — downstream mutations don't touch the adapter's parsed turn
   })
 
-  it('WebFetch: prompt and url both scanned', () => {
+  it('WebFetch: both the prompt and the url are scanned', () => {
     const input = {
       url: 'https://api.example.com/?token=abc123',
       prompt: 'summarise this doc password=hunter2xxx'
     }
     const out = redactToolInput('WebFetch', input)
     expect(out.prompt).toContain('[REDACTED]')
-    expect(out.url).toContain('[REDACTED]')
+    // This used to be a documented trade-off — the url was left alone on the
+    // argument that a token in a URL is caught upstream in
+    // scanner.http_request_start. #114 P1 closed it: the url is scanned like
+    // any other field, so a token in the query string is redacted here too.
+    expect(out.url).toBe('https://api.example.com/?token=[REDACTED]')
   })
 })
 
