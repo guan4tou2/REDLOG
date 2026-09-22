@@ -23,10 +23,15 @@ const event = {
   data: { subtype: 'assistant_message', agent: 'codex', full: 'loaded evidence' }
 }
 
+const clipboardWrite = vi.fn().mockResolvedValue(true)
+
 function installBridge(queryPage: ReturnType<typeof vi.fn>): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     events: { queryPage, onNewBatch: () => () => {} },
-    operators: { list: vi.fn().mockResolvedValue([{ id: 'op', name: 'Operator' }]) }
+    operators: { list: vi.fn().mockResolvedValue([{ id: 'op', name: 'Operator' }]) },
+    // Copy goes through the main process, not navigator.clipboard — the
+    // renderer's permission handler denies the Async Clipboard API.
+    clipboard: { writeText: clipboardWrite, readText: vi.fn().mockResolvedValue('') }
   }
 }
 
@@ -60,8 +65,6 @@ describe('Transcript completeness UI', () => {
   })
 
   it('discloses a partial dataset in copied Markdown', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     installBridge(vi.fn().mockImplementation((opts: { agentType: string }) =>
       Promise.resolve(opts.agentType === 'agent'
         ? { items: [event], hasMore: true, nextCursor: 'agent-cursor' }
@@ -70,7 +73,7 @@ describe('Transcript completeness UI', () => {
     await screen.findByText('loaded evidence')
     fireEvent.click(screen.getByRole('button', { name: 'transcript.copyMd' }))
 
-    await waitFor(() => expect(writeText).toHaveBeenCalled())
-    expect(writeText.mock.calls[0][0]).toContain('transcript.partialMarkdown')
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalled())
+    expect(clipboardWrite.mock.calls[0][0]).toContain('transcript.partialMarkdown')
   })
 })

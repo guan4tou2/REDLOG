@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 import { useSharedFilter } from '../lib/FilterContext'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
@@ -1406,8 +1407,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     // silently incomplete. The redaction boundary that matters is layer 4, on
     // the way *out*: bundle export and the blue-team webhook both
     // redact in src/core, independently of anything the renderer shows.
-    navigator.clipboard.writeText(JSON.stringify(selectedEvent, null, 2))
-    toast(t('toast.copied'), 'success')
+    void writeClipboard(JSON.stringify(selectedEvent, null, 2)).then((ok) =>
+      toast(ok ? t('toast.copied') : t('toast.copyFailed'), ok ? 'success' : 'error')
+    )
   }, [selectedEvent, t])
 
   // Write a correction. No confirm dialog and no undo toast: the spec makes

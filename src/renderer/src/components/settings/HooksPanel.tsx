@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toast, toastDeferred } from '../Toast'
 import { FieldGroup, type HookInfo } from './SettingsShared'
+import { writeClipboard } from '../../lib/clipboard'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
 // process, no locale). The interface is Chinese, so each built-in id has a
@@ -26,9 +27,9 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
     (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks)
   }, [])
 
-  const copy = (text: string): void => {
-    navigator.clipboard.writeText(text)
-    toast(t('toast.copied'), 'success')
+  const copy = async (text: string): Promise<void> => {
+    const ok = await writeClipboard(text)
+    toast(ok ? t('toast.copied') : t('toast.copyFailed'), ok ? 'success' : 'error')
   }
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
@@ -160,7 +161,7 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
                               {step.command}
                             </code>
                             <button
-                              onClick={() => copy(step.command!)}
+                              onClick={() => void copy(step.command!)}
                               className="text-xs px-2 py-1 rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover transition-colors shrink-0"
                             >
                               {t('settings.hookCopy')}

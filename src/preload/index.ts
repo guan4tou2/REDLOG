@@ -23,6 +23,12 @@ const api: RedLogAPI = {
     contextMenu: (items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>) =>
       ipcRenderer.invoke('ui:contextMenu', items) as Promise<string | null>
   },
+  // `navigator.clipboard` is denied by the renderer's permission handler —
+  // see src/main/ipc/clipboard.ts. Renderer code goes through lib/clipboard.
+  clipboard: {
+    writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text) as Promise<boolean>,
+    readText: () => ipcRenderer.invoke('clipboard:readText') as Promise<string>
+  },
   project: {
     list: () => ipcRenderer.invoke('project:list'),
     create: (name: string, initialConfig?: unknown) => ipcRenderer.invoke('project:create', name, initialConfig),

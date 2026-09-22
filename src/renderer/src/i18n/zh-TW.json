@@ -473,6 +473,7 @@
   "toast.exported": "資料匯出成功",
   "toast.exportFailed": "匯出失敗",
   "toast.copied": "已複製到剪貼簿",
+  "toast.copyFailed": "複製到剪貼簿失敗",
   "toast.exportedTo": "已匯出至 {{path}}",
   "terminal.shell": "終端",
   "terminal.newTab": "新增終端",

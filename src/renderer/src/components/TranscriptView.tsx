@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
 import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { AlignLeft } from 'lucide-react'
@@ -421,14 +422,12 @@ export default function TranscriptView({ onOpenInTimeline }: {
       }
       else if (b.outputNote) lines.push(`_${t(`transcript.note.${b.outputNote}`)}_`, '')
     }
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'))
+    if (await writeClipboard(lines.join('\n'))) {
       toast(t('transcript.copied'), 'success')
-    } catch (e) {
+    } else {
       toast(t('transcript.copyFailed'), {
         type: 'error',
-        why: t('transcript.copyFailedWhy'),
-        detail: String((e as Error)?.message ?? e)
+        why: t('transcript.copyFailedWhy')
       })
     }
   }, [hasMore, shown, t])

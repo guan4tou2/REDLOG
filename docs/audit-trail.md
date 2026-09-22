@@ -94,7 +94,7 @@ You do not need RedLog to verify an anchor. All you need is:
 
 1. The `head_hash` from the `chain_anchors` row (or an export).
 2. Any calendar receipt for that hash (base64 in the same row).
-3. The [OpenTimestamps CLI](https://github.com/opentimestamps/opentimestamps-client) (`pip install opentimestamps-client`).
+3. The [OpenTimestamps CLI](https://github.com/opentimestamps/opentimestamps-client) (`uv tool install opentimestamps-client`).
 
 RedLog exports **standard `.ots` bundles** — no manual assembly needed:
 

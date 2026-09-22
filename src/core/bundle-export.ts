@@ -512,7 +512,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // v0.6.94 C: ship a standalone chain verifier inside the bundle so the
   // recipient can prove tamper-freedom without installing Node/Electron/
   // better-sqlite3. Python 3 stdlib is enough for the hash chain; Ed25519
-  // signature verification is optional (requires `pip install cryptography`).
+  // signature verification is optional (`uv run --with cryptography`).
   // See tools/redlog-verify.py and docs/CLOUD_SHARE_BUNDLE.md.
   // __dirname resolves differently between dev (src/core/) and packaged
   // builds (out/main/). Try the same two-then-three-parents pattern
@@ -533,8 +533,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     const shWrapper = [
       '#!/usr/bin/env bash',
       '# RedLog bundle verifier — thin wrapper around redlog-verify.py.',
-      '# Requires: python3 (stdlib only for hash chain; `pip install cryptography`',
-      '# to also verify Ed25519 signatures).',
+      '# Requires: python3 (stdlib only for the hash chain). To also verify',
+      '# Ed25519 signatures, run the verifier through uv instead:',
+      '#   uv run --with cryptography redlog-verify.py .',
       'set -euo pipefail',
       'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
       'exec python3 "$DIR/redlog-verify.py" "$DIR" "$@"',
@@ -590,10 +591,11 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       '',
       'Both wrappers invoke `python3 redlog-verify.py .` — Python 3.8+ stdlib is',
       'enough to verify the SHA-256 hash chain. To also verify each event\'s',
-      'Ed25519 signature, install the optional dependency:',
+      'Ed25519 signature, run the verifier through uv, which supplies the',
+      'optional dependency without installing anything:',
       '',
       '```',
-      'pip install cryptography',
+      'uv run --with cryptography redlog-verify.py .',
       '```',
       '',
       'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',

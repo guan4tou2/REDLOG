@@ -169,6 +169,10 @@ interface RedLogAPI {
       items: Array<{ id?: string; label?: string; enabled?: boolean; type?: 'separator' }>
     ) => Promise<string | null>
   }
+  clipboard: {
+    writeText: (text: string) => Promise<boolean>
+    readText: () => Promise<string>
+  }
   project: {
     list: () => Promise<ProjectMeta[]>
     create: (name: string, initialConfig?: Partial<RedLogConfigPartial>) => Promise<ProjectMeta>

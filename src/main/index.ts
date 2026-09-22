@@ -65,6 +65,7 @@ import { closeCastIndex } from '../core/cast-index'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
+import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
 import {
   registerOverlayIpc, setOverlayPassThrough, stopOverlayMouseTracking,
@@ -1076,6 +1077,7 @@ app.whenReady().then(() => {
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
   registerContextMenuIpc(ipcMain)
+  registerClipboardIpc(ipcMain)
 
   // Shared context for extracted IPC handler modules.
   const ipcCtx: IpcContext = {

@@ -473,6 +473,7 @@
   "toast.exported": "Data exported successfully",
   "toast.exportFailed": "Export failed",
   "toast.copied": "Copied to clipboard",
+  "toast.copyFailed": "Could not copy to clipboard",
   "toast.exportedTo": "Exported to {{path}}",
   "terminal.shell": "Shell",
   "terminal.newTab": "New Terminal",
