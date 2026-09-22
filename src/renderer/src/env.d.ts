@@ -346,8 +346,11 @@ interface RedLogAPI {
   }
   recording: {
     get: () => Promise<boolean>
+    getMode: () => Promise<'recording' | 'paused' | 'reporting'>
+    setMode: (mode: 'recording' | 'paused' | 'reporting') => Promise<'recording' | 'paused' | 'reporting'>
     toggle: () => Promise<boolean>
     onChange: (cb: (recording: boolean) => void) => () => void
+    onModeChange: (cb: (mode: 'recording' | 'paused' | 'reporting') => void) => () => void
   }
   terminal: {
     spawn: (id: string, cols: number, rows: number, shellId?: string) =>

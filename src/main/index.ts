@@ -202,10 +202,13 @@ function send(win: BrowserWindow | null, channel: string, ...payload: unknown[])
 function toggleRecording(): boolean {
   if (eventBus.paused) eventBus.resume('ui')
   else eventBus.pause('ui')
-  const recording = !eventBus.paused
-  send(mainWindow, 'recording:changed', recording)
-  send(overlayWindow, 'recording:changed', recording)
-  return recording
+  return !eventBus.paused
+}
+
+function setRecordingMode(mode: 'recording' | 'paused' | 'reporting'): 'recording' | 'paused' | 'reporting' {
+  if (mode === 'recording') eventBus.resume('ui')
+  else eventBus.pause('ui', mode)
+  return eventBus.mode
 }
 
 // The marker fields an operator types or pastes, and therefore the ones that can
@@ -1292,6 +1295,10 @@ app.whenReady().then(() => {
     // from, so toggling a source updates the card on the next poll instead of
     // at the next project open.
     configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
+    if (managedProxyPort(oldConfig) !== managedProxyPort(newConfig)) {
+      stopManagedHttpCapture()
+      void startManagedHttpCapture()
+    }
     // Re-judge what is already recorded against the boundary that now applies.
     // Scheduled rather than awaited: the renderer's save must not wait on a
     // scan, and the debounce collapses an editing burst into one run.
@@ -1571,19 +1578,27 @@ app.whenReady().then(() => {
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
+  ipcMain.handle('recording:getMode', () => eventBus.mode)
   ipcMain.handle('recording:toggle', () => toggleRecording())
-  eventBus.on('recording', (recording: boolean, source?: string) => {
+  ipcMain.handle('recording:setMode', (_e, mode: 'recording' | 'paused' | 'reporting') => {
+    if (!['recording', 'paused', 'reporting'].includes(mode)) throw new Error('invalid recording mode')
+    return setRecordingMode(mode)
+  })
+  eventBus.on('recording', (recording: boolean, source?: string, mode?: string, previousMode?: string) => {
     send(mainWindow, 'recording:changed', recording)
     send(overlayWindow, 'recording:changed', recording)
+    send(mainWindow, 'recording:modeChanged', mode ?? (recording ? 'recording' : 'paused'))
     if (tray) setTrayRecording(tray, recording)
     // Log the toggle so a reviewer can explain gaps in the timeline — "no events
     // for 20 min" reads very differently as "recording was paused" vs "idle".
     // Bypass the paused gate for this one write: pause events must always land.
     if (currentEngagementId && currentOperatorId) {
       try {
+        const enteringReport = !recording && mode === 'reporting'
+        const leavingReport = recording && previousMode === 'reporting'
         const ev = insertEvent('system', {
-          subtype: recording ? 'recording_resumed' : 'recording_paused',
-          description: recording ? 'Recording resumed' : 'Recording paused',
+          subtype: enteringReport ? 'report_mode_started' : leavingReport ? 'report_mode_ended' : recording ? 'recording_resumed' : 'recording_paused',
+          description: enteringReport ? 'Report mode started' : leavingReport ? 'Report mode ended' : recording ? 'Recording resumed' : 'Recording paused',
           // v0.9.5: who flipped it. With pause now actually suppressing
           // capture, these two rows are the entire record of the gap.
           source: source || 'unknown'

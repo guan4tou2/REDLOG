@@ -20,6 +20,7 @@ export default function StatusBar(): JSX.Element {
   const [loggedCount, setLoggedCount] = useState(0)
   const [uptime, setUptime] = useState(0)
   const [recording, setRecording] = useState(true)
+  const [recordingMode, setRecordingMode] = useState<'recording' | 'paused' | 'reporting'>('recording')
   const [pausedAt, setPausedAt] = useState<number | null>(null)
   const [pauseElapsed, setPauseElapsed] = useState(0)
   const [overlayVisible, setOverlayVisible] = useState(true)
@@ -47,6 +48,7 @@ export default function StatusBar(): JSX.Element {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
     })
+    window.redlog.recording.getMode().then(setRecordingMode)
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
     // v0.13.0: the logged-tier count for the chained·logged split is
@@ -61,6 +63,7 @@ export default function StatusBar(): JSX.Element {
       if (!r) setPausedAt(Date.now())
       else { setPausedAt(null); setPauseElapsed(0) }
     })
+    const unsubMode = window.redlog.recording.onModeChange(setRecordingMode)
     window.redlog.overlay.isVisible().then(setOverlayVisible)
     const unsubOverlay = window.redlog.overlay.onVisibilityChanged(setOverlayVisible)
     const timer = setInterval(() => setUptime(Math.floor((Date.now() - start) / 1000)), 1000)
@@ -112,7 +115,7 @@ export default function StatusBar(): JSX.Element {
     loadCapture()
     const healthTimer = setInterval(loadCapture, 30_000)
 
-    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
+    return () => { unsubIp(); unsubEvent(); unsubRec(); unsubMode(); unsubOverlay(); clearInterval(timer); clearInterval(healthTimer) }
   }, [])
 
   useEffect(() => {
@@ -216,15 +219,20 @@ export default function StatusBar(): JSX.Element {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (some sources active, some idle).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
-        const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
-        const dotColor = !recording
+        const reporting = recordingMode === 'reporting'
+        const pauseWarn = !recording && !reporting && pauseElapsed >= PAUSE_WARN_SECS
+        const dotColor = reporting
+          ? 'bg-amber-500'
+          : !recording
           ? pauseWarn ? 'bg-amber-500 animate-pulse-slow' : 'bg-redlog-text-dim'
           : captureVerdict === 'dark'
             ? 'bg-amber-500'
             : captureVerdict === 'partial'
               ? 'bg-amber-500 animate-pulse-slow'
               : 'bg-red-500 animate-pulse-slow'
-        const labelColor = !recording
+        const labelColor = reporting
+          ? 'text-amber-400/80'
+          : !recording
           ? pauseWarn ? 'text-amber-400/80' : 'text-redlog-text-dim'
           : captureVerdict === 'dark' || captureVerdict === 'partial'
             ? 'text-amber-400/80'
@@ -232,8 +240,10 @@ export default function StatusBar(): JSX.Element {
         const lastEventLine = lastEventAt
           ? t('statusBar.lastEvent', { time: formatTime(lastEventAt, { seconds: true }) })
           : recording ? t('statusBar.lastEventNever') : ''
-        const tooltip = !recording
-          ? t('statusBar.clickToResume')
+        const tooltip = reporting
+          ? t('statusBar.reportingHint')
+          : !recording
+            ? t('statusBar.clickToResume')
           : captureVerdict === 'dark'
             ? `${t('statusBar.captureDark')}\n${lastEventLine}`
             : captureVerdict === 'partial'
@@ -245,6 +255,7 @@ export default function StatusBar(): JSX.Element {
           <button
             data-testid="status-bar-recording"
             data-recording={recording ? 'on' : 'off'}
+            data-mode={recordingMode}
             data-capture={captureVerdict ?? 'unknown'}
             onClick={handleToggleRecording}
             className="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors"
@@ -253,7 +264,9 @@ export default function StatusBar(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
             <span className={labelColor}>{
-              !recording
+              reporting
+                ? t('statusBar.reporting')
+              : !recording
                 ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
               : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')

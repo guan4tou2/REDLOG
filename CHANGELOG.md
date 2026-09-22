@@ -5,10 +5,16 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Report Mode now pauses new evidence through the canonical write gate while
+  keeping search, replay, filters, and export available. The header, status bar,
+  and chained audit events distinguish report writing from an unexplained pause.
 - RedLog now starts and owns its local mitmproxy capture process, exposes
   stopped/starting/running/unavailable/failed states, gates the proxied browser
   on real readiness, and routes newly opened built-in terminals through the
   live proxy with standard HTTP(S) proxy environment variables.
+- Managed HTTP capture now has one project-level port setting, reports its HTTPS
+  CA path without changing system trust, separates listener readiness from
+  traffic freshness in Capture Health, and records unexpected proxy exits.
 - Vitest 5 worker limits now use the supported top-level configuration instead
   of the removed `poolOptions` shape.
 - Production bundles no longer request ineffective lazy chunks for cast search,
