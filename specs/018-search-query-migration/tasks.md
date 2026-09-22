@@ -2,10 +2,10 @@
 
 ## Phase 1 — Non-regression
 
-- [ ] T001 Capture a query corpus from the current Search: text, shared filter
+- [x] T001 Capture a query corpus from the current Search: text, shared filter
       and selected event set.
-- [ ] T002 Add the corpus as a failing-on-difference test against the contract.
-- [ ] T003 Enumerate queries whose meaning the contract changes and record an
+- [x] T002 Add the corpus as a failing-on-difference test against the contract.
+- [x] T003 Enumerate queries whose meaning the contract changes and record an
       explicit decision for each.
 
 ## Phase 2 — Migration

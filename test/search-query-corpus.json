@@ -1,0 +1,535 @@
+{
+  "capturedAt": "2026-09-22",
+  "capturedFrom": "searchEventsPage (src/core/db/event-queries.ts) at Spec 018 T001, before Spec 017's query language exists",
+  "dataset": [
+    {
+      "tier": "chained",
+      "id": "ev-c-01",
+      "ts": 1700000009000,
+      "agentType": "shell",
+      "subtype": "command_end",
+      "targetId": "10.10.10.10",
+      "sessionId": "sess-alpha",
+      "transcriptUuid": "uuid-1111",
+      "data": {
+        "command": "nmapscan -sV 10.10.10.10"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-02",
+      "ts": 1700000008000,
+      "agentType": "shell",
+      "subtype": "command_end",
+      "targetId": "10.10.10.11",
+      "sessionId": "sess-alpha",
+      "transcriptUuid": null,
+      "data": {
+        "command": "portscan quickcheck against 10.10.10.11"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-03",
+      "ts": 1700000007000,
+      "agentType": "marker",
+      "subtype": "note",
+      "targetId": "",
+      "sessionId": "sess-beta",
+      "transcriptUuid": null,
+      "data": {
+        "title": "pasted url https://example.com/a for review"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-04",
+      "ts": 1700000006000,
+      "agentType": "shell",
+      "subtype": "command_end",
+      "targetId": "evil.example",
+      "sessionId": "sess-beta",
+      "transcriptUuid": null,
+      "data": {
+        "command": "hiddenterm --only-here"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-05",
+      "ts": 1700000005000,
+      "agentType": "loot",
+      "subtype": "credential",
+      "targetId": "10.10.10.10",
+      "sessionId": "sess-alpha",
+      "transcriptUuid": null,
+      "data": {
+        "note": "bothtiers appears here in the chained tier"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-06",
+      "ts": 1700000004000,
+      "agentType": "agent",
+      "subtype": "tool_use",
+      "targetId": "",
+      "sessionId": "sess-alpha",
+      "transcriptUuid": null,
+      "data": {
+        "tool_use_id": "toolu-01",
+        "text": "operator wrote event:ev-c-01 in this note"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-07",
+      "ts": 1700000003000,
+      "agentType": "agent",
+      "subtype": "tool_result",
+      "targetId": "",
+      "sessionId": "sess-beta",
+      "transcriptUuid": null,
+      "data": {
+        "tool_use_id": "toolu-01",
+        "text": "follow-up mentions session:sess-alpha and tool:toolu-01"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-08",
+      "ts": 1700000002000,
+      "agentType": "marker",
+      "subtype": "note",
+      "targetId": "10.10.10.12",
+      "sessionId": "sess-alpha",
+      "transcriptUuid": "uuid-2222",
+      "data": {
+        "title": "transcript:uuid-1111 referenced in a marker"
+      }
+    },
+    {
+      "tier": "chained",
+      "id": "ev-c-09",
+      "ts": 1700000001000,
+      "agentType": "screenshot",
+      "subtype": "capture",
+      "targetId": "10.10.10.10",
+      "sessionId": "sess-alpha",
+      "transcriptUuid": null,
+      "data": {
+        "trigger": "manual",
+        "note": "nmapscan follow-up screenshot"
+      }
+    },
+    {
+      "tier": "logged",
+      "id": "ev-l-01",
+      "ts": 1700000008500,
+      "agentType": "scanner",
+      "subtype": "http_response",
+      "targetId": "example.com",
+      "sessionId": "sess-alpha",
+      "data": {
+        "url": "https://example.com/a",
+        "status": 200
+      }
+    },
+    {
+      "tier": "logged",
+      "id": "ev-l-02",
+      "ts": 1700000007500,
+      "agentType": "scanner",
+      "subtype": "http_response",
+      "targetId": "10.10.10.11",
+      "sessionId": "sess-alpha",
+      "data": {
+        "url": "http://10.10.10.11/nmapscan",
+        "status": 404
+      }
+    },
+    {
+      "tier": "logged",
+      "id": "ev-l-03",
+      "ts": 1700000006500,
+      "agentType": "scanner",
+      "subtype": "connection",
+      "targetId": "10.10.10.10",
+      "sessionId": "sess-beta",
+      "data": {
+        "note": "bothtiers appears here in the logged tier"
+      }
+    },
+    {
+      "tier": "logged",
+      "id": "ev-l-04",
+      "ts": 1700000005500,
+      "agentType": "scanner",
+      "subtype": "http_response",
+      "targetId": "evil.example",
+      "sessionId": "sess-beta",
+      "data": {
+        "url": "https://evil.example/portscan",
+        "status": 200
+      }
+    },
+    {
+      "tier": "logged",
+      "id": "ev-l-05",
+      "ts": 1700000004500,
+      "agentType": "terminal",
+      "subtype": "output",
+      "targetId": "",
+      "sessionId": "sess-gamma",
+      "data": {
+        "text": "agent note: event:ev-c-01 and transcript:uuid-1111 appeared in terminal output"
+      }
+    }
+  ],
+  "entries": [
+    {
+      "id": "Q01-plain-term",
+      "covers": [
+        "single-term"
+      ],
+      "note": "One bare word, no filter — the commonest Search query there is.",
+      "query": "nmapscan",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-01",
+        "ev-l-02",
+        "ev-c-09"
+      ]
+    },
+    {
+      "id": "Q02-two-terms",
+      "covers": [
+        "multiple-terms"
+      ],
+      "note": "Two words: today they are two FTS phrases ANDed together.",
+      "query": "portscan quickcheck",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-02"
+      ]
+    },
+    {
+      "id": "Q03-pasted-url",
+      "covers": [
+        "colon-term"
+      ],
+      "note": "A pasted URL — a term containing a colon that must stay literal text.",
+      "query": "https://example.com/a",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-l-01",
+        "ev-c-03"
+      ]
+    },
+    {
+      "id": "Q04-no-match",
+      "covers": [
+        "no-match"
+      ],
+      "note": "A term present nowhere; an empty result must stay an empty result.",
+      "query": "zzznotfound",
+      "filter": {},
+      "limit": 100,
+      "expected": []
+    },
+    {
+      "id": "Q05-filter-target",
+      "covers": [
+        "filter-target"
+      ],
+      "note": "Query plus the shared target chip alone.",
+      "query": "nmapscan",
+      "filter": {
+        "targetId": "10.10.10.10"
+      },
+      "limit": 100,
+      "expected": [
+        "ev-c-01",
+        "ev-c-09"
+      ]
+    },
+    {
+      "id": "Q06-filter-type",
+      "covers": [
+        "filter-type"
+      ],
+      "note": "Query plus the shared event-type chip alone.",
+      "query": "nmapscan",
+      "filter": {
+        "agentType": "shell"
+      },
+      "limit": 100,
+      "expected": [
+        "ev-c-01"
+      ]
+    },
+    {
+      "id": "Q07-filter-time",
+      "covers": [
+        "filter-time"
+      ],
+      "note": "Query plus the shared time range alone; excludes the newest and oldest match.",
+      "query": "nmapscan",
+      "filter": {
+        "since": 1700000002000,
+        "before": 1700000008000
+      },
+      "limit": 100,
+      "expected": [
+        "ev-l-02"
+      ]
+    },
+    {
+      "id": "Q08-filter-in-scope",
+      "covers": [
+        "filter-in-scope"
+      ],
+      "note": "Query plus in-scope-only alone; evil.example falls outside the CIDR.",
+      "query": "portscan",
+      "filter": {
+        "inScopeOnly": true,
+        "scope": {
+          "targets": [
+            "10.10.10.0/24"
+          ],
+          "excludeTargets": []
+        }
+      },
+      "limit": 100,
+      "expected": [
+        "ev-c-02"
+      ]
+    },
+    {
+      "id": "Q09-filter-combined-three",
+      "covers": [
+        "filter-combined",
+        "both-tiers"
+      ],
+      "note": "Target, time and in-scope together, over a term present in both tiers — the combination must not drop either tier.",
+      "query": "bothtiers",
+      "filter": {
+        "targetId": "10.10.10.10",
+        "since": 1700000001000,
+        "before": 1700000007000,
+        "inScopeOnly": true,
+        "scope": {
+          "targets": [
+            "10.10.10.0/24"
+          ],
+          "excludeTargets": []
+        }
+      },
+      "limit": 100,
+      "expected": [
+        "ev-l-03",
+        "ev-c-05"
+      ]
+    },
+    {
+      "id": "Q10-filter-combined-all",
+      "covers": [
+        "filter-combined"
+      ],
+      "note": "All four shared conditions at once.",
+      "query": "nmapscan",
+      "filter": {
+        "targetId": "10.10.10.10",
+        "agentType": "shell",
+        "since": 1700000001000,
+        "before": 1700000009000,
+        "inScopeOnly": true,
+        "scope": {
+          "targets": [
+            "10.10.10.0/24"
+          ],
+          "excludeTargets": []
+        }
+      },
+      "limit": 100,
+      "expected": [
+        "ev-c-01"
+      ]
+    },
+    {
+      "id": "Q11-both-tiers",
+      "covers": [
+        "both-tiers"
+      ],
+      "note": "A term in the chained AND the logged tier; both halves must survive.",
+      "query": "bothtiers",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-l-03",
+        "ev-c-05"
+      ]
+    },
+    {
+      "id": "Q12-excluded-baseline",
+      "covers": [
+        "excluded-by-filter"
+      ],
+      "note": "Baseline for Q13 — unfiltered, the term does match one event.",
+      "query": "hiddenterm",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-04"
+      ]
+    },
+    {
+      "id": "Q13-excluded-by-scope",
+      "covers": [
+        "excluded-by-filter",
+        "filter-in-scope"
+      ],
+      "note": "The term's only match sits on an out-of-scope target, so nothing is selected.",
+      "query": "hiddenterm",
+      "filter": {
+        "inScopeOnly": true,
+        "scope": {
+          "targets": [
+            "10.10.10.0/24"
+          ],
+          "excludeTargets": []
+        }
+      },
+      "limit": 100,
+      "expected": []
+    },
+    {
+      "id": "Q14-field-event",
+      "covers": [
+        "field-event"
+      ],
+      "note": "Spec 017 would read this as an event-ID condition; today it is text that matches the events MENTIONING the ID, never the event itself.",
+      "query": "event:ev-c-01",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-l-05",
+        "ev-c-06"
+      ]
+    },
+    {
+      "id": "Q15-field-session",
+      "covers": [
+        "field-session"
+      ],
+      "note": "Spec 017 would read this as a session condition; today it matches only the row quoting the string.",
+      "query": "session:sess-alpha",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-07"
+      ]
+    },
+    {
+      "id": "Q16-field-tool",
+      "covers": [
+        "field-tool"
+      ],
+      "note": "Spec 017 would read this as a session-scoped tool-use condition; today it matches neither row that carries tool_use_id toolu-01 in its data.",
+      "query": "tool:toolu-01",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-07"
+      ]
+    },
+    {
+      "id": "Q17-field-transcript",
+      "covers": [
+        "field-transcript"
+      ],
+      "note": "Spec 017 would read this as a transcript-UUID condition; today it matches the rows quoting the UUID, not ev-c-01 which carries it.",
+      "query": "transcript:uuid-1111",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-l-05",
+        "ev-c-08"
+      ]
+    },
+    {
+      "id": "Q18-trailing-prefix",
+      "covers": [
+        "single-term"
+      ],
+      "note": "The last term is prefix-matched (`\"nmap\"*`), so a partial word finds nmapscan. Freezing the type-ahead behaviour, not just whole words.",
+      "query": "nmap",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-01",
+        "ev-l-02",
+        "ev-c-09"
+      ]
+    },
+    {
+      "id": "Q19-punctuated-term",
+      "covers": [
+        "single-term",
+        "colon-term"
+      ],
+      "note": "A dotted IP — punctuation is tokenised away and the term becomes a phrase.",
+      "query": "10.10.10.11",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-02",
+        "ev-l-02"
+      ]
+    },
+    {
+      "id": "Q20-field-plus-text",
+      "covers": [
+        "field-tool",
+        "multiple-terms"
+      ],
+      "note": "A condition-shaped token beside ordinary free text; today both are plain terms ANDed together.",
+      "query": "tool:toolu-01 follow-up",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-07"
+      ]
+    },
+    {
+      "id": "Q21-field-uppercase",
+      "covers": [
+        "field-session",
+        "colon-term"
+      ],
+      "note": "The same field prefix in upper case. FTS folds case, so today this means exactly what Q15 means; whether Spec 017's parser folds it too decides whether the two diverge.",
+      "query": "SESSION:SESS-ALPHA",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-07"
+      ]
+    },
+    {
+      "id": "Q22-flag-term",
+      "covers": [
+        "single-term"
+      ],
+      "note": "A command-line flag. The leading hyphen is an FTS5 operator character and only survives because every term is quoted as a phrase.",
+      "query": "-sV",
+      "filter": {},
+      "limit": 100,
+      "expected": [
+        "ev-c-01"
+      ]
+    }
+  ]
+}

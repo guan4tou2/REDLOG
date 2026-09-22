@@ -44,5 +44,28 @@
   operator to load older pages. Rejected because it makes the operator perform
   the query the tool was asked to perform, and a half-shown exchange is exactly
   the partial result the surface must not present as whole.
+- **There is no not-yet-indexed state to render here.** Search has one because
+  it searches terminal recordings and `castIndexStatus` reports a backfill
+  backlog; the Transcript searches stored event content and no equivalent
+  pending signal exists. What does exist is a coverage gap: `command_end`
+  carries `stdout`/`stderr` inline only when they were captured that way, and
+  the external-shell hook records metadata with the bytes left in a recording.
+  A term that would have matched those bytes finds nothing, so the Transcript
+  states the limit of its reach rather than letting an operator read the empty
+  result as absence.
+- **A recognised prefix must stay writable as text.** The Spec 018 corpus made
+  this concrete: today `event:ev-c-01` is four FTS tokens and selects the
+  records that *quote* that ID. Under the contract it selects the record that
+  *has* it — the change the feature exists to make — but "where was this ID
+  pasted" is a real investigative move, and without an escape it stops being
+  askable at all. An earlier draft rejected any quoting syntax for want of a
+  requirement; this is the requirement.
+- **Free text must keep the shape the store already gives it.** `toMatchQuery`
+  quotes each term as an FTS5 phrase and appends `*` to the last one. The
+  quoting is why `https://example.com/a`, `10.10.10.11` and `-sV` match as
+  typed rather than being parsed as FTS operators; the trailing `*` is why
+  type-ahead works at all, on a box that queries every keystroke. A parser
+  written from scratch drops both silently, which is why they are requirements
+  rather than implementation notes.
 - **Open for a later feature**: flow ID conditions, and whether the Timeline and
   Target views adopt the contract.
