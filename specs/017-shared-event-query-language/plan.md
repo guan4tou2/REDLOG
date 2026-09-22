@@ -67,7 +67,9 @@
    a query carrying both conditions resolves within the given session.
 5. Evaluate beneath the caller's own filter, limit and cursor, so the
    Transcript keeps its per-bucket pagination shape.
-6. Return the parse alongside results so the surface can display it.
+6. Keep the parse in the caller that produced it so the surface can display
+   exactly what it executed; return only store-resolved information such as
+   the chosen session for a bare tool-use condition.
 7. Complete absent tool counterparts **per page, in one batched lookup** keyed
    by the composite pairs the page is missing; mark pairs that stay unresolved.
 8. Carry source and receipt time separately through the block projection.

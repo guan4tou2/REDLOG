@@ -40,21 +40,21 @@
 - [x] T013 Show which tokens were read as conditions, including the session a
       tool-use condition resolved within.
 - [x] T014a Fetch absent counterparts for a page in one batched lookup.
-- [ ] T014b Mark pairs whose counterpart stays unresolved.
-- [ ] T015 Keep source and receipt time distinguishable through the projection.
+- [x] T014b Mark pairs whose counterpart stays unresolved.
+- [x] T015 Keep source and receipt time distinguishable through the projection.
 - [x] T016 Restart cursors on query and filter change; restore the unqueried
       view when the query is cleared.
 - [x] T017 Render unparsable, failed and no-match as three distinct recoverable
       states, plus the coverage disclosure; Spec 009 covers only load failure
       and empty.
-- [ ] T018 Make the completeness indicator describe the queried dataset, and
+- [x] T018 Make the completeness indicator describe the queried dataset, and
       label any filter still bound to loaded evidence.
 
 ## Phase 4 — Verification
 
-- [ ] T019 Run focused tests, typecheck, the full suite and build.
-- [ ] T020 Run the Transcript desktop journey.
-- [ ] T021 Update `docs/domain/glossary.md` with the query-language terms and
+- [x] T019 Run focused tests, typecheck, the full suite and build.
+- [x] T020 Run the Transcript desktop journey.
+- [x] T021 Update `docs/domain/glossary.md` with the query-language terms and
       with the capture-session / agent-session distinction.
-- [ ] T022 Record in Spec 009 that its local-text-filter exception is superseded.
-- [ ] T023 Analyze and converge artifacts; record verification and mark Verified.
+- [x] T022 Record in Spec 009 that its local-text-filter exception is superseded.
+- [x] T023 Analyze and converge artifacts; record verification and mark Verified.

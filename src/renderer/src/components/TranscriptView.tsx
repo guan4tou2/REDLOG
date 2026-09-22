@@ -31,10 +31,41 @@ import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 interface Ev {
   id: string
   timestamp: number
+  createdAt?: number
   agentType: string
   operatorId: string
   targetId?: string | null
   data?: Record<string, unknown>
+}
+
+function toolPairKey(e: Ev): string | null {
+  if (e.agentType !== 'agent') return null
+  const d = e.data ?? {}
+  if ((d.subtype !== 'tool_call' && d.subtype !== 'tool_result' && d.subtype !== 'tool_interrupted') ||
+      typeof d.session_id !== 'string' || typeof d.tool_use_id !== 'string') return null
+  return `${d.session_id}:${d.tool_use_id}`
+}
+
+async function completeToolPairs(events: Ev[]): Promise<Ev[]> {
+  const seenKinds = new Map<string, Set<unknown>>()
+  const keyParts = new Map<string, { sessionId: string; toolUseId: string }>()
+  for (const event of events) {
+    const key = toolPairKey(event)
+    if (!key) continue
+    const d = event.data ?? {}
+    const kinds = seenKinds.get(key) ?? new Set()
+    kinds.add(d.subtype)
+    seenKinds.set(key, kinds)
+    keyParts.set(key, { sessionId: String(d.session_id), toolUseId: String(d.tool_use_id) })
+  }
+  const missing = [...seenKinds]
+    .filter(([, kinds]) => !(kinds.has('tool_call') && (kinds.has('tool_result') || kinds.has('tool_interrupted'))))
+    .map(([key]) => keyParts.get(key)!)
+  if (missing.length === 0) return events
+  const counterparts = await window.redlog.events.toolCounterparts(missing) as Ev[]
+  const byId = new Map(events.map((event) => [event.id, event]))
+  for (const event of counterparts) byId.set(event.id, event)
+  return [...byId.values()]
 }
 
 type Kind = 'shell' | 'agent-turn' | 'agent-tool' | 'http' | 'marker' | 'loot' | 'other'
@@ -152,7 +183,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
           id: e.id, ts: e.timestamp, kind: 'agent-tool',
           actor: `${d.agent ?? 'agent'} · ${d.tool_name ?? 'tool'}`,
           input: safeJson(d.tool_input),
-          outputNote: 'pending',
+          outputNote: 'unpaired',
           events: [e]
         }
         if (typeof d.tool_use_id === 'string') {
@@ -342,8 +373,10 @@ export default function TranscriptView({ onOpenInTimeline }: {
           if (!seen.has(e.id)) { seen.add(e.id); merged.push(e) }
         }
       }
-      merged.sort((a, b) => a.timestamp - b.timestamp)
-      setEvents(merged)
+      const completed = await completeToolPairs(merged)
+      if (seq !== loadSeqRef.current) return
+      completed.sort((a, b) => a.timestamp - b.timestamp)
+      setEvents(completed)
       setBucketPages(pages)
     } catch (error: unknown) {
       if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
@@ -376,11 +409,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
           })
       })))
       if (seq !== loadSeqRef.current) return
-      setEvents((current) => {
-        const byId = new Map(current.map((event) => [event.id, event]))
-        for (const { page } of results) for (const event of page.items as Ev[]) byId.set(event.id, event)
-        return [...byId.values()].sort((a, b) => a.timestamp - b.timestamp)
-      })
+      const merged = new Map(events.map((event) => [event.id, event]))
+      for (const { page } of results) for (const event of page.items as Ev[]) merged.set(event.id, event)
+      const completed = await completeToolPairs([...merged.values()])
+      if (seq !== loadSeqRef.current) return
+      setEvents(completed.sort((a, b) => a.timestamp - b.timestamp))
       setBucketPages((current) => {
         const next = { ...current }
         for (const { bucket, page } of results) {
@@ -393,7 +426,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       setLoadingOlder(false)
     }
-  }, [bucketPages, buckets, backendQuery, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -480,7 +513,9 @@ export default function TranscriptView({ onOpenInTimeline }: {
         <span className="text-xs text-redlog-text-faint font-mono">{t('transcript.count', { n: shown.length })}</span>
         {!loading && (!loadError || events.length > 0) && (
           <span data-testid="transcript-completeness" className={`text-xs ${hasMore ? 'text-amber-400' : 'text-emerald-500'}`}>
-            {t(hasMore ? 'transcript.recentSubset' : 'transcript.complete')}
+            {t(backendQuery
+              ? (hasMore ? 'transcript.querySubset' : 'transcript.queryComplete')
+              : (hasMore ? 'transcript.recentSubset' : 'transcript.complete'))}
           </span>
         )}
         <input
@@ -559,6 +594,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
             {t('transcript.queryCoverage')}
           </p>
         )}
+        {kinds.size > 0 && (
+          <p data-testid="transcript-kind-local" className="text-xs text-amber-300">
+            {t('transcript.kindLoadedOnly')}
+          </p>
+        )}
         {loading && <p className="text-xs text-redlog-text-faint">{t('transcript.loading')}</p>}
         {!loading && loadError && (
           <div data-testid="transcript-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -603,8 +643,11 @@ export default function TranscriptView({ onOpenInTimeline }: {
             <div key={b.id} className="rounded border border-redlog-border/70 bg-redlog-bg/40">
               <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-redlog-border/50">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: KIND_COLOR[b.kind] }} />
-                <span className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
-                  {formatTime(b.ts, { seconds: true })}
+                <span data-testid="transcript-source-time" title={t('transcript.sourceTime')} className="text-xs text-redlog-text-dim font-mono tabular-nums shrink-0">
+                  {t('transcript.sourceTime')} {formatTime(b.ts, { seconds: true })}
+                </span>
+                <span data-testid="transcript-receipt-time" title={t('transcript.receiptTime')} className="text-xs text-redlog-text-faint font-mono tabular-nums shrink-0">
+                  {t('transcript.receiptTime')} {formatTime(b.events[0]?.createdAt ?? b.ts, { seconds: true })}
                 </span>
                 <span title={b.actor} className="text-xs text-redlog-text-dim font-mono truncate flex-1">{b.actor}</span>
                 {b.meta && <span className="text-xs text-redlog-text-faint font-mono shrink-0">{b.meta}</span>}

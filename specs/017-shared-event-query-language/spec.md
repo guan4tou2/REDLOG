@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/option-d-export-presets`
 **Created**: 2026-09-22
-**Status**: Draft
+**Status**: Verified
 **Input**: Define one event query language of structured conditions plus free text, evaluate it at the persistence layer, and make the Transcript its first consumer — including identifier lookup and completion of a tool pair whose halves sit on different pages.
 
 Spec 007 unified the shared filter chips. Spec 008 gave Search a paged
