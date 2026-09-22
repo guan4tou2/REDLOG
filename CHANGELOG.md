@@ -21,6 +21,10 @@ for full commit body + generated notes.
   identity and `redlog-run` runtime. The historical combined
   `shell-preexec-hook.sh` and `shell/redlog-hook.zsh` entry points were removed;
   existing profiles must install/source the matching shell-specific adapter.
+- Built-in Terminal now resolves bash, zsh and PowerShell to those current
+  adapters instead of looking for the removed combined hook.
+- File watcher create/modify events now show cwd/time-overlapping commands as
+  explicitly uncertain candidates; they never turn that inference into a causal claim.
 
 ## v0.15.1 — 2026-09-19
 

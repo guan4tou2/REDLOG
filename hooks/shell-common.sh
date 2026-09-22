@@ -158,7 +158,8 @@ redlog-run() {
   fi
 
   # Emit command_start so the timeline shows the row entering flight.
-  _redlog_send_event "command_start" "$cmd_string"
+  _redlog_send_event "command_start" "$cmd_string" \
+    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\"}"
 
   # Stream each descriptor back to the same terminal descriptor while teeing
   # the bytes to disk. Named pipes let us wait for both tee processes before

@@ -18,7 +18,7 @@
 
 import { insertEvent, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
 import { eventBus } from './event-bus'
-import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
+import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver } from './causes-resolver'
 import { socketCausesFor, noteCommandPid } from './socket-attribution'
 import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
@@ -109,6 +109,11 @@ export function ingest(input: IngestInput): IngestResult {
   const data = input.data
   let targetId = input.targetId
 
+  // Runtime pairs must settle even if the evidence write is paused. Otherwise
+  // a command_end seen during pause leaves a phantom active command that can
+  // be correlated with unrelated files after recording resumes.
+  const lifecycleCauseIds = resolveIncomingCauses(agentType, data)
+
   // 1. Pause gate. Nothing below may run while paused: the derivations emit
   //    their own rows and would leak the very content the operator paused to
   //    keep out — a scope_violation names the target of a command that was
@@ -119,10 +124,24 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 2. Causal links from fields the producer already sent (flow_id,
   //    terminal_id + pid).
-  const causeIds = [...resolveIncomingCauses(agentType, data), ...socketCausesFor(agentType, data)]
+  const causeIds = [...lifecycleCauseIds, ...socketCausesFor(agentType, data)]
   if (causeIds.length > 0) {
     const existing = Array.isArray(data._causes) ? (data._causes as string[]) : []
     data._causes = [...new Set([...existing, ...causeIds])]
+  }
+  const relatedCommands = relatedCommandCandidates(data)
+  if (relatedCommands.length > 0) {
+    const existing = Array.isArray(data.related_commands) ? data.related_commands : []
+    const combined = [...existing, ...relatedCommands]
+    data.related_commands = combined.filter((candidate, index) => {
+      if (!candidate || typeof candidate !== 'object') return true
+      const value = candidate as Record<string, unknown>
+      return combined.findIndex((other) => {
+        if (!other || typeof other !== 'object') return false
+        const compared = other as Record<string, unknown>
+        return compared.event_id === value.event_id && compared.method === value.method && compared.state === value.state
+      }) === index
+    })
   }
 
   // 3. Enrichment stamps + what the companions will need. Only for primary
@@ -383,6 +402,7 @@ function detectRedactions(data: Record<string, unknown>, lootValues: string[]): 
 /** Test helper. */
 export function _resetIngest(): void {
   castOffsetAtStart.clear()
+  resetCausesResolver()
   lootDetectorRef = null
   alertRuntimeRef = null
   castProbe = null

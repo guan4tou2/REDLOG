@@ -1,6 +1,8 @@
 # RedLog 操作流程、系統與 AI log 審查
 
-日期：2026-09-18。最新原始碼核對：`ec53448`。本次只做審查，未修改產品程式。
+日期：2026-09-18，續查至 2026-09-19。最新原始碼核對：`a8fa47e`。本次只修改這份審查文件，未修改產品程式。
+
+> 狀態校正：`ec53448` 之後已有多批修正。下文保留首次發現作為設計脈絡；其中 spool 專案歸屬、terminal pause、AI pause gap、來源時間、半行 checkpoint、sidecar 封存、session registry、搜尋 facets／競態、tool 配對／中斷、未知 exit status、Markdown 截斷提示、bundle 回傳契約、無上限 JSON／NDJSON、HTTP body 與附件 scope 處理等，均已在後續 source 出現對應修正。它們不再列為 `a8fa47e` 的現存缺陷，仍需以新版桌面端到端回歸確認。
 
 ## 結論與驗證範圍
 
@@ -115,3 +117,49 @@ RedLog 可以作為統一紀錄入口，但沒有接上的來源不能宣稱已�
 6. **紀錄寫入錯誤會自動從健康狀態消失。** `capture-health.ts` 只保存最後一筆 DB error，60 秒後清除，毋須成功重試或操作者確認。這不能證明期間沒有缺資料；建議分開「目前可正常寫入」與「本次專案曾有未解決紀錄缺口」，保留来源、發生區間與恢復狀態。此項未主張其他日誌完全沒有錯誤資訊。
 
 這六項仍屬紀錄的正確解讀、完整取用與來源狀態，無須新增大型功能。另需維持產品用語邊界：hash／驗章可協助檢查已保存資料的完整性，不能證明所有來源都被擷取，也不能證明來源所描述的行為確實發生。
+
+## 2026-09-19 續查：協查與交付仍有的落差
+
+以下以 `a8fa47e` source review 為準，尚未宣稱完成桌面實機驗收。
+
+### 1. 「共用篩選」未真正套用所有顯示頁
+
+頂端 FilterBar 同時提供 target、type、time 與 in-scope only，操作語意會讓使用者合理預期四項在 Search、Transcript、HTTP 與 Timeline 一致生效；目前實際套用如下：
+
+| 頁面 | target | type | time | in-scope only |
+|---|---:|---:|---:|---:|
+| Timeline | 有 | 需再核對 lane 行為 | 有 | 有 |
+| Search | **未傳後端** | 有 | 有 | **未套用** |
+| Transcript | **未套用** | **未套用** | 有 | **未套用** |
+| HTTP | 有 | 固定 scanner，無實質差異 | 有 | **未套用** |
+
+具體原因：`searchEvents()` 與 IPC options 只有 `agentType/since/before`，Search 沒有傳 target；Transcript 的 `shown` 只檢查 time；HTTP 的 filtered 只承接 target/time。這是協查風險，不只是 UI 不一致：藍隊要求「某目標、某一小時內的 AI／shell 操作」時，切頁後會看到範圍外資料，還可能誤以為那是同一批結果。
+
+最小修正不是再加 filter，而是建立一個可序列化的共用 filter contract，讓每個頁面明確回報「已套用／此頁不適用」。無法套用的條件應停用或標示，不能讓 chip 保持啟用卻被忽略。
+
+### 2. 匯出預覽與實際匯出集合不一定相同
+
+`ExportMenu.loadPreview()` 只把 `sharing` 傳給 `data:exportPreview`；後端 preview 永遠統計全專案。可是「目前 Timeline 視窗」和 HTTP HAR 實際匯出的是各自 slice/filter。結果是預覽顯示的 total、included、scope、body refs、screenshots 並非即將輸出的集合。
+
+此外，ExportMenu 的「自用／交付」切換顯示在格式選單上方，視覺上涵蓋 evidence bundle；preview 也會按 sharing 計算 blacklist 與 metadata 規則，但 bundle 呼叫只傳 `maskOutOfScope`，bundle options 沒有 sharing／maskMetadata／blacklist。Bundle 本身會處理 do-not-export、personal domain 與 scope，卻不等於 preview 所呈現的 sharing 規則。這會造成「預覽說已排除，成品政策卻不同」的高風險落差。
+
+最小修正：preview 與 execute 共用同一個 `ExportRequest`，包含 format、view filter、sharing、scope policy 與附件政策；後端先解析成一個確定的 export plan，預覽與執行都使用該 plan。成品 manifest 再列出實際包含／排除數量，避免只信執行前預估。
+
+### 3. Search 後端失敗仍像正常的空白／舊結果
+
+Search 的 promise catch 只關閉 searching，沒有 error 狀態、原因或 retry；cast search 失敗則直接設空陣列。對一般 App 只是體驗問題，對紀錄工具會把「查詢失敗」誤讀為「沒有事件」。應將 no result、indexing、query failed、partial source failed 分開顯示，並保留重新查詢入口。
+
+### 4. AI Transcript 仍是有上限的閱讀視圖，不是完整查詢結果
+
+目前已改善為按類型平衡查詢，但仍為固定上限：agent 800、shell 400、scanner 300 等，再合併後在前端搜尋。這避免單一來源擠掉其他來源，卻仍可能漏掉較舊的指定事件，而且頁面沒有顯示「只載入最近 N 筆／仍有更多」。藍隊按 session、tool ID、event ID 找事件時，不應依賴這個前端子集。
+
+建議沿用目前新增的 `EventCursor + QueryPage` 分頁 primitive：Transcript 顯示載入範圍與 load more；精準搜尋走後端，至少支援 event ID、session ID、tool-use ID、flow ID、operator、target 和時間。這仍是紀錄取用能力，不是 SIEM。
+
+### 本輪收斂後的優先順序
+
+1. 讓 preview 與實際 export 使用同一份 plan，先消除交付政策誤述。
+2. 統一 shared filter contract，特別是 Search target／scope 與 Transcript target／type／scope。
+3. Search 顯示 query failure，避免把失敗當成零結果。
+4. Transcript 接上後端分頁與精準識別欄位查找。
+
+這四項都直接服務「快速找到某事件」與「確認匯出的確是眼前這批資料」，沒有偏離 RedLog 的核心。

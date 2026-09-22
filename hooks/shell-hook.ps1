@@ -136,7 +136,9 @@ function prompt {
         $duration = [int]($entry.EndExecutionTime - $entry.StartExecutionTime).TotalSeconds
         $exitCode = if ($success) { 0 } else { if ($lastExit) { $lastExit } else { 1 } }
 
-        _RedLogSendEvent -Subtype 'command_start' -Command $cmd
+        _RedLogSendEvent -Subtype 'command_start' -Command $cmd -Extra @{
+            cwd = (Get-Location).Path
+        }
         _RedLogSendEvent -Subtype 'command_end' -Command $cmd -Extra @{
             exit_code    = $exitCode
             duration_sec = $duration
@@ -196,7 +198,10 @@ function Redlog-Run {
     }
 
     # Emit command_start so the timeline shows the row entering flight.
-    _RedLogSendEvent -Subtype 'command_start' -Command $cmdString
+    _RedLogSendEvent -Subtype 'command_start' -Command $cmdString -Extra @{
+        cwd         = (Get-Location).Path
+        captured_by = 'redlog-run'
+    }
 
     # Run the command with stream splitting. PowerShell doesn't have a clean
     # "run this argv with distinct stdout/stderr redirection" builtin the

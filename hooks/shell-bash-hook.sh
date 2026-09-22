@@ -18,7 +18,8 @@ _redlog_debug_trap() {
   [[ -n "$_REDLOG_LAST_CMD" ]] && return
   _REDLOG_LAST_CMD="$BASH_COMMAND"
   _REDLOG_CMD_START=$SECONDS
-  _redlog_send_event "command_start" "$BASH_COMMAND"
+  _redlog_send_event "command_start" "$BASH_COMMAND" \
+    "{\"cwd\":\"${PWD//\"/\\\"}\"}"
 }
 
 _redlog_prompt_command() {

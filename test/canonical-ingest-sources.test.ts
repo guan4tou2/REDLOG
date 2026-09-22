@@ -10,7 +10,8 @@ const SOURCES = [
   'src/main/services/connection-monitor.ts',
   'src/main/services/process-monitor.ts',
   'src/main/services/file-watcher.ts',
-  'src/main/services/tailer-host.ts'
+  'src/main/services/tailer-host.ts',
+  'src/main/clipboard-monitor.ts'
 ]
 
 describe('canonical ingest source boundary', () => {

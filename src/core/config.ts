@@ -216,10 +216,10 @@ export interface RedLogConfig {
   }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
-   *  per-turn `agent.*` events into the hash chain. On by default —
-   *  operators using RedLog with a local Claude Code session almost
-   *  always want AI audit coverage; a `.redlog-app-root` marker in the
-   *  session's cwd still opts individual repos out. See
+   *  per-turn `agent.*` events into the hash chain. Off by default because
+   *  discovery spans user-level agent transcript locations; the operator
+   *  explicitly enables it for an engagement. A `.redlog-app-root` marker
+   *  in the session's cwd still opts individual repos out. See
    *  src/main/services/agent-transcript-tailer.ts. */
   agentTailer?: {
     enabled: boolean
@@ -351,7 +351,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false
   },
   agentTailer: {
-    enabled: true,
+    enabled: false,
     emitThinking: false
   },
   retention: {

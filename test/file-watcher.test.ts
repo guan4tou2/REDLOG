@@ -7,6 +7,10 @@ import {
   stopFileWatcher,
   _getWatcherStateForTests
 } from '../src/main/services/file-watcher'
+import { initDB, closeDB } from '../src/core/db/index'
+import { ensurePrimaryOperator, generateToken } from '../src/core/db/operators'
+import { queryEvents } from '../src/core/db/events'
+import { ingestEvent, _resetIngest } from '../src/core/ingest'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Unit tests for the file-watcher lifecycle. We don't want to spin up a real
@@ -74,6 +78,50 @@ describe('file-watcher / lifecycle', () => {
     } finally {
       stopFileWatcher()
       fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('file-watcher / command correlation integration', () => {
+  it('records a delayed file notification as a candidate, not a cause', async () => {
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-fw-db-'))
+    const watchedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-fw-watch-'))
+    try {
+      initDB(projectDir)
+      const operatorId = ensurePrimaryOperator('fw-op', 'File watcher', generateToken()).id
+      const commandData = {
+        command: 'nmap -oA result 10.0.0.8', terminalId: 'fw-terminal', pid: 818,
+        cwd: watchedDir
+      }
+      const command = ingestEvent('shell', { subtype: 'command_start', ...commandData }, {
+        engagementId: 'fw-engagement', operatorId
+      })!
+      ingestEvent('shell', { subtype: 'command_end', ...commandData }, {
+        engagementId: 'fw-engagement', operatorId
+      })
+      await configureFileWatcher({
+        enabled: true, watchPaths: [watchedDir], engagementId: 'fw-engagement', operatorId
+      })
+      fs.writeFileSync(path.join(watchedDir, 'result.xml'), '<nmaprun/>')
+
+      let fileEvent: ReturnType<typeof queryEvents>[number] | undefined
+      const deadline = Date.now() + 3_000
+      while (!fileEvent && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        fileEvent = queryEvents({ agentType: 'file_transfer', limit: 20 })
+          .find((event) => event.data.path === path.join(watchedDir, 'result.xml'))
+      }
+      expect(fileEvent).toBeDefined()
+      expect(fileEvent!.data._causes).toBeUndefined()
+      expect(fileEvent!.data.related_commands).toEqual([{
+        event_id: command.id, method: 'cwd-near-command-end', state: 'recent'
+      }])
+    } finally {
+      stopFileWatcher()
+      _resetIngest()
+      try { closeDB() } catch { /* already closed */ }
+      fs.rmSync(projectDir, { recursive: true, force: true })
+      fs.rmSync(watchedDir, { recursive: true, force: true })
     }
   })
 })

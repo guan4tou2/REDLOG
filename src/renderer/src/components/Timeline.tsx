@@ -2534,6 +2534,41 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
               </div>
             )
           })()}
+          {(() => {
+            const raw = (selectedEvent.data as { related_commands?: unknown } | undefined)?.related_commands
+            if (!Array.isArray(raw) || raw.length === 0) return null
+            const candidates = raw.filter((value): value is { event_id: string; method: string; state: string } => {
+              if (!value || typeof value !== 'object') return false
+              const candidate = value as Record<string, unknown>
+              return typeof candidate.event_id === 'string' && typeof candidate.method === 'string'
+            })
+            if (candidates.length === 0) return null
+            return (
+              <div className="mt-1 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1.5">
+                <p className="text-xs text-amber-200 font-mono">{t('timeline.detail.relatedCommands')}</p>
+                <p className="text-xs text-redlog-text-dim mt-0.5">{t('timeline.detail.relatedCommandsHint')}</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {candidates.map((candidate) => {
+                    const related = eventsMapRef.current.get(candidate.event_id)
+                    const label = related ? titleOf(related) : candidate.event_id.slice(0, 8)
+                    return (
+                      <button
+                        key={`${candidate.event_id}:${candidate.method}`}
+                        type="button"
+                        onClick={() => related
+                          ? (setSelectedEvent(related), setDetailOpen(true), scrollToEvent(related))
+                          : void resolveReferencedEvent(candidate.event_id)}
+                        className="text-xs px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:text-amber-100 font-mono"
+                        title={`${candidate.method} · ${candidate.state}`}
+                      >
+                        ≈ {label} · {t(candidate.state === 'recent' ? 'timeline.detail.relatedRecent' : 'timeline.detail.relatedActive')}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
           {/* Effects (reverse map). Capped at 20 chips; overflow footer says
               how many more without rendering thousands of buttons. */}
           {(() => {

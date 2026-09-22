@@ -119,6 +119,49 @@ describeDB('ingest', () => {
     expect(event.targetId).toBeNull()
   })
 
+  it('stores cwd correlation as candidates without changing explicit causes', () => {
+    const command = ingestMod.ingest({
+      ...base, agentType: 'shell',
+      data: { subtype: 'command_start', command: 'nmap -oA loot/scan 10.0.0.9', terminalId: 'artifact-t1', pid: 81, cwd: '/work' }
+    }).event!
+    const file = ingestMod.ingest({
+      ...base, agentType: 'file_transfer',
+      data: {
+        subtype: 'file_created', source: 'file-watcher', path: '/work/loot/scan.xml',
+        _causes: ['evt-explicit']
+      }
+    }).event!
+
+    expect(file.data._causes).toEqual(['evt-explicit'])
+    expect(file.data.related_commands).toEqual([{
+      event_id: command.id, method: 'cwd-overlap', state: 'active'
+    }])
+  })
+
+  it('settles a command end while paused before later file correlation', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const commandData = { command: 'tool -o loot/out', terminalId: 'paused-t1', pid: 82, cwd: '/work' }
+    const command = ingestMod.ingest({
+      ...base, agentType: 'shell', data: { subtype: 'command_start', ...commandData }
+    }).event!
+    eventBus.pause('api')
+    try {
+      const end = ingestMod.ingest({
+        ...base, agentType: 'shell', data: { subtype: 'command_end', ...commandData }
+      })
+      expect(end.skipped).toBe('paused')
+    } finally {
+      eventBus.resume('api')
+    }
+    const file = ingestMod.ingest({
+      ...base, agentType: 'file_transfer',
+      data: { subtype: 'file_created', source: 'file-watcher', path: '/work/loot/out' }
+    }).event!
+    expect(file.data.related_commands).toEqual([{
+      event_id: command.id, method: 'cwd-near-command-end', state: 'recent'
+    }])
+  })
+
   it('stores the raw bytes and folds their digest into the hashed data', () => {
     const rawBytes = Buffer.from(JSON.stringify({ agent_type: 'scanner', host: '10.0.0.9', port: 445 }))
     const r = ingestMod.ingest({

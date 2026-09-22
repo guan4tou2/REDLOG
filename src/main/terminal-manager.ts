@@ -9,7 +9,7 @@ import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
-import { shellFlavour, type ShellFlavour } from '../core/shell-flavour'
+import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
 import { buildShellCatalog, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 
@@ -123,15 +123,15 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   }
 }
 
-function resolveShellHook(flavour: ShellFlavour): string | null {
-  if (flavour === 'none') return null
+function resolveShellHook(shell: string, innerShell?: string): string | null {
+  const file = shellAdapterFilename(shell, innerShell)
+  if (!file) return null
   const candidates = [
     path.join(__dirname, '../../../hooks'),
     path.join(__dirname, '../../hooks')
   ]
   const dir = candidates.find(d => fs.existsSync(d))
   if (!dir) return null
-  const file = flavour === 'powershell' ? 'shell-hook.ps1' : 'shell-preexec-hook.sh'
   const p = path.join(dir, file)
   return fs.existsSync(p) ? p : null
 }
@@ -412,7 +412,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // Resolved before the event is written so `session_start` carries the
   // answer: reading the timeline later, "this pane logged no commands" and
   // "this pane could not log commands" must not look the same.
-  const hookPath = resolveShellHook(flavour)
+  const hookPath = resolveShellHook(shell, wslDistro ? '/bin/bash' : undefined)
   session.hookSourced = hookPath !== null
 
   const event = ingestEvent('shell', {
@@ -443,7 +443,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     // the belief that a native bash "would still need `cygpath -u` to accept
     // the drive-lettered path" (Audit P1-6). That premise is wrong: Git Bash
     // and MSYS2 accept the mixed form this produces —
-    // `source "C:/…/hooks/shell-preexec-hook.sh"` sources cleanly and defines
+    // `source "C:/…/hooks/shell-bash-hook.sh"` sources cleanly and defines
     // the hook's functions. Verified on Windows 11 / Git for Windows before
     // removing the guard.
     //
