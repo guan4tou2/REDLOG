@@ -3,6 +3,11 @@
 **Feature Branch**: `feat/option-d-export-presets`
 **Created**: 2026-09-22
 **Status**: Verified
+
+> **Superseded query interpretation (Spec 018):** Pagination, completeness,
+> cast-index and failure-state requirements remain authoritative. Search no
+> longer interprets its event query as private free text; Spec 018 moves it to
+> the shared Event Query contract defined by Spec 017.
 **Input**: Keep empty, failed, partial and retrying search states distinct without losing the operator's query or filters.
 
 ## User Scenarios & Testing

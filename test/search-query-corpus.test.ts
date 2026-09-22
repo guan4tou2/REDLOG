@@ -10,7 +10,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let getDB: typeof import('../src/core/db/index').getDB
-let searchEventsPage: typeof import('../src/core/db/event-queries').searchEventsPage
+let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
 
 let dbAvailable = false
 try {
@@ -20,7 +20,7 @@ try {
   closeDB = dbMod.closeDB
   closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   getDB = dbMod.getDB
-  searchEventsPage = queryMod.searchEventsPage
+  executeEventQuery = queryMod.executeEventQuery
   dbAvailable = true
 } catch {
   // better-sqlite3 not compiled for this Node.js version
@@ -54,7 +54,7 @@ let tmpDir: string
  * results in canonical order and an operator reads the top of the list first,
  * so a reordering is a behaviour change too.
  */
-describeDB('Search query corpus (pre-Spec-017 behaviour)', () => {
+describeDB('Search query migration corpus', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-search-corpus-'))
     initDB(tmpDir)
@@ -71,7 +71,7 @@ describeDB('Search query corpus (pre-Spec-017 behaviour)', () => {
 
   for (const entry of corpus.entries) {
     it(`${entry.id}: ${JSON.stringify(entry.query)} selects the same events`, () => {
-      expect(replayEntry(searchEventsPage, entry)).toEqual(entry.expected)
+      expect(replayEntry(executeEventQuery, entry)).toEqual(entry.expected)
     })
   }
 

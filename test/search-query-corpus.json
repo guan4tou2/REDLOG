@@ -78,7 +78,8 @@
       "transcriptUuid": null,
       "data": {
         "tool_use_id": "toolu-01",
-        "text": "operator wrote event:ev-c-01 in this note"
+        "text": "operator wrote event:ev-c-01 in this note",
+        "session_id": "sess-alpha"
       }
     },
     {
@@ -92,7 +93,8 @@
       "transcriptUuid": null,
       "data": {
         "tool_use_id": "toolu-01",
-        "text": "follow-up mentions session:sess-alpha and tool:toolu-01"
+        "text": "follow-up mentions session:sess-alpha and tool:toolu-01",
+        "session_id": "sess-beta"
       }
     },
     {
@@ -411,13 +413,12 @@
       "covers": [
         "field-event"
       ],
-      "note": "Spec 017 would read this as an event-ID condition; today it is text that matches the events MENTIONING the ID, never the event itself.",
+      "note": "Accepted migration: event: now selects the exact event ID; quote it to search for literal mentions.",
       "query": "event:ev-c-01",
       "filter": {},
       "limit": 100,
       "expected": [
-        "ev-l-05",
-        "ev-c-06"
+        "ev-c-01"
       ]
     },
     {
@@ -425,12 +426,12 @@
       "covers": [
         "field-session"
       ],
-      "note": "Spec 017 would read this as a session condition; today it matches only the row quoting the string.",
+      "note": "Accepted migration: session: selects the exact agent session stored in event data, never the capture-session column.",
       "query": "session:sess-alpha",
       "filter": {},
       "limit": 100,
       "expected": [
-        "ev-c-07"
+        "ev-c-06"
       ]
     },
     {
@@ -438,12 +439,12 @@
       "covers": [
         "field-tool"
       ],
-      "note": "Spec 017 would read this as a session-scoped tool-use condition; today it matches neither row that carries tool_use_id toolu-01 in its data.",
+      "note": "Accepted migration: a bare tool ID resolves to the newest agent session and reports that choice.",
       "query": "tool:toolu-01",
       "filter": {},
       "limit": 100,
       "expected": [
-        "ev-c-07"
+        "ev-c-06"
       ]
     },
     {
@@ -451,13 +452,12 @@
       "covers": [
         "field-transcript"
       ],
-      "note": "Spec 017 would read this as a transcript-UUID condition; today it matches the rows quoting the UUID, not ev-c-01 which carries it.",
+      "note": "Accepted migration: transcript: selects the exact transcript UUID.",
       "query": "transcript:uuid-1111",
       "filter": {},
       "limit": 100,
       "expected": [
-        "ev-l-05",
-        "ev-c-08"
+        "ev-c-01"
       ]
     },
     {
@@ -496,13 +496,11 @@
         "field-tool",
         "multiple-terms"
       ],
-      "note": "A condition-shaped token beside ordinary free text; today both are plain terms ANDed together.",
+      "note": "Accepted migration: the tool condition and residual free text intersect; the resolved session has no follow-up match.",
       "query": "tool:toolu-01 follow-up",
       "filter": {},
       "limit": 100,
-      "expected": [
-        "ev-c-07"
-      ]
+      "expected": []
     },
     {
       "id": "Q21-field-uppercase",
@@ -510,13 +508,11 @@
         "field-session",
         "colon-term"
       ],
-      "note": "The same field prefix in upper case. FTS folds case, so today this means exactly what Q15 means; whether Spec 017's parser folds it too decides whether the two diverge.",
+      "note": "Field names are case-insensitive; condition values retain case and exact matching, so the upper-case value does not match.",
       "query": "SESSION:SESS-ALPHA",
       "filter": {},
       "limit": 100,
-      "expected": [
-        "ev-c-07"
-      ]
+      "expected": []
     },
     {
       "id": "Q22-flag-term",

@@ -20,10 +20,10 @@ vi.mock('../src/renderer/src/i18n', () => ({
 
 const emptyPage = { items: [], hasMore: false, nextCursor: null }
 
-function installBridge(searchPage: ReturnType<typeof vi.fn>, searchCasts = vi.fn().mockResolvedValue([])): void {
+function installBridge(runQuery: ReturnType<typeof vi.fn>, searchCasts = vi.fn().mockResolvedValue([])): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     events: {
-      searchPage,
+      runQuery,
       searchCasts,
       castIndexStatus: vi.fn().mockResolvedValue({ pending: 0 }),
       distinctAgentTypes: vi.fn().mockResolvedValue([]),
@@ -33,9 +33,9 @@ function installBridge(searchPage: ReturnType<typeof vi.fn>, searchCasts = vi.fn
   }
 }
 
-async function searchFor(searchPage: ReturnType<typeof vi.fn>, value = 'needle'): Promise<void> {
+async function searchFor(runQuery: ReturnType<typeof vi.fn>, value = 'needle'): Promise<void> {
   fireEvent.change(screen.getByTestId('search-input'), { target: { value } })
-  await waitFor(() => expect(searchPage).toHaveBeenCalled(), { timeout: 1500 })
+  await waitFor(() => expect(runQuery).toHaveBeenCalled(), { timeout: 1500 })
 }
 
 describe('Search result integrity', () => {
@@ -81,8 +81,8 @@ describe('Search result integrity', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'common.retry' }))
 
     await waitFor(() => expect(searchPage).toHaveBeenCalledTimes(2))
-    expect(searchPage.mock.calls[0][0].query).toBe('same query')
-    expect(searchPage.mock.calls[1][0].query).toBe('same query')
+    expect(searchPage.mock.calls[0][0].parsed.text).toBe('same query')
+    expect(searchPage.mock.calls[1][0].parsed.text).toBe('same query')
   })
 
   it('preserves loaded rows and the cursor when load more fails', async () => {
@@ -127,5 +127,41 @@ describe('Search result integrity', () => {
 
     expect(screen.queryByText('$ stale result')).toBeNull()
     expect(screen.getByTestId('search-input')).toHaveProperty('value', 'current query')
+  })
+
+  it('shows conditions and text exactly as the shared parser read them', async () => {
+    const runQuery = vi.fn().mockResolvedValue(emptyPage)
+    installBridge(runQuery)
+    render(<SearchPanel />)
+    await searchFor(runQuery, 'session:S1 timeout')
+
+    const parse = await screen.findByTestId('search-query-parse')
+    expect(parse.textContent).toContain('session:S1')
+    expect(parse.textContent).toContain('timeout')
+    expect(runQuery.mock.calls[0][0].parsed.conditions).toEqual([{ field: 'session', value: 'S1' }])
+    expect(runQuery.mock.calls[0][0].parsed.text).toBe('timeout')
+  })
+
+  it('does not execute a half-written condition', async () => {
+    const runQuery = vi.fn().mockResolvedValue(emptyPage)
+    installBridge(runQuery)
+    render(<SearchPanel />)
+    fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'session:' } })
+
+    expect(await screen.findByTestId('search-query-unparsable')).not.toBeNull()
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('discloses the agent session chosen for a bare tool condition', async () => {
+    const runQuery = vi.fn().mockResolvedValue({
+      ...emptyPage,
+      toolSession: { toolUseId: 'T1', sessionId: 'S2', otherSessionIds: ['S1'] }
+    })
+    installBridge(runQuery)
+    render(<SearchPanel />)
+    await searchFor(runQuery, 'tool:T1')
+
+    expect(await screen.findByTestId('search-tool-session')).not.toBeNull()
   })
 })

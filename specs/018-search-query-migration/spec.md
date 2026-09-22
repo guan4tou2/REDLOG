@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/option-d-export-presets`
 **Created**: 2026-09-22
-**Status**: Draft
+**Status**: Verified
 **Depends on**: Spec 017 (Verified)
 **Input**: Move Search onto the query contract Spec 017 defined, so one query text means one thing on both surfaces, without changing the events any currently valid Search query selects.
 
