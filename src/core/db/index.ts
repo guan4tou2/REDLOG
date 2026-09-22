@@ -239,12 +239,14 @@ export function initDB(projectDir: string): Database.Database {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_events_tool_use
     ON events(json_extract(data, '$.tool_use_id'), json_extract(data, '$.session_id'))
     WHERE json_extract(data, '$.tool_use_id') IS NOT NULL`)
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_tool_use
-    ON events_logged(json_extract(data, '$.tool_use_id'), json_extract(data, '$.session_id'))
-    WHERE json_extract(data, '$.tool_use_id') IS NOT NULL`)
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_transcript_uuid
-    ON events_logged(json_extract(data, '$.transcript_uuid'))
-    WHERE json_extract(data, '$.transcript_uuid') IS NOT NULL`)
+  // Deliberately no tool-use or transcript index on the logged tier. A partial
+  // index still evaluates its expression on every insert to decide whether the
+  // row belongs, and the logged tier is the HTTP/DNS capture hot path — but
+  // `tool_call`/`tool_result` and agent transcripts are chained-tier (see
+  // LOGGED_TIER in event-write), so those two indexes would have cost every
+  // proxied request and indexed nothing. The conditions still resolve there;
+  // they scan a set that is empty in practice. The agent session index stays
+  // because `agent:thinking` IS logged and carries one.
 
   // FTS5 full-text search indexes for events + events_logged.
   // External-content tables: the index references the source rows directly

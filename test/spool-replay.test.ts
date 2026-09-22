@@ -21,18 +21,35 @@ describe('spool replay isolation', () => {
   it('defers a mismatched engagement without changing or moving its file', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const before = fs.readFileSync(file)
     const emitted: SpoolReplayEvent[] = []
-    expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => emitted.push(e)))
-      .toEqual({ replayed: 0, deferred: 1, invalid: 0 })
+    expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0 })
     expect(emitted).toEqual([])
     expect(fs.readFileSync(file)).toEqual(before)
   })
 
   it('replays and removes the deferred file when its project becomes active', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const emitted: SpoolReplayEvent[] = []
-    replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => emitted.push(e))
-    expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-new' }, e => emitted.push(e)))
-      .toEqual({ replayed: 1, deferred: 0, invalid: 0 })
+    replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true })
+    expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-new' }, e => { emitted.push(e); return true }))
+      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0 })
     expect(emitted[0]).toMatchObject({ engagementId: 'project-a', operatorId: 'op-a', data: { command: 'secret-a', recovered_from_spool: true } })
     expect(fs.existsSync(file)).toBe(false)
+  })
+
+  it('quarantines an unattributed pre-release payload instead of assigning the active project', () => {
+    const d = dir(); const file = write(d, 'unknown')
+    const emitted: SpoolReplayEvent[] = []
+    expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
+      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0 })
+    expect(emitted).toEqual([])
+    expect(fs.existsSync(file)).toBe(false)
+    expect(fs.existsSync(`${file}.unattributed`)).toBe(true)
+  })
+
+  it('keeps an attributable item pending until the write is accepted', () => {
+    const d = dir(); const file = write(d, 'during-pause', 'project-a')
+    expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-a' }, () => false))
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0 })
+    expect(fs.existsSync(file)).toBe(true)
   })
 })
