@@ -1148,5 +1148,14 @@
   "marker.replayAtTime.noSession": "此時間點沒有活躍的終端工作階段",
   "terminal.castRecording": "終端工作階段錄製中 (.cast)",
   "terminal.castTruncated": "錄製已達大小上限 — 超過此點的輸出未被擷取",
-  "terminal.castNotRecording": "此工作階段未進行錄製"
+  "terminal.castNotRecording": "此工作階段未進行錄製",
+  "transcript.queryReadAs": "讀作",
+  "transcript.queryTokenCondition": "條件：比對儲存的欄位",
+  "transcript.queryTokenText": "文字：全文比對",
+  "transcript.queryUnparsable": "這個查詢沒有被送出",
+  "transcript.queryUnparsable.empty-condition-value": "「{{token}}」是打到一半的條件，缺少值。補上值，或加雙引號當作文字搜尋。",
+  "transcript.queryUnparsable.unterminated-quote": "「{{token}}」的引號沒有結束。",
+  "transcript.queryToolSession": "tool-use {{tool}} 解析於 session {{session}}",
+  "transcript.queryToolSessionOthers": "同一個 tool-use ID 也出現在另外 {{count}} 個 session；加上 session: 條件可以指定。",
+  "transcript.queryCoverage": "文字搜尋涵蓋已儲存的事件內容。未被 inline 捕獲的指令輸出留在終端錄影裡，搜不到——沒有命中不代表那段輸出沒有這個字串。"
 }

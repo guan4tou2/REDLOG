@@ -37,14 +37,14 @@
 
 - [x] T012 Move the Transcript text box onto the contract per bucket, keeping
       balance, `hasMore` and cursor.
-- [ ] T013 Show which tokens were read as conditions, including the session a
+- [x] T013 Show which tokens were read as conditions, including the session a
       tool-use condition resolved within.
 - [x] T014a Fetch absent counterparts for a page in one batched lookup.
 - [ ] T014b Mark pairs whose counterpart stays unresolved.
 - [ ] T015 Keep source and receipt time distinguishable through the projection.
-- [ ] T016 Restart cursors on query and filter change; restore the unqueried
+- [x] T016 Restart cursors on query and filter change; restore the unqueried
       view when the query is cleared.
-- [ ] T017 Render unparsable, failed and no-match as three distinct recoverable
+- [x] T017 Render unparsable, failed and no-match as three distinct recoverable
       states, plus the coverage disclosure; Spec 009 covers only load failure
       and empty.
 - [ ] T018 Make the completeness indicator describe the queried dataset, and
