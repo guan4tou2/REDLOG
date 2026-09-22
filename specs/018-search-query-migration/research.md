@@ -41,8 +41,8 @@ deliberately; today's meaning is an accident of the tokeniser.
 | Entry | Query | Selects today | Selects under the contract |
 | --- | --- | --- | --- |
 | Q14 | `event:ev-c-01` | `ev-l-05`, `ev-c-06` — the two records quoting the ID | `ev-c-01` — the record with the ID |
-| Q15 | `session:sess-alpha` | `ev-c-07`, which is in session **beta** and merely names alpha | the eight `sess-alpha` records across both tiers |
-| Q16 | `tool:toolu-01` | `ev-c-07` | one session-scoped exchange, session stated (FR-004) |
+| Q15 | `session:sess-alpha` | `ev-c-07`, which merely names alpha | `ev-c-06`, whose event data carries agent session `sess-alpha` |
+| Q16 | `tool:toolu-01` | `ev-c-07` | `ev-c-06` in the newest agent session, with that session stated (FR-004) |
 | Q17 | `transcript:uuid-1111` | `ev-l-05`, `ev-c-08` — the records quoting the UUID | `ev-c-01` — the record carrying it |
 | Q20 | `tool:toolu-01 follow-up` | `ev-c-07` — both tokens as text, ANDed | the resolved exchange intersected with the text `follow up` (FR-007) |
 
@@ -96,12 +96,18 @@ a from-scratch parser will drop it unless told not to.
   commits to this for URLs; Q19 and Q22 are the same rule for any punctuated
   term, and terminal evidence is mostly punctuated terms.
 - **Decision (Q21)**: fold case when recognising a field prefix, so `SESSION:`
-  and `session:` mean the same thing. The alternative — recognising only lower
-  case — is worse than either consistent choice: the same query would be a
-  condition or plain text depending on the shift key, and the parse display
-  (FR-004/FR-006) would be the only way to tell. Recording this as a decision
-  because it is the one item here where "preserve today's behaviour" and "be
-  consistent with Q15" point in opposite directions, and consistency wins.
+  and `session:` are both conditions. Preserve the condition value's case and
+  exact-match semantics, so `SESS-ALPHA` does not silently substitute for the
+  stored `sess-alpha`; the parse display makes that interpretation visible.
+
+### Corpus correction discovered during migration
+
+The initial fixture put `sess-alpha` / `sess-beta` only in the envelope's
+`session_id` column. That column is RedLog's Capture Session and Spec 017
+explicitly forbids resolving `session:` against it. The migrated corpus now
+also records `data.session_id` on the two agent tool rows, which is the Agent
+Session that the real producer supplies. The Capture Session values remain in
+place to prove the resolver does not use them.
 
 ### Unchanged — verified, no decision needed
 

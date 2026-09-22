@@ -6,6 +6,7 @@
 // nothing.
 import fs from 'fs'
 import path from 'path'
+import { parseQuery, type ParsedQuery } from '../src/core/query/contract'
 
 /** One seeded row. Array order is insert order, and insert order is rowid
  *  order — the canonical sort's tiebreak — so the captured result ORDER is
@@ -112,12 +113,14 @@ export function seedCorpus(db: SeedDB, dataset: CorpusRow[]): void {
   }
 }
 
-type SearchPage = (opts: CorpusFilter & { query: string; limit?: number; cursor?: string | null })
+type ContractPage = (opts: { parsed: ParsedQuery; filter?: CorpusFilter; limit?: number; cursor?: string | null })
   => { items: Array<{ id: string }>; hasMore: boolean; nextCursor: string | null }
 
 /** Replay one entry through the same call SearchPanel makes
  *  (`window.redlog.events.searchPage` -> `searchEventsPage`). */
-export function replayEntry(searchEventsPage: SearchPage, entry: CorpusEntry): string[] {
-  const page = searchEventsPage({ query: entry.query, limit: entry.limit, ...entry.filter })
+export function replayEntry(executeEventQuery: ContractPage, entry: CorpusEntry): string[] {
+  const outcome = parseQuery(entry.query)
+  if (!outcome.ok) return []
+  const page = executeEventQuery({ parsed: outcome.parsed, filter: entry.filter, limit: entry.limit })
   return page.items.map((event) => event.id)
 }

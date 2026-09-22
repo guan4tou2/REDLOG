@@ -25,6 +25,13 @@ for full commit body + generated notes.
   adapters instead of looking for the removed combined hook.
 - File watcher create/modify events now show cwd/time-overlapping commands as
   explicitly uncertain candidates; they never turn that inference into a causal claim.
+- Transcript and Search now share one persistence-layer query language for
+  full text plus exact event, agent-session, tool-use and transcript IDs.
+  Both surfaces show how the query was interpreted and keep failures distinct
+  from an empty result.
+- Transcript completes cross-page tool pairs in one batch, labels missing
+  counterparts, and distinguishes source occurrence time from RedLog receipt
+  time. Search results now show useful AI message/output text.
 - Copy and paste work again everywhere in the app. The renderer's permission
   handler denies Chromium's Async Clipboard API, so every `navigator.clipboard`
   call was rejecting; the Hooks and Timeline copy buttons reported success

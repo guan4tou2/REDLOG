@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
+import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 
 const TYPE_COLORS: Record<string, string> = {
   shell: 'text-green-400',
@@ -28,6 +29,10 @@ function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
   }
   if (e.agentType === 'file_transfer') return `${d.direction}: ${d.filename || d.localPath || d.remotePath}`
   if (e.agentType === 'loot') return `Loot: ${d.type} (${d.confidence})`
+  if (e.agentType === 'agent') {
+    const body = d.full ?? d.preview ?? d.output ?? d.text
+    return body ? `Agent: ${String(body).slice(0, 120)}` : `Agent: ${d.subtype || 'event'}`
+  }
   return `${e.agentType}: ${d.subtype || JSON.stringify(d).slice(0, 60)}`
 }
 
@@ -122,12 +127,14 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
   const [searchError, setSearchError] = useState<string | null>(null)
   const [castError, setCastError] = useState<string | null>(null)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+  const [toolSession, setToolSession] = useState<{ toolUseId: string; sessionId: string; otherSessionIds: string[] } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchSeqRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const queryRef = useRef(query)
   queryRef.current = query
   const { t } = useI18n()
+  const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
 
   const filtered = results
   const listNav = useListKeyboard({
@@ -153,6 +160,18 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setSearchError(null)
       setCastError(null)
       setLoadMoreError(null)
+      setToolSession(null)
+      return
+    }
+    const outcome = parseQuery(q)
+    if (!outcome.ok) {
+      abortRef.current?.abort()
+      setResults([])
+      setCastHits([])
+      setSearching(false)
+      setSearched(false)
+      setSearchError(null)
+      setToolSession(null)
       return
     }
     abortRef.current?.abort()
@@ -165,6 +184,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     setLoadMoreError(null)
     setResults([])
     setFolds(new Map())
+    setToolSession(null)
     setHasMore(false)
     setNextCursor(null)
     const seq = ++searchSeqRef.current
@@ -172,8 +192,8 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     const eventFilterActive = Boolean(
       opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly
     )
-    window.redlog.events.searchPage({
-      query: q, limit: PAGE_SIZE, ...opts
+    window.redlog.events.runQuery({
+      parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE
     }).then(async (page) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
       const { rows, newFolds } = await resolveAndFold(page.items)
@@ -181,6 +201,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       setResults(rows)
       setHasMore(page.hasMore)
       setNextCursor(page.nextCursor)
+      setToolSession(page.toolSession ?? null)
       setSearching(false)
       setSearched(true)
     }).catch((error: unknown) => {
@@ -215,8 +236,10 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     setLoadMoreError(null)
     const opts = buildSearchOpts()
     try {
-      const page = await window.redlog.events.searchPage({
-        query: queryRef.current, limit: PAGE_SIZE, cursor: nextCursor, ...opts
+      const outcome = parseQuery(queryRef.current)
+      if (!outcome.ok) return
+      const page = await window.redlog.events.runQuery({
+        parsed: outcome.parsed, filter: opts, limit: PAGE_SIZE, cursor: nextCursor
       })
       const { rows, newFolds } = await resolveAndFold(page.items)
       setResults((prev) => [...prev, ...rows])
@@ -273,6 +296,27 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
+        {parse?.ok && parse.parsed.tokens.length > 0 && (
+          <div data-testid="search-query-parse" className="mb-2 flex items-center gap-1 text-xs">
+            <span className="text-redlog-text-faint">{t('search.queryReadAs')}</span>
+            {parse.parsed.tokens.map((token, index) => (
+              <span key={index} title={t(token.read === 'condition' ? 'search.queryTokenCondition' : 'search.queryTokenText')}
+                className={`font-mono px-1 py-0.5 rounded border ${token.read === 'condition' ? 'text-indigo-300 border-indigo-500/40 bg-indigo-500/10' : 'text-redlog-text-dim border-redlog-border bg-redlog-surface'}`}>
+                {token.raw}
+              </span>
+            ))}
+          </div>
+        )}
+        {parse && !parse.ok && (
+          <div data-testid="search-query-unparsable" role="status" className="mb-3 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {t('search.queryUnparsable')}
+          </div>
+        )}
+        {toolSession && (
+          <div data-testid="search-tool-session" role="status" className="mb-3 rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
+            {t('search.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}
+          </div>
+        )}
         {searchError && (
           <div data-testid="search-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
             <div className="font-medium">{t('search.failedTitle')}</div>
