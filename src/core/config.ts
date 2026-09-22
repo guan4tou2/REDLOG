@@ -261,6 +261,13 @@ export interface RedLogConfig {
   }
 }
 
+/** Agent transcript capture is sensitive and always requires an explicit
+ * project opt-in. Keep this decision here so runtime callers cannot re-create
+ * a permissive fallback for partial or hand-written configs. */
+export function isAgentTailerEnabled(config: Pick<RedLogConfig, 'agentTailer'>): boolean {
+  return config.agentTailer?.enabled === true
+}
+
 const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',

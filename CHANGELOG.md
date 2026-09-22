@@ -5,6 +5,8 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- AI agent transcript capture remains opt-in even for partial or hand-written
+  project configs, so unrelated sessions under the operator home are not read.
 - Report Mode now pauses new evidence through the canonical write gate while
   keeping search, replay, filters, and export available. The header, status bar,
   and chained audit events distinguish report writing from an unexplained pause.
