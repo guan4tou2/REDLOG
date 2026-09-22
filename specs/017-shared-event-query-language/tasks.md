@@ -18,8 +18,8 @@
 ## Phase 2 — Query contract
 
 - [ ] T007 Implement the parse: recognised conditions plus residual free text.
-- [ ] T008 Add the indexes the conditions require: `session_id`, and an
-      expression index for `tool_use_id` in `data`.
+- [ ] T008 Add expression indexes for the agent session ID and `tool_use_id`
+      within `data`. The `session_id` column is not one of them.
 - [ ] T009 Implement intersecting evaluation — FTS for terms, field predicates
       for conditions — beneath the caller's shared filter, limit and cursor.
 - [ ] T010 Implement session scoping for a bare tool-use condition and report
@@ -46,6 +46,7 @@
 
 - [ ] T019 Run focused tests, typecheck, the full suite and build.
 - [ ] T020 Run the Transcript desktop journey.
-- [ ] T021 Update `docs/domain/glossary.md` with the query-language terms.
+- [ ] T021 Update `docs/domain/glossary.md` with the query-language terms and
+      with the capture-session / agent-session distinction.
 - [ ] T022 Record in Spec 009 that its local-text-filter exception is superseded.
 - [ ] T023 Analyze and converge artifacts; record verification and mark Verified.

@@ -11,9 +11,16 @@
   complete / recent-subset / failed states, with its text box filtering loaded
   blocks.
 - Identifier storage differs per field, and so does the cost of querying it:
-  `id` is the primary key; `session_id` and `transcript_uuid` are columns, and
-  `transcript_uuid` already has `idx_events_transcript_uuid`; `tool_use_id`
-  lives inside the `data` JSON with no index.
+  `id` is the primary key; `transcript_uuid` is a column already carrying
+  `idx_events_transcript_uuid`; the agent session ID and `tool_use_id` both
+  live inside the `data` JSON with no index.
+- Two different identifiers are called "session". The `session_id` **column**
+  is RedLog's per-process capture session — `event-write.ts` records that no
+  consumer filters on it and that it is "silently wrong" across a project
+  reopen. `data.session_id` is the **agent's** session: the transcript tailer
+  writes it, `buildBlocks` pairs tools within it, and `TimelineEventDetails`
+  displays it. Only the latter is an identifier an operator holds, so it is the
+  one a session condition resolves.
 - `TranscriptView.buildBlocks` already keys tool pairing on
   `${session_id}:${tool_use_id}` — the composite is existing domain knowledge,
   not a new rule this feature invents.
@@ -53,8 +60,9 @@
    predicate. FTS indexes `data` as a blob, so an identifier is findable there
    as a token — satisfying a condition that way would be the substring match
    FR-007 forbids, and would match an ID mentioned inside unrelated output.
-3. Index what the conditions need: `session_id`, and an expression index for
-   `tool_use_id` within `data`. `id` and `transcript_uuid` are already served.
+3. Index what the conditions need: expression indexes for the agent session ID
+   and `tool_use_id` within `data`. `id` and `transcript_uuid` are already
+   served. The `session_id` column gets no index; nothing queries it.
 4. Resolve a bare tool-use condition to one session and report that session;
    a query carrying both conditions resolves within the given session.
 5. Evaluate beneath the caller's own filter, limit and cursor, so the
@@ -65,8 +73,9 @@
 8. Carry source and receipt time separately through the block projection.
 9. Restart cursors on query and filter change; restore the unqueried view when
    the query is cleared.
-10. Record the supersession in Spec 009 and add the query-language terms to the
-    domain glossary.
+10. Record the supersession in Spec 009, and add to the domain glossary both
+    the query-language terms and the distinction between the capture session
+    and the agent session, which currently share a name in code and in the UI.
 
 ## Gate
 

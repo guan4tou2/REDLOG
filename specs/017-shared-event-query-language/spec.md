@@ -74,7 +74,9 @@ than an empty result.
 - The same tool-use ID occurring in two sessions resolves to one exchange with
   its session disclosed, never to a merged or arbitrary one.
 - A tool-use condition written together with a session condition resolves
-  within that session.
+  within that session, using the agent session both share.
+- RedLog's internal capture session is not addressable by any condition; a
+  session condition never resolves against it.
 - Pasted text containing a colon, such as a URL, is matched literally and is
   not mistaken for a condition.
 - An unrecognised field prefix is matched as text and reported as such.
@@ -96,7 +98,10 @@ than an empty result.
   contract independent of the calling surface, so a second surface can adopt it
   without changing what existing queries mean.
 - **FR-003**: Event ID, session ID and transcript UUID MUST resolve as exact,
-  project-wide conditions.
+  project-wide conditions. A session condition MUST resolve the agent session
+  recorded on the event, not RedLog's per-process capture session — the two are
+  different identifiers that share a name, and only the first is what an
+  operator holds.
 - **FR-004**: A tool-use ID MUST resolve within a single session, because it is
   unique only within one. When no session is given, the surface MUST resolve one
   session and state which; it MUST NOT merge occurrences from several sessions
