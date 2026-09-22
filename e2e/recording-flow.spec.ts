@@ -39,10 +39,22 @@ test.describe.serial('recording pause / resume', () => {
     })
     expect(initial).toBe(true)
 
-    // Status bar reflects the same state: data-recording="on", label "REC".
+    // Status bar reflects the same state. The attribute is the recording
+    // state and stays 'on' — but the LABEL is not "REC" here, and that is the
+    // point of the test's own premise: on a fresh project nothing has been
+    // captured yet, and the status bar now says so rather than claiming to be
+    // recording something.
+    //
+    //   !recording                         → PAUSED
+    //   recording && no event ever         → "Waiting for events…"
+    //   recording && capture flowing       → REC
+    //
+    // "REC" on an engagement that has captured nothing is exactly the
+    // reassuring lie the capture-health work exists to remove, so the
+    // assertion follows the product rather than the other way round.
     const rec = page.locator('[data-testid="status-bar-recording"]')
     await expect(rec).toHaveAttribute('data-recording', 'on', { timeout: 2_000 })
-    await expect(rec).toContainText('REC')
+    await expect(rec).toContainText('Waiting for events')
   })
 
   test('recording.toggle flips state and the status bar', async () => {
@@ -75,7 +87,10 @@ test.describe.serial('recording pause / resume', () => {
 
     const rec = page.locator('[data-testid="status-bar-recording"]')
     await expect(rec).toHaveAttribute('data-recording', 'on', { timeout: 2_000 })
-    await expect(rec).toContainText('REC')
+    // Same project, still nothing captured — so "Waiting for events…", not
+    // "REC". What this test is about is the attribute flipping back to 'on';
+    // see the first test for why the label reads the way it does.
+    await expect(rec).toContainText('Waiting for events')
 
     // Double-check via IPC in case the DOM update raced somehow.
     const finalState = await page.evaluate(async () => {
