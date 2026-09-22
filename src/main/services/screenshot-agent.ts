@@ -90,7 +90,29 @@ export class ScreenshotAgent {
         types: ['screen'],
         thumbnailSize: { width, height }
       })
-      if (!sources.length) return null
+      // An empty source list is a failure, not "nothing to capture".
+      //
+      // There is always a screen; `getSources` returning none means the
+      // capture backend could not enumerate it. Observed on Windows 11 /
+      // Chromium 152 in a single-display session — `types: ['screen']` came
+      // back empty while `types: ['window']` returned six. Whatever the
+      // upstream cause, the effect here was that every periodic capture
+      // silently did nothing: no event, no error, and capture-health still
+      // reading `state: "idle"`, which is what it says before the first
+      // screenshot of a fresh project. "Not yet" and "never again" looked
+      // identical, so an operator relying on periodic screenshots would find
+      // out at write-up time.
+      //
+      // The `catch` below already routes failures to capture-health with a
+      // comment about surfacing "permission denied / disk full / display
+      // asleep" rather than swallowing them. This is that same class of
+      // failure; it just does not throw.
+      if (!sources.length) {
+        noteDbError('screenshot', new Error(
+          `desktopCapturer returned no screen sources (${screen.getAllDisplays().length} display(s) known)`
+        ))
+        return null
+      }
 
       const image = sources[0].thumbnail
       const jpeg = image.toJPEG(this.quality)
