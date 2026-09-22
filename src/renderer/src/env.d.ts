@@ -275,7 +275,17 @@ interface RedLogAPI {
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
     replay?: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
     replaySession?: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
-    replayAtTime?: (atMs: number) => Promise<{ ok: boolean; events?: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number; error?: string }>
+    /** A discriminated union, not a bag of optionals: the handler returns
+     *  either `{ ok: false, error }` or `{ ok: true, events, … }`, and it
+     *  never returns `ok: true` without events. Typing it as
+     *  `{ ok: boolean; events?: … }` meant `if (!r.ok) return` narrowed
+     *  nothing, so the caller was handed `events: … | undefined` for a field
+     *  `replayStore.open` requires — TS2322, which is how main stopped
+     *  compiling. */
+    replayAtTime?: (atMs: number) => Promise<
+      | { ok: true; events: Array<[number, 'o', string]>; truncated?: boolean; seekMs?: number }
+      | { ok: false; error: string }
+    >
   }
   overlay: {
     toggle: () => void

@@ -12,6 +12,24 @@ let closeDB: typeof import('../src/core/db/index').closeDB
 let api: typeof import('../src/core/api-server')
 let ops: typeof import('../src/core/db/operators')
 let dbAvailable = false
+
+// Give this file its own HOME before api-server is imported.
+//
+// `api-server.ts` resolves the global sidecar once at module scope, from
+// os.homedir(). Two things followed from letting that be the real home. The
+// small one: vitest runs files in parallel, so any other file calling
+// onApiProjectOpen() rewrote ~/.redlog/api-token between this file's write and
+// its read, and the suite went red roughly one run in three — for a collision,
+// not a defect. The larger one: `npm test` was reaching into the operator's
+// actual ~/.redlog. It backed the token up and put it back, but a run killed
+// partway through left a test token in place of the real one.
+//
+// Redirecting homedir() for this file fixes both. It has to happen before the
+// import, which is why the import is dynamic and this block sits above it.
+const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tokhome-'))
+process.env.HOME = FAKE_HOME
+process.env.USERPROFILE = FAKE_HOME
+
 try {
   const d = await import('../src/core/db/index')
   initDB = d.initDB; closeDB = d.closeDB
@@ -22,27 +40,25 @@ try {
 
 const describeDB = dbAvailable ? describe : describe.skip
 
-// Back up the global sidecar so a local run doesn't disturb a real instance.
-const RC = path.join(os.homedir(), '.redlog')
+// The sidecar, inside this file's own home — never the operator's.
+const RC = path.join(FAKE_HOME, '.redlog')
 const TOKEN_PATH = path.join(RC, 'api-token')
 const readIf = (p: string): string | null => { try { return fs.readFileSync(p, 'utf8') } catch { return null } }
 
 describeDB('per-project token isolation', () => {
-  let savedToken: string | null
   let dirA: string
   let dirB: string
   beforeAll(() => {
-    savedToken = readIf(TOKEN_PATH)
     dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tokA-'))
     dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tokB-'))
     api.configureApi({ engagementId: 'A', operatorId: 'op', operatorName: 'Op' })
   })
   afterAll(() => {
     try { closeDB() } catch { /* */ }
-    if (savedToken === null) { try { fs.rmSync(TOKEN_PATH, { force: true }) } catch { /* */ } }
-    else { try { fs.writeFileSync(TOKEN_PATH, savedToken, { mode: 0o600 }) } catch { /* */ } }
+    // No backup/restore dance any more — the home this wrote into is ours.
     fs.rmSync(dirA, { recursive: true, force: true })
     fs.rmSync(dirB, { recursive: true, force: true })
+    fs.rmSync(FAKE_HOME, { recursive: true, force: true })
   })
 
   it('each project mints its own token, persisted in the project dir', () => {
