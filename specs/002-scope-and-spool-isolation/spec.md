@@ -1,6 +1,6 @@
 # Feature Specification: Scope and Spool Isolation
 
-**Status**: Implemented
+**Status**: Verified
 **Created**: 2026-09-20
 
 ## Goal
@@ -22,6 +22,10 @@ management or changing RedLog's record-first model.
   ambient Events remain visible.
 - **FR-005**: `engagement.id` MUST be read-only after project creation. The
   project display name remains editable.
+- **FR-006**: A spool item without both engagement and operator identity MUST
+  be quarantined for inspection and MUST NOT inherit the active project.
+- **FR-007**: A spool file MUST be removed only after its event write is
+  accepted. Pause or write refusal leaves the original file pending.
 
 ## Acceptance Scenarios
 
@@ -34,6 +38,9 @@ management or changing RedLog's record-first model.
 4. Enabling the shared in-scope filter hides excluded targeted Events while
    retaining ambient Events.
 5. Settings renders engagement ID as read-only and never sends an ID mutation.
+6. An identity-free spool payload is renamed `.unattributed`, writes no event,
+   and remains available for manual inspection.
+7. A replay callback that refuses a write leaves the original `.json` pending.
 
 ## Out of Scope
 

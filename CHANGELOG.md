@@ -8,6 +8,8 @@ for full commit body + generated notes.
 - Approved export plans bind preview and execution to one snapshot and policy.
 - Spool replay defers mismatched engagements without writing the active DB and
   recovers them when their owning project opens.
+- Identity-free spool files are quarantined instead of inheriting the active
+  project, and replay deletes a file only after persistence accepts the row.
 - Scope excludes now apply consistently to Targets and shared in-scope filters.
 - Project creation accepts exclude targets and no longer drops advanced setup
   after the dialog closes.
