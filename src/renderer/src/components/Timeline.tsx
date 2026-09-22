@@ -40,6 +40,7 @@ import { TierBadge } from './TierBadge'
 import { ReplayCommand } from './ReplayCommand'
 import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail } from './TimelineEventDetails'
 import { HttpDetail } from './HttpDetail'
+import { matchesScope } from '../lib/scope'
 
 const MIN_LANE_H = 36
 const LABEL_W = 92
@@ -78,7 +79,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 }
 
 export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
-  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets } = useSharedFilter()
+  const { filter: sharedFilter, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
   // v0.9.3 U3: agent-session collapse toggle. When on, hide per-turn agent
   // subtypes (user_message / assistant_message / tool_call / tool_result /
@@ -100,11 +101,14 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   const [auditorView, setAuditorView] = useState(false)
   const events = useMemo(
     () => {
-      const base = filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns)
+      const folded = filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns)
+      const base = sharedFilter.hidePersonal && personalDomains.length > 0
+        ? folded.filter((event) => !event.targetId || !personalDomains.some((pattern) => matchesScope(event.targetId ?? '', pattern)))
+        : folded
       // When auditor view is on, drop logged-tier rows.
       return auditorView ? base.filter((e) => e.tier !== 'logged') : base
     },
-    [rawEvents, collapseAgentTurns, auditorView]
+    [rawEvents, collapseAgentTurns, auditorView, sharedFilter.hidePersonal, personalDomains]
   )
   // Count of logged rows that WOULD be hidden by auditor view — surfaces on
   // the chip so the operator can see how much the filter is doing. Uses

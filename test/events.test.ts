@@ -286,6 +286,25 @@ describeDB('queryEvents', () => {
     expect(rows).toHaveLength(5)
     expect(rows.every((event) => event.targetId?.startsWith('10.10.10.'))).toBe(true)
   })
+
+  it('hides personal targets before the result limit without dropping ambient events', () => {
+    for (let i = 0; i < 8; i++) {
+      insertEvent('marker', { title: `private-${i}` }, { targetId: '127.0.0.1' })
+    }
+    insertEvent('marker', { title: 'work' }, { targetId: '10.10.10.5' })
+    insertEvent('system', { subtype: 'audit-boundary' })
+
+    const rows = queryEvents({
+      limit: 2,
+      hidePersonal: true,
+      personalDomains: ['127.0.0.0/8', 'localhost']
+    })
+
+    expect(rows).toHaveLength(2)
+    expect(rows.some((event) => event.targetId === '127.0.0.1')).toBe(false)
+    expect(rows.some((event) => event.targetId === '10.10.10.5')).toBe(true)
+    expect(rows.some((event) => event.targetId === null)).toBe(true)
+  })
 })
 
 describeDB('getEventCount', () => {

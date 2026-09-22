@@ -19,7 +19,7 @@ describe('shared event filter wiring', () => {
     const loadMore = source.slice(source.indexOf('const loadMore'), source.indexOf('useEffect(() => {', source.indexOf('const loadMore')))
     expect(loadMore).toMatch(/const opts = buildSearchOpts\(\)/)
     expect(loadMore).toMatch(/filter: opts, limit: PAGE_SIZE, cursor: nextCursor/)
-    expect(source).toMatch(/\[effectiveTypeFilter, sharedFilter\.targetId, sharedFilter\.timeRange, sharedFilter\.inScopeOnly\]/)
+    expect(source).toMatch(/\[effectiveTypeFilter, sharedFilter\.targetId, sharedFilter\.timeRange, sharedFilter\.inScopeOnly, sharedFilter\.hidePersonal\]/)
   })
 
   it('Transcript sends shared predicates with each bounded backend bucket', () => {
@@ -40,7 +40,7 @@ describe('shared event filter wiring', () => {
     expect(source.slice(query, projection)).toMatch(/\.\.\.toEventFilter\(sharedFilter\)/)
   })
 
-  it('defines target, type, time and scope mapping once', () => {
+  it('defines target, type, time, scope and personal-traffic mapping once', () => {
     const source = read('src/renderer/src/lib/FilterContext.tsx')
     expect(source).toMatch(/export function toEventFilter/)
     expect(source).toMatch(/targetId: filter\.targetId/)
@@ -48,6 +48,7 @@ describe('shared event filter wiring', () => {
     expect(source).toMatch(/since: filter\.timeRange\.since/)
     expect(source).toMatch(/before: filter\.timeRange\.before/)
     expect(source).toMatch(/inScopeOnly: true/)
+    expect(source).toMatch(/hidePersonal: true/)
   })
 
   it('main attaches active-project scope instead of trusting renderer rules', () => {
@@ -57,5 +58,6 @@ describe('shared event filter wiring', () => {
     // main attaches scope, it is never taken from the renderer — is the same.
     expect(source).toMatch(/filter: withActiveScope\(req\.filter/)
     expect(source).toMatch(/queryEvents\(withActiveScope\(opts/)
+    expect(source).toMatch(/personalDomains: scope\.personalDomains/)
   })
 })
