@@ -868,17 +868,17 @@ export function searchEventsPage(opts: EventFilter & {
     limit + 1
   ]
 
-  try {
-    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-    const page = toQueryPage(rows, limit, (row) => ({
-      ts: row.timestamp as number,
-      row: row._row as number,
-      tier: row.tier as 'chained' | 'logged'
-    }))
-    return { ...page, items: page.items.map(rowToEvent) }
-  } catch {
-    return { items: [], hasMore: false, nextCursor: null }
-  }
+  // No catch: a statement that could not run is not an engagement in which
+  // nothing matched, and only the second licenses a conclusion about absence.
+  // This swallow is why Search's own error state was unreachable until Spec
+  // 018 moved it onto the query contract.
+  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
+  const page = toQueryPage(rows, limit, (row) => ({
+    ts: row.timestamp as number,
+    row: row._row as number,
+    tier: row.tier as 'chained' | 'logged'
+  }))
+  return { ...page, items: page.items.map(rowToEvent) }
 }
 
 export function searchEvents(query: string, limit = 100, opts: EventFilter = {}): RedLogEvent[] {
