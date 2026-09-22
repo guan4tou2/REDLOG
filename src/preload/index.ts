@@ -228,7 +228,10 @@ const api: RedLogAPI = {
     }
   },
   terminal: {
-    spawn: (id: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:spawn', id, cols, rows),
+    spawn: (id: string, cols: number, rows: number, shellId?: string) =>
+      ipcRenderer.invoke('terminal:spawn', id, cols, rows, shellId),
+    shells: () => ipcRenderer.invoke('terminal:shells'),
+    rediscoverShells: () => ipcRenderer.invoke('terminal:rediscoverShells'),
     write: (id: string, data: string) => ipcRenderer.send('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.send('terminal:resize', id, cols, rows),
     kill: (id: string) => ipcRenderer.send('terminal:kill', id),
