@@ -79,6 +79,11 @@ const api: RedLogAPI = {
     getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
     search: (query: string, limit?: number, opts?: import('../core/db/events').EventFilter) => ipcRenderer.invoke('events:search', query, limit, opts),
+    // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
+    runQuery: (req: import('../core/db/events').EventQueryRequest) =>
+      ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
+    toolCounterparts: (keys: import('../core/db/events').ToolPairKey[]) =>
+      ipcRenderer.invoke('events:toolCounterparts', keys) as Promise<import('../core/db/events').RedLogEvent[]>,
     searchPage: (opts: import('../core/db/events').EventFilter & { query: string; limit?: number; cursor?: string | null }) =>
       ipcRenderer.invoke('events:searchPage', opts) as Promise<{
         items: import('../core/db/events').RedLogEvent[]

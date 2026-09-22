@@ -219,6 +219,12 @@ interface RedLogAPI {
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
     search: (query: string, limit?: number, opts?: import('../../core/db/events').EventFilter) => Promise<RedLogEvent[]>
+    runQuery: (
+      req: import('../../core/db/events').EventQueryRequest
+    ) => Promise<import('../../core/db/events').EventQueryResult>
+    toolCounterparts: (
+      keys: import('../../core/db/events').ToolPairKey[]
+    ) => Promise<RedLogEvent[]>
     searchPage: (opts: import('../../core/db/events').EventFilter & { query: string; limit?: number; cursor?: string | null }) => Promise<{
       items: RedLogEvent[]
       hasMore: boolean
