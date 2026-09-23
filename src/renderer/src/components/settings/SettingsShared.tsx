@@ -75,8 +75,8 @@ export function FieldGroup({ title, children }: { title: string; children: React
   )
 }
 
-export function Field({ label, value, onChange, type = 'text', readOnly = false }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; readOnly?: boolean
+export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false }: {
+  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; type?: string; readOnly?: boolean
 }): JSX.Element {
   const id = useId()
   return (
@@ -88,6 +88,7 @@ export function Field({ label, value, onChange, type = 'text', readOnly = false 
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim cursor-not-allowed' : 'text-redlog-text focus:border-red-500'}`}
       />
     </div>

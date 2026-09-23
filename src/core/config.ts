@@ -27,7 +27,6 @@ export const DEFAULT_VPN_ADAPTERS: VpnAdapter[] = [
 export interface RedLogConfig {
   engagement: {
     id: string
-    name: string
     activeTarget?: string | null
   }
   operator: {
@@ -265,7 +264,6 @@ export function isAgentTailerEnabled(config: Pick<RedLogConfig, 'agentTailer'>):
 const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',
-    name: 'Default Engagement',
     activeTarget: null
   },
   operator: {

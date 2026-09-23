@@ -117,7 +117,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
   )
 }
 
-export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean }): JSX.Element {
+export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
   const { eventCount, lootCount, scopeViolations, scopeConfigured, loading: countsLoading } = useAppCounts()
   const [chainLen, setChainLen] = useState(0)
   // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
@@ -328,7 +328,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
               </div>
               <div>
                 <span className="text-redlog-text-dim text-xs">{t('dashboard.name')}</span>
-                <p className="text-redlog-text text-sm mt-0.5">{config.engagement?.name as string}</p>
+                <p className="text-redlog-text text-sm mt-0.5">{projectName}</p>
               </div>
               <div>
                 <span className="text-redlog-text-dim text-xs">{t('dashboard.operator')}</span>
