@@ -2,7 +2,7 @@
 
 寫給**使用** RedLog 的人，不是改它的人。目標：十分鐘內把一場行動記起來，並知道每個
 畫面在回答什麼問題。介面與本手冊都是繁體中文。要接手開發請改讀
-[`HANDOVER-2026-09.md`](HANDOVER-2026-09.md) 與 [`README.md`](README.md)。
+[`HANDOVER-2026-09.md`](archive/HANDOVER-2026-09.md) 與 [`README.md`](README.md)。
 
 對照版本：`main` @ v0.14.3。
 

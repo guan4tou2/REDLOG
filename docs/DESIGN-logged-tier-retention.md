@@ -4,7 +4,7 @@
 **Author:** logged-tier retention design pass
 **Parent doc:** [DESIGN-two-tier-chain.md](DESIGN-two-tier-chain.md) — the two-tier chain is a prerequisite; this doc closes the gap §13.3 of that doc explicitly deferred.
 **Key names (2026-09-23, Spec 028):** this doc predates the single `retention` section. `terminal.castKeepDays` is now `retention.casts.keepDays` and `screenshots.keepDays` is `retention.screenshots.keepDays`; the reasoning below is unchanged.
-**Prior art:** [`src/core/retention.ts`](../src/core/retention.ts), [audit-trail.md](audit-trail.md), [event-schema.md](event-schema.md), [ROADMAP.md](ROADMAP.md).
+**Prior art:** [`src/core/retention.ts`](../src/core/retention.ts), [audit-trail.md](audit-trail.md), [event-schema.md](event-schema.md), [ROADMAP.md](archive/ROADMAP.md).
 
 The two-tier chain landed in v0.12.2 as decision-point material and defined a `events_logged` table with no `no_delete` trigger — *deliberately*. §13.3 of [DESIGN-two-tier-chain.md](DESIGN-two-tier-chain.md) states the intent plainly:
 
@@ -149,7 +149,7 @@ The retention defaults RedLog already ships (verified against `DEFAULT_CONFIG` i
 |---|---|---|
 | `terminal.castKeepDays` | `0` (keep forever) | The `.cast` file is the raw terminal recording — losing it is losing primary evidence. Operators opt in. |
 | `screenshots.keepDays` | `0` (keep forever) | Same story: a screenshot IS primary evidence. |
-| `agentTailer` (agent transcripts) | v0.7.4 F2: `0` (keep forever) | The [`agent-transcript-tailer.ts`](../src/main/services/agent-transcript-tailer.ts) originally shipped with a 30-day sweep default and was changed to 0 in v0.7.4 F2 after a corruption path was found: pruning a sidecar whose upstream Claude Code `.jsonl` still existed caused every historical turn to be re-inserted as fresh chained events on next project open. The fix was two-fold — a DB-side dedup seed + reverting the default to "keep forever" to match sibling conventions. |
+| `agentTailer` (agent transcripts) | v0.7.4 F2: `0` (keep forever) | The agent tailer (then `agent-transcript-tailer.ts`, now [`tailer-host.ts`](../src/main/services/tailer-host.ts)) originally shipped with a 30-day sweep default and was changed to 0 in v0.7.4 F2 after a corruption path was found: pruning a sidecar whose upstream Claude Code `.jsonl` still existed caused every historical turn to be re-inserted as fresh chained events on next project open. The fix was two-fold — a DB-side dedup seed + reverting the default to "keep forever" to match sibling conventions. |
 
 Every existing retention default is **0 = keep forever** because everything the existing sweeper touches is *primary evidence*. The logged tier is the first RedLog artifact that isn't primary evidence by design — that's what the two-tier chain change was *for*. So the 30-day default is not a policy inconsistency; it's the first default that reflects the new tier being non-primary.
 
@@ -819,7 +819,7 @@ Handled: `trigger: 'operator_forced'` in the summary event. Exposed via a Settin
 - The parent design this doc closes the gap in: [DESIGN-two-tier-chain.md](DESIGN-two-tier-chain.md), especially §6.2 (`_causes` semantics), §7 (bundle export), §10 (migration), §13.3 (the deferral this doc answers), §13.5 (why the sampler doesn't watch the logged tier — which is what makes retention safe here).
 - The file-level retention pattern this doc extends to row-level: [`src/core/retention.ts`](../src/core/retention.ts), specifically `sweepRetention()` and `sweepDir()`.
 - The append-only contract this doc deliberately does *not* violate on the chained tier: [`src/core/db/events.ts` §110–137](../src/core/db/events.ts), `assertEventsAppendOnly`.
-- The v0.7.4 F2 lesson about aggressive retention defaults on evidence artifacts: [`src/main/services/agent-transcript-tailer.ts`](../src/main/services/agent-transcript-tailer.ts) and the F2 changelog entry — the reason the chained-artifact retention defaults are all 0.
+- The v0.7.4 F2 lesson about aggressive retention defaults on evidence artifacts: [`src/main/services/tailer-host.ts`](../src/main/services/tailer-host.ts) and the F2 changelog entry — the reason the chained-artifact retention defaults are all 0.
 - The pause contract the sweep obeys: [`src/core/event-bus.ts` §12](../src/core/event-bus.ts), `eventBus.paused`.
 - The bundle export machinery this doc extends with `pruneWatermark`: [`src/core/bundle-export.ts`](../src/core/bundle-export.ts).
 - The `subsystem-decomposition` framework used to enumerate the three retention axes: [MEMORY.md#decomposition-framework-suite](file:///Users/guantou/.claude/projects/-Users-guantou-Desktop-redlog/memory/decomposition-framework-suite.md).

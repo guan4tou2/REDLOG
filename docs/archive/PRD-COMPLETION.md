@@ -3,8 +3,8 @@
 寫於 2026-09-06,PM 視角。把這幾輪審視的所有發現——紅隊審視、系統設計債、開放項目、
 plugin-kernel 方向——整理成**有優先級、有驗收標準、有里程碑**的需求,作為實作前的單一依據。
 
-「怎麼做」在各設計文件([`DESIGN-OPEN-ITEMS`](DESIGN-OPEN-ITEMS.md)、
-[`DESIGN-plugin-kernel`](DESIGN-plugin-kernel.md)、[`DESIGN-traffic-attribution`](DESIGN-traffic-attribution.md));
+「怎麼做」在各設計文件([`DESIGN-OPEN-ITEMS`](../DESIGN-OPEN-ITEMS.md)、
+[`DESIGN-plugin-kernel`](../DESIGN-plugin-kernel.md)、[`DESIGN-traffic-attribution`](../DESIGN-traffic-attribution.md));
 這份只定義**做什麼、為誰、算不算完成、先後**。
 
 ---

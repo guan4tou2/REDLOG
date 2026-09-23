@@ -66,7 +66,7 @@ capture level is active before I rely on the resulting log.
 
 - `.specify/memory/constitution.md`: Surface Truthfulness, Evidence Integrity,
   Explicit Failure and Architectural Restraint.
-- `docs/timeline-io-visibility.md`: external-shell constraint and G1.
+- `docs/archive/timeline-io-visibility.md`: external-shell constraint and G1.
 
 ## Out of Scope
 
