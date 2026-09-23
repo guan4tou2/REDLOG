@@ -833,7 +833,7 @@
   "confirm.deleteProjectChain": "Every event and the whole SHA-256 evidence chain",
   "confirm.deleteProjectMedia": "All screenshots and terminal session recordings",
   "confirm.deleteProjectAnchors": "The OpenTimestamps receipts — these cannot be regenerated, because they attest to a moment that has passed",
-  "statusBar.tierCountTitle": "{{chained}} chained (the audit chain) · {{logged}} logged (supporting evidence). Click to hide the logged rows on the Timeline — open the Timeline first, or the click does nothing.",
+  "statusBar.tierCountTitle": "{{chained}} chained (the audit chain) · {{logged}} logged (supporting evidence). The Timeline's ⋯ menu hides the logged rows.",
   "statusBar.tierCountLabel": "{{chained}} chained events, {{logged}} logged events",
   "targets.listLabel": "Targets, {{count}} entries",
   "scope.violationsLabel": "Scope violations, {{count}} entries",

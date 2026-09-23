@@ -267,37 +267,33 @@ export default function StatusBar(): JSX.Element {
          *  Title tooltip explains the two-tier story for auditors
          *  hovering to figure out what the second number is.
          *
-         *  When the logged tier is non-zero, the counter is
-         *  clickable and dispatches `redlog:auditor-view:toggle` — the
-         *  Timeline picks it up and flips its auditor-view chip. When
-         *  the logged tier is empty there is nothing to hide, so the
-         *  counter stays a plain span. If the user is not on the
-         *  Timeline the event is a no-op; the tooltip warns of that so
-         *  a click from Dashboard isn't a silent surprise.
+         *  A read-out, not a control: it used to toggle the Timeline's
+         *  auditor view, which did nothing on any other page. That toggle
+         *  lives in the Timeline's ⋯ menu.
          */}
         {loggedCount > 0 ? (
-          <button
-            type="button"
+          <span
             data-testid="statusbar-tier-count"
-            onClick={() => window.dispatchEvent(new CustomEvent('redlog:auditor-view:toggle'))}
-            className="text-redlog-text-dim tabular-nums cursor-pointer hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 rounded"
+            className="text-redlog-text-dim tabular-nums"
             title={t('statusBar.tierCountTitle', {
               chained: eventCount.toLocaleString(),
               logged: loggedCount.toLocaleString()
             })}
-            // §5.7: the tooltip must not be the only place this is said. The
-            // two numbers are already visible and the accessible name spells
-            // out which is which, so a screen reader and a keyboard user get
-            // the split without hovering.
-            aria-label={t('statusBar.tierCountLabel', {
-              chained: eventCount.toLocaleString(),
-              logged: loggedCount.toLocaleString()
-            })}
           >
-            {t('statusBar.events', { count: eventCount })}
-            <span className="text-redlog-text-faint mx-1" aria-hidden>·</span>
-            <span className="text-redlog-text-dim">{loggedCount.toLocaleString()}</span>
-          </button>
+            {/* §5.7: the tooltip must not be the only place this is said, so
+                the split is spelled out for a screen reader too. */}
+            <span aria-hidden>
+              {t('statusBar.events', { count: eventCount })}
+              <span className="text-redlog-text-faint mx-1">·</span>
+              <span className="text-redlog-text-dim">{loggedCount.toLocaleString()}</span>
+            </span>
+            <span className="sr-only">
+              {t('statusBar.tierCountLabel', {
+                chained: eventCount.toLocaleString(),
+                logged: loggedCount.toLocaleString()
+              })}
+            </span>
+          </span>
         ) : (
           <span className="text-redlog-text-dim tabular-nums">
             {t('statusBar.events', { count: eventCount })}
