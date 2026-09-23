@@ -790,9 +790,13 @@ export function distinctAgentTypes(): string[] {
   return rows.map((r) => r.agent_type)
 }
 
+/** Secrets found, not detection events: one detection can hold several, and
+ *  the Loot page counts each one. */
 export function getLootCount(): number {
   const db = getReadonlyDB()
-  const row = db.prepare("SELECT COUNT(*) as count FROM events WHERE agent_type = 'loot'").get() as { count: number }
+  const row = db.prepare(
+    "SELECT COALESCE(SUM(json_array_length(data, '$.matches')), 0) as count FROM events WHERE agent_type = 'loot'"
+  ).get() as { count: number }
   return row.count
 }
 

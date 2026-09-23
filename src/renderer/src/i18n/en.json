@@ -184,7 +184,6 @@
   "bookmarks.exportHint": "Save all bookmarks as JSON",
   "loot.export": "Export",
   "loot.exportHint": "Save all loot events as JSON",
-  "loot.dedup": "dedup",
   "loot.complete": "Complete loaded set",
   "loot.recentSubset": "Recent subset",
   "loot.loadOlder": "Load older loot",

@@ -41,10 +41,6 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   const hasMoreRef = useRef(false)
   // Filter by loot type; null = show all. Chips appear at the top with counts.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
-  // Dedup toggle: same (type, preview) captured from two commands used to
-  // appear twice — audit finding #18. Default on; a chip toggles it off if
-  // the operator wants the raw stream (e.g. verifying detection cadence).
-  const [dedupOn, setDedupOn] = useState(true)
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
 
@@ -141,26 +137,13 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   // `loot.getCount()` which is the live-detection in-memory dedup set — empty
   // on a fresh launch even when historical loot events exist. That gave a
   // "戰利品 (0)" header with 2 rows visible. Now the count is exactly the
-  // matches the operator sees, post-filter, post-dedup.
-  const fullList = useMemo(() => {
-    let list = lootEvents.map((le) => ({
-      ...le,
-      matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
-    })).filter((le) => le.matches.length > 0)
-    if (dedupOn) {
-      const seen = new Set<string>()
-      list = list.map((le) => ({
-        ...le,
-        matches: le.matches.filter((m) => {
-          const k = `${m.type}|${m.preview}`
-          if (seen.has(k)) return false
-          seen.add(k)
-          return true
-        })
-      })).filter((le) => le.matches.length > 0)
-    }
-    return list
-  }, [lootEvents, typeFilter, dedupOn])
+  // matches the operator sees, post-filter. Rows are not folded here: the store
+  // already keeps one per secret per target (Spec 031), and folding on the
+  // preview line merged distinct keys that share a PEM header.
+  const fullList = useMemo(() => lootEvents.map((le) => ({
+    ...le,
+    matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
+  })).filter((le) => le.matches.length > 0), [lootEvents, typeFilter])
 
   // §9: page the rows so a large haul doesn't mount all at once. `visibleList`
   // stays the name the render uses; it's now the windowed slice.
@@ -198,15 +181,15 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         </div>
       </div>
 
-      {/* Filter + dedup chips (only when there's enough loot to matter) */}
+      {/* Type chips, when there is more than one type to choose between */}
       {lootEvents.length > 0 && (() => {
         const typeCounts = new Map<string, number>()
         for (const le of lootEvents) for (const m of le.matches) typeCounts.set(m.type, (typeCounts.get(m.type) ?? 0) + 1)
         const types = [...typeCounts.entries()].sort((a, b) => b[1] - a[1])
-        if (types.length < 2 && lootEvents.length < 5) return null
+        if (types.length < 2) return null
         return (
           <div className="flex flex-wrap gap-1 items-center">
-            {types.length > 1 && types.map(([type, count]) => (
+            {types.map(([type, count]) => (
               <button
                 key={type}
                 onClick={() => setTypeFilter(typeFilter === type ? null : type)}
@@ -217,12 +200,6 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                 <span className={typeColor[type] || ''}>{type.replace(/_/g, ' ')}</span> <span className="text-redlog-text-faint">·{count}</span>
               </button>
             ))}
-            <span className="ml-auto text-xs text-redlog-text-faint">
-              <label className="cursor-pointer inline-flex items-center gap-1">
-                <input type="checkbox" checked={dedupOn} onChange={(e) => setDedupOn(e.target.checked)} className="accent-red-600" />
-                {t('loot.dedup')}
-              </label>
-            </span>
           </div>
         )
       })()}
@@ -254,7 +231,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
               icon={Gem}
               title={t('loot.noMatches')}
               reason={t('loot.noMatchesReason')}
-              action={{ label: t('loot.clearFilter'), onClick: () => { setTypeFilter(null); setDedupOn(false) } }}
+              action={{ label: t('loot.clearFilter'), onClick: () => setTypeFilter(null) }}
             />
           )}
           {visibleList.map((le, i) => {

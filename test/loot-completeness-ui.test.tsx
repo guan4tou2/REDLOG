@@ -54,6 +54,23 @@ describe('Loot completeness UI', () => {
     expect(queryPage).toHaveBeenLastCalledWith(expect.objectContaining({ agentType: 'loot', cursor: 'older' }))
   })
 
+  // Spec 031 stores one row per secret per target. Two private keys share their
+  // header line, and one key seen on two targets differs only in the target, so
+  // folding rows by type and preview hides secrets that were stored separately.
+  it('shows every stored secret, even when two share a preview', async () => {
+    const header = '-----BEGIN RSA PRIVATE KEY-----'
+    const key = (id: string, targetId: string) => ({
+      ...lootEvent(id, header, 1),
+      targetId,
+      data: { source: 'cat', matches: [{ type: 'private_key_header', confidence: 'high', preview: header }] }
+    })
+    installBridge(vi.fn().mockResolvedValue({
+      items: [key('k1', '10.0.0.1'), key('k2', '10.0.0.1'), key('k3', '10.0.0.2')], hasMore: false, nextCursor: null
+    }))
+    render(<LootPanel />)
+    await waitFor(() => expect(screen.getAllByText(header)).toHaveLength(3))
+  })
+
   it('renders an initial rejection as a retryable failure instead of empty', async () => {
     installBridge(vi.fn().mockRejectedValue(new Error('database unavailable')))
     render(<LootPanel />)
