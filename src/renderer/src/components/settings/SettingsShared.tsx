@@ -13,13 +13,6 @@ export interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
   screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
-  // Size-pressure eviction budgets (bytes; 0 = unbounded). Distinct from the
-  // SINGULAR `screenshot` above, which is capture cadence/quality. These drive
-  // sweepBodyStore / sweepArtifactStore (src/core/retention.ts): coldest
-  // out-of-scope files are evicted first, in-scope evidence is pinned.
-  screenshots?: { maxBytes?: number }
-  terminal?: { castStoreMaxBytes?: number }
-  httpBodies?: { maxBytes?: number }
   overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
@@ -44,8 +37,13 @@ export interface ConfigState {
     enabled: boolean
     emitThinking?: boolean
   }
+  // Mirrors RedLogConfig['retention'] (Spec 028). The Settings page edits the
+  // size budgets (bytes; 0 = unbounded) and the logged-tier age.
   retention?: {
     loggedTier?: { keepDays?: number }
+    casts?: { maxBytes?: number }
+    screenshots?: { maxBytes?: number }
+    httpBodies?: { maxBytes?: number }
   }
 }
 
