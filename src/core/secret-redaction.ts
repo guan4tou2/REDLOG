@@ -12,26 +12,12 @@
 //     assistant_message / tool_input.command / tool_result.output before
 //     insert into the events table).
 
-const PATTERNS: Array<[RegExp, string]> = [
-  [
-    /(?<name>api[_-]?key|api[_-]?secret|token|password|passwd|secret|authorization)[=: ]+\S+/gi,
-    '$<name>=[REDACTED]'
-  ],
-  [/bearer\s+[A-Za-z0-9_\-.]+/gi, 'Bearer [REDACTED]'],
-  [/AKIA[0-9A-Z]{16}/g, '[AWS_KEY_REDACTED]'],
-  [/(?:sk-|sk_live_|sk_test_)[A-Za-z0-9_-]{20,}/gi, '[API_KEY_REDACTED]'],
-  [/-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----/g, '[PRIVATE_KEY_REDACTED]'],
-  [/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[JWT_REDACTED]'],
-  [/ghp_[A-Za-z0-9]{36}/g, '[GITHUB_TOKEN_REDACTED]'],
-  [/glpat-[A-Za-z0-9_-]{20}/g, '[GITLAB_TOKEN_REDACTED]'],
-  // P0 additions — common secret formats previously missed
-  [/xox[bpsa]-[A-Za-z0-9-]{10,}/g, '[SLACK_TOKEN_REDACTED]'],
-  [/npm_[A-Za-z0-9]{36,}/g, '[NPM_TOKEN_REDACTED]'],
-  [/hf_[A-Za-z0-9]{20,}/g, '[HF_TOKEN_REDACTED]'],
-  [/GOCSPX-[A-Za-z0-9_-]+/g, '[GOOGLE_OAUTH_REDACTED]'],
-  [/[a-z+]+:\/\/[^/:@\s]+:[^/@\s]+@[^\s]+/gi, '[URI_CREDENTIALS_REDACTED]'],
-  [/MII[A-Za-z0-9+/]{100,}={0,2}/g, '[BASE64_KEY_REDACTED]']
-]
+// The shapes and the order they are applied in live in `secret-patterns.ts`,
+// beside the loot detector's list, so the two can be compared in one place.
+
+import { REDACT_IN_TRANSCRIPTS, TRANSCRIPT_PREFILTER, compileShape } from './secret-patterns'
+const PATTERNS: Array<[RegExp, string]> =
+  REDACT_IN_TRANSCRIPTS.map(({ shape, replacement }) => [compileShape(shape), replacement])
 
 // v0.12.2: cheap prefilter. redactSecrets ran 8 regex replace() calls on
 // every string, including agent turn bodies that are ~always plain prose.
@@ -50,13 +36,12 @@ const PATTERNS: Array<[RegExp, string]> = [
 // (v0.12.2 originally included `[=: ]` in the union, but a literal space
 // matched every prose sentence and defeated the short-circuit; the fix is
 // to prefilter on the identifying keyword itself, not the separator.)
-const PREFILTER_RE = /api[_-]?key|api[_-]?secret|token|password|passwd|secret|authorization|bearer|AKIA|sk[-_]|BEGIN|eyJ|ghp_|glpat|xox[bpsa]-|npm_|hf_|GOCSPX|:\/\/[^/:@\s]+:[^/@\s]+@|MII[A-Za-z0-9+/]{20}/i
 
 export function redactSecrets(input: unknown): string {
   if (typeof input !== 'string' || input.length === 0) {
     return typeof input === 'string' ? input : String(input ?? '')
   }
-  if (!PREFILTER_RE.test(input)) return input
+  if (!TRANSCRIPT_PREFILTER.test(input)) return input
   let out = input
   for (const [pat, repl] of PATTERNS) out = out.replace(pat, repl)
   return out

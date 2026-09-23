@@ -37,3 +37,10 @@
 - Spec 008 records that only its private query interpretation was superseded.
 
 No unbuilt requirement remains in Spec 018.
+
+## Follow-up: Spec 026
+
+This migration covered Search and the Transcript. Two other entry points still
+used the pre-contract `searchEvents` and were missed: the ⌘K command palette
+and the local API's `/api/events/search`. Both also returned an empty result
+on a failed search. Spec 026 moves them onto the contract.

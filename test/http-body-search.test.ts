@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { parseQuery } from '../src/core/query/contract'
+import type { EventFilter } from '../src/core/db/event-queries'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -6,7 +8,7 @@ import path from 'path'
 let initDB: typeof import('../src/core/db').initDB
 let closeDB: typeof import('../src/core/db').closeDB
 let ingest: typeof import('../src/core/ingest').ingest
-let searchEventsPage: typeof import('../src/core/db/events').searchEventsPage
+let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let pruneHttpBodyIndex: typeof import('../src/core/http-body-index').pruneHttpBodyIndex
 let storeBody: typeof import('../src/core/http-body-store').storeBody
@@ -22,13 +24,24 @@ try {
   initDB = db.initDB
   closeDB = db.closeDB
   ingest = ing.ingest
-  searchEventsPage = events.searchEventsPage
+  executeEventQuery = events.executeEventQuery
   closeHttpBodyIndex = idx.closeHttpBodyIndex
   pruneHttpBodyIndex = idx.pruneHttpBodyIndex
   storeBody = bodies.storeBody
   insertEvent = events.insertEvent
   available = true
 } catch { /* native SQLite unavailable */ }
+
+
+// Spec 026: Search's paged text query is the query contract. The pagination,
+// filter and body-search assertions below were written against the retired
+// `searchEventsPage`; they run unchanged against the contract through this.
+function searchPage(opts: EventFilter & { query: string; limit?: number; cursor?: string | null }) {
+  const outcome = parseQuery(opts.query)
+  if (!outcome.ok) throw new Error(`test query did not parse: ${outcome.reason}`)
+  const { query: _query, limit, cursor, ...filter } = opts
+  return executeEventQuery({ parsed: outcome.parsed, filter, limit, cursor })
+}
 
 const describeDB = available ? describe : describe.skip
 let dir: string
@@ -57,25 +70,25 @@ describeDB('HTTP body search', () => {
 
   it('finds a marker that exists only in an externalized response body', () => {
     const id = response('f1', 'BODYMARKER-9182')
-    const page = searchEventsPage({ query: 'BODYMARKER-9182', limit: 10 })
+    const page = searchPage({ query: 'BODYMARKER-9182', limit: 10 })
     expect(page.items.map((event) => event.id)).toEqual([id])
   })
 
   it('applies target filtering before the page limit and deduplicates metadata matches', () => {
     response('outside', 'needle', 'outside.test')
     const wanted = response('wanted', 'needle', 'wanted.test')
-    const page = searchEventsPage({ query: 'needle', targetId: 'wanted.test', limit: 1 })
+    const page = searchPage({ query: 'needle', targetId: 'wanted.test', limit: 1 })
     expect(page.items.map((event) => event.id)).toEqual([wanted])
   })
 
   it('removes evicted body content from search', () => {
     const id = response('gone', 'EVICTME-7711')
-    const event = searchEventsPage({ query: 'EVICTME-7711', limit: 10 }).items[0]
+    const event = searchPage({ query: 'EVICTME-7711', limit: 10 }).items[0]
     expect(event.id).toBe(id)
     const ref = event.data.response_body_ref as { file: string; sha256: string }
     fs.unlinkSync(path.join(dir, 'http-bodies', ref.file))
     pruneHttpBodyIndex(ref.sha256, dir)
-    expect(searchEventsPage({ query: 'EVICTME-7711', limit: 10 }).items).toHaveLength(0)
+    expect(searchPage({ query: 'EVICTME-7711', limit: 10 }).items).toHaveLength(0)
   })
 
   it('backfills body references created before the derived index existed', () => {
@@ -85,6 +98,6 @@ describeDB('HTTP body search', () => {
       subtype: 'http_response', flow_id: 'legacy', response_body_ref: ref
     }, { engagementId: 'eng', operatorId: 'op', targetId: 'legacy.test' })!
 
-    expect(searchEventsPage({ query: 'LEGACYBODY-5512', limit: 10 }).items.map((item) => item.id)).toEqual([event.id])
+    expect(searchPage({ query: 'LEGACYBODY-5512', limit: 10 }).items.map((item) => item.id)).toEqual([event.id])
   })
 })

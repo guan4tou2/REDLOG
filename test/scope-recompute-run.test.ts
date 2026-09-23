@@ -28,7 +28,7 @@ try {
 
 const available = events !== null
 const IDS = { engagementId: 'eng', operatorId: 'op' }
-const scope = (targets: string[], excludeTargets: string[] = []): import('../src/core/scope-recompute').ScopeSnapshot =>
+const scope = (targets: string[], excludeTargets: string[] = []): import('../src/core/alert/policies').ScopeSnapshot =>
   ({ targets, excludeTargets, alertFloor: policies!.alertFloorFor(true) })
 
 describe.skipIf(!available)('running a scope recompute', () => {

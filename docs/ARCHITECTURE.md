@@ -259,17 +259,18 @@ Two tiers, decided by `manifest.ts:PRIVILEGED_KEYS`:
 | Tier | Contributions | Executes in RedLog? |
 |---|---|---|
 | 🟢 declarative | `lootPatterns`, `redaction`, `commandTags`, `targetExtractors`, `eventTypes`, `capture` | no |
-| 🔴 privileged | `tailers`, (`exporters`, `monitors` reserved) | yes |
+| 🔴 privileged | `tailers` (bundled only) | yes, in the main process |
 
-Privileged code runs in `utilityProcess.fork()` with a capability-scoped RPC
-surface (`read:events`, `write:events`, `read:bookmarks`, `read:config`,
-`net:outbound`), a 30 s per-call timeout, and no access to the DB handle or
-signing keys. Trust is pinned to a content hash covering the manifest plus
-every privileged code file; changing either the code or the requested
-capabilities revokes it automatically. (`mcpTools` was retired in #88.)
+Privileged code — today only a bundled tailer — is loaded into the main
+process. There is no isolated process and no capability-scoped RPC: that host
+ran nothing after v0.12 (`mcpTools`, its only user, was retired in #88) and was
+removed in Spec 027, with the `exporters` and `monitors` contributions only it
+could have run. Because a tailer is not isolated, only bundled plugins may
+contribute one (see `AUDIT-2026-08-08.md` §2, P1-3).
 
-`tailers` is the exception and currently does **not** follow this path — see
-`AUDIT-2026-08-08.md` §2 (P1-3).
+Trust is pinned to a content hash covering the manifest plus every privileged
+code file and capture hook; changing either the code or the requested
+capabilities revokes it automatically.
 
 ## 9. IPC conventions
 

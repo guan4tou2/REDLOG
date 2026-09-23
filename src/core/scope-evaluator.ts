@@ -131,6 +131,71 @@ export function matchPattern(subject: string, pattern: string): boolean {
   return s === p
 }
 
+// ─── Adjacency ──────────────────────────────────────────────────────────────
+//
+// Beyond in/out, a target can sit next to scope: the same /24 as an in-scope
+// address, or the same registrable domain as an in-scope host. That is the
+// likeliest shape of an accidental scope violation, which is why the alarm
+// warns on it. These helpers read NORMALISED input only — the adjacency rungs
+// used to see the raw subject, so `Dev.Target.com`, `dev.target.com:8443` and
+// `https://dev.target.com/x` fell through to `unrelated` beside an in-scope
+// `target.com` while the bare lowercase form was caught.
+
+/** Where a target sits relative to the scope. `in_scope` covers "no scope is
+ *  configured" too; the filter view separates that case as `no-scope`. */
+export type ScopeDistance = 'in_scope' | 'excluded' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+
+// Not the full Public Suffix List (that is megabytes), but the two-label
+// eTLDs an engagement actually meets. A naive last-two-labels would make
+// `target.co.uk` and `attacker.co.uk` siblings. A residual mismatch degrades
+// to `unrelated`, the quiet side.
+const TWO_LABEL_ETLDS = new Set([
+  'co.uk', 'co.jp', 'co.kr', 'co.nz', 'co.za', 'co.in',
+  'com.au', 'com.br', 'com.cn', 'com.hk', 'com.mx', 'com.sg', 'com.tw',
+  'org.uk', 'net.au', 'ne.jp', 'or.jp'
+])
+
+function registrableDomain(host: string): string {
+  const parts = host.split('.')
+  if (parts.length <= 2) return host
+  const lastTwo = parts.slice(-2).join('.')
+  if (TWO_LABEL_ETLDS.has(lastTwo) && parts.length >= 3) return parts.slice(-3).join('.')
+  return lastTwo
+}
+
+function subnetOf(ip: string, prefix = 24): string | null {
+  if (!isIPv4(ip)) return null
+  const net = (ipv4ToLong(ip) & (~(2 ** (32 - prefix) - 1) >>> 0)) >>> 0
+  return `${(net >>> 24) & 0xff}.${(net >>> 16) & 0xff}.${(net >>> 8) & 0xff}.${net & 0xff}/${prefix}`
+}
+
+/** The subnets and registrable domains the adjacency rungs compare against.
+ *  Derived from the allowlist alone, so a caller judging thousands of stored
+ *  rows builds it once. */
+export interface ScopeIndexes {
+  subnets: Set<string>
+  domains: Set<string>
+}
+
+export function buildScopeIndexes(targets: readonly string[]): ScopeIndexes {
+  const subnets = new Set<string>()
+  const domains = new Set<string>()
+  for (const raw of targets) {
+    const t = normalizePattern(raw)
+    if (!t) continue
+    if (t.includes('/')) {
+      const sub = subnetOf(t.split('/')[0])
+      if (sub) subnets.add(sub)
+    } else if (isIPv4(t)) {
+      const sub = subnetOf(t)
+      if (sub) subnets.add(sub)
+    } else if (!t.includes(':')) {
+      domains.add(registrableDomain(t.startsWith('*.') ? t.slice(2) : t))
+    }
+  }
+  return { subnets, domains }
+}
+
 export type ScopeDecision =
   | { status: 'in-scope';    matchedBy: string }
   | { status: 'out-of-scope' }
@@ -142,31 +207,64 @@ export interface ScopePolicy {
   excludeTargets: string[]
 }
 
-export function evaluateScope(subject: string, policy: ScopePolicy): ScopeDecision {
+/** One decision, two views. `status` is what the investigation filter needs;
+ *  `distance` is what export masking, recompute and the scope alarm need.
+ *  They cannot disagree because neither is computed separately. */
+export interface ScopeClassification {
+  status: ScopeDecision['status']
+  distance: ScopeDistance
+  matchedBy?: string
+}
+
+/**
+ * The single scope decision procedure (constitution III). The subject is
+ * normalised once, before every rung — exclusion, allowlist and both adjacency
+ * rungs — so how a host was written cannot change where it sits.
+ *
+ * A project with no allowlist is "no scope": nothing is out of scope except
+ * what is explicitly excluded. That holds whether or not exclusions exist; an
+ * exclude-only project used to classify every other target as `unrelated`,
+ * which export masking read as out of scope.
+ */
+export function classifyScope(
+  subject: string,
+  policy: ScopePolicy,
+  indexes?: ScopeIndexes
+): ScopeClassification {
   if (policy.targets.length === 0 && policy.excludeTargets.length === 0) {
-    return { status: 'no-scope' }
+    return { status: 'no-scope', distance: 'in_scope' }
   }
 
   const s = normalizeSubject(subject)
-  if (!s) return { status: 'out-of-scope' }
+  if (!s) return { status: 'out-of-scope', distance: 'unrelated' }
 
   for (const ex of policy.excludeTargets) {
-    if (matchPattern(s, ex)) {
-      return { status: 'excluded', matchedBy: ex }
-    }
+    if (matchPattern(s, ex)) return { status: 'excluded', distance: 'excluded', matchedBy: ex }
   }
 
-  if (policy.targets.length === 0) {
-    return { status: 'no-scope' }
-  }
+  if (policy.targets.length === 0) return { status: 'no-scope', distance: 'in_scope' }
 
   for (const t of policy.targets) {
-    if (matchPattern(s, t)) {
-      return { status: 'in-scope', matchedBy: t }
-    }
+    if (matchPattern(s, t)) return { status: 'in-scope', distance: 'in_scope', matchedBy: t }
   }
 
-  return { status: 'out-of-scope' }
+  const idx = indexes ?? buildScopeIndexes(policy.targets)
+  if (isIPv4(s)) {
+    const sub = subnetOf(s)
+    if (sub && idx.subnets.has(sub)) return { status: 'out-of-scope', distance: 'adjacent_subnet' }
+  } else if (idx.domains.has(registrableDomain(s))) {
+    return { status: 'out-of-scope', distance: 'adjacent_domain' }
+  }
+  return { status: 'out-of-scope', distance: 'unrelated' }
+}
+
+/** The filter view of `classifyScope`. */
+export function evaluateScope(subject: string, policy: ScopePolicy): ScopeDecision {
+  const c = classifyScope(subject, policy)
+  if (c.status === 'in-scope' || c.status === 'excluded') {
+    return { status: c.status, matchedBy: c.matchedBy as string }
+  }
+  return { status: c.status }
 }
 
 // Convenience: boolean check used by most surfaces
