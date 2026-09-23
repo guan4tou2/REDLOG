@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import Sidebar from './components/Sidebar'
 import { Wordmark } from './components/Wordmark'
 import StatusBar from './components/StatusBar'
@@ -27,6 +27,8 @@ const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then
 
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
+import { parseTarget } from './lib/navigation'
+import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
 import { FilterBar } from './components/FilterBar'
@@ -60,7 +62,17 @@ export default function App(): JSX.Element {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [recordingOn, setRecordingOn] = useState(true)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
+  // The Settings page a link asked for; see lib/navigation.ts.
+  const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage } | null>(null)
   const { t } = useI18n()
+
+  // Every link, the palette, the sidebar and the status bar go through here,
+  // so a target that names a Settings page opens that page.
+  const navigate = useCallback((target: string): void => {
+    const { view: next, settingsPage } = parseTarget(target)
+    setSettingsRequest(settingsPage ? { page: settingsPage } : null)
+    setView(next as View)
+  }, [])
 
   // Visibility / first-run state is fully managed by the extracted hook.
   const { visibility, firstRunActive } = useVisibility(project, view)
@@ -69,6 +81,16 @@ export default function App(): JSX.Element {
     window.redlog.project.active().then((p) => {
       if (p) setProject(p)
     })
+  }, [])
+
+  // Settings renames the project; the title bar reads this state.
+  useEffect(() => {
+    const onRenamed = (e: Event): void => {
+      const name = (e as CustomEvent<string>).detail
+      setProject((p) => (p ? { ...p, name } : p))
+    }
+    window.addEventListener('redlog:project-renamed', onRenamed)
+    return () => window.removeEventListener('redlog:project-renamed', onRenamed)
   }, [])
 
   useEffect(() => {
@@ -96,7 +118,7 @@ export default function App(): JSX.Element {
   // Cmd/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
   // Also handles app-wide shortcuts (palette, find-in-page, recording toggle,
   // HUD corner). Extracted to hooks/useAppShortcuts.ts.
-  useAppShortcuts(project, view, setView, setPaletteOpen, t)
+  useAppShortcuts(project, view, navigate, setPaletteOpen, t)
 
   if (!project) {
     return (
@@ -157,7 +179,7 @@ export default function App(): JSX.Element {
           {/* §10: one export control, in the shell rather than six places.
               Its scope is an option, not a location. */}
           <ExportMenu totalCount={exportableCount} />
-          <LaunchBrowserButton onNavigate={(v) => setView(v as View)} />
+          <LaunchBrowserButton onNavigate={navigate} />
           <button
             onClick={() => setShowMarker(true)}
             className="px-2.5 py-1 text-xs font-medium bg-red-500/10 text-red-400 rounded-md hover:bg-red-500/20 border border-red-500/15 transition-colors"
@@ -173,14 +195,14 @@ export default function App(): JSX.Element {
         <Sidebar
           active={view}
           visibleViews={visibility.views}
-          onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); setView(v as View) }}
+          onNavigate={(v) => { setFocusEvent(null); setFocusTarget(null); navigate(v) }}
         />
 
         <div className="flex-1 min-w-0 select-text flex flex-col" data-testid="view-root" data-view={view}>
           {showFilterBar && <FilterBar />}
           <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
-            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={firstRunActive} />}
+            {view === 'dashboard' && <DashboardView onNavigate={navigate} firstRun={firstRunActive} projectName={project.name} />}
             {view === 'terminal' && <Suspense fallback={null}><TerminalView /></Suspense>}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
@@ -204,14 +226,14 @@ export default function App(): JSX.Element {
                 />
               </Suspense>
             )}
-            {view === 'screenshots' && <ScreenshotsView onNavigate={(v) => setView(v as View)} />}
+            {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
             {view === 'search' && <SearchPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts, target) => { setFocusEvent({ id: '', ts }); setFocusTarget(target ?? null); setView('timeline') }} />}
             {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => { setFocusEvent({ id: '', ts }); setView('timeline') }} />}
             {view === 'http_history' && <Suspense fallback={null}><HttpHistoryPanel onOpenInTimeline={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }} /></Suspense>}
-            {view === 'settings' && <Suspense fallback={null}><Settings /></Suspense>}
+            {view === 'settings' && <Suspense fallback={null}><Settings request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           </div>
         </div>
@@ -225,7 +247,7 @@ export default function App(): JSX.Element {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onNavigate={(v) => setView(v as View)}
+        onNavigate={navigate}
         onOpenEvent={(id, ts) => { setFocusEvent({ id, ts }); setView('timeline') }}
         recording={recordingOn}
       />

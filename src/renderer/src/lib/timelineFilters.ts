@@ -2,7 +2,6 @@ import type { RedLogEvent } from '../../../core/db/event-types'
 import { groupAmendments, foldMarker } from './markerFold'
 import { eventTitle } from './eventTitle'
 import { hostInScope } from './scope'
-import { fuzzyScore } from './timelineEvents'
 import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './timelineDomain'
 
 /**
@@ -90,71 +89,6 @@ export function computeScopeMatches(
     if (hostInScope(e.targetId, [...scopeTargets], [...excludeTargets])) set.add(e.id)
   }
   return set
-}
-
-// ── Command palette scoring ─────────────────────────────────────────
-
-export type PaletteItem =
-  | { kind: 'event' | 'marker'; event: RedLogEvent; label: string; sub: string; score: number; ts: number }
-  | { kind: 'operator' | 'host'; value: string; label: string; sub: string; score: number; ts: number }
-
-/**
- * Fuzzy-match `query` against events, marker titles, operator names
- * and distinct hosts. Returns the top 20 by score then recency.
- * `titleFn` resolves the display title for each event (handles
- * amendment folding, which depends on component-level state).
- */
-export function computePaletteResults(
-  events: readonly RedLogEvent[],
-  operatorNames: Record<string, string>,
-  query: string,
-  titleFn: (e: RedLogEvent) => string
-): PaletteItem[] {
-  const q = query.trim()
-  if (!q) return []
-  const items: PaletteItem[] = []
-  for (const e of events) {
-    const d = e.data as Record<string, unknown> | undefined
-    const fields = [
-      titleFn(e),
-      String(d?.command ?? ''),
-      String(d?.url ?? ''),
-      String(d?.host ?? ''),
-      String(d?.title ?? ''),
-      String(d?.subtype ?? '')
-    ]
-    let best = -1
-    for (const f of fields) { const s = fuzzyScore(f, q); if (s > best) best = s }
-    if (best > 0) {
-      items.push({
-        kind: e.agentType === 'marker' ? 'marker' : 'event',
-        event: e,
-        label: titleFn(e),
-        sub: e.agentType,
-        score: best,
-        ts: e.timestamp
-      })
-    }
-  }
-  const seenOp = new Set<string>()
-  for (const [id, name] of Object.entries(operatorNames)) {
-    const s = Math.max(fuzzyScore(name, q), fuzzyScore(id, q))
-    if (s > 0 && !seenOp.has(name)) {
-      seenOp.add(name)
-      items.push({ kind: 'operator', value: name, label: name, sub: id, score: s, ts: 0 })
-    }
-  }
-  const hosts = new Set<string>()
-  for (const e of events) {
-    const h = e.data?.host as unknown
-    if (typeof h === 'string' && h) hosts.add(h)
-  }
-  for (const h of hosts) {
-    const s = fuzzyScore(h, q)
-    if (s > 0) items.push({ kind: 'host', value: h, label: h, sub: 'host', score: s, ts: 0 })
-  }
-  items.sort((a, b) => (b.score - a.score) || (b.ts - a.ts))
-  return items.slice(0, 20)
 }
 
 // ── Viewport windowing ─────────────────────────────────────────────

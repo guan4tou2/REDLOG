@@ -103,7 +103,6 @@ export default function OverlayApp(): JSX.Element {
   useEffect(() => {
     if (status?.ipSafety === 'exposed' && !expanded) {
       setExpanded(true)
-      window.redlog.overlay.setExpanded!(true)
     }
   }, [status?.ipSafety])
 
@@ -134,12 +133,10 @@ export default function OverlayApp(): JSX.Element {
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [expanded, interactive, pinned, status?.ipSafety])
 
-  const collapse = (): void => { setExpanded(false); window.redlog.overlay.setExpanded!(false) }
-  const toggleExpand = (): void => {
-    const next = !expanded
-    setExpanded(next)
-    window.redlog.overlay.setExpanded!(next)
-  }
+  // The window height follows the content through overlay:autosize, so expanding
+  // is renderer state only.
+  const collapse = (): void => setExpanded(false)
+  const toggleExpand = (): void => setExpanded(!expanded)
 
   // fs = font-size scaler; ip = extra emphasis for the external IP.
   // Clamp scale to a sane band so a rogue config can't blow the HUD up beyond

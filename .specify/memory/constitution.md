@@ -104,8 +104,15 @@ Each feature artifact set MUST:
 - order tasks from failing behavior tests through implementation, integration,
   verification, and domain-document status updates;
 - distinguish Implemented from Verified;
-- preserve a reviewable record of the RED failure reason and final verification
-  evidence.
+- record, in `verification.md` built from
+  `.specify/templates/overrides/verification-template.md`, the RED failure
+  reason, the final verification evidence, and the outcome of every workflow
+  gate — including a gate that ran clean or was not required, with the reason.
+  Analyze, a question-free Clarify and a clean Converge write nothing
+  themselves, so this record is the only evidence that they ran.
+
+CI (`npm run verify:specs`) rejects an unknown status value and a Verified
+feature whose artifacts or verification record do not meet this section.
 
 Small, diagnosed defects MAY use the shorter assess → fix → verify workflow.
 They MUST still comply with every applicable principle. A passing local subset
@@ -130,4 +137,4 @@ applicable gate is unmet.
 The Sync Impact Report at the top is review scaffolding and MUST be removed
 before the constitution change is committed.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-19 | **Last Amended**: 2026-09-19
+**Version**: 1.1.0 | **Ratified**: 2026-09-19 | **Last Amended**: 2026-09-23

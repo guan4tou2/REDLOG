@@ -36,24 +36,6 @@ export function buildManagedProxyArgs(addonPath: string, port: number): string[]
   ]
 }
 
-export function isManagedLoopbackProxy(proxyUrl: string, port: number): boolean {
-  try {
-    const parsed = new URL(proxyUrl)
-    return parsed.protocol === 'http:'
-      && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost')
-      && Number(parsed.port || 80) === port
-  } catch {
-    return false
-  }
-}
-
-export function isLoopbackHttpProxy(proxyUrl: string): boolean {
-  try {
-    const parsed = new URL(proxyUrl)
-    return parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost')
-  } catch { return false }
-}
-
 export class ManagedHttpProxy {
   private child: ChildProcess | null = null
   private snapshot: ManagedProxyStatus = { state: 'stopped', url: null }

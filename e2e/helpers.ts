@@ -14,7 +14,7 @@ export interface RedLogBridge {
     list: () => Promise<Array<{ id: string; name: string; lastOpened: number }>>
   }
   chain: {
-    verify: (opts?: { full?: boolean }) => Promise<{ ok: boolean; brokenAtEventId?: string }>
+    verify: () => Promise<{ ok: boolean; brokenAtEventId?: string }>
   }
 }
 

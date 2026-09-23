@@ -1,4 +1,5 @@
 import type { RedLogEvent } from '../../../core/db/event-types'
+import { violationStanding } from '../../../core/scope-violation-standing'
 import { groupAmendments, foldMarker, isMarkerOriginal, type MarkerFold } from './markerFold'
 import { computeBadges, type EventBadge } from './timelineDomain'
 
@@ -26,11 +27,6 @@ export interface ViolationStanding {
   superseded: Set<string>
 }
 
-/**
- * Which scope violations no longer stand — either explicitly cleared
- * (`scope_cleared` naming a `violation_id`) or superseded by a newer
- * violation citing the same source event. `events` must be newest-first.
- */
 /**
  * Fold index: for each original marker, the folded effective values
  * incorporating all its amendments. Skips markers with no amendments.
@@ -65,24 +61,13 @@ export function buildBadgeIndex(
   return m
 }
 
+/** Which loaded violations no longer stand, by the recompute's own rule. */
 export function computeViolationStanding(events: readonly RedLogEvent[]): ViolationStanding {
-  const cleared = new Set<string>()
-  const superseded = new Set<string>()
-  const latestBySource = new Map<string, string>()
-  for (const e of events) {
-    if (e.agentType !== 'system') continue
-    const d = (e.data ?? {}) as Record<string, unknown>
-    if (d.subtype === 'scope_cleared') {
-      if (typeof d.violation_id === 'string') cleared.add(d.violation_id)
-      continue
-    }
-    if (d.subtype !== 'scope_violation') continue
-    const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
-    const src = typeof causes[0] === 'string' ? (causes[0] as string) : null
-    if (!src) continue
-    if (latestBySource.has(src)) superseded.add(e.id)
-    else latestBySource.set(src, e.id)
-  }
-  return { cleared, superseded }
+  const { cleared, supersededBy } = violationStanding(
+    events
+      .filter((e) => e.agentType === 'system')
+      .map((e) => ({ id: e.id, createdAt: e.createdAt, data: (e.data ?? {}) as Record<string, unknown> }))
+  )
+  return { cleared, superseded: new Set(supersededBy.keys()) }
 }
 

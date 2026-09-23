@@ -155,8 +155,8 @@ test.describe.serial('recording pause semantics', () => {
 
   test('the chain is intact across the pause', async () => {
     const v = await page.evaluate(async () =>
-      (window as unknown as { redlog: { chain: { verify: (o?: { full?: boolean }) => Promise<{ ok: boolean; walked?: number }> } } })
-        .redlog.chain.verify({ full: true }))
+      (window as unknown as { redlog: { chain: { verify: () => Promise<{ ok: boolean; walked?: number }> } } })
+        .redlog.chain.verify())
     expect(v.ok, 'dropping rows before insert must never break prev_hash linkage').toBeTruthy()
   })
 })

@@ -5,6 +5,7 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { toast } from './Toast'
 import { useViewExport } from '../lib/exportScope'
 import { formatDateTime } from '../lib/time'
+import { capabilitiesFor } from '../../../core/export-capabilities'
 
 export interface ExportMenuProps {
   totalCount?: number
@@ -104,8 +105,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
 
   const empty = totalCount === 0
 
-  const Option = ({ label, onPick, disabled: off }: {
-    label: string; onPick: () => void; disabled?: boolean
+  const Option = ({ label, onPick, disabled: off, hint }: {
+    label: string; onPick: () => void; disabled?: boolean; hint?: string
   }): JSX.Element => (
     <button
       onClick={onPick}
@@ -113,8 +114,13 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
       className="w-full text-left px-3 py-2 hover:bg-redlog-elevated focus-visible:outline-none focus-visible:bg-redlog-elevated disabled:opacity-40 disabled:cursor-not-allowed"
     >
       <span className="block text-xs text-redlog-text">{label}</span>
+      {hint && <span className="block text-xs text-redlog-text-faint">{hint}</span>}
     </button>
   )
+  // Sharing mode scrubs operator PII; a format that cannot is refused by the
+  // plan resolver, so it is not offered here.
+  const cannotShare = (format: ExportFormat): boolean => sharing && !capabilitiesFor(format).piiScrubbing
+  const shareHint = (format: ExportFormat): string | undefined => cannotShare(format) ? t('export.cannotScrub') : undefined
 
   const PreviewRow = ({ label, value, warn }: { label: string; value: number; warn?: boolean }): JSX.Element | null => {
     if (value === 0) return null
@@ -278,7 +284,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 {viewExport && (
                   <Option
                     label={viewExport.label}
-                    disabled={empty}
+                    disabled={empty || cannotShare(viewExport.request.format)}
+                    hint={shareHint(viewExport.request.format)}
                     onPick={() => void loadPreview({ label: viewExport.label, request: { ...viewExport.request, sharing } })}
                   />
                 )}
@@ -300,7 +307,8 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 {/* ── Evidence bundle (separate — different semantics) ── */}
                 <Option
                   label={t('export.bundle')}
-                  disabled={empty}
+                  disabled={empty || cannotShare('bundle')}
+                  hint={shareHint('bundle')}
                   onPick={() => void loadPreview({
                     label: t('export.bundle'),
                     request: { format: 'bundle', sharing, maskOutOfScope: maskScope }

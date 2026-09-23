@@ -19,10 +19,10 @@ interface ScopeBridge {
     save: (c: Record<string, unknown>) => Promise<boolean>
   }
   scope: {
-    getViolations: () => Promise<Array<{ judged: string; cleared: boolean; target: string }>>
+    getViolations: () => Promise<{ rows: Array<{ judged: string; cleared: boolean; target: string }>; truncated: boolean }>
     getLastRecompute: () => Promise<Record<string, unknown> | null>
   }
-  chain: { verify: (o?: { full?: boolean }) => Promise<{ ok: boolean }> }
+  chain: { verify: () => Promise<{ ok: boolean }> }
 }
 
 const post = async (agent_type: string, data: Record<string, unknown>): Promise<void> => {
@@ -95,7 +95,7 @@ test.describe.serial('recomputing scope after the boundary moves', () => {
 
   test('the original rows were not touched and the chain still verifies', async () => {
     const verdict = await page.evaluate(() =>
-      (window as unknown as { redlog: ScopeBridge }).redlog.chain.verify({ full: true }))
+      (window as unknown as { redlog: ScopeBridge }).redlog.chain.verify())
     expect(verdict.ok).toBe(true)
   })
 
@@ -109,7 +109,7 @@ test.describe.serial('recomputing scope after the boundary moves', () => {
     expect(summary!.cleared).toBe(3)
 
     // The violations are still there — withdrawn, not deleted.
-    const rows = await page.evaluate(() =>
+    const { rows } = await page.evaluate(() =>
       (window as unknown as { redlog: ScopeBridge }).redlog.scope.getViolations())
     expect(rows.length).toBe(3)
     expect(rows.every((r) => r.cleared)).toBe(true)
