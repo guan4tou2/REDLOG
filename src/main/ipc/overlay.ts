@@ -166,8 +166,6 @@ export function registerOverlayIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       setImmediate(() => { if (!overlayWindow!.isDestroyed()) overlayWindow!.setOpacity(1) })
     }
   })
-  // setExpanded only toggles state now; the height comes from autosize.
-  ipcMain.on('overlay:setExpanded', () => { /* height handled by overlay:autosize */ })
   // Snap HUD to one of the four corners of the display it's currently on —
   // driven by the main window's ⌘⌥ arrow shortcuts (audit finding #53). The
   // renderer just sends the compass direction; we compute bounds here so we

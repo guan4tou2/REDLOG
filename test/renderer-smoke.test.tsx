@@ -221,9 +221,9 @@ function installBridge(): void {
       list: async () => [], onData: () => unsub, onExit: () => unsub
     },
     overlay: {
-      toggle: () => {}, hide: () => {}, show: () => {},
+      toggle: () => {}, hide: () => {},
       isVisible: async () => false, onVisibilityChanged: () => unsub,
-      onInteractive: () => unsub, setExpanded: () => {}, quickMark: () => {},
+      onInteractive: () => unsub, quickMark: () => {},
       mouseEnter: () => {}, mouseLeave: () => {}
     }
   }
@@ -294,7 +294,6 @@ describe('renderer views render without throwing', () => {
     const bridge = (window as unknown as { redlog: { overlay: Record<string, ReturnType<typeof vi.fn>> } }).redlog
     bridge.overlay.mouseEnter = vi.fn()
     bridge.overlay.mouseLeave = vi.fn()
-    bridge.overlay.setExpanded = vi.fn()
     bridge.overlay.hide = vi.fn()
 
     const { container } = render(<I18nProvider><OverlayApp /></I18nProvider>)
@@ -305,7 +304,7 @@ describe('renderer views render without throwing', () => {
     expect(bridge.overlay.mouseEnter).toHaveBeenCalledOnce()
 
     fireEvent.click(expand)
-    expect(bridge.overlay.setExpanded).toHaveBeenCalledWith(true)
+    expect(screen.getByRole('button', { name: /hide details|收合詳細資訊/i })).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /hide hud|隱藏 hud/i }))
     expect(bridge.overlay.hide).toHaveBeenCalledOnce()
