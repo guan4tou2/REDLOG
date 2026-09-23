@@ -1,3 +1,4 @@
+import { eventTitle } from '../lib/eventTitle'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
@@ -19,6 +20,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
   const d = e.data
+  if (e.agentType === 'shell' && d.subtype === 'session_output') return eventTitle(e)
   if (e.agentType === 'shell') return `$ ${(d.command as string)?.slice(0, 120) || ''}`
   if (e.agentType === 'screenshot') return `Screenshot (${d.trigger})`
   if (e.agentType === 'clipboard') return `Clipboard: ${(d.content as string)?.slice(0, 80) || ''}`

@@ -24,10 +24,10 @@ continues to perform all event ingestion.
 1. Add a managed-proxy service with injected process/path dependencies for
    deterministic lifecycle tests.
 2. Add IPC and preload contracts for status/start/stop.
-3. Auto-start on project open when available and stop on project close.
+3. Start only on an explicit capture/browser action; stop on project close.
 4. Gate the proxied-browser launch on managed readiness for matching loopback
    proxy URLs.
-5. Configure terminal-manager with the live URL and inject it only at spawn.
+5. Configure terminal-manager with the live URL and inject it only at spawn with explicit project routing consent.
 6. Add a compact HTTP capture control beside the browser action and truthful
    bilingual states.
 

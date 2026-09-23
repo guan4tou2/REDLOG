@@ -8,7 +8,7 @@
 // least one event of every agent_type, which is exactly the shape that broke.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
@@ -211,14 +211,7 @@ function installBridge(): void {
       evidenceSeen: true, transcriptSeen: true, targetCount: 2, lootSeen: true,
       screenshotSeen: true, markSeen: true, httpFlowSeen: true, loggedEver: true
     }) },
-    recording: {
-      get: async () => true,
-      getMode: async () => 'recording' as const,
-      setMode: async (mode: 'recording' | 'paused' | 'reporting') => mode,
-      toggle: async () => true,
-      onChange: () => unsub,
-      onModeChange: () => unsub
-    },
+    recording: { get: async () => true, toggle: async () => true, onChange: () => unsub },
     pivots: {
       getActive: async () => [{ via: '10.0.0.5', tool: 'ligolo-ng', route: '10.10.20.0/24', ts: Date.now() }],
       onChange: () => unsub
@@ -287,17 +280,6 @@ describe('renderer views render without throwing', () => {
   it('TargetView survives rendering actual target rows', async () => {
     renderView(<TargetView />)
     expect(await screen.findByText('example.com', {}, { timeout: 3000 })).toBeTruthy()
-  })
-
-  it('offers an explicit report mode action without hiding the workspace', async () => {
-    const bridge = (window as unknown as { redlog: { recording: { setMode: ReturnType<typeof vi.fn> } } }).redlog
-    bridge.recording.setMode = vi.fn(async (mode: 'recording' | 'paused' | 'reporting') => mode)
-    renderView(<App />)
-    const button = await screen.findByTestId('report-mode-toggle')
-    expect(button.getAttribute('data-active')).toBe('false')
-    fireEvent.click(button)
-    await waitFor(() => expect(bridge.recording.setMode).toHaveBeenCalledWith('reporting'))
-    expect(screen.getByTestId('view-root')).toBeTruthy()
   })
 
   it('Timeline renders a row for every agent_type without a missing-lane crash', async () => {

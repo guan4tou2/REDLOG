@@ -1,23 +1,18 @@
-# Verification: Report Mode
+# Verification: Report Mode withdrawal
 
-## Automated checks
+The previous reporting feature is withdrawn. Its prior verification describes
+an abandoned implementation and is preserved in Git history only.
 
-- `npm run typecheck`
-- `npx vitest run test/event-bus.test.ts test/renderer-smoke.test.tsx`
-- `npm run build`
-- `npm run verify:specs`
-- `npx playwright test e2e/report-mode.spec.ts`
-- `npm test`
+Current acceptance: ordinary pause/resume remains functional and leaves search,
+replay and export available. No reporting button, IPC, or third state remains.
+Verification is recorded in the current implementation task results.
 
-## Observable behavior
+## 2026-09-23 results
 
-- The title bar exposes one explicit **Write report** action and changes it to
-  **Resume recording** while active.
-- Status Bar reports `REPORTING` separately from a manual `PAUSED` state.
-- Re-entering the current mode is a no-op and cannot create duplicate audit
-  boundaries.
-- An external event submitted during report mode receives the normal paused
-  response and is absent from search.
-- Search and export-plan resolution remain callable during report mode.
-- Leaving the mode writes `report_mode_started` and `report_mode_ended` chained
-  events around the gap.
+- Removed reporting state, IPC, preload, UI, translations and report-mode tests.
+- Recording flow and pause semantics: 11 Electron checks passed.
+- External-session desktop journey: output can be expanded, searched and
+  exported while paused. No third recording state is required.
+- Repeated pause/resume calls remain idempotent; event-bus tests cover the audit
+  boundary count. Existing cast replay does not depend on recording state.
+- Full suite: 2,243 passed, 2 platform-specific skips; typecheck/build pass.

@@ -8,7 +8,7 @@ import { shellAdapterFilename } from '../src/core/shell-flavour'
 const read = (relative: string): string => fs.readFileSync(path.resolve(relative), 'utf8')
 
 describe('shell adapter boundaries', () => {
-  it('declares distinct bash and zsh adapters with one shared support file', () => {
+  it('declares distinct bash and zsh adapters with their shared transport and session recorder', () => {
     const producers = starterPack.builtinProducers as Array<{
       id: string
       hookFile: string
@@ -20,10 +20,10 @@ describe('shell adapter boundaries', () => {
     ]) {
       const producer = producers.find((candidate) => candidate.id === id)
       expect(producer?.hookFile).toBe(hookFile)
-      expect(producer?.supportFiles).toEqual(['hooks/shell-common.sh'])
+      expect(producer?.supportFiles).toEqual(['hooks/shell-common.sh', 'hooks/redlog-session.py'])
       const fallback = STARTER_PACK_FALLBACK.find((candidate) => candidate.id === id)
       expect(fallback?.hookFile).toBe(hookFile)
-      expect(fallback?.supportFiles).toEqual(['hooks/shell-common.sh'])
+      expect(fallback?.supportFiles).toEqual(['hooks/shell-common.sh', 'hooks/redlog-session.py'])
     }
   })
 

@@ -1,6 +1,3 @@
-# Implementation Plan: Report Mode
+# Plan: withdraw Report Mode
 
-Extend EventBus pause state with a reason, expose a three-state IPC contract,
-and add one explicit header control. Preserve the boolean recording API for
-existing callers and overlays.
-
+Remove the third state and its surfaces. Preserve ordinary pause/resume.

@@ -178,7 +178,7 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions are captured by the built-in transcript tailer, which records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions can be captured by enabling the built-in transcript tailer, which records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 
@@ -188,7 +188,12 @@ source /path/to/redlog/hooks/shell-zsh-hook.zsh  # ~/.zshrc
 source /path/to/redlog/hooks/shell-bash-hook.sh  # ~/.bashrc
 ```
 
-Captures every command with start/end timestamps, exit code, and duration. Works with Claude Code, Codex, Cursor, OpenCode, or any tool that spawns a shell.
+The adapters record interactive command metadata: start/end timestamps, exit
+code, and duration. For explicit output recording on macOS/Linux, run
+`redlog-session` to enter a recorded shell, or `redlog-session -- ssh user@host`
+for one command. Python 3 is required. Output is bounded and searchable; see
+[external session recording](docs/external-session-recording.md) for pause,
+project isolation, truncation and platform limits.
 
 **Codex/GPT wrapper (for agents you can't hook):**
 

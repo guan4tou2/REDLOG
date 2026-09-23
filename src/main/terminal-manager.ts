@@ -28,9 +28,10 @@ export function configureTerminalProxy(provider: () => string | null): void {
 
 export function withManagedProxyEnv(
   base: Record<string, string | undefined>,
-  proxyUrl: string | null
+  proxyUrl: string | null,
+  enabled = false
 ): Record<string, string | undefined> {
-  if (!proxyUrl) return { ...base }
+  if (!enabled || !proxyUrl) return { ...base }
   return {
     ...base,
     HTTP_PROXY: proxyUrl,
@@ -341,7 +342,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     rows,
     cwd,
     env: {
-      ...withManagedProxyEnv(process.env, managedProxyUrlProvider()),
+      ...withManagedProxyEnv(process.env, managedProxyUrlProvider(), true),
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
       REDLOG_TERMINAL: '1',

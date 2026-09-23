@@ -174,6 +174,7 @@ export interface RedLogConfig {
   httpCapture: {
     /** Port owned by RedLog's managed regular-mode mitmdump process. */
     port: number
+    routeTerminals: boolean
   }
   redaction: {
     allowlist: string[]
@@ -339,6 +340,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     extraArgs: []
   },
   httpCapture: {
+    routeTerminals: false,
     port: 8080
   },
   redaction: {

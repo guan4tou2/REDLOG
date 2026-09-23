@@ -10,12 +10,17 @@ for full commit body + generated notes.
   the delivery-time personal-domain exclusion policy is unchanged.
 - AI agent transcript capture remains opt-in even for partial or hand-written
   project configs, so unrelated sessions under the operator home are not read.
-- Report Mode now pauses new evidence through the canonical write gate while
-  keeping search, replay, filters, and export available. The header, status bar,
-  and chained audit events distinguish report writing from an unexplained pause.
+- Removed the separate Report Mode: ordinary pause keeps search, replay and
+  export available. Writing reports no longer has a second pause control.
+- HTTP capture starts only through an explicit action; terminal proxy routing
+  is a separate opt-in that applies to newly opened panes.
+- Personal-traffic filtering now explains its target-only coverage and is
+  directly available on Loot.
+- Added explicit POSIX `redlog-session` PTY output capture with bounded output,
+  pinned engagement identity, pause handling and visible omission summaries.
 - RedLog now starts and owns its local mitmproxy capture process, exposes
   stopped/starting/running/unavailable/failed states, gates the proxied browser
-  on real readiness, and routes newly opened built-in terminals through the
+  on real readiness, and optionally routes newly opened built-in terminals through the
   live proxy with standard HTTP(S) proxy environment variables.
 - Managed HTTP capture now has one project-level port setting, reports its HTTPS
   CA path without changing system trust, separates listener readiness from

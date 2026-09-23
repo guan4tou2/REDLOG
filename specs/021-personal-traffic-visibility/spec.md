@@ -22,3 +22,9 @@ crowding the operator's default investigation view.
 
 - A localhost burst cannot displace work events from a result page.
 - The operator can reveal all locally retained rows with one click.
+
+## Clarification
+
+The filter only hides events with matching target metadata. Untargeted events
+and terminal cast contents are not classified as private; UI must state this
+limitation. Loot must expose the same visible reveal control.

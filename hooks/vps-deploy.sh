@@ -91,6 +91,7 @@ case "$ACTION" in
     ssh -p "$SSH_PORT" "$TARGET" "mkdir -p ~/.redlog/hooks"
     scp -P "$SSH_PORT" \
       "$SCRIPT_DIR/shell-common.sh" \
+      "$SCRIPT_DIR/redlog-session.py" \
       "$SCRIPT_DIR/shell-bash-hook.sh" \
       "$SCRIPT_DIR/shell-zsh-hook.zsh" \
       "$TARGET:~/.redlog/hooks/"
