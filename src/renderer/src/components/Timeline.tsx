@@ -442,10 +442,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   }, [])
 
   // On new selection: snap the detail panel back to the top, collapse the JSON
-  // dump, and RE-MASK any previously-revealed events (audit finding #1).
-  // Reveal was sticky per-session — leaving and coming back kept everything
-  // unmasked, which weakens the mask-by-default contract. Now reveal only
-  // applies to the actively-focused event.
+  // dump, and read the selected event's do-not-export flag. (This effect also
+  // used to re-mask revealed secrets; in-app masking was removed in §10, so
+  // there is nothing left to re-mask.)
   useEffect(() => {
     setShowJson(false)
     setDneFlag(false)
@@ -1402,9 +1401,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
-    // Respect the current mask/reveal state (audit finding #2). If the panel
-    // shows a masked view, the clipboard gets the masked view too — a
-    // reviewer copying an event to paste into chat / a report shouldn't have
     // §10: no masked variant. The data is already on the operator's own
     // machine — masking it here protected nothing and cost a step, and the
     // "did I remember to hit Reveal?" question meant a copied JSON could be

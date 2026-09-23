@@ -222,7 +222,7 @@ describe.skipIf(!available)('amending a marker', () => {
 
   describe('what search can and cannot do afterwards', () => {
     it('still finds the marker by what it used to say, and the amendment by what it says now', () => {
-      // searchEvents is a LIKE over each row's own bytes. The original keeps its
+      // Search matches each row's own content. The original keeps its
       // recorded title — that IS "the original is still searchable" — and the new
       // title exists only on the amendment row, which is why SearchPanel has to
       // resolve an amendment hit back to its marker rather than show the operator
