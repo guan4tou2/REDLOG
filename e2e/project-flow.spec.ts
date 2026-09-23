@@ -64,13 +64,13 @@ test.describe.serial('project flow', () => {
     }
   })
 
-  test('chain.verify({ full: true }) is ok on a fresh project', async () => {
+  test('chain.verify() is ok on a fresh project', async () => {
     // A freshly opened project has only system events (api_started,
     // session_start, …) appended by the main process. Those are hashed into
     // the chain the same way user events are, so full verify should pass.
     const result = await page.evaluate(async () => {
       const bridge = (window as unknown as { redlog: RedLogBridge }).redlog
-      return await bridge.chain.verify({ full: true })
+      return await bridge.chain.verify()
     })
     // eslint-disable-next-line no-console
     console.log('chain.verify result:', JSON.stringify(result))

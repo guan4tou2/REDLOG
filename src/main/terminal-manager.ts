@@ -157,6 +157,23 @@ function resolveShellHook(shell: string, innerShell?: string): string | null {
 }
 
 const sessions = new Map<string, TerminalSession>()
+
+// 2b per-pane 記錄中/未記錄 chip (§5b/§2). A pane is recording only while a
+// cast stream is open and has not hit the size cap; a null stream means the
+// cast never opened (e.g. casts/ unwritable) and the pane runs unrecorded — a
+// state the operator must be able to see, not a silent gap. While recording is
+// paused no frame is written (appendCastFrame), so an open cast reads as paused.
+export function castState(s: Pick<TerminalSession, 'castStream' | 'castTruncated'>): {
+  recording: boolean; castTruncated: boolean; paused: boolean
+} {
+  const open = s.castStream !== null && !s.castTruncated
+  return { recording: open && !eventBus.paused, castTruncated: s.castTruncated, paused: open && eventBus.paused }
+}
+
+eventBus.on('recording', () => {
+  for (const s of sessions.values()) sendToWindow(`terminal:castState:${s.id}`, castState(s))
+})
+
 let mainWindow: BrowserWindow | null = null
 let engagementId = ''
 let operatorId = ''
@@ -189,7 +206,7 @@ function appendCastFrame(session: TerminalSession, type: 'o' | 'r', data: string
     } catch { /* live terminal must survive a recording failure */ }
     session.castStream = null
     session.castTruncated = true
-    sendToWindow(`terminal:castState:${session.id}`, { recording: false, castTruncated: true })
+    sendToWindow(`terminal:castState:${session.id}`, castState(session))
     return false
   }
   try {
@@ -282,10 +299,11 @@ export interface SpawnResult {
   /** False when this pane records no commands: its shell has no hook, or the
    *  hook file is missing from the install. */
   hookSourced: boolean
-  /** Whether this pane's screen recording is running, and whether it has hit
-   *  the cast size cap. */
+  /** Whether this pane's screen recording is running, whether it has hit the
+   *  cast size cap, and whether it is held by a recording pause. */
   recording: boolean
   castTruncated: boolean
+  paused: boolean
 }
 
 export function spawnTerminal(id: string, cols: number, rows: number, shellId?: string): SpawnResult {
@@ -303,8 +321,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
       shell: existing.shell,
       shellLabel: existing.shellLabel,
       hookSourced: existing.hookSourced,
-      recording: existing.castStream !== null && !existing.castTruncated,
-      castTruncated: existing.castTruncated
+      ...castState(existing)
     }
   }
   if (!operatorId) {
@@ -493,8 +510,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     shell,
     shellLabel,
     hookSourced: hookPath !== null,
-    recording: castStream !== null,
-    castTruncated: false
+    ...castState({ castStream, castTruncated: false })
   }
 }
 
@@ -526,19 +542,14 @@ export function killTerminal(id: string): void {
 
 export function listTerminals(): Array<{
   id: string; pid: number; lastActivity: number
-  recording: boolean; castBytes: number; castTruncated: boolean; castStartedAt: number | null
+  recording: boolean; castBytes: number; castTruncated: boolean; paused: boolean; castStartedAt: number | null
 }> {
   return Array.from(sessions.values()).map((s) => ({
     id: s.id,
     pid: s.pty.pid,
     lastActivity: s.lastActivity,
-    // 2b per-pane 記錄中/未記錄 chip (§5b/§2). A pane is recording only while a
-    // cast stream is open and has not hit the size cap; a null stream means the
-    // cast never opened (e.g. casts/ unwritable) and the pane runs unrecorded —
-    // a state the operator must be able to see, not a silent gap.
-    recording: s.castStream !== null && !s.castTruncated,
+    ...castState(s),
     castBytes: s.castBytes,
-    castTruncated: s.castTruncated,
     castStartedAt: s.castPath ? s.castStart : null
   }))
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { buildArgs, DEFAULT_BROWSER } from '../src/main/services/browser-launcher'
+import { buildArgs } from '../src/main/services/browser-launcher'
+import { DEFAULT_BROWSER } from '../src/core/browser-defaults'
 
 const PROFILE = '/tmp/proj/browser-profile'
 

@@ -120,6 +120,16 @@ describe.skipIf(!available)('cast full-text index', () => {
     expect(() => mod!.searchCasts('AND OR NOT', 10, dir)).not.toThrow()
   })
 
+  // Constitution VI. Every input is quoted into valid MATCH syntax (the test
+  // above), so an error here is the index failing — and "no hits" would tell
+  // the operator the recordings never contained the term.
+  it('reports a failing index instead of answering no hits', async () => {
+    writeCast(cast('g.cast'), 1_700_000_000, [[0.1, 'whoami\r\n']])
+    await mod!.indexCast(cast('g.cast'), dir)
+    mod!.getCastIndex(dir).exec('DROP TABLE cast_fts')
+    expect(() => mod!.searchCasts('whoami', 10, dir)).toThrow()
+  })
+
   it('prefix-matches the term still being typed', async () => {
     writeCast(cast('f.cast'), 1_700_000_000, [[0.1, 'gobuster dir -u http://x\r\n']])
     await mod!.indexCast(cast('f.cast'), dir)

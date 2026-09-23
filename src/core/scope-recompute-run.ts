@@ -26,6 +26,7 @@ import {
   insertEvent, invalidateChainHeadCache, resetEventCountCache, type RedLogEvent
 } from './db/events'
 import { getSanitizedFields } from './sanitize'
+import { violationStanding } from './scope-violation-standing'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL } from './alert/scope-signal'
@@ -96,52 +97,37 @@ export function scanCandidates(): { candidates: Map<string, CandidateTarget>; sc
 export function readExistingViolations(): ExistingViolation[] {
   const db = getDB()
   const rows = db.prepare(
-    `SELECT id, timestamp, data FROM events
+    `SELECT id, timestamp, created_at, data FROM events
      WHERE agent_type = 'system'
        AND subtype IN ('scope_violation','scope_cleared')
      ORDER BY created_at ASC, rowid ASC`
-  ).all() as Array<{ id: string; timestamp: number; data: string }>
+  ).all() as Array<{ id: string; timestamp: number; created_at: number; data: string }>
+
+  const parsed: Array<{ id: string; timestamp: number; createdAt: number; data: Record<string, unknown> }> = []
+  for (const r of rows) {
+    try { parsed.push({ id: r.id, timestamp: r.timestamp, createdAt: r.created_at, data: JSON.parse(r.data) }) } catch { /* unreadable row */ }
+  }
+  const { cleared, supersededBy } = violationStanding(parsed)
 
   const violations: ExistingViolation[] = []
-  const clearedIds = new Set<string>()
-  const latestBySource = new Map<string, string>()
-
-  for (const r of rows) {
-    let d: Record<string, unknown>
-    try { d = JSON.parse(r.data) } catch { continue }
-    if (d.subtype === 'scope_cleared') {
-      if (typeof d.violation_id === 'string') clearedIds.add(d.violation_id)
-      continue
-    }
+  for (const { id, timestamp, data: d } of parsed) {
     // `in_scope` verdicts are written to this subtype too — the adherence
     // counter needs the positive proof — but they are not violations, and
     // treating one as a standing record would turn a newly-excluded host into a
     // "regrade" of something that was never flagged. Floor-independent: no
     // floor ever makes in_scope reportable.
-    if (d.distance === 'in_scope') continue
+    if (d.subtype !== 'scope_violation' || d.distance === 'in_scope') continue
     const causes = Array.isArray(d._causes) ? (d._causes as unknown[]) : []
-    const sourceEventId = typeof causes[0] === 'string' ? (causes[0] as string) : null
     violations.push({
-      id: r.id,
+      id,
       target: String(d.target ?? ''),
-      sourceEventId,
-      timestamp: r.timestamp,
+      sourceEventId: typeof causes[0] === 'string' ? (causes[0] as string) : null,
+      timestamp,
       distance: (d.distance as ScopeDistance) ?? 'unrelated',
       judged: d.judged === 'retroactive' ? 'retroactive' : 'live',
-      cleared: false,
-      supersededBy: null
+      cleared: cleared.has(id),
+      supersededBy: supersededBy.get(id) ?? null
     })
-    // Rows arrive in insertion order, so the last writer for a source event
-    // wins — the same "latest record about this event" rule the fold uses.
-    if (sourceEventId) latestBySource.set(sourceEventId, r.id)
-  }
-
-  for (const v of violations) {
-    v.cleared = clearedIds.has(v.id)
-    if (v.sourceEventId) {
-      const latest = latestBySource.get(v.sourceEventId)
-      if (latest && latest !== v.id) v.supersededBy = latest
-    }
   }
   return violations
 }
@@ -380,7 +366,13 @@ export interface ScopeViolationRow {
  *  The page used to read an in-process log that held 500 rows and reset on
  *  every project switch, so it could not show a retroactive row at all and
  *  would keep counting one that had been withdrawn. */
-export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
+export interface ScopeViolationPage {
+  rows: ScopeViolationRow[]
+  /** More violation records exist than `limit` read (Constitution IV). */
+  truncated: boolean
+}
+
+export function queryScopeViolationRows(limit = 500): ScopeViolationPage {
   const existing = readExistingViolations()
   const db = getDB()
   const byId = new Map(existing.map((v) => [v.id, v]))
@@ -388,9 +380,10 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
     `SELECT id, timestamp, data FROM events
      WHERE agent_type = 'system' AND subtype = 'scope_violation'
      ORDER BY created_at DESC, rowid DESC LIMIT ?`
-  ).all(limit) as Array<{ id: string; timestamp: number; data: string }>
+  ).all(limit + 1) as Array<{ id: string; timestamp: number; data: string }>
+  const truncated = rows.length > limit
   const out: ScopeViolationRow[] = []
-  for (const r of rows) {
+  for (const r of rows.slice(0, limit)) {
     let d: Record<string, unknown>
     try { d = JSON.parse(r.data) } catch { continue }
     if (d.distance === 'in_scope') continue   // an adherence record, not a violation
@@ -407,7 +400,7 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
       cleared: v?.cleared ?? false
     })
   }
-  return out
+  return { rows: out, truncated }
 }
 
 /** How many violations currently stand. Counted from the chain, not from a

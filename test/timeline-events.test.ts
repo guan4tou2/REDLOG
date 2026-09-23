@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, fuzzyScore, formatGap
+  isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap
 } from '../src/renderer/src/lib/timelineEvents'
 
 // D1 decomposition: these were inline in Timeline.tsx (5000 lines, no direct
@@ -51,16 +51,6 @@ describe('collapseCommandPairs', () => {
   it('leaves non-shell events untouched', () => {
     const events = [ev('scanner', { subtype: 'command_start' }), ev('dns', { subtype: 'command_start' })]
     expect(collapseCommandPairs(events)).toHaveLength(2)
-  })
-})
-
-describe('fuzzyScore', () => {
-  it('scores an earlier match higher, and no match as -1', () => {
-    expect(fuzzyScore('nmap', 'nm')).toBeGreaterThan(fuzzyScore('unmap', 'nm')) // earlier index wins
-    expect(fuzzyScore('nmap', 'xyz')).toBe(-1)
-    expect(fuzzyScore('', 'q')).toBe(-1)
-    expect(fuzzyScore('anything', '')).toBe(0)
-    expect(fuzzyScore('NMAP', 'nmap')).toBeGreaterThan(0) // case-insensitive
   })
 })
 

@@ -3,19 +3,11 @@ import fs from 'fs'
 import path from 'path'
 import { getDB, getProjectDir } from './db/index'
 import type { RedLogEvent } from './db/events'
+import { toFtsMatch } from './query/fts-match'
 
 const REF_FIELDS = ['request_body_ref', 'response_body_ref', 'ws_body_ref', 'tcp_body_ref'] as const
 let index: Database.Database | null = null
 let indexDir: string | null = null
-
-function matchQuery(raw: string): string | null {
-  const terms = raw.trim().split(/\s+/).filter(Boolean)
-  if (terms.length === 0) return null
-  return terms.map((term, i) => {
-    const quoted = `"${term.replace(/"/g, '""')}"`
-    return i === terms.length - 1 ? `${quoted}*` : quoted
-  }).join(' ')
-}
 
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir) return index
@@ -116,7 +108,7 @@ export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir())
 }
 
 export function searchHttpBodyEventIds(query: string, projectDir = getProjectDir()): string[] {
-  const match = matchQuery(query)
+  const match = toFtsMatch(query)
   if (!match) return []
   backfill(projectDir)
   return (getIndex(projectDir).prepare('SELECT DISTINCT event_id FROM body_fts WHERE body_fts MATCH ?').all(match) as Array<{ event_id: string }>)

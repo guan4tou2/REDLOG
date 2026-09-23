@@ -12,6 +12,7 @@ import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib
 import { formatTime } from '../lib/time'
 import { parseQuery } from '../../../core/query/contract'
 import { toast } from './Toast'
+import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { MOD } from '../lib/platform'
 
 // ⌘K — the jumper.
@@ -69,9 +70,11 @@ const SECTION_KEY: Record<Section, string> = {
   search: 'palette.sectionSearch'
 }
 
-/** Case-insensitive subsequence-free substring score, same rule the Timeline's
- *  palette uses: earlier match wins, then shorter haystack. Deliberately not a
- *  fuzzy matcher — these are literal identifiers (view names, hosts, commands)
+/** Newest event matches the palette lists; Search has them all. */
+const EVENT_LIMIT = 40
+
+/** Case-insensitive substring score: earlier match wins, then shorter
+ *  haystack. Deliberately not a fuzzy matcher — these are literal identifiers (view names, hosts, commands)
  *  and gap tolerance only adds noise. */
 function score(haystack: string, needle: string): number {
   if (!needle) return 1
@@ -98,6 +101,9 @@ export function CommandPalette({
   // An empty result list means three different things, and only one of them
   // is "nothing matched". The palette says which.
   const [searchState, setSearchState] = useState<'idle' | 'answered' | 'failed' | 'unparsable'>('idle')
+  // Constitution IV: the palette lists the newest EVENT_LIMIT matches and says
+  // so when the store has more.
+  const [eventsHasMore, setEventsHasMore] = useState(false)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [operators, setOperators] = useState<OperatorInfo[]>([])
   const [hosts, setHosts] = useState<HostAggregate[]>([])
@@ -136,8 +142,8 @@ export function CommandPalette({
       // never becomes a store query; a failed query is not an empty result.
       const outcome = parseQuery(q)
       if (!outcome.ok) { setEvents([]); setSearchState('unparsable'); return }
-      window.redlog.events.runQuery({ parsed: outcome.parsed, limit: 40 })
-        .then((page) => { setEvents(page.items); setSearchState('answered') })
+      window.redlog.events.runQuery({ parsed: outcome.parsed, limit: EVENT_LIMIT })
+        .then((page) => { setEvents(page.items); setEventsHasMore(page.hasMore); setSearchState('answered') })
         .catch(() => { setEvents([]); setSearchState('failed') })
     }, 140)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
@@ -168,27 +174,19 @@ export function CommandPalette({
       id: 'action:recording', section: 'action', icon: recording ? Pause : Play,
       label: recording ? t('palette.pauseRecording') : t('palette.resumeRecording'),
       hint: `${MOD}.`,
-      run: () => { void window.redlog.recording.toggle() }
+      run: () => { void toggleRecordingWithFeedback(t) }
     })
     out.push({
       id: 'action:screenshot', section: 'action', icon: Image,
       label: t('screenshots.captureNow'),
       run: () => {
-        void window.redlog.screenshot.capture().then(() => toast(t('palette.screenshotTaken'), 'success'))
-      }
-    })
-
-    // The Timeline keeps a palette scoped to the events it has loaded, which
-    // knows about lanes, operators and hosts in a way a database search does
-    // not. ⌘K used to open it; now that ⌘K is global, this is how it stays
-    // reachable — rather than leaving a working feature with no way in.
-    out.push({
-      id: 'action:timelinePalette', section: 'action', icon: Search,
-      label: t('palette.timelineScoped'),
-      run: () => {
-        onNavigate('timeline')
-        // After the view switch, so the Timeline is mounted to hear it.
-        setTimeout(() => window.dispatchEvent(new CustomEvent('redlog-timeline-palette')), 0)
+        // null means nothing new was stored: the screen matched the last
+        // capture, or capturing failed (Capture Health has which).
+        void window.redlog.screenshot.capture()
+          .then((id) => id
+            ? toast(t('palette.screenshotTaken'), 'success')
+            : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
+          .catch((err) => toast(t('palette.screenshotNotSaved'), { type: 'error', detail: err instanceof Error ? err.message : String(err) }))
       }
     })
 
@@ -314,6 +312,11 @@ export function CommandPalette({
           {searchState === 'unparsable' && (
             <p data-testid="palette-search-unparsable" role="status" className="px-4 py-3 text-xs text-amber-300 text-center">
               {t('palette.searchUnparsable')}
+            </p>
+          )}
+          {searchState === 'answered' && eventsHasMore && (
+            <p data-testid="palette-search-subset" role="status" className="px-4 py-2 text-xs text-redlog-text-faint">
+              {t('palette.searchSubset', { count: EVENT_LIMIT })}
             </p>
           )}
           {items.length === 0 && searchState !== 'failed' && searchState !== 'unparsable' && (
