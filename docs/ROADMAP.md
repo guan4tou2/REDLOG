@@ -180,8 +180,8 @@ the docs is one they can check. Concretely:
   uncaptured (v0.10.0 complete).
 - README, `docs/README.md` and `RELEASE_CHECKLIST.md` carry the current
   version, lane count, tool count and architecture (see AUDIT §5).
-- `plugins/host.ts` + `plugin-runner.js` have integration tests; the
-  consent → tool-appears → revoke → tool-disappears flow is covered E2E.
+- ~~`plugins/host.ts` + `plugin-runner.js` have integration tests~~ — withdrawn:
+  the host ran nothing after v0.12 and was removed in Spec 027.
 - ~~The `chain_sample_broken` root cause from v0.7.5~~ — ✅ closed in v0.11.3. It was field ORDER in the reconstructed hash shapes, not a corrupt row.
 
 ## Deliberately not planned
@@ -190,5 +190,7 @@ the docs is one they can check. Concretely:
   stay downstream by design (`docs/README.md`).
 - At-rest DB encryption (P2-2) — worth doing, but it is a 1.x feature, not a
   1.0 blocker; the threat model discloses the exposure honestly today.
-- `exporters` / `monitors` plugin contributions — reserved, no demand yet.
+- `exporters` / `monitors` plugin contributions — removed in Spec 027 and now
+  refused by the manifest validator. Export needs are met by the export formats
+  and the local API.
 - Light theme.
