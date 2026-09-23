@@ -61,16 +61,24 @@ describe('computeViolationStanding', () => {
     expect(cleared.has('v1')).toBe(true)
   })
 
-  it('marks superseded violations (newest-first order)', () => {
-    // events is newest-first: newer comes first in array
-    const events = [
-      evt('v2', 'system', { subtype: 'scope_violation', _causes: ['src1'] }),
-      evt('v1', 'system', { subtype: 'scope_violation', _causes: ['src1'] }),
-    ]
-    const { superseded } = computeViolationStanding(events)
-    // v2 is newest (first in array) → keeps; v1 is older → superseded
-    expect(superseded.has('v1')).toBe(true)
-    expect(superseded.has('v2')).toBe(false)
+  // The Timeline passes its rows oldest-first. The record that stands is the one
+  // written last, as in readExistingViolations, whatever order the caller uses.
+  it('keeps the violation written last, in either input order', () => {
+    const older = { ...evt('v1', 'system', { subtype: 'scope_violation', _causes: ['src1'] }), createdAt: 1000 }
+    const newer = { ...evt('v2', 'system', { subtype: 'scope_violation', _causes: ['src1'] }), createdAt: 2000 }
+    for (const events of [[older, newer], [newer, older]]) {
+      const { superseded } = computeViolationStanding(events)
+      expect(superseded.has('v1')).toBe(true)
+      expect(superseded.has('v2')).toBe(false)
+    }
+  })
+
+  it('does not let an in_scope verdict supersede a violation', () => {
+    const violation = { ...evt('v1', 'system', { subtype: 'scope_violation', distance: 'unrelated', _causes: ['src1'] }), createdAt: 1000 }
+    const inScope = { ...evt('r2', 'system', { subtype: 'scope_violation', distance: 'in_scope', _causes: ['src1'] }), createdAt: 2000 }
+    for (const events of [[violation, inScope], [inScope, violation]]) {
+      expect(computeViolationStanding(events).superseded.has('v1')).toBe(false)
+    }
   })
 
   it('ignores non-system events', () => {

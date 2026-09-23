@@ -69,8 +69,6 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   overlay: {
-    setExpanded: (expanded: boolean) =>
-      ipcRenderer.send('overlay:setExpanded', expanded),
     autosize: (height: number, width?: number) => ipcRenderer.send('overlay:autosize', height, width),
     hide: () => ipcRenderer.send('overlay:hide'),
     // §8: turn pass-through ON from the HUD's own action row. Turning it off is

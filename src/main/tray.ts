@@ -72,7 +72,12 @@ function stopBlink(): void {
   if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null }
 }
 
+// The menu names what the recording item will do, so it is rebuilt with every
+// state change, whichever control made it — not only after a tray click.
+const menuBuilders = new WeakMap<Tray, (recording?: boolean) => void>()
+
 export function setTrayRecording(tray: Tray, recording: boolean | null): void {
+  menuBuilders.get(tray)?.(recording ?? undefined)
   stopBlink()
   tray.setTitle('') // no text label — keep the menu bar compact
   if (recording === null) {
@@ -99,7 +104,7 @@ export function createTray(
   overlayWindow: BrowserWindow | null,
   onToggleRecording?: () => boolean,
   onBookmark?: () => void,
-  onTogglePassThrough?: () => void
+  onReleasePassThrough?: () => void
 ): Tray {
   const tray = new Tray(getTemplateIcon())
 
@@ -115,8 +120,11 @@ export function createTray(
     ]
 
     if (onBookmark) {
+      // It opens the marker dialog in the main window, so it has the app's
+      // name for that and an ellipsis; "Quick Mark" read as the HUD's instant
+      // mark, which files one without asking.
       items.push({
-        label: '⚑ Quick Mark',
+        label: '⚑ Add Marker…',
         accelerator: QUICK_MARK_ACCELERATOR,
         click: () => onBookmark()
       })
@@ -125,11 +133,7 @@ export function createTray(
     if (onToggleRecording) {
       items.push({
         label: recording ? '⏸ Pause Recording' : '⏺ Resume Recording',
-        click: () => {
-          const newState = onToggleRecording()
-          setTrayRecording(tray, newState)
-          buildMenu(newState)
-        }
+        click: () => setTrayRecording(tray, onToggleRecording())
       })
     }
 
@@ -146,14 +150,15 @@ export function createTray(
       }
     })
 
-    if (onTogglePassThrough) {
+    if (onReleasePassThrough) {
       // §8: the menu bar is one of the two click-free ways out of HUD
       // pass-through (⌘⇧P is the other) — the HUD itself is click-through
-      // while ghosted, so its own toggle can't turn it back off.
+      // while ghosted, so its own toggle can't turn it back off. Both only
+      // release; it used to toggle while showing ⌘⇧P, which does not.
       items.push({
-        label: 'Toggle HUD Click-through',
+        label: 'Release HUD Click-through',
         accelerator: HUD_PASSTHROUGH_ACCELERATOR,
-        click: () => onTogglePassThrough()
+        click: () => onReleasePassThrough()
       })
     }
 
@@ -163,6 +168,7 @@ export function createTray(
     tray.setContextMenu(Menu.buildFromTemplate(items))
   }
 
+  menuBuilders.set(tray, buildMenu)
   buildMenu()
   tray.on('click', () => {
     mainWindow.show()

@@ -20,6 +20,85 @@ for full commit body + generated notes.
 - **Plugins:** `lootPatterns` entries take an optional `group` naming the
   capture group that holds the secret; without it the whole match is the
   value. It used to be capture group 1 whenever the pattern had one.
+- **Spec Kit:** the CI gate now fails where it used to skip: an annotated or
+  misspelt `**Status**`, a spec folder without `spec.md`, an indented unchecked
+  task, an empty `verification.md`, and a Verified spec without `plan.md` or a
+  RED record. From spec 033, `verification.md` follows
+  `.specify/templates/overrides/verification-template.md` and records every
+  workflow gate, including one that ran clean (constitution 1.1.0).
+- **Spec Kit:** the Claude Code integration is installed alongside Codex, so
+  `/speckit-*` works in Claude Code; Codex stays the default.
+- **Timeline:** when a newer scope violation replaced an older one for the same
+  command, the Timeline drew the newer one as withdrawn and the stale one as
+  standing. It now uses the recompute's own rule, and an `in_scope` verdict no
+  longer makes a violation look withdrawn.
+- **Loot:** the page no longer folds rows by type and preview line, which
+  merged two private keys with the same PEM header and one key seen on two
+  targets. The dedup checkbox is gone. The sidebar and Dashboard count secrets,
+  as the page does, instead of detection events.
+- **Capture:** the proxy-bypass heuristic is removed. It wrote a guess into the
+  signed chain whenever python, node, curl or another "network tool" started
+  without proxy traffic, citing neither.
+- **HTTP capture:** a browser proxy on another loopback port — Burp on
+  `127.0.0.1:8081` — is used as set, instead of being swapped for RedLog's
+  capture proxy. Changing the capture port still moves a browser proxy that
+  pointed at the old one.
+- **AI agents:** saving watch paths in Settings no longer clears
+  `excludedPaths` in `~/.redlog/hook-config.json`.
+- **HUD:** click-through set with ⌘⇧P, the HUD button or the menu bar is kept,
+  instead of being undone by the next unrelated Settings autosave. The menu bar
+  item now releases click-through like ⌘⇧P, which it names.
+- **Export:** in "For sharing" mode, the evidence bundle and HAR — which cannot
+  scrub PII — are disabled with the reason, instead of failing after you pick
+  them.
+- **Recording:** the tray menu and terminal tabs follow pause and resume; a tab
+  shows `paused` rather than `rec`. Pause and resume from the status bar, ⌘.
+  and ⌘K now report failure and offer undo the same way. ⌘K's Capture Now no
+  longer says a screenshot was captured when none was saved.
+- **Search:** a failing recording index shows as a failure, not as no hits. ⌘K
+  says when its 40 event matches are only the newest.
+- **Local API:** `GET /api/events/search` returns `hasMore` and `nextCursor`
+  and takes `cursor`; an unreadable cursor is a 400.
+- **Integrity:** the full verify accepted any anchor once the chain had grown
+  past it, so a chain re-hashed end to end still read "anchor matches". It now
+  checks the chain against the anchor at the anchored row count.
+- **Integrity:** Settings ▸ Integrity has one Verify. It walks every row,
+  checks the latest anchor, and raises the broken-chain issue when either
+  fails; only the anchor-only "Verify latest" used to raise it. The local API
+  and the CLI keep the anchor-only check.
+- **Network:** `network.showWifiName` now works. Off, the default, keeps the
+  Wi-Fi name off the HUD and every other surface, on every platform. Nothing
+  read it, so the SSID showed wherever the OS allowed.
+- **Scope:** the violation list pages through every record and says when the
+  records it read are not all of them. It showed the first 10 of up to 500,
+  with no sign of either cap.
+- **Settings:** a link into Settings opens the page it is about (the
+  screenshots empty state, a failed browser launch, the Dashboard's scope
+  card, the chain and anchor issues) instead of Hooks. The screenshots empty
+  state's "Turn on periodic capture", which only opened Settings, is now
+  "Periodic capture settings →".
+- **Settings:** the name field renames the project, and the title bar follows.
+  `engagement.name` is gone from `config.yaml`: a second name that only the
+  Dashboard showed, and that drifted from the project's.
+- **Settings:** the box above the categories says "Filter categories…"; it
+  matches page names, not settings.
+- **Capture:** removing a hook from the Dashboard's capture card can be undone
+  for 8 seconds, as in Settings ▸ Hooks. It used to uninstall at once.
+- **Tray:** "Quick Mark" is now "Add Marker…", since it opens the marker
+  dialog. The HUD's instant mark is the one that files a marker without asking.
+- **Timeline:** its own palette (⌘K ▸ "Search within the loaded timeline") is
+  gone; ⌘K finds the same events, hosts and operators through the full query.
+  The status bar's event counter no longer toggles the auditor view, which is
+  in the Timeline's ⋯ menu. ⌘F is labelled "Filter the Timeline", the only
+  view it acts on.
+- **Removed:** IPC channels with no UI: saved Timeline views (`views:*`, and
+  `views.json` in profile export), operator token management
+  (`operators:create`, `rotateToken`, `revoke`, `rename`, `pubKey`),
+  `data:revealPath`, `app:anchorForRestart`, `events:hostChain`,
+  `screenshot:markerReferenced`, `clock:status`, `terminal:rediscoverShells`,
+  `overlay:show`, `overlay:setExpanded` and `events:queryTargetPage`. Through
+  `operators:create`, renderer code could mint a local API token with nothing
+  on screen. An old profile's `views` key is dropped on import.
 
 ## v0.16.0 — 2026-09-23
 

@@ -2,10 +2,9 @@ import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import { getChainLength } from '../../core/evidence-chain'
 import {
-  anchorNow, listAnchors, verifyLatestAnchor,
+  anchorNow, listAnchors,
   verifyChainFullAsync, upgradeAnchor, upgradeAllPending
 } from '../../core/chain-anchor'
-import { getNtpOffsetMs, getLastNtpQuery } from '../../core/clock'
 
 export function registerChainIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('chain:length', () =>
@@ -17,9 +16,11 @@ export function registerChainIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('chain:anchorNow', async () =>
     ctx.getActiveProject() ? await anchorNow() : null)
 
-  ipcMain.handle('chain:verify', async (_e, opts?: { full?: boolean }) => {
+  // The walk also checks the latest anchor, so the app has one verify. The
+  // anchor-only check stays on the local API and the CLI, where it is cheap.
+  ipcMain.handle('chain:verify', async () => {
     if (!ctx.getActiveProject()) return { ok: false, anchor: null, currentHead: null }
-    return opts?.full ? await verifyChainFullAsync() : verifyLatestAnchor()
+    return await verifyChainFullAsync()
   })
 
   ipcMain.handle('chain:upgrade', async (_e, id?: string) => {
@@ -27,10 +28,4 @@ export function registerChainIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (id) return await upgradeAnchor(id)
     return await upgradeAllPending()
   })
-
-  ipcMain.handle('clock:status', () => ({
-    ntpOffsetMs: getNtpOffsetMs(),
-    lastQueryAt: getLastNtpQuery(),
-    hostWallMs: Date.now()
-  }))
 }

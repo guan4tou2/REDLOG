@@ -361,7 +361,7 @@ default fails a named test rather than a distant integration.
 | `confirmations` | `3` | ≥1 | §1.3; UI clamps to ≥1 | `ip-monitor-options` |
 | `staleAfter` | `2` | ≥1 | §1.2.1 — consecutive failed reads before the verdict expires to `unknown` + `stale` | `ip-monitor` |
 | `ipMode` | `auto` | `dns` \| `http` \| `auto` | §1.4 | `ip-monitor-dns` |
-| `showWifiName` | `false` | bool | off drops the SSID from the link before it reaches any surface, keeping the link **type** (the UI renders a generic "Wi-Fi"); on shows it. The macOS toggle also asks for Location Services, since the OS redacts the SSID without it. Turning it off applies immediately rather than at the next 20 s poll | `wifi-name-policy` |
+| `showWifiName` | `false` | bool | off drops the SSID from the link before it reaches any surface, keeping the link **type** (the UI renders a generic "Wi-Fi"); on shows it. The toggle shows on every platform; on macOS it also asks for Location Services, since the OS redacts the SSID without it. Turning it off applies immediately rather than at the next 20 s poll | `network-link-display` |
 | `vpnAdapters` | 12 built-ins, all enabled | `{name, pattern, enabled}` | patterns are user regexes matched case-insensitively against interface names | `vpn-adapters` |
 
 `vpnAdapters` detail (`vpn-adapters`): a disabled adapter matches nothing; an
@@ -678,7 +678,7 @@ Set a small cap (e.g. 4096), run `yes | head -100000` in the built-in terminal,
 and confirm the `.cast` ends with the `[redlog: cast truncated at N bytes]`
 marker and the event records `castTruncated`.
 
-### 5.6 Wi-Fi SSID (`network.showWifiName`, macOS)
+### 5.6 Wi-Fi SSID (`network.showWifiName`)
 
 Toggle it on, accept the Location Services prompt, and confirm the HUD shows the
 real SSID instead of a generic `Wi-Fi`. Toggle it back off — the HUD must drop

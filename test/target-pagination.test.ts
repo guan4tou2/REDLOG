@@ -6,7 +6,7 @@ import os from 'os'
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let getDB: typeof import('../src/core/db/index').getDB
-let queryTargetEventsPage: typeof import('../src/core/db/event-queries').queryTargetEventsPage
+let queryTargetEventsPage: typeof import('../src/core/db/event-queries').queryEventsPage
 let aggregateTargets: typeof import('../src/core/db/event-aggregates').aggregateTargets
 
 let dbAvailable = false
@@ -17,7 +17,8 @@ try {
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
   getDB = dbMod.getDB
-  queryTargetEventsPage = queryMod.queryTargetEventsPage
+  // The Target view pages its evidence through events:queryPage with a targetId.
+  queryTargetEventsPage = queryMod.queryEventsPage
   aggregateTargets = aggMod.aggregateTargets
   dbAvailable = true
 } catch {

@@ -7,6 +7,13 @@ import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
+import { toast, toastUndo } from '../src/renderer/src/components/Toast'
+
+vi.mock('../src/renderer/src/components/Toast', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/renderer/src/components/Toast')>()),
+  toast: vi.fn(),
+  toastUndo: vi.fn()
+}))
 
 const bridge = {
   project: { list: vi.fn(async () => []), open: vi.fn(async () => null) },
@@ -78,6 +85,43 @@ describe('command palette', () => {
     expect(hints.filter((h) => /(?:⌘|Ctrl\+)9$/.test(h))).toHaveLength(1)
     const marks = screen.getByText(/marks/i).closest('[role="option"]')
     expect(marks?.textContent).not.toMatch(/(?:⌘|Ctrl\+)\d/)
+  })
+
+  // The status bar, ⌘. and this palette all pause and resume recording, with
+  // three kinds of feedback — and this one gave none: a failed toggle was
+  // swallowed, so the operator could believe capture had paused.
+  it('reports a failed recording toggle, like the status bar', async () => {
+    bridge.recording.toggle.mockRejectedValueOnce(new Error('main did not apply it'))
+    open({ recording: true })
+    fireEvent.click(await screen.findByText(/pause recording/i))
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("Couldn't change recording state", expect.objectContaining({ type: 'error' })))
+  })
+
+  it('offers the status bar’s undo after pausing', async () => {
+    open({ recording: true })
+    fireEvent.click(await screen.findByText(/pause recording/i))
+    await waitFor(() => expect(toastUndo).toHaveBeenCalledWith('Recording paused', expect.any(Function), expect.objectContaining({ type: 'warning' })))
+  })
+
+  // A manual capture returns null when nothing new was stored — the screen
+  // matched the last capture, or capturing failed. Neither is "captured".
+  it('does not report a screenshot that was not saved', async () => {
+    open()
+    fireEvent.click(await screen.findByText('Capture Now'))
+    await waitFor(() => expect(toast).toHaveBeenCalled())
+    expect(toast).not.toHaveBeenCalledWith('Screenshot captured', 'success')
+  })
+
+  // Constitution IV: the palette shows the newest 40 matches. When the store has
+  // more, the list must say it is a subset rather than read as the answer.
+  it('says when its event matches are only the newest ones', async () => {
+    bridge.events.runQuery.mockResolvedValueOnce({
+      items: [{ id: 'e1', timestamp: 1, agentType: 'shell', data: { command: 'nmap -sV' } }],
+      hasMore: true, nextCursor: 'more'
+    } as never)
+    open()
+    type('nmap')
+    expect(await screen.findByTestId('palette-search-subset')).toBeTruthy()
   })
 
   it('navigates and closes on Enter', async () => {
@@ -173,16 +217,6 @@ describe('command palette', () => {
     cleanup()
     open({ recording: false })
     expect(await screen.findByText(/resume recording/i)).toBeTruthy()
-  })
-
-  it('keeps the timeline-scoped palette reachable now that ⌘K is global', async () => {
-    // It lost its chord when ⌘K became app-wide. A working feature with no
-    // way in is worse than one that was removed on purpose.
-    const { onNavigate } = open()
-    type('loaded timeline')
-    const option = await screen.findByRole('option')
-    fireEvent.click(option)
-    expect(onNavigate).toHaveBeenCalledWith('timeline')
   })
 })
 

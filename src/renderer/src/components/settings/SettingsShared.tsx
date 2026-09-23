@@ -8,7 +8,7 @@ export const isMacOS = (window as { redlog?: { platform?: string } }).redlog?.pl
 export const isWindows = (window as { redlog?: { platform?: string } }).redlog?.platform === 'win32'
 
 export interface ConfigState {
-  engagement: { id: string; name: string }
+  engagement: { id: string }
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
@@ -75,8 +75,8 @@ export function FieldGroup({ title, children }: { title: string; children: React
   )
 }
 
-export function Field({ label, value, onChange, type = 'text', readOnly = false }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; readOnly?: boolean
+export function Field({ label, value, onChange, onBlur, type = 'text', readOnly = false }: {
+  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void; type?: string; readOnly?: boolean
 }): JSX.Element {
   const id = useId()
   return (
@@ -88,6 +88,7 @@ export function Field({ label, value, onChange, type = 'text', readOnly = false 
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim cursor-not-allowed' : 'text-redlog-text focus:border-red-500'}`}
       />
     </div>

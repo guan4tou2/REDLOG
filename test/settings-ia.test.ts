@@ -67,9 +67,18 @@ describe('settings information architecture', () => {
     expect(SRC).not.toMatch(/tab === 'export'/)
   })
 
-  it('has a search box over the categories', () => {
-    expect(SRC).toMatch(/settings\.searchPages/)
+  it('has a filter box over the categories', () => {
+    expect(SRC).toMatch(/settings\.filterPages/)
     expect(SRC).toMatch(/pageQuery/)
+  })
+
+  // It matches page names only. "Search settings…" promised the fields on
+  // those pages, and typing a setting's own name found nothing.
+  it('says the box filters categories, not settings', () => {
+    const en = JSON.parse(R('src/renderer/src/i18n/en.json')) as Record<string, string>
+    const zh = JSON.parse(R('src/renderer/src/i18n/zh-TW.json')) as Record<string, string>
+    expect(en['settings.filterPages']).toBe('Filter categories…')
+    expect(zh['settings.filterPages']).toBe('篩選分類…')
   })
 
   it('flattens plugins to one level', () => {

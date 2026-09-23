@@ -45,8 +45,8 @@ import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
 import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
-import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
+import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
@@ -54,11 +54,12 @@ import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
-import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
-import { managedHttpProxy, isLoopbackHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
-import { detectLink } from './services/network-info'
+import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
+import { DEFAULT_BROWSER } from '../core/browser-defaults'
+import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
+import { isManagedLoopbackProxy } from '../core/managed-proxy-url'
+import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
-import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -78,7 +79,6 @@ import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
-import { registerViewsIpc } from './ipc/views'
 import { registerTargetContextIpc } from './ipc/target-context'
 import type { IpcContext } from './ipc/types'
 
@@ -351,6 +351,16 @@ function getActivePivots(): ActivePivot[] {
 // and refreshed on a timer so the (blocking-ish) shell-outs never sit on the IP
 // broadcast path; the last-known value rides along with every ip:status.
 let currentLink: { type: 'wifi' | 'wired' | 'unknown'; name: string } = { type: 'unknown', name: '' }
+// What detectLink read, before network.showWifiName decides whether the SSID
+// may reach a surface. Kept so turning the setting off applies at once.
+let detectedLink: NetworkLink = { type: 'unknown', name: '' }
+let showWifiName = false
+function publishLink(): void {
+  currentLink = linkForDisplay(detectedLink, showWifiName)
+  // Push the link into the IP producer so the next IPChangeSignal carries it —
+  // IPPolicy's `lanSafety` verdict pathway (ea G-A4) reads the signal's link.
+  alertRuntime.setLink(currentLink)
+}
 let linkTimer: ReturnType<typeof setInterval> | null = null
 
 // Whether RedLog keeps a macOS Dock icon. Showing the overlay flips the app to an
@@ -366,11 +376,8 @@ function startLinkMonitor(): void {
   const refresh = (): void => {
     detectLink()
       .then((l) => {
-        currentLink = l
-        // Push the fresh link into the IP producer so the next IPChangeSignal
-        // carries it — IPPolicy's `lanSafety` verdict pathway (ea G-A4)
-        // reads from the signal's link.
-        alertRuntime.setLink(l)
+        detectedLink = l
+        publishLink()
       })
       .catch(() => {})
   }
@@ -504,6 +511,7 @@ function startProject(project: ProjectMeta): void {
   saveConfig(projectDir, config)
   keepDockIcon = config.overlay?.showInDock !== false
   applyDock()
+  showWifiName = config.network?.showWifiName === true
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
   currentEngagementId = engagementId
@@ -743,33 +751,12 @@ function startProject(project: ProjectMeta): void {
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
   })
-  startProxyBypassDetector({ engagementId, operatorId })
   // v0.7.2 A: Claude Code transcript tailer. Reads `~/.claude/projects/`
   // JSONL sessions, derives per-turn events (user_message / assistant_message
   // / tool_call / tool_result) plus a whole-file sha256 snapshot event
-  // stream. Gate uses the same `excludedPaths` / `watchPaths` as the shell
-  // hook so policy is consistent across the two ingest paths.
+  // stream, gated by the path lists in ~/.redlog/hook-config.json.
   {
-    let excludedPaths: string[] = []
-    let watchPaths: string[] = []
-    try {
-      const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
-      if (fs.existsSync(cfgPath)) {
-        const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as { excludedPaths?: string[]; watchPaths?: string[] }
-        excludedPaths = raw.excludedPaths ?? []
-        watchPaths = raw.watchPaths ?? []
-      }
-    } catch (e) {
-      // A missing or malformed file is expected — the operator may never have
-      // opened Settings ▸ Integrations. Anything else gets logged: v0.9.4
-      // P0-1 was a ReferenceError swallowed right here for several releases,
-      // silently disabling every tailer exclusion while the shell hook (which
-      // reads the same file itself) kept the feature looking alive. A gate
-      // that fails open must not fail quietly.
-      if (!(e instanceof SyntaxError)) {
-        console.error('[tailer] hook-config.json unreadable; path exclusions disabled:', e)
-      }
-    }
+    const { excludedPaths, watchPaths } = readHookConfig()
     configureAgentTailer({
       // Agent transcripts can include unrelated work from the operator's home
       // directory. Capture is therefore opt-in for every project; a partial or
@@ -803,42 +790,25 @@ function startProject(project: ProjectMeta): void {
     },
     watchPathManager: {
       addPath: (cwd: string): boolean => {
-        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
         try {
-          let raw: { excludedPaths?: string[]; watchPaths?: string[] } = { excludedPaths: [], watchPaths: [] }
-          try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) } catch { /* new file */ }
-          const current = (raw.watchPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean)
+          const { watchPaths } = readHookConfig()
           const norm = path.resolve(cwd)
-          if (current.some((p: string) => path.resolve(p) === norm)) return false
-          current.push(cwd)
-          const clean = { excludedPaths: (raw.excludedPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean), watchPaths: current }
-          fs.mkdirSync(path.dirname(cfgPath), { recursive: true })
-          fs.writeFileSync(cfgPath, JSON.stringify(clean, null, 2) + '\n')
-          configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+          if (watchPaths.some((p) => path.resolve(p) === norm)) return false
+          configureAgentTailer(saveHookConfig({ watchPaths: [...watchPaths, cwd] }))
           return true
         } catch { return false }
       },
       removePath: (cwd: string): boolean => {
-        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
         try {
-          let raw: { excludedPaths?: string[]; watchPaths?: string[] } = { excludedPaths: [], watchPaths: [] }
-          try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) } catch { return false }
+          const { watchPaths } = readHookConfig()
           const norm = path.resolve(cwd)
-          const filtered = (raw.watchPaths ?? []).filter((p: string) => path.resolve(p.trim()) !== norm)
-          if (filtered.length === (raw.watchPaths ?? []).length) return false
-          const clean = { excludedPaths: (raw.excludedPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean), watchPaths: filtered }
-          fs.writeFileSync(cfgPath, JSON.stringify(clean, null, 2) + '\n')
-          configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+          const filtered = watchPaths.filter((p) => path.resolve(p) !== norm)
+          if (filtered.length === watchPaths.length) return false
+          configureAgentTailer(saveHookConfig({ watchPaths: filtered }))
           return true
         } catch { return false }
       },
-      listPaths: (): string[] => {
-        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
-        try {
-          const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
-          return (raw.watchPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean)
-        } catch { return [] }
-      }
+      listPaths: (): string[] => readHookConfig().watchPaths
     }
   })
   onApiProjectOpen()
@@ -942,7 +912,7 @@ function startProject(project: ProjectMeta): void {
     })
     if (tray) {
       tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!isOverlayPassThrough()))
+      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
       setTrayRecording(tray, !eventBus.paused)
     }
   }
@@ -963,7 +933,6 @@ function stopProject(): void {
   stopProcessMonitor()
   stopConnectionMonitor()
   stopPowershellTranscript()
-  stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
   stopOpsecMonitor()
@@ -1097,7 +1066,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!isOverlayPassThrough()))
+  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
@@ -1123,7 +1092,6 @@ app.whenReady().then(() => {
   registerEventsIpc(ipcMain, ipcCtx)
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
-  registerViewsIpc(ipcMain, ipcCtx)
   registerTargetContextIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
@@ -1140,7 +1108,7 @@ app.whenReady().then(() => {
     const config = loadConfig(projectDir)
     const merged = {
       ...config,
-      engagement: { ...config.engagement, id: project.id, name: project.name, ...initialConfig?.engagement },
+      engagement: { ...config.engagement, id: project.id, ...initialConfig?.engagement },
       operator: { ...config.operator, ...initialConfig?.operator },
       network: { ...config.network, ...initialConfig?.network },
       scope: { ...config.scope, ...initialConfig?.scope },
@@ -1179,32 +1147,12 @@ app.whenReady().then(() => {
     return loadConfig(getProjectPath(activeProject))
   })
 
-  // Hook-config lives in ~/.redlog/hook-config.json — outside the project so
-  // transcript watch paths apply across every project.
-  // The two gates are readable/writable through this IPC pair so the
-  // Settings ▸ 整合 panel can maintain the watchPaths whitelist without
-  // shelling out.
-  const HOOK_CONFIG_PATH = path.join(homedir(), '.redlog', 'hook-config.json')
-  ipcMain.handle('hookConfig:get', () => {
-    try {
-      const raw = fs.readFileSync(HOOK_CONFIG_PATH, 'utf-8')
-      const parsed = JSON.parse(raw)
-      return {
-        excludedPaths: Array.isArray(parsed.excludedPaths) ? parsed.excludedPaths : [],
-        watchPaths: Array.isArray(parsed.watchPaths) ? parsed.watchPaths : []
-      }
-    } catch { return { excludedPaths: [], watchPaths: [] } }
-  })
+  // Settings maintains the watchPaths whitelist through this pair.
+  ipcMain.handle('hookConfig:get', () => readHookConfig())
   ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => {
     try {
-      fs.mkdirSync(path.dirname(HOOK_CONFIG_PATH), { recursive: true })
-      const clean: Record<string, string[]> = {
-        excludedPaths: (cfg.excludedPaths ?? []).map((s) => String(s).trim()).filter(Boolean),
-        watchPaths: (cfg.watchPaths ?? []).map((s) => String(s).trim()).filter(Boolean)
-      }
-      fs.writeFileSync(HOOK_CONFIG_PATH, JSON.stringify(clean, null, 2) + '\n')
       // Live-reconfigure the tailer so the new gate takes effect immediately
-      configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+      configureAgentTailer(saveHookConfig(cfg))
       return true
     } catch { return false }
   })
@@ -1232,6 +1180,9 @@ app.whenReady().then(() => {
     // latest stored value prevents that stale form from silently reverting
     // attribution context on its next auto-save.
     newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
+    // Same for HUD pass-through: overlay:setPassThrough stores it, and a form
+    // loaded before a ⌘⇧P or HUD toggle must not write the old value back.
+    if (newConfig.overlay) newConfig.overlay.passThrough = oldConfig.overlay?.passThrough === true
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     saveConfig(projectDir, newConfig)
@@ -1243,6 +1194,12 @@ app.whenReady().then(() => {
     // that affect enforcement or attribution; cosmetic changes stay silent.
     const configChangedId = logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
+    // docs/TESTING.md §5.6: turning the SSID off applies now, not at the next poll.
+    if (showWifiName !== (newConfig.network?.showWifiName === true)) {
+      showWifiName = newConfig.network?.showWifiName === true
+      publishLink()
+      broadcastIPStatus(alertRuntime.ipStatus())
+    }
     applyDock()
     const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, {
@@ -1306,8 +1263,10 @@ app.whenReady().then(() => {
     send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
     send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
     send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
+    // A save changes the opacity only. Pass-through keeps its runtime state, so
+    // an unrelated autosave cannot re-ghost a HUD an exposure alarm just woke.
     configureOverlayState({
-      passThrough: !!newConfig.overlay?.passThrough,
+      passThrough: isOverlayPassThrough(),
       opacity: newConfig.overlay?.passThroughOpacity ?? 0.4
     })
     return true
@@ -1359,7 +1318,7 @@ app.whenReady().then(() => {
   // That log holds 500 rows and resets on every project switch, so it could
   // never show a retroactive row and would go on counting one that had been
   // withdrawn — the page would contradict the record it exists to show.
-  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : []))
+  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : { rows: [], truncated: false }))
   ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
@@ -1408,7 +1367,7 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
-    if (isLoopbackHttpProxy(browserCfg.proxy)) {
+    if (isManagedLoopbackProxy(browserCfg.proxy, managedProxyPort(cfg))) {
       const proxy = await startManagedHttpCapture()
       if (proxy.state !== 'running') {
         return { ok: false, error: proxy.error || 'HTTP capture proxy is not running' }
@@ -1450,19 +1409,7 @@ app.whenReady().then(() => {
     if (!activeProject) return null
     const projectDir = getProjectPath(activeProject)
     const config = loadConfig(projectDir)
-    // v0.6.96 Ops-2: also carry saved Timeline views. Team hand-off used to
-    // ship scope + operators but leave the current operator's per-project
-    // views.json behind — the receiving teammate lost every zoom window +
-    // filter combo the sender had bookmarked.
-    let views: unknown[] = []
-    try {
-      const viewsPath = path.join(projectDir, 'views.json')
-      if (fs.existsSync(viewsPath)) {
-        const raw = JSON.parse(fs.readFileSync(viewsPath, 'utf-8'))
-        if (Array.isArray(raw)) views = raw
-      }
-    } catch { /* views file missing / malformed — just ship an empty list */ }
-    const profile = { version: 1, ...config, views }
+    const profile = { version: 1, ...config }
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `redlog-profile-${activeProject.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
       filters: [
@@ -1493,26 +1440,9 @@ app.whenReady().then(() => {
       const ext = path.extname(result.filePaths[0]).toLowerCase()
       const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
       delete data.version
-      // v0.6.96 Ops-2: split saved views out of the config payload and merge
-      // them into the local views.json. Prior teammate's views are preserved
-      // (dedupe by id — imported views win on id collision).
-      const incomingViews = Array.isArray(data.views) ? data.views as Array<{ id: string }> : []
+      // Older profiles also carried saved Timeline views, which have no UI;
+      // keep them out of the config.
       delete data.views
-      if (incomingViews.length > 0 && activeProject) {
-        try {
-          const viewsPath = path.join(getProjectPath(activeProject), 'views.json')
-          let existing: Array<{ id: string }> = []
-          try {
-            if (fs.existsSync(viewsPath)) {
-              const raw = JSON.parse(fs.readFileSync(viewsPath, 'utf-8'))
-              if (Array.isArray(raw)) existing = raw
-            }
-          } catch { /* start fresh */ }
-          const byId = new Map(existing.map((v) => [v.id, v]))
-          for (const v of incomingViews) if (v && v.id) byId.set(v.id, v)
-          fs.writeFileSync(viewsPath, JSON.stringify(Array.from(byId.values()), null, 2))
-        } catch { /* views merge is best-effort */ }
-      }
       return data as Partial<RedLogConfig>
     } catch {
       return null
@@ -1576,14 +1506,6 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
-  // 5a: anchor the chain head + mark the expected recording gap before the
-  // design's update card sends the operator to quit-and-reinstall.
-  ipcMain.handle('app:anchorForRestart', (_e, opts?: { toVersion?: string }) =>
-    anchorBeforeRestart({
-      fromVersion: app.getVersion(),
-      toVersion: opts?.toVersion ?? null,
-      engagementId: currentEngagementId ?? 'default'
-    }))
   // Renderer needs a way to open a URL in the operator's real browser (marks
   // page, plugin homepage, etc.). Only http/https allowed — Electron's
   // openExternal can dispatch file:/// and other schemes with unbounded side

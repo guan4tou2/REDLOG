@@ -2,9 +2,9 @@ import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import {
   ManagedHttpProxy,
-  buildManagedProxyArgs,
-  isManagedLoopbackProxy
+  buildManagedProxyArgs
 } from '../src/main/services/managed-http-proxy'
+import { isManagedLoopbackProxy, followCapturePort } from '../src/core/managed-proxy-url'
 
 class FakeStream extends EventEmitter {}
 
@@ -38,11 +38,20 @@ describe('managed HTTP proxy', () => {
     expect(isManagedLoopbackProxy('socks5://127.0.0.1:8080', 8080)).toBe(false)
   })
 
-  it('recognises any loopback HTTP port as managed while leaving remote proxies external', async () => {
-    const { isLoopbackHttpProxy } = await import('../src/main/services/managed-http-proxy')
-    expect(isLoopbackHttpProxy('http://127.0.0.1:9090')).toBe(true)
-    expect(isLoopbackHttpProxy('http://localhost:3128')).toBe(true)
-    expect(isLoopbackHttpProxy('http://10.0.0.2:8080')).toBe(false)
+  // Spec 019 FR-007. browser:launch swaps the browser's proxy for the managed one
+  // only under this rule; Burp on 127.0.0.1:8081 is the operator's. It used a
+  // separate any-loopback-port rule, which claimed Burp too.
+  it('leaves a loopback proxy on another port to the operator', () => {
+    expect(isManagedLoopbackProxy('http://127.0.0.1:8081', 8080)).toBe(false)
+  })
+
+  // FR-008: moving the capture port moves a browser proxy that pointed at it.
+  it('moves only a browser proxy that pointed at the old capture port', () => {
+    expect(followCapturePort('http://127.0.0.1:8080', 8080, 9090)).toBe('http://127.0.0.1:9090')
+    expect(followCapturePort('http://localhost:8080', 8080, 9090)).toBe('http://localhost:9090')
+    expect(followCapturePort('http://127.0.0.1:8081', 8080, 9090)).toBe('http://127.0.0.1:8081')
+    expect(followCapturePort('http://10.0.0.2:8080', 8080, 9090)).toBe('http://10.0.0.2:8080')
+    expect(followCapturePort('', 8080, 9090)).toBe('')
   })
 
   it('reports CA readiness without changing the trust store', async () => {

@@ -75,8 +75,10 @@ describeDB('api-server', () => {
     authHeaders = { Authorization: `Bearer ${api.getApiToken()}` }
   })
 
-  afterAll(() => {
+  afterAll(async () => {
     api.stopApiServer()
+    // A text search opens the HTTP body index; Windows cannot delete it open.
+    ;(await import('../src/core/http-body-index')).closeHttpBodyIndex()
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
     fs.rmSync(FAKE_HOME, { recursive: true, force: true })
@@ -225,6 +227,32 @@ describeDB('api-server', () => {
     expect(r.status).toBe(200)
     const body = await r.json() as { events: Array<{ id: string }> }
     expect(body.events.map((e) => e.id)).toEqual([owner.id])
+  })
+
+  // Constitution IV: a bounded query says whether it is complete. Without it, a
+  // script asking for 2 of 3 matches cannot tell a full page from the answer.
+  it('says when there is more, and pages with the cursor', async () => {
+    const { insertEvent } = await import('../src/core/db/event-write')
+    for (const n of [1, 2, 3]) {
+      insertEvent('agent', { subtype: 'assistant_message', session_id: 'PAGE', full: `pagingterm ${n}` },
+        { operatorId: 'op-primary', engagementId: 'eng-1' })
+    }
+    type Page = { events: Array<{ id: string }>; hasMore: boolean; nextCursor: string | null }
+    const first = await (await fetch(`${base}/api/events/search?q=pagingterm&limit=2`, { headers: authHeaders })).json() as Page
+    expect(first.events).toHaveLength(2)
+    expect(first.hasMore).toBe(true)
+    const rest = await (await fetch(
+      `${base}/api/events/search?q=pagingterm&limit=2&cursor=${encodeURIComponent(first.nextCursor ?? '')}`,
+      { headers: authHeaders }
+    )).json() as Page
+    expect(rest.events).toHaveLength(1)
+    expect(rest.hasMore).toBe(false)
+    expect(new Set([...first.events, ...rest.events].map((e) => e.id)).size).toBe(3)
+  })
+
+  it('refuses a cursor it cannot read instead of starting over', async () => {
+    const r = await fetch(`${base}/api/events/search?q=pagingterm&cursor=not-a-cursor`, { headers: authHeaders })
+    expect(r.status).toBe(400)
   })
 
   it('rejects a half-typed condition instead of searching for its text', async () => {

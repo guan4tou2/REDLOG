@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { toast } from '../Toast'
 import { DEFAULT_CDP_PORT } from '../../lib/defaults'
 import { FieldGroup, Field, type ConfigState } from './SettingsShared'
+import { followCapturePort } from '../../../../core/managed-proxy-url'
+import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
 
 export default function BrowserPanel({
   t, config, setConfig
@@ -10,10 +12,7 @@ export default function BrowserPanel({
   config: ConfigState
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
-  const b = config.browser ?? {
-    binary: '', proxy: 'http://127.0.0.1:8080', cdpPort: DEFAULT_CDP_PORT,
-    isolateProfile: true, ignoreCertErrors: true, startUrl: '', extraArgs: []
-  }
+  const b = config.browser ?? { ...DEFAULT_BROWSER, extraArgs: [] }
   const httpCapture = config.httpCapture ?? { port: 8080 }
   const [detected, setDetected] = useState<string | null>(null)
   const [proxyStatus, setProxyStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
@@ -38,10 +37,14 @@ export default function BrowserPanel({
       <Field
         label={t('settings.httpCapturePort')}
         value={String(httpCapture.port)}
-        onChange={(v) => setConfig({
-          ...config,
-          httpCapture: { ...httpCapture, port: Math.min(65535, Math.max(1024, parseInt(v) || 8080)) }
-        })}
+        onChange={(v) => {
+          const port = Math.min(65535, Math.max(1024, parseInt(v) || 8080))
+          setConfig({
+            ...config,
+            httpCapture: { ...httpCapture, port },
+            browser: { ...b, proxy: followCapturePort(b.proxy, httpCapture.port, port) }
+          })
+        }}
         type="number"
       />
       <p className="text-xs text-redlog-text-faint">{t('settings.httpCapturePortHint')}</p>
