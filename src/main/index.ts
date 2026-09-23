@@ -26,7 +26,7 @@ import { configureRedaction, redactFields } from '../core/redaction'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
-import type { ScopeSnapshot } from '../core/scope-recompute'
+import type { ScopeSnapshot } from '../core/alert/policies'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
 import { resetBodiesDirCache } from '../core/http-body-store'
 import {

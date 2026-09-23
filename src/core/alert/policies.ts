@@ -24,7 +24,6 @@ import type {
   IPVerdict,
   IPVerdictKind,
   ScopeVerdict,
-  ScopeDistance,
   CombinedVerdict,
   BurstVerdict,
   Authority,
@@ -32,14 +31,12 @@ import type {
 } from './policy'
 import type { Signal, IPChangeSignal, TargetHitSignal } from './signal'
 
-import { matchPattern } from '../scope-evaluator'
+import { classifyScope, buildScopeIndexes, type ScopeDistance, type ScopeIndexes } from '../scope-evaluator'
 
 // ─── shared helpers (CIDR + domain matching) ────────────────────────────────
 
-const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/
 const IPV6_RE = /^[0-9a-f:]+$/i
 
-function isIPv4(ip: string): boolean { return IPV4_RE.test(ip) }
 function isIPv6(ip: string): boolean { return ip.includes(':') && IPV6_RE.test(ip) }
 
 function ipv4ToLong(ip: string): number {
@@ -62,54 +59,6 @@ function matchesCIDR(ip: string, cidr: string): boolean {
   if (bits === 0) return true
   const mask = ~(2 ** (32 - bits) - 1) >>> 0
   return (ipv4ToLong(ip) & mask) === (ipv4ToLong(network) & mask)
-}
-
-function matchesDomain(host: string, pattern: string): boolean {
-  if (pattern.startsWith('*.')) {
-    const bare = pattern.slice(2)
-    return host === bare || host.endsWith('.' + bare)
-  }
-  return host === pattern
-}
-
-// Ea's registrable-domain fix — a naïve `takeLast(2)` treats "co.uk" as a
-// registrable domain and mis-classifies "target.co.uk" / "attacker.co.uk"
-// as siblings. This uses a small effective-TLD list to strip one more
-// label when needed. It's not the full Public Suffix List (that's
-// megabytes) but covers the common two-label eTLDs a bug-bounty engagement
-// will actually meet — the residual mismatch degrades to "unrelated",
-// which is the safe side.
-const TWO_LABEL_ETLDS = new Set([
-  'co.uk', 'co.jp', 'co.kr', 'co.nz', 'co.za', 'co.in',
-  'com.au', 'com.br', 'com.cn', 'com.hk', 'com.mx', 'com.sg', 'com.tw',
-  'org.uk', 'net.au', 'ne.jp', 'or.jp'
-])
-
-function registrableDomain(host: string): string {
-  const parts = host.split('.')
-  if (parts.length <= 2) return host
-  const lastTwo = parts.slice(-2).join('.')
-  if (TWO_LABEL_ETLDS.has(lastTwo) && parts.length >= 3) return parts.slice(-3).join('.')
-  return lastTwo
-}
-
-function domainFor(target: string): string | null {
-  if (isIPv4(target) || target.includes('/') || target.includes(':')) return null
-  const bare = target.startsWith('*.') ? target.slice(2) : target
-  return bare
-}
-
-function subnetOf(ip: string, prefix = 24): string | null {
-  if (!isIPv4(ip)) return null
-  const parts = ip.split('.').map((o) => parseInt(o))
-  if (parts.some((n) => isNaN(n) || n < 0 || n > 255)) return null
-  const nMask = 32 - prefix
-  const netLong = (ipv4ToLong(ip) & (~(2 ** nMask - 1) >>> 0)) >>> 0
-  const a = (netLong >>> 24) & 0xff
-  const b = (netLong >>> 16) & 0xff
-  const c = (netLong >>> 8) & 0xff
-  const d = netLong & 0xff
-  return `${a}.${b}.${c}.${d}/${prefix}`
 }
 
 // ─── IPPolicy — Self alarm classifier ───────────────────────────────────────
@@ -237,79 +186,30 @@ export interface ScopeSnapshot {
   alertFloor: ScopeDistance[]
 }
 
-/** The prefix/domain indexes the adjacency rungs need. Derived from `targets`
- *  alone, so a caller re-judging thousands of rows builds them once. */
-export interface ScopeIndexes {
-  subnets: Set<string>
-  domains: Set<string>
-}
-
-export function buildScopeIndexes(targets: readonly string[]): ScopeIndexes {
-  const subnets = new Set<string>()
-  const domains = new Set<string>()
-  for (const t of targets) {
-    if (t.includes('/')) {
-      const [net] = t.split('/')
-      const sub = subnetOf(net, 24)
-      if (sub) subnets.add(sub)
-    } else if (isIPv4(t)) {
-      const sub = subnetOf(t, 24)
-      if (sub) subnets.add(sub)
-    } else {
-      const dom = domainFor(t)
-      if (dom) domains.add(registrableDomain(dom))
-    }
-  }
-  return { subnets, domains }
-}
-
 /**
- * Where a target sits relative to the scope. Pure, and the single definition —
- * `ScopePolicy` delegates to it, so a stored row re-judged later gets byte-for-
- * byte the verdict the live path would have produced.
- *
- * Case-insensitive via the canonical `matchPattern` from scope-evaluator.
+ * Scope distance with the alert's view of it. The distance itself is decided
+ * by `classifyScope` in scope-evaluator — this module only says how much a
+ * distance matters: an explicit rule is a fact, an adjacency is an inference,
+ * and "no scope configured" is unknown. Deciding the distance here instead is
+ * what let export masking, which imported this, drift from the filter.
  */
 export function classifyScopeTarget(
   target: string,
   scope: Pick<ScopeSnapshot, 'targets' | 'excludeTargets'>,
   indexes?: ScopeIndexes
 ): { distance: ScopeDistance; authority: Authority; severity: Severity } {
-  // No scope configured → everything is in-scope by default (opt-in model).
-  if (scope.targets.length === 0 && scope.excludeTargets.length === 0) {
-    return { distance: 'in_scope', authority: 'unknown', severity: 'clean' }
+  const c = classifyScope(target, scope, indexes)
+  switch (c.distance) {
+    case 'excluded': return { distance: 'excluded', authority: 'fact', severity: 'critical' }
+    case 'in_scope':
+      return { distance: 'in_scope', authority: c.status === 'no-scope' ? 'unknown' : 'fact', severity: 'clean' }
+    case 'adjacent_subnet':
+    case 'adjacent_domain':
+      return { distance: c.distance, authority: 'inferred', severity: 'warning' }
+    case 'unrelated':
+      // Off-profile by silence rather than by rule: noticed, not alarmed on.
+      return { distance: 'unrelated', authority: 'inferred', severity: 'notice' }
   }
-
-  // Rung 1 (strongest): explicit exclude match.
-  const isExcluded = scope.excludeTargets.some((ex) => matchPattern(target, ex))
-  if (isExcluded) return { distance: 'excluded', authority: 'fact', severity: 'critical' }
-
-  // Rung 4 (floor): explicit include match.
-  const isInScope = scope.targets.some((t) => matchPattern(target, t))
-  if (isInScope) return { distance: 'in_scope', authority: 'fact', severity: 'clean' }
-
-  const idx = indexes ?? buildScopeIndexes(scope.targets)
-
-  // Rung 2 (inferred adjacency): same /24 as any scope target.
-  if (isIPv4(target)) {
-    const sub = subnetOf(target, 24)
-    if (sub && idx.subnets.has(sub)) {
-      return { distance: 'adjacent_subnet', authority: 'inferred', severity: 'warning' }
-    }
-  }
-
-  // Rung 3 (inferred adjacency): same registrable domain.
-  if (!isIPv4(target)) {
-    const reg = registrableDomain(target)
-    if (idx.domains.has(reg)) {
-      return { distance: 'adjacent_domain', authority: 'inferred', severity: 'warning' }
-    }
-  }
-
-  // Residual bucket. Off-profile by definition — but authority is
-  // 'inferred' because we're inferring "you probably didn't mean this"
-  // from silence, not from a rule.
-  return { distance: 'unrelated', authority: 'inferred', severity: 'notice' }
 }
 
 /** Whether a distance actually produces a violation record. `in_scope` never
