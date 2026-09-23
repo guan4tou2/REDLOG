@@ -19,7 +19,8 @@ let tmpHome: string
 // `window.redlog` has no ambient type here.
 interface AmendBridge {
   events: {
-    search: (q: string, limit?: number) => Promise<Array<{ id: string; data: Record<string, unknown> }>>
+    runQuery: (req: { parsed: { conditions: unknown[]; text: string }; limit?: number }) =>
+      Promise<{ items: Array<{ id: string; data: Record<string, unknown> }> }>
     getCount: (tier: 'chained' | 'logged' | 'all') => Promise<number>
   }
   chain: { verify: (o?: { full?: boolean }) => Promise<{ ok: boolean }> }
@@ -85,7 +86,7 @@ test.describe.serial('amending a marker', () => {
     // marker's own stored title is what it always was, and the correction is an
     // extra row rather than an overwrite.
     const stored = await page.evaluate(async () => {
-      const rows = await (window as unknown as { redlog: AmendBridge }).redlog.events.search('original title', 50)
+      const { items: rows } = await (window as unknown as { redlog: AmendBridge }).redlog.events.runQuery({ parsed: { conditions: [], text: 'original title' }, limit: 50 })
       return rows.map((r) => ({ id: r.id, subtype: (r.data as Record<string, unknown>).subtype, title: (r.data as Record<string, unknown>).title }))
     })
     const original = stored.find((r) => !r.subtype)

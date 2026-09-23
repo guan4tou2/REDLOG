@@ -1,18 +1,17 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, searchEvents,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
-  distinctHosts, hostCausalChain, insertEvent,
+  distinctHosts, hostCausalChain,
   type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
 } from '../../core/db/events'
 import { loadConfig, snapshotScope } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
-import { eventBus } from '../../core/event-bus'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   const withActiveScope = <T extends EventFilter>(opts: T): T => {
@@ -45,9 +44,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:getLatestLoggedTs', () =>
     ctx.getActiveProject() ? getLatestLoggedTs() : null)
-
-  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: EventFilter) =>
-    ctx.getActiveProject() ? searchEvents(query, limit, withActiveScope(opts ?? {})) : [])
 
   // Spec 017. The renderer parses and sends the result, so it can show how the
   // query was read without a round trip and a parse failure never becomes a
@@ -95,23 +91,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getActiveProject() && typeof anchorId === 'string'
       ? queryEventCausalChain(anchorId, opts ?? {})
       : { anchorId, anchorFound: false, events: [], edges: [], unavailableCauseIds: [], truncated: false })
-
-  ipcMain.handle('events:logSecretRevealed', (_e, sourceEventId: string, fields: string[]) => {
-    const engId = ctx.getCurrentEngagementId()
-    const opId = ctx.getCurrentOperatorId()
-    if (!engId || !opId) return { ok: false, error: 'no active project' }
-    try {
-      const ev = insertEvent('system', {
-        subtype: 'secret_revealed',
-        source_event: sourceEventId,
-        fields: Array.isArray(fields) ? fields : []
-      }, { engagementId: engId, operatorId: opId })
-      if (ev) eventBus.publish(ev)
-      return { ok: true, id: ev?.id }
-    } catch (e) {
-      return { ok: false, error: (e as Error).message }
-    }
-  })
 
   ipcMain.handle('events:toggleDoNotExport', (_e, eventId: string) => {
     if (!ctx.getActiveProject() || typeof eventId !== 'string') return null

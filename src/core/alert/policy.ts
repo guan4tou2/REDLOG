@@ -1,9 +1,8 @@
 // The Policy layer of the alert subsystem (v0.12.0).
 //
 // A **Policy** classifies signals into **verdicts**. Policies are the pure
-// half of the subsystem — no I/O, no DB, no timers except when explicitly
-// stateful (e.g. burst window aggregation). Every side effect happens in
-// a Surface consumer.
+// half of the subsystem — no I/O, no DB, no timers. Every side effect
+// happens in a Surface consumer.
 //
 // Verdict shapes track ea's `ALERT-ROLES.md`:
 //   • Self alarm (IP) — five values on the fact/inferred/unknown authority
@@ -12,16 +11,13 @@
 //   • Target alarm (scope) — four-rung distance ladder (`in_scope`,
 //     `excluded`, `adjacent_subnet`/`adjacent_domain`, `unrelated`) with
 //     the same authority tier attached to each rung (ea G-B4/G-C2).
-//   • Combined — v0.12.0 addition, a policy that reads recent IP + recent
-//     Scope verdicts and escalates to CRITICAL when both non-clean.
-//   • Burst — v0.12.0 addition, aggregates recent Scope verdicts into a
-//     summary when N hit within window T. Doesn't replace individual
-//     verdicts, adds a burst-severity modifier.
 //
 // Verdicts do NOT hold references to sources or event ids — that context
 // is on the originating Signal. When a Surface writes an event it composes
 // verdict + signal into event data. Keeping verdicts self-contained keeps
-// them testable in isolation.
+// them testable in isolation. It is also why a verdict derived from other
+// verdicts has nothing to cite: the Combined and Burst verdicts removed in
+// Spec 024 were written to the chain with no source at all.
 
 import type { IPChangeSignal, TargetHitSignal, Signal } from './signal'
 
@@ -83,7 +79,8 @@ export interface IPVerdict {
  *  values are inferred proximity ("same subnet, wrong host" / "same
  *  registrable domain, wrong subdomain"); `unrelated` is the residual
  *  bucket that fires only under the strictest `alertFloor`. */
-export type ScopeDistance = 'in_scope' | 'excluded' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+// Where a target sits is a scope fact; the verdicts below carry it.
+import type { ScopeDistance } from '../scope-evaluator'
 
 export interface ScopeVerdict {
   distance: ScopeDistance
@@ -96,46 +93,6 @@ export interface ScopeVerdict {
   extractorName?: string
 }
 
-// ─── Combined verdict (v0.12.0 addition) ────────────────────────────────────
-
-/** Cross-signal escalation. When a Combined policy sees a non-clean IP
- *  verdict within recall window T of a non-clean Scope verdict (or vice
- *  versa), it emits a Combined verdict with escalated severity. Both
- *  source verdicts also fire independently through their own surfaces —
- *  Combined is an *additional* signal, not a replacement. */
-export interface CombinedVerdict {
-  /** Snapshot of the IP verdict that co-occurred (safe/exposed/etc + modifiers). */
-  ipValue: IPVerdictKind
-  /** Snapshot of the scope distance that co-occurred. */
-  scopeDistance: ScopeDistance
-  /** How far apart the two source signals were (ms). Small ↔ higher
-   *  correlation confidence. */
-  correlationMs: number
-  severity: Severity  // usually escalated one step above max(ip.severity, scope.severity)
-  authority: Authority  // min(ip.authority, scope.authority) — combined is at most as strong as the weaker source
-}
-
-// ─── Burst verdict (v0.12.0 addition) ───────────────────────────────────────
-
-/** Rate-limit signal. When N Scope verdicts of the same distance hit
- *  within window T (defaults: N=10, T=60s), emit ONE Burst verdict
- *  summarising the run. Individual verdicts still fire independently
- *  (chain integrity, adherence counting); Burst is a UI/webhook
- *  compression signal. */
-export interface BurstVerdict {
-  /** Which distance rung burst. Only Scope verdicts aggregate; IP
-   *  verdicts have a state-machine of their own (don't burst). */
-  distance: ScopeDistance
-  count: number
-  windowMs: number
-  firstAt: number
-  lastAt: number
-  /** Distinct targets seen in the burst. Capped at ~10 for display. */
-  targets: string[]
-  severity: Severity
-  authority: Authority
-}
-
 // ─── Verdict union + Policy interface ───────────────────────────────────────
 
 /** Discriminated union of every verdict shape. Surfaces switch on
@@ -143,19 +100,15 @@ export interface BurstVerdict {
 export type Verdict =
   | (IPVerdict & { kind: 'ip' })
   | (ScopeVerdict & { kind: 'scope'; signal: TargetHitSignal })
-  | (CombinedVerdict & { kind: 'combined' })
-  | (BurstVerdict & { kind: 'burst' })
 
-/** A Policy consumes a Signal (or a signal history via `stateful` policies
- *  like Combined and Burst) and returns 0..N verdicts. The bus feeds each
+/** A Policy consumes a Signal and returns 0..N verdicts. The bus feeds each
  *  registered policy the same signal; each policy decides whether it
  *  applies. Returning `[]` is normal — a policy that doesn't handle the
  *  signal kind, or one whose classifier says nothing changed, produces
  *  nothing.
  *
- *  Pure (stateless) policies only look at the input Signal. Stateful
- *  policies (Combined, Burst) hold their own history — they should be
- *  small, self-contained, and reset via `reset()`. */
+ *  A policy that holds state (the IP alarm's settling window, the scope
+ *  alarm's cached indexes) keeps it small and clears it in `reset()`. */
 export interface Policy {
   readonly name: string
   /** Called for every dispatched signal. Return verdicts to emit; empty

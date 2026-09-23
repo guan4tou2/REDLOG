@@ -819,150 +819,6 @@ function toMatchQuery(raw: string): string | null {
     })
     .join(' ')
 }
-
-export function searchEventsPage(opts: EventFilter & {
-  query: string
-  limit?: number
-  cursor?: string | null
-}): QueryPage<RedLogEvent> {
-  const db = getReadonlyDB()
-  const match = toMatchQuery(opts.query)
-  if (!match) return { items: [], hasMore: false, nextCursor: null }
-  const bodyIdsJson = JSON.stringify(searchHttpBodyEventIds(opts.query))
-
-  const limit = opts.limit ?? 100
-  const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
-
-  const chainedExtra: string[] = []
-  const loggedExtra: string[] = []
-  const chainedParams: unknown[] = []
-  const loggedParams: unknown[] = []
-
-  appendEventFilter(opts, chainedExtra, chainedParams, 'e')
-  appendEventFilter(opts, loggedExtra, loggedParams, 'e')
-
-  if (cursor) {
-    const cc = buildPerArmCursorWhere(cursor, 'chained')
-    chainedExtra.push(cc.sql.replace(/\browid\b/g, 'e.rowid'))
-    chainedParams.push(...cc.params)
-
-    const lc = buildPerArmCursorWhere(cursor, 'logged')
-    loggedExtra.push(lc.sql.replace(/\browid\b/g, 'e.rowid'))
-    loggedParams.push(...lc.params)
-  }
-
-  const chainedWhere = chainedExtra.length ? ' AND ' + chainedExtra.join(' AND ') : ''
-  const loggedWhere = loggedExtra.length ? ' AND ' + loggedExtra.join(' AND ') : ''
-
-  const perArmLimit = limit + 1
-
-  const sql = `
-    SELECT * FROM (
-      SELECT * FROM (
-        SELECT e.rowid AS _row,
-               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-               e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
-               e.monotonic_ns, e.ntp_offset_ms, e.signature,
-               'chained' AS tier, ${TIER_RANK_CHAINED}
-        FROM events e
-        WHERE (e.rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-               OR e.id IN (SELECT value FROM json_each(?)))${chainedWhere}
-        ORDER BY e.timestamp DESC, e.rowid DESC
-        LIMIT ?
-      )
-      UNION ALL
-      SELECT * FROM (
-        SELECT e.rowid AS _row,
-               e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-               e.hostname, e.source_ip, e.target_id, e.data,
-               NULL AS hash, NULL AS prev_hash, e.created_at,
-               NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
-               'logged' AS tier, ${TIER_RANK_LOGGED}
-        FROM events_logged e
-        WHERE (e.rowid IN (SELECT rowid FROM events_logged_fts WHERE events_logged_fts MATCH ?)
-               OR e.id IN (SELECT value FROM json_each(?)))${loggedWhere}
-        ORDER BY e.timestamp DESC, e.rowid DESC
-        LIMIT ?
-      )
-    ) ${CANONICAL_ORDER}
-    LIMIT ?`
-
-  const bind = [
-    match, bodyIdsJson, ...chainedParams, perArmLimit,
-    match, bodyIdsJson, ...loggedParams, perArmLimit,
-    limit + 1
-  ]
-
-  // No catch: a statement that could not run is not an engagement in which
-  // nothing matched, and only the second licenses a conclusion about absence.
-  // This swallow is why Search's own error state was unreachable until Spec
-  // 018 moved it onto the query contract.
-  const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-  const page = toQueryPage(rows, limit, (row) => ({
-    ts: row.timestamp as number,
-    row: row._row as number,
-    tier: row.tier as 'chained' | 'logged'
-  }))
-  return { ...page, items: page.items.map(rowToEvent) }
-}
-
-export function searchEvents(query: string, limit = 100, opts: EventFilter = {}): RedLogEvent[] {
-  const db = getReadonlyDB()
-  const match = toMatchQuery(query)
-  if (!match) return []
-  const bodyIdsJson = JSON.stringify(searchHttpBodyEventIds(query))
-
-  const extraConds: string[] = []
-  const extraParams: unknown[] = []
-  appendEventFilter(opts, extraConds, extraParams, 'e')
-
-  const whereExtra = extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''
-
-  const chainedSelect = `
-    SELECT e.rowid AS _row,
-           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-           e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
-           e.monotonic_ns, e.ntp_offset_ms, e.signature, 'chained' AS tier
-    FROM events e
-    WHERE (e.rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-           OR e.id IN (SELECT value FROM json_each(?)))${whereExtra}
-  `
-  const loggedSelect = `
-    SELECT e.rowid AS _row,
-           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-           e.hostname, e.source_ip, e.target_id, e.data,
-           NULL AS hash, NULL AS prev_hash, e.created_at,
-           NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
-           'logged' AS tier
-    FROM events_logged e
-    WHERE (e.rowid IN (SELECT rowid FROM events_logged_fts WHERE events_logged_fts MATCH ?)
-           OR e.id IN (SELECT value FROM json_each(?)))${whereExtra}
-  `
-
-  const sql = `SELECT * FROM (
-    SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
-    UNION ALL
-    SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
-  ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
-  const bind = [match, bodyIdsJson, ...extraParams, limit, match, bodyIdsJson, ...extraParams, limit, limit]
-
-  try {
-    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-    return rows.map(rowToEvent)
-  } catch {
-    return []
-  }
-}
-
-
-/**
- * Spec 017: evaluate a parsed query. Conditions and free text are two
- * intersecting paths, not one — free text goes to FTS, a condition resolves
- * against its stored field. The FTS tables index `data` as a single blob, so
- * an identifier quoted inside unrelated command output is findable there;
- * satisfying a condition that way would match evidence the operator did not
- * ask for and call it an exact hit.
- */
 export interface EventQueryRequest {
   parsed: ParsedQuery
   filter?: EventFilter
@@ -1039,6 +895,13 @@ function sessionsForToolUse(db: ReturnType<typeof getReadonlyDB>, toolUseId: str
 }
 
 export function executeEventQuery(request: EventQueryRequest): EventQueryResult {
+  // Nothing asked, nothing answered. A query with neither text nor conditions
+  // would otherwise be an unfiltered read, and a surface that sent one by
+  // accident — `""` parses to empty text — would present the whole dataset as
+  // its results. A conditions-only query is still a query.
+  if (request.parsed.conditions.length === 0 && request.parsed.text.trim() === '') {
+    return { items: [], hasMore: false, nextCursor: null }
+  }
   const db = getReadonlyDB()
   const filter = request.filter ?? {}
   const limit = request.limit ?? 100
@@ -1115,10 +978,11 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
     ) ${CANONICAL_ORDER}
     LIMIT ?`
 
-  // No catch. `searchEventsPage` returns an empty page when its statement
-  // throws, which makes a failed query indistinguishable from an engagement
-  // in which nothing matched — and only the second licenses "this did not
-  // happen". The caller renders the failure; it is not this layer's to hide.
+  // No catch. The query paths this replaced returned an empty page when their
+  // statement threw, which made a failed query indistinguishable from an
+  // engagement in which nothing matched — and only the second licenses "this
+  // did not happen". The caller renders the failure; it is not this layer's
+  // to hide.
   const rows = db.prepare(sql).all(
     ...chained.params, perArmLimit,
     ...logged.params, perArmLimit,

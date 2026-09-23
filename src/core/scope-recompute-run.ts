@@ -29,12 +29,12 @@ import { getSanitizedFields } from './sanitize'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL } from './alert/scope-signal'
-import { classifyScopeTarget, buildScopeIndexes, isReportable } from './alert/policies'
+import { classifyScopeTarget, isReportable, type ScopeSnapshot } from './alert/policies'
+import { buildScopeIndexes, type ScopeDistance } from './scope-evaluator'
 import {
   planScopeRecompute, scopeHash, MAX_RETRO_ROWS,
-  type CorpusEvent, type ExistingViolation, type ScopeSnapshot, type RecomputePlan
+  type CorpusEvent, type ExistingViolation, type RecomputePlan
 } from './scope-recompute'
-import type { ScopeDistance } from './alert/policy'
 
 const TABLES = ['events', 'events_logged'] as const
 const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r))

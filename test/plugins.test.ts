@@ -19,7 +19,6 @@ import { extractTargetWithProvenance, unregisterTargetExtractors } from '../src/
 const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
 import { getRules, unregisterRedactionRules } from '../src/core/redaction'
 import { detectHooks, unregisterCapturePlugins } from '../src/core/hooks-manager'
-import { methodAllowed } from '../src/core/plugins/host'
 
 // Isolate all plugin stores (trust/state) + userRoot under a temp home dir.
 // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
@@ -61,7 +60,7 @@ describe('manifest validation', () => {
       { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: {}, capabilities: ['do:anything'] }, dir
     ).ok).toBe(false)
     expect(validateManifest(
-      { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: { exporters: '../../etc/passwd' } }, dir
+      { id: 'ok', name: 'x', version: '1.0.0', redlogApi: 1, contributes: { tailers: '../../etc/passwd' } }, dir
     ).ok).toBe(false)
   })
 
@@ -105,7 +104,7 @@ describe('manifest validation', () => {
   it('§8-4 forward-compat: a CODE plugin one version ahead is refused (its code is not run)', () => {
     const dir = writePlugin('ahead-code', {
       id: 'ahead-code', name: 'Ahead Code', version: '1.0.0', redlogApi: PLUGIN_API_VERSION + 1,
-      contributes: { exporters: 'code/tools.js' }
+      contributes: { tailers: 'code/tools.js' }
     }, { 'code/tools.js': 'exports.tools = []\n' })
     expect(dir).toBeTruthy()
     const p = loadPlugins().find((x) => x.manifest.id === 'ahead-code')!
@@ -173,7 +172,7 @@ describe('privileged trust gate', () => {
   const priv = {
     id: 'tool-plugin', name: 'Tool', version: '1.0.0', redlogApi: 1,
     capabilities: ['read:events'],
-    contributes: { exporters: 'code/tools.js' }
+    contributes: { tailers: 'code/tools.js' }
   }
 
   it('is needs-consent until granted, and grant pins the content hash', () => {
@@ -192,18 +191,6 @@ describe('privileged trust gate', () => {
     expect(p.status).toBe('needs-consent')
     expect(isTrusted('tool-plugin', p.contentHash, ['read:events'])).toBe(false)
     revoke('tool-plugin')
-  })
-
-  it('exposes only the current bookmarks capability', () => {
-    expect(methodAllowed('bookmarks.list', ['read:bookmarks'])).toBe(true)
-    expect(methodAllowed('findings.list', ['read:bookmarks'])).toBe(false)
-  })
-
-  it('capability gate maps ctx methods to caps and denies unknowns', () => {
-    expect(methodAllowed('events.query', ['read:events'])).toBe(true)
-    expect(methodAllowed('events.append', ['read:events'])).toBe(false)
-    expect(methodAllowed('events.append', ['write:events'])).toBe(true)
-    expect(methodAllowed('fs.readFile', ['read:events', 'write:events'])).toBe(false) // not a known method
   })
 
   it('does not grant capabilities beyond what was consented', () => {

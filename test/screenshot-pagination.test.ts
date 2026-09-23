@@ -64,12 +64,14 @@ describeDB('queryScreenshotPage', () => {
   describe('acceptance: 537 screenshots, pageSize=100', () => {
     const PAGE_SIZE = 100
 
-    beforeEach(() => {
+    // One transaction: row-at-a-time autocommit fsyncs every insert, which on
+    // a loaded Windows runner outlasts the 10s hook timeout.
+    beforeEach(() => getDB().transaction(() => {
       for (let i = 0; i < 537; i++) {
         const trigger = i % 3 === 0 ? 'periodic' : i % 3 === 1 ? 'manual' : 'command'
         rawInsert('events', 10000 - i, trigger)
       }
-    })
+    })())
 
     it('paginating through all pages yields exactly 537 unique screenshots', () => {
       const allIds: string[] = []
@@ -135,10 +137,12 @@ describeDB('queryScreenshotPage', () => {
   })
 
   describe('trigger filter pushes into SQL WHERE', () => {
-    beforeEach(() => {
+    // One transaction: row-at-a-time autocommit fsyncs every insert, which on
+    // a loaded Windows runner outlasts the 10s hook timeout.
+    beforeEach(() => getDB().transaction(() => {
       for (let i = 0; i < 450; i++) rawInsert('events', 10000 - i, 'periodic')
       for (let i = 0; i < 87; i++) rawInsert('events', 10000 - i, 'manual')
-    })
+    })())
 
     it('trigger=manual returns exactly 87 results across pages', () => {
       const allIds: string[] = []

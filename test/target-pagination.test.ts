@@ -65,7 +65,9 @@ describeDB('queryTargetEventsPage', () => {
     const TOTAL = CHAINED + LOGGED
     const PAGE_SIZE = 200
 
-    beforeEach(() => {
+    // One transaction: row-at-a-time autocommit fsyncs every insert, which on
+    // a loaded Windows runner outlasts the 10s hook timeout.
+    beforeEach(() => getDB().transaction(() => {
       for (let i = 0; i < CHAINED; i++) {
         rawInsert('events', 10000 - i, TARGET, { command: `cmd-c-${i}` })
       }
@@ -74,7 +76,7 @@ describeDB('queryTargetEventsPage', () => {
           agent_type: 'scanner', subtype: 'http_response', url: `http://${TARGET}/l-${i}`
         })
       }
-    })
+    })())
 
     it('aggregate eventCount matches total inserted', () => {
       const agg = aggregateTargets()

@@ -25,9 +25,10 @@ So plugins are split by how much they can affect that record:
 | Tier | What it contributes | Runs code in RedLog? | Can it subvert the evidence log? |
 |------|--------------------|----------------------|----------------------------------|
 | 🟢 **declarative** | loot/redaction/target patterns, event types, capture scripts | **No** — data the app reads, or scripts *you* run that only reach the authenticated HTTP API | No |
-| 🔴 **privileged** | Exporters, monitors, tailers | **Yes** — in an isolated process, only after you grant trust | Only within the capabilities you granted |
+| 🔴 **privileged** | `tailers` (bundled plugins only) | **Yes** — in the main process, only after you grant trust | Yes — it is not isolated, which is why only bundled plugins may contribute it |
 
-A plugin is 🔴 **only** if it contributes code (`exporters`/`monitors`/`tailers`).
+A plugin is 🔴 **only** if it contributes code, and the only code contribution is
+`tailers`. (`exporters` and `monitors` are refused — see below.)
 Everything else is 🟢 and loads automatically. 🔴 plugins are inert until you
 review and trust them (see [the trust gate](#the-trust-gate)).
 
@@ -311,33 +312,25 @@ warning on startup if a plugin file fails to import).
 
 ## 🔴 Privileged code contributions
 
-A plugin that sets `exporters`, `monitors`, or `tailers` (manifest-relative
-CommonJS module paths) ships code RedLog will execute — **in an isolated Electron
-utility process**, never in the main process, and only after you grant trust. It
-must declare the `capabilities` it needs.
+The only code contribution RedLog runs is **`tailers`** — a CommonJS module
+exporting a `TailerAdapter`, which RedLog loads to follow an AI agent's
+transcript files. Be clear about what that means:
 
-### The `ctx` API and capabilities
+- A tailer module is loaded into RedLog's **main process**. It is not isolated,
+  and there is no capability boundary around it; it can reach whatever the main
+  process can.
+- For that reason tailers are accepted from **bundled plugins only**. A
+  third-party plugin that contributes `tailers` is loaded without them.
+- A bundled tailer is still gated by the trust flow below: pinned to a content
+  hash and inert until you grant trust.
 
-`ctx` is the **only** way plugin code reaches RedLog. Every method is gated by a
-capability declared in the manifest and granted by the operator:
-
-| `ctx` method | Capability | Does |
-|--------------|-----------|------|
-| `ctx.events.query(args)` | `read:events` | query the timeline |
-| `ctx.events.search(args)` | `read:events` | keyword search |
-| `ctx.events.append(args)` | `write:events` | append an event (attributed to the plugin) |
-| `ctx.bookmarks.list(args)` | `read:bookmarks` | read bookmarks |
-| `ctx.config.get()` | `read:config` | read engagement/scope/redaction config |
-| `ctx.fetch(args)` | `net:outbound` | outbound HTTP (⚠️ exfil surface) |
-| `ctx.log(msg)` | — | write to RedLog's log |
-
-A call to a method whose capability wasn't granted is **rejected** at the host —
-the plugin can't escalate by asking. The isolated process has **no** direct
-access to the SQLite database, the signing keys, or the main process.
-
-> `exporters` and `monitors` are reserved in the manifest for the same isolated,
-> capability-scoped mechanism; `tailers` is the first shipped code contribution
-> (v0.8.2, bundled plugins only).
+`exporters` and `monitors` are **refused**. Earlier versions documented them as
+code that would run in an isolated, capability-scoped process with a `ctx` API.
+That process ran nothing from v0.12 onward and was removed (Spec 027); a
+manifest that contributes either is rejected with an error rather than loaded
+and silently ignored. If you need to get data out of RedLog, use the export
+formats or the local HTTP API — both run in RedLog itself and need no plugin
+code.
 
 ---
 
