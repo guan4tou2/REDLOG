@@ -6,7 +6,7 @@ import { restrictToOwner } from './fs-acl'
 
 // v0.6.89: per-event Ed25519 signature closes the ≤59-minute rewrite window
 // left open by hash chain + hourly OTS anchor. Each operator has a keypair;
-// events they insert get signed at write time; verifyChainFull walks each
+// events they insert get signed at write time; verifyChainFullAsync walks each
 // row's signature against the operator's stored public key.
 //
 // Storage:
@@ -158,7 +158,7 @@ export function resetSigningCache(operatorId?: string): void {
 // null when the key file is missing — an older operator created before
 // v0.6.89, or a key that got wiped — so insertEvent can proceed with an
 // unsigned row rather than crash. The chain hash still protects that row;
-// verifyChainFull surfaces it as "unsigned" (audit signal), not "broken".
+// verifyChainFullAsync surfaces it as "unsigned" (audit signal), not "broken".
 export function signEvent(canonicalJson: string, operatorId: string): string | null {
   const key = loadKeyObject(operatorId)
   if (!key) return null
@@ -175,7 +175,7 @@ export function signEvent(canonicalJson: string, operatorId: string): string | n
 }
 
 // Constant-time in Node's `crypto.verify`; returns false on any parse error
-// rather than throwing so verifyChainFull can distinguish "tampered / wrong
+// rather than throwing so verifyChainFullAsync can distinguish "tampered / wrong
 // key" (false) from "no signature to check" (skipped upstream).
 export function verifyEventSignature(canonicalJson: string, signatureB64: string, publicKeyB64: string): boolean {
   try {
@@ -186,12 +186,4 @@ export function verifyEventSignature(canonicalJson: string, signatureB64: string
   } catch {
     return false
   }
-}
-
-// Test / diagnostic helper — read back the public key on disk. Verify path
-// uses the DB copy; this is here for the "did keygen write anything?" checks.
-export function readPublicKeyOnDisk(operatorId: string): string | null {
-  const p = publicKeyPath(operatorId)
-  if (!fs.existsSync(p)) return null
-  try { return fs.readFileSync(p, 'utf-8').trim() } catch { return null }
 }

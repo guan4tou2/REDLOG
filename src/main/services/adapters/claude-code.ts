@@ -8,7 +8,6 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
 import type { TailerAdapter, ParsedTurn } from '../tailer-host'
 
 // ─── Claude-Code-specific constants ─────────────────────────────────────────
@@ -47,10 +46,6 @@ const KNOWN_IGNORED_TYPES = new Set([
 ])
 
 // ─── Path helpers (Claude-format specific) ──────────────────────────────────
-
-export function resolveDefaultClaudeDir(): string {
-  return path.join(os.homedir(), '.claude', 'projects')
-}
 
 /** Read the first line whose parsed JSON has a `cwd` field. Metadata
  *  records (`summary`, `mode`, etc.) may lead — scan up to N units. */

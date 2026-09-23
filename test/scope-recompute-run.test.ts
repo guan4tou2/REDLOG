@@ -214,7 +214,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
       await runner!.runScopeRecompute({
         before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS
       })
-      expect(chain!.verifyChainFull().ok).toBe(true)
+      expect((await chain!.verifyChainFullAsync()).ok).toBe(true)
     })
   })
 
@@ -257,7 +257,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
       // the next row chains onto what is really in the table.
       const next = events!.insertEvent('marker', { title: 'after the rollback', severity: 'info' }, IDS)
       expect(next).toBeTruthy()
-      expect(chain!.verifyChainFull().ok).toBe(true)
+      expect((await chain!.verifyChainFullAsync()).ok).toBe(true)
     })
   })
 

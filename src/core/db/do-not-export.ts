@@ -1,15 +1,5 @@
 import { getDB, getReadonlyDB } from './index'
 
-export function markDoNotExport(eventId: string): void {
-  getDB().prepare(
-    'INSERT OR IGNORE INTO do_not_export (event_id, created_at) VALUES (?, ?)'
-  ).run(eventId, Date.now())
-}
-
-export function unmarkDoNotExport(eventId: string): void {
-  getDB().prepare('DELETE FROM do_not_export WHERE event_id = ?').run(eventId)
-}
-
 export function toggleDoNotExport(eventId: string): boolean {
   const db = getDB()
   const exists = db.prepare('SELECT 1 FROM do_not_export WHERE event_id = ?').get(eventId)

@@ -139,7 +139,7 @@ describe('loot pattern detection', () => {
 //   • malformed plugin regex is skipped, not thrown
 import {
   LootDetector, registerLootPatterns, unregisterLootPatterns,
-  listExternalLootPatterns
+  _listExternalLootPatterns
 } from '../src/core/loot-detector'
 import { afterEach } from 'vitest'
 
@@ -249,11 +249,11 @@ describe('LootDetector class', () => {
     expect(fromB?.patternName).toBe('twin-b-rule')
   })
 
-  it('v0.9.0: listExternalLootPatterns snapshot exposes name + description for Settings UI', () => {
+  it('v0.9.0: _listExternalLootPatterns snapshot exposes name + description for Settings UI', () => {
     registerLootPatterns('audit-plug', [
       { type: 'foo', pattern: 'FOO-\\d+', name: 'foo-rule', description: 'internal token', confidence: 'high' }
     ])
-    const list = listExternalLootPatterns().filter((p) => p.pluginId === 'audit-plug')
+    const list = _listExternalLootPatterns().filter((p) => p.pluginId === 'audit-plug')
     expect(list.length).toBe(1)
     expect(list[0].patternName).toBe('foo-rule')
     expect(list[0].description).toBe('internal token')

@@ -41,10 +41,6 @@ function write(store: TrustStore): void {
   writeFileSync(p, JSON.stringify(store, null, 2))
 }
 
-export function getGrant(pluginId: string): TrustGrant | null {
-  return read()[pluginId] ?? null
-}
-
 /**
  * Is this plugin currently trusted to run its code?
  * Requires a grant whose pinned hash equals the current content hash AND whose

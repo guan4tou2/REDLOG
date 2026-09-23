@@ -25,19 +25,9 @@ export const HUD = {
   valueDim: '#9fc4ce'
 } as const
 
-// Low-alpha glow helpers — keep these subtle. `soft` for text-shadow, `ring`
-// for box-shadow. Passed a hex, returns an rgba-ish shadow string.
-export function glow(hex: string, alpha = 0.4, blur = 8): string {
-  return `0 0 ${blur}px ${hexA(hex, alpha)}`
-}
-
 export function hexA(hex: string, alpha: number): string {
   const h = hex.replace('#', '')
   const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16)
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
-
-// Chamfered-panel clip-path (cuts top-left + bottom-right corners).
-export const CHAMFER = 'polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px)'
-export const CHAMFER_SM = 'polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px)'
