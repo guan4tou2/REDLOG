@@ -33,8 +33,7 @@ export default function GeneralPage({
           the one on the project picker, which is where you actually want
           it — you seed a config when creating the project, not after.
           The export half stays: deleting it would leave an import that
-          consumes files nothing can produce. It carries views.json too,
-          so it is not merely a copy of config.yaml. */}
+          consumes files nothing can produce. */}
       <FieldGroup title={t('settings.handoffProfile')}>
         <button
           onClick={async () => {

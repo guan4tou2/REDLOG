@@ -108,21 +108,6 @@ interface BookmarkContext {
   lastCommand?: string
 }
 
-interface SavedTimelineViewState {
-  timeStart?: number
-  timeEnd?: number
-  zoom?: number
-  hiddenLanes?: string[]
-  filterQuery?: string
-}
-
-interface SavedTimelineView {
-  id: string
-  name: string
-  createdAt: number
-  state: SavedTimelineViewState
-}
-
 interface Bookmark {
   id: string
   title: string
@@ -301,14 +286,6 @@ interface RedLogAPI {
     get: (id: string) => Promise<Bookmark | null>
     create: (data: { title: string; url?: string; note?: string }) => Promise<Bookmark>
     update: (id: string, data: Partial<Bookmark>) => Promise<Bookmark | null>
-    delete: (id: string) => Promise<boolean>
-  }
-  // v0.6.96 Clean-3: preload always exports views (v0.6.90 D); the `?` was
-  // a leftover from the first day when the shim was optional. Types now
-  // reflect reality.
-  views: {
-    list: () => Promise<SavedTimelineView[]>
-    save: (data: { name: string; state: SavedTimelineViewState }) => Promise<SavedTimelineView>
     delete: (id: string) => Promise<boolean>
   }
   cdp: {
