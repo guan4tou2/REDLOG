@@ -166,8 +166,9 @@ export function foldMarker(original: RedLogEvent, amendments: readonly RedLogEve
   return { effective, amendCount: mine.length, history }
 }
 
-/** Fold every marker in one pass over a mixed event list — the shape the
- *  Timeline needs, where originals and amendments arrive interleaved. */
+/** Fold every marker in one pass over a mixed event list, where originals and
+ *  amendments arrive interleaved (Search results plus their fetched
+ *  amendments). */
 export function foldAllMarkers(events: readonly RedLogEvent[]): Map<string, MarkerFold> {
   const byMarker = groupAmendments(events)
   const folds = new Map<string, MarkerFold>()

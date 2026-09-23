@@ -322,10 +322,6 @@ export function isSessionRegistered(sessionId: string): boolean {
   return sessionRegistry.size === 0 || sessionRegistry.has(sessionId)
 }
 
-export function clearSessionRegistry(): void {
-  sessionRegistry.clear()
-}
-
 export function getRegisteredSessions(): string[] {
   return [...sessionRegistry]
 }
@@ -1238,11 +1234,6 @@ export function configureHost(next: Partial<TailerHostConfig>): void {
   restartAll()
 }
 
-export function startHost(next?: Partial<TailerHostConfig>): void {
-  if (next) cfg = { ...cfg, ...next }
-  restartAll()
-}
-
 export function stopHost(): void {
   for (const [, w] of watchersByAgent) void w.close()
   watchersByAgent.clear()
@@ -1368,11 +1359,4 @@ export function _sessionsForTest(): Map<string, SessionState> {
  *  registering a wrapper adapter. */
 export function _hostControlSurfaceForTest(): HostControlSurface {
   return hostControlSurface
-}
-
-export function _resetForTest(): void {
-  stopHost()
-  registeredAdapters.clear()
-  initializedAdapters.clear()
-  cfg = { enabled: false, engagementId: '', operatorId: '' }
 }

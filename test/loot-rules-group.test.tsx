@@ -40,6 +40,13 @@ describe('LootRulesGroup', () => {
     expect(seen.at(-1)!.loot!.disabledRules).toEqual([])
   })
 
+  it('marks a rule that was stopped for overrunning its time limit (Spec 033)', async () => {
+    rules = () => Promise.resolve([...RULES.slice(0, 2), { ...RULES[2], stopped: 'time_limit' }])
+    render(<LootRulesGroup config={base} setConfig={() => {}} t={t} />)
+    await waitFor(() => expect(screen.getByTestId('loot-rule-stopped-acme-pack:acme-v2')).toBeTruthy())
+    expect(screen.queryByTestId('loot-rule-stopped-aws_key')).toBeNull()
+  })
+
   it('says when the rules could not be loaded instead of showing an empty list', async () => {
     rules = () => Promise.reject(new Error('ipc down'))
     render(<LootRulesGroup config={base} setConfig={() => {}} t={t} />)
