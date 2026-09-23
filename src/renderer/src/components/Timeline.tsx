@@ -27,7 +27,7 @@ import { isHookSource, isHousekeeping } from '../lib/housekeeping'
 import { isMac } from '../lib/platform'
 import { useContributeExport } from '../lib/exportScope'
 import {
-  LANES, type LaneId, BANDS, type BandId, BAND_OF, EXTERNAL_ONLY_LANES, LANE_COLORS,
+  LANES, LANE_LABEL_KEYS, type LaneId, BANDS, type BandId, BAND_OF, EXTERNAL_ONLY_LANES, LANE_COLORS,
   type PluginEventType, type DotShape, IO_MARK_COLOR,
   displayTs, toLane, eventCompare, binarySearchInsert,
   axisLabel, formatBehind, ioMark, dotShape, shapeTitle, ioTitle,
@@ -499,26 +499,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   const pendingZoomAnchor = useRef<{ frac: number; cursorX: number } | null>(null)
   const { t } = useI18n()
 
-  const laneLabels: Record<LaneId, string> = useMemo(() => ({
-    shell: t('timeline.shell'),
-    agent: t('timeline.agent'),
-    http_navigation: t('timeline.http'),
-    scanner: t('timeline.scanner'),
-    browser: t('timeline.browser'),
-    dns: t('timeline.dns'),
-    pivot: t('timeline.pivot'),
-    screenshot: t('timeline.screenshot'),
-    clipboard: t('timeline.clipboard'),
-    file_transfer: t('timeline.files'),
-    credential_use: t('timeline.credentialUse'),
-    c2_checkin: t('timeline.c2Checkin'),
-    marker: t('timeline.markers'),
-    loot: t('timeline.loot'),
-    cleanup: t('timeline.cleanup'),
-    scope: t('timeline.scope'),
-    process: t('timeline.process'),
-    system: t('timeline.system')
-  }), [t])
+  const laneLabels = useMemo(
+    () => Object.fromEntries(LANES.map((id) => [id, t(LANE_LABEL_KEYS[id])])) as Record<LaneId, string>,
+    [t]
+  )
 
   useEffect(() => {
     if (!containerRef.current) return
