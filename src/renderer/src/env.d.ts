@@ -146,7 +146,6 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
-    anchorForRestart?: (opts?: { toVersion?: string }) => Promise<import('../../core/update-anchor').RestartAnchorResult>
     openExternal: (url: string) => Promise<void>
   }
   ui: {
@@ -225,7 +224,6 @@ interface RedLogAPI {
     }>
     /** §10: distinct hosts across the timeline for ⌘K host search. */
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
-    hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
     searchCasts: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string
@@ -255,8 +253,6 @@ interface RedLogAPI {
   screenshot: {
     capture: (causeEventId?: string) => Promise<string | null>
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
-    /** 2d batch-delete: subset of these screenshot ids that a marker cites. */
-    markerReferenced: (ids: string[]) => Promise<string[]>
   }
   scope: {
     getViolations: () => Promise<Array<{
@@ -329,7 +325,6 @@ interface RedLogAPI {
     spawn: (id: string, cols: number, rows: number, shellId?: string) =>
       Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean; recording: boolean; castTruncated: boolean; paused: boolean }>
     shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
-    rediscoverShells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
@@ -358,7 +353,6 @@ interface RedLogAPI {
   overlay: {
     toggle: () => void
     hide: () => void
-    show: () => void
     isVisible: () => Promise<boolean>
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
@@ -393,9 +387,6 @@ interface RedLogAPI {
   pivots: {
     getActive: () => Promise<unknown[]>
     onChange: (cb: (pivots: Array<{ via: string; tool: string; route?: string; ts: number }>) => void) => () => void
-  }
-  clock: {
-    status: () => Promise<{ offsetMs: number | null; lastQuery: unknown }>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>

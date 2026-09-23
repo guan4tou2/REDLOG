@@ -5,7 +5,6 @@ import {
   anchorNow, listAnchors, verifyLatestAnchor,
   verifyChainFullAsync, upgradeAnchor, upgradeAllPending
 } from '../../core/chain-anchor'
-import { getNtpOffsetMs, getLastNtpQuery } from '../../core/clock'
 
 export function registerChainIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('chain:length', () =>
@@ -27,10 +26,4 @@ export function registerChainIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (id) return await upgradeAnchor(id)
     return await upgradeAllPending()
   })
-
-  ipcMain.handle('clock:status', () => ({
-    ntpOffsetMs: getNtpOffsetMs(),
-    lastQueryAt: getLastNtpQuery(),
-    hostWallMs: Date.now()
-  }))
 }
