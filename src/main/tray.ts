@@ -120,8 +120,11 @@ export function createTray(
     ]
 
     if (onBookmark) {
+      // It opens the marker dialog in the main window, so it has the app's
+      // name for that and an ellipsis; "Quick Mark" read as the HUD's instant
+      // mark, which files one without asking.
       items.push({
-        label: '⚑ Quick Mark',
+        label: '⚑ Add Marker…',
         accelerator: QUICK_MARK_ACCELERATOR,
         click: () => onBookmark()
       })
