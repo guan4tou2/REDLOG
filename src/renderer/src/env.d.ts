@@ -250,10 +250,14 @@ interface RedLogAPI {
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
   }
   scope: {
-    getViolations: () => Promise<Array<{
-      id: string; target: string; command: string; timestamp: number
-      sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
-    }>>
+    getViolations: () => Promise<{
+      rows: Array<{
+        id: string; target: string; command: string; timestamp: number
+        sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
+      }>
+      /** More violation records exist than the page read (Constitution IV). */
+      truncated: boolean
+    }>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
     /** The newest scope_recomputed summary, or null. The Scope banner is a

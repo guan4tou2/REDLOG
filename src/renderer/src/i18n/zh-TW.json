@@ -166,6 +166,7 @@
   "scope.evidenceLog": "證據日誌",
   "scope.entries": "{{count}} 筆紀錄",
   "scope.recentViolations": "近期違規",
+  "scope.truncated": "這裡只列出最新的違規紀錄，完整紀錄請看時間軸。",
   "scope.openInTimeline": "在時間軸開啟該事件",
   "loot.title": "戰利品（{{count}}）",
   "loot.empty": "尚未偵測到憑證或機密。",
