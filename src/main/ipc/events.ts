@@ -5,7 +5,7 @@ import {
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
-  distinctHosts, hostCausalChain,
+  distinctHosts,
   type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
 } from '../../core/db/events'
 import { loadConfig, snapshotScope } from '../../core/config'
@@ -76,8 +76,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:distinctHosts', () =>
     ctx.getActiveProject() ? distinctHosts() : [])
 
-  ipcMain.handle('events:hostChain', (_e, host: string, opts?: { chainLimit?: number }) =>
-    ctx.getActiveProject() ? hostCausalChain(host, opts ?? {}) : null)
 
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) =>
     ctx.getActiveProject() ? queryByFlowId(flowId) : [])

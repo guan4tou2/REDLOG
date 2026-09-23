@@ -29,15 +29,15 @@ date: 2026-09-09T00:00:00Z
 | **NDJSON(ELK)匯出** | IPC `data:exportNdjson({scopeOnly?,scrubPii?})` → 檔案路徑;匯出選單已有「NDJSON」項 | `scopeOnly`/`scrubPii` 做成選單勾選(現為全部+內容遮蔽) |
 | **walkthrough(逐字稿依主機分段)** | IPC `data:exportWalkthrough` → `.md` 就緒 | **不是第四種格式**(design 2026-09-09 裁定):逐字稿 Markdown 匯出的〈依主機分段〉開關,預設關。已移除獨立選單項,後端待接該開關 |
 | **pcap 擷取** | `hooks/pcap-agent.py`(CLI producer,同 mitmproxy);API 白名單 + LOGGED_TIER 已接 | 時間軸 pcap = 流量組多一列;設定裡的擷取來源啟動器/狀態 |
-| **10a 因果鏈** | IPC `events:hostChain(host)` → `{eventCount,operatorCount,firstSeen,lastSeen,chain[]}` | **Inspector〈相關〉面板**:表頭 + 策展鏈清單、command 對摺(`collapseCommandPairs`)、範圍徽章(`lib/scope.ts`)、當前事件釘選、〈在目標頁開啟〉/⌘↩ |
-| **5a 更新前錨定** | `core/update-anchor.ts` `anchorBeforeRestart()`;IPC `app:anchorForRestart`;updater「前往下載」已自動觸發 | 狀態列青點、不彈視窗的更新卡、「約 8 秒不記錄」確認框 |
-| **5c 操作員金鑰管理** | IPC `operators:create`/`rotateToken`/`revoke`/`rename`/`pubKey`;`operators:list` 已補 `signerPubKey`;token 寫 `~/.redlog/tokens/<id>.token`(0600、專案樹外),IPC 只回**檔案路徑**不回 raw token(§10) | 5c 操作員頁:清單(名稱/主要/建立時間/公鑰)、〈新增〉、〈輪替金鑰〉、〈撤銷〉、〈改名〉;金鑰檔用 `data:revealPath` 揭示,不在畫面顯示 token |
-| **2b 終端機 per-pane 記錄狀態** | `terminal:list` 每列回 `recording`/`castBytes`/`castTruncated`/`castStartedAt` | **三種 chip,不可都寫「未記錄」**(§28.7):`recording=true`→綠「記錄中」;`recording=false && castTruncated`→**琥珀「已停錄」**(撞 50 MB 上限,操作員最易漏、以為還在錄);`recording=false && !castTruncated && castStartedAt==null`→灰(cast 開不了,附〈診斷〉)。互動式工作階段的灰點既有 pane 已正確處理 |
-| **2d 截圖批次刪除分級** | IPC `screenshot:markerReferenced(ids[])` → 被標記引用的子集;刪除仍走既有 `screenshot:deleteFile`(每檔寫 `system.screenshot_deleted` + `sha256_pre_delete`,鏈見證) | 依回傳挑確認層級:空→第二級(勾選框);非空→第三級(輸入確認)。刪除本身逐檔呼叫 deleteFile |
+| **10a 因果鏈** | ~~IPC `events:hostChain(host)`~~ 已移除(2026-09-23):面板一直沒做,Spec 014 的 `events:causalChain` 已涵蓋 | **Inspector〈相關〉面板**:表頭 + 策展鏈清單、command 對摺(`collapseCommandPairs`)、範圍徽章(`lib/scope.ts`)、當前事件釘選、〈在目標頁開啟〉/⌘↩ |
+| **5a 更新前錨定** | `core/update-anchor.ts` `anchorBeforeRestart()`;(IPC `app:anchorForRestart` 已移除,無呼叫者);updater「前往下載」已自動觸發 | 狀態列青點、不彈視窗的更新卡、「約 8 秒不記錄」確認框 |
+| **5c 操作員金鑰管理** | ~~IPC `operators:create`/`rotateToken`/`revoke`/`rename`/`pubKey`~~ 已移除(2026-09-23:無 UI 卻能建立 API token);`operators:list` 已補 `signerPubKey`;token 寫 `~/.redlog/tokens/<id>.token`(0600、專案樹外),IPC 只回**檔案路徑**不回 raw token(§10) | 5c 操作員頁:清單(名稱/主要/建立時間/公鑰)、〈新增〉、〈輪替金鑰〉、〈撤銷〉、〈改名〉;金鑰檔用 `data:revealPath` 揭示,不在畫面顯示 token |
+| **2b 終端機 per-pane 記錄狀態** | `terminal:list` 每列回 `recording`/`castBytes`/`castTruncated`/`paused`/`castStartedAt` | **三種 chip,不可都寫「未記錄」**(§28.7):`recording=true`→綠「記錄中」;`recording=false && castTruncated`→**琥珀「已停錄」**(撞 50 MB 上限,操作員最易漏、以為還在錄);`recording=false && !castTruncated && castStartedAt==null`→灰(cast 開不了,附〈診斷〉)。互動式工作階段的灰點既有 pane 已正確處理 |
+| **2d 截圖批次刪除分級** | ~~IPC `screenshot:markerReferenced(ids[])`~~ 已移除(2026-09-23:沒有批次刪除 UI);刪除仍走既有 `screenshot:deleteFile`(每檔寫 `system.screenshot_deleted` + `sha256_pre_delete`,鏈見證) | 依回傳挑確認層級:空→第二級(勾選框);非空→第三級(輸入確認)。刪除本身逐檔呼叫 deleteFile |
 
 **仍未動(多為 UI 為主,後端多已具備)**:3c 需要注意互動彈出層(`dismissIssue` 後端在)、2b 終端機
 per-pane chip(**後端已就緒,見上表——UI 須拆三態,勿都寫「未記錄」**)、5b 終端機設定頁(config 後端在)、4d 逐字稿首行/自動展開、4b 違規展開 +
-inline 加入允許清單、5c 操作員金鑰管理 UI(**後端已就緒,見上表**)、4e 標記圓點嚴重度 + 截圖圖示、2c 標記對話框〈將一併記錄〉、
+inline 加入允許清單、5c 操作員金鑰管理 UI(後端 IPC 已移除,要做時再加回)、4e 標記圓點嚴重度 + 截圖圖示、2c 標記對話框〈將一併記錄〉、
 2d 截圖 ×N/SHA-256/批次刪除升級(**分級查詢後端已就緒,見上表**)、時間軸 Inspector 分頁/事件流 >50 折疊/鏈警示/在逐字稿上顯示/圖例中文。
 **刻意不做**(2026-09-09 裁定):flag/proof 偵測、MITRE 技術欄(非通用工具定位);2a PDF 報告(改純資料匯出);
 at-rest 加密(維持「信任本機」假設,暫不)。

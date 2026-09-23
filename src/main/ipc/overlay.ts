@@ -189,10 +189,6 @@ export function registerOverlayIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     ctx.getOverlayWindow()?.hide()
     ctx.send(ctx.getMainWindow(), 'overlay:visibilityChanged', false)
   })
-  ipcMain.on('overlay:show', () => {
-    ctx.getOverlayWindow()?.show()
-    ctx.send(ctx.getMainWindow(), 'overlay:visibilityChanged', true)
-  })
   ipcMain.on('overlay:toggle', () => {
     const overlayWindow = ctx.getOverlayWindow()
     if (overlayWindow?.isVisible()) {

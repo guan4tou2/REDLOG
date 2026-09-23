@@ -21,7 +21,6 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const cached = cachedShells()
     return cached.length > 0 ? cached : await discoverShells()
   })
-  ipcMain.handle('terminal:rediscoverShells', () => discoverShells())
   ipcMain.on('terminal:write', (_e, id: string, data: string) => writeTerminal(id, data))
   ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) => resizeTerminal(id, cols, rows))
   ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))

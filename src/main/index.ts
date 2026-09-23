@@ -59,7 +59,6 @@ import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-ht
 import { isManagedLoopbackProxy } from '../core/managed-proxy-url'
 import { detectLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
-import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -1492,14 +1491,6 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
-  // 5a: anchor the chain head + mark the expected recording gap before the
-  // design's update card sends the operator to quit-and-reinstall.
-  ipcMain.handle('app:anchorForRestart', (_e, opts?: { toVersion?: string }) =>
-    anchorBeforeRestart({
-      fromVersion: app.getVersion(),
-      toVersion: opts?.toVersion ?? null,
-      engagementId: currentEngagementId ?? 'default'
-    }))
   // Renderer needs a way to open a URL in the operator's real browser (marks
   // page, plugin homepage, etc.). Only http/https allowed — Electron's
   // openExternal can dispatch file:/// and other schemes with unbounded side
