@@ -2,7 +2,7 @@
 
 > Domain: Investigation / Evidence
 > Invariant: One query text means one thing wherever it is typed. Its conditions, its text and the shared filter are all evaluated at the persistence layer, across both event tiers, before any limit.
-> Status: Implemented — Search, the Transcript, the ⌘K palette and `/api/events/search` evaluate through one contract (Specs 017, 018, 026). Known deviations are listed below.
+> Status: Implemented — Search, the Transcript, the ⌘K palette and `/api/events/search` evaluate through one contract (Specs 017, 018, 026).
 
 Terms such as Event Query, Agent Session, Query Intersection and the Chained /
 Logged tiers are defined in [glossary.md](glossary.md). This document states the
@@ -63,6 +63,8 @@ typed text
    prefix-matched, so a half-typed word still matches. Terms combine with AND
    and need not be adjacent — including the words inside one quoted run. Text
    matches stored event content, or an indexed HTTP body the event references.
+   Event, HTTP body and recording search share this translation
+   (`src/core/query/fts-match.ts`), so every typed input is valid MATCH syntax.
 5. **Nothing asked, nothing answered.** A query with neither text nor
    conditions — including a parsed `""` — returns an empty page, never an
    unfiltered read. A conditions-only query is valid.
@@ -84,12 +86,18 @@ typed text
     last row's `(timestamp, rowid, tier)`, versioned and opaque, and is pushed
     into each tier so a per-tier limit cannot drop rows. `hasMore` comes from
     fetching one row past the limit.
-11. **Failure is not absence.** Evaluation does not catch errors. A failed query
-    reaches the surface as a failure (UI: failure with retry; API: 500), distinct
-    from no match and from unparsable (API: 400 with the reason and token).
+11. **Failure is not absence.** Evaluation does not catch errors, and neither
+    does recording search. A failed query reaches the surface as a failure (UI:
+    failure with retry; API: 500), distinct from no match and from unparsable
+    (API: 400 with the reason and token). The API also refuses, with 400, a
+    cursor it cannot read, rather than serving the first page again.
 12. **Tool pairs.** The counterparts of a page's unpaired tool calls and results
     are fetched in one lookup, however many there are. A counterpart that does
     not exist is shown as unpaired, never as a whole exchange.
+13. **Every surface says when it shows a subset.** Search and the Transcript
+    page with `hasMore`; the palette lists the newest 40 and says when there are
+    more; `/api/events/search` returns `hasMore` and `nextCursor` and takes
+    `cursor`.
 
 ## Coverage
 
@@ -103,19 +111,6 @@ typed text
   never part of a `QueryPage`.
 - The ⌘K palette and `/api/events/search` search the whole project. They apply
   no shared filter.
-
-## Known deviations
-
-Each item breaks a constitution principle and needs its own fix.
-
-- `/api/events/search` returns `{ count, events }` with no `hasMore` and no
-  cursor, so a script cannot tell a full page from a complete answer (IV).
-- The ⌘K palette shows the newest 40 matches with no completeness signal (IV).
-- `searchCasts` catches every error and returns no hits, so a failed cast search
-  reads as no match (VI).
-- The free-text → FTS translation exists three times: `toMatchQuery` in
-  `src/core/db/event-queries.ts` and `src/core/cast-index.ts`, and `matchQuery`
-  in `src/core/http-body-index.ts` (III).
 
 ## Scenarios
 
@@ -182,7 +177,20 @@ session:     →  unparsable (empty-condition-value); no query runs
 
 ```
 searchCasts accepts no time range. Its hits are recordings, not events,
-and never enter a QueryPage.
+and never enter a QueryPage. A failing recording index is a failure,
+never an empty list of hits.
+```
+
+### 9. A page says whether it is the answer
+
+```
+Given  3 events matching "pagingterm"
+When   /api/events/search?q=pagingterm&limit=2
+Then   2 events, hasMore = true, nextCursor set
+When   the same with cursor = nextCursor
+Then   the third event, hasMore = false
+When   cursor = "not-a-cursor"
+Then   400, not the first page again
 ```
 
 ## Property
@@ -202,3 +210,6 @@ For every query Q and shared-filter dataset D:
 - Spec 017: the query language, Transcript first. Spec 018: Search on the
   contract. Spec 026: the palette and the local API; `searchEvents` and
   `searchEventsPage` removed.
+- 2026-09-23: one FTS translation for all three indexes; recording search
+  stopped swallowing failures; the palette and the local API say when a result
+  is a subset.
