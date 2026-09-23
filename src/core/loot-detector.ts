@@ -1,5 +1,6 @@
 import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
+import { DETECT_AS_LOOT, compileShape } from './secret-patterns'
 
 interface LootMatch {
   type: string
@@ -14,18 +15,11 @@ interface LootMatch {
   patternName?: string
 }
 
-const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low' }> = [
-  { type: 'password_hash', pattern: /\$[126][\$a-z]*\$[./A-Za-z0-9]+/g, confidence: 'high' },
-  { type: 'ntlm_hash', pattern: /[a-fA-F0-9]{32}:[a-fA-F0-9]{32}/g, confidence: 'high' },
-  { type: 'private_key', pattern: /-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----/g, confidence: 'high' },
-  { type: 'aws_key', pattern: /AKIA[0-9A-Z]{16}/g, confidence: 'high' },
-  { type: 'jwt', pattern: /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, confidence: 'medium' },
-  { type: 'generic_api_key', pattern: /(?:api[_-]?key|apikey|token|secret|password)\s*[=:]\s*['"]?([^\s'"]{8,})/gi, confidence: 'medium' },
-  { type: 'database_url', pattern: /(?:mysql|postgres|mongodb|redis):\/\/[^\s]+/gi, confidence: 'high' },
-  { type: 'shadow_entry', pattern: /^[a-z_][a-z0-9_-]*:\$[^:]+:[^:]*:[^:]*:[^:]*:[^:]*:/gm, confidence: 'high' },
-  { type: 'flag', pattern: /(?:flag|ctf|HTB)\{[^}]+\}/gi, confidence: 'high' },
-  { type: 'base64_creds', pattern: /(?:Authorization|auth):\s*Basic\s+[A-Za-z0-9+/=]{10,}/gi, confidence: 'medium' },
-]
+// Built-in loot shapes and their order live in `secret-patterns.ts`, beside
+// transcript redaction's list. Order is load-bearing: it is the order of the
+// chained loot event's `matches`.
+const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low' }> =
+  DETECT_AS_LOOT.map(({ shape, type, confidence }) => ({ type, pattern: compileShape(shape), confidence }))
 
 // Plugin-contributed loot patterns (🟢 declarative). Kept separate from the
 // built-ins so we can list/replace them without touching the base set.
