@@ -905,7 +905,7 @@ function startProject(project: ProjectMeta): void {
     })
     if (tray) {
       tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!isOverlayPassThrough()))
+      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
       setTrayRecording(tray, !eventBus.paused)
     }
   }
@@ -1059,7 +1059,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(!isOverlayPassThrough()))
+  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
@@ -1174,6 +1174,9 @@ app.whenReady().then(() => {
     // latest stored value prevents that stale form from silently reverting
     // attribution context on its next auto-save.
     newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
+    // Same for HUD pass-through: overlay:setPassThrough stores it, and a form
+    // loaded before a ⌘⇧P or HUD toggle must not write the old value back.
+    if (newConfig.overlay) newConfig.overlay.passThrough = oldConfig.overlay?.passThrough === true
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     saveConfig(projectDir, newConfig)
@@ -1248,8 +1251,10 @@ app.whenReady().then(() => {
     send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
     send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
     send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
+    // A save changes the opacity only. Pass-through keeps its runtime state, so
+    // an unrelated autosave cannot re-ghost a HUD an exposure alarm just woke.
     configureOverlayState({
-      passThrough: !!newConfig.overlay?.passThrough,
+      passThrough: isOverlayPassThrough(),
       opacity: newConfig.overlay?.passThroughOpacity ?? 0.4
     })
     return true

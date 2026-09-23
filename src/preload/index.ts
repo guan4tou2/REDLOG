@@ -298,7 +298,13 @@ const api: RedLogAPI = {
       ipcRenderer.on('overlay:visibilityChanged', handler)
       return () => ipcRenderer.removeListener('overlay:visibilityChanged', handler)
     },
-    moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => ipcRenderer.send('overlay:moveToCorner', corner)
+    moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => ipcRenderer.send('overlay:moveToCorner', corner),
+    setPassThrough: (on: boolean) => ipcRenderer.send('overlay:setPassThrough', on),
+    onPassThroughChanged: (cb: (on: boolean) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, on: boolean): void => cb(on)
+      ipcRenderer.on('overlay:passThroughChanged', handler)
+      return () => ipcRenderer.removeListener('overlay:passThroughChanged', handler)
+    }
   }
 }
 
