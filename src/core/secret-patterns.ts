@@ -96,8 +96,11 @@ export const SECRET_SHAPES = {
     description: 'LM:NT hash pair'
   },
   private_key_header: {
-    pattern: /-----BEGIN\s+(RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----/g,
-    description: 'a PEM private key header line only'
+    // The first line of key material is part of the match so two keys with
+    // the same header are two values (Spec 031); the header alone is not the
+    // secret. The algorithm is a non-capturing group — it is not the value.
+    pattern: /-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----(?:\s*[A-Za-z0-9+/=]{16,})?/g,
+    description: 'a PEM private key header, with its first line of key material when present'
   },
   jwt_with_json_payload: {
     pattern: /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
@@ -159,16 +162,18 @@ export const TRANSCRIPT_PREFILTER = /api[_-]?key|api[_-]?secret|token|password|p
 
 /** Recorded as loot, in this order — the match order is the order of the loot
  *  event's `matches`, which is chained, so it must not change. `type` is the
- *  value stored on the event. The CTF flag pattern that used to follow
+ *  value stored on the event. `group` is which part of the match is the value:
+ *  0 for the whole match, n for capture group n — never inferred (Spec 031).
+ *  The CTF flag pattern that used to follow
  *  `shadow_entry` was removed (product identity: no proof/flag/exam). */
-export const DETECT_AS_LOOT: ReadonlyArray<{ shape: SecretShapeId; type: string; confidence: 'high' | 'medium' | 'low' }> = [
-  { shape: 'crypt_password_hash', type: 'password_hash', confidence: 'high' },
-  { shape: 'ntlm_hash_pair', type: 'ntlm_hash', confidence: 'high' },
-  { shape: 'private_key_header', type: 'private_key', confidence: 'high' },
-  { shape: 'aws_access_key', type: 'aws_key', confidence: 'high' },
-  { shape: 'jwt_with_json_payload', type: 'jwt', confidence: 'medium' },
-  { shape: 'named_secret_value', type: 'generic_api_key', confidence: 'medium' },
-  { shape: 'database_url', type: 'database_url', confidence: 'high' },
-  { shape: 'shadow_entry', type: 'shadow_entry', confidence: 'high' },
-  { shape: 'basic_auth_header', type: 'base64_creds', confidence: 'medium' }
+export const DETECT_AS_LOOT: ReadonlyArray<{ shape: SecretShapeId; type: string; confidence: 'high' | 'medium' | 'low'; group: number }> = [
+  { shape: 'crypt_password_hash', type: 'password_hash', confidence: 'high', group: 0 },
+  { shape: 'ntlm_hash_pair', type: 'ntlm_hash', confidence: 'high', group: 0 },
+  { shape: 'private_key_header', type: 'private_key', confidence: 'high', group: 0 },
+  { shape: 'aws_access_key', type: 'aws_key', confidence: 'high', group: 0 },
+  { shape: 'jwt_with_json_payload', type: 'jwt', confidence: 'medium', group: 0 },
+  { shape: 'named_secret_value', type: 'generic_api_key', confidence: 'medium', group: 1 },
+  { shape: 'database_url', type: 'database_url', confidence: 'high', group: 0 },
+  { shape: 'shadow_entry', type: 'shadow_entry', confidence: 'high', group: 0 },
+  { shape: 'basic_auth_header', type: 'base64_creds', confidence: 'medium', group: 0 }
 ]

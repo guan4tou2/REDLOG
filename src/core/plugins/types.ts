@@ -34,6 +34,10 @@ export interface LootPatternContribution {
   confidence?: Confidence
   /** optional inline flags, e.g. "i" or "gm" (g is always added) */
   flags?: string
+  /** Capture group that holds the secret; omitted = the whole match. A rule
+   *  with a negative or non-integer group is skipped. (Spec 031 — the value
+   *  used to be inferred as group 1 whenever one existed.) */
+  group?: number
   /** v0.9.0: human-readable identifier for this pattern within the
    *  plugin. Shows up on matched loot events as `pattern_name` for
    *  audit traceability — "this AWS key was flagged by recon-pack's

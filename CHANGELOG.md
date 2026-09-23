@@ -3,6 +3,20 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
+## Unreleased
+
+- **Loot:** a secret is now masked every time it appears — before, its second
+  occurrence was stored and exported unmasked. Loot rows are one per secret per
+  target, compared on the full value (two keys sharing a prefix, or two private
+  keys with the same header, are no longer merged).
+- **Loot:** PTY session output from `redlog-session` is scanned, including a
+  secret split across two output chunks.
+- **Loot:** a failed loot write is reported in Capture Health and retried on
+  the next sighting instead of being dropped.
+- **Plugins:** `lootPatterns` entries take an optional `group` naming the
+  capture group that holds the secret; without it the whole match is the
+  value. It used to be capture group 1 whenever the pattern had one.
+
 ## v0.16.0 — 2026-09-23
 
 **Upgrading — read first.**

@@ -159,25 +159,18 @@ describe('LootDetector class', () => {
     // though there's no DB configured in this test file.
     const m = d.scan('AKIAIOSFODNN7EXAMPLE')
     expect(m.some((x) => x.type === 'aws_key')).toBe(true)
-    expect(d.dedupeCacheSize()).toBeGreaterThan(0)
+    // Nothing was written, so nothing counts as recorded (Spec 031).
+    expect(d.dedupeCacheSize()).toBe(0)
   })
 
-  it('deduplicates: the same value scanned twice yields one match total', () => {
+  it('reports a value every time it is scanned — recording dedup is emit()\'s job', () => {
+    // Spec 031: the scan result also feeds redaction, which must mask every
+    // occurrence. One loot row per value is enforced when it is written
+    // (test/loot-correctness.test.ts).
     const d = new LootDetector()
     const text = 'AKIAIOSFODNN7EXAMPLE somewhere'
-    const first = d.scan(text)
-    const second = d.scan(text)
-    expect(first.length).toBe(1)
-    expect(second.length).toBe(0)
-    expect(d.dedupeCacheSize()).toBe(1)
-  })
-
-  it('separate instances have independent dedup sets', () => {
-    const a = new LootDetector()
-    const b = new LootDetector()
-    const text = 'AKIAIOSFODNN7EXAMPLE'
-    expect(a.scan(text).length).toBe(1)
-    expect(b.scan(text).length).toBe(1)
+    expect(d.scan(text).length).toBe(1)
+    expect(d.scan(text).length).toBe(1)
   })
 
   it('empty text returns no matches and does not throw', () => {

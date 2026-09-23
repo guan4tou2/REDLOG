@@ -37,7 +37,7 @@ import { noteDbError } from './capture-health'
 export interface LootDetectorLike {
   findMatches?: (text: string) => Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>
   scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => Array<{ type: string; value: string; confidence: 'high' | 'medium' | 'low' }>
-  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => void
+  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => boolean
 }
 
 export interface AlertRuntimeLike {
@@ -269,6 +269,13 @@ interface Plan {
   commandCreds: ReturnType<typeof detectCredentialUse>
 }
 
+/** Last characters of each live PTY session's output, joined to its next
+ *  chunk before the loot scan. Long enough for a JWT or a key line; bounded
+ *  in count so sessions that never sent `session_end` cannot accumulate. */
+const sessionTail = new Map<string, string>()
+const SESSION_TAIL_CHARS = 4096
+const SESSION_TAIL_MAX = 64
+
 function emptyPlan(): Plan {
   return { lootValues: [], pendingLootMatches: [], pivot: null, pivotClose: null, cleanup: null, fileXfer: null, httpCred: null, commandCreds: [] }
 }
@@ -336,6 +343,26 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
           plan.lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
         }
       }
+    }
+  }
+
+  // PTY session output (`redlog-session`) carries stdout but no command, so the
+  // block above never saw it: output was stored and searchable, but never
+  // scanned (Spec 031). Chunks are arbitrary read boundaries, so each scan
+  // includes the tail of the previous chunk of the same session — a secret
+  // split across two chunks is found when its second half arrives. Values
+  // already recorded are dropped by the detector's dedup, not here.
+  if (agentType === 'shell' && typeof data.terminalId === 'string') {
+    const tid = data.terminalId
+    if (data.subtype === 'session_output' && typeof data.stdout === 'string' && data.stdout && lootDetectorRef?.findMatches) {
+      const text = (sessionTail.get(tid) ?? '') + data.stdout
+      sessionTail.delete(tid)
+      sessionTail.set(tid, text.slice(-SESSION_TAIL_CHARS))
+      if (sessionTail.size > SESSION_TAIL_MAX) sessionTail.delete(sessionTail.keys().next().value as string)
+      plan.pendingLootMatches = lootDetectorRef.findMatches(text)
+      plan.lootValues = plan.pendingLootMatches.map((m) => m.value).filter((v) => v && v.length >= 6)
+    } else if (data.subtype === 'session_start' || data.subtype === 'session_end') {
+      sessionTail.delete(tid)
     }
   }
 
@@ -408,6 +435,7 @@ function detectRedactions(data: Record<string, unknown>, lootValues: string[]): 
 /** Test helper. */
 export function _resetIngest(): void {
   castOffsetAtStart.clear()
+  sessionTail.clear()
   resetCausesResolver()
   lootDetectorRef = null
   alertRuntimeRef = null
