@@ -46,6 +46,7 @@ import { configureProcessMonitor, stopProcessMonitor } from './services/process-
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
 import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
+import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
@@ -746,29 +747,9 @@ function startProject(project: ProjectMeta): void {
   // v0.7.2 A: Claude Code transcript tailer. Reads `~/.claude/projects/`
   // JSONL sessions, derives per-turn events (user_message / assistant_message
   // / tool_call / tool_result) plus a whole-file sha256 snapshot event
-  // stream. Gate uses the same `excludedPaths` / `watchPaths` as the shell
-  // hook so policy is consistent across the two ingest paths.
+  // stream, gated by the path lists in ~/.redlog/hook-config.json.
   {
-    let excludedPaths: string[] = []
-    let watchPaths: string[] = []
-    try {
-      const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
-      if (fs.existsSync(cfgPath)) {
-        const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as { excludedPaths?: string[]; watchPaths?: string[] }
-        excludedPaths = raw.excludedPaths ?? []
-        watchPaths = raw.watchPaths ?? []
-      }
-    } catch (e) {
-      // A missing or malformed file is expected — the operator may never have
-      // opened Settings ▸ Integrations. Anything else gets logged: v0.9.4
-      // P0-1 was a ReferenceError swallowed right here for several releases,
-      // silently disabling every tailer exclusion while the shell hook (which
-      // reads the same file itself) kept the feature looking alive. A gate
-      // that fails open must not fail quietly.
-      if (!(e instanceof SyntaxError)) {
-        console.error('[tailer] hook-config.json unreadable; path exclusions disabled:', e)
-      }
-    }
+    const { excludedPaths, watchPaths } = readHookConfig()
     configureAgentTailer({
       // Agent transcripts can include unrelated work from the operator's home
       // directory. Capture is therefore opt-in for every project; a partial or
@@ -802,42 +783,25 @@ function startProject(project: ProjectMeta): void {
     },
     watchPathManager: {
       addPath: (cwd: string): boolean => {
-        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
         try {
-          let raw: { excludedPaths?: string[]; watchPaths?: string[] } = { excludedPaths: [], watchPaths: [] }
-          try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) } catch { /* new file */ }
-          const current = (raw.watchPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean)
+          const { watchPaths } = readHookConfig()
           const norm = path.resolve(cwd)
-          if (current.some((p: string) => path.resolve(p) === norm)) return false
-          current.push(cwd)
-          const clean = { excludedPaths: (raw.excludedPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean), watchPaths: current }
-          fs.mkdirSync(path.dirname(cfgPath), { recursive: true })
-          fs.writeFileSync(cfgPath, JSON.stringify(clean, null, 2) + '\n')
-          configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+          if (watchPaths.some((p) => path.resolve(p) === norm)) return false
+          configureAgentTailer(saveHookConfig({ watchPaths: [...watchPaths, cwd] }))
           return true
         } catch { return false }
       },
       removePath: (cwd: string): boolean => {
-        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
         try {
-          let raw: { excludedPaths?: string[]; watchPaths?: string[] } = { excludedPaths: [], watchPaths: [] }
-          try { raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) } catch { return false }
+          const { watchPaths } = readHookConfig()
           const norm = path.resolve(cwd)
-          const filtered = (raw.watchPaths ?? []).filter((p: string) => path.resolve(p.trim()) !== norm)
-          if (filtered.length === (raw.watchPaths ?? []).length) return false
-          const clean = { excludedPaths: (raw.excludedPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean), watchPaths: filtered }
-          fs.writeFileSync(cfgPath, JSON.stringify(clean, null, 2) + '\n')
-          configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+          const filtered = watchPaths.filter((p) => path.resolve(p) !== norm)
+          if (filtered.length === watchPaths.length) return false
+          configureAgentTailer(saveHookConfig({ watchPaths: filtered }))
           return true
         } catch { return false }
       },
-      listPaths: (): string[] => {
-        const cfgPath = path.join(homedir(), '.redlog', 'hook-config.json')
-        try {
-          const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'))
-          return (raw.watchPaths ?? []).map((s: string) => String(s).trim()).filter(Boolean)
-        } catch { return [] }
-      }
+      listPaths: (): string[] => readHookConfig().watchPaths
     }
   })
   onApiProjectOpen()
@@ -1177,32 +1141,12 @@ app.whenReady().then(() => {
     return loadConfig(getProjectPath(activeProject))
   })
 
-  // Hook-config lives in ~/.redlog/hook-config.json — outside the project so
-  // transcript watch paths apply across every project.
-  // The two gates are readable/writable through this IPC pair so the
-  // Settings ▸ 整合 panel can maintain the watchPaths whitelist without
-  // shelling out.
-  const HOOK_CONFIG_PATH = path.join(homedir(), '.redlog', 'hook-config.json')
-  ipcMain.handle('hookConfig:get', () => {
-    try {
-      const raw = fs.readFileSync(HOOK_CONFIG_PATH, 'utf-8')
-      const parsed = JSON.parse(raw)
-      return {
-        excludedPaths: Array.isArray(parsed.excludedPaths) ? parsed.excludedPaths : [],
-        watchPaths: Array.isArray(parsed.watchPaths) ? parsed.watchPaths : []
-      }
-    } catch { return { excludedPaths: [], watchPaths: [] } }
-  })
+  // Settings maintains the watchPaths whitelist through this pair.
+  ipcMain.handle('hookConfig:get', () => readHookConfig())
   ipcMain.handle('hookConfig:save', (_e, cfg: { excludedPaths?: string[]; watchPaths?: string[] }) => {
     try {
-      fs.mkdirSync(path.dirname(HOOK_CONFIG_PATH), { recursive: true })
-      const clean: Record<string, string[]> = {
-        excludedPaths: (cfg.excludedPaths ?? []).map((s) => String(s).trim()).filter(Boolean),
-        watchPaths: (cfg.watchPaths ?? []).map((s) => String(s).trim()).filter(Boolean)
-      }
-      fs.writeFileSync(HOOK_CONFIG_PATH, JSON.stringify(clean, null, 2) + '\n')
       // Live-reconfigure the tailer so the new gate takes effect immediately
-      configureAgentTailer({ excludedPaths: clean.excludedPaths, watchPaths: clean.watchPaths })
+      configureAgentTailer(saveHookConfig(cfg))
       return true
     } catch { return false }
   })
