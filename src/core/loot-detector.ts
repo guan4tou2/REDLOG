@@ -3,6 +3,7 @@ import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { DETECT_AS_LOOT, SECRET_SHAPES, compileShape } from './secret-patterns'
+import { runBounded, _shutdownBoundedRegex } from './bounded-regex'
 
 interface LootMatch {
   /** Stable rule identity, the key a rule is switched off by: the built-in's
@@ -43,8 +44,15 @@ interface ExternalPattern {
   patternName: string
   /** v0.9.0: optional human description (not used at match time). */
   description?: string
+  /** Set when the rule overran the time bound and was stopped (Spec 033).
+   *  Cleared by reloading the plugin, which registers the rule afresh. */
+  stopped?: 'time_limit'
 }
 const externalPatterns: ExternalPattern[] = []
+
+/** Time all plugin rules together may take on one text (Spec 033). A sound
+ *  rule over a 100 KB command output takes a few milliseconds. */
+const PLUGIN_RULES_BUDGET_MS = 250
 
 /** Register loot patterns from a plugin. Invalid regexes are skipped, not thrown. */
 export function registerLootPatterns(
@@ -121,11 +129,13 @@ export function listLootRules(): Array<{
   confidence: 'high' | 'medium' | 'low'
   pluginId: string | null
   description?: string
+  stopped?: 'time_limit'
 }> {
   return [
     ...LOOT_PATTERNS.map((p) => ({ id: p.type, type: p.type, confidence: p.confidence, pluginId: null, description: p.description })),
     ...externalPatterns.map((p) => ({
-      id: pluginRuleId(p.pluginId, p.patternName), type: p.type, confidence: p.confidence, pluginId: p.pluginId, description: p.description
+      id: pluginRuleId(p.pluginId, p.patternName), type: p.type, confidence: p.confidence, pluginId: p.pluginId, description: p.description,
+      ...(p.stopped ? { stopped: p.stopped } : {})
     }))
   ]
 }
@@ -176,8 +186,11 @@ export class LootDetector {
         matches.push({ ruleId: type, type, value: value.slice(0, 500), line: extractLine(text, index), confidence })
       }
     }
-    for (const { type, pattern, confidence, group, pluginId, patternName } of externalPatterns) {
-      for (const { value, index } of execAll(pattern, text, group)) {
+    // Plugin rules are declared by third parties and run under a time bound in
+    // a worker (Spec 033). Built-ins are reviewed and run in-process above.
+    for (const [rule, found] of runPluginRules(text)) {
+      const { type, confidence, pluginId, patternName } = rule
+      for (const { value, index } of found) {
         matches.push({
           ruleId: pluginRuleId(pluginId, patternName), type, value: value.slice(0, 500),
           line: extractLine(text, index), confidence, pluginId, patternName
@@ -256,6 +269,30 @@ export class LootDetector {
   dedupeCacheSize(): number {
     return this.detectedHashes.size
   }
+}
+
+/** Each running plugin rule with what it found in `text`. A rule that overruns
+ *  the budget is stopped — reported by `listLootRules()`, skipped from then on —
+ *  and the others are run again without it. Its values are no longer masked:
+ *  a rule that cannot finish cannot mask anything either. */
+function runPluginRules(text: string): Array<[ExternalPattern, Array<{ value: string; index: number }>]> {
+  for (;;) {
+    const active = externalPatterns.filter((p) => !p.stopped)
+    if (active.length === 0) return []
+    const res = runBounded(
+      active.map((p) => ({ source: p.pattern.source, flags: p.pattern.flags, group: p.group })),
+      text, PLUGIN_RULES_BUDGET_MS
+    )
+    if (res.ok) return active.map((p, i) => [p, res.matches[i] ?? []])
+    const stuck = active[res.stuckAt] ?? active[0]
+    stuck.stopped = 'time_limit'
+    console.warn(`[loot] rule ${pluginRuleId(stuck.pluginId, stuck.patternName)} exceeded ${PLUGIN_RULES_BUDGET_MS} ms and was stopped`)
+  }
+}
+
+/** Tests: stop the plugin-rule worker so the run can exit. */
+export function _shutdownLootWorker(): Promise<void> {
+  return _shutdownBoundedRegex()
 }
 
 /** Dedup identity: type, target and a digest of the FULL value. */
