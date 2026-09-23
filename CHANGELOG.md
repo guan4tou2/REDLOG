@@ -3,8 +3,13 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
-## Unreleased
+## v0.16.1 — 2026-09-23
 
+- **Updates (Windows):** the app downloads and installs an update itself, with
+  a progress window; macOS and Linux still open the download page. Each step
+  of an update is logged with an `[updater]` prefix.
+- **Project picker:** the Create button no longer wraps, and faint and muted
+  text meet WCAG AA contrast on the dark background.
 - **Loot:** a secret is now masked every time it appears — before, its second
   occurrence was stored and exported unmasked. Loot rows are one per secret per
   target, compared on the full value (two keys sharing a prefix, or two private
