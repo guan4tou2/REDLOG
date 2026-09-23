@@ -1187,6 +1187,7 @@
   "marker.replayAtTime.noSession": "No active terminal session at this time",
   "terminal.castRecording": "Terminal session is being recorded (.cast)",
   "terminal.castTruncated": "Cast recording hit size limit — output past this point is not captured",
+  "terminal.castPaused": "Recording paused — this pane's output is not written while paused",
   "terminal.castNotRecording": "No cast recording for this session",
   "transcript.queryReadAs": "Read as",
   "transcript.queryTokenCondition": "Condition: matched against the stored field",

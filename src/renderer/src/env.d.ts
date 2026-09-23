@@ -351,7 +351,7 @@ interface RedLogAPI {
   }
   terminal: {
     spawn: (id: string, cols: number, rows: number, shellId?: string) =>
-      Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean; recording: boolean; castTruncated: boolean }>
+      Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean; recording: boolean; castTruncated: boolean; paused: boolean }>
     shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     rediscoverShells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
@@ -360,11 +360,11 @@ interface RedLogAPI {
     list: () => Promise<Array<{
       id: string; pid: number; lastActivity: number
       /** 2b per-pane chip: open cast stream and under the size cap. */
-      recording: boolean; castBytes: number; castTruncated: boolean; castStartedAt: number | null
+      recording: boolean; castBytes: number; castTruncated: boolean; paused: boolean; castStartedAt: number | null
     }>>
     onData: (id: string, cb: (data: string) => void) => () => void
     onExit: (id: string, cb: (exitCode: number) => void) => () => void
-    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean }) => void) => () => void
+    onCastState: (id: string, cb: (state: { recording: boolean; castTruncated: boolean; paused: boolean }) => void) => () => void
     replay: (eventId: string) => Promise<{ ok: boolean; command?: string; exitCode?: number; durationSec?: number; text?: string; bytes?: number; error?: string }>
     replaySession: (eventId: string) => Promise<{ ok: boolean; text?: string; bytes?: number; truncated?: boolean; castPath?: string; events?: Array<[number, 'o', string]>; error?: string }>
     /** A discriminated union, not a bag of optionals: the handler returns
