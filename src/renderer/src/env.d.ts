@@ -212,11 +212,6 @@ interface RedLogAPI {
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
-    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) => Promise<{
-      items: RedLogEvent[]
-      hasMore: boolean
-      nextCursor: string | null
-    }>
     queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) => Promise<{
       items: RedLogEvent[]
       hasMore: boolean
@@ -355,7 +350,6 @@ interface RedLogAPI {
     hide: () => void
     isVisible: () => Promise<boolean>
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
-    setExpanded?: (expanded: boolean) => void
     moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
     setPassThrough: (on: boolean) => void
     onPassThroughChanged: (cb: (on: boolean) => void) => () => void

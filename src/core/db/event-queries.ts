@@ -382,15 +382,6 @@ export function queryEventsPage(opts: EventFilter & {
   return { ...page, items: page.items.map(rowToEvent) }
 }
 
-export function queryTargetEventsPage(opts: {
-  targetId: string
-  limit?: number
-  cursor?: string | null
-}): QueryPage<RedLogEvent> {
-  if (!opts.targetId) return { items: [], hasMore: false, nextCursor: null }
-  return queryEventsPage(opts)
-}
-
 export function queryScreenshotPage(opts: {
   limit?: number
   cursor?: string | null
