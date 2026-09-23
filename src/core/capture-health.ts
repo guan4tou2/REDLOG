@@ -114,13 +114,6 @@ export function noteDbError(source: string, err: unknown): void {
   if (_dbErrorFirstAt === null) _dbErrorFirstAt = now
   healthCache = null
 }
-export function clearDbError(): void { _lastDbError = null; healthCache = null }
-export function resetDbErrorHistory(): void {
-  _lastDbError = null
-  _dbErrorTotal = 0
-  _dbErrorFirstAt = null
-  healthCache = null
-}
 function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
   if (!_lastDbError) return undefined
   if (now - _lastDbError.at > DB_ERROR_TTL_MS) { _lastDbError = null; return undefined }
@@ -152,11 +145,6 @@ export function noteSampleBroken(details: { eventId: string; reason: string; eve
 }
 export function noteSampleOk(): void { healthCache = null; _lastSampleOkAt = Date.now() }
 export function clearSampleBroken(): void { healthCache = null; _lastSampleBroken = null }
-export function getLastSampleBroken(): { at: number; eventId: string; reason: string; eventTimestamp?: number } | null {
-  if (!_lastSampleBroken) return null
-  if (Date.now() - _lastSampleBroken.at > SAMPLE_BROKEN_TTL_MS) { _lastSampleBroken = null; return null }
-  return _lastSampleBroken
-}
 function getLiveSampleBroken(now: number): CaptureHealth['lastSampleBroken'] {
   if (!_lastSampleBroken) return undefined
   if (now - _lastSampleBroken.at > SAMPLE_BROKEN_TTL_MS) { _lastSampleBroken = null; return undefined }
@@ -209,7 +197,6 @@ function lastEventFor(where: string, params: unknown[] = []): number | null {
 // sub-second cache changes nothing an operator could perceive.
 let healthCache: { at: number; value: CaptureHealth } | null = null
 const HEALTH_TTL_MS = 750
-export function invalidateCaptureHealthCache(): void { healthCache = null }
 
 function stateFrom(
   installed: boolean | undefined,

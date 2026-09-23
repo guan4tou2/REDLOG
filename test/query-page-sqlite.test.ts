@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import {
-  encodeCursor, decodeCursor, buildCursorWhere, buildPerArmCursorWhere,
+  encodeCursor, decodeCursor, buildPerArmCursorWhere,
   toQueryPage, TIER_RANK_CHAINED, TIER_RANK_LOGGED,
   CANONICAL_ORDER, type CursorKey, type QueryPage
 } from '../src/core/query-page'
@@ -336,37 +336,7 @@ describeDB('EventCursor against real dual-tier SQLite', () => {
     })
   })
 
-  describe('buildCursorWhere vs buildPerArmCursorWhere', () => {
-    it('buildCursorWhere works at the outer SELECT level of UNION ALL', () => {
-      rawInsert('events', 5000)
-      rawInsert('events_logged', 5000)
-
-      const db = getDB()
-      const cursor: CursorKey = { ts: 9999, row: 9999, tier: 'chained' }
-      const cw = buildCursorWhere(cursor)
-
-      const sql = `
-        SELECT * FROM (
-          SELECT * FROM (
-            SELECT rowid AS _row, id, timestamp, 'chained' AS tier, ${TIER_RANK_CHAINED}
-            FROM events
-            ORDER BY timestamp DESC, _row DESC LIMIT 100
-          )
-          UNION ALL
-          SELECT * FROM (
-            SELECT rowid AS _row, id, timestamp, 'logged' AS tier, ${TIER_RANK_LOGGED}
-            FROM events_logged
-            ORDER BY timestamp DESC, _row DESC LIMIT 100
-          )
-        ) WHERE ${cw.sql}
-        ${CANONICAL_ORDER}
-        LIMIT 100`
-
-      expect(() => db.prepare(sql).all(...cw.params)).not.toThrow()
-      const rows = db.prepare(sql).all(...cw.params) as RawRow[]
-      expect(rows).toHaveLength(2)
-    })
-
+  describe('buildPerArmCursorWhere', () => {
     it('buildPerArmCursorWhere uses rowid (not alias) and works inside each arm', () => {
       rawInsert('events', 5000)
       rawInsert('events', 4000)

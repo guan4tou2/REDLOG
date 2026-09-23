@@ -28,7 +28,6 @@ describeDB('raw-store', () => {
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-raw-'))
     initDB(tmpDir)
-    rs.resetRawStoreCache()
   })
   afterAll(() => {
     try { closeDB() } catch { /* */ }
@@ -76,6 +75,25 @@ describeDB('raw-store', () => {
   it('classifies JSON vs bytes by the first byte', () => {
     expect(rs.storeRaw('{"a":1}', { now: Date.UTC(2026, 0, 4) }).encoding).toBe('json')
     expect(rs.storeRaw('hello', { now: Date.UTC(2026, 0, 4) }).encoding).toBe('bytes')
+  })
+
+  it('writes into the project that is open now, not the first one it saw', () => {
+    // The directory used to be cached for as long as it existed, so after a
+    // project switch the new project's raw bytes landed in the old project's
+    // raw/ — engagement data crossing projects. (Spec 030, found by the
+    // architecture gate: the cache reset existed but only tests called it.)
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-raw-other-'))
+    try {
+      rs.storeRaw('first project', { now: Date.UTC(2026, 0, 6) })
+      initDB(other)
+      const ref = rs.storeRaw('second project', { now: Date.UTC(2026, 0, 6) })
+      expect(fs.existsSync(path.join(other, 'raw', ref.file))).toBe(true)
+      expect(rs.readRaw(ref)?.toString()).toBe('second project')
+    } finally {
+      closeDB()
+      fs.rmSync(other, { recursive: true, force: true })
+      initDB(tmpDir)
+    }
   })
 
   it('isRawRef guards a stored column value before use', () => {

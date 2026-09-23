@@ -158,10 +158,6 @@ export function getMapper(id: string): MapperSpec | null {
   return registry.get(id)?.spec ?? null
 }
 
-export function listMappers(): Array<{ id: string; version: string; pluginId: string | null }> {
-  return [...registry.values()].map((r) => ({ id: r.spec.id, version: r.spec.version, pluginId: r.pluginId }))
-}
-
 /** Test helper. */
 export function _resetMappers(): void { registry.clear() }
 

@@ -114,8 +114,3 @@ export function groupFlows<F extends FlowLike>(flows: F[]): Array<Activity<F>> {
 function lastStart<F extends FlowLike>(a: Activity<F>): number {
   return a.flows.length ? a.flows[a.flows.length - 1].timestamp : a.startMs
 }
-
-/** Hosts touched by an activity, for the rare group that spans more than one. */
-export function activityHosts<F extends FlowLike>(a: Activity<F>): string[] {
-  return [...new Set(a.flows.map((f) => f.host).filter(Boolean))]
-}

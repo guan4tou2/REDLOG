@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { registerCommandTags, unregisterCommandTags, tagCommand, listCommandTags } from '../src/core/command-tagger'
+import { registerCommandTags, unregisterCommandTags, tagCommand, _listCommandTags } from '../src/core/command-tagger'
 
 describe('command-tagger', () => {
   beforeEach(() => {
-    for (const t of listCommandTags()) unregisterCommandTags(t.pluginId)
+    for (const t of _listCommandTags()) unregisterCommandTags(t.pluginId)
   })
 
   it('empty registry returns empty stamp', () => {

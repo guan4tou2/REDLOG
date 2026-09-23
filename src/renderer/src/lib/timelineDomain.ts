@@ -4,7 +4,7 @@
 // No React dependency — everything here is a type, a constant, or a
 // referentially transparent function.
 
-import { formatTime, formatTs, type TzMode } from './time'
+import { formatTs, type TzMode } from './time'
 import { compareMonotonicNs } from './eventOrder'
 
 // ── Lane / band topology ────────────────────────────────────────────
@@ -32,9 +32,6 @@ export const BANDS: ReadonlyArray<{ id: BandId; lanes: readonly LaneId[] }> = [
 export const BAND_OF: Record<LaneId, BandId> = Object.fromEntries(
   BANDS.flatMap((b) => b.lanes.map((l) => [l, b.id]))
 ) as Record<LaneId, BandId>
-// Lanes in band order — replaces the raw LANES order for row layout so a
-// band's members are contiguous.
-export const LANES_BY_BAND: readonly LaneId[] = BANDS.flatMap((b) => b.lanes)
 
 // Lanes with no built-in producer — populated only by external agents
 // (custom MCP tools, third-party plugins) posting to /api/events. Showing
@@ -159,10 +156,6 @@ export function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): voi
     else hi = mid
   }
   sorted.splice(lo, 0, evt)
-}
-
-export function formatTimeLabel(date: Date): string {
-  return formatTime(date.getTime())
 }
 
 // v0.6.91 S7: timezone-aware formatter.
@@ -292,43 +285,4 @@ export function computeBadges(
 export function subagentIndentPx(evt: RedLogEvent): number {
   const d = (evt.data as Record<string, unknown> | undefined) ?? {}
   return evt.agentType === 'agent' && d.is_sidechain === true ? 12 : 0
-}
-
-// BFS walk of the causal graph anchored at `anchor`. Walks `_causes` upstream
-// AND the reverse-effects map downstream, both bounded to depth 20.
-export function walkFocusChain(
-  anchor: RedLogEvent,
-  eventsMap: Map<string, RedLogEvent>,
-  effects: Map<string, string[]>
-): Set<string> {
-  const visited = new Set<string>([anchor.id])
-  const q: { id: string; depth: number; dir: 'up' | 'down' }[] = [
-    { id: anchor.id, depth: 0, dir: 'up' },
-    { id: anchor.id, depth: 0, dir: 'down' }
-  ]
-  while (q.length) {
-    const { id, depth, dir } = q.shift()!
-    if (depth >= 20) continue
-    if (dir === 'up') {
-      const e = eventsMap.get(id)
-      const causes = (e?.data as { _causes?: unknown } | undefined)?._causes
-      if (Array.isArray(causes)) {
-        for (const c of causes) {
-          if (typeof c === 'string' && !visited.has(c)) {
-            visited.add(c)
-            q.push({ id: c, depth: depth + 1, dir: 'up' })
-          }
-        }
-      }
-    } else {
-      const eff = effects.get(id)
-      if (eff) for (const c of eff) {
-        if (!visited.has(c)) {
-          visited.add(c)
-          q.push({ id: c, depth: depth + 1, dir: 'down' })
-        }
-      }
-    }
-  }
-  return visited
 }

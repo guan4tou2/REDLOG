@@ -232,7 +232,7 @@ Three layers, documented in full in `audit-trail.md`:
    accepts.
 
 **Verification has three gears**: `verifyLatestAnchor()` (O(1) count check),
-`verifyChainFull()` / `…Async()` (per-row re-walk, 6 hash shapes tried
+`verifyChainFullAsync()` (per-row re-walk, chunked so the main loop keeps running, 6 hash shapes tried
 newest-first, clock drift > 5 s reported), and `verifyRandomSample(K)`
 (100 at open, 50 every 5 min; failure flips capture-health to `dark` and
 writes `system.chain_sample_broken`).
