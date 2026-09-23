@@ -8,6 +8,12 @@ export interface NetworkLink {
   name: string
 }
 
+/** `network.showWifiName`: off drops the SSID before any surface sees it,
+ *  keeping the link type — the SSID names the building the operator is in. */
+export function linkForDisplay(link: NetworkLink, showWifiName: boolean): NetworkLink {
+  return link.type === 'wifi' && !showWifiName ? { type: 'wifi', name: '' } : link
+}
+
 // A GUI-launched Electron app inherits a minimal PATH that usually omits /sbin
 // and /usr/sbin — exactly where `route`, `networksetup`, `ipconfig`, and `ip`
 // live. Without this every probe below would silently exec-fail and we'd always

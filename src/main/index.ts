@@ -58,7 +58,7 @@ import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './s
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedLoopbackProxy } from '../core/managed-proxy-url'
-import { detectLink } from './services/network-info'
+import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
@@ -351,6 +351,16 @@ function getActivePivots(): ActivePivot[] {
 // and refreshed on a timer so the (blocking-ish) shell-outs never sit on the IP
 // broadcast path; the last-known value rides along with every ip:status.
 let currentLink: { type: 'wifi' | 'wired' | 'unknown'; name: string } = { type: 'unknown', name: '' }
+// What detectLink read, before network.showWifiName decides whether the SSID
+// may reach a surface. Kept so turning the setting off applies at once.
+let detectedLink: NetworkLink = { type: 'unknown', name: '' }
+let showWifiName = false
+function publishLink(): void {
+  currentLink = linkForDisplay(detectedLink, showWifiName)
+  // Push the link into the IP producer so the next IPChangeSignal carries it —
+  // IPPolicy's `lanSafety` verdict pathway (ea G-A4) reads the signal's link.
+  alertRuntime.setLink(currentLink)
+}
 let linkTimer: ReturnType<typeof setInterval> | null = null
 
 // Whether RedLog keeps a macOS Dock icon. Showing the overlay flips the app to an
@@ -366,11 +376,8 @@ function startLinkMonitor(): void {
   const refresh = (): void => {
     detectLink()
       .then((l) => {
-        currentLink = l
-        // Push the fresh link into the IP producer so the next IPChangeSignal
-        // carries it — IPPolicy's `lanSafety` verdict pathway (ea G-A4)
-        // reads from the signal's link.
-        alertRuntime.setLink(l)
+        detectedLink = l
+        publishLink()
       })
       .catch(() => {})
   }
@@ -504,6 +511,7 @@ function startProject(project: ProjectMeta): void {
   saveConfig(projectDir, config)
   keepDockIcon = config.overlay?.showInDock !== false
   applyDock()
+  showWifiName = config.network?.showWifiName === true
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
   currentEngagementId = engagementId
@@ -1186,6 +1194,12 @@ app.whenReady().then(() => {
     // that affect enforcement or attribution; cosmetic changes stay silent.
     const configChangedId = logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
+    // docs/TESTING.md §5.6: turning the SSID off applies now, not at the next poll.
+    if (showWifiName !== (newConfig.network?.showWifiName === true)) {
+      showWifiName = newConfig.network?.showWifiName === true
+      publishLink()
+      broadcastIPStatus(alertRuntime.ipStatus())
+    }
     applyDock()
     const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, {

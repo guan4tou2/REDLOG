@@ -177,28 +177,28 @@ export default function NetworkPage({
           </div>
           <p className="text-xs text-redlog-text-faint mt-1">{t('settings.ipModeHint')}</p>
         </div>
-        {isMacOS && (
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.network.showWifiName ?? false}
-                onChange={(e) => {
-                  const on = e.target.checked
-                  setConfig({ ...config, network: { ...config.network, showWifiName: on } })
-                  // Trigger the macOS Location Services prompt; once granted,
-                  // the OS un-redacts the SSID for the next network poll.
-                  if (on && navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
-                  }
-                }}
-                className="accent-red-600"
-              />
-              <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
-            </label>
-            <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>
-          </div>
-        )}
+        {/* Every platform: off keeps the SSID off every surface (main drops it
+            before the HUD sees it). Only macOS also needs Location Services. */}
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.network.showWifiName ?? false}
+              onChange={(e) => {
+                const on = e.target.checked
+                setConfig({ ...config, network: { ...config.network, showWifiName: on } })
+                // Trigger the macOS Location Services prompt; once granted,
+                // the OS un-redacts the SSID for the next network poll.
+                if (on && isMacOS && navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000, maximumAge: 0 })
+                }
+              }}
+              className="accent-red-600"
+            />
+            <span className="text-xs text-redlog-text">{t('settings.showWifiName')}</span>
+          </label>
+          {isMacOS && <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>}
+        </div>
         <Field
           label={t('settings.checkInterval')}
           value={String(config.network.checkInterval)}
