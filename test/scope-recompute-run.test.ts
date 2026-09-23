@@ -199,7 +199,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
         _causes: [e.id]
       }, { ...IDS, targetId: 'evil.example' })
       expect(runner!.countActiveScopeViolations(), 'in_scope counted as a violation').toBe(0)
-      expect(runner!.queryScopeViolationRows()).toHaveLength(0)
+      expect(runner!.queryScopeViolationRows().rows).toHaveLength(0)
 
       await runner!.runScopeRecompute({
         before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS
@@ -267,7 +267,7 @@ describe.skipIf(!available)('running a scope recompute', () => {
       await runner!.runScopeRecompute({
         before: scope(['*.target.com']), after: scope(['*.target.com'], ['evil.example']), ...IDS
       })
-      let rows = runner!.queryScopeViolationRows()
+      let rows = runner!.queryScopeViolationRows().rows
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ judged: 'retroactive', target: 'evil.example', cleared: false })
       expect(rows[0].command).toContain('curl')
@@ -275,10 +275,20 @@ describe.skipIf(!available)('running a scope recompute', () => {
       await runner!.runScopeRecompute({
         before: scope(['*.target.com'], ['evil.example']), after: scope(['*.target.com', 'evil.example']), ...IDS
       })
-      rows = runner!.queryScopeViolationRows()
+      rows = runner!.queryScopeViolationRows().rows
       expect(rows[0].cleared).toBe(true)
       expect(runner!.countActiveScopeViolations()).toBe(0)
       expect(e).toBeTruthy()
+    })
+
+    // Constitution IV: the page lists the newest N violation records. When
+    // there are more, it has to know, or the list and its count read as all.
+    it('says when the list is only the newest records', () => {
+      for (const target of ['a.example', 'b.example', 'c.example']) liveViolation(target, shell(target).id)
+      const page = runner!.queryScopeViolationRows(2)
+      expect(page.rows).toHaveLength(2)
+      expect(page.truncated).toBe(true)
+      expect(runner!.queryScopeViolationRows(3).truncated).toBe(false)
     })
 
     it('returns the newest summary for the banner', async () => {

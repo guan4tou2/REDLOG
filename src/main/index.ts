@@ -1318,7 +1318,7 @@ app.whenReady().then(() => {
   // That log holds 500 rows and resets on every project switch, so it could
   // never show a retroactive row and would go on counting one that had been
   // withdrawn — the page would contradict the record it exists to show.
-  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : []))
+  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : { rows: [], truncated: false }))
   ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())

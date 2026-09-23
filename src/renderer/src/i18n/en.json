@@ -166,6 +166,7 @@
   "scope.evidenceLog": "Evidence Log",
   "scope.entries": "{{count}} entries",
   "scope.recentViolations": "Recent Violations",
+  "scope.truncated": "Only the newest violation records are listed here; the Timeline has every one.",
   "scope.openInTimeline": "Open this event in the timeline",
   "loot.title": "Loot ({{count}})",
   "loot.empty": "No credentials or secrets detected yet.",

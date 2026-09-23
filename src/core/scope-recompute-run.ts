@@ -366,7 +366,13 @@ export interface ScopeViolationRow {
  *  The page used to read an in-process log that held 500 rows and reset on
  *  every project switch, so it could not show a retroactive row at all and
  *  would keep counting one that had been withdrawn. */
-export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
+export interface ScopeViolationPage {
+  rows: ScopeViolationRow[]
+  /** More violation records exist than `limit` read (Constitution IV). */
+  truncated: boolean
+}
+
+export function queryScopeViolationRows(limit = 500): ScopeViolationPage {
   const existing = readExistingViolations()
   const db = getDB()
   const byId = new Map(existing.map((v) => [v.id, v]))
@@ -374,9 +380,10 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
     `SELECT id, timestamp, data FROM events
      WHERE agent_type = 'system' AND subtype = 'scope_violation'
      ORDER BY created_at DESC, rowid DESC LIMIT ?`
-  ).all(limit) as Array<{ id: string; timestamp: number; data: string }>
+  ).all(limit + 1) as Array<{ id: string; timestamp: number; data: string }>
+  const truncated = rows.length > limit
   const out: ScopeViolationRow[] = []
-  for (const r of rows) {
+  for (const r of rows.slice(0, limit)) {
     let d: Record<string, unknown>
     try { d = JSON.parse(r.data) } catch { continue }
     if (d.distance === 'in_scope') continue   // an adherence record, not a violation
@@ -393,7 +400,7 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationRow[] {
       cleared: v?.cleared ?? false
     })
   }
-  return out
+  return { rows: out, truncated }
 }
 
 /** How many violations currently stand. Counted from the chain, not from a
