@@ -1,18 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
-import { toast, toastUndo } from './Toast'
+import { toast } from './Toast'
+import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
-import { appShortcuts } from '../lib/shortcuts'
-import { isMac } from '../lib/platform'
 import { formatTime } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
-
-// The ⌘. chord, drawn the way this platform writes it. Read from the one
-// shortcut table so the toast cannot drift from the binding (§11).
-const isMacPlatform = isMac
-const recordingChord =
-  appShortcuts([], isMacPlatform).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 
 export default function StatusBar(): JSX.Element {
   const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
@@ -124,49 +117,7 @@ export default function StatusBar(): JSX.Element {
   const PAUSE_WARN_SECS = 300
   const pauseMins = Math.floor(pauseElapsed / 60)
 
-  // Toggle recording and, on failure, say so. A swallowed rejection here is
-  // the worst kind: the operator believes capture paused (or resumed) and the
-  // authoritative dot never moved. Returns null when the toggle failed, so the
-  // caller skips the confirmation toast that would otherwise lie.
-  const toggleRecordingSafely = async (): Promise<boolean | null> => {
-    try {
-      return await window.redlog.recording.toggle()
-    } catch (err) {
-      toast(t('toast.recordingToggleFailed'), {
-        type: 'error',
-        why: t('toast.recordingToggleFailedWhy'),
-        detail: err instanceof Error ? err.message : String(err)
-      })
-      return null
-    }
-  }
-
-  const handleToggleRecording = async (): Promise<void> => {
-    const newState = await toggleRecordingSafely()
-    if (newState === null) return
-    // Takes effect now — a pause that waited eight seconds would keep
-    // recording exactly the thing the operator paused for. The undo is a
-    // second toggle, which is why this is `toastUndo` and not
-    // `toastDeferred` (§10).
-    toastUndo(
-      newState ? t('toast.recordingResumed') : t('toast.recordingPaused'),
-      () => { void toggleRecordingSafely() },
-      {
-        type: newState ? 'success' : 'warning',
-        why: newState ? undefined : t('toast.recordingPausedWhy'),
-        // Name the action rather than saying "undo", and carry the chord —
-        // pausing is the one toast an operator wants to reverse without
-        // reaching for the mouse. The chord comes from the shortcut table so
-        // it stays right on both platforms.
-        ...(newState ? {} : {
-          action: {
-            label: `${t('statusBar.resumeRecording')}  ${recordingChord}`,
-            onClick: () => { void toggleRecordingSafely() }
-          }
-        })
-      }
-    )
-  }
+  const handleToggleRecording = (): void => { void toggleRecordingWithFeedback(t) }
 
   const safety = ipStatus?.ipSafety ?? 'unknown'
   const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'

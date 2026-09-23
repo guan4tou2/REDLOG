@@ -862,6 +862,8 @@
   "palette.pauseRecording": "暫停錄製",
   "palette.resumeRecording": "恢復錄製",
   "palette.screenshotTaken": "已擷取截圖",
+  "palette.screenshotNotSaved": "沒有存下新的截圖",
+  "palette.screenshotNotSavedWhy": "畫面與上一張相同，或擷取失敗 — 可在 Capture Health 查看原因。",
   "palette.densityTight": "切換為緊密密度",
   "palette.densityComfortable": "切換為寬鬆密度",
   "dashboard.findInPage": "篩選目前畫面上的內容",

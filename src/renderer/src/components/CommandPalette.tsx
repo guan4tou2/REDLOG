@@ -12,6 +12,7 @@ import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib
 import { formatTime } from '../lib/time'
 import { parseQuery } from '../../../core/query/contract'
 import { toast } from './Toast'
+import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { MOD } from '../lib/platform'
 
 // ⌘K — the jumper.
@@ -168,13 +169,19 @@ export function CommandPalette({
       id: 'action:recording', section: 'action', icon: recording ? Pause : Play,
       label: recording ? t('palette.pauseRecording') : t('palette.resumeRecording'),
       hint: `${MOD}.`,
-      run: () => { void window.redlog.recording.toggle() }
+      run: () => { void toggleRecordingWithFeedback(t) }
     })
     out.push({
       id: 'action:screenshot', section: 'action', icon: Image,
       label: t('screenshots.captureNow'),
       run: () => {
-        void window.redlog.screenshot.capture().then(() => toast(t('palette.screenshotTaken'), 'success'))
+        // null means nothing new was stored: the screen matched the last
+        // capture, or capturing failed (Capture Health has which).
+        void window.redlog.screenshot.capture()
+          .then((id) => id
+            ? toast(t('palette.screenshotTaken'), 'success')
+            : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
+          .catch((err) => toast(t('palette.screenshotNotSaved'), { type: 'error', detail: err instanceof Error ? err.message : String(err) }))
       }
     })
 

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { appShortcuts } from '../lib/shortcuts'
 import { DEFAULT_ORDER, type SidebarViewId, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { isMac } from '../lib/platform'
-import { toast } from '../components/Toast'
+import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 
 type View = SidebarViewId | 'settings'
 
@@ -86,19 +86,7 @@ export function useAppShortcuts(
         }
         case 'app:toggleRecording': {
           e.preventDefault()
-          window.redlog.recording.toggle().then((on) => {
-            toast(on ? t('toast.recordingResumed') : t('toast.recordingPaused'), on ? 'success' : 'warning')
-          }).catch((err) => {
-            // A silently-swallowed toggle is the worst failure on the most
-            // trust-sensitive action: the operator believes capture paused and
-            // it did not (or the reverse). Surface it — the dot only flips if
-            // main actually changed state, so an error here means it didn't.
-            toast(t('toast.recordingToggleFailed'), {
-              type: 'error',
-              why: t('toast.recordingToggleFailedWhy'),
-              detail: err instanceof Error ? err.message : String(err)
-            })
-          })
+          void toggleRecordingWithFeedback(t)
           return
         }
         case 'app:hudCorner': {
