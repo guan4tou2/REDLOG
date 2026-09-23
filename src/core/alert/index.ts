@@ -14,7 +14,6 @@ export type {
   IPVerdict,
   IPVerdictKind,
   ScopeVerdict,
-  ScopeDistance,
   CombinedVerdict,
   BurstVerdict,
   Authority,
@@ -33,11 +32,9 @@ export { AlertBus, type DerivedPolicy } from './bus'
 
 export {
   classifyScopeTarget,
-  buildScopeIndexes,
   isReportable,
   alertFloorFor,
   type ScopeSnapshot,
-  type ScopeIndexes,
   IPPolicy,
   ScopePolicy,
   CombinedPolicy,

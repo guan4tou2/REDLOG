@@ -83,7 +83,8 @@ export interface IPVerdict {
  *  values are inferred proximity ("same subnet, wrong host" / "same
  *  registrable domain, wrong subdomain"); `unrelated` is the residual
  *  bucket that fires only under the strictest `alertFloor`. */
-export type ScopeDistance = 'in_scope' | 'excluded' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+// Where a target sits is a scope fact; the verdicts below carry it.
+import type { ScopeDistance } from '../scope-evaluator'
 
 export interface ScopeVerdict {
   distance: ScopeDistance
