@@ -15,29 +15,18 @@ import type { LoadedPlugin, Capability } from './types'
 
 let current: LoadedPlugin[] = []
 
-// The host is wired in lazily to avoid a hard dependency (and so the pure
-// declarative path stays testable without Electron's utilityProcess).
-type Host = {
-  start: (p: LoadedPlugin) => void
-  stop: (pluginId: string) => void
-}
-let host: Host | null = null
-export function setPluginHost(h: Host | null): void { host = h }
-
 function applyAll(plugins: LoadedPlugin[]): void {
   for (const p of plugins) {
     if (p.status === 'error' || p.status === 'disabled') continue
-    // declarative parts are always safe to apply
+    // Contributions apply here; the one privileged kind, `tailers`, checks
+    // trust itself inside applyContributions.
     applyContributions(p)
-    // privileged code only runs once trusted
-    if (p.tier === 'privileged' && p.status === 'active') host?.start(p)
   }
 }
 
 function removeAll(plugins: LoadedPlugin[]): void {
   for (const p of plugins) {
     removeContributions(p.manifest.id)
-    if (p.tier === 'privileged') host?.stop(p.manifest.id)
   }
 }
 

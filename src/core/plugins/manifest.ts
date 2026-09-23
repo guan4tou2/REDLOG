@@ -8,7 +8,12 @@ import {
 
 // Contributions that cause RedLog to execute plugin-supplied code in-process.
 // Their presence makes a plugin 'privileged' and subject to the trust gate.
-const PRIVILEGED_KEYS: Array<keyof PluginContributes> = ['exporters', 'monitors', 'tailers']
+const PRIVILEGED_KEYS: Array<keyof PluginContributes> = ['tailers']
+
+/** Code contributions RedLog once declared and never ran. Refused by name: a
+ *  plugin shipping one expects it to execute, and loading the rest of the
+ *  plugin while silently dropping it would look like success. */
+const RETIRED_CODE_KEYS = ['exporters', 'monitors'] as const
 
 export function tierOf(manifest: PluginManifest): PluginTier {
   const c = manifest.contributes ?? {}
@@ -76,6 +81,12 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   }
   if (typeof m.contributes !== 'object' || m.contributes === null) {
     return { ok: false, error: 'missing contributes block' }
+  }
+
+  for (const retired of RETIRED_CODE_KEYS) {
+    if ((m.contributes as Record<string, unknown>)[retired] !== undefined) {
+      return { ok: false, error: `contributes.${retired} is not supported: RedLog has no host to run plugin code of this kind` }
+    }
   }
 
   const contributes = m.contributes as PluginContributes
