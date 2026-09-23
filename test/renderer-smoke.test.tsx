@@ -103,7 +103,7 @@ function installBridge(): void {
     },
     config: {
       get: async () => ({
-        engagement: { id: 'eng', name: 'Engagement' },
+        engagement: { id: 'eng' },
         operator: { id: 'op-1', name: 'Operator' },
         network: { whitelist: [], blacklist: [], checkInterval: 10 },
         scope: { warnOnViolation: true, targets: [], excludeTargets: [], scopeFile: '' },
