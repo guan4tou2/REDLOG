@@ -3,6 +3,7 @@
 **Status:** proposed, targeting v0.13.0 (co-lands with the two-tier chain)
 **Author:** logged-tier retention design pass
 **Parent doc:** [DESIGN-two-tier-chain.md](DESIGN-two-tier-chain.md) — the two-tier chain is a prerequisite; this doc closes the gap §13.3 of that doc explicitly deferred.
+**Key names (2026-09-23, Spec 028):** this doc predates the single `retention` section. `terminal.castKeepDays` is now `retention.casts.keepDays` and `screenshots.keepDays` is `retention.screenshots.keepDays`; the reasoning below is unchanged.
 **Prior art:** [`src/core/retention.ts`](../src/core/retention.ts), [audit-trail.md](audit-trail.md), [event-schema.md](event-schema.md), [ROADMAP.md](ROADMAP.md).
 
 The two-tier chain landed in v0.12.2 as decision-point material and defined a `events_logged` table with no `no_delete` trigger — *deliberately*. §13.3 of [DESIGN-two-tier-chain.md](DESIGN-two-tier-chain.md) states the intent plainly:

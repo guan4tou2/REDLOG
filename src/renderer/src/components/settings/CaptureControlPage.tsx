@@ -189,24 +189,19 @@ export default function CaptureControlPage({
           files are evicted first and in-scope evidence is pinned. */}
       <FieldGroup title={t('settings.rotationGroup')}>
         <p className="text-xs text-redlog-text-faint">{t('settings.rotationHint')}</p>
-        <Field
-          label={t('settings.rotationHttpBodies')}
-          value={String(config.httpBodies?.maxBytes ? Math.round(config.httpBodies.maxBytes / 1024 / 1024) : 0)}
-          onChange={(v) => setConfig({ ...config, httpBodies: { ...config.httpBodies, maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } })}
-          type="number"
-        />
-        <Field
-          label={t('settings.rotationCastStore')}
-          value={String(config.terminal?.castStoreMaxBytes ? Math.round(config.terminal.castStoreMaxBytes / 1024 / 1024) : 0)}
-          onChange={(v) => setConfig({ ...config, terminal: { ...config.terminal, castStoreMaxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } })}
-          type="number"
-        />
-        <Field
-          label={t('settings.rotationScreenshots')}
-          value={String(config.screenshots?.maxBytes ? Math.round(config.screenshots.maxBytes / 1024 / 1024) : 0)}
-          onChange={(v) => setConfig({ ...config, screenshots: { ...config.screenshots, maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } })}
-          type="number"
-        />
+        {([
+          ['httpBodies', 'settings.rotationHttpBodies'],
+          ['casts', 'settings.rotationCastStore'],
+          ['screenshots', 'settings.rotationScreenshots']
+        ] as const).map(([store, label]) => (
+          <Field
+            key={store}
+            label={t(label)}
+            value={String(Math.round((config.retention?.[store]?.maxBytes ?? 0) / 1024 / 1024))}
+            onChange={(v) => setConfig({ ...config, retention: { ...config.retention, [store]: { ...config.retention?.[store], maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } } })}
+            type="number"
+          />
+        ))}
       </FieldGroup>
 
       <FieldGroup title={t('settings.retentionGroup')}>

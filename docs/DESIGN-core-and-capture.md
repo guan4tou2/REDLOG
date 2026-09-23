@@ -400,7 +400,7 @@ recordings.
 - ~~Size-pressure eviction for the body store.~~ **Built 2026-08-22**
   (`body-eviction.ts` + `sweepBodyStore` in `retention.ts`). Time-based
   retention did not bound the store by size; this evicts the coldest UNPINNED
-  bodies when it exceeds `httpBodies.maxBytes` (config-only, 0 = unbounded,
+  bodies when it exceeds `retention.httpBodies.maxBytes` (0 = unbounded,
   the default). Scope is the pin: an in-scope body is never evicted. The safety
   property is that eviction deletes the `.body` file, never the event — the
   sha256 attestation and the chain survive, and an evicted body reads back as

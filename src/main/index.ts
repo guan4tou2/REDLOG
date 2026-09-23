@@ -627,18 +627,16 @@ function startProject(project: ProjectMeta): void {
     activeTarget: config.engagement.activeTarget ?? null
   })
 
-  // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
-  // Both default to 0 (keep forever) so existing installs see no behaviour
-  // change. Setting `terminal.castKeepDays` or `screenshots.keepDays` to a
-  // positive integer causes the sweep to run on every project open and to
-  // append audit events per deletion.
+  // Retention sweeps for every store under `config.retention` (Spec 028).
+  // All default to 0 (keep forever); a positive `keepDays` / `maxBytes` makes
+  // the sweep run on every project open and append an audit event per deletion.
   try {
     // v0.9.4 P0-4: statically imported. This used to be a runtime
     // `require('../core/retention')`, which rollup cannot see through — the
     // module was never bundled and the literal require survived into
     // out/main/index.js, where it resolved against a non-existent out/core/.
     // Every packaged build threw MODULE_NOT_FOUND into the catch below, so
-    // castKeepDays / screenshots.keepDays silently did nothing and the
+    // cast and screenshot keep-days silently did nothing and the
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
