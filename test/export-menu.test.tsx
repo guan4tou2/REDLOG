@@ -36,6 +36,20 @@ function openJson(): void {
 describe('ExportMenu plan preview', () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
+  // Sharing mode scrubs operator PII, which the evidence bundle cannot do, so
+  // the plan resolver refuses the pair (unsupported-policy). The menu must not
+  // offer it as if it would work.
+  it('does not offer a format that cannot honour sharing mode', () => {
+    install(vi.fn())
+    render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)
+    fireEvent.click(screen.getByLabelText('Export'))
+    const bundle = (): HTMLButtonElement | null => screen.getByText('Evidence bundle (with verifier)').closest('button')
+    expect(bundle()?.disabled).toBe(false)
+    fireEvent.click(screen.getByText('For sharing'))
+    expect(bundle()?.disabled).toBe(true)
+    expect(screen.getByText('Everything').closest('button')?.disabled).toBe(false)
+  })
+
   it('keeps confirmation disabled for an empty approved selection', async () => {
     install(async () => ({ ok: true, plan: plan(0) }))
     render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>)

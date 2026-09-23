@@ -915,6 +915,7 @@
   "export.all": "Everything",
   "export.ndjson": "NDJSON (for ELK / log store)",
   "export.bundle": "Evidence bundle (with verifier)",
+  "export.cannotScrub": "Cannot scrub PII — switch to For my records",
   "export.maskScope": "Out-of-scope content masked (recommended)",
   "export.maskScopeOff": "Including out-of-scope content raw",
   "export.done": "Exported {{label}}",

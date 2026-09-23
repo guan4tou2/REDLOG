@@ -915,6 +915,7 @@
   "export.all": "全部",
   "export.ndjson": "NDJSON（供 ELK／日誌庫）",
   "export.bundle": "證據包（含驗證器）",
+  "export.cannotScrub": "無法去識別化，請改用「自用」",
   "export.maskScope": "已遮蔽範圍外內容（建議）",
   "export.maskScopeOff": "原樣包含範圍外內容",
   "export.done": "已匯出{{label}}",
