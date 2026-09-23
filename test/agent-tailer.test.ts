@@ -2,18 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import { stopAgentTailer, configureAgentTailer, type AgentTailerConfig } from '../src/main/services/agent-tailer'
+import { parseTranscriptLine, readTranscriptCwd, claudeCodeAdapter } from '../src/main/services/adapters/claude-code'
 import {
-  parseTranscriptLine,
   cwdPassesGate,
   isSelfExcludedCwd,
-  readTranscriptCwd,
   _sessionsForTest,
-  stopAgentTailer,
-  configureAgentTailer,
-  claudeCodeAdapter,
-  type AgentTailerConfig
-} from '../src/main/services/agent-transcript-tailer'
-import {
   registerSession as hostRegisterSession,
   catchUpSession as hostCatchUpSession,
   registerAdapter,

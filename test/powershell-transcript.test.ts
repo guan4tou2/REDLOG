@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planTranscriptEmit } from '../src/main/services/transcript-tailer'
+import { planTranscriptEmit } from '../src/main/services/powershell-transcript'
 
 // The follower re-parses the whole transcript on each change; the only logic
 // that can go wrong is "which commands are new". A bug here re-emits a command

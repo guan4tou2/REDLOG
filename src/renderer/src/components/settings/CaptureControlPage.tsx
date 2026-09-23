@@ -106,17 +106,17 @@ export default function CaptureControlPage({
         <p className="text-xs text-amber-500/80">{t('settings.connectionMonitorSynNote')}</p>
       </FieldGroup>
 
-      <FieldGroup title={t('settings.transcriptTailerGroup')}>
+      <FieldGroup title={t('settings.powershellTranscriptGroup')}>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={config.transcriptTailer?.enabled === true}
-            onChange={(e) => setConfig({ ...config, transcriptTailer: { ...config.transcriptTailer, enabled: e.target.checked } })}
+            checked={config.powershellTranscript?.enabled === true}
+            onChange={(e) => setConfig({ ...config, powershellTranscript: { ...config.powershellTranscript, enabled: e.target.checked } })}
             className="accent-red-600"
           />
-          <span className="text-xs text-redlog-text">{t('settings.transcriptTailerEnable')}</span>
+          <span className="text-xs text-redlog-text">{t('settings.powershellTranscriptEnable')}</span>
         </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.transcriptTailerEnableHint')}</p>
+        <p className="text-xs text-redlog-text-faint">{t('settings.powershellTranscriptEnableHint')}</p>
       </FieldGroup>
 
       <FieldGroup title={t('settings.screenshotGroup')}>
