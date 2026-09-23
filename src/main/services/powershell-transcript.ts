@@ -24,7 +24,7 @@ import { parseStartTranscript, type TranscriptCommand } from '../../core/start-t
 // last command's output is still growing — is the kind of incremental state
 // that goes subtly wrong and fabricates or drops a command, which §2.2 forbids.
 
-export interface TranscriptTailerConfig {
+export interface PowershellTranscriptConfig {
   enabled: boolean
   engagementId: string
   operatorId: string
@@ -42,7 +42,7 @@ async function loadChokidar(): Promise<ChokidarNS | null> {
   return chokidarNS
 }
 
-let cfg: TranscriptTailerConfig = { enabled: false, engagementId: '', operatorId: '' }
+let cfg: PowershellTranscriptConfig = { enabled: false, engagementId: '', operatorId: '' }
 let watcher: ChokidarWatcher | null = null
 /** Per-file count of commands already emitted, so a re-parse emits only the new
  *  ones. Keyed by absolute transcript path. */
@@ -52,12 +52,12 @@ function transcriptDir(): string {
   return path.join(homedir(), '.redlog', 'transcripts')
 }
 
-export function configureTranscriptTailer(next: Partial<TranscriptTailerConfig>): Promise<void> {
+export function configurePowershellTranscript(next: Partial<PowershellTranscriptConfig>): Promise<void> {
   cfg = { ...cfg, ...next }
   return restart()
 }
 
-export function stopTranscriptTailer(): void {
+export function stopPowershellTranscript(): void {
   if (watcher) { void watcher.close(); watcher = null }
   emitted.clear()
 }
@@ -67,7 +67,7 @@ async function restart(): Promise<void> {
   emitted.clear()
   if (!cfg.enabled) return
   const chok = await loadChokidar()
-  if (!chok) { console.warn('[transcript-tailer] chokidar not installed; skipping'); return }
+  if (!chok) { console.warn('[powershell-transcript] chokidar not installed; skipping'); return }
 
   const dir = transcriptDir()
   // Seed emitted-counts from the transcripts already on disk WITHOUT emitting:
@@ -92,7 +92,7 @@ async function restart(): Promise<void> {
     watcher.on('change', (p) => follow(p))
     watcher.on('error', () => { /* self-recovers */ })
   } catch (e) {
-    console.error('[transcript-tailer] failed to start:', e)
+    console.error('[powershell-transcript] failed to start:', e)
     watcher = null
   }
 }
@@ -131,7 +131,7 @@ function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | 
       engagementId: cfg.engagementId,
       operatorId: cfg.operatorId
     })
-  } catch (e) { noteDbError('transcript-tailer', e) }
+  } catch (e) { noteDbError('powershell-transcript', e) }
 }
 
 /** Test seam: the pure incremental decision — given a transcript's full text

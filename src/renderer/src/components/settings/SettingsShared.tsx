@@ -18,7 +18,7 @@ export interface ConfigState {
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
   connectionMonitor?: { enabled: boolean; pollMs?: number }
-  transcriptTailer?: { enabled: boolean }
+  powershellTranscript?: { enabled: boolean }
   browser?: {
     binary: string
     proxy: string

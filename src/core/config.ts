@@ -181,7 +181,7 @@ export interface RedLogConfig {
   }
   /** PowerShell Start-Transcript follower (§2.3), Windows output capture.
    *  Off by default; the operator opts in and adds the hook to their profile. */
-  transcriptTailer?: {
+  powershellTranscript?: {
     enabled: boolean
   }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
@@ -190,7 +190,7 @@ export interface RedLogConfig {
    *  discovery spans user-level agent transcript locations; the operator
    *  explicitly enables it for an engagement. A `.redlog-app-root` marker
    *  in the session's cwd still opts individual repos out. See
-   *  src/main/services/agent-transcript-tailer.ts. */
+   *  src/main/services/agent-tailer.ts. */
   agentTailer?: {
     enabled: boolean
     /** Off by default — thinking blocks are large and mostly meta. Turn on
@@ -337,7 +337,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false,
     pollMs: 2000
   },
-  transcriptTailer: {
+  powershellTranscript: {
     enabled: false
   },
   agentTailer: {

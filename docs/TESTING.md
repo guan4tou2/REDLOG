@@ -526,7 +526,7 @@ Bundle building is gated on the reviewed-by-operator flag and produces
 zip + `manifest.json` (`cloud-share`); registry installs enforce revocation,
 signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust`).
 
-## 2.12 `fileWatcher` / `processMonitor` / `agentTailer`
+## 2.12 `fileWatcher` / `processMonitor` / `agentTailer` / `powershellTranscript`
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
@@ -536,8 +536,9 @@ signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust
 | `processMonitor.enabled` | `false` | off by default; Windows emits a one-shot advisory | `process-monitor` |
 | `processMonitor.pollMs` | `500` | poll cadence; floored at 200 ms, and at **2000 ms on Windows** where a cold PowerShell spawn is 800–1500 ms and a 500 ms cadence would stack calls | `process-monitor-cadence` |
 | `processMonitor.ignoreCommands` | `[]` | leading-token match, on top of the built-ins | `process-monitor` |
-| `agentTailer.enabled` | `true` | on by default; a `.redlog-app-root` marker opts a repo out | `agent-transcript-tailer` |
-| `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-transcript-tailer` |
+| `agentTailer.enabled` | `false` | agent transcripts are sensitive: off until the operator opts the project in; a `.redlog-app-root` marker still opts a repo out | `config`, `agent-tailer` |
+| `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-tailer` |
+| `powershellTranscript.enabled` | `false` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript` |
 
 ---
 
