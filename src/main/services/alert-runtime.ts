@@ -15,9 +15,7 @@ import {
   type ScopeSnapshot,
   AlertBus,
   BadgeSurface,
-  BurstPolicy,
   ChainEmitter,
-  CombinedPolicy,
   IPPolicy,
   ScopePolicy,
   ViolationLog,
@@ -59,8 +57,6 @@ export class AlertRuntime {
   readonly bus: AlertBus
   readonly ipPolicy: IPPolicy
   readonly scopePolicy: ScopePolicy
-  readonly combinedPolicy: CombinedPolicy
-  readonly burstPolicy: BurstPolicy
   readonly chainEmitter: ChainEmitter
   readonly badgeSurface: BadgeSurface
   readonly adherenceCounter: AdherenceCounter
@@ -71,20 +67,12 @@ export class AlertRuntime {
     this.bus = new AlertBus()
     this.ipPolicy = new IPPolicy()
     this.scopePolicy = new ScopePolicy()
-    this.combinedPolicy = new CombinedPolicy()
-    this.burstPolicy = new BurstPolicy()
     this.chainEmitter = new ChainEmitter(initial)
     this.badgeSurface = new BadgeSurface()
     this.adherenceCounter = new AdherenceCounter()
     this.violationLog = new ViolationLog()
     this.ipProducer = new IPSignalProducer(this.bus)
 
-    // Registration order matters for one thing: surfaces run FIRST for
-    // each emitted verdict (via bus.emit's surface loop), then derived
-    // policies. That means ChainEmitter's audit event is written before
-    // Combined/Burst reacts — so the causal chain is correct if the
-    // derived policy then emits its own verdict (Combined lands AFTER
-    // the source IP/Scope verdicts in the audit log).
     this.bus.registerSurface(this.chainEmitter)
     this.bus.registerSurface(this.badgeSurface)
     this.bus.registerSurface(this.adherenceCounter)
@@ -92,8 +80,6 @@ export class AlertRuntime {
 
     this.bus.registerPolicy(this.ipPolicy)
     this.bus.registerPolicy(this.scopePolicy)
-    this.bus.registerPolicy(this.combinedPolicy)  // derived — bus routes via ingest
-    this.bus.registerPolicy(this.burstPolicy)     // derived — bus routes via ingest
   }
 
   /** Apply a full config snapshot to every policy that reads config. Called
@@ -174,8 +160,8 @@ export class AlertRuntime {
   /** Adherence snapshot for the post-hoc scope report. */
   adherence(): AdherenceRow[] { return this.adherenceCounter.snapshot() }
 
-  /** Called on project switch — drops correlation/burst history and the
-   *  in-memory violation log; the chain-persisted history stays. */
+  /** Called on project switch — clears policy state, the in-memory violation
+   *  log and the adherence counts; the chain-persisted history stays. */
   resetOnProjectSwitch(): void {
     this.bus.resetPolicies()
     this.violationLog.reset()

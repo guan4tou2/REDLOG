@@ -1,55 +1,33 @@
 // The AlertBus — the single seam between producers and consumers.
 //
 //   producers  →  bus  →  policies  →  bus  →  surfaces
-//                                └── → derived policies → bus (recurse)
 //
 // Producers only know how to `dispatch(signal)`. Surfaces only know how
-// to `handle(verdict)`. Policies map Signal → Verdict[]. **Derived**
-// policies (Combined, Burst) map Verdict → Verdict[] — they read the
-// verdict stream and can emit their own verdicts on top. The bus is the
-// only piece that knows all four lists exist. Everything else in the
+// to `handle(verdict)`. Policies map Signal → Verdict[]. The bus is the
+// only piece that knows all three lists exist. Everything else in the
 // subsystem is testable in isolation.
 //
 // The bus itself has no state beyond the registered lists. It does no
-// filtering, no coalescing, no dedup — those are surface concerns
-// (webhook does coalescing; badge dedups by state comparison). Keeping
-// the bus thin means it can be swapped for an async version, a
-// worker-thread version, or a test-double, without touching anything
-// else in the subsystem.
+// filtering, no coalescing, no dedup — those are surface concerns (the
+// badge dedups by state comparison). Keeping the bus thin means it can be
+// swapped for an async version, a worker-thread version, or a test-double,
+// without touching anything else in the subsystem.
+//
+// Verdicts go to surfaces and nowhere else. Until Spec 024 a second class of
+// policy consumed verdicts and could emit more, which needed a recursion
+// guard here; its only two members, Combined and Burst, were correlation the
+// product does not do, and wrote chain events that cited no source.
 
 import type { Signal } from './signal'
 import type { Policy, Verdict } from './policy'
 import type { Surface } from './surface'
 
-/** A DerivedPolicy consumes verdicts (rather than signals) and can emit
- *  further verdicts on top — used for cross-signal correlation
- *  (CombinedPolicy) and rate limiting (BurstPolicy). The `evaluate` method
- *  from `Policy` is present but returns [] — DerivedPolicies never react
- *  to raw signals. */
-export interface DerivedPolicy extends Policy {
-  ingest(verdict: Verdict): Verdict[]
-}
-
-/** Duck-typed guard — anything with `ingest` and `evaluate` looks like a
- *  DerivedPolicy. Avoids a class-based inheritance check that would break
- *  when policies come from a plugin bundle with a different `instanceof`
- *  identity. */
-function isDerived(p: Policy): p is DerivedPolicy {
-  return typeof (p as DerivedPolicy).ingest === 'function'
-}
-
 export class AlertBus {
   private policies: Policy[] = []
-  private derived: DerivedPolicy[] = []
   private surfaces: Surface[] = []
-  /** Recursion guard — a poorly-wired derived policy could emit a verdict
-   *  its own ingest would react to, and loop forever. Cap the depth. */
-  private static readonly MAX_EMIT_DEPTH = 8
-  private emitDepth = 0
 
   registerPolicy(policy: Policy): void {
-    if (isDerived(policy)) this.derived.push(policy)
-    else this.policies.push(policy)
+    this.policies.push(policy)
   }
 
   registerSurface(surface: Surface): void {
@@ -74,41 +52,25 @@ export class AlertBus {
     }
   }
 
-  /** Direct emission — bypasses signal policies. Called from `dispatch`
-   *  for every returned verdict, and callable directly by DerivedPolicies
-   *  or tests. Runs verdict through surfaces AND derived policies. */
+  /** Hand one verdict to every surface. Called from `dispatch` for each
+   *  returned verdict; tests may call it directly. */
   emit(verdict: Verdict): void {
-    if (this.emitDepth >= AlertBus.MAX_EMIT_DEPTH) return
-    this.emitDepth++
-    try {
-      for (const surface of this.surfaces) {
-        try {
-          void surface.handle(verdict)
-        } catch { /* broken surface must not silence others */ }
-      }
-      for (const dp of this.derived) {
-        let further: Verdict[]
-        try {
-          further = dp.ingest(verdict)
-        } catch { continue }
-        for (const next of further) this.emit(next)
-      }
-    } finally {
-      this.emitDepth--
+    for (const surface of this.surfaces) {
+      try {
+        void surface.handle(verdict)
+      } catch { /* broken surface must not silence others */ }
     }
   }
 
-  /** Reset every stateful policy — e.g. on engagement/project switch to
-   *  drop stale correlation/burst history. Surfaces are not reset;
-   *  the ChainEmitter's context is updated separately via
-   *  `updateContext`. */
+  /** Reset every stateful policy — e.g. on engagement/project switch to drop
+   *  stale state. Surfaces are not reset; the ChainEmitter's context is
+   *  updated separately via `updateContext`. */
   resetPolicies(): void {
     for (const p of this.policies) p.reset?.()
-    for (const p of this.derived) p.reset?.()
   }
 
   /** Test/introspection accessor. Not for production use. */
-  _debugCounts(): { signals: number; derived: number; surfaces: number } {
-    return { signals: this.policies.length, derived: this.derived.length, surfaces: this.surfaces.length }
+  _debugCounts(): { policies: number; surfaces: number } {
+    return { policies: this.policies.length, surfaces: this.surfaces.length }
   }
 }
