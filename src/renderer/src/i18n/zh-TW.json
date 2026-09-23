@@ -1197,5 +1197,7 @@
   "transcript.queryUnparsable.unterminated-quote": "「{{token}}」的引號沒有結束。",
   "transcript.queryToolSession": "tool-use {{tool}} 解析於 session {{session}}",
   "transcript.queryToolSessionOthers": "同一個 tool-use ID 也出現在另外 {{count}} 個 session；加上 session: 條件可以指定。",
-  "transcript.queryCoverage": "文字搜尋涵蓋已儲存的事件內容。未被 inline 捕獲的指令輸出留在終端錄影裡，搜不到——沒有命中不代表那段輸出沒有這個字串。"
+  "transcript.queryCoverage": "文字搜尋涵蓋已儲存的事件內容。未被 inline 捕獲的指令輸出留在終端錄影裡，搜不到——沒有命中不代表那段輸出沒有這個字串。",
+  "palette.searchFailed": "事件搜尋失敗 —— 這不代表沒有符合的事件。",
+  "palette.searchUnparsable": "條件還沒寫完（例如 session: 後面缺值），所以沒有送出搜尋。加上值，或用雙引號當作文字搜尋。"
 }

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { parseQuery } from '../src/core/query/contract'
+import type { EventFilter } from '../src/core/db/event-queries'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -7,7 +9,7 @@ let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let getDB: typeof import('../src/core/db/index').getDB
-let searchEventsPage: typeof import('../src/core/db/event-queries').searchEventsPage
+let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
 
 let dbAvailable = false
 try {
@@ -17,10 +19,21 @@ try {
   closeDB = dbMod.closeDB
   closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   getDB = dbMod.getDB
-  searchEventsPage = queryMod.searchEventsPage
+  executeEventQuery = queryMod.executeEventQuery
   dbAvailable = true
 } catch {
   // better-sqlite3 not compiled for this Node.js version
+}
+
+
+// Spec 026: Search's paged text query is the query contract. The pagination,
+// filter and body-search assertions below were written against the retired
+// `searchEventsPage`; they run unchanged against the contract through this.
+function searchPage(opts: EventFilter & { query: string; limit?: number; cursor?: string | null }) {
+  const outcome = parseQuery(opts.query)
+  if (!outcome.ok) throw new Error(`test query did not parse: ${outcome.reason}`)
+  const { query: _query, limit, cursor, ...filter } = opts
+  return executeEventQuery({ parsed: outcome.parsed, filter, limit, cursor })
 }
 
 const describeDB = dbAvailable ? describe : describe.skip
@@ -48,7 +61,7 @@ function rawInsert(
 
 let tmpDir: string
 
-describeDB('searchEventsPage', () => {
+describeDB('paged search on the query contract', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-search-page-'))
     initDB(tmpDir)
@@ -84,7 +97,7 @@ describeDB('searchEventsPage', () => {
       let cursor: string | null = null
 
       for (let safety = 0; safety < 20; safety++) {
-        const page = searchEventsPage({ query: 'searchterm', limit: PAGE_SIZE, cursor })
+        const page = searchPage({ query: 'searchterm', limit: PAGE_SIZE, cursor })
         allIds.push(...page.items.map((e) => e.id))
         if (!page.hasMore) {
           expect(page.nextCursor).toBeNull()
@@ -104,7 +117,7 @@ describeDB('searchEventsPage', () => {
       let prevTs = Infinity
 
       for (let safety = 0; safety < 20; safety++) {
-        const page = searchEventsPage({ query: 'searchterm', limit: PAGE_SIZE, cursor })
+        const page = searchPage({ query: 'searchterm', limit: PAGE_SIZE, cursor })
         for (const e of page.items) {
           expect(seen.has(e.id), `duplicate: ${e.id}`).toBe(false)
           seen.add(e.id)
@@ -120,13 +133,13 @@ describeDB('searchEventsPage', () => {
       const allIds: string[] = []
       let cursor: string | null = null
       for (let safety = 0; safety < 20; safety++) {
-        const page = searchEventsPage({ query: 'searchterm', limit: PAGE_SIZE, cursor })
+        const page = searchPage({ query: 'searchterm', limit: PAGE_SIZE, cursor })
         allIds.push(...page.items.map((e) => e.id))
         if (!page.hasMore) break
         cursor = page.nextCursor
       }
 
-      const uncapped = searchEventsPage({ query: 'searchterm', limit: 1000 })
+      const uncapped = searchPage({ query: 'searchterm', limit: 1000 })
       expect(allIds).toHaveLength(uncapped.items.length)
       expect(new Set(allIds)).toEqual(new Set(uncapped.items.map((e) => e.id)))
     })
@@ -151,7 +164,7 @@ describeDB('searchEventsPage', () => {
       const allIds: string[] = []
       let cursor: string | null = null
       for (let safety = 0; safety < 20; safety++) {
-        const page = searchEventsPage({ query: 'findme', limit: 50, cursor, agentType: 'shell' })
+        const page = searchPage({ query: 'findme', limit: 50, cursor, agentType: 'shell' })
         for (const e of page.items) {
           expect(e.agentType).toBe('shell')
         }
@@ -166,7 +179,7 @@ describeDB('searchEventsPage', () => {
       const allIds: string[] = []
       let cursor: string | null = null
       for (let safety = 0; safety < 20; safety++) {
-        const page = searchEventsPage({
+        const page = searchPage({
           query: 'findme', limit: 50, cursor,
           since: 5050, before: 5099
         })
@@ -192,7 +205,7 @@ describeDB('searchEventsPage', () => {
         rawInsert('events', 8_000 - i, 'shell', { command: `shared target-${i}` }, '10.10.10.10')
       }
 
-      const page = searchEventsPage({
+      const page = searchPage({
         query: 'shared',
         limit: 20,
         inScopeOnly: true,
@@ -208,7 +221,7 @@ describeDB('searchEventsPage', () => {
       for (let i = 0; i < 40; i++) rawInsert('events', 5_000 - i, 'shell', { command: `needle other-${i}` }, 'other.test')
       for (let i = 0; i < 12; i++) rawInsert('events_logged', 4_000 - i, 'scanner', { url: `https://wanted.test/needle/${i}` }, 'wanted.test')
 
-      const page = searchEventsPage({ query: 'needle', limit: 10, targetId: 'wanted.test' })
+      const page = searchPage({ query: 'needle', limit: 10, targetId: 'wanted.test' })
       expect(page.items).toHaveLength(10)
       expect(page.items.every((event) => event.targetId === 'wanted.test')).toBe(true)
       expect(page.hasMore).toBe(true)
@@ -219,7 +232,7 @@ describeDB('searchEventsPage', () => {
       rawInsert('events', 2_999, 'shell', { command: 'scopeproof allowed' }, 'api.target.test')
       rawInsert('events', 2_998, 'shell', { command: 'scopeproof excluded' }, 'admin.target.test')
 
-      const page = searchEventsPage({
+      const page = searchPage({
         query: 'scopeproof',
         inScopeOnly: true,
         scope: { targets: ['*.target.test'], excludeTargets: ['admin.target.test'] }
@@ -240,7 +253,7 @@ describeDB('searchEventsPage', () => {
       const allIds: string[] = []
       let cursor: string | null = null
       for (let safety = 0; safety < 20; safety++) {
-        const page = searchEventsPage({ query: 'dense', limit: 5, cursor })
+        const page = searchPage({ query: 'dense', limit: 5, cursor })
         allIds.push(...page.items.map((e) => e.id))
         if (!page.hasMore) break
         cursor = page.nextCursor
@@ -257,14 +270,14 @@ describeDB('searchEventsPage', () => {
         rawInsert('events', 5000 - i * 10, 'shell', { command: `paginatetest item-${i}` })
       }
 
-      const page1 = searchEventsPage({ query: 'paginatetest', limit: 5 })
+      const page1 = searchPage({ query: 'paginatetest', limit: 5 })
       expect(page1.items).toHaveLength(5)
       expect(page1.hasMore).toBe(true)
       const page1Ids = new Set(page1.items.map((e) => e.id))
 
       rawInsert('events', 9999, 'shell', { command: 'paginatetest late-insert' })
 
-      const page2 = searchEventsPage({ query: 'paginatetest', limit: 5, cursor: page1.nextCursor })
+      const page2 = searchPage({ query: 'paginatetest', limit: 5, cursor: page1.nextCursor })
       for (const e of page2.items) {
         expect(page1Ids.has(e.id), `page 2 duplicated ${e.id}`).toBe(false)
       }
@@ -274,21 +287,21 @@ describeDB('searchEventsPage', () => {
   describe('edge cases', () => {
     it('empty query returns empty page', () => {
       rawInsert('events', 5000, 'shell', { command: 'anything' })
-      const page = searchEventsPage({ query: '' })
+      const page = searchPage({ query: '' })
       expect(page.items).toHaveLength(0)
       expect(page.hasMore).toBe(false)
     })
 
     it('no matching results returns empty page', () => {
       rawInsert('events', 5000, 'shell', { command: 'foo' })
-      const page = searchEventsPage({ query: 'zzz_nonexistent_zzz' })
+      const page = searchPage({ query: 'zzz_nonexistent_zzz' })
       expect(page.items).toHaveLength(0)
       expect(page.hasMore).toBe(false)
     })
 
     it('items are RedLogEvent objects', () => {
       rawInsert('events', 5000, 'shell', { command: 'whoami searchable' })
-      const page = searchEventsPage({ query: 'searchable', limit: 10 })
+      const page = searchPage({ query: 'searchable', limit: 10 })
       expect(page.items).toHaveLength(1)
       const e = page.items[0]
       expect(e.agentType).toBe('shell')
@@ -299,7 +312,7 @@ describeDB('searchEventsPage', () => {
     it('non-matching events are excluded', () => {
       rawInsert('events', 5000, 'shell', { command: 'findable term' })
       rawInsert('events', 5001, 'shell', { command: 'other stuff' })
-      const page = searchEventsPage({ query: 'findable', limit: 10 })
+      const page = searchPage({ query: 'findable', limit: 10 })
       expect(page.items).toHaveLength(1)
       expect(page.items[0].data.command).toContain('findable')
     })

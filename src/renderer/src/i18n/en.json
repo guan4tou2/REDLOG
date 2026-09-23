@@ -1197,5 +1197,7 @@
   "transcript.queryUnparsable.unterminated-quote": "“{{token}}” has an unclosed quote.",
   "transcript.queryToolSession": "Tool-use {{tool}} resolved within session {{session}}",
   "transcript.queryToolSessionOthers": "The same tool-use ID also occurs in {{count}} other session(s); add a session: condition to choose.",
-  "transcript.queryCoverage": "Text search covers stored event content. Command output that was not captured inline stays in a terminal recording and cannot be matched — no hit is not evidence the output never held it."
+  "transcript.queryCoverage": "Text search covers stored event content. Command output that was not captured inline stays in a terminal recording and cannot be matched — no hit is not evidence the output never held it.",
+  "palette.searchFailed": "Event search failed — this is not the same as no matching events.",
+  "palette.searchUnparsable": "That condition is incomplete (e.g. nothing after session:), so no search was run. Add a value, or quote it to search it as text."
 }
