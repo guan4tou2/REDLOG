@@ -11,7 +11,7 @@ import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
 const bridge = {
   project: { list: vi.fn(async () => []), open: vi.fn(async () => null) },
   events: {
-    search: vi.fn(async () => []),
+    runQuery: vi.fn(async () => ({ items: [], hasMore: false, nextCursor: null })),
     distinctHosts: vi.fn(async () => [])
   },
   operators: { list: vi.fn(async () => [
@@ -27,7 +27,13 @@ beforeEach(() => {
   ;(window as unknown as { redlog: typeof bridge }).redlog = bridge
   vi.clearAllMocks()
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  // A test that fails between useFakeTimers() and useRealTimers() would
+  // otherwise leave fake timers installed, and every later waitFor() would
+  // hang to its timeout — failures that are about the leak, not the test.
+  vi.useRealTimers()
+})
 
 function open(props: Partial<Parameters<typeof CommandPalette>[0]> = {}): {
   onNavigate: ReturnType<typeof vi.fn>
@@ -94,13 +100,52 @@ describe('command palette', () => {
     open()
     type('a')
     await act(async () => { vi.advanceTimersByTime(500) })
-    expect(bridge.events.search, 'one character is not a search').not.toHaveBeenCalled()
+    expect(bridge.events.runQuery, 'one character is not a search').not.toHaveBeenCalled()
 
     type('adm')
-    expect(bridge.events.search, 'not on the keystroke').not.toHaveBeenCalled()
+    expect(bridge.events.runQuery, 'not on the keystroke').not.toHaveBeenCalled()
     await act(async () => { vi.advanceTimersByTime(200) })
-    expect(bridge.events.search).toHaveBeenCalledWith('adm', 40)
+    expect(bridge.events.runQuery).toHaveBeenCalledTimes(1)
+    const req = bridge.events.runQuery.mock.calls[0][0] as { parsed: { text: string }; limit: number }
+    expect(req.parsed.text).toBe('adm')
+    expect(req.limit).toBe(40)
     vi.useRealTimers()
+  })
+
+  // Spec 026: the palette is one of the places an investigation starts, so it
+  // answers the same query language Search and the Transcript do.
+  it('sends an identifier as a condition, like Search and the Transcript', async () => {
+    vi.useFakeTimers()
+    open()
+    type('session:S1')
+    await act(async () => { vi.advanceTimersByTime(200) })
+    const req = bridge.events.runQuery.mock.calls[0][0] as { parsed: { conditions: unknown[]; text: string } }
+    expect(req.parsed.conditions).toEqual([{ field: 'session', value: 'S1' }])
+    expect(req.parsed.text).toBe('')
+    vi.useRealTimers()
+  })
+
+  it('says the search failed rather than that nothing matched', async () => {
+    bridge.events.runQuery.mockRejectedValueOnce(new Error('database is locked'))
+    vi.useFakeTimers()
+    open()
+    type('admin')
+    await act(async () => { vi.advanceTimersByTime(200) })
+    vi.useRealTimers()
+    expect(await screen.findByTestId('palette-search-failed')).toBeTruthy()
+    // "No matches for admin" would be a claim about the engagement the palette
+    // could not make — the query never answered.
+    expect(screen.queryByText(/no matches/i)).toBeNull()
+  })
+
+  it('does not run a half-typed condition, and says why', async () => {
+    vi.useFakeTimers()
+    open()
+    type('session:')
+    await act(async () => { vi.advanceTimersByTime(500) })
+    vi.useRealTimers()
+    expect(bridge.events.runQuery).not.toHaveBeenCalled()
+    expect(await screen.findByTestId('palette-search-unparsable')).toBeTruthy()
   })
 
   it('starts empty every time it opens', async () => {

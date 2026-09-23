@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { parseQuery } from '../src/core/query/contract'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -33,6 +34,14 @@ try {
 
 const available = events !== null
 const OPTS = { engagementId: 'eng', operatorId: 'op' }
+
+
+/** Search through the query contract (Spec 027 retired `searchEvents`). */
+function search(query: string): Array<{ id: string; data: Record<string, unknown> }> {
+  const outcome = parseQuery(query)
+  if (!outcome.ok) throw new Error(`test query did not parse: ${outcome.reason}`)
+  return events!.executeEventQuery({ parsed: outcome.parsed, limit: 100 }).items
+}
 
 describe.skipIf(!available)('amending a marker', () => {
   let dir: string
@@ -229,9 +238,9 @@ describe.skipIf(!available)('amending a marker', () => {
       // a bare correction with no finding attached.
       const m = marker()
       amendMod!.amendMarker(m.id, { title: 'corrected title' }, OPTS)
-      const old = events!.searchEvents('original title')
+      const old = search('original title')
       expect(old.map((e) => e.id)).toContain(m.id)
-      const fresh = events!.searchEvents('corrected title')
+      const fresh = search('corrected title')
       expect(fresh.map((e) => e.id)).not.toContain(m.id)
       expect(fresh.every((e) => e.data.subtype === 'amended')).toBe(true)
     })

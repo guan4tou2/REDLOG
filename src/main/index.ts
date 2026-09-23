@@ -10,7 +10,7 @@ import yaml from 'js-yaml'
 import { loadConfig, saveConfig, snapshotScope, isAgentTailerEnabled, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -48,10 +48,9 @@ import { configureTranscriptTailer, stopTranscriptTailer } from './services/tran
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
-import { initPlugins, setPluginHost } from '../core/plugins'
+import { initPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
-import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
@@ -548,36 +547,6 @@ function startProject(project: ProjectMeta): void {
   lootDetector.configure({ engagementId, operatorId })
   configureCaptureHealth(config as unknown as Record<string, unknown>)
   configureRedaction(config.redaction)
-  // 🔴 host: runs trusted plugin code in an isolated utility process, serving a
-  // capability-scoped API. Wired before initPlugins so trusted plugins start.
-  setPluginHost(createPluginHost({
-    // v0.6.96 Bug-1: was passing `type`/`target` — but queryEvents reads
-    // `agentType`/`targetId`, so the filters were silently dropped and plugins
-    // got a random 50-row window unrelated to their query. Now the shim
-    // renames + preserves the plugin API's field names.
-    queryEvents: (a) => queryEvents({
-      limit: Math.min(Number(a.limit) || 50, 500),
-      agentType: a.type as string | undefined,
-      targetId: a.target as string | undefined
-    }),
-    searchEvents: (a) => searchEvents(String(a.query ?? ''), Math.min(Number(a.limit) || 20, 200)),
-    appendEvent: (pluginId, a) => {
-      const ev = ingestEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
-      return { ok: !!ev }
-    },
-    listFindings: () => listBookmarks(),
-    getConfig: () => ({ engagement: config.engagement, scope: config.scope, redaction: config.redaction }),
-    fetch: async (a) => {
-      // SSRF guard: a plugin's controlled egress must not reach loopback,
-      // link-local (incl. the 169.254.169.254 cloud-metadata endpoint) or
-      // RFC1918 private hosts, nor non-http(s) schemes.
-      if (!isPublicHttpUrl(String(a.url))) {
-        return { status: 0, body: '', error: 'blocked: non-public or non-http(s) URL' }
-      }
-      const r = await fetch(String(a.url), { method: String(a.method ?? 'GET') })
-      return { status: r.status, body: (await r.text()).slice(0, 10_000) }
-    }
-  }))
   // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
   // bundled plugins can register `TailerAdapter`s via plugin.json instead
   // of hard-coded main-init calls. Duck-typed on the core side to avoid
