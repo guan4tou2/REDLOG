@@ -3,6 +3,7 @@ import { toast } from '../Toast'
 import { raiseIssue, clearIssue } from '../../lib/issues'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../../lib/verifyResultCache'
 import { formatDateTime } from '../../lib/time'
+import { settingsTarget } from '../../lib/navigation'
 import { FieldGroup } from './SettingsShared'
 
 interface FullVerifyResult {
@@ -49,7 +50,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
       } else {
         raiseIssue({
           id: 'anchor', tier: 'attention',
-          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: 'settings'
+          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: settingsTarget('integrity')
         })
         toast(t('settings.anchorFailed'), {
           type: 'error',
@@ -88,7 +89,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
     else {
       raiseIssue({
         id: 'chain', tier: 'attention', title: t('issues.chainBroken'),
-        detail: t(r.ok ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'), view: 'settings'
+        detail: t(r.ok ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'), view: settingsTarget('integrity')
       })
     }
   }

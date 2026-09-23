@@ -3,6 +3,7 @@ import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } fro
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
+import { settingsTarget } from '../lib/navigation'
 
 // The dark/setup onboarding block: the three core sources as an ordered
 // checklist, plus one primary CTA derived from readiness.nextStep. This is the
@@ -104,7 +105,7 @@ export function CaptureOnboarding({ readiness, sources, busy, onInstall, onEnabl
             {cta.label}
           </button>
         )}
-        <button onClick={() => onNavigate('settings')} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
+        <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
           {t('capture.openHooks')}
         </button>
       </div>
