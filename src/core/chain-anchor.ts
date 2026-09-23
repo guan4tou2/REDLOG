@@ -650,11 +650,13 @@ function initWalkerState(): WalkerState {
 }
 
 function finaliseWalk(state: WalkerState, anchor: ChainAnchor | null, currentHead: ReturnType<typeof computeChainHead>): FullVerifyResult {
-  let anchorMatchesWalkedHead = false
-  if (anchor && state.lastHash) {
-    const walkedHead = crypto.createHash('sha256').update(state.lastHash).update(String(state.walked)).digest('hex')
-    anchorMatchesWalkedHead = walkedHead === anchor.headHash || anchor.eventCount <= state.walked
-  }
+  // The head at the anchored row count, as verifyLatestAnchor computes it.
+  // This used to fall back to "the anchored count has been reached", so once
+  // the chain grew past an anchor any anchor passed — including one a chain
+  // re-hashed end to end no longer matches, the one rewrite only it catches.
+  const anchorMatchesWalkedHead = anchor !== null && state.lastHash !== null
+    && anchor.eventCount <= state.walked
+    && computeChainHead(anchor.eventCount)?.hash === anchor.headHash
   return {
     ok: true,
     walked: state.walked,
