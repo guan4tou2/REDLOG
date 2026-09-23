@@ -102,12 +102,10 @@ function follow(absPath: string): void {
   if (!cfg.engagementId || !cfg.operatorId) return
   let text: string
   try { text = readFileSync(absPath, 'utf-8') } catch { return }
-  const parsed = parseStartTranscript(text)
-  const already = emitted.get(absPath) ?? 0
-  const fresh = parsed.commands.slice(already)
+  const { fresh, newCount, host } = planTranscriptEmit(text, emitted.get(absPath) ?? 0)
   if (fresh.length === 0) return
-  for (const c of fresh) emitCommand(absPath, c, parsed.host)
-  emitted.set(absPath, parsed.commands.length)
+  for (const c of fresh) emitCommand(absPath, c, host)
+  emitted.set(absPath, newCount)
 }
 
 const OUTPUT_CAP = 100 * 1024  // parity with the shell hook's per-stream cap
@@ -134,13 +132,14 @@ function emitCommand(sourcePath: string, cmd: TranscriptCommand, host: string | 
   } catch (e) { noteDbError('powershell-transcript', e) }
 }
 
-/** Test seam: the pure incremental decision — given a transcript's full text
- *  and how many commands were already emitted, which are new and what is the
- *  new count. The follow() side effect is a thin wrapper over this. */
+/** The pure incremental decision — given a transcript's full text and how
+ *  many commands were already emitted, which are new and what is the new
+ *  count. follow() is the side effect around it. */
 export function planTranscriptEmit(text: string, alreadyEmitted: number): {
   fresh: TranscriptCommand[]
   newCount: number
+  host: string | null
 } {
   const parsed = parseStartTranscript(text)
-  return { fresh: parsed.commands.slice(alreadyEmitted), newCount: parsed.commands.length }
+  return { fresh: parsed.commands.slice(alreadyEmitted), newCount: parsed.commands.length, host: parsed.host }
 }

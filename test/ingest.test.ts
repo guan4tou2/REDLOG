@@ -36,7 +36,6 @@ describeDB('ingest', () => {
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-ingest-'))
     initDB(tmpDir)
-    raw.resetRawStoreCache()
     opId = ops.ensurePrimaryOperator('op-primary', 'Primary', ops.generateToken()).id
   })
   afterAll(() => {
@@ -180,8 +179,8 @@ describeDB('ingest', () => {
     expect(raw.readRaw(stored as any)!.equals(rawBytes)).toBe(true)
   })
 
-  it('the chain still verifies after envelope rows land (raw digest is inside the hash)', () => {
-    const res = chain.verifyChainFull()
+  it('the chain still verifies after envelope rows land (raw digest is inside the hash)', async () => {
+    const res = await chain.verifyChainFullAsync()
     expect(res.ok, res.brokenReason ?? '').toBe(true)
   })
 

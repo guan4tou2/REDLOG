@@ -105,14 +105,14 @@ describeDB('signing (v0.6.89)', () => {
     })
   })
 
-  describe('verifyChainFull signature roll-up', () => {
-    it('counts signed rows and reports zero bad signatures on a clean chain', () => {
+  describe('verifyChainFullAsync signature roll-up', () => {
+    it('counts signed rows and reports zero bad signatures on a clean chain', async () => {
       const token = ops.generateToken()
       ops.createOperator({ id: 'clean-op', name: 'Clean', token })
       events.insertEvent('marker', { i: 1 }, { operatorId: 'clean-op' })
       events.insertEvent('marker', { i: 2 }, { operatorId: 'clean-op' })
 
-      const r = anchor.verifyChainFull()
+      const r = await anchor.verifyChainFullAsync()
       expect(r.ok).toBe(true)
       expect(r.walked).toBe(2)
       expect(r.signedCount).toBe(2)
@@ -120,17 +120,17 @@ describeDB('signing (v0.6.89)', () => {
       expect(r.badSignatureAtEventId).toBeNull()
     })
 
-    it('reports unsignedCount for rows written by pre-v0.6.89 operators', () => {
+    it('reports unsignedCount for rows written by pre-v0.6.89 operators', async () => {
       // insertEvent with an operator that has no key row → signature=null.
       events.insertEvent('marker', { i: 1 }, { operatorId: 'legacy-op' })
       events.insertEvent('marker', { i: 2 }, { operatorId: 'legacy-op' })
-      const r = anchor.verifyChainFull()
+      const r = await anchor.verifyChainFullAsync()
       expect(r.ok).toBe(true)
       expect(r.signedCount).toBe(0)
       expect(r.unsignedCount).toBe(2)
     })
 
-    it('flags a row whose signature no longer verifies (tamper signal)', () => {
+    it('flags a row whose signature no longer verifies (tamper signal)', async () => {
       const token = ops.generateToken()
       ops.createOperator({ id: 'tamper-op', name: 'Tamper', token })
       const good = events.insertEvent('marker', { i: 1 }, { operatorId: 'tamper-op' })!
@@ -148,7 +148,7 @@ describeDB('signing (v0.6.89)', () => {
       db.exec(`DROP TRIGGER IF EXISTS no_update_events_hash`)
       db.prepare(`UPDATE events SET signature = ? WHERE id = ?`).run(forgedSig, bad.id)
 
-      const r = anchor.verifyChainFull()
+      const r = await anchor.verifyChainFullAsync()
       expect(r.ok).toBe(false)
       expect(r.brokenAtEventId).toBe(bad.id)
       expect(r.brokenReason).toBe('signature invalid')

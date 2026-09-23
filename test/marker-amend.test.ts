@@ -107,7 +107,7 @@ describe.skipIf(!available)('amending a marker', () => {
     expect(() => dbmod!.getDB().prepare('DELETE FROM events WHERE id = ?').run(m.id)).toThrow()
   })
 
-  it('keeps the hash chain intact', () => {
+  it('keeps the hash chain intact', async () => {
     const m = marker()
     amendMod!.amendMarker(m.id, { title: 'second' }, OPTS)
     const third = amendMod!.amendMarker(m.id, { severity: 'critical' }, OPTS)
@@ -115,7 +115,7 @@ describe.skipIf(!available)('amending a marker', () => {
     const all = events!.queryEvents({ limit: 100 })
     const prior = all.find((e) => e.hash === ev.prevHash)
     expect(prior, 'the amendment does not link to any row').toBeTruthy()
-    const verdict = chain!.verifyChainFull()
+    const verdict = await chain!.verifyChainFullAsync()
     expect(verdict.ok).toBe(true)
   })
 

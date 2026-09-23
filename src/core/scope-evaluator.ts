@@ -266,9 +266,3 @@ export function evaluateScope(subject: string, policy: ScopePolicy): ScopeDecisi
   }
   return { status: c.status }
 }
-
-// Convenience: boolean check used by most surfaces
-export function isInScope(subject: string, targets: string[], excludeTargets: string[] = []): boolean {
-  const d = evaluateScope(subject, { targets, excludeTargets })
-  return d.status === 'in-scope' || d.status === 'no-scope'
-}
