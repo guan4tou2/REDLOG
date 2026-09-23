@@ -184,7 +184,6 @@
   "bookmarks.exportHint": "把所有書籤存成 JSON 檔",
   "loot.export": "匯出",
   "loot.exportHint": "把所有 loot 事件存成 JSON",
-  "loot.dedup": "去重",
   "loot.complete": "已載入完整集合",
   "loot.recentSubset": "近期子集",
   "loot.loadOlder": "載入較舊戰利品",
