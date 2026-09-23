@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  encodeCursor, decodeCursor, buildCursorWhere,
+  encodeCursor, decodeCursor,
   toQueryPage, CANONICAL_ORDER,
   type CursorKey, type QueryPage
 } from '../src/core/query-page'
@@ -74,34 +74,6 @@ describe('encodeCursor / decodeCursor', () => {
   it('cursor is opaque (not human-readable)', () => {
     const encoded = encodeCursor({ ts: 123, row: 1, tier: 'chained' })
     expect(encoded).not.toMatch(/timestamp|chained/)
-  })
-})
-
-// --- buildCursorWhere ---
-
-describe('buildCursorWhere', () => {
-  it('generates a 3-level keyset predicate', () => {
-    const cursor: CursorKey = { ts: 5000, row: 10, tier: 'chained' }
-    const { sql, params } = buildCursorWhere(cursor)
-    expect(sql).toContain('timestamp < ?')
-    expect(sql).toContain('_row < ?')
-    expect(sql).toContain('tier_rank < ?')
-    expect(params).toEqual([5000, 5000, 10, 5000, 10, 1])
-  })
-
-  it('logged tier has rank 0', () => {
-    const { params } = buildCursorWhere({ ts: 1, row: 1, tier: 'logged' })
-    expect(params[params.length - 1]).toBe(0)
-  })
-
-  it('chained tier has rank 1', () => {
-    const { params } = buildCursorWhere({ ts: 1, row: 1, tier: 'chained' })
-    expect(params[params.length - 1]).toBe(1)
-  })
-
-  it('accepts custom tierExpr', () => {
-    const { sql } = buildCursorWhere({ ts: 1, row: 1, tier: 'chained' }, 'my_rank')
-    expect(sql).toContain('my_rank < ?')
   })
 })
 

@@ -65,11 +65,6 @@ export function configureFileWatcher(next: Partial<FileWatcherConfig>): Promise<
   return restartFileWatcher()
 }
 
-export function startFileWatcher(next?: Partial<FileWatcherConfig>): Promise<void> {
-  if (next) cfg = { ...cfg, ...next }
-  return restartFileWatcher()
-}
-
 export function stopFileWatcher(): void {
   if (watcher) {
     watcher.close().catch(() => {})

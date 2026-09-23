@@ -1200,5 +1200,6 @@
   "settings.searchSettings": "搜尋設定…",
   "settings.noSettingMatches": "沒有符合「{{query}}」的設定",
   "settings.searchResults": "設定項目",
-  "statusBar.uptimeSince": "自專案建立（{{date}}）起的時間，不是本次工作階段"
+  "statusBar.uptimeSince": "自專案建立（{{date}}）起的時間，不是本次工作階段",
+  "settings.lootRuleStopped": "已停止：這條規則超過執行時間上限，不再執行，它比對的內容也不再被遮蔽。修正 pattern 後請重新載入 plugin。"
 }

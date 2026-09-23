@@ -311,7 +311,7 @@ function padMonoNs(ns: string | null): string | null {
 // clock has drifted too far from NTP or when the monotonic counter
 // disagrees with wall clock delta since the previous event on the same
 // (host, session) pair. The anomaly is stashed on the event's data
-// under `_clock_anomaly` so verifyChainFull can surface it and Timeline
+// under `_clock_anomaly` so verifyChainFullAsync can surface it and Timeline
 // can visually tag the row.
 const CLOCK_NTP_THRESHOLD_MS = 30_000
 let lastEventForClockCheck: { timestamp: number; monotonic: string; hostname: string; sessionId: string } | null = null
@@ -502,7 +502,7 @@ function insertChainedEvent(
 
   // Sign the same canonical JSON with the operator's Ed25519 key.
   // Returns null when the key file is missing or inaccessible; the row still lands — chain hash keeps it
-  // integrity-protected, verifyChainFull flags it "unsigned" not "broken".
+  // integrity-protected, verifyChainFullAsync flags it "unsigned" not "broken".
   const signature = signEvent(canonicalForHash, event.operatorId)
   event.signature = signature
 

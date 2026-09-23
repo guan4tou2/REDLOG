@@ -70,11 +70,11 @@ describe.skipIf(!available)('an amended marker on the way out', () => {
     expect(lines.indexOf(exported)).toBeLessThan(lines.indexOf(amendment))
   })
 
-  it('leaves the chain verifying with amendments in it', () => {
+  it('leaves the chain verifying with amendments in it', async () => {
     const m = marker()
     amendMod!.amendMarker(m.id, { title: 'second' }, OPTS)
     amendMod!.amendMarker(m.id, { notes: 'third' }, OPTS)
-    expect(chain!.verifyChainFull().ok).toBe(true)
+    expect((await chain!.verifyChainFullAsync()).ok).toBe(true)
   })
 
   it('sanitizes each row on its own — listing one does not cover the other', () => {

@@ -1200,5 +1200,6 @@
   "settings.searchSettings": "Search settings…",
   "settings.noSettingMatches": "No setting matches “{{query}}”",
   "settings.searchResults": "Settings",
-  "statusBar.uptimeSince": "Time since this project was created ({{date}}), not this session"
+  "statusBar.uptimeSince": "Time since this project was created ({{date}}), not this session",
+  "settings.lootRuleStopped": "Stopped: this rule ran past its time limit, so it no longer runs — or masks what it matches. Reload the plugin after fixing the pattern."
 }

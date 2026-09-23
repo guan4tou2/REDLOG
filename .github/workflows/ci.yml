@@ -49,6 +49,9 @@ jobs:
       - name: Spec Kit contract gates
         run: npm run verify:specs
 
+      - name: Architecture gate (every export reachable from production)
+        run: npm run verify:architecture
+
       - name: Vitest
         run: npm test
 
