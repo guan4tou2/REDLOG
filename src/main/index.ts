@@ -54,7 +54,8 @@ import { setTailerContributionSink, type TailerLike } from '../core/plugins/tail
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
-import { managedHttpProxy, isLoopbackHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
+import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
+import { isManagedLoopbackProxy } from '../core/managed-proxy-url'
 import { detectLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { anchorBeforeRestart } from '../core/update-anchor'
@@ -1405,7 +1406,7 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
-    if (isLoopbackHttpProxy(browserCfg.proxy)) {
+    if (isManagedLoopbackProxy(browserCfg.proxy, managedProxyPort(cfg))) {
       const proxy = await startManagedHttpCapture()
       if (proxy.state !== 'running') {
         return { ok: false, error: proxy.error || 'HTTP capture proxy is not running' }
