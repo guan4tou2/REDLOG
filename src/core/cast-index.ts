@@ -223,18 +223,14 @@ export interface CastHit {
 export function searchCasts(query: string, limit = 50, projectDir?: string): CastHit[] {
   const match = toFtsMatch(query)
   if (!match) return []
-  const db = getCastIndex(projectDir)
-  try {
-    return db.prepare(
-      `SELECT cast_rel AS castRel, t_ms AS tMs, off, len,
-              snippet(cast_fts, 0, '', '', '...', 24) AS snippet
-       FROM cast_fts WHERE cast_fts MATCH ? ORDER BY rank LIMIT ?`
-    ).all(match, limit) as CastHit[]
-  } catch {
-    // A malformed MATCH is a bad query, not a broken index. Empty beats a
-    // dialog explaining FTS5 syntax to someone who typed a path.
-    return []
-  }
+  // No catch. toFtsMatch quotes every term, so no typed input is malformed
+  // MATCH syntax; an error here is the index failing, and Search shows it as
+  // a failure rather than as recordings that never held the term.
+  return getCastIndex(projectDir).prepare(
+    `SELECT cast_rel AS castRel, t_ms AS tMs, off, len,
+            snippet(cast_fts, 0, '', '', '...', 24) AS snippet
+     FROM cast_fts WHERE cast_fts MATCH ? ORDER BY rank LIMIT ?`
+  ).all(match, limit) as CastHit[]
 }
 
 /** Drop a recording's text. Called by retention when the `.cast` is swept —
