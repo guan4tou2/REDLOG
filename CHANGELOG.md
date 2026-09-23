@@ -3,7 +3,24 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
-## Unreleased
+## v0.16.0 — 2026-09-23
+
+**Upgrading — read first.**
+
+- **Shell hook path changed.** A profile that still sources
+  `shell-preexec-hook.sh` records nothing after the upgrade: that
+  compatibility entry point is gone. Re-install the zsh or bash hook from the
+  Capture Health panel and replace the old `source` line.
+- **Older `timeline.db` files may not verify.** Spec 006 removed the
+  compatibility hash shapes; start a new project for new work.
+- **Starting the HTTP proxy does not route terminals.** `routeTerminals` is
+  off by default: the proxied browser is captured, but `curl`/`nmap` in a
+  terminal go through the proxy only when that option is on (new panes only).
+- **AI agent transcript capture is off by default**, per project.
+- **Config keys renamed:** retention knobs moved to `retention.<store>`
+  (`keepDays` / `maxBytes`), and `transcriptTailer` is now
+  `powershellTranscript`. Old keys are not read — a budget set under an old
+  key stops applying and that store is kept in full.
 
 - **Config:** every store's retention now lives under `retention.<store>` with
   `keepDays` / `maxBytes` (`casts`, `screenshots`, `httpBodies`,
