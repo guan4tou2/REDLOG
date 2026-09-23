@@ -5,6 +5,7 @@ import readline from 'readline'
 import Database from 'better-sqlite3'
 import { stripAnsi } from './cast-slice'
 import { getProjectDir } from './db'
+import { toFtsMatch } from './query/fts-match'
 
 // Full-text search over terminal recordings.
 //
@@ -219,24 +220,8 @@ export interface CastHit {
   snippet: string
 }
 
-/** FTS5 MATCH treats bare punctuation and operators as syntax. Terminal
- *  searches are full of both — `10.0.0.5`, `-sV`, `/etc/passwd` — so each
- *  term is quoted as a phrase rather than handed through, and only a
- *  trailing `*` is added, deliberately. */
-function toMatchQuery(raw: string): string | null {
-  const terms = raw.trim().split(/\s+/).filter(Boolean)
-  if (terms.length === 0) return null
-  return terms
-    .map((term, i) => {
-      const quoted = `"${term.replace(/"/g, '""')}"`
-      // Prefix-match only the last term: the operator is still typing it.
-      return i === terms.length - 1 ? `${quoted}*` : quoted
-    })
-    .join(' ')
-}
-
 export function searchCasts(query: string, limit = 50, projectDir?: string): CastHit[] {
-  const match = toMatchQuery(query)
+  const match = toFtsMatch(query)
   if (!match) return []
   const db = getCastIndex(projectDir)
   try {
