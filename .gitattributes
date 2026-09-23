@@ -3,3 +3,8 @@
 *.bash text eol=lf
 *.py   text eol=lf
 *.svg  text eol=lf
+
+# Spec Kit hashes every file it installs (.specify/integrations/*.manifest.json)
+# to tell its own files from local edits. A CRLF checkout changes every hash.
+/.specify/** text eol=lf
+/.agents/**  text eol=lf
