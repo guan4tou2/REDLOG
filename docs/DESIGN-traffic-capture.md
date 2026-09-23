@@ -340,16 +340,15 @@ Two view modes via a toggle in the header bar:
   (single endpoint) click-through to Timeline. Mirrors Burp Suite's
   Target > Site map.
 
-## Proxy Bypass Detection
+## Proxy Bypass Detection (removed)
 
-`proxy-bypass-detector.ts` monitors process spawns for known network tools
-(curl, nmap, sqlmap, nuclei, ffuf, etc.). After a 15-second delay, it checks
-whether any scanner traffic appeared during that tool's runtime. If not, a
-`system.proxy_bypass_suspected` event is emitted.
-
-This is heuristic — false positives are possible (tool may use a different
-protocol, or the mitmproxy addon hasn't forwarded the events yet). The
-advisory surfaces on the system lane so the operator sees it.
+`proxy-bypass-detector.ts` used to write `system.proxy_bypass_suspected` into
+the signed chain when a network tool spawned and no proxy traffic followed
+within 15 seconds. It was removed on 2026-09-23 for the reason Spec 024 removed
+alert correlation: the row was an inference citing neither the spawn nor the
+traffic it reasoned about. With `routeTerminals` off by default, an unproxied
+`curl` is normal and was flagged anyway. The connection monitor records the
+connections themselves.
 
 Known network tool binaries are maintained in `NETWORK_TOOLS` set. Generic
 runtimes (python, ruby, node, java, go) trigger detection only when their

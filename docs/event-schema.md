@@ -111,7 +111,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `browser_launched` — proxied browser opened
   - `secret_revealed` — reviewer clicked "Reveal" on an event whose data has redaction spans; records `source_event`, `fields`, and the viewing operator (four-layer redaction, layer 3 — see [redaction-design.md](redaction-design.md))
   - `sanitized` — `redlog-cli sanitize --confirm` (or the REST equivalent) wrote sanitized bytes to the `sanitized_events` table for pre-delivery scrub; records `source_events`, `fields`, per-field `replacement_sha256`, and an optional `reason`. Source events are never mutated (four-layer redaction, layer 4)
-  - `proxy_bypass_suspected` — network tool spawned without corresponding proxy traffic (heuristic, see [DESIGN-traffic-capture.md](DESIGN-traffic-capture.md))
+  - `proxy_bypass_suspected` — no longer written (removed 2026-09-23); older projects may still hold it (see [DESIGN-traffic-capture.md](DESIGN-traffic-capture.md))
   - `api_started`, `session_start`, `deconfliction_test` — housekeeping, hidden from Timeline by default
 
 ### `pivot` events
