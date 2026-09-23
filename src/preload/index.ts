@@ -174,11 +174,6 @@ const api: RedLogAPI = {
     update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('bookmarks:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('bookmarks:delete', id)
   },
-  views: {
-    list: () => ipcRenderer.invoke('views:list'),
-    save: (data: { name: string; state: SavedTimelineViewState }) => ipcRenderer.invoke('views:save', data),
-    delete: (id: string) => ipcRenderer.invoke('views:delete', id)
-  },
   cdp: {
     getTab: () => ipcRenderer.invoke('cdp:getTab'),
     setPort: (port: number) => ipcRenderer.invoke('cdp:setPort', port)

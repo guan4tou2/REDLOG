@@ -79,7 +79,6 @@ import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
-import { registerViewsIpc } from './ipc/views'
 import { registerTargetContextIpc } from './ipc/target-context'
 import type { IpcContext } from './ipc/types'
 
@@ -1085,7 +1084,6 @@ app.whenReady().then(() => {
   registerEventsIpc(ipcMain, ipcCtx)
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
-  registerViewsIpc(ipcMain, ipcCtx)
   registerTargetContextIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
@@ -1397,19 +1395,7 @@ app.whenReady().then(() => {
     if (!activeProject) return null
     const projectDir = getProjectPath(activeProject)
     const config = loadConfig(projectDir)
-    // v0.6.96 Ops-2: also carry saved Timeline views. Team hand-off used to
-    // ship scope + operators but leave the current operator's per-project
-    // views.json behind — the receiving teammate lost every zoom window +
-    // filter combo the sender had bookmarked.
-    let views: unknown[] = []
-    try {
-      const viewsPath = path.join(projectDir, 'views.json')
-      if (fs.existsSync(viewsPath)) {
-        const raw = JSON.parse(fs.readFileSync(viewsPath, 'utf-8'))
-        if (Array.isArray(raw)) views = raw
-      }
-    } catch { /* views file missing / malformed — just ship an empty list */ }
-    const profile = { version: 1, ...config, views }
+    const profile = { version: 1, ...config }
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `redlog-profile-${activeProject.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
       filters: [
@@ -1440,26 +1426,9 @@ app.whenReady().then(() => {
       const ext = path.extname(result.filePaths[0]).toLowerCase()
       const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
       delete data.version
-      // v0.6.96 Ops-2: split saved views out of the config payload and merge
-      // them into the local views.json. Prior teammate's views are preserved
-      // (dedupe by id — imported views win on id collision).
-      const incomingViews = Array.isArray(data.views) ? data.views as Array<{ id: string }> : []
+      // Older profiles also carried saved Timeline views, which have no UI;
+      // keep them out of the config.
       delete data.views
-      if (incomingViews.length > 0 && activeProject) {
-        try {
-          const viewsPath = path.join(getProjectPath(activeProject), 'views.json')
-          let existing: Array<{ id: string }> = []
-          try {
-            if (fs.existsSync(viewsPath)) {
-              const raw = JSON.parse(fs.readFileSync(viewsPath, 'utf-8'))
-              if (Array.isArray(raw)) existing = raw
-            }
-          } catch { /* start fresh */ }
-          const byId = new Map(existing.map((v) => [v.id, v]))
-          for (const v of incomingViews) if (v && v.id) byId.set(v.id, v)
-          fs.writeFileSync(viewsPath, JSON.stringify(Array.from(byId.values()), null, 2))
-        } catch { /* views merge is best-effort */ }
-      }
       return data as Partial<RedLogConfig>
     } catch {
       return null
