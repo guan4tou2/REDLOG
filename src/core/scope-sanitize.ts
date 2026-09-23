@@ -15,7 +15,7 @@
 // root → warn, unrelated → ignore": for shipping bytes to a client, anything
 // not in scope is treated as not-ours-to-hand-over.
 
-import { classifyScopeTarget } from './alert/policies'
+import { classifyScope } from './scope-evaluator'
 
 export interface ScopeForSanitize {
   targets: string[]
@@ -44,8 +44,7 @@ export const SCOPE_SANITIZED_FIELDS = [
 export function isPersonalDomain(targetId: string | null | undefined, scope: ScopeForSanitize | undefined): boolean {
   if (!scope?.personalDomains?.length) return false
   if (!targetId) return false
-  const verdict = classifyScopeTarget(targetId, { targets: [], excludeTargets: scope.personalDomains })
-  return verdict.distance === 'excluded'
+  return classifyScope(targetId, { targets: [], excludeTargets: scope.personalDomains }).distance === 'excluded'
 }
 
 /**
@@ -53,10 +52,13 @@ export function isPersonalDomain(targetId: string | null | undefined, scope: Sco
  * An empty scope is never classified as out-of-scope (can't classify).
  */
 export function isOutOfScope(targetId: string | null | undefined, scope: ScopeForSanitize | undefined): boolean {
-  if (!scope || scope.targets.length === 0) return false
-  if (!targetId) return false
-  const verdict = classifyScopeTarget(targetId, { targets: scope.targets, excludeTargets: scope.excludeTargets ?? [] })
-  return verdict.distance !== 'in_scope'
+  // No early exit for "no allowlist": that returned false before exclusions
+  // were ever checked, so an exclude-only project exported its explicitly
+  // excluded targets unmasked — against this interface's own contract that
+  // excludes always count as out of scope. The classifier already treats a
+  // missing allowlist as "nothing is out of scope except what is excluded".
+  if (!scope || !targetId) return false
+  return classifyScope(targetId, { targets: scope.targets, excludeTargets: scope.excludeTargets ?? [] }).distance !== 'in_scope'
 }
 
 /**

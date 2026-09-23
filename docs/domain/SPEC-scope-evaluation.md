@@ -45,8 +45,10 @@ A scope pattern is one of:
    domain itself. `*.example.com` matches `example.com`, `sub.example.com`,
    `a.b.example.com`.
 4. **IPv4 CIDR**: proper 32-bit mask arithmetic. `/0` matches all IPv4.
-5. **IPv6 CIDR**: exact match on address part for now (no prefix arithmetic).
-   Stricter than ideal but never a false-clean.
+5. **IPv6 CIDR**: full 128-bit prefix arithmetic. `fe80::2` matches
+   `fe80::1/64`. (An earlier revision of this contract described exact-address
+   matching; the implementation has done prefix arithmetic since, and
+   `scope-evaluator.test.ts` pins it.)
 6. **IPv4-mapped IPv6**: `::ffff:10.0.0.1` is treated as `10.0.0.1` for
    matching purposes.
 7. **Trailing dot FQDN**: stripped before matching. `example.com.` ==
@@ -56,6 +58,52 @@ A scope pattern is one of:
 9. **URL input**: if subject looks like a URL (`://`), extract the hostname.
 10. **Malformed pattern**: never matches anything, never throws.
 11. **Malformed subject**: never matches anything, never throws.
+
+### Classification — one procedure, two views (Spec 023)
+
+Scope has exactly one decision procedure, `classifyScope` in
+`src/core/scope-evaluator.ts`. Every surface takes one of its two views; none
+computes scope separately.
+
+```typescript
+type ScopeDistance = 'in_scope' | 'excluded' | 'adjacent_subnet' | 'adjacent_domain' | 'unrelated'
+
+function classifyScope(
+  subject: string,
+  policy: { targets: string[]; excludeTargets: string[] },
+  indexes?: ScopeIndexes
+): { status: ScopeDecision['status']; distance: ScopeDistance; matchedBy?: string }
+```
+
+- **status** — the filter view (`evaluateScope`). Used by the investigation
+  filter.
+- **distance** — the classification view. Used by export masking, scope
+  recompute and the scope alarm.
+
+Rungs, in order, all over the **normalised** subject (rules 1, 7, 8, 9 apply
+to every rung, including adjacency):
+
+1. No allowlist and no exclusions → `no-scope` / `in_scope`.
+2. Matches an exclusion → `excluded` / `excluded`.
+3. No allowlist (exclusions only) → `no-scope` / `in_scope`. Nothing is out of
+   scope except what is explicitly excluded.
+4. Matches an allowlist entry → `in-scope` / `in_scope`.
+5. IPv4 in the same /24 as an allowlisted address → `out-of-scope` /
+   `adjacent_subnet`.
+6. Same registrable domain as an allowlisted host → `out-of-scope` /
+   `adjacent_domain`.
+7. Otherwise → `out-of-scope` / `unrelated`.
+
+**Authority and severity are not part of the domain.** How much a distance
+matters — a rule is a fact, an adjacency is an inference, adjacency warns and
+`unrelated` only notices — is an alert policy decision, mapped from the
+distance in `src/core/alert/policies.ts`. The alert subsystem does not decide
+distance, and nothing outside it imports scope from it.
+
+Before Spec 023 the distance view lived inside the alert module and read the
+raw subject on the adjacency rungs, so `Dev.Target.com`,
+`dev.target.com:8443` and `https://dev.target.com/x` were `unrelated` beside an
+in-scope `target.com` while `dev.target.com` was `adjacent_domain`.
 
 ### Evaluation function
 

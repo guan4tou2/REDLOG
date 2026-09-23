@@ -14,9 +14,6 @@ export type {
   IPVerdict,
   IPVerdictKind,
   ScopeVerdict,
-  ScopeDistance,
-  CombinedVerdict,
-  BurstVerdict,
   Authority,
   Severity
 } from './policy'
@@ -29,23 +26,17 @@ export type {
 } from './surface'
 
 export { ChainEmitter, BadgeSurface, AdherenceCounter, ViolationLog } from './surface'
-export { AlertBus, type DerivedPolicy } from './bus'
+export { AlertBus } from './bus'
 
 export {
   classifyScopeTarget,
-  buildScopeIndexes,
   isReportable,
   alertFloorFor,
   type ScopeSnapshot,
-  type ScopeIndexes,
   IPPolicy,
   ScopePolicy,
-  CombinedPolicy,
-  BurstPolicy,
   type IPPolicyConfig,
-  type ScopePolicyConfig,
-  type CombinedPolicyConfig,
-  type BurstPolicyConfig
+  type ScopePolicyConfig
 } from './policies'
 
 export { scopeSignalFor, SCOPE_ELIGIBLE, SCOPE_KEY_SQL, type ScopeSignalSource } from './scope-signal'
