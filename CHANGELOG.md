@@ -59,6 +59,46 @@ for full commit body + generated notes.
   says when its 40 event matches are only the newest.
 - **Local API:** `GET /api/events/search` returns `hasMore` and `nextCursor`
   and takes `cursor`; an unreadable cursor is a 400.
+- **Integrity:** the full verify accepted any anchor once the chain had grown
+  past it, so a chain re-hashed end to end still read "anchor matches". It now
+  checks the chain against the anchor at the anchored row count.
+- **Integrity:** Settings ▸ Integrity has one Verify. It walks every row,
+  checks the latest anchor, and raises the broken-chain issue when either
+  fails; only the anchor-only "Verify latest" used to raise it. The local API
+  and the CLI keep the anchor-only check.
+- **Network:** `network.showWifiName` now works. Off, the default, keeps the
+  Wi-Fi name off the HUD and every other surface, on every platform. Nothing
+  read it, so the SSID showed wherever the OS allowed.
+- **Scope:** the violation list pages through every record and says when the
+  records it read are not all of them. It showed the first 10 of up to 500,
+  with no sign of either cap.
+- **Settings:** a link into Settings opens the page it is about (the
+  screenshots empty state, a failed browser launch, the Dashboard's scope
+  card, the chain and anchor issues) instead of Hooks. The screenshots empty
+  state's "Turn on periodic capture", which only opened Settings, is now
+  "Periodic capture settings →".
+- **Settings:** the name field renames the project, and the title bar follows.
+  `engagement.name` is gone from `config.yaml`: a second name that only the
+  Dashboard showed, and that drifted from the project's.
+- **Settings:** the box above the categories says "Filter categories…"; it
+  matches page names, not settings.
+- **Capture:** removing a hook from the Dashboard's capture card can be undone
+  for 8 seconds, as in Settings ▸ Hooks. It used to uninstall at once.
+- **Tray:** "Quick Mark" is now "Add Marker…", since it opens the marker
+  dialog. The HUD's instant mark is the one that files a marker without asking.
+- **Timeline:** its own palette (⌘K ▸ "Search within the loaded timeline") is
+  gone; ⌘K finds the same events, hosts and operators through the full query.
+  The status bar's event counter no longer toggles the auditor view, which is
+  in the Timeline's ⋯ menu. ⌘F is labelled "Filter the Timeline", the only
+  view it acts on.
+- **Removed:** IPC channels with no UI: saved Timeline views (`views:*`, and
+  `views.json` in profile export), operator token management
+  (`operators:create`, `rotateToken`, `revoke`, `rename`, `pubKey`),
+  `data:revealPath`, `app:anchorForRestart`, `events:hostChain`,
+  `screenshot:markerReferenced`, `clock:status`, `terminal:rediscoverShells`,
+  `overlay:show`, `overlay:setExpanded` and `events:queryTargetPage`. Through
+  `operators:create`, renderer code could mint a local API token with nothing
+  on screen. An old profile's `views` key is dropped on import.
 
 ## v0.16.0 — 2026-09-23
 
