@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { toast, toastDeferred } from '../Toast'
+import { toast } from '../Toast'
 import { FieldGroup, type HookInfo } from './SettingsShared'
 import { writeClipboard } from '../../lib/clipboard'
+import { removeHookWithUndo } from '../../lib/hookRemoval'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
 // process, no locale). The interface is Chinese, so each built-in id has a
@@ -33,31 +34,15 @@ export default function HooksPanel({ hooks, setHooks, hookLoading, setHookLoadin
   }
 
   const handleToggle = async (hook: HookInfo): Promise<void> => {
-    const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }>; uninstall: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
-    // Removing a hook blinds a capture source, and a blind source is only
-    // discovered later, in the gap it left in the timeline. SS10 defers it:
-    // the row reads as uninstalled at once, the profile is not touched until
-    // the undo window closes, and an undo inside it leaves no audit entry.
+    const hooksApi = (window.redlog as { hooks: { install: (id: string) => Promise<{ success: boolean; message: string }> } }).hooks
     if (hook.installed) {
-      setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed: false } : h)))
-      toastDeferred(
-        t('settings.hookRemoved', { name: hook.id }),
-        () => {
-          void hooksApi.uninstall(hook.id).then(async (r) => {
-            if (!r.success) {
-              toast(t('settings.hookUninstallFailed', { name: hook.id }), {
-                type: 'error', why: t('settings.hookFailedWhy'), detail: r.message
-              })
-            }
-            setHooks(await (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect())
-          })
-        },
-        {
-          type: 'warning',
-          why: t('settings.hookRemovedWhy'),
-          revert: () => setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed: true } : h)))
-        }
-      )
+      const show = (installed: boolean) => (): void =>
+        setHooks((prev) => prev.map((h) => (h.id === hook.id ? { ...h, installed } : h)))
+      removeHookWithUndo(hook.id, t, {
+        hide: show(false),
+        restore: show(true),
+        refresh: () => { void (window.redlog as { hooks: { detect: () => Promise<HookInfo[]> } }).hooks.detect().then(setHooks) }
+      })
       return
     }
     setHookLoading(hook.id)

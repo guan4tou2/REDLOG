@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
+import { removeHookWithUndo } from '../lib/hookRemoval'
 
 // The dark/setup onboarding block: the three core sources as an ordered
 // checklist, plus one primary CTA derived from readiness.nextStep. This is the
@@ -149,6 +150,22 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // opens the full inventory with the controls.
   const [manage, setManage] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  // Hooks whose removal is waiting out its undo window, shown removed until
+  // the health poll reports them gone (lib/hookRemoval.ts).
+  const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set())
+  const markRemoving = (hookId: string, on: boolean): void => setRemoving((prev) => {
+    const next = new Set(prev)
+    if (on) next.add(hookId)
+    else next.delete(hookId)
+    return next
+  })
+  useEffect(() => {
+    setRemoving((prev) => {
+      const still = [...prev].filter((id) => capture.sources.some((s) => s.hookId === id && s.installed === true))
+      return still.length === prev.size ? prev : new Set(still)
+    })
+  }, [capture.sources])
+  const sources = capture.sources.map((s) => (s.hookId && removing.has(s.hookId) ? { ...s, installed: false } : s))
 
   // "On but not delivering." A source switched off is a choice, not a fault;
   // a hook that was never installed is a setup step, and the banner above
@@ -159,10 +176,10 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     // (they're still listed in `manage`, read-only, with honest live state).
     !s.informational &&
     (s.state === 'absent' || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null)))
-  const problems = capture.sources.filter(isProblem)
-  const healthy = capture.sources.filter((s) => s.state === 'active')
-  const shown = manage ? capture.sources : problems
-  const hiddenCount = capture.sources.length - problems.length
+  const problems = sources.filter(isProblem)
+  const healthy = sources.filter((s) => s.state === 'active')
+  const shown = manage ? sources : problems
+  const hiddenCount = sources.length - problems.length
 
   const setEnabled = async (s: CaptureSourceInfo, on: boolean): Promise<void> => {
     if (!s.configPath) return
@@ -187,10 +204,19 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
 
   const setInstalled = async (s: CaptureSourceInfo, install: boolean): Promise<void> => {
     if (!s.hookId) return
+    if (!install) {
+      const hookId = s.hookId
+      removeHookWithUndo(hookId, t, {
+        hide: () => markRemoving(hookId, true),
+        restore: () => markRemoving(hookId, false),
+        refresh: onRefresh
+      })
+      return
+    }
     setBusy(s.id)
     try {
       const api = window.redlog.hooks
-      const r = install ? await api?.install(s.hookId) : await api?.uninstall(s.hookId)
+      const r = await api?.install(s.hookId)
       if (r && r.success === false) {
         toast(t('capture.actionFailed'), {
           type: 'error',
@@ -241,7 +267,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
   // capture-readiness.ts; this card just renders it. Drives the checklist and
   // the single primary CTA below, replacing the old one-line "go to Settings"
   // hint that dropped a first-run operator into a 2600-line page with no order.
-  const readiness = computeCaptureReadiness(capture)
+  const readiness = computeCaptureReadiness({ ...capture, sources })
   const barColor = dark ? 'bg-redlog-danger' : partial ? 'bg-amber-500' : 'bg-emerald-500'
   const headline = dark ? t('capture.dark') : partial ? t('capture.partial') : t('capture.healthy')
 
@@ -271,7 +297,7 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
         {readiness.level !== 'recording' && (
           <CaptureOnboarding
             readiness={readiness}
-            sources={capture.sources}
+            sources={sources}
             busy={busy}
             onInstall={setInstalled}
             onEnable={setEnabled}
