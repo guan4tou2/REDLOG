@@ -1,5 +1,7 @@
+import crypto from 'crypto'
 import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
+import { noteDbError } from './capture-health'
 import { DETECT_AS_LOOT, compileShape } from './secret-patterns'
 
 interface LootMatch {
@@ -18,8 +20,8 @@ interface LootMatch {
 // Built-in loot shapes and their order live in `secret-patterns.ts`, beside
 // transcript redaction's list. Order is load-bearing: it is the order of the
 // chained loot event's `matches`.
-const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low' }> =
-  DETECT_AS_LOOT.map(({ shape, type, confidence }) => ({ type, pattern: compileShape(shape), confidence }))
+const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low'; group: number }> =
+  DETECT_AS_LOOT.map(({ shape, type, confidence, group }) => ({ type, pattern: compileShape(shape), confidence, group }))
 
 // Plugin-contributed loot patterns (🟢 declarative). Kept separate from the
 // built-ins so we can list/replace them without touching the base set.
@@ -27,6 +29,9 @@ interface ExternalPattern {
   type: string
   pattern: RegExp
   confidence: 'high' | 'medium' | 'low'
+  /** Which part of the match is the value: 0 = whole match, n = capture
+   *  group n. Declared by the rule, never inferred (Spec 031). */
+  group: number
   pluginId: string
   /** v0.9.0: per-pattern identifier — plugin-supplied `name` or the
    *  default `${type}#${index}` when omitted. */
@@ -44,6 +49,8 @@ export function registerLootPatterns(
     pattern: string
     confidence?: 'high' | 'medium' | 'low'
     flags?: string
+    /** Capture group holding the value; omitted = the whole match. */
+    group?: number
     name?: string
     description?: string
   }>
@@ -53,11 +60,14 @@ export function registerLootPatterns(
     try {
       const flags = new Set(['g', ...(p.flags ?? '').split('')].filter(Boolean))
       const re = new RegExp(p.pattern, [...flags].join(''))
+      const group = p.group ?? 0
+      if (!Number.isInteger(group) || group < 0) return
       const patternName = p.name && p.name.trim() ? p.name.trim() : `${p.type}#${i}`
       externalPatterns.push({
         type: p.type,
         pattern: re,
         confidence: p.confidence ?? 'medium',
+        group,
         pluginId,
         patternName,
         description: p.description
@@ -118,63 +128,51 @@ export class LootDetector {
   }
 
   /**
-   * Run the regex sweep + dedup bookkeeping WITHOUT emitting a loot
-   * event. The caller is responsible for calling `emit()` afterwards. This
-   * lets the api-server run the scan pre-insert (to feed matches into the
-   * redaction denylist) but only fire the loot event AFTER the shell event
-   * has an id — so `_causes: [shellEventId]` can be stamped correctly.
+   * Every match in `text`, including values already recorded as loot. Pure:
+   * no dedup, no write. Callers feed the values to redaction, which has to
+   * mask a secret every time it appears — the dedup that stops a second loot
+   * row must not stop a second mask (Spec 031). `emit()` decides what is new.
    */
   findMatches(text: string): LootMatch[] {
     const matches: LootMatch[] = []
     // Built-in patterns carry no plugin attribution; only external ones do.
-    // We iterate them separately (rather than a flat concat) so we can
-    // stamp `pluginId` / `patternName` only where they apply — falsy fields
-    // are stripped by the emit path.
-    for (const { type, pattern, confidence } of LOOT_PATTERNS) {
-      const re = new RegExp(pattern.source, pattern.flags)
-      let m: RegExpExecArray | null
-      while ((m = re.exec(text)) !== null) {
-        const value = m[1] || m[0]
-        const key = `${type}:${value.slice(0, 32)}`
-        if (this.detectedHashes.has(key)) continue
-        this.detectedHashes.add(key)
-        const line = extractLine(text, m.index)
-        matches.push({ type, value: value.slice(0, 500), line, confidence })
+    for (const { type, pattern, confidence, group } of LOOT_PATTERNS) {
+      for (const { value, index } of execAll(pattern, text, group)) {
+        matches.push({ type, value: value.slice(0, 500), line: extractLine(text, index), confidence })
       }
     }
-    for (const { type, pattern, confidence, pluginId, patternName } of externalPatterns) {
-      const re = new RegExp(pattern.source, pattern.flags)
-      let m: RegExpExecArray | null
-      while ((m = re.exec(text)) !== null) {
-        const value = m[1] || m[0]
-        const key = `${type}:${value.slice(0, 32)}`
-        if (this.detectedHashes.has(key)) continue
-        this.detectedHashes.add(key)
-        const line = extractLine(text, m.index)
-        matches.push({
-          type,
-          value: value.slice(0, 500),
-          line,
-          confidence,
-          pluginId,
-          patternName
-        })
+    for (const { type, pattern, confidence, group, pluginId, patternName } of externalPatterns) {
+      for (const { value, index } of execAll(pattern, text, group)) {
+        matches.push({ type, value: value.slice(0, 500), line: extractLine(text, index), confidence, pluginId, patternName })
       }
     }
     return matches
   }
 
   /**
-   * Emit a loot event for previously-found matches. Called by `scan()` for
-   * immediate detection, and by the ingest pipeline explicitly after
-   * the shell command_end has been inserted so `_causes` can point at it.
+   * Record the matches not yet recorded for this target as one loot event.
+   * A value is new per (type, target, full value): the same secret on a second
+   * host is a second fact; two secrets sharing a prefix are two values.
+   *
+   * Returns false when the write did not land — paused, or failed. A failure
+   * is reported to capture health, and nothing is marked seen, so the next
+   * sighting records it instead of the loot being silently lost.
    */
-  emit(matches: LootMatch[], opts: { targetId?: string; source?: string; causeEventId?: string }): void {
-    if (matches.length === 0 || !this.operatorId) return
+  emit(matches: LootMatch[], opts: { targetId?: string; source?: string; causeEventId?: string }): boolean {
+    if (!this.operatorId) return false
+    const fresh: LootMatch[] = []
+    const keys: string[] = []
+    for (const m of matches) {
+      const key = lootKey(m, opts.targetId)
+      if (this.detectedHashes.has(key) || keys.includes(key)) continue
+      keys.push(key)
+      fresh.push(m)
+    }
+    if (fresh.length === 0) return true
     try {
       const evt = insertEvent('loot', {
         subtype: 'credential_detected',
-        matches: matches.map((m) => ({
+        matches: fresh.map((m) => ({
           type: m.type,
           confidence: m.confidence,
           preview: m.line,
@@ -183,22 +181,27 @@ export class LootDetector {
           // matches emit the same shape as before (chain-hash stable).
           ...(m.pluginId ? { plugin_id: m.pluginId, pattern_name: m.patternName } : {})
         })),
-        count: matches.length,
+        count: fresh.length,
         // Optional provenance the caller can attach: the tool/command/host the
         // text came from. Trimmed + capped so a rogue caller can't bloat it.
         ...(opts.source && opts.source.trim() ? { source: opts.source.trim().slice(0, 200) } : {}),
-        // v0.6.89 `_causes` wiring: point at the shell command_end whose
-        // stdout produced this loot match. Focus chain mode uses this to
-        // walk "shell → loot → screenshot" attack narratives.
+        // v0.6.89 `_causes` wiring: point at the event whose text produced
+        // this loot match. Focus chain mode uses this to walk
+        // "shell → loot → screenshot" attack narratives.
         ...(opts.causeEventId ? { _causes: [opts.causeEventId] } : {})
       }, {
         engagementId: this.engagementId,
         operatorId: this.operatorId,
         targetId: opts.targetId
       })
-      if (evt) eventBus.publish(evt)
-    } catch { /* DB may not be ready */ }
-    return
+      if (!evt) return false
+      for (const k of keys) this.detectedHashes.add(k)
+      eventBus.publish(evt)
+      return true
+    } catch (e) {
+      noteDbError('loot', e)
+      return false
+    }
   }
 
   /** How many distinct values this detector has already seen, i.e. the size of
@@ -214,6 +217,27 @@ export class LootDetector {
   dedupeCacheSize(): number {
     return this.detectedHashes.size
   }
+}
+
+/** Dedup identity: type, target and a digest of the FULL value. */
+function lootKey(m: LootMatch, targetId: string | undefined): string {
+  const digest = crypto.createHash('sha256').update(m.value).digest('hex')
+  return `${m.type}\0${targetId ?? ''}\0${digest}`
+}
+
+/** Every non-empty value `pattern` finds in `text`. A zero-length match
+ *  advances by one character instead of re-matching the same position
+ *  forever — a declared rule such as `a*` would otherwise hang the caller. */
+function execAll(pattern: RegExp, text: string, group: number): Array<{ value: string; index: number }> {
+  const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g')
+  const out: Array<{ value: string; index: number }> = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m[0].length === 0) { re.lastIndex++; continue }
+    const value = m[group]
+    if (value) out.push({ value, index: m.index })
+  }
+  return out
 }
 
 function extractLine(text: string, matchIndex: number): string {

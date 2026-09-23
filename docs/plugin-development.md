@@ -87,13 +87,22 @@ All of these are pure data. They load automatically and can never run code.
 ```jsonc
 "lootPatterns": [
   { "type": "acme_session", "pattern": "ACME-[A-Z0-9]{16}", "confidence": "high" },
-  { "type": "corp_jwt", "pattern": "corp_eyJ[\\w-]+\\.[\\w-]+", "confidence": "medium", "flags": "i" }
+  { "type": "corp_jwt", "pattern": "corp_eyJ[\\w-]+\\.[\\w-]+", "confidence": "medium", "flags": "i" },
+  { "type": "corp_cookie", "pattern": "corp_sid=([a-f0-9]{32})", "group": 1 }
 ]
 ```
 
 `pattern` is a JS RegExp source (the `g` flag is always applied; add others via
 `flags`). Matches surface as `loot` events, exactly like the built-in patterns.
 Invalid regexes are skipped, not fatal.
+
+The **value** of a match is the whole match unless `group` names a capture
+group. The value is what redaction masks in the source event and what
+identifies the secret: the same value on the same target is recorded once,
+the same value on another target again, and every occurrence is masked. A
+pattern that can match the empty string is tolerated (empty matches are
+skipped), but a pattern prone to catastrophic backtracking still runs in the
+main process — keep patterns anchored on a literal prefix.
 
 ### `redaction` — add allow/deny entries
 
