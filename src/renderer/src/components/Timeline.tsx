@@ -1765,7 +1765,7 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                   hidden ? 'opacity-30 line-through' : empty ? 'opacity-25 cursor-default' : ''
                 }`}
                 style={{
-                  color: off ? '#6a6a74' : LANE_COLORS[id],
+                  color: off ? '#7e7e88' : LANE_COLORS[id],
                   backgroundColor: off ? 'transparent' : `${LANE_COLORS[id]}10`
                 }}
                 title={empty
