@@ -16,6 +16,12 @@ for full commit body + generated notes.
 - **Plugins:** `lootPatterns` entries take an optional `group` naming the
   capture group that holds the secret; without it the whole match is the
   value. It used to be capture group 1 whenever the pattern had one.
+- **Spec Kit:** the CI gate now fails where it used to skip: an annotated or
+  misspelt `**Status**`, a spec folder without `spec.md`, an indented unchecked
+  task, an empty `verification.md`, and a Verified spec without `plan.md` or a
+  RED record. From spec 032, `verification.md` follows
+  `.specify/templates/overrides/verification-template.md` and records every
+  workflow gate, including one that ran clean (constitution 1.1.0).
 
 ## v0.16.0 — 2026-09-23
 
