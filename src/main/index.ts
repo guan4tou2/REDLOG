@@ -205,12 +205,6 @@ function toggleRecording(): boolean {
   return !eventBus.paused
 }
 
-function setRecordingMode(mode: 'recording' | 'paused' | 'reporting'): 'recording' | 'paused' | 'reporting' {
-  if (mode === 'recording') eventBus.resume('ui')
-  else eventBus.pause('ui', mode)
-  return eventBus.mode
-}
-
 // The marker fields an operator types or pastes, and therefore the ones that can
 // carry a credential — a URL with a session token in its query string is the
 // case this list exists for as much as a password in a note. Layer 4 can only mask a field that carries
@@ -617,9 +611,9 @@ function startProject(project: ProjectMeta): void {
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
   configureTerminalProxy(() => {
     const status = managedHttpProxy.status()
-    return status.state === 'running' ? status.url : null
+    return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
   })
-  void startManagedHttpCapture()
+  // Capture starts only through an explicit operator action.
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
   // The unified ingest() pipeline (used by /api/events and, going forward, the
@@ -1298,7 +1292,7 @@ app.whenReady().then(() => {
     // from, so toggling a source updates the card on the next poll instead of
     // at the next project open.
     configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
-    if (managedProxyPort(oldConfig) !== managedProxyPort(newConfig)) {
+    if (managedProxyPort(oldConfig) !== managedProxyPort(newConfig) && ['running', 'starting'].includes(managedHttpProxy.status().state)) {
       stopManagedHttpCapture()
       void startManagedHttpCapture()
     }
@@ -1581,27 +1575,19 @@ app.whenReady().then(() => {
 
   // --- Recording ---
   ipcMain.handle('recording:get', () => !eventBus.paused)
-  ipcMain.handle('recording:getMode', () => eventBus.mode)
   ipcMain.handle('recording:toggle', () => toggleRecording())
-  ipcMain.handle('recording:setMode', (_e, mode: 'recording' | 'paused' | 'reporting') => {
-    if (!['recording', 'paused', 'reporting'].includes(mode)) throw new Error('invalid recording mode')
-    return setRecordingMode(mode)
-  })
-  eventBus.on('recording', (recording: boolean, source?: string, mode?: string, previousMode?: string) => {
+  eventBus.on('recording', (recording: boolean, source?: string) => {
     send(mainWindow, 'recording:changed', recording)
     send(overlayWindow, 'recording:changed', recording)
-    send(mainWindow, 'recording:modeChanged', mode ?? (recording ? 'recording' : 'paused'))
     if (tray) setTrayRecording(tray, recording)
     // Log the toggle so a reviewer can explain gaps in the timeline — "no events
     // for 20 min" reads very differently as "recording was paused" vs "idle".
     // Bypass the paused gate for this one write: pause events must always land.
     if (currentEngagementId && currentOperatorId) {
       try {
-        const enteringReport = !recording && mode === 'reporting'
-        const leavingReport = recording && previousMode === 'reporting'
         const ev = insertEvent('system', {
-          subtype: enteringReport ? 'report_mode_started' : leavingReport ? 'report_mode_ended' : recording ? 'recording_resumed' : 'recording_paused',
-          description: enteringReport ? 'Report mode started' : leavingReport ? 'Report mode ended' : recording ? 'Recording resumed' : 'Recording paused',
+          subtype: recording ? 'recording_resumed' : 'recording_paused',
+          description: recording ? 'Recording resumed' : 'Recording paused',
           // v0.9.5: who flipped it. With pause now actually suppressing
           // capture, these two rows are the entire record of the gap.
           source: source || 'unknown'

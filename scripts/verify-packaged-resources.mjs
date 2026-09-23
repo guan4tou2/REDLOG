@@ -16,6 +16,7 @@ const required = [
   'hooks/shell-zsh-hook.zsh',
   'hooks/shell-hook.ps1',
   'hooks/shell-common.sh',
+  'hooks/redlog-session.py',
   'plugins/starter-pack/plugin.json',
   'plugin-runner.js'
 ]

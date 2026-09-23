@@ -12,6 +12,9 @@ _redlog_adapter_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
 
+# Explicit PTY capture owns this child shell; avoid unpinned duplicate events.
+[[ "${REDLOG_EXTERNAL_SESSION:-}" == "1" ]] && return 0
+
 _redlog_debug_trap() {
   [[ -z "${_REDLOG_TRAP_ARMED:-}" ]] && return
   [[ "$BASH_COMMAND" == "$PROMPT_COMMAND" ]] && return

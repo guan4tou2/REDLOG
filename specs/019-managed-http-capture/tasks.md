@@ -25,3 +25,5 @@
 - [x] T012 Run the managed HTTP desktop journey and record verification in specs/019-managed-http-capture/verification.md
 - [x] T013 Analyze/converge artifacts and mark Spec 019 Verified
 
+
+- [x] T014 Explicit start and opt-in terminal routing; verify stopped port edits

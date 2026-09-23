@@ -5,3 +5,5 @@
 - [x] T003 Extend the shared renderer filter and all investigation queries
 - [x] T004 Add the default-hidden/reveal control and translations
 - [x] T005 Verify typecheck, focused tests, full suite, build and desktop flow
+
+- [x] T006 Describe target-only coverage; expose filter control on Loot

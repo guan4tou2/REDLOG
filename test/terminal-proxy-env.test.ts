@@ -5,7 +5,7 @@ import { withManagedProxyEnv } from '../src/main/terminal-manager'
 
 describe('built-in terminal managed proxy environment', () => {
   it('sets upper and lower case HTTP(S) variables while capture is live', () => {
-    const env = withManagedProxyEnv({ PATH: '/bin' }, 'http://127.0.0.1:8080')
+    const env = withManagedProxyEnv({ PATH: '/bin' }, 'http://127.0.0.1:8080', true)
     expect(env).toMatchObject({
       PATH: '/bin',
       HTTP_PROXY: 'http://127.0.0.1:8080',
@@ -13,6 +13,10 @@ describe('built-in terminal managed proxy environment', () => {
       http_proxy: 'http://127.0.0.1:8080',
       https_proxy: 'http://127.0.0.1:8080'
     })
+  })
+
+  it('does not inject the live proxy without explicit routing consent', () => {
+    expect(withManagedProxyEnv({ PATH: '/bin' }, 'http://127.0.0.1:8080')).toEqual({ PATH: '/bin' })
   })
 
   it('does not invent a proxy when managed capture is stopped', () => {

@@ -39,5 +39,12 @@ test.describe.serial('personal traffic visibility', () => {
 
     await expect(page.getByText('→ 127.0.0.1')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Non-work visible' })).toBeVisible()
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+k`)
+    await page.getByRole('dialog').getByRole('textbox').fill('Loot')
+    await page.getByRole('option').filter({ hasText: 'Loot' }).click()
+    await expect(page.locator('[data-view="loot"]')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Non-work visible' })).toBeVisible()
+    await page.getByRole('button', { name: 'Non-work visible' }).click()
+    await expect(page.getByRole('button', { name: 'Non-work hidden' })).toBeVisible()
   })
 })

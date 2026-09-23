@@ -271,8 +271,20 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
     if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
     if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
+      const pinnedEngagement = req.headers['x-redlog-engagement']
+      if (pinnedEngagement != null && pinnedEngagement !== engagementId) {
+        json(res, 409, { error: 'engagement changed; session capture refused' })
+        return
+      }
+      const requestEngagement = engagementId
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      // Reading a streamed body yields to project switching. Recheck at the
+      // write boundary, not only when the authenticated headers arrived.
+      if (!projectOpen || requestEngagement !== engagementId || (pinnedEngagement != null && pinnedEngagement !== engagementId)) {
+        json(res, 409, { error: 'engagement changed; session capture refused' })
+        return
+      }
       const agentType = String(body.agent_type || body.agentType || 'external')
       // Types an outside tool may report. The ones deliberately absent are
       // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are

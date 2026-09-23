@@ -141,6 +141,14 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     const d = e.data ?? {}
     const sub = String(d.subtype ?? '')
 
+    if (e.agentType === 'shell' && sub === 'session_output') {
+      const output = String(d.stdout ?? '')
+      out.push({ id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
+        input: `Session ${String(d.terminalId ?? '')} · #${String(d.sequence ?? '')}`,
+        output, outputBytes: output.length, meta: 'PTY · stdout/stderr merged', events: [e] })
+      continue
+    }
+
     if (e.agentType === 'shell' && sub === 'command_end') {
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
       const inlineOut = [d.stdout, d.stderr].filter((x) => typeof x === 'string').join('')

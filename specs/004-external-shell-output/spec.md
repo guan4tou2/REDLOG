@@ -73,3 +73,8 @@ capture level is active before I rely on the resulting log.
 Transparent interception of every external-shell command, TUI/session PTY
 recording, per-shell adapter extraction and fish/Nushell support, Windows
 PowerShell streaming, unified I/O sidecars, and proxy setup.
+
+## Follow-up
+
+Spec 022 adds a separate explicit POSIX PTY session launcher. The ordinary
+hook and `redlog-run` contracts above remain unchanged.

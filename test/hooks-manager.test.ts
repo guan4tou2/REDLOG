@@ -35,7 +35,7 @@ describe('hooks-manager guided setup', () => {
       const plan = getHookInstallPlan(id)
       expect(plan?.map((file) => file.target.split(/[\\/]/).pop())).toEqual([
         id === 'shell-zsh' ? 'shell-hook.zsh' : 'shell-bash-hook.sh',
-        'shell-common.sh'
+        'shell-common.sh', 'redlog-session.py'
       ])
       expect(plan?.every((file) => fs.existsSync(file.source))).toBe(true)
     }

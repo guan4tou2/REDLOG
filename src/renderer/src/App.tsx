@@ -59,7 +59,6 @@ export default function App(): JSX.Element {
   const [exportableCount, setExportableCount] = useState(0)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [recordingOn, setRecordingOn] = useState(true)
-  const [recordingMode, setRecordingMode] = useState<'recording' | 'paused' | 'reporting'>('recording')
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const { t } = useI18n()
 
@@ -91,10 +90,7 @@ export default function App(): JSX.Element {
   // it has to know it.
   useEffect(() => {
     window.redlog.recording.get().then(setRecordingOn).catch(() => {})
-    window.redlog.recording.getMode().then(setRecordingMode).catch(() => {})
-    const unsubscribeRecording = window.redlog.recording.onChange(setRecordingOn)
-    const unsubscribeMode = window.redlog.recording.onModeChange(setRecordingMode)
-    return () => { unsubscribeRecording(); unsubscribeMode() }
+    return window.redlog.recording.onChange(setRecordingOn)
   }, [])
 
   // Cmd/Ctrl+1..N follow the sidebar's current (possibly user-reordered) order.
@@ -112,7 +108,7 @@ export default function App(): JSX.Element {
     )
   }
 
-  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline'].includes(view)
+  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline', 'loot'].includes(view)
 
   return (
     <FilterProvider>
@@ -158,24 +154,6 @@ export default function App(): JSX.Element {
         </button>
         <ActiveTargetControl key={project.id} />
         <div className={`ml-auto flex gap-2 ${isMac ? '' : 'pr-36'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <button
-            data-testid="report-mode-toggle"
-            data-active={recordingMode === 'reporting' ? 'true' : 'false'}
-            onClick={() => void window.redlog.recording
-              .setMode(recordingMode === 'reporting' ? 'recording' : 'reporting')
-              .catch((err) => toast(t('app.reportModeFailed'), {
-                type: 'error',
-                detail: err instanceof Error ? err.message : String(err)
-              }))}
-            className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
-              recordingMode === 'reporting'
-                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
-                : 'text-redlog-text-dim border-redlog-border hover:text-redlog-text hover:bg-white/[0.04]'
-            }`}
-            title={recordingMode === 'reporting' ? t('app.exitReportModeHint') : t('app.reportModeHint')}
-          >
-            {recordingMode === 'reporting' ? t('app.exitReportMode') : t('app.reportMode')}
-          </button>
           {/* §10: one export control, in the shell rather than six places.
               Its scope is an option, not a location. */}
           <ExportMenu totalCount={exportableCount} />

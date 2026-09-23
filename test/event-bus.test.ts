@@ -45,26 +45,6 @@ describe('eventBus', () => {
     expect(received).toHaveLength(0)
   })
 
-  it('distinguishes report mode from a manual pause without changing the write gate', () => {
-    eventBus.pause('ui', 'reporting')
-    expect(eventBus.paused).toBe(true)
-    expect(eventBus.mode).toBe('reporting')
-    eventBus.resume('ui')
-    expect(eventBus.mode).toBe('recording')
-    eventBus.pause('ui')
-    expect(eventBus.mode).toBe('paused')
-  })
-
-  it('does not emit duplicate transitions when the requested mode is already active', () => {
-    const toggles: Array<[boolean, string]> = []
-    eventBus.on('recording', (active: boolean, source: string) => toggles.push([active, source]))
-    eventBus.pause('ui', 'reporting')
-    eventBus.pause('ui', 'reporting')
-    eventBus.resume('ui')
-    eventBus.resume('ui')
-    expect(toggles).toEqual([[false, 'ui'], [true, 'ui']])
-  })
-
   it('allows bypassPause events through', async () => {
     const received: RedLogEvent[] = []
     eventBus.on('event', (e: RedLogEvent) => received.push(e))
@@ -89,6 +69,8 @@ describe('eventBus', () => {
     const toggles: [boolean, string][] = []
     eventBus.on('recording', (active: boolean, source: string) => toggles.push([active, source]))
     eventBus.pause('mcp')
+    eventBus.pause('mcp') // repeated requests must not manufacture audit boundaries
+    eventBus.resume('api')
     eventBus.resume('api')
     expect(toggles).toEqual([[false, 'mcp'], [true, 'api']])
   })

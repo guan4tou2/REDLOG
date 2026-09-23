@@ -40,11 +40,18 @@ export default function BrowserPanel({
         value={String(httpCapture.port)}
         onChange={(v) => setConfig({
           ...config,
-          httpCapture: { port: Math.min(65535, Math.max(1024, parseInt(v) || 8080)) }
+          httpCapture: { ...httpCapture, port: Math.min(65535, Math.max(1024, parseInt(v) || 8080)) }
         })}
         type="number"
       />
       <p className="text-xs text-redlog-text-faint">{t('settings.httpCapturePortHint')}</p>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={httpCapture.routeTerminals === true}
+          onChange={(e) => setConfig({ ...config, httpCapture: { ...httpCapture, routeTerminals: e.target.checked } })}
+          className="accent-red-600" />
+        <span className="text-xs text-redlog-text-dim">{t('settings.routeTerminals')}</span>
+      </label>
+      <p className="text-xs text-redlog-text-faint">{t('settings.routeTerminalsHint')}</p>
       <div className="flex items-center gap-2 text-xs">
         <span className={proxyStatus.state === 'running' ? 'text-emerald-400' : proxyStatus.state === 'failed' || proxyStatus.state === 'unavailable' ? 'text-red-400' : 'text-redlog-text-faint'}>
           {t(`httpCapture.state.${proxyStatus.state}`)}{proxyStatus.url ? ` · ${proxyStatus.url}` : ''}
