@@ -185,6 +185,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             />
             <Button
               level="primary"
+              className="shrink-0 whitespace-nowrap"
               onClick={handleCreate}
               disabled={!newName.trim() || creating}
             >
@@ -345,14 +346,14 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                         )}
                       </div>
                     )}
-                    <div className="flex items-center gap-2 text-redlog-text-faint text-xs font-mono">
-                      <span>{formatFreshness(p.lastOpened, t)}</span>
+                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0 text-redlog-text-faint text-xs font-mono">
+                      <span className="whitespace-nowrap">{formatFreshness(p.lastOpened, t)}</span>
                       <span className="text-redlog-muted">·</span>
-                      <span>{t('project.created', { date: formatDate(p.createdAt) })}</span>
+                      <span className="whitespace-nowrap">{t('project.created', { date: formatDate(p.createdAt) })}</span>
                       {p.dbSize != null && p.dbSize > 0 && (
                         <>
                           <span className="text-redlog-muted">·</span>
-                          <span>{formatSize(p.dbSize)}</span>
+                          <span className="whitespace-nowrap">{formatSize(p.dbSize)}</span>
                         </>
                       )}
                     </div>
