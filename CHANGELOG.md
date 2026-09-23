@@ -5,6 +5,26 @@ for full commit body + generated notes.
 
 ## v0.16.1 — 2026-09-23
 
+- **Loot / plugins:** plugin loot patterns run in a worker with a time bound.
+  A pattern that backtracks catastrophically used to freeze capture and the
+  app for as long as it ran; now the rule is stopped after 250 ms, marked in
+  Settings ▸ Capture ▸ Loot detection, and the other rules keep running. A
+  stopped rule no longer masks what it matches; reloading the plugin restarts
+  it.
+- **Windows:** checking which capture tools are installed no longer starts a
+  `where` process per tool. The first capture-health check after launch could
+  stall the window for seconds; it now reads PATH directly.
+- **Settings:** the search box finds settings — group titles, field labels and
+  hints — not only page names, and opens the page at the match.
+- **Timeline filter:** event types read Shell, HTTP, Proxy… instead of
+  `http_navigation`; the stored type is the tooltip.
+- **Status bar:** the clock says what it counts — time since the project was
+  created, not this session.
+- **Raw capture store:** after switching projects, raw bytes could be written
+  into the previous project's folder. They now go to the open project.
+- **Development:** CI fails on exported code that nothing in the app uses, or
+  that only tests use (`npm run verify:architecture`); dead code it found is
+  removed.
 - **Updates (Windows):** the app downloads and installs an update itself, with
   a progress window; macOS and Linux still open the download page. Each step
   of an update is logged with an `[updater]` prefix.
