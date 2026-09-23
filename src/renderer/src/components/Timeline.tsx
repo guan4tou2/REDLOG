@@ -16,9 +16,7 @@ import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '..
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
 import { buildSearchIndex, computeFilterMatches, computeTargetMatches, computeScopeMatches, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
-import { TimelinePalette } from './TimelinePalette'
 import { TimelineHelpModal } from './TimelineHelpModal'
-import type { PaletteItem } from '../lib/timelineFilters'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment,
@@ -365,15 +363,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       const tzName = cfg?.engagement?.timezone
       setProjectTz(typeof tzName === 'string' && tzName ? tzName : null)
     }).catch(() => {})
-  }, [])
-
-  // v0.6.91 W3: ⌘K fuzzy palette. Opened by the App-level ⌘K when Timeline is
-  // the active view, or by dispatching the `redlog-timeline-palette` event.
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  useEffect(() => {
-    const onOpen = (): void => setPaletteOpen(true)
-    window.addEventListener('redlog-timeline-palette', onOpen)
-    return () => window.removeEventListener('redlog-timeline-palette', onOpen)
   }, [])
 
   // ⌘F focuses the in-page filter (§5.7, §10). `/` still does too — it is the
@@ -1386,19 +1375,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     scrollToTs(displayTs(evt))
   }, [scrollToTs])
 
-  // v0.6.91 W3: activate a palette result. Events / markers → select + centre.
-  // Operator / host → drop the value into the filter query (feature 1 dim path
-  // picks it up automatically).
-  const activatePaletteItem = useCallback((item: PaletteItem) => {
-    if ('event' in item) {
-      setSelectedEvent(item.event)
-      setDetailOpen(true)
-      scrollToEvent(item.event)
-    } else {
-      setFilterQuery(item.value)
-    }
-  }, [scrollToEvent])
-
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
     // §10: no masked variant. The data is already on the operator's own
@@ -1496,15 +1472,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           </button>
         </div>
       )}
-      <TimelinePalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        events={events}
-        operatorNames={operatorNames}
-        titleOf={titleOf}
-        onActivate={activatePaletteItem}
-        t={t}
-      />
       <TimelineHelpModal open={showHelp} onClose={() => setShowHelp(false)} isMac={isMacPlatform} t={t} />
       {/* v0.6.89.5 feature 2: focus-chain badge (top-right). Only rendered
           while focus mode is active. Anchored on the wrapper so it floats

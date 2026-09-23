@@ -218,16 +218,6 @@ describe('command palette', () => {
     open({ recording: false })
     expect(await screen.findByText(/resume recording/i)).toBeTruthy()
   })
-
-  it('keeps the timeline-scoped palette reachable now that ⌘K is global', async () => {
-    // It lost its chord when ⌘K became app-wide. A working feature with no
-    // way in is worse than one that was removed on purpose.
-    const { onNavigate } = open()
-    type('loaded timeline')
-    const option = await screen.findByRole('option')
-    fireEvent.click(option)
-    expect(onNavigate).toHaveBeenCalledWith('timeline')
-  })
 })
 
 describe('operator search', () => {
