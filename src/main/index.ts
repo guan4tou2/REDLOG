@@ -44,9 +44,9 @@ import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor 
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
-import { configureTranscriptTailer, stopTranscriptTailer } from './services/transcript-tailer'
+import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
-import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
+import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
@@ -596,18 +596,16 @@ function startProject(project: ProjectMeta): void {
     activeTarget: config.engagement.activeTarget ?? null
   })
 
-  // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
-  // Both default to 0 (keep forever) so existing installs see no behaviour
-  // change. Setting `terminal.castKeepDays` or `screenshots.keepDays` to a
-  // positive integer causes the sweep to run on every project open and to
-  // append audit events per deletion.
+  // Retention sweeps for every store under `config.retention` (Spec 028).
+  // All default to 0 (keep forever); a positive `keepDays` / `maxBytes` makes
+  // the sweep run on every project open and append an audit event per deletion.
   try {
     // v0.9.4 P0-4: statically imported. This used to be a runtime
     // `require('../core/retention')`, which rollup cannot see through — the
     // module was never bundled and the literal require survived into
     // out/main/index.js, where it resolved against a non-existent out/core/.
     // Every packaged build threw MODULE_NOT_FOUND into the catch below, so
-    // castKeepDays / screenshots.keepDays silently did nothing and the
+    // cast and screenshot keep-days silently did nothing and the
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
@@ -734,8 +732,8 @@ function startProject(project: ProjectMeta): void {
     operatorId,
     selfPorts: [getApiPort()]
   })
-  configureTranscriptTailer({
-    enabled: config.transcriptTailer?.enabled ?? false,
+  configurePowershellTranscript({
+    enabled: config.powershellTranscript?.enabled ?? false,
     engagementId,
     operatorId
   })
@@ -964,7 +962,7 @@ function stopProject(): void {
   stopFileWatcher()
   stopProcessMonitor()
   stopConnectionMonitor()
-  stopTranscriptTailer()
+  stopPowershellTranscript()
   stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
@@ -1292,7 +1290,7 @@ app.whenReady().then(() => {
       pollMs: newConfig.connectionMonitor?.pollMs,
       selfPorts: [getApiPort()]
     })
-    configureTranscriptTailer({ enabled: newConfig.transcriptTailer?.enabled ?? false })
+    configurePowershellTranscript({ enabled: newConfig.powershellTranscript?.enabled ?? false })
     configureProcessMonitor({
       enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
