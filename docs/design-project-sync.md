@@ -312,7 +312,7 @@ append-only trigger 本來就不允許，這正是把修訂做成新事件而非
 | 1b 目標 | `src/renderer/src/components/TargetView.tsx` |
 | 1b 範圍 | `src/renderer/src/components/ScopeStatus.tsx` |
 | 1b 戰利品 | `src/renderer/src/components/LootPanel.tsx` |
-| 1b 標記 | `src/renderer/src/components/FindingsView.tsx` |
+| 1b 標記 | `src/renderer/src/components/BookmarksView.tsx` |
 | 1b 設定 | `src/renderer/src/components/Settings.tsx` |
 | 1b 狀態列 | `src/renderer/src/components/StatusBar.tsx` |
 | 1b 側欄／標題列 | `src/renderer/src/components/Sidebar.tsx`, `src/renderer/src/App.tsx` |

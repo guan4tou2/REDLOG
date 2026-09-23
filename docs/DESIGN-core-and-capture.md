@@ -369,7 +369,7 @@ recordings.
 ## 6. Still open
 
 - Windows script-block logging (§2.3, rejected). PowerShell Start-Transcript
-  following (§2.3, chosen) is **done** — `transcript-tailer.ts` follows the
+  following (§2.3, chosen) is **done** — `powershell-transcript.ts` follows the
   transcript the `start-transcript-hook.ps1` writes and parses it back into
   shell command events (`start-transcript.ts`). Queryable tool output (§2.4) is
   **done** — full-text search over `.cast` recordings (`cast-index.ts`).

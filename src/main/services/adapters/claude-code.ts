@@ -1,51 +1,15 @@
-// v0.8.0 A — Claude Code adapter for the tailer host.
+// Claude Code transcript adapter for the tailer host.
 //
-// Historical: v0.7.2 introduced this file as a monolithic 973-LOC
-// service that owned both the Claude-Code-specific JSONL parsing AND
-// the generic sidecar/redaction/insertEvent/snapshot/lifecycle plumbing.
-// v0.8.0 extracts the generic parts into `tailer-host.ts` so a future
-// Codex / OpenCode / third-party fork can plug in a `TailerAdapter`
-// against the same infrastructure without duplicating 500 LOC of
-// chokidar + sidecar + hash-chain wiring.
-//
-// This file now:
-//   1. Defines the Claude-Code-specific line-type whitelist + parser
-//      (`parseTranscriptLine`, `KNOWN_INGEST_TYPES`, `KNOWN_IGNORED_TYPES`).
-//   2. Assembles a `claudeCodeAdapter: TailerAdapter` object.
-//   3. Re-exports `configureAgentTailer` / `startAgentTailer` /
-//      `stopAgentTailer` names as thin wrappers around the host's
-//      `configureHost` / `startHost` / `stopHost`, so `main/index.ts`
-//      is unchanged.
-//
-// v0.8.0 C moves this file into `plugins/claude-code-tailer/` as a
-// bundled plugin; the plugin API contract (v0.8.0 B) is what makes the
-// physical relocation trivial.
+// Layout: `~/.claude/projects/<slug>/<session>.jsonl`, one JSON object per
+// line. This file is pure parsing — the line-type whitelist, the parser, the
+// subtype mapping and the `TailerAdapter` object. The sidecar, redaction,
+// chain writes and session lifecycle are the host's (tailer-host.ts); the
+// adapters are registered by agent-tailer.ts, alongside Codex and OpenCode.
 
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
-import {
-  configureHost, startHost, stopHost, registerAdapter,
-  isSelfExcludedCwd, cwdPassesGate,
-  type TailerAdapter, type TailerHostConfig, type ParsedTurn,
-  _sessionsForTest
-} from './tailer-host'
-import { codexAdapter, overrideCodexTranscriptRoot } from './adapters/codex'
-import { opencodeAdapter, overrideOpencodeStorageRoot } from './adapters/opencode'
-
-// ─── Public config surface (unchanged from v0.7.x for main/index.ts) ────────
-
-export interface AgentTailerConfig extends TailerHostConfig {
-  /** Root of Claude Code's per-session transcripts. Overridable for tests
-   *  and for cross-platform paths. */
-  claudeProjectsDir?: string
-  /** Root of Codex CLI's session rollouts (default `~/.codex/sessions`).
-   *  v0.8.1: overridable for tests only — no user-facing config yet. */
-  codexSessionsDir?: string
-  /** Root of OpenCode storage dir (default
-   *  `~/.local/share/opencode/storage`). v0.8.1: test-only override. */
-  opencodeStorageDir?: string
-}
+import type { TailerAdapter, ParsedTurn } from '../tailer-host'
 
 // ─── Claude-Code-specific constants ─────────────────────────────────────────
 
@@ -364,45 +328,8 @@ export const claudeCodeAdapter: TailerAdapter = {
   subtypeFor: subtypeForClaude
 }
 
-// ─── Public API — thin wrappers preserving v0.7.x names ─────────────────────
-
-let adaptersRegistered = false
-
-function applyGlobOverrides(next: Partial<AgentTailerConfig>): Partial<TailerHostConfig> {
-  const { claudeProjectsDir, codexSessionsDir, opencodeStorageDir, ...hostCfg } = next
-  if (claudeProjectsDir) {
-    ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
-      path.join(claudeProjectsDir, '**', '*.jsonl')
-  }
-  if (codexSessionsDir) overrideCodexTranscriptRoot(codexSessionsDir)
-  if (opencodeStorageDir) overrideOpencodeStorageRoot(opencodeStorageDir)
-  return hostCfg
-}
-
-export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
-  const hostCfg = applyGlobOverrides(next)
-  ensureAdaptersRegistered()
-  configureHost(hostCfg)
-}
-
-export function startAgentTailer(next?: Partial<AgentTailerConfig>): void {
-  const hostCfg = applyGlobOverrides(next ?? {})
-  ensureAdaptersRegistered()
-  startHost(hostCfg)
-}
-
-export function stopAgentTailer(): void {
-  stopHost()
-}
-
-function ensureAdaptersRegistered(): void {
-  if (adaptersRegistered) return
-  registerAdapter(claudeCodeAdapter)
-  registerAdapter(codexAdapter)
-  registerAdapter(opencodeAdapter)
-  adaptersRegistered = true
-}
-
-export {
-  isSelfExcludedCwd, cwdPassesGate, _sessionsForTest
+/** Tests and cross-platform setups point the adapter at another root. */
+export function overrideClaudeProjectsDir(root: string): void {
+  ;(claudeCodeAdapter as { transcriptGlob: string }).transcriptGlob =
+    path.join(root, '**', '*.jsonl')
 }

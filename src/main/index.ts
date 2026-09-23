@@ -44,9 +44,9 @@ import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor 
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
-import { configureTranscriptTailer, stopTranscriptTailer } from './services/transcript-tailer'
+import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
-import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
+import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, setPluginHost } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
@@ -763,8 +763,8 @@ function startProject(project: ProjectMeta): void {
     operatorId,
     selfPorts: [getApiPort()]
   })
-  configureTranscriptTailer({
-    enabled: config.transcriptTailer?.enabled ?? false,
+  configurePowershellTranscript({
+    enabled: config.powershellTranscript?.enabled ?? false,
     engagementId,
     operatorId
   })
@@ -993,7 +993,7 @@ function stopProject(): void {
   stopFileWatcher()
   stopProcessMonitor()
   stopConnectionMonitor()
-  stopTranscriptTailer()
+  stopPowershellTranscript()
   stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
@@ -1321,7 +1321,7 @@ app.whenReady().then(() => {
       pollMs: newConfig.connectionMonitor?.pollMs,
       selfPorts: [getApiPort()]
     })
-    configureTranscriptTailer({ enabled: newConfig.transcriptTailer?.enabled ?? false })
+    configurePowershellTranscript({ enabled: newConfig.powershellTranscript?.enabled ?? false })
     configureProcessMonitor({
       enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
