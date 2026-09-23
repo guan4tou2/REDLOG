@@ -31,7 +31,7 @@ describe('scope and project identity entry', () => {
 
   it('renders an existing engagement ID as read-only', () => {
     const config = {
-      engagement: { id: 'immutable-id', name: 'Lab' }, operator: { id: 'op', name: 'Operator' },
+      engagement: { id: 'immutable-id' }, operator: { id: 'op', name: 'Operator' },
       network: { whitelist: [], blacklist: [], checkInterval: 60 },
       scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
     } as ConfigState

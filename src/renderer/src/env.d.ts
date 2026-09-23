@@ -483,7 +483,7 @@ interface ChainAnchorInfo {
 }
 
 interface RedLogConfigPartial {
-  engagement?: { id?: string; name?: string }
+  engagement?: { id?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }

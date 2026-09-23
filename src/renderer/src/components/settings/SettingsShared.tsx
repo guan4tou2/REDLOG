@@ -8,7 +8,7 @@ export const isMacOS = (window as { redlog?: { platform?: string } }).redlog?.pl
 export const isWindows = (window as { redlog?: { platform?: string } }).redlog?.platform === 'win32'
 
 export interface ConfigState {
-  engagement: { id: string; name: string }
+  engagement: { id: string }
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
