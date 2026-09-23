@@ -9,9 +9,9 @@ import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { getProjectDir } from '../../core/db/index'
 import { queryEvents, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
 import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from '../../core/redact-export'
+import { capabilitiesFor } from '../../core/export-capabilities'
 import {
   ExportPlanRegistry,
-  capabilitiesFor,
   countExportAttachments,
   countReferencedAttachments,
   createExportPlan,
