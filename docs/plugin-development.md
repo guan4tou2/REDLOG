@@ -101,8 +101,14 @@ group. The value is what redaction masks in the source event and what
 identifies the secret: the same value on the same target is recorded once,
 the same value on another target again, and every occurrence is masked. A
 pattern that can match the empty string is tolerated (empty matches are
-skipped), but a pattern prone to catastrophic backtracking still runs in the
-main process — keep patterns anchored on a literal prefix.
+skipped).
+
+Plugin patterns run in a worker thread with a time bound: all of a plugin set's
+rules together get 250 ms per scanned text. A rule still running when time is up
+— typically catastrophic backtracking such as `(a+)+$` — is **stopped**: it no
+longer runs, so it no longer masks what it would match, and Settings ▸ Capture ▸
+Loot detection marks it. Reloading the plugin gives it a fresh start. Anchor
+patterns on a literal prefix and avoid nested quantifiers.
 
 ### `redaction` — add allow/deny entries
 
