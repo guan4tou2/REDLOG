@@ -9,6 +9,7 @@ import { isMac } from '../lib/platform'
 import { toast } from './Toast'
 import { currentShortcutOrder } from '../hooks/useAppShortcuts'
 import { useAppCounts } from '../lib/useAppCounts'
+import { settingsTarget } from '../lib/navigation'
 
 export type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 
@@ -76,7 +77,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
           type: 'error',
           why: t('browser.failedWhy'),
           detail: r.error,
-          action: { label: t('browser.openSettings'), onClick: () => onNavigate('settings') }
+          action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('network')) }
         })
       }
     }
@@ -345,7 +346,7 @@ export function DashboardView({ onNavigate, firstRun = false, projectName }: { o
               </div>
             </div>
             <button
-              onClick={() => onNavigate('settings')}
+              onClick={() => onNavigate(settingsTarget('scope'))}
               className="mt-3 text-xs text-red-400/80 hover:text-red-300 transition-colors"
             >
               {t('dashboard.editSettings')}

@@ -8,7 +8,7 @@
 // least one event of every agent_type, which is exactly the shape that broke.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, act } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
@@ -23,6 +23,7 @@ import { TargetView } from '../src/renderer/src/components/TargetView'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 import { LootPanel } from '../src/renderer/src/components/LootPanel'
 import { BookmarksView } from '../src/renderer/src/components/BookmarksView'
+import { ScreenshotsView } from '../src/renderer/src/components/ScreenshotsView'
 
 const AGENT_TYPES = [
   'shell', 'dns', 'screenshot', 'clipboard', 'file_transfer',
@@ -335,5 +336,30 @@ describe('renderer views render without throwing', () => {
     fireEvent.click(tab)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
+  })
+
+  // Every link into Settings opened its first page, Hooks: "Turn on periodic
+  // capture", the browser's launch failure, the scope card and the
+  // broken-chain issue all left the operator to find the page themselves.
+  it('a link to a Settings page opens that page', async () => {
+    renderView(<Settings request={{ page: 'captureControl' }} />)
+    expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
+  })
+
+  it('an issue that names a Settings page opens it', async () => {
+    renderView(<App />)
+    await screen.findByTestId('view-root')
+    act(() => { window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'settings/integrity' })) })
+    expect(await screen.findByText('Verify full chain')).toBeTruthy()
+  })
+
+  // The empty state's second action only navigates; it said "Turn on".
+  it('the screenshots empty state links to the capture settings', async () => {
+    ;(window as unknown as { redlog: { events: Record<string, unknown> } }).redlog.events.queryScreenshotPage =
+      async () => ({ items: [], hasMore: false, nextCursor: null })
+    const onNavigate = vi.fn()
+    renderView(<ScreenshotsView onNavigate={onNavigate} />)
+    fireEvent.click(await screen.findByText('Periodic capture settings →'))
+    expect(onNavigate).toHaveBeenCalledWith('settings/captureControl')
   })
 })
