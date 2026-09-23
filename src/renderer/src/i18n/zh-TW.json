@@ -1198,5 +1198,6 @@
   "settings.lootGroup": "戰利品偵測",
   "settings.lootHint": "關閉的規則不會記成戰利品；它比對到的內容在紀錄與匯出中仍會被遮蔽。",
   "settings.lootBuiltin": "內建",
-  "settings.lootRulesFailed": "無法載入戰利品規則。"
+  "settings.lootRulesFailed": "無法載入戰利品規則。",
+  "settings.lootRuleStopped": "已停止：這條規則超過執行時間上限，不再執行，它比對的內容也不再被遮蔽。修正 pattern 後請重新載入 plugin。"
 }
