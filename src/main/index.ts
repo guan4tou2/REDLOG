@@ -1099,7 +1099,7 @@ app.whenReady().then(() => {
     const config = loadConfig(projectDir)
     const merged = {
       ...config,
-      engagement: { ...config.engagement, id: project.id, name: project.name, ...initialConfig?.engagement },
+      engagement: { ...config.engagement, id: project.id, ...initialConfig?.engagement },
       operator: { ...config.operator, ...initialConfig?.operator },
       network: { ...config.network, ...initialConfig?.network },
       scope: { ...config.scope, ...initialConfig?.scope },

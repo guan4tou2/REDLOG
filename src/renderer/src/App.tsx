@@ -71,6 +71,16 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  // Settings renames the project; the title bar reads this state.
+  useEffect(() => {
+    const onRenamed = (e: Event): void => {
+      const name = (e as CustomEvent<string>).detail
+      setProject((p) => (p ? { ...p, name } : p))
+    }
+    window.addEventListener('redlog:project-renamed', onRenamed)
+    return () => window.removeEventListener('redlog:project-renamed', onRenamed)
+  }, [])
+
   useEffect(() => {
     if (!project) return
     window.redlog.events.getCount('all').then(setExportableCount).catch(() => {})
@@ -180,7 +190,7 @@ export default function App(): JSX.Element {
           {showFilterBar && <FilterBar />}
           <div className="flex-1 min-h-0">
           <ErrorBoundary label={view} projectName={project.name} onGoHome={() => setView('dashboard')}>
-            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={firstRunActive} />}
+            {view === 'dashboard' && <DashboardView onNavigate={(v) => setView(v as View)} firstRun={firstRunActive} projectName={project.name} />}
             {view === 'terminal' && <Suspense fallback={null}><TerminalView /></Suspense>}
             {/* key on project.id: a project switch (e.g. project:open) must
                 remount TimelinePanel — otherwise eventsMapRef keeps the prior
