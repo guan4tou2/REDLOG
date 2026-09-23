@@ -113,8 +113,8 @@ export default function Settings(): JSX.Element {
           <input
             value={pageQuery}
             onChange={(e) => setPageQuery(e.target.value)}
-            placeholder={t('settings.searchPages')}
-            aria-label={t('settings.searchPages')}
+            placeholder={t('settings.filterPages')}
+            aria-label={t('settings.filterPages')}
             className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
           />
         </div>

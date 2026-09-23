@@ -865,7 +865,7 @@
   "palette.hostHits": "{{count}} events",
   "palette.operatorPrimary": "primary",
   "settings.categories": "Settings categories",
-  "settings.searchPages": "Search settings…",
+  "settings.filterPages": "Filter categories…",
   "settings.noPageMatches": "No category matches “{{query}}”",
   "settings.groupCapture": "What to record",
   "settings.groupScope": "Scope",
