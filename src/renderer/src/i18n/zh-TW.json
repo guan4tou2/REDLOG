@@ -1187,6 +1187,7 @@
   "marker.replayAtTime.noSession": "此時間點沒有活躍的終端工作階段",
   "terminal.castRecording": "終端工作階段錄製中 (.cast)",
   "terminal.castTruncated": "錄製已達大小上限 — 超過此點的輸出未被擷取",
+  "terminal.castPaused": "錄製已暫停 — 暫停期間此終端的輸出不會寫入",
   "terminal.castNotRecording": "此工作階段未進行錄製",
   "transcript.queryReadAs": "讀作",
   "transcript.queryTokenCondition": "條件：比對儲存的欄位",

@@ -72,7 +72,12 @@ function stopBlink(): void {
   if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null }
 }
 
+// The menu names what the recording item will do, so it is rebuilt with every
+// state change, whichever control made it — not only after a tray click.
+const menuBuilders = new WeakMap<Tray, (recording?: boolean) => void>()
+
 export function setTrayRecording(tray: Tray, recording: boolean | null): void {
+  menuBuilders.get(tray)?.(recording ?? undefined)
   stopBlink()
   tray.setTitle('') // no text label — keep the menu bar compact
   if (recording === null) {
@@ -125,11 +130,7 @@ export function createTray(
     if (onToggleRecording) {
       items.push({
         label: recording ? '⏸ Pause Recording' : '⏺ Resume Recording',
-        click: () => {
-          const newState = onToggleRecording()
-          setTrayRecording(tray, newState)
-          buildMenu(newState)
-        }
+        click: () => setTrayRecording(tray, onToggleRecording())
       })
     }
 
@@ -164,6 +165,7 @@ export function createTray(
     tray.setContextMenu(Menu.buildFromTemplate(items))
   }
 
+  menuBuilders.set(tray, buildMenu)
   buildMenu()
   tray.on('click', () => {
     mainWindow.show()

@@ -25,6 +25,7 @@ interface Tab {
   lastExit?: number
   castRecording?: boolean
   castTruncated?: boolean
+  castPaused?: boolean
 }
 
 let tabCounter = 0
@@ -113,11 +114,11 @@ export default function TerminalView(): JSX.Element {
     // scrollback, so re-attaching is exactly what the operator wants: the
     // session they left, with its history.
     void (window.redlog.terminal.list() ?? Promise.resolve([]))
-      .then((live: Array<{ id: string; pid: number; recording?: boolean; castTruncated?: boolean }>) => {
+      .then((live: Array<{ id: string; pid: number; recording?: boolean; castTruncated?: boolean; paused?: boolean }>) => {
         if (!Array.isArray(live) || live.length === 0) { addTab(); return }
         setTabs(live.map((s, i) => ({
           id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true,
-          castRecording: s.recording, castTruncated: s.castTruncated
+          castRecording: s.recording, castTruncated: s.castTruncated, castPaused: s.paused
         })))
         setActiveTab(live[0].id)
         tabCounter = Math.max(tabCounter, live.length)
@@ -204,7 +205,10 @@ export default function TerminalView(): JSX.Element {
             {tab.alive && tab.castTruncated === true && (
               <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>trunc</span>
             )}
-            {tab.alive && tab.castRecording === false && tab.castTruncated !== true && (
+            {tab.alive && tab.castPaused === true && (
+              <span className="text-xs font-mono text-redlog-text-dim bg-redlog-elevated px-1 rounded" title={t('terminal.castPaused')}>paused</span>
+            )}
+            {tab.alive && tab.castRecording === false && tab.castTruncated !== true && tab.castPaused !== true && (
               <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>no rec</span>
             )}
             {tab.cwd && tab.alive && (
@@ -383,7 +387,7 @@ export default function TerminalView(): JSX.Element {
               onSearch={() => setSearchOpen(true)}
               shellId={tab.shellId}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
-              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated } : t))}
+              onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
               onSearchAddon={(addon) => { paneSearchRefs.current.set(tab.id, addon) }}
             />
@@ -409,7 +413,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
   active: boolean
   shellId?: string
   onPid: (pid: number) => void
-  onCastState: (state: { recording: boolean; castTruncated: boolean }) => void
+  onCastState: (state: { recording: boolean; castTruncated: boolean; paused: boolean }) => void
   onExit: () => void
   fontSize: number
   onSearch: () => void
@@ -568,7 +572,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, fontSiz
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24, shellId)
         .then((r) => {
           onPid(r.pid)
-          onCastState({ recording: r.recording, castTruncated: r.castTruncated })
+          onCastState({ recording: r.recording, castTruncated: r.castTruncated, paused: r.paused })
           if (!r.hookSourced) setUnhookedShell(r.shell)
         })
         .catch(() => {})
