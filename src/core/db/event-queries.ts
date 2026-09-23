@@ -11,6 +11,7 @@ import type { ExportSnapshot } from '../export-plan'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
 import { searchHttpBodyEventIds } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
+import { toFtsMatch } from '../query/fts-match'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
  * are attached by trusted main-process code when `inScopeOnly` is requested. */
@@ -809,20 +810,6 @@ export function getLatestLoggedTs(): number | null {
   return row.ts ?? null
 }
 
-/** FTS5 MATCH treats bare punctuation and operators as syntax. Terminal
- *  searches are full of both — `10.0.0.5`, `-sV`, `/etc/passwd` — so each
- *  term is quoted as a phrase rather than handed through, and only a
- *  trailing `*` is added for the last term (prefix-match while typing). */
-function toMatchQuery(raw: string): string | null {
-  const terms = raw.trim().split(/\s+/).filter(Boolean)
-  if (terms.length === 0) return null
-  return terms
-    .map((term, i) => {
-      const quoted = `"${term.replace(/"/g, '""')}"`
-      return i === terms.length - 1 ? `${quoted}*` : quoted
-    })
-    .join(' ')
-}
 export interface EventQueryRequest {
   parsed: ParsedQuery
   filter?: EventFilter
@@ -927,7 +914,7 @@ export function executeEventQuery(request: EventQueryRequest): EventQueryResult 
     }
   }
 
-  const match = request.parsed.text.trim() ? toMatchQuery(request.parsed.text) : null
+  const match = request.parsed.text.trim() ? toFtsMatch(request.parsed.text) : null
   const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(request.parsed.text)) : null
 
   const build = (tier: 'chained' | 'logged'): { where: string; params: unknown[] } => {
