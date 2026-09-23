@@ -487,7 +487,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // `hookSourced: false` is the pane saying "my commands are not being
   // recorded". The renderer shows it, because a capture gap the operator
   // cannot see is the one failure mode the product does not allow
-  // (docs/PRD-COMPLETION.md §1.5).
+  // (constitution II, Surface Truthfulness).
   return {
     pid: term.pid,
     shell,
