@@ -347,7 +347,7 @@ export function getDB(): Database.Database {
 
 /** v0.15: a cached read-only handle for heavy/long-running READ queries
  *  (queryEvents, the export/scope LIMIT-100000 scan, target/host aggregates,
- *  the searchEvents LIKE). getDB() is the single read-WRITE connection, and
+ *  full-text search). getDB() is the single read-WRITE connection, and
  *  better-sqlite3 runs one statement per connection at a time — so a heavy
  *  scan on getDB() serialises every capture write behind it. WAL lets a
  *  separate reader run concurrently with the writer, so the heavy readers get

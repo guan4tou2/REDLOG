@@ -162,7 +162,7 @@ RedLog's scope monitor uses root-domain matching for smart violation detection:
 Trust-tiered plugin system for shop-specific patterns (see [docs/plugin-development.md](docs/plugin-development.md)):
 
 - 🟢 **Declarative** (no code): `lootPatterns`, `redaction`, `commandTags` (stamp MITRE / custom fields onto shell events), `targetExtractors`, `eventTypes`, `capture` integrations
-- 🔴 **Privileged** (code): exporters, monitors — content-hash pinned + operator consent + capability-scoped, run in an isolated utility process
+- 🔴 **Privileged** (code): `tailers` only, from bundled plugins only — content-hash pinned and inert until the operator grants trust. Tailer code runs in the main process; it is not sandboxed.
 
 RedLog ships with **no** `commandTags` installed — MITRE tagging is opinionated per shop, so either drop a plugin into `~/.redlog/plugins/` (Settings ▸ Plugins ▸ Open folder) or let your SIEM tag downstream. Hot-reload from Settings ▸ Plugins ▸ Reload.
 
