@@ -10,6 +10,7 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { DEFAULT_ORDER, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
 import { formatTime } from '../lib/time'
+import { parseQuery } from '../../../core/query/contract'
 import { toast } from './Toast'
 import { MOD } from '../lib/platform'
 
@@ -94,6 +95,9 @@ export function CommandPalette({
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [events, setEvents] = useState<RedLogEvent[]>([])
+  // An empty result list means three different things, and only one of them
+  // is "nothing matched". The palette says which.
+  const [searchState, setSearchState] = useState<'idle' | 'answered' | 'failed' | 'unparsable'>('idle')
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [operators, setOperators] = useState<OperatorInfo[]>([])
   const [hosts, setHosts] = useState<HostAggregate[]>([])
@@ -125,9 +129,16 @@ export function CommandPalette({
     if (!open) return
     if (debounce.current) clearTimeout(debounce.current)
     const q = query.trim()
-    if (q.length < 2) { setEvents([]); return }
+    if (q.length < 2) { setEvents([]); setSearchState('idle'); return }
     debounce.current = setTimeout(() => {
-      window.redlog.events.search(q, 40).then(setEvents).catch(() => setEvents([]))
+      // Spec 026: the same query language as Search and the Transcript, so a
+      // query learned there means the same thing here. A half-typed condition
+      // never becomes a store query; a failed query is not an empty result.
+      const outcome = parseQuery(q)
+      if (!outcome.ok) { setEvents([]); setSearchState('unparsable'); return }
+      window.redlog.events.runQuery({ parsed: outcome.parsed, limit: 40 })
+        .then((page) => { setEvents(page.items); setSearchState('answered') })
+        .catch(() => { setEvents([]); setSearchState('failed') })
     }, 140)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
   }, [query, open])
@@ -295,7 +306,17 @@ export function CommandPalette({
         </div>
 
         <div role="listbox" aria-label={t('palette.title')} className="max-h-[52vh] overflow-y-auto py-1">
-          {items.length === 0 && (
+          {searchState === 'failed' && (
+            <p data-testid="palette-search-failed" role="status" className="px-4 py-3 text-xs text-red-300 text-center">
+              {t('palette.searchFailed')}
+            </p>
+          )}
+          {searchState === 'unparsable' && (
+            <p data-testid="palette-search-unparsable" role="status" className="px-4 py-3 text-xs text-amber-300 text-center">
+              {t('palette.searchUnparsable')}
+            </p>
+          )}
+          {items.length === 0 && searchState !== 'failed' && searchState !== 'unparsable' && (
             <p className="px-4 py-6 text-xs text-redlog-text-faint text-center">
               {t('palette.noMatches', { query })}
             </p>

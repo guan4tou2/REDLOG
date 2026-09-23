@@ -69,6 +69,8 @@ describe('eventBus', () => {
     const toggles: [boolean, string][] = []
     eventBus.on('recording', (active: boolean, source: string) => toggles.push([active, source]))
     eventBus.pause('mcp')
+    eventBus.pause('mcp') // repeated requests must not manufacture audit boundaries
+    eventBus.resume('api')
     eventBus.resume('api')
     expect(toggles).toEqual([[false, 'mcp'], [true, 'api']])
   })

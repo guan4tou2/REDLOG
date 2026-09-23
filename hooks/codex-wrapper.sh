@@ -43,7 +43,7 @@ if sys.argv[3]:
 print(json.dumps(d))
 " "$subtype" "$command" "$extra" 2>/dev/null) || return 0
 
-  curl -sf -X POST "http://127.0.0.1:${port}/api/events" \
+  curl --noproxy '*' -sf -X POST "http://127.0.0.1:${port}/api/events" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
     -d "$payload" \

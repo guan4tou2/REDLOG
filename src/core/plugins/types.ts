@@ -11,10 +11,15 @@
 //      patterns, event types) or capture scripts the *operator* runs that only
 //      talk to RedLog's authenticated HTTP API. None of this runs third-party
 //      code inside RedLog, so none of it can subvert the hash-chained log.
-//   🔴 privileged / in-process — code RedLog itself executes (MCP tools,
-//      exporters, monitors). This is gated: content-hash pinning + explicit
-//      operator consent + capability scoping, and the code runs in an isolated
-//      utility process, never in the main process with the DB handle.
+//   🔴 privileged — code RedLog itself executes. The only such contribution is
+//      `tailers`, and it is NOT isolated: a tailer module is loaded into the
+//      main process. It is therefore accepted from bundled plugins only, and
+//      gated by content-hash pinning and explicit operator consent.
+//
+//      This comment used to describe an isolated utility process that ran
+//      privileged code. That host ran nothing after v0.12 and was removed in
+//      Spec 027, along with the `exporters` and `monitors` contributions that
+//      only it could have run.
 
 /** The plugin API contract version this manifest targets. Bump on breaking changes. */
 export const PLUGIN_API_VERSION = 1
@@ -161,9 +166,6 @@ export interface PluginContributes {
   targetExtractors?: TargetExtractorContribution[]
   eventTypes?: EventTypeContribution[]
   capture?: CaptureContribution[]
-  // 🔴 privileged (code) — manifest-relative module paths
-  exporters?: string
-  monitors?: string
   /** v0.8.2: TailerAdapter contribution. Module must `export const adapter =
    *  { agentKind, transcriptGlob, ... }` matching TailerAdapter. v0.8.2
    *  restricts this to bundled plugins only — user-plugin tailers require

@@ -12,7 +12,7 @@
 // The ten sources are not deleted, only demoted: the same CaptureHealthCard,
 // unchanged, sits behind a disclosure below.
 
-import { useState, useEffect, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { isEvidence } from '../lib/housekeeping'
@@ -20,8 +20,9 @@ import { eventTitle } from '../lib/eventTitle'
 import { EmptyState } from './EmptyState'
 import { Button } from './Button'
 import { ChevronRight, Terminal as TerminalIcon } from 'lucide-react'
-import TerminalView from './TerminalView'
 import type { RedLogEvent } from '../../../core/db/events'
+
+const TerminalView = lazy(() => import('./TerminalView'))
 
 /** How long to wait after the operator starts typing before admitting that
  *  nothing is arriving. Long enough that a slow first command is not called a
@@ -85,7 +86,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
 
       <div className="flex-1 min-h-0 flex gap-3">
         <div className="flex-1 min-w-0 border border-redlog-border rounded-lg overflow-hidden">
-          <TerminalView />
+          <Suspense fallback={<div className="h-full bg-redlog-surface animate-pulse" />}>
+            <TerminalView />
+          </Suspense>
         </div>
 
         <div

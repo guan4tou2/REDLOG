@@ -3,7 +3,8 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
-import { queryEvents, queryEventById, getEventCount, searchEvents, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
+import { queryEvents, queryEventById, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
+import { parseQuery } from './query/contract'
 import { createBookmark, listBookmarks } from './db/bookmarks'
 import {
   ensurePrimaryOperator,
@@ -271,8 +272,20 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
     if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
     if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
+      const pinnedEngagement = req.headers['x-redlog-engagement']
+      if (pinnedEngagement != null && pinnedEngagement !== engagementId) {
+        json(res, 409, { error: 'engagement changed; session capture refused' })
+        return
+      }
+      const requestEngagement = engagementId
       let body: Record<string, unknown>
       try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      // Reading a streamed body yields to project switching. Recheck at the
+      // write boundary, not only when the authenticated headers arrived.
+      if (!projectOpen || requestEngagement !== engagementId || (pinnedEngagement != null && pinnedEngagement !== engagementId)) {
+        json(res, 409, { error: 'engagement changed; session capture refused' })
+        return
+      }
       const agentType = String(body.agent_type || body.agentType || 'external')
       // Types an outside tool may report. The ones deliberately absent are
       // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
@@ -381,8 +394,25 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 400, { error: 'Query must be at least 2 characters' })
         return
       }
-      const events = searchEvents(q, limit)
-      json(res, 200, { count: events.length, events })
+      // Spec 026: the same query language the app uses. A half-typed
+      // condition is refused rather than searched for as text, and a query
+      // that fails reports the failure — `searchEvents` returned an empty list
+      // for both, which a script cannot tell from "no events matched".
+      const outcome = parseQuery(q)
+      if (!outcome.ok) {
+        json(res, 400, { error: 'Query could not be parsed', reason: outcome.reason, token: outcome.token })
+        return
+      }
+      try {
+        const page = executeEventQuery({ parsed: outcome.parsed, limit })
+        json(res, 200, {
+          count: page.items.length,
+          events: page.items,
+          ...(page.toolSession ? { toolSession: page.toolSession } : {})
+        })
+      } catch (e) {
+        json(res, 500, { error: 'Search failed', detail: (e as Error).message })
+      }
       return
     }
 

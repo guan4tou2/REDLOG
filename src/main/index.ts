@@ -7,10 +7,10 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, isAgentTailerEnabled, RedLogConfig } from '../core/config'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
-import { insertEvent, queryEvents, queryEventById, getLootCount, searchEvents, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark
 } from '../core/db/bookmarks'
@@ -26,7 +26,7 @@ import { configureRedaction, redactFields } from '../core/redaction'
 import { runScopeRecompute, queryScopeViolationRows, countActiveScopeViolations, queryLastScopeRecompute } from '../core/scope-recompute-run'
 import { getVisibilitySignals, resetVisibilitySignalsCache } from '../core/visibility-signals'
 import { alertFloorFor } from '../core/alert'
-import type { ScopeSnapshot } from '../core/scope-recompute'
+import type { ScopeSnapshot } from '../core/alert/policies'
 import { sweepRetention, sweepLoggedTier, sweepBodyStore, sweepBookmarks, sweepArtifactStore } from '../core/retention'
 import { resetBodiesDirCache } from '../core/http-body-store'
 import {
@@ -35,33 +35,33 @@ import {
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
 import {
-  killAllTerminals, setTerminalWindow, configureTerminal, recoverOrphanSessions, discoverShells,
+  killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
-import { detectHooks, detectHooksAsync, getCachedHooks, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
-import { configureTranscriptTailer, stopTranscriptTailer } from './services/transcript-tailer'
+import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
 import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
-import { configureAgentTailer, stopAgentTailer } from './services/agent-transcript-tailer'
+import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
-import { initPlugins, setPluginHost } from '../core/plugins'
+import { initPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
-import { createPluginHost } from '../core/plugins/host'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
-import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, noteDbError } from '../core/capture-health'
+import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
+import { managedHttpProxy, isLoopbackHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { detectLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
 import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
-import { closeCastIndex } from '../core/cast-index'
+import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { replaySpoolDirectory } from '../core/spool-replay'
 import { registerContextMenuIpc } from './context-menu'
@@ -116,6 +116,56 @@ let chainSampleTimer: ReturnType<typeof setInterval> | null = null
 let loggedTierTimer: ReturnType<typeof setInterval> | null = null
 let spoolDrainTimer: ReturnType<typeof setInterval> | null = null
 
+function managedProxyPort(config: RedLogConfig): number {
+  const port = Number(config.httpCapture?.port ?? 8080)
+  return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 8080
+}
+
+function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_stopped' | 'http_proxy_failed', status: ManagedProxyStatus): void {
+  if (!currentEngagementId || !currentOperatorId) return
+  ingestEvent('system', {
+    subtype,
+    source: 'managed-http-proxy',
+    state: status.state,
+    proxy: status.url,
+    pid: status.pid ?? null,
+    error: status.error ?? null
+  }, { engagementId: currentEngagementId, operatorId: currentOperatorId })
+}
+
+async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
+  if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  const addonPath = getCaptureHookPath('mitmproxy')
+  if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
+  const config = loadConfig(getProjectPath(activeProject))
+  const before = managedHttpProxy.status().state
+  const status = await managedHttpProxy.start({
+    addonPath,
+    port: managedProxyPort(config),
+    caPath: path.join(homedir(), '.mitmproxy', 'mitmproxy-ca-cert.pem')
+  })
+  if (status.state === 'running') {
+    if (before !== 'running') publishManagedProxyEvent('http_proxy_started', status)
+  } else {
+    publishManagedProxyEvent('http_proxy_failed', status)
+  }
+  return status
+}
+
+function stopManagedHttpCapture(record = true): ManagedProxyStatus {
+  const before = managedHttpProxy.status()
+  const status = managedHttpProxy.stop()
+  if (record && before.state === 'running') publishManagedProxyEvent('http_proxy_stopped', status)
+  return status
+}
+
+configureManagedProxyHealth(() => managedHttpProxy.status())
+managedHttpProxy.onStatusChange((next, previous) => {
+  if (previous.state === 'running' && next.state === 'failed') {
+    publishManagedProxyEvent('http_proxy_failed', next)
+  }
+})
+
 const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.json')
 
 function writeSpoolIdentity(engagementId: string, operatorId: string): void {
@@ -151,10 +201,7 @@ function send(win: BrowserWindow | null, channel: string, ...payload: unknown[])
 function toggleRecording(): boolean {
   if (eventBus.paused) eventBus.resume('ui')
   else eventBus.pause('ui')
-  const recording = !eventBus.paused
-  send(mainWindow, 'recording:changed', recording)
-  send(overlayWindow, 'recording:changed', recording)
-  return recording
+  return !eventBus.paused
 }
 
 // The marker fields an operator types or pastes, and therefore the ones that can
@@ -475,8 +522,7 @@ function startProject(project: ProjectMeta): void {
   // real time, and holding project-open on it would trade a visible stall for
   // an invisible one. The UI reads `casts:status` and says how much is still
   // pending, which is the honest version of the same information.
-  void import('../core/cast-index')
-    .then((m) => m.backfillCastIndex(projectDir))
+  void backfillCastIndex(projectDir)
     .catch(() => { /* index is rebuildable; never block opening a project */ })
 
   screenshotAgent.configure({
@@ -501,36 +547,6 @@ function startProject(project: ProjectMeta): void {
   lootDetector.configure({ engagementId, operatorId })
   configureCaptureHealth(config as unknown as Record<string, unknown>)
   configureRedaction(config.redaction)
-  // 🔴 host: runs trusted plugin code in an isolated utility process, serving a
-  // capability-scoped API. Wired before initPlugins so trusted plugins start.
-  setPluginHost(createPluginHost({
-    // v0.6.96 Bug-1: was passing `type`/`target` — but queryEvents reads
-    // `agentType`/`targetId`, so the filters were silently dropped and plugins
-    // got a random 50-row window unrelated to their query. Now the shim
-    // renames + preserves the plugin API's field names.
-    queryEvents: (a) => queryEvents({
-      limit: Math.min(Number(a.limit) || 50, 500),
-      agentType: a.type as string | undefined,
-      targetId: a.target as string | undefined
-    }),
-    searchEvents: (a) => searchEvents(String(a.query ?? ''), Math.min(Number(a.limit) || 20, 200)),
-    appendEvent: (pluginId, a) => {
-      const ev = ingestEvent(String(a.agent_type ?? 'agent'), { ...(a.data as Record<string, unknown>), plugin: pluginId }, { operatorId, engagementId })
-      return { ok: !!ev }
-    },
-    listFindings: () => listBookmarks(),
-    getConfig: () => ({ engagement: config.engagement, scope: config.scope, redaction: config.redaction }),
-    fetch: async (a) => {
-      // SSRF guard: a plugin's controlled egress must not reach loopback,
-      // link-local (incl. the 169.254.169.254 cloud-metadata endpoint) or
-      // RFC1918 private hosts, nor non-http(s) schemes.
-      if (!isPublicHttpUrl(String(a.url))) {
-        return { status: 0, body: '', error: 'blocked: non-public or non-http(s) URL' }
-      }
-      const r = await fetch(String(a.url), { method: String(a.method ?? 'GET') })
-      return { status: r.status, body: (await r.text()).slice(0, 10_000) }
-    }
-  }))
   // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
   // bundled plugins can register `TailerAdapter`s via plugin.json instead
   // of hard-coded main-init calls. Duck-typed on the core side to avoid
@@ -562,6 +578,11 @@ function startProject(project: ProjectMeta): void {
   setVpnAdapters(config.network.vpnAdapters)
 
   configureTerminal({ engagementId, operatorId, maxCastBytes: config.terminal?.maxCastBytes })
+  configureTerminalProxy(() => {
+    const status = managedHttpProxy.status()
+    return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
+  })
+  // Capture starts only through an explicit operator action.
   // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
   setCastProbe(getCastPosition)
   // The unified ingest() pipeline (used by /api/events and, going forward, the
@@ -575,18 +596,16 @@ function startProject(project: ProjectMeta): void {
     activeTarget: config.engagement.activeTarget ?? null
   })
 
-  // v0.6.87 B1 + B2: retention sweep for .cast + screenshot files.
-  // Both default to 0 (keep forever) so existing installs see no behaviour
-  // change. Setting `terminal.castKeepDays` or `screenshots.keepDays` to a
-  // positive integer causes the sweep to run on every project open and to
-  // append audit events per deletion.
+  // Retention sweeps for every store under `config.retention` (Spec 028).
+  // All default to 0 (keep forever); a positive `keepDays` / `maxBytes` makes
+  // the sweep run on every project open and append an audit event per deletion.
   try {
     // v0.9.4 P0-4: statically imported. This used to be a runtime
     // `require('../core/retention')`, which rollup cannot see through — the
     // module was never bundled and the literal require survived into
     // out/main/index.js, where it resolved against a non-existent out/core/.
     // Every packaged build threw MODULE_NOT_FOUND into the catch below, so
-    // castKeepDays / screenshots.keepDays silently did nothing and the
+    // cast and screenshot keep-days silently did nothing and the
     // cast_pruned / screenshot_pruned audit events were never written. Unit
     // tests missed it because they import core/retention directly.
     const swept = sweepRetention(config, { engagementId, operatorId })
@@ -713,8 +732,8 @@ function startProject(project: ProjectMeta): void {
     operatorId,
     selfPorts: [getApiPort()]
   })
-  configureTranscriptTailer({
-    enabled: config.transcriptTailer?.enabled ?? false,
+  configurePowershellTranscript({
+    enabled: config.powershellTranscript?.enabled ?? false,
     engagementId,
     operatorId
   })
@@ -752,7 +771,10 @@ function startProject(project: ProjectMeta): void {
       }
     }
     configureAgentTailer({
-      enabled: config.agentTailer?.enabled ?? true,
+      // Agent transcripts can include unrelated work from the operator's home
+      // directory. Capture is therefore opt-in for every project; a partial or
+      // hand-written config must never turn it on implicitly.
+      enabled: isAgentTailerEnabled(config),
       engagementId, operatorId,
       excludedPaths, watchPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
@@ -928,6 +950,7 @@ function startProject(project: ProjectMeta): void {
 }
 
 function stopProject(): void {
+  stopManagedHttpCapture(false)
   stopAnchorLoop()
   stopNtpLoop()
   if (chainSampleTimer) { clearInterval(chainSampleTimer); chainSampleTimer = null }
@@ -939,7 +962,7 @@ function stopProject(): void {
   stopFileWatcher()
   stopProcessMonitor()
   stopConnectionMonitor()
-  stopTranscriptTailer()
+  stopPowershellTranscript()
   stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
@@ -1236,6 +1259,10 @@ app.whenReady().then(() => {
     // from, so toggling a source updates the card on the next poll instead of
     // at the next project open.
     configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
+    if (managedProxyPort(oldConfig) !== managedProxyPort(newConfig) && ['running', 'starting'].includes(managedHttpProxy.status().state)) {
+      stopManagedHttpCapture()
+      void startManagedHttpCapture()
+    }
     // Re-judge what is already recorded against the boundary that now applies.
     // Scheduled rather than awaited: the renderer's save must not wait on a
     // scan, and the debounce collapses an editing burst into one run.
@@ -1244,7 +1271,8 @@ app.whenReady().then(() => {
       excludeTargets: beforeScope.excludeTargets,
       alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
     }, configChangedId)
-    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, maxCastBytes: newConfig.terminal?.maxCastBytes })
+    configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id,
+      maxCastBytes: newConfig.terminal?.maxCastBytes })
     configureClipboardMonitor({
       enabled: newConfig.clipboard?.enabled ?? false,
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
@@ -1262,7 +1290,7 @@ app.whenReady().then(() => {
       pollMs: newConfig.connectionMonitor?.pollMs,
       selfPorts: [getApiPort()]
     })
-    configureTranscriptTailer({ enabled: newConfig.transcriptTailer?.enabled ?? false })
+    configurePowershellTranscript({ enabled: newConfig.powershellTranscript?.enabled ?? false })
     configureProcessMonitor({
       enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
@@ -1368,13 +1396,23 @@ app.whenReady().then(() => {
   // --- Saved Timeline views (extracted to ipc/views.ts) ---
 
   // --- Proxied browser ---
+  ipcMain.handle('httpCapture:status', () => managedHttpProxy.status())
+  ipcMain.handle('httpCapture:start', () => startManagedHttpCapture())
+  ipcMain.handle('httpCapture:stop', () => stopManagedHttpCapture())
   ipcMain.handle('browser:detect', () => detectBrowser())
   ipcMain.handle('browser:status', () => ({ running: isBrowserRunning() }))
-  ipcMain.handle('browser:launch', () => {
+  ipcMain.handle('browser:launch', async () => {
     if (!activeProject) return { ok: false, error: 'No project open' }
     const projectDir = getProjectPath(activeProject)
     const cfg = loadConfig(projectDir)
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}) }
+    if (isLoopbackHttpProxy(browserCfg.proxy)) {
+      const proxy = await startManagedHttpCapture()
+      if (proxy.state !== 'running') {
+        return { ok: false, error: proxy.error || 'HTTP capture proxy is not running' }
+      }
+      browserCfg.proxy = proxy.url ?? browserCfg.proxy
+    }
     const result = launchBrowser(browserCfg, projectDir)
 
     if (result.ok) {
@@ -1577,6 +1615,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  stopManagedHttpCapture(false)
   stopBrowser()
   globalShortcut.unregisterAll()
   stopOverlayMouseTracking()

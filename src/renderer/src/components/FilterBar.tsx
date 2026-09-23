@@ -5,8 +5,8 @@ import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 
 export function FilterBar(): JSX.Element | null {
-  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets } = useSharedFilter()
+  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const barRef = useRef<HTMLDivElement>(null)
@@ -60,6 +60,19 @@ export function FilterBar(): JSX.Element | null {
             title={t('filter.inScopeHint')}
           >
             {t('filter.inScopeOnly')}
+          </button>
+        )}
+        {personalDomains.length > 0 && (
+          <button
+            onClick={() => setHidePersonal(!filter.hidePersonal)}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+              filter.hidePersonal
+                ? 'border-amber-500/35 bg-amber-500/10 text-amber-300'
+                : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text'
+            }`}
+            title={filter.hidePersonal ? t('filter.personalHiddenHint') : t('filter.personalShownHint')}
+          >
+            {filter.hidePersonal ? t('filter.personalHidden') : t('filter.personalShown')}
           </button>
         )}
         {activeCount > 1 && (

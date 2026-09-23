@@ -26,7 +26,8 @@
 // point of a recompute, and the two matchers answer different questions.
 
 import crypto from 'crypto'
-import type { ScopeDistance } from './alert/policy'
+import type { ScopeDistance } from './scope-evaluator'
+import type { ScopeSnapshot } from './alert/policies'
 import type { ScopeSignalSource } from './alert/scope-signal'
 
 /** Written rows are capped per kind so one careless allowlist edit cannot add
@@ -38,12 +39,6 @@ export const MAX_RETRO_ROWS = 500
  *  none) still cover the events they were about. Without a window, every event
  *  behind such a row would be re-flagged as newly discovered. */
 const CAUSELESS_COVERAGE_MS = 2000
-
-export interface ScopeSnapshot {
-  targets: string[]
-  excludeTargets: string[]
-  alertFloor: ScopeDistance[]
-}
 
 /** One stored event the live path was eligible to judge, already hydrated and
  *  with its judged target derived exactly as the live path derived it. */

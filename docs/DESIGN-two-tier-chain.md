@@ -2,7 +2,7 @@
 
 **Status:** proposed, targeting v0.13.0
 **Author:** two-tier-chain design pass
-**Prior art:** [audit-trail.md](audit-trail.md), [redaction-design.md](redaction-design.md), [event-schema.md](event-schema.md), [ROADMAP.md](ROADMAP.md)
+**Prior art:** [audit-trail.md](audit-trail.md), [redaction-design.md](redaction-design.md), [event-schema.md](event-schema.md), [ROADMAP.md](archive/ROADMAP.md)
 
 Today every event written by RedLog runs through one path — [`insertEvent`](../src/core/db/events.ts) in `src/core/db/events.ts` — regardless of whether the row is a `shell.command_end` a subpoena will one day ask to see, or a mitmproxy `dns_query` firing at 200 events per second because the operator is running a scan. Both:
 

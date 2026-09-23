@@ -5,6 +5,55 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Config:** every store's retention now lives under `retention.<store>` with
+  `keepDays` / `maxBytes` (`casts`, `screenshots`, `httpBodies`,
+  `agentTranscripts`, `loggedTier`, `bookmarks`). The old keys
+  (`terminal.castKeepDays`, `terminal.castStoreMaxBytes`, `screenshots.*`,
+  `httpBodies.*`) are no longer read; a config that still uses them keeps
+  everything until the budgets are set again.
+- **Config:** `transcriptTailer` is now `powershellTranscript`.
+- Scope classification is one function: uppercase, port-suffixed, URL-shaped
+  and trailing-dot targets are no longer silently `unrelated`, and excluded
+  targets are masked at export in exclude-only projects.
+- Secret shapes are defined once and shared by transcript redaction and loot
+  detection; the built-in CTF flag pattern is removed.
+- The command palette and the local API search go through the same query
+  contract as Search; a failed or unparsable query says so instead of showing
+  no results.
+- Removed alert correlation (combined/burst verdicts), which wrote chain rows
+  with no source event.
+- Removed the plugin code host, which had run nothing since v0.12. Plugins
+  contributing `exporters` or `monitors` are now refused; `tailers` remain
+  trust-gated and run in the main process (the docs no longer claim isolation).
+- Removed unused code: walkthrough export, Card, the timeline scope matcher,
+  and the `events:logSecretRevealed` write path.
+- Nine superseded planning documents moved to `docs/archive/`.
+
+- Investigation views now hide configured personal/local targets by default
+  and expose one visible filter chip to reveal them. Rows remain recorded and
+  the delivery-time personal-domain exclusion policy is unchanged.
+- AI agent transcript capture remains opt-in even for partial or hand-written
+  project configs, so unrelated sessions under the operator home are not read.
+- Removed the separate Report Mode: ordinary pause keeps search, replay and
+  export available. Writing reports no longer has a second pause control.
+- HTTP capture starts only through an explicit action; terminal proxy routing
+  is a separate opt-in that applies to newly opened panes.
+- Personal-traffic filtering now explains its target-only coverage and is
+  directly available on Loot.
+- Added explicit POSIX `redlog-session` PTY output capture with bounded output,
+  pinned engagement identity, pause handling and visible omission summaries.
+- RedLog now starts and owns its local mitmproxy capture process, exposes
+  stopped/starting/running/unavailable/failed states, gates the proxied browser
+  on real readiness, and optionally routes newly opened built-in terminals through the
+  live proxy with standard HTTP(S) proxy environment variables.
+- Managed HTTP capture now has one project-level port setting, reports its HTTPS
+  CA path without changing system trust, separates listener readiness from
+  traffic freshness in Capture Health, and records unexpected proxy exits.
+- Vitest 5 worker limits now use the supported top-level configuration instead
+  of the removed `poolOptions` shape.
+- Production bundles no longer request ineffective lazy chunks for cast search,
+  cast replay, or the first-run terminal when those modules are already loaded
+  by another path.
 - Approved export plans bind preview and execution to one snapshot and policy.
 - Spool replay defers mismatched engagements without writing the active DB and
   recovers them when their owning project opens.

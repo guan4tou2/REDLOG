@@ -179,6 +179,11 @@ function installBridge(): void {
       launch: async () => ({ ok: true, pid: 1 }),
       stop: async () => ({ stopped: true })
     },
+    httpCapture: {
+      status: async () => ({ state: 'running', url: 'http://127.0.0.1:8080', pid: 2 }),
+      start: async () => ({ state: 'running', url: 'http://127.0.0.1:8080', pid: 2 }),
+      stop: async () => ({ state: 'stopped', url: null })
+    },
     data: {
       resolveExportPlan: async () => ({ ok: false, error: 'not configured in smoke test' }),
       executeExportPlan: async () => ({ ok: false, error: 'not configured in smoke test' })

@@ -5,7 +5,7 @@
 發現**寫清楚,並定出安全路徑,避免弄壞 target/scope 這條大家都依賴的管線。
 
 相關:[`DESIGN-plugin-kernel.md`](DESIGN-plugin-kernel.md)(§8 完成路徑列了 E1)、
-[`PRD-COMPLETION.md`](PRD-COMPLETION.md)(E1 = P2)。
+[`PRD-COMPLETION.md`](archive/PRD-COMPLETION.md)(E1 = P2)。
 
 ---
 

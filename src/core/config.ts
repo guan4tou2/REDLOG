@@ -114,44 +114,9 @@ export interface RedLogConfig {
     passThroughOpacity: number
   }
   terminal: {
+    /** Truncates a SINGLE runaway recording, bytes. A capture limit, not
+     *  retention — store-wide cleanup lives under `retention.casts`. */
     maxCastBytes: number
-    /** v0.6.87 B1: `.cast` files auto-delete after this many days on project
-     *  open. `0` = keep forever (default; long engagements typically want
-     *  everything). Set to e.g. 30 to prevent disk balloon on projects that
-     *  spin many terminal sessions. The event row + castSha256 stays in the
-     *  chain regardless — only the file is deleted, and a
-     *  `system.cast_pruned` event is appended per deletion. */
-    castKeepDays?: number
-    /** Size-pressure cap for the whole `casts/` store, bytes. When the store
-     *  exceeds this, the coldest UNPINNED recordings are evicted until under
-     *  it — recordings of an in-scope target are pinned and never evicted
-     *  (retention.ts `sweepArtifactStore`). Distinct from `maxCastBytes`, which
-     *  truncates a SINGLE runaway recording. 0 (default) = unbounded. The event
-     *  and its castSha256 attestation always survive; only the .cast file goes,
-     *  and its search-index entry is pruned with it. */
-    castStoreMaxBytes?: number
-  }
-  screenshots?: {
-    /** v0.6.87 B2: screenshot .jpg auto-delete after N days on project open.
-     *  `0` (default) = keep forever. Event row + sha256 stays; a
-     *  `system.screenshot_pruned` audit event is appended per deletion. */
-    keepDays?: number
-    /** Size-pressure cap for the whole `screenshots/` store, bytes. Same model
-     *  as `httpBodies.maxBytes` and `terminal.castStoreMaxBytes`: coldest
-     *  UNPINNED shots evicted first, in-scope shots pinned. 0 (default) =
-     *  unbounded. The event + sha256 survive; only the .jpg goes. */
-    maxBytes?: number
-  }
-  /** Captured HTTP request/response bodies (http-body-store.ts). */
-  httpBodies?: {
-    /** Age-based sweep of the sidecar store, days. 0 = keep forever. */
-    keepDays?: number
-    /** Size-pressure cap in bytes. When the store exceeds this, the coldest
-     *  UNPINNED bodies are evicted until under it — in-scope bodies are pinned
-     *  and never evicted (body-eviction.ts). 0 (default) = unbounded. The
-     *  event and its sha256 attestation always survive; only the openable
-     *  body content is dropped. */
-    maxBytes?: number
   }
   clipboard: {
     /** default off — clipboard is highly sensitive; opt-in per engagement */
@@ -170,6 +135,11 @@ export interface RedLogConfig {
     ignoreCertErrors: boolean
     startUrl: string
     extraArgs: string[]
+  }
+  httpCapture: {
+    /** Port owned by RedLog's managed regular-mode mitmdump process. */
+    port: number
+    routeTerminals: boolean
   }
   redaction: {
     allowlist: string[]
@@ -211,7 +181,7 @@ export interface RedLogConfig {
   }
   /** PowerShell Start-Transcript follower (§2.3), Windows output capture.
    *  Off by default; the operator opts in and adds the hook to their profile. */
-  transcriptTailer?: {
+  powershellTranscript?: {
     enabled: boolean
   }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
@@ -220,7 +190,7 @@ export interface RedLogConfig {
    *  discovery spans user-level agent transcript locations; the operator
    *  explicitly enables it for an engagement. A `.redlog-app-root` marker
    *  in the session's cwd still opts individual repos out. See
-   *  src/main/services/agent-transcript-tailer.ts. */
+   *  src/main/services/agent-tailer.ts. */
   agentTailer?: {
     enabled: boolean
     /** Off by default — thinking blocks are large and mostly meta. Turn on
@@ -228,10 +198,29 @@ export interface RedLogConfig {
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
     emitThinking?: boolean
   }
-  /** Retention policy for row-level pruning. File retention remains under
-   *  the terminal and screenshots sections. See
-   *  docs/DESIGN-logged-tier-retention.md. */
+  /** Every store's retention, one section (Spec 028). Two knobs, the same
+   *  names everywhere they apply:
+   *  - `keepDays` — age sweep on project open. `0` = keep forever (default for
+   *    every store: RedLog is an evidence recorder, "recorded → kept").
+   *  - `maxBytes` — size pressure on a file store. When over budget the
+   *    coldest UNPINNED files go first; files of an in-scope target are pinned
+   *    and never evicted (body-eviction.ts, retention.ts `sweepArtifactStore`).
+   *    `0` = unbounded.
+   *  For file stores the event row and its sha256 attestation always survive;
+   *  only the file goes, with a `system.*_pruned` / `*_evicted` audit row per
+   *  deletion. See docs/DESIGN-logged-tier-retention.md for the row tier. */
   retention?: {
+    /** `.cast` terminal recordings (`casts/`). */
+    casts?: { keepDays?: number; maxBytes?: number }
+    /** Screenshot images (`screenshots/`). Capture cadence and quality are
+     *  the separate `screenshot` section. */
+    screenshots?: { keepDays?: number; maxBytes?: number }
+    /** Captured HTTP request/response bodies (`http-bodies/`). */
+    httpBodies?: { keepDays?: number; maxBytes?: number }
+    /** Agent transcript sidecars (`agent-transcripts/`). Kept forever by
+     *  default: pruning a sidecar whose source .jsonl still exists used to
+     *  re-ingest every historical turn (v0.7.4 F2). */
+    agentTranscripts?: { keepDays?: number }
     /** Row-level retention on the events_logged table. The design doc
      *  reserves `maxSizeGb` + `maxRowCount`
      *  ceilings for a follow-up; they are intentionally NOT declared here
@@ -255,6 +244,13 @@ export interface RedLogConfig {
       keepDays?: number
     }
   }
+}
+
+/** Agent transcript capture is sensitive and always requires an explicit
+ * project opt-in. Keep this decision here so runtime callers cannot re-create
+ * a permissive fallback for partial or hand-written configs. */
+export function isAgentTailerEnabled(config: Pick<RedLogConfig, 'agentTailer'>): boolean {
+  return config.agentTailer?.enabled === true
 }
 
 const DEFAULT_CONFIG: RedLogConfig = {
@@ -301,17 +297,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     passThroughOpacity: 0.4
   },
   terminal: {
-    maxCastBytes: 50 * 1024 * 1024,
-    castKeepDays: 0,
-    castStoreMaxBytes: 0
-  },
-  screenshots: {
-    keepDays: 0,
-    maxBytes: 0
-  },
-  httpBodies: {
-    keepDays: 0,
-    maxBytes: 0
+    maxCastBytes: 50 * 1024 * 1024
   },
   clipboard: {
     enabled: false,
@@ -326,6 +312,10 @@ const DEFAULT_CONFIG: RedLogConfig = {
     ignoreCertErrors: true,
     startUrl: '',
     extraArgs: []
+  },
+  httpCapture: {
+    routeTerminals: false,
+    port: 8080
   },
   redaction: {
     allowlist: [],
@@ -347,7 +337,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     enabled: false,
     pollMs: 2000
   },
-  transcriptTailer: {
+  powershellTranscript: {
     enabled: false
   },
   agentTailer: {
@@ -365,7 +355,11 @@ const DEFAULT_CONFIG: RedLogConfig = {
     },
     bookmarks: {
       keepDays: 0
-    }
+    },
+    casts: { keepDays: 0, maxBytes: 0 },
+    screenshots: { keepDays: 0, maxBytes: 0 },
+    httpBodies: { keepDays: 0, maxBytes: 0 },
+    agentTranscripts: { keepDays: 0 }
   }
 }
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { loadConfig, saveConfig, loadScopeFile, snapshotScope, type RedLogConfig } from '../src/core/config'
+import { loadConfig, saveConfig, loadScopeFile, snapshotScope, isAgentTailerEnabled, type RedLogConfig } from '../src/core/config'
 
 let tmpDir: string
 
@@ -31,6 +31,7 @@ describe('loadConfig', () => {
     expect(config.engagement.id).toBe('test-123')
     expect(config.engagement.name).toBe('Default Engagement')
     expect(config.network.checkInterval).toBe(60)
+    expect(config.agentTailer?.enabled).toBe(false)
   })
 
 })
@@ -44,6 +45,14 @@ describe('saveConfig', () => {
     const reloaded = loadConfig(tmpDir)
     expect(reloaded.engagement.id).toBe('roundtrip-test')
     expect(reloaded.network.whitelist).toEqual(['10.8.0.1'])
+  })
+})
+
+describe('agent transcript capture default', () => {
+  it('requires an explicit true value', () => {
+    expect(isAgentTailerEnabled({})).toBe(false)
+    expect(isAgentTailerEnabled({ agentTailer: { enabled: false } })).toBe(false)
+    expect(isAgentTailerEnabled({ agentTailer: { enabled: true } })).toBe(true)
   })
 })
 

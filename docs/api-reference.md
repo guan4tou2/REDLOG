@@ -48,6 +48,12 @@ No auth required. Liveness check.
 
 #### `POST /api/events`
 
+Long-lived producers can pin the intended project with the optional
+`X-Redlog-Engagement: <engagementId>` header. A mismatch returns `409` without
+writing evidence. The event route also rejects a project change while reading
+the request body. The external session recorder pins its header and credentials
+at launch and never retries omitted output into a new project.
+
 Primary event ingestion. The server strips any `operator_id` from the body (attribution comes from the Bearer token only).
 
 **Body:**

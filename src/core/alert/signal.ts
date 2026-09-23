@@ -3,8 +3,8 @@
 // A **Signal** is a raw observation — "something happened that the alert
 // system should look at." Signals are transient values, not chain events;
 // producers hand them to `AlertBus.dispatch`, the bus runs registered
-// policies over them, verdicts go to surfaces (chain, badge, webhook,
-// adherence). See `docs/ALERT-ROLES.md` (ea's spec) for the "why" —
+// policies over them, verdicts go to surfaces (chain, badge, adherence,
+// violation log). See `docs/ALERT-ROLES.md` (ea's spec) for the "why" —
 // Self alarm (state machine) vs Target alarm (event stream) as the two
 // roles, plus the fact/inferred/unknown authority tier.
 //

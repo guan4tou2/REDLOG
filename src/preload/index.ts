@@ -78,7 +78,6 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('events:queryHttpFlowPage', opts) as Promise<import('../core/db/events').HttpFlowPage>,
     getCount: (tier: import('../core/db/events').EventTierFilter) => ipcRenderer.invoke('events:getCount', tier),
     getLatestLoggedTs: () => ipcRenderer.invoke('events:getLatestLoggedTs') as Promise<number | null>,
-    search: (query: string, limit?: number, opts?: import('../core/db/events').EventFilter) => ipcRenderer.invoke('events:search', query, limit, opts),
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
     runQuery: (req: import('../core/db/events').EventQueryRequest) =>
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
@@ -118,11 +117,6 @@ const api: RedLogAPI = {
       ipcRenderer.on('events:new-batch', handler)
       return () => ipcRenderer.removeListener('events:new-batch', handler)
     },
-    // Layer 3 (four-layer redaction): every time the reviewer reveals raw
-    // bytes of a redacted span, we log a chained system.secret_revealed event
-    // so the audit trail shows who saw what and when.
-    logSecretRevealed: (sourceEventId: string, fields: string[]) =>
-      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields),
     toggleDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
     isDoNotExport: (eventId: string) =>
@@ -193,6 +187,11 @@ const api: RedLogAPI = {
     status: () => ipcRenderer.invoke('browser:status'),
     launch: () => ipcRenderer.invoke('browser:launch'),
     stop: () => ipcRenderer.invoke('browser:stop')
+  },
+  httpCapture: {
+    status: () => ipcRenderer.invoke('httpCapture:status'),
+    start: () => ipcRenderer.invoke('httpCapture:start'),
+    stop: () => ipcRenderer.invoke('httpCapture:stop')
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),

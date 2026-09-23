@@ -11,27 +11,30 @@ Wiki-style index for **v0.14.3**. Every page is self-contained; follow the links
 ## Start here
 
 - **[操作者手冊](USER-GUIDE.md)** — for the person *using* RedLog rather than building it: the first ten minutes, what each screen answers, how to wire the three capture sources that matter, how to export. 繁體中文, like the interface.
-- **[交接 2026-09](HANDOVER-2026-09.md)** — **read this first if you are picking the work up.** Where `main` stands, what the last eight PRs decided and why, what is still open (with the reason each was deferred), and the traps in this codebase that cost real time: the native-module ABI swap, the temporal-dead-zone crash that only appears in the bundled build, the two-tier event tables, and the source-scanning guard tests.
+- **Picking the work up?** Work is specified and tracked in [`specs/`](../specs/) (Spec Kit — one directory per change, each with spec, plan, tasks and verification); the rules every change is checked against are in [`.specify/memory/constitution.md`](../.specify/memory/constitution.md). [Architecture](ARCHITECTURE.md) is the current map of the code, and [Testing](TESTING.md) lists every config option with the test that proves it.
 - **[Agent integration](agent-integration.md)** — if you're wiring an agent to RedLog, start here. Covers everything from hook setup to MCP tool usage.
 
 ## Product & planning
 
-- **[Product positioning](PRODUCT-POSITIONING.md)** — the single source of truth for who RedLog is for (personas P1–P3 + the evidence-consumer stakeholder), the job to be done, the explicit non-goals, and where RedLog sits vs. Ghostwriter / RedEye / PwnDoc / manual oplogs. When positioning and roadmap disagree, this page wins.
+- **[Product positioning](PRODUCT-POSITIONING.md)** — the single source of truth for who RedLog is for (personas P1–P3 + the evidence-consumer stakeholder), the job to be done, the explicit non-goals, and where RedLog sits vs. Ghostwriter / RedEye / PwnDoc / manual oplogs.
 - **[Architecture](ARCHITECTURE.md)** — process/layer model, startup order, DB schema and migration strategy, the capture pipeline end to end, tailer host, evidence chain, export, plugin system, IPC conventions. Replaces the stale ASCII diagram in the README.
-- **[Roadmap](ROADMAP.md)** — what ships next and the v1.0 gate. Also states what is deliberately not planned.
 - **[Audit 2026-08-08](AUDIT-2026-08-08.md)** — standing defect list from a full-tree review: correctness, trust-model gaps, presentation, test coverage, doc drift. Each item tagged verified/reported.
 - **[UX & complexity audit 2026-08-10](UX-AUDIT-2026-08.md)** — persona-driven review of the renderer: where breadth has outrun the solo operator (Timeline 3,875 lines / Settings 2,681 lines), the first-run friction gap, and a prioritized backlog. Companion to the correctness audit above.
 - **[Core purpose and capture coverage](DESIGN-core-and-capture.md)** — the 2026-08-21 review that moved the core from *defensibility* to *knowability*, and what that does to capture: four gaps (non-HTTP traffic, remote commands, Windows output, queryable tool output), the point/span timeline model, and the purple-team activity record. Read alongside `PRODUCT-POSITIONING.md`, which it revised.
-- **[完善需求 PRD](PRD-COMPLETION.md)** — PM-level requirements consolidating every finding (red-team review, design debt, open items, plugin-kernel) into prioritized epics with acceptance criteria, a definition of "done", milestones, and the product decisions that gate specific work. Read this before picking up implementation. 繁體中文.
 - **[Open items design](DESIGN-OPEN-ITEMS.md)** — 2026-09-06 work plan: every open item from the handover (bookmark retention, per-project token, scope-aware sanitize, env.d.ts derivation, QuickMark→Bookmark rename, single wordmark, Linux icons) turned into an executable design with problem / decision / steps / contract impact / status, ordered by value ÷ risk. Each is marked NOT-implemented until it ships. 繁體中文.
 - **[Plugin kernel](DESIGN-plugin-kernel.md)** — 2026-09-06 design note: a minimal core (store, chain, pause gate, redaction, schema + tiering, health, attribution, UI) with capture and normalization as plugins, and why a unified format does not distort the record — the envelope is unified, the raw bytes are kept verbatim and hashed onto the chain. 繁體中文.
 - **[Traffic attribution](DESIGN-traffic-attribution.md)** — 2026-09-06 design note answering "can traffic be recorded per tool?": what each tool actually emits, which of it RedLog sees today, and the socket→pid→command correlation that would let an nmap probe and a browser request land on their own command rows. 繁體中文.
 - **[UI/UX 標準](UIUX-STANDARD.md)** — the rule book UI code lands against, extracted from `src/renderer` itself: colour tokens, type scale, density, the component contract, UX principles, Timeline/HUD rules, and the three-phase checklist the PR templates in `.github/pull_request_template/` check against. Written and maintained in the Claude Design project — see [design-project-sync.md](design-project-sync.md) for the screen-to-source map and the last sync. The two app-icon masters it names live at [`design/assets/`](../design/assets/) — pulled in, not yet shipped (§16 ▲ 分歧).
-- **[Timeline UX deep-dive 2026-08-10](UX-TIMELINE-2026-08.md)** — the F2 deep-dive: why the timeline feels unintuitive (invisible, overloaded, context-dependent gestures), what it is *not* (lanes/data are fine), and the T1–T6 simplification plan.
-- **[UX backlog — ticket specs](UX-BACKLOG-TICKETS.md)** — every finding (F1–F7, T1–T6) broken out into an independently implementable ticket: problem, proposed solution, acceptance criteria, pure test seam, effort, priority order.
-- **[Timeline interaction redesign draft](DESIGN-TIMELINE-INTERACTION.md)** — concrete UI proposal with ASCII wireframes for the legend (T1), the wheel-mode decision matrix (T2), and the active-modes row (T3), plus the build order.
-- **[Dev requirements — capture onboarding](DEV-REQUIREMENTS-capture-onboarding.md)** — spec + acceptance criteria for the Capture Readiness onboarding, and the red→green→integrate→cover TDD process every UX change should copy.
-- **[Timeline I/O visibility](timeline-io-visibility.md)** — design note (proposed). Which sources capture input/output today, where the gaps are, and the `io_ref` sidecar + transcript-view proposal that closes them.
+
+## Planning snapshots (archived 2026-09-23)
+
+Superseded by [`specs/`](../specs/) as the place work is planned, or describing
+code that has since changed. **Moved to [`archive/`](archive/README.md)** so
+nobody plans from them; the reasoning is kept.
+
+- **[Roadmap](archive/ROADMAP.md)** · **[Handover 2026-09](archive/HANDOVER-2026-09.md)** · **[完善需求 PRD](archive/PRD-COMPLETION.md)** — status snapshots from v0.9–v0.14.
+- **[Timeline UX deep-dive](archive/UX-TIMELINE-2026-08.md)** · **[UX backlog tickets](archive/UX-BACKLOG-TICKETS.md)** · **[Timeline interaction redesign](archive/DESIGN-TIMELINE-INTERACTION.md)** — the timeline plan; T1–T3 unbuilt.
+- **[Capture onboarding requirements](archive/DEV-REQUIREMENTS-capture-onboarding.md)** · **[Timeline I/O visibility](archive/timeline-io-visibility.md)** · **[Design-system refactor](archive/DESIGN-SYSTEM-REFACTOR.md)** — shipped, mostly as described; the live rules are in [UIUX-STANDARD](UIUX-STANDARD.md) and `specs/`.
 
 ## Subsystem decomposition (archived)
 

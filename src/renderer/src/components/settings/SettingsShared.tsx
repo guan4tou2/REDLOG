@@ -13,19 +13,12 @@ export interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
   screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
-  // Size-pressure eviction budgets (bytes; 0 = unbounded). Distinct from the
-  // SINGULAR `screenshot` above, which is capture cadence/quality. These drive
-  // sweepBodyStore / sweepArtifactStore (src/core/retention.ts): coldest
-  // out-of-scope files are evicted first, in-scope evidence is pinned.
-  screenshots?: { maxBytes?: number }
-  terminal?: { castStoreMaxBytes?: number }
-  httpBodies?: { maxBytes?: number }
   overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
   fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
   connectionMonitor?: { enabled: boolean; pollMs?: number }
-  transcriptTailer?: { enabled: boolean }
+  powershellTranscript?: { enabled: boolean }
   browser?: {
     binary: string
     proxy: string
@@ -35,6 +28,7 @@ export interface ConfigState {
     startUrl: string
     extraArgs: string[]
   }
+  httpCapture?: { port: number; routeTerminals?: boolean }
   // v0.7.7 U1: Settings > AI Agents surface for the built-in Claude Code
   // tailer. v0.8.0 will expand this into a list of installed tailer
   // plugins; the shape here (enabled + emitThinking) stays the "default"
@@ -43,8 +37,13 @@ export interface ConfigState {
     enabled: boolean
     emitThinking?: boolean
   }
+  // Mirrors RedLogConfig['retention'] (Spec 028). The Settings page edits the
+  // size budgets (bytes; 0 = unbounded) and the logged-tier age.
   retention?: {
     loggedTier?: { keepDays?: number }
+    casts?: { maxBytes?: number }
+    screenshots?: { maxBytes?: number }
+    httpBodies?: { maxBytes?: number }
   }
 }
 

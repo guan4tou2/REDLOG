@@ -67,7 +67,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-zsh-hook.zsh',
-    supportFiles: ['hooks/shell-common.sh'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-hook.zsh'),
     shellRcFile: '.zshrc'
@@ -79,7 +79,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
     installMethod: 'shell-source',
     installTarget: join(homedir(), '.redlog', 'shell-bash-hook.sh'),
     shellRcFile: '.bashrc'
@@ -118,7 +118,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-bash-hook.sh',
-    supportFiles: ['hooks/shell-common.sh'],
+    supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
     installMethod: 'manual'
   }
 ]
@@ -213,6 +213,11 @@ function srcPathForRelative(plugin: PluginManifest, relative: string): string {
 
 function srcPathFor(plugin: PluginManifest): string {
   return srcPathForRelative(plugin, plugin.hookFile)
+}
+
+export function getCaptureHookPath(pluginId: string): string | null {
+  const plugin = allManifests().find((candidate) => candidate.id === pluginId)
+  return plugin ? srcPathFor(plugin) : null
 }
 
 // For shell-source plugin captures without an explicit target, drop the hook in
