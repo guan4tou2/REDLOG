@@ -59,7 +59,7 @@ export function tagCommand(command: string): Record<string, string> {
 }
 
 /** For diagnostics — list every registered pattern across all plugins. */
-export function listCommandTags(): Array<{ pluginId: string; name: string; match: string; stamp: Record<string, string> }> {
+export function _listCommandTags(): Array<{ pluginId: string; name: string; match: string; stamp: Record<string, string> }> {
   const out: Array<{ pluginId: string; name: string; match: string; stamp: Record<string, string> }> = []
   for (const compiled of registry.values()) {
     for (const t of compiled) out.push({ pluginId: t.pluginId, name: t.name, match: t.re.source, stamp: t.stamp })

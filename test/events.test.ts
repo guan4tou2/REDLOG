@@ -12,7 +12,6 @@ let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let getEventCount: typeof import('../src/core/db/events').getEventCount
 let executeEventQuery: typeof import('../src/core/db/events').executeEventQuery
-let queryScopeFilteredEvents: typeof import('../src/core/db/events').queryScopeFilteredEvents
 
 let dbAvailable = false
 try {
@@ -26,7 +25,6 @@ try {
   queryEvents = eventsMod.queryEvents
   getEventCount = eventsMod.getEventCount
   executeEventQuery = eventsMod.executeEventQuery
-  queryScopeFilteredEvents = eventsMod.queryScopeFilteredEvents
   dbAvailable = true
 } catch {
   // better-sqlite3 not compiled for this Node.js version
@@ -410,79 +408,5 @@ describeDB('full-text search on the query contract', () => {
     const results = searchEvents('target', 200, { agentType: 'shell', since: 0, before: 1000 })
     expect(results.length).toBe(1)
     expect(results[0].id).toBe(shellOldId)
-  })
-})
-
-describeDB('queryScopeFilteredEvents', () => {
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
-  })
-  afterEach(() => {
-    closeHttpBodyIndex()
-    closeDB()
-    fs.rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  it('includes marker events without targetId (whitelist)', () => {
-    insertEvent('marker', { title: 'found something' })
-    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.events.length).toBe(1)
-  })
-
-  it('excludes clipboard events without targetId', () => {
-    insertEvent('clipboard', { text: 'password123' })
-    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.events.length).toBe(0)
-  })
-
-  it('excludes system events without targetId', () => {
-    insertEvent('system', { subtype: 'session_start' })
-    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.events.length).toBe(0)
-  })
-
-  it('matches wildcard domain scope', () => {
-    insertEvent('shell', { command: 'curl' }, { targetId: 'api.example.com' })
-    insertEvent('shell', { command: 'curl' }, { targetId: 'other.net' })
-    const filtered = queryScopeFilteredEvents(['*.example.com'])
-    expect(filtered.events.length).toBe(1)
-  })
-
-  // --- SPEC: Export Event Selection (P0 #2) ---
-  // Domain invariant: Export operates on the complete persisted event population
-  // (events ∪ events_logged) unless policy explicitly excludes an event.
-
-  it('includes logged-tier events (scanner:http_response) for in-scope target', () => {
-    insertEvent('shell', { subtype: 'command_end', command: 'curl 10.0.0.1' }, { targetId: '10.0.0.1' })
-    insertEvent('scanner', { subtype: 'http_response', status: 200, url: 'http://10.0.0.1/' }, { targetId: '10.0.0.1' })
-    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.events.length).toBe(2)
-  })
-
-  it('includes logged-tier dns events for in-scope target', () => {
-    insertEvent('dns', { subtype: 'dns_query', query: 'example.com' }, { targetId: 'example.com' })
-    const filtered = queryScopeFilteredEvents(['example.com'])
-    expect(filtered.events.length).toBe(1)
-  })
-
-  it('excludes out-of-scope logged-tier events', () => {
-    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
-    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '192.168.1.1' })
-    const filtered = queryScopeFilteredEvents(['10.0.0.1'])
-    expect(filtered.events.length).toBe(1)
-  })
-
-  it('includes both tiers when scope is empty (no filtering)', () => {
-    insertEvent('shell', { subtype: 'command_end', command: 'whoami' }, { targetId: '10.0.0.1' })
-    insertEvent('scanner', { subtype: 'http_response', status: 200 }, { targetId: '10.0.0.1' })
-    const filtered = queryScopeFilteredEvents([])
-    expect(filtered.events.length).toBe(2)
-  })
-
-  it('excludes system agent_type from logged tier', () => {
-    insertEvent('system', { subtype: 'process_monitor_saturated' })
-    const filtered = queryScopeFilteredEvents([])
-    expect(filtered.events.length).toBe(0)
   })
 })

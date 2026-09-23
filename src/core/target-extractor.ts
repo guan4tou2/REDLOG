@@ -144,7 +144,7 @@ export function unregisterTargetExtractors(pluginId: string): void {
 
 /** v0.9.1: introspect the currently-registered plugin extractors for
  *  Settings ▸ Plugins UI + audit bundle export. */
-export function listExternalTargetExtractors(): Array<{
+export function _listExternalTargetExtractors(): Array<{
   pluginId: string
   extractorName: string
   cmd: string

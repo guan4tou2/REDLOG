@@ -93,7 +93,7 @@ export function unregisterLootPatterns(pluginId: string): void {
 /** v0.9.0: introspect the currently-registered plugin patterns for
  *  Settings ▸ Plugins UI + audit bundle export. Returns a shallow snapshot
  *  — the RegExp is stringified so callers can render + copy the source. */
-export function listExternalLootPatterns(): Array<{
+export function _listExternalLootPatterns(): Array<{
   pluginId: string
   patternName: string
   type: string

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import {
-  computeVisibility, shouldRefetch, allDisclosed, UNLOCK, DAY_ONE, EMPTY_SIGNALS,
+  computeVisibility, shouldRefetch, allDisclosed, UNLOCK, EMPTY_SIGNALS,
   type VisibilitySignals
 } from '../src/renderer/src/lib/visibility'
 import { DEFAULT_ORDER } from '../src/renderer/src/lib/sidebarOrder'
@@ -16,6 +16,9 @@ import { DEFAULT_ORDER } from '../src/renderer/src/lib/sidebarOrder'
 const S = (over: Partial<VisibilitySignals> = {}): VisibilitySignals => ({ ...EMPTY_SIGNALS, ...over })
 const viewsOf = (s: VisibilitySignals, showAll = false): string[] =>
   DEFAULT_ORDER.filter((id) => computeVisibility(s, showAll).views.has(id))
+
+// The first day: somewhere to look, somewhere to read, somewhere to type.
+const DAY_ONE = ['dashboard', 'timeline', 'terminal'] as const
 
 describe('day one', () => {
   it('shows exactly somewhere to look, somewhere to read, and somewhere to type', () => {
