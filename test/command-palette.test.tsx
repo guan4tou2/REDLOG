@@ -112,6 +112,18 @@ describe('command palette', () => {
     expect(toast).not.toHaveBeenCalledWith('Screenshot captured', 'success')
   })
 
+  // Constitution IV: the palette shows the newest 40 matches. When the store has
+  // more, the list must say it is a subset rather than read as the answer.
+  it('says when its event matches are only the newest ones', async () => {
+    bridge.events.runQuery.mockResolvedValueOnce({
+      items: [{ id: 'e1', timestamp: 1, agentType: 'shell', data: { command: 'nmap -sV' } }],
+      hasMore: true, nextCursor: 'more'
+    } as never)
+    open()
+    type('nmap')
+    expect(await screen.findByTestId('palette-search-subset')).toBeTruthy()
+  })
+
   it('navigates and closes on Enter', async () => {
     const { onNavigate, onClose } = open()
     await screen.findAllByRole('option')
