@@ -34,10 +34,19 @@ import { noteDbError } from './capture-health'
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
 
+/** One match as the detector reports it (see loot-detector.ts). */
+export interface LootMatchLike {
+  ruleId: string
+  type: string
+  value: string
+  line: string
+  confidence: 'high' | 'medium' | 'low'
+}
+
 export interface LootDetectorLike {
-  findMatches?: (text: string) => Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>
-  scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => Array<{ type: string; value: string; confidence: 'high' | 'medium' | 'low' }>
-  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => boolean
+  findMatches?: (text: string) => LootMatchLike[]
+  scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => LootMatchLike[]
+  emit?: (matches: LootMatchLike[], opts: { targetId?: string; source?: string; causeEventId?: string }) => boolean
 }
 
 export interface AlertRuntimeLike {
@@ -260,7 +269,7 @@ export function ingest(input: IngestInput): IngestResult {
 interface Plan {
   targetId?: string
   lootValues: string[]
-  pendingLootMatches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>
+  pendingLootMatches: LootMatchLike[]
   pivot: ReturnType<typeof detectPivot>
   pivotClose: ReturnType<typeof detectPivot>
   cleanup: ReturnType<typeof detectCleanup>

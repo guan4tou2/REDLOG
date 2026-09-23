@@ -37,6 +37,8 @@ export interface ConfigState {
     enabled: boolean
     emitThinking?: boolean
   }
+  // Mirrors RedLogConfig['loot'] (Spec 032).
+  loot?: { disabledRules?: string[] }
   // Mirrors RedLogConfig['retention'] (Spec 028). The Settings page edits the
   // size budgets (bytes; 0 = unbounded) and the logged-tier age.
   retention?: {

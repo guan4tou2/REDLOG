@@ -164,7 +164,7 @@ function installBridge(): void {
       verify: async () => ({ ok: true, anchor: null, currentHead: null }),
       upgrade: async () => ({ upgraded: 0, scanned: 0 })
     },
-    loot: { getCount: async () => 2 },
+    loot: { getCount: async () => 2, rules: async () => [] },
     bookmarks: {
       list: async () => [{ id: 'q1', title: 'Mark', url: 'https://example.com', note: '', context: {}, createdAt: Date.now() }],
       get: async () => null,
@@ -334,7 +334,7 @@ describe('renderer views render without throwing', () => {
     renderView(<Settings />)
     const tab = await screen.findByText('Capture control')
     fireEvent.click(tab)
-    expect(await screen.findByText('Disk pressure / artifact rotation')).toBeTruthy()
+    expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
   })
 })

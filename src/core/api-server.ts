@@ -31,7 +31,7 @@ import { exportBundle } from './bundle-export'
 import { exportHar } from './har-export'
 import { getCaptureHealth, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
-import { ingest } from './ingest'
+import { ingest, type LootDetectorLike } from './ingest'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
@@ -53,11 +53,8 @@ let primaryOperatorName = ''
 
 let configLoaderRef: { getConfig: () => unknown; getTargets: () => string[]; getExcludeTargets?: () => string[] } | null = null
 
-let lootDetectorRef: {
-  scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => Array<{ type: string; value: string; confidence: 'high' | 'medium' | 'low' }>
-  findMatches?: (text: string) => Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>
-  emit?: (matches: Array<{ type: string; value: string; line: string; confidence: 'high' | 'medium' | 'low' }>, opts: { targetId?: string; source?: string; causeEventId?: string }) => void
-} | null = null
+// The loot scan endpoint is the only use here.
+let lootDetectorRef: Pick<LootDetectorLike, 'scan'> | null = null
 let screenshotAgentRef: { captureNow: (trigger: string) => Promise<string | null> } | null = null
 
 /** Hybrid D Phase 1: session registration callbacks from tailer-host.
