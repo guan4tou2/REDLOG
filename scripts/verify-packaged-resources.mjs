@@ -17,20 +17,21 @@ const required = [
   'hooks/shell-hook.ps1',
   'hooks/shell-common.sh',
   'hooks/redlog-session.py',
-  'plugins/starter-pack/plugin.json',
-  'plugin-runner.js'
+  'plugins/starter-pack/plugin.json'
 ]
 const forbidden = [
   'hooks/shell-preexec-hook.sh',
   'hooks/redlog-hook.zsh',
-  'hooks/claude-code-hook.sh'
+  'hooks/claude-code-hook.sh',
+  // The plugin code host was removed in Spec 027; its child script must not ship.
+  'plugin-runner.js'
 ]
 
 const missing = required.filter((item) => !fs.existsSync(path.join(root, item)))
 const legacy = forbidden.filter((item) => fs.existsSync(path.join(root, item)))
 if (missing.length || legacy.length) {
   if (missing.length) console.error(`Missing packaged resources: ${missing.join(', ')}`)
-  if (legacy.length) console.error(`Removed compatibility resources still packaged: ${legacy.join(', ')}`)
+  if (legacy.length) console.error(`Removed resources still packaged: ${legacy.join(', ')}`)
   process.exit(1)
 }
 
