@@ -99,7 +99,7 @@ export function createTray(
   overlayWindow: BrowserWindow | null,
   onToggleRecording?: () => boolean,
   onBookmark?: () => void,
-  onTogglePassThrough?: () => void
+  onReleasePassThrough?: () => void
 ): Tray {
   const tray = new Tray(getTemplateIcon())
 
@@ -146,14 +146,15 @@ export function createTray(
       }
     })
 
-    if (onTogglePassThrough) {
+    if (onReleasePassThrough) {
       // §8: the menu bar is one of the two click-free ways out of HUD
       // pass-through (⌘⇧P is the other) — the HUD itself is click-through
-      // while ghosted, so its own toggle can't turn it back off.
+      // while ghosted, so its own toggle can't turn it back off. Both only
+      // release; it used to toggle while showing ⌘⇧P, which does not.
       items.push({
-        label: 'Toggle HUD Click-through',
+        label: 'Release HUD Click-through',
         accelerator: HUD_PASSTHROUGH_ACCELERATOR,
-        click: () => onTogglePassThrough()
+        click: () => onReleasePassThrough()
       })
     }
 

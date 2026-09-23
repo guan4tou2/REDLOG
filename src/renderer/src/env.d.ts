@@ -387,6 +387,8 @@ interface RedLogAPI {
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     setExpanded?: (expanded: boolean) => void
     moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
+    setPassThrough: (on: boolean) => void
+    onPassThroughChanged: (cb: (on: boolean) => void) => () => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
     instantMark?: () => Promise<{ ok: boolean; id?: string }>

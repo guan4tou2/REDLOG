@@ -2,6 +2,8 @@ import type { IpcMain } from 'electron'
 import { screen } from 'electron'
 import type { IpcContext } from './types'
 import { saveOverlayPosition } from '../services/overlay-position'
+import { loadConfig, saveConfig } from '../../core/config'
+import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { HUD_MIN_W, HUD_MAX_W, HUD_MIN_H } from '../../core/overlay-layout'
 
 // ── Overlay state ───────────────────────────────────────────────────────────
@@ -61,13 +63,20 @@ export function applyOverlayPassThrough(): void {
   _ctx.send(overlayWindow, 'overlay:passThrough', overlayPassThrough, overlayPassThroughOpacity)
 }
 
-// §8: the single runtime toggle for pass-through, shared by the HUD action-row
-// button (on), the ⌘⇧P shortcut and the menu bar (off) — so every entry point
-// applies the same state and keeps the Settings checkbox in sync.
+// §8: the single operator toggle for pass-through, shared by the Settings
+// checkbox and the HUD action-row button (on), the ⌘⇧P shortcut and the menu
+// bar (off). It is the setting: stored, because every config save and project
+// open re-applies what is stored, and the Settings page listens for the change.
 export function setOverlayPassThrough(on: boolean): void {
   if (overlayPassThrough === on) return
   overlayPassThrough = on
   applyOverlayPassThrough()
+  const project = _ctx?.getActiveProject()
+  if (project) {
+    const dir = getProjectPath(project)
+    const cfg = loadConfig(dir)
+    saveConfig(dir, { ...cfg, overlay: { ...cfg.overlay, passThrough: on } })
+  }
   if (_ctx) _ctx.send(_ctx.getMainWindow(), 'overlay:passThroughChanged', on)
 }
 
