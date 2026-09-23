@@ -5,6 +5,30 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Config:** every store's retention now lives under `retention.<store>` with
+  `keepDays` / `maxBytes` (`casts`, `screenshots`, `httpBodies`,
+  `agentTranscripts`, `loggedTier`, `bookmarks`). The old keys
+  (`terminal.castKeepDays`, `terminal.castStoreMaxBytes`, `screenshots.*`,
+  `httpBodies.*`) are no longer read; a config that still uses them keeps
+  everything until the budgets are set again.
+- **Config:** `transcriptTailer` is now `powershellTranscript`.
+- Scope classification is one function: uppercase, port-suffixed, URL-shaped
+  and trailing-dot targets are no longer silently `unrelated`, and excluded
+  targets are masked at export in exclude-only projects.
+- Secret shapes are defined once and shared by transcript redaction and loot
+  detection; the built-in CTF flag pattern is removed.
+- The command palette and the local API search go through the same query
+  contract as Search; a failed or unparsable query says so instead of showing
+  no results.
+- Removed alert correlation (combined/burst verdicts), which wrote chain rows
+  with no source event.
+- Removed the plugin code host, which had run nothing since v0.12. Plugins
+  contributing `exporters` or `monitors` are now refused; `tailers` remain
+  trust-gated and run in the main process (the docs no longer claim isolation).
+- Removed unused code: walkthrough export, Card, the timeline scope matcher,
+  and the `events:logSecretRevealed` write path.
+- Nine superseded planning documents moved to `docs/archive/`.
+
 - Investigation views now hide configured personal/local targets by default
   and expose one visible filter chip to reveal them. Rows remain recorded and
   the delivery-time personal-domain exclusion policy is unchanged.
