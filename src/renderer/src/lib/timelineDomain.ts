@@ -117,6 +117,35 @@ export function firstStringArg(input: Record<string, unknown>, cap: number): str
   return keys.length ? `{${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ', …' : ''}}` : ''
 }
 
+/** The i18n key of each lane's name — shared by the Timeline's lane labels and
+ *  the filter bar's type picker, so both say "HTTP", not `http_navigation`. */
+export const LANE_LABEL_KEYS: Record<LaneId, string> = {
+  shell: 'timeline.shell',
+  agent: 'timeline.agent',
+  http_navigation: 'timeline.http',
+  scanner: 'timeline.scanner',
+  browser: 'timeline.browser',
+  dns: 'timeline.dns',
+  pivot: 'timeline.pivot',
+  screenshot: 'timeline.screenshot',
+  clipboard: 'timeline.clipboard',
+  file_transfer: 'timeline.files',
+  credential_use: 'timeline.credentialUse',
+  c2_checkin: 'timeline.c2Checkin',
+  marker: 'timeline.markers',
+  loot: 'timeline.loot',
+  cleanup: 'timeline.cleanup',
+  scope: 'timeline.scope',
+  process: 'timeline.process',
+  system: 'timeline.system'
+}
+
+/** What an operator calls an event type. A type with no lane of its own (a
+ *  plugin's) keeps its stored name — there is nothing better to show. */
+export function agentTypeLabel(agentType: string, t: (key: string) => string): string {
+  return (LANES as readonly string[]).includes(agentType) ? t(LANE_LABEL_KEYS[agentType as LaneId]) : agentType
+}
+
 export function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventType[]): LaneId {
   // Scope violations are stored under agent_type='system' for historical reasons
   // (historical: a since-removed webhook filter watched 'system'). Route them into their own
