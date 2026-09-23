@@ -12,7 +12,6 @@ const api: RedLogAPI = {
   platform: process.platform,
   app: {
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
-    anchorForRestart: (opts?: { toVersion?: string }) => ipcRenderer.invoke('app:anchorForRestart', opts) as Promise<import('../core/update-anchor').RestartAnchorResult>,
     openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url)
   },
   ui: {
@@ -85,12 +84,6 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('events:toolCounterparts', keys) as Promise<import('../core/db/events').RedLogEvent[]>,
     distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,
     aggregateTargets: () => ipcRenderer.invoke('events:aggregateTargets') as Promise<import('../core/db/events').TargetAggregate[]>,
-    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) =>
-      ipcRenderer.invoke('events:queryTargetPage', opts) as Promise<{
-        items: import('../core/db/events').RedLogEvent[]
-        hasMore: boolean
-        nextCursor: string | null
-      }>,
     queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) =>
       ipcRenderer.invoke('events:queryScreenshotPage', opts) as Promise<{
         items: import('../core/db/events').RedLogEvent[]
@@ -98,7 +91,6 @@ const api: RedLogAPI = {
         nextCursor: string | null
       }>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,
-    hostChain: (host: string, opts?: { chainLimit?: number }) => ipcRenderer.invoke('events:hostChain', host, opts) as Promise<import('../core/db/events').HostCausalChain | null>,
     // Recordings are searched separately from events — see casts:search in
     // main. `status` is not optional decoration: a project whose recordings
     // are still being indexed returns fewer hits than it will in a minute,
@@ -139,10 +131,7 @@ const api: RedLogAPI = {
   },
   screenshot: {
     capture: (causeEventId?: string) => ipcRenderer.invoke('screenshot:capture', causeEventId),
-    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath),
-    // 2d batch-delete: which of these screenshot ids a marker cites, to pick the
-    // confirmation tier before any deleteFile call.
-    markerReferenced: (ids: string[]) => ipcRenderer.invoke('screenshot:markerReferenced', ids)
+    deleteFile: (eventId: string, filePath: string) => ipcRenderer.invoke('screenshot:deleteFile', eventId, filePath)
     // v0.6.98 B: `read` IPC dropped. v0.6.97 B moved every renderer call site
     // onto the `redlog-screenshot://` custom protocol (streamed direct from
     // disk, no base64 round-trip). Nothing in-tree references screenshot.read
@@ -160,7 +149,7 @@ const api: RedLogAPI = {
     length: () => ipcRenderer.invoke('chain:length'),
     anchors: () => ipcRenderer.invoke('chain:anchors'),
     anchorNow: () => ipcRenderer.invoke('chain:anchorNow'),
-    verify: (opts?: { full?: boolean }) => ipcRenderer.invoke('chain:verify', opts),
+    verify: () => ipcRenderer.invoke('chain:verify'),
     upgrade: (id?: string) => ipcRenderer.invoke('chain:upgrade', id)
   },
   loot: {
@@ -173,11 +162,6 @@ const api: RedLogAPI = {
     create: (data: { title: string; url?: string; note?: string }) => ipcRenderer.invoke('bookmarks:create', data),
     update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('bookmarks:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('bookmarks:delete', id)
-  },
-  views: {
-    list: () => ipcRenderer.invoke('views:list'),
-    save: (data: { name: string; state: SavedTimelineViewState }) => ipcRenderer.invoke('views:save', data),
-    delete: (id: string) => ipcRenderer.invoke('views:delete', id)
   },
   cdp: {
     getTab: () => ipcRenderer.invoke('cdp:getTab'),
@@ -196,8 +180,7 @@ const api: RedLogAPI = {
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
-    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
-    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
+    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input)
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
@@ -216,18 +199,8 @@ const api: RedLogAPI = {
   capture: {
     health: () => ipcRenderer.invoke('capture:health')
   },
-  clock: {
-    status: () => ipcRenderer.invoke('clock:status')
-  },
   operators: {
-    list: () => ipcRenderer.invoke('operators:list'),
-    // create/rotateToken return the token FILE path (~/.redlog/tokens/<id>.token),
-    // never the raw token — the UI reveals the file rather than displaying it (§10).
-    create: (name: string) => ipcRenderer.invoke('operators:create', { name }),
-    rotateToken: (id: string) => ipcRenderer.invoke('operators:rotateToken', id),
-    revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
-    rename: (id: string, name: string) => ipcRenderer.invoke('operators:rename', id, name),
-    pubKey: (id: string) => ipcRenderer.invoke('operators:pubKey', id)
+    list: () => ipcRenderer.invoke('operators:list')
   },
   visibility: {
     signals: () => ipcRenderer.invoke('visibility:signals')
@@ -254,7 +227,6 @@ const api: RedLogAPI = {
     spawn: (id: string, cols: number, rows: number, shellId?: string) =>
       ipcRenderer.invoke('terminal:spawn', id, cols, rows, shellId),
     shells: () => ipcRenderer.invoke('terminal:shells'),
-    rediscoverShells: () => ipcRenderer.invoke('terminal:rediscoverShells'),
     write: (id: string, data: string) => ipcRenderer.send('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.send('terminal:resize', id, cols, rows),
     kill: (id: string) => ipcRenderer.send('terminal:kill', id),
@@ -291,7 +263,6 @@ const api: RedLogAPI = {
   overlay: {
     toggle: () => ipcRenderer.send('overlay:toggle'),
     hide: () => ipcRenderer.send('overlay:hide'),
-    show: () => ipcRenderer.send('overlay:show'),
     isVisible: () => ipcRenderer.invoke('overlay:isVisible'),
     onVisibilityChanged: (cb: (visible: boolean) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, visible: boolean): void => cb(visible)

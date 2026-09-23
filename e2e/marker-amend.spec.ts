@@ -23,7 +23,7 @@ interface AmendBridge {
       Promise<{ items: Array<{ id: string; data: Record<string, unknown> }> }>
     getCount: (tier: 'chained' | 'logged' | 'all') => Promise<number>
   }
-  chain: { verify: (o?: { full?: boolean }) => Promise<{ ok: boolean }> }
+  chain: { verify: () => Promise<{ ok: boolean }> }
   marker: { create: (d: Record<string, unknown>) => Promise<{ id: string } | null> }
   recording: { toggle: () => Promise<boolean> }
 }
@@ -92,7 +92,7 @@ test.describe.serial('amending a marker', () => {
     const original = stored.find((r) => !r.subtype)
     expect(original?.title).toBe('original title')
 
-    const verdict = await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.chain.verify({ full: true }))
+    const verdict = await page.evaluate(() => (window as unknown as { redlog: AmendBridge }).redlog.chain.verify())
     expect(verdict.ok).toBe(true)
   })
 

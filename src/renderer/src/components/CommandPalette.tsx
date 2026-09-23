@@ -73,9 +73,8 @@ const SECTION_KEY: Record<Section, string> = {
 /** Newest event matches the palette lists; Search has them all. */
 const EVENT_LIMIT = 40
 
-/** Case-insensitive subsequence-free substring score, same rule the Timeline's
- *  palette uses: earlier match wins, then shorter haystack. Deliberately not a
- *  fuzzy matcher — these are literal identifiers (view names, hosts, commands)
+/** Case-insensitive substring score: earlier match wins, then shorter
+ *  haystack. Deliberately not a fuzzy matcher — these are literal identifiers (view names, hosts, commands)
  *  and gap tolerance only adds noise. */
 function score(haystack: string, needle: string): number {
   if (!needle) return 1
@@ -188,20 +187,6 @@ export function CommandPalette({
             ? toast(t('palette.screenshotTaken'), 'success')
             : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
           .catch((err) => toast(t('palette.screenshotNotSaved'), { type: 'error', detail: err instanceof Error ? err.message : String(err) }))
-      }
-    })
-
-    // The Timeline keeps a palette scoped to the events it has loaded, which
-    // knows about lanes, operators and hosts in a way a database search does
-    // not. ⌘K used to open it; now that ⌘K is global, this is how it stays
-    // reachable — rather than leaving a working feature with no way in.
-    out.push({
-      id: 'action:timelinePalette', section: 'action', icon: Search,
-      label: t('palette.timelineScoped'),
-      run: () => {
-        onNavigate('timeline')
-        // After the view switch, so the Timeline is mounted to hear it.
-        setTimeout(() => window.dispatchEvent(new CustomEvent('redlog-timeline-palette')), 0)
       }
     })
 

@@ -34,4 +34,13 @@ describe('tray menu', () => {
     setTrayRecording(tray, false)
     expect(labels()).toContain('⏺ Resume Recording')
   })
+
+  // The item opens the marker dialog; the HUD's instant mark is the one that
+  // files a marker without asking, and "Quick Mark" named that one.
+  it('names the mark item after the dialog it opens', () => {
+    const win = { show: vi.fn(), focus: vi.fn(), webContents: { send: vi.fn() } }
+    createTray(win as never, null, undefined, () => {})
+    expect(labels()).toContain('⚑ Add Marker…')
+    expect(labels()).not.toContain('⚑ Quick Mark')
+  })
 })

@@ -9,6 +9,7 @@ import { isMac } from '../lib/platform'
 import { toast } from './Toast'
 import { currentShortcutOrder } from '../hooks/useAppShortcuts'
 import { useAppCounts } from '../lib/useAppCounts'
+import { settingsTarget } from '../lib/navigation'
 
 export type HudTone = 'red' | 'green' | 'amber' | 'cyan' | 'neutral'
 
@@ -76,7 +77,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
           type: 'error',
           why: t('browser.failedWhy'),
           detail: r.error,
-          action: { label: t('browser.openSettings'), onClick: () => onNavigate('settings') }
+          action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('network')) }
         })
       }
     }
@@ -117,7 +118,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
   )
 }
 
-export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean }): JSX.Element {
+export function DashboardView({ onNavigate, firstRun = false, projectName }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
   const { eventCount, lootCount, scopeViolations, scopeConfigured, loading: countsLoading } = useAppCounts()
   const [chainLen, setChainLen] = useState(0)
   // v0.14.3 §9.5: tier split for the CaptureHealthCard footer. Both
@@ -328,7 +329,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
               </div>
               <div>
                 <span className="text-redlog-text-dim text-xs">{t('dashboard.name')}</span>
-                <p className="text-redlog-text text-sm mt-0.5">{config.engagement?.name as string}</p>
+                <p className="text-redlog-text text-sm mt-0.5">{projectName}</p>
               </div>
               <div>
                 <span className="text-redlog-text-dim text-xs">{t('dashboard.operator')}</span>
@@ -345,7 +346,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
               </div>
             </div>
             <button
-              onClick={() => onNavigate('settings')}
+              onClick={() => onNavigate(settingsTarget('scope'))}
               className="mt-3 text-xs text-red-400/80 hover:text-red-300 transition-colors"
             >
               {t('dashboard.editSettings')}

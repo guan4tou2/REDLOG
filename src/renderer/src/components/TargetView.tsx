@@ -108,7 +108,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       return
     }
     setSelected(target)
-    const page = await window.redlog.events.queryTargetPage({ targetId: target, limit: PAGE_SIZE })
+    const page = await window.redlog.events.queryPage({ targetId: target, limit: PAGE_SIZE })
     setEvidence(page.items)
     setHasMore(page.hasMore)
     setNextCursor(page.nextCursor)
@@ -117,7 +117,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const loadMore = useCallback(async () => {
     if (!selected || !nextCursor || loadingMore) return
     setLoadingMore(true)
-    const page = await window.redlog.events.queryTargetPage({ targetId: selected, limit: PAGE_SIZE, cursor: nextCursor })
+    const page = await window.redlog.events.queryPage({ targetId: selected, limit: PAGE_SIZE, cursor: nextCursor })
     setEvidence((prev) => [...prev, ...page.items])
     setHasMore(page.hasMore)
     setNextCursor(page.nextCursor)

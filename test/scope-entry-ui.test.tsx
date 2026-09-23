@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
 import GeneralPage from '../src/renderer/src/components/settings/GeneralPage'
@@ -31,7 +31,7 @@ describe('scope and project identity entry', () => {
 
   it('renders an existing engagement ID as read-only', () => {
     const config = {
-      engagement: { id: 'immutable-id', name: 'Lab' }, operator: { id: 'op', name: 'Operator' },
+      engagement: { id: 'immutable-id' }, operator: { id: 'op', name: 'Operator' },
       network: { whitelist: [], blacklist: [], checkInterval: 60 },
       scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
     } as ConfigState
@@ -39,5 +39,29 @@ describe('scope and project identity entry', () => {
     const engagementId = screen.getAllByLabelText('ID')[0] as HTMLInputElement
     expect(engagementId.readOnly).toBe(true)
     expect(engagementId.value).toBe('immutable-id')
+  })
+
+  // One name: the project's. Settings used to edit a separate engagement.name
+  // that only the Dashboard showed, while the title bar and the picker kept the
+  // project name, so the two drifted apart.
+  it('renames the project itself from Settings', async () => {
+    const rename = vi.fn(async (_id: string, name: string) => ({ ok: true, name }))
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      project: { active: async () => ({ id: 'p1', name: 'Old name', createdAt: 0 }), rename }
+    }
+    const renamed = vi.fn()
+    window.addEventListener('redlog:project-renamed', renamed)
+    const config = {
+      engagement: { id: 'p1' }, operator: { id: 'op', name: 'Operator' },
+      network: { whitelist: [], blacklist: [], checkInterval: 60 },
+      scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
+    } as unknown as ConfigState
+    render(<I18nProvider><GeneralPage config={config} setConfig={vi.fn()} /></I18nProvider>)
+    const name = await screen.findByDisplayValue('Old name')
+    fireEvent.change(name, { target: { value: 'New name' } })
+    fireEvent.blur(name)
+    await waitFor(() => expect(rename).toHaveBeenCalledWith('p1', 'New name'))
+    expect(renamed).toHaveBeenCalledOnce()
+    window.removeEventListener('redlog:project-renamed', renamed)
   })
 })

@@ -108,21 +108,6 @@ interface BookmarkContext {
   lastCommand?: string
 }
 
-interface SavedTimelineViewState {
-  timeStart?: number
-  timeEnd?: number
-  zoom?: number
-  hiddenLanes?: string[]
-  filterQuery?: string
-}
-
-interface SavedTimelineView {
-  id: string
-  name: string
-  createdAt: number
-  state: SavedTimelineViewState
-}
-
 interface Bookmark {
   id: string
   title: string
@@ -161,7 +146,6 @@ interface RedLogAPI {
   platform: string
   app: {
     checkForUpdates: () => Promise<void>
-    anchorForRestart?: (opts?: { toVersion?: string }) => Promise<import('../../core/update-anchor').RestartAnchorResult>
     openExternal: (url: string) => Promise<void>
   }
   ui: {
@@ -228,11 +212,6 @@ interface RedLogAPI {
     /** §9/§14-4c: per-target counts + first/last-seen, aggregated in SQL over
      *  the whole timeline (both tiers) — replaces a capped client-side rollup. */
     aggregateTargets: () => Promise<import('../../core/db/events').TargetAggregate[]>
-    queryTargetPage: (opts: { targetId: string; limit?: number; cursor?: string | null }) => Promise<{
-      items: RedLogEvent[]
-      hasMore: boolean
-      nextCursor: string | null
-    }>
     queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) => Promise<{
       items: RedLogEvent[]
       hasMore: boolean
@@ -240,7 +219,6 @@ interface RedLogAPI {
     }>
     /** §10: distinct hosts across the timeline for ⌘K host search. */
     distinctHosts: () => Promise<import('../../core/db/events').HostAggregate[]>
-    hostChain?: (host: string, opts?: { chainLimit?: number }) => Promise<import('../../core/db/events').HostCausalChain | null>
     /** Full-text search inside terminal recordings — see src/core/cast-index.ts. */
     searchCasts: (query: string, limit?: number) => Promise<Array<{
       castRel: string; tMs: number; off: number; len: number; snippet: string
@@ -270,14 +248,16 @@ interface RedLogAPI {
   screenshot: {
     capture: (causeEventId?: string) => Promise<string | null>
     deleteFile: (eventId: string, filePath: string) => Promise<{ ok: boolean; error?: string }>
-    /** 2d batch-delete: subset of these screenshot ids that a marker cites. */
-    markerReferenced: (ids: string[]) => Promise<string[]>
   }
   scope: {
-    getViolations: () => Promise<Array<{
-      id: string; target: string; command: string; timestamp: number
-      sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
-    }>>
+    getViolations: () => Promise<{
+      rows: Array<{
+        id: string; target: string; command: string; timestamp: number
+        sourceTs?: number; distance: string; judged: 'live' | 'retroactive'; cleared: boolean
+      }>
+      /** More violation records exist than the page read (Constitution IV). */
+      truncated: boolean
+    }>
     getViolationCount: () => Promise<number>
     isConfigured: () => Promise<boolean>
     /** The newest scope_recomputed summary, or null. The Scope banner is a
@@ -288,7 +268,7 @@ interface RedLogAPI {
     length: () => Promise<number>
     anchors: () => Promise<ChainAnchorInfo[]>
     anchorNow: () => Promise<ChainAnchorInfo | null>
-    verify: (opts?: { full?: boolean }) => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null; walked?: number; brokenAtEventId?: string | null; brokenReason?: string | null; clockAnomalies?: Array<{ eventId: string; reason: string }>; anchorMatchesWalkedHead?: boolean }>
+    verify: () => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null; walked?: number; brokenAtEventId?: string | null; brokenReason?: string | null; clockAnomalies?: Array<{ eventId: string; reason: string }>; anchorMatchesWalkedHead?: boolean }>
     upgrade: (id?: string) => Promise<ChainAnchorInfo | { upgraded: number; scanned: number } | null>
   }
   loot: {
@@ -301,14 +281,6 @@ interface RedLogAPI {
     get: (id: string) => Promise<Bookmark | null>
     create: (data: { title: string; url?: string; note?: string }) => Promise<Bookmark>
     update: (id: string, data: Partial<Bookmark>) => Promise<Bookmark | null>
-    delete: (id: string) => Promise<boolean>
-  }
-  // v0.6.96 Clean-3: preload always exports views (v0.6.90 D); the `?` was
-  // a leftover from the first day when the shim was optional. Types now
-  // reflect reality.
-  views: {
-    list: () => Promise<SavedTimelineView[]>
-    save: (data: { name: string; state: SavedTimelineViewState }) => Promise<SavedTimelineView>
     delete: (id: string) => Promise<boolean>
   }
   cdp: {
@@ -329,7 +301,6 @@ interface RedLogAPI {
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
     executeExportPlan: (input: { planId: string }) => Promise<ExportPlanResult>
-    revealPath: (target: string) => Promise<boolean>
   }
   visibility: {
     /** §22 disclosure signals, or null with no project open. */
@@ -353,7 +324,6 @@ interface RedLogAPI {
     spawn: (id: string, cols: number, rows: number, shellId?: string) =>
       Promise<{ pid: number; shell: string; shellLabel: string; hookSourced: boolean; recording: boolean; castTruncated: boolean; paused: boolean }>
     shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
-    rediscoverShells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
     kill: (id: string) => void
@@ -382,10 +352,8 @@ interface RedLogAPI {
   overlay: {
     toggle: () => void
     hide: () => void
-    show: () => void
     isVisible: () => Promise<boolean>
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
-    setExpanded?: (expanded: boolean) => void
     moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
     setPassThrough: (on: boolean) => void
     onPassThroughChanged: (cb: (on: boolean) => void) => () => void
@@ -399,19 +367,6 @@ interface RedLogAPI {
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
-    /** Returns { id, name, signerPubKey, tokenPath } — or { error, id } if the
-     *  DB write failed. tokenPath points at the written ~/.redlog/tokens file;
-     *  the raw token is never returned to the renderer (§10). */
-    create: (name: string) => Promise<
-      { id: string; name: string; signerPubKey: string | null; tokenPath: string }
-      | { error: string; id: string }
-      | null
-    >
-    /** Rotates the token, rewrites the token file; returns { id, tokenPath }. */
-    rotateToken: (id: string) => Promise<{ id: string; tokenPath: string } | null>
-    revoke: (id: string) => Promise<boolean>
-    rename: (id: string, name: string) => Promise<boolean>
-    pubKey: (id: string) => Promise<string | null>
   }
   hooks: {
     detect: () => Promise<HookInfo[]>
@@ -430,9 +385,6 @@ interface RedLogAPI {
   pivots: {
     getActive: () => Promise<unknown[]>
     onChange: (cb: (pivots: Array<{ via: string; tool: string; route?: string; ts: number }>) => void) => () => void
-  }
-  clock: {
-    status: () => Promise<{ offsetMs: number | null; lastQuery: unknown }>
   }
   capture: {
     health: () => Promise<CaptureHealthInfo | null>
@@ -531,7 +483,7 @@ interface ChainAnchorInfo {
 }
 
 interface RedLogConfigPartial {
-  engagement?: { id?: string; name?: string }
+  engagement?: { id?: string }
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
