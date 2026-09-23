@@ -23,9 +23,11 @@ for full commit body + generated notes.
 - **Spec Kit:** the CI gate now fails where it used to skip: an annotated or
   misspelt `**Status**`, a spec folder without `spec.md`, an indented unchecked
   task, an empty `verification.md`, and a Verified spec without `plan.md` or a
-  RED record. From spec 032, `verification.md` follows
+  RED record. From spec 033, `verification.md` follows
   `.specify/templates/overrides/verification-template.md` and records every
   workflow gate, including one that ran clean (constitution 1.1.0).
+- **Spec Kit:** the Claude Code integration is installed alongside Codex, so
+  `/speckit-*` works in Claude Code; Codex stays the default.
 
 ## v0.16.0 — 2026-09-23
 

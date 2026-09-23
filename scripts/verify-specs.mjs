@@ -8,7 +8,8 @@ const failures = []
 
 const STATUSES = ['Draft', 'Implemented', 'Verified', 'Withdrawn']
 // Constitution 1.1.0: verification.md follows the template from this spec on.
-const TEMPLATE_FROM = 32
+// 032 was verified before the template existed.
+const TEMPLATE_FROM = 33
 const GATES = ['Clarify', 'Checklist', 'Analyze', 'Converge']
 // Verified before the verification record had a fixed shape. An entry that is
 // no longer needed fails the gate, so this list can only shrink.
