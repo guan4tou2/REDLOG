@@ -283,3 +283,74 @@ capabilities revokes it automatically. (`mcpTools` was retired in #88.)
 - Renderer types are **hand-mirrored** in `src/renderer/src/env.d.ts` — there
   is no automatic inference from preload, and it has drifted (§4 of the
   audit).
+
+## 這個 codebase 會咬人的地方
+
+> 原載於 2026-09 交接文件（已歸檔），仍然有效。
+
+接手前讀完這一節，可以省下我這輪踩過的每一個坑。
+
+### native module 的 ABI 陷阱
+
+`better-sqlite3` 是原生模組，**vitest 需要 Node ABI，e2e 需要 Electron ABI**。切換：
+
+```bash
+npx electron-rebuild -f -w better-sqlite3   # 換成 Electron ABI（跑 e2e 前）
+npm rebuild better-sqlite3                  # 換回 Node ABI（跑 unit 前）
+```
+
+忘了換回來的症狀是 **unit 測試整批 skip 而不是失敗**——DB 相關的 suite 用
+`describe.skipIf(!available)` 保護。看到 `Tests 8 skipped (8)` 就是這件事。
+
+那個保護的正確寫法在 `test/cast-index.test.ts:11-21`：**必須 `new Database(':memory:')` 探測**，
+只 import 是不夠的（binding 是延遲載入的，import-only 的守衛會回報「可用」然後在被測模組內部炸掉）。
+
+### TDZ：只在打包後才出現的崩潰
+
+React hook 的 dep array 在 render 時求值。一個 hook 若引用**宣告在它下面**的 `const`，在
+esbuild 打包後會是 temporal-dead-zone 崩潰——而 **vitest 看不到**，因為它是逐檔轉譯原始碼。
+
+這個 codebase 已經被咬過**三次**（`TargetView` 的 listNav、`Timeline` 的 `collapsedBands`、
+`App` 的 visibility memo）。相關檔案裡都寫了契約註解，照著擺：`Timeline.tsx` 的 fold memo 在
+`effectsById` 之後、`badgesById` 之前，`App.tsx` 的 visibility memo 緊接狀態區。
+
+**e2e 是唯一的守衛。** 動過 Timeline.tsx 或 App.tsx 的 hook 順序就跑 `npm run build && npm run e2e`。
+
+### 兩層事件表
+
+`events`（上鏈）與 `events_logged`（支撐證據，30 天後清）。`classifyTier` 決定去哪一張，
+未列出的 pair 預設 chained。**任何 join 或聚合都必須考慮兩張表**——語料大半在 logged 層
+（所有 HTTP、DNS、browser console、agent thinking）。
+
+已知的例外：`searchEvents` 只查 `events`。這是既有行為，不是這輪造成的。
+
+### 腳本化編輯要 assert
+
+我這輪犯過一次：一個 `s.replace(old, new)` 的錨點不符、靜默跳過，害 `scopeSignalFor` 的 import
+沒落地。dispatch 在 insert 之前，所以**任何帶目標的 shell POST 都會 500,連事件都沒寫進去**——
+擷取靜默停掉，三個 commit 後才被 e2e 抓到。
+
+現在有 typecheck 會接住這一類。但仍然：批次編輯後，grep 一下該編輯應該引入的識別字。
+
+### 不要對正在編輯的檔案下 `git checkout --`
+
+它會還原到 HEAD，包含未提交的工作。我用它撤銷一行故意改壞的測試，連帶清掉了同一個檔案裡
+一小時的改動。
+
+### 從原始碼解析的守衛測試
+
+這個 repo 有一批測試是讀 `.ts` 原始碼、用 regex 斷言規則的（`design-tokens`、`lane-colours`、
+`buttons`、`truncation`、`danger-not-on-numbers`、`list-keyboard`、`i18n-keys`、
+`housekeeping-parity`、`redaction-boundary`、`typecheck-guard`）。改 UI 前先看它們要什麼。
+
+兩個容易忘的：**截斷的 span 一定要有 `title`**；**危險紅絕不出現在數字上**（`tabular-nums` 與
+danger 類名不能出現在同一個 className）。
+
+### i18n 掃描器看不到動態鍵
+
+`test/i18n-keys.test.ts` 只掃字面 `t('a.b')`。用變數組出來的鍵它看不到——`sidebar.http_history`
+就是這樣漏掉的，那個鍵兩本語言檔都沒有，直接把鍵名印給操作員。
+
+掃描器現在也認 `reasonKey: 'a.b'` 字面值。再有這種模式，記得一起加進去。
+
+---

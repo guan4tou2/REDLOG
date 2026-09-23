@@ -27,9 +27,9 @@ RedLog 已具備成熟工程方法的主要材料，但還沒有形成一條可�
 
 RedLog 的規格不只是功能清單。以下文件包含可驗證行為：
 
-- `docs/PRD-COMPLETION.md`：優先級、大小、相依、驗收與 Definition of Done。
+- `docs/archive/PRD-COMPLETION.md`：優先級、大小、相依、驗收與 Definition of Done。
 - `docs/domain/SPEC-*.md`：Given/When/Then scenarios、invariant、property、acceptance criteria。
-- `docs/DEV-REQUIREMENTS-capture-onboarding.md`：從 model test 到 UI integration 的完整示例。
+- `docs/archive/DEV-REQUIREMENTS-capture-onboarding.md`：從 model test 到 UI integration 的完整示例。
 - `docs/TESTING.md`：設定值、可觀察行為與 proof test 的對照矩陣。
 - `docs/UIUX-STANDARD.md`：互動規則、驗收條件與已知差距。
 
