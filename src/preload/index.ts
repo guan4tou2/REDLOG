@@ -191,8 +191,7 @@ const api: RedLogAPI = {
   },
   data: {
     resolveExportPlan: (request: ExportRequest) => ipcRenderer.invoke('data:resolveExportPlan', request),
-    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input),
-    revealPath: (target: string) => ipcRenderer.invoke('data:revealPath', target)
+    executeExportPlan: (input: { planId: string }) => ipcRenderer.invoke('data:executeExportPlan', input)
   },
   hooks: {
     detect: () => ipcRenderer.invoke('hooks:detect'),
@@ -215,14 +214,7 @@ const api: RedLogAPI = {
     status: () => ipcRenderer.invoke('clock:status')
   },
   operators: {
-    list: () => ipcRenderer.invoke('operators:list'),
-    // create/rotateToken return the token FILE path (~/.redlog/tokens/<id>.token),
-    // never the raw token — the UI reveals the file rather than displaying it (§10).
-    create: (name: string) => ipcRenderer.invoke('operators:create', { name }),
-    rotateToken: (id: string) => ipcRenderer.invoke('operators:rotateToken', id),
-    revoke: (id: string) => ipcRenderer.invoke('operators:revoke', id),
-    rename: (id: string, name: string) => ipcRenderer.invoke('operators:rename', id, name),
-    pubKey: (id: string) => ipcRenderer.invoke('operators:pubKey', id)
+    list: () => ipcRenderer.invoke('operators:list')
   },
   visibility: {
     signals: () => ipcRenderer.invoke('visibility:signals')

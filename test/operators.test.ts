@@ -88,10 +88,10 @@ describeDB('operators', () => {
     expect(ops.resolveOperatorByToken('')).toBeNull()
   })
 
-  // The §5c operator-management IPCs (operators:create/rename/pubKey) lean on
-  // these three, so pin their contract here rather than only in the IPC layer.
+  // §5c operator management has no IPC or UI; these are its core building
+  // blocks, pinned here.
   describe('§5c management surface', () => {
-    it('slugifyOperatorId derives a collision-resistant id the create IPC uses as a PK', () => {
+    it('slugifyOperatorId derives a collision-resistant id usable as a PK', () => {
       // <base>-<6 random chars>: the random suffix means two operators can share
       // a display name and still get distinct ids (no forced rename).
       expect(ops.slugifyOperatorId('Codex Agent')).toMatch(/^codex-agent-[a-z0-9]{6}$/)
