@@ -118,11 +118,6 @@ const api: RedLogAPI = {
       ipcRenderer.on('events:new-batch', handler)
       return () => ipcRenderer.removeListener('events:new-batch', handler)
     },
-    // Layer 3 (four-layer redaction): every time the reviewer reveals raw
-    // bytes of a redacted span, we log a chained system.secret_revealed event
-    // so the audit trail shows who saw what and when.
-    logSecretRevealed: (sourceEventId: string, fields: string[]) =>
-      ipcRenderer.invoke('events:logSecretRevealed', sourceEventId, fields),
     toggleDoNotExport: (eventId: string) =>
       ipcRenderer.invoke('events:toggleDoNotExport', eventId) as Promise<boolean | null>,
     isDoNotExport: (eventId: string) =>
