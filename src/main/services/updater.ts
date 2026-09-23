@@ -267,7 +267,8 @@ export async function checkForUpdates(opts: { manual?: boolean } = {}): Promise<
     if (opts.manual) {
       try {
         const { dialog } = await import('electron')
-        await dialog.showMessageBox({ type: 'info', message: 'Update check is disabled in air-gap mode.', detail: 'Turn off Settings ▸ Network ▸ Air-gap to check for updates.' })
+        // No Settings control exists for this; the key is only in config.yaml.
+        await dialog.showMessageBox({ type: 'info', message: 'Update check is disabled in air-gap mode.', detail: "Air-gap is set by network.offline in this project's config.yaml. Set it to false to check for updates." })
       } catch { /* no window */ }
     }
     return
