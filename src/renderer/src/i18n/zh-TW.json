@@ -865,7 +865,7 @@
   "palette.hostHits": "{{count}} 筆",
   "palette.operatorPrimary": "主要",
   "settings.categories": "設定分類",
-  "settings.searchPages": "搜尋設定…",
+  "settings.filterPages": "篩選分類…",
   "settings.noPageMatches": "沒有符合「{{query}}」的分類",
   "settings.groupCapture": "記錄什麼",
   "settings.groupScope": "範圍",
