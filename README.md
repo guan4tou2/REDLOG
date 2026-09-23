@@ -442,7 +442,7 @@ Export your project config as a `.yaml` or `.json` profile:
 | Key | Action |
 |-----|--------|
 | Cmd+1..8 | Switch views |
-| Cmd+Shift+M | Quick marker |
+| Cmd+Shift+M | Add marker (opens the marker dialog) |
 | Cmd+/ | Search |
 
 ## Security Model
