@@ -11,6 +11,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let aggregateTargets: typeof import('../src/core/db/events').aggregateTargets
 let queryEvents: typeof import('../src/core/db/events').queryEvents
@@ -21,6 +22,7 @@ try {
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
+  getDB = dbMod.getDB
   insertEventRaw = eventsMod.insertEvent
   aggregateTargets = eventsMod.aggregateTargets
   queryEvents = eventsMod.queryEvents
@@ -86,9 +88,13 @@ describeDB('aggregateTargets', () => {
     // busy target came back short and a target seen only in the dropped tail
     // vanished. Insert one sparse target, then 1100 for a busy one.
     insertEvent('shell', { command: 'seed', detectedTarget: 'sparse.example.com' }, { targetId: 'sparse.example.com' })
-    for (let i = 0; i < 1100; i++) {
-      insertEvent('shell', { command: `hit ${i}`, detectedTarget: 'busy.example.com' }, { targetId: 'busy.example.com' })
-    }
+    // One transaction: 1100 autocommits (one fsync each) is the cost that
+    // outlasted the timeout on the Windows runner.
+    getDB().transaction(() => {
+      for (let i = 0; i < 1100; i++) {
+        insertEvent('shell', { command: `hit ${i}`, detectedTarget: 'busy.example.com' }, { targetId: 'busy.example.com' })
+      }
+    })()
     const rows = aggregateTargets()
     const byTgt = Object.fromEntries(rows.map((r) => [r.target, r]))
     expect(byTgt['busy.example.com'].eventCount).toBe(1100) // a 1000-cap could not
