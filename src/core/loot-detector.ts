@@ -2,9 +2,12 @@ import crypto from 'crypto'
 import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
-import { DETECT_AS_LOOT, compileShape } from './secret-patterns'
+import { DETECT_AS_LOOT, SECRET_SHAPES, compileShape } from './secret-patterns'
 
 interface LootMatch {
+  /** Stable rule identity, the key a rule is switched off by: the built-in's
+   *  `type`, or `${pluginId}:${patternName}` for a plugin rule (Spec 032). */
+  ruleId: string
   type: string
   value: string
   line: string
@@ -20,8 +23,10 @@ interface LootMatch {
 // Built-in loot shapes and their order live in `secret-patterns.ts`, beside
 // transcript redaction's list. Order is load-bearing: it is the order of the
 // chained loot event's `matches`.
-const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low'; group: number }> =
-  DETECT_AS_LOOT.map(({ shape, type, confidence, group }) => ({ type, pattern: compileShape(shape), confidence, group }))
+const LOOT_PATTERNS: Array<{ type: string; pattern: RegExp; confidence: 'high' | 'medium' | 'low'; group: number; description: string }> =
+  DETECT_AS_LOOT.map(({ shape, type, confidence, group }) => ({
+    type, pattern: compileShape(shape), confidence, group, description: SECRET_SHAPES[shape].description
+  }))
 
 // Plugin-contributed loot patterns (🟢 declarative). Kept separate from the
 // built-ins so we can list/replace them without touching the base set.
@@ -108,21 +113,51 @@ export function listExternalLootPatterns(): Array<{
   }))
 }
 
+/** Every rule the detector runs, built-in first, for the Settings list.
+ *  `id` is what `disabledRules` holds. */
+export function listLootRules(): Array<{
+  id: string
+  type: string
+  confidence: 'high' | 'medium' | 'low'
+  pluginId: string | null
+  description?: string
+}> {
+  return [
+    ...LOOT_PATTERNS.map((p) => ({ id: p.type, type: p.type, confidence: p.confidence, pluginId: null, description: p.description })),
+    ...externalPatterns.map((p) => ({
+      id: pluginRuleId(p.pluginId, p.patternName), type: p.type, confidence: p.confidence, pluginId: p.pluginId, description: p.description
+    }))
+  ]
+}
+
+function pluginRuleId(pluginId: string, patternName: string): string {
+  return `${pluginId}:${patternName}`
+}
+
 export class LootDetector {
   private engagementId = 'default'
   private operatorId = ''
   private detectedHashes = new Set<string>()
+  private disabledRules = new Set<string>()
 
-  configure(opts: { engagementId?: string; operatorId?: string }): void {
+  configure(opts: { engagementId?: string; operatorId?: string; disabledRules?: readonly string[] }): void {
     if (opts.engagementId && opts.engagementId !== this.engagementId) {
       this.engagementId = opts.engagementId
       this.detectedHashes.clear()
     }
     if (opts.operatorId) this.operatorId = opts.operatorId
+    if (opts.disabledRules) this.disabledRules = new Set(opts.disabledRules)
   }
 
+  /** Whether a match is reported as loot. A switched-off rule still matches —
+   *  its values are still masked — it is only not recorded (Spec 032). */
+  isReported(m: Pick<LootMatch, 'ruleId'>): boolean {
+    return !this.disabledRules.has(m.ruleId)
+  }
+
+  /** Matches of the rules that are switched on, recorded as loot. */
   scan(text: string, targetId?: string, source?: string, causeEventId?: string): LootMatch[] {
-    const matches = this.findMatches(text)
+    const matches = this.findMatches(text).filter((m) => this.isReported(m))
     if (matches.length > 0 && this.operatorId) this.emit(matches, { targetId, source, causeEventId })
     return matches
   }
@@ -138,12 +173,15 @@ export class LootDetector {
     // Built-in patterns carry no plugin attribution; only external ones do.
     for (const { type, pattern, confidence, group } of LOOT_PATTERNS) {
       for (const { value, index } of execAll(pattern, text, group)) {
-        matches.push({ type, value: value.slice(0, 500), line: extractLine(text, index), confidence })
+        matches.push({ ruleId: type, type, value: value.slice(0, 500), line: extractLine(text, index), confidence })
       }
     }
     for (const { type, pattern, confidence, group, pluginId, patternName } of externalPatterns) {
       for (const { value, index } of execAll(pattern, text, group)) {
-        matches.push({ type, value: value.slice(0, 500), line: extractLine(text, index), confidence, pluginId, patternName })
+        matches.push({
+          ruleId: pluginRuleId(pluginId, patternName), type, value: value.slice(0, 500),
+          line: extractLine(text, index), confidence, pluginId, patternName
+        })
       }
     }
     return matches
@@ -163,6 +201,7 @@ export class LootDetector {
     const fresh: LootMatch[] = []
     const keys: string[] = []
     for (const m of matches) {
+      if (!this.isReported(m)) continue
       const key = lootKey(m, opts.targetId)
       if (this.detectedHashes.has(key) || keys.includes(key)) continue
       keys.push(key)

@@ -19,7 +19,7 @@ import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR } from '../core/sho
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
-import { LootDetector } from '../core/loot-detector'
+import { LootDetector, listLootRules } from '../core/loot-detector'
 import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop } from '../core/clock'
 import { configureRedaction, redactFields } from '../core/redaction'
@@ -544,7 +544,7 @@ function startProject(project: ProjectMeta): void {
   // one's first IP tick lands.
   alertRuntime.resetOnProjectSwitch()
   alertRuntime.configure(config, { engagementId, operatorId }, scopeTargets)
-  lootDetector.configure({ engagementId, operatorId })
+  lootDetector.configure({ engagementId, operatorId, disabledRules: config.loot?.disabledRules ?? [] })
   configureCaptureHealth(config as unknown as Record<string, unknown>)
   configureRedaction(config.redaction)
   // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
@@ -1273,6 +1273,7 @@ app.whenReady().then(() => {
     }, configChangedId)
     configureTerminal({ engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id,
       maxCastBytes: newConfig.terminal?.maxCastBytes })
+    lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
     configureClipboardMonitor({
       enabled: newConfig.clipboard?.enabled ?? false,
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
@@ -1371,6 +1372,7 @@ app.whenReady().then(() => {
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => activeProject ? getLootCount() : 0)
+  ipcMain.handle('loot:rules', () => listLootRules())
 
   // --- Bookmarks ---
   ipcMain.handle('bookmarks:list', () => activeProject ? listBookmarks() : [])

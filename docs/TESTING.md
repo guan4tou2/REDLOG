@@ -540,6 +540,16 @@ signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust
 | `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-tailer` |
 | `powershellTranscript.enabled` | `false` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript` |
 
+## 2.13 `loot`
+
+| Option | Default | Behaviour | Proof |
+|---|---|---|---|
+| `loot.disabledRules` | `['jwt', 'generic_api_key']` | rule ids (built-in `type`, or `pluginId:patternName`) not recorded as loot; a switched-off rule still matches, so its values are still masked in the record and in exports. `[]` records every rule | `loot-rule-switches`, `loot-rules-group` |
+
+What any rule records (Spec 031): every occurrence is masked; one loot row per
+secret per target, compared on the full value; a failed write is reported in
+Capture Health and retried on the next sighting (`loot-correctness`).
+
 ---
 
 # Part 3 — Config file handling
