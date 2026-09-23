@@ -24,31 +24,33 @@ describe('isOnPath', async () => {
 
   it('finds an executable in a PATH directory (POSIX)', () => {
     touch('mitmdump')
-    expect(isOnPath('mitmdump', { platform: 'linux', env: { PATH: `/nonexistent${path.delimiter}${dir}` } })).toBe(true)
-    expect(isOnPath('nmap', { platform: 'linux', env: { PATH: dir } })).toBe(false)
+    expect(isOnPath('mitmdump', { platform: 'linux', delimiter: path.delimiter, env: { PATH: `/nonexistent${path.delimiter}${dir}` } })).toBe(true)
+    expect(isOnPath('nmap', { platform: 'linux', delimiter: path.delimiter, env: { PATH: dir } })).toBe(false)
   })
 
   it('ignores a file without the execute bit, and directories (POSIX)', () => {
     if (process.platform === 'win32') return
     touch('notes', 0o644)
     fs.mkdirSync(path.join(dir, 'folder'))
-    expect(isOnPath('notes', { platform: 'linux', env: { PATH: dir } })).toBe(false)
-    expect(isOnPath('folder', { platform: 'linux', env: { PATH: dir } })).toBe(false)
+    expect(isOnPath('notes', { platform: 'linux', delimiter: path.delimiter, env: { PATH: dir } })).toBe(false)
+    expect(isOnPath('folder', { platform: 'linux', delimiter: path.delimiter, env: { PATH: dir } })).toBe(false)
   })
 
   it('expands PATHEXT on Windows, reading Path as well as PATH', () => {
     touch('wsl.EXE')
     const env = { Path: dir, PATHEXT: '.COM;.EXE;.BAT' }
     expect(isOnPath('wsl', { platform: 'win32', env, delimiter: path.delimiter })).toBe(true)
-    expect(isOnPath('wsl.exe', { platform: 'win32', env, delimiter: path.delimiter })).toBe(true)
+    // Case-insensitive matching is the filesystem's on Windows; spell the
+    // extension as the file does so the test holds on a case-sensitive CI disk.
+    expect(isOnPath('wsl.EXE', { platform: 'win32', env, delimiter: path.delimiter })).toBe(true)
     expect(isOnPath('bash', { platform: 'win32', env, delimiter: path.delimiter })).toBe(false)
   })
 
   it('never treats a name with a path or shell syntax as a lookup', () => {
     touch('nmap')
-    expect(isOnPath(`${dir}/nmap`, { platform: 'linux', env: { PATH: dir } })).toBe(false)
-    expect(isOnPath('nmap; curl x', { platform: 'linux', env: { PATH: dir } })).toBe(false)
-    expect(isOnPath('', { platform: 'linux', env: { PATH: dir } })).toBe(false)
+    expect(isOnPath(`${dir}/nmap`, { platform: 'linux', delimiter: path.delimiter, env: { PATH: dir } })).toBe(false)
+    expect(isOnPath('nmap; curl x', { platform: 'linux', delimiter: path.delimiter, env: { PATH: dir } })).toBe(false)
+    expect(isOnPath('', { platform: 'linux', delimiter: path.delimiter, env: { PATH: dir } })).toBe(false)
   })
 
   it('hooks-manager no longer spawns which/where to probe', () => {
