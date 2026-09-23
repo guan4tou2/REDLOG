@@ -4,7 +4,8 @@ import path from 'path'
 
 const SOURCES = [
   'src/main/terminal-manager.ts',
-  'src/main/services/transcript-tailer.ts',
+  'src/main/services/powershell-transcript.ts',
+  'src/main/services/agent-tailer.ts',
   'src/main/services/cdp-connector.ts',
   'src/main/services/screenshot-agent.ts',
   'src/main/services/connection-monitor.ts',

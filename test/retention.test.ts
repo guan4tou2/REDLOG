@@ -95,16 +95,25 @@ describeDB('retention sweep', () => {
   it('prunes only files older than the window', () => {
     const old = seed('casts', 'old.cast', 40)
     const fresh = seed('casts', 'fresh.cast', 2)
-    const swept = sweepRetention({ terminal: { castKeepDays: 30 } }, OPTS)
+    const swept = sweepRetention({ retention: { casts: { keepDays: 30 } } }, OPTS)
     expect(swept.cast).toBe(1)
     expect(fs.existsSync(old)).toBe(false)
     expect(fs.existsSync(fresh)).toBe(true)
   })
 
+  it('ignores the retired spellings — an old config keeps everything rather than guessing (Spec 028)', () => {
+    const old = seed('casts', 'old.cast', 40)
+    const shot = seed('screenshots', 'old.jpg', 40)
+    const legacy = { terminal: { castKeepDays: 1 }, screenshots: { keepDays: 1 } } as Parameters<typeof sweepRetention>[0]
+    expect(sweepRetention(legacy, OPTS)).toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 })
+    expect(fs.existsSync(old)).toBe(true)
+    expect(fs.existsSync(shot)).toBe(true)
+  })
+
   it('writes an audit event per deletion — evidence never disappears silently', () => {
     seed('casts', 'a.cast', 40)
     seed('casts', 'b.cast', 40)
-    sweepRetention({ terminal: { castKeepDays: 30 } }, OPTS)
+    sweepRetention({ retention: { casts: { keepDays: 30 } } }, OPTS)
     // The whole point: a reviewer looking at a missing .cast finds the row
     // explaining it, rather than an unexplained gap.
     expect(auditEvents('cast_pruned')).toBe(2)
@@ -115,7 +124,7 @@ describeDB('retention sweep', () => {
     seed('screenshots', 'a.jpg', 40)
     seed('agent-transcripts', 'a.jsonl', 40)
     const swept = sweepRetention(
-      { terminal: { castKeepDays: 30 }, screenshots: { keepDays: 0 }, agentTranscripts: { keepDays: 10 } }, OPTS
+      { retention: { casts: { keepDays: 30 }, screenshots: { keepDays: 0 }, agentTranscripts: { keepDays: 10 } } }, OPTS
     )
     expect(swept).toEqual({ cast: 1, screenshots: 0, agentTranscripts: 1, httpBodies: 0 })
     expect(auditEvents('screenshot_pruned')).toBe(0)
@@ -124,13 +133,13 @@ describeDB('retention sweep', () => {
 
   it('ignores files it does not own', () => {
     const other = seed('casts', 'notes.txt', 400)
-    sweepRetention({ terminal: { castKeepDays: 1 } }, OPTS)
+    sweepRetention({ retention: { casts: { keepDays: 1 } } }, OPTS)
     expect(fs.existsSync(other)).toBe(true)
   })
 
   it('is a no-op without an operator id — every event needs attribution', () => {
     const f = seed('casts', 'a.cast', 400)
-    expect(sweepRetention({ terminal: { castKeepDays: 1 } }, { engagementId: 'e', operatorId: '' }))
+    expect(sweepRetention({ retention: { casts: { keepDays: 1 } } }, { engagementId: 'e', operatorId: '' }))
       .toEqual({ cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 })
     expect(fs.existsSync(f)).toBe(true)
   })
@@ -153,13 +162,13 @@ describeDB('retention sweep', () => {
     expect(castIndex.searchCasts('RETENTION-CANARY-4471', 10, dir).length).toBe(1)
 
     ageFile(cast, 400)
-    const swept = sweepRetention({ terminal: { castKeepDays: 30 } }, OPTS)
+    const swept = sweepRetention({ retention: { casts: { keepDays: 30 } } }, OPTS)
     expect(swept.cast).toBe(1)
     expect(fs.existsSync(cast)).toBe(false)
     expect(castIndex.searchCasts('RETENTION-CANARY-4471', 10, dir).length).toBe(0)
   })
 
   it('tolerates a missing directory', () => {
-    expect(() => sweepRetention({ terminal: { castKeepDays: 1 } }, OPTS)).not.toThrow()
+    expect(() => sweepRetention({ retention: { casts: { keepDays: 1 } } }, OPTS)).not.toThrow()
   })
 })

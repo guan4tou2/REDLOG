@@ -436,19 +436,27 @@ Measured values for `scale` (external IP font size, base 12 px):
 `0.85 → 10.2`, `1.0 → 12`, `1.25 → 15`, `1.5 → 18`, `99 → 24` (clamped),
 `0.01 → 9` (clamped); with `emphasizeExternalIp`: `1.0 → 16.8`, `1.5 → 25.2`.
 
-## 2.6 `terminal` / `screenshots` / `io` — retention
+## 2.6 `terminal` / `retention`
+
+Every store's retention sits under `retention.<store>` with the same two knobs
+(Spec 028): `keepDays` sweeps by age on project open, `maxBytes` evicts under
+size pressure. `0` means keep forever / unbounded, and is the default for all
+of them (`one-retention-model`).
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| `terminal.maxCastBytes` | `52428800` (50 MB) | a session's `.cast` is truncated at the cap with an inline marker; values ≤ 0 are ignored | `cast-slice` (slicing), manual §5.5 (truncation) |
-| `terminal.castKeepDays` | `0` | `0` = keep forever; `N` deletes `.cast` files older than N days on project open, one `system.cast_pruned` audit event per deletion | `retention` |
-| `screenshots.keepDays` | `0` | same shape, `system.screenshot_pruned` | `retention` |
-| `io.keepDays` | `0` | prunes `io/<sha>.bin` sidecars, `system.io_pruned`; a body still referenced by a fresh event is kept (refcount-gated) | `retention`, `artifact-gc` |
-| `io.warmDays` | `0` | `0` = never compress; `N` gzips bodies older than N days in place, keeping the ORIGINAL sha256 so verification still passes | `artifact-gc`, `io-store` |
-| `io.maxBytes` | `0` | `0` = no cap; over the cap, unpinned bodies are evicted first (out_of_scope before unknown), and a pinned body is never evicted even if that leaves the store over cap | `artifact-gc`, `retention` |
+| `terminal.maxCastBytes` | `52428800` (50 MB) | a session's `.cast` is truncated at the cap with an inline marker; values ≤ 0 are ignored. A capture limit on one recording, not retention | `cast-slice` (slicing), manual §5.5 (truncation) |
+| `retention.casts.keepDays` | `0` | `N` deletes `.cast` files older than N days, one `system.cast_pruned` audit event per deletion; the recording leaves the search index too | `retention` |
+| `retention.screenshots.keepDays` | `0` | same shape, `system.screenshot_pruned` | `retention` |
+| `retention.httpBodies.keepDays` | `0` | same shape for `http-bodies/*.body`, `system.http_body_pruned` | `retention` |
+| `retention.agentTranscripts.keepDays` | `0` | same shape for agent transcript sidecars, `system.agent_transcript_pruned` | `retention` |
+| `retention.casts.maxBytes` / `retention.screenshots.maxBytes` | `0` | over budget, the coldest files are evicted first; a file of an in-scope target is pinned and never evicted, even if that leaves the store over budget (reported as a shortfall) | `artifact-eviction` |
+| `retention.httpBodies.maxBytes` | `0` | same model for the body store | `body-eviction-sweep` |
+| `retention.loggedTier.keepDays` / `sweepIntervalHours` | `0` / `24` | row-level sweep of `events_logged`, on project open and every N hours | `retention-logged-tier` |
+| `retention.bookmarks.keepDays` | `0` | deletes bookmarks older than N days; one `system.bookmarks_pruned` row with the count only | `retention` |
 
-Every prune writes an audit event, so a pruned body verifies as *pruned*, not as
-tampered (`retention`, `io-store`).
+Eviction and pruning delete the file, never the event: the sha256 attestation
+and the chain survive, so a pruned file verifies as *pruned*, not as tampered.
 
 ## 2.7 `clipboard`
 
@@ -518,7 +526,7 @@ Bundle building is gated on the reviewed-by-operator flag and produces
 zip + `manifest.json` (`cloud-share`); registry installs enforce revocation,
 signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust`).
 
-## 2.12 `fileWatcher` / `processMonitor` / `agentTailer`
+## 2.12 `fileWatcher` / `processMonitor` / `agentTailer` / `powershellTranscript`
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
@@ -528,8 +536,9 @@ signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust
 | `processMonitor.enabled` | `false` | off by default; Windows emits a one-shot advisory | `process-monitor` |
 | `processMonitor.pollMs` | `500` | poll cadence; floored at 200 ms, and at **2000 ms on Windows** where a cold PowerShell spawn is 800–1500 ms and a 500 ms cadence would stack calls | `process-monitor-cadence` |
 | `processMonitor.ignoreCommands` | `[]` | leading-token match, on top of the built-ins | `process-monitor` |
-| `agentTailer.enabled` | `true` | on by default; a `.redlog-app-root` marker opts a repo out | `agent-transcript-tailer` |
-| `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-transcript-tailer` |
+| `agentTailer.enabled` | `false` | agent transcripts are sensitive: off until the operator opts the project in; a `.redlog-app-root` marker still opts a repo out | `config`, `agent-tailer` |
+| `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-tailer` |
+| `powershellTranscript.enabled` | `false` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript` |
 
 ---
 

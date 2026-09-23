@@ -76,7 +76,7 @@ describeDB('artifact store size-pressure eviction', () => {
   it('does nothing when unbounded (budget 0)', () => {
     const c = write('casts', 'a.cast', 1000)
     seedCast(c, null)
-    const r = sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 0 } }, OPTS)
+    const r = sweepArtifactStore('cast', { retention: { casts: { maxBytes: 0 } } }, OPTS)
     expect(r.evicted).toBe(0)
     expect(fs.existsSync(c)).toBe(true)
   })
@@ -86,7 +86,7 @@ describeDB('artifact store size-pressure eviction', () => {
     const warm = write('casts', 'warm.cast', 800, 1_000)
     seedCast(cold, null)
     seedCast(warm, null)
-    const r = sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 1000 } }, OPTS)
+    const r = sweepArtifactStore('cast', { retention: { casts: { maxBytes: 1000 } } }, OPTS)
     expect(r.evicted).toBe(1)
     expect(fs.existsSync(cold)).toBe(false)
     expect(fs.existsSync(warm)).toBe(true)
@@ -101,7 +101,7 @@ describeDB('artifact store size-pressure eviction', () => {
     seedCast(outScope, '8.8.8.8')
     const r = sweepArtifactStore(
       'cast',
-      { terminal: { castStoreMaxBytes: 1000 }, scope: { targets: ['10.10.11.24'] } },
+      { retention: { casts: { maxBytes: 1000 } }, scope: { targets: ['10.10.11.24'] } },
       OPTS
     )
     expect(fs.existsSync(inScope), 'in-scope recording was evicted').toBe(true)
@@ -116,7 +116,7 @@ describeDB('artifact store size-pressure eviction', () => {
     seedShot(outScope, 'evil.example')
     sweepArtifactStore(
       'screenshot',
-      { screenshots: { maxBytes: 1000 }, scope: { targets: ['*.target.com'] } },
+      { retention: { screenshots: { maxBytes: 1000 } }, scope: { targets: ['*.target.com'] } },
       OPTS
     )
     expect(fs.existsSync(inScope)).toBe(true)
@@ -129,7 +129,7 @@ describeDB('artifact store size-pressure eviction', () => {
     const cold = write('casts', 'cold.cast', 400, 60_000); seedCast(cold, null)
     const r = sweepArtifactStore(
       'cast',
-      { terminal: { castStoreMaxBytes: 1000 }, scope: { targets: ['10.10.11.24'] } },
+      { retention: { casts: { maxBytes: 1000 } }, scope: { targets: ['10.10.11.24'] } },
       OPTS
     )
     expect(fs.existsSync(p1)).toBe(true)
@@ -140,7 +140,7 @@ describeDB('artifact store size-pressure eviction', () => {
 
   it('writes a cast_evicted / screenshot_evicted audit so shrinking evidence is on record', () => {
     const c = write('casts', 'a.cast', 2000, 60_000); seedCast(c, null)
-    sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 500 } }, OPTS)
+    sweepArtifactStore('cast', { retention: { casts: { maxBytes: 500 } } }, OPTS)
     const castAudit = queryEvents({ limit: 100 })
       .filter((e) => e.agentType === 'system' && e.data?.subtype === 'cast_evicted')
     expect(castAudit.length).toBe(1)
@@ -148,7 +148,7 @@ describeDB('artifact store size-pressure eviction', () => {
     expect(castAudit[0].data.freed_bytes).toBe(2000)
 
     const s = write('screenshots', 'a.jpg', 2000, 60_000); seedShot(s, null)
-    sweepArtifactStore('screenshot', { screenshots: { maxBytes: 500 } }, OPTS)
+    sweepArtifactStore('screenshot', { retention: { screenshots: { maxBytes: 500 } } }, OPTS)
     const shotAudit = queryEvents({ limit: 100 })
       .filter((e) => e.agentType === 'system' && e.data?.subtype === 'screenshot_evicted')
     expect(shotAudit.length).toBe(1)
@@ -159,7 +159,7 @@ describeDB('artifact store size-pressure eviction', () => {
     // The whole safety argument: the file goes, the event stays, so the chain
     // still proves what the recording was.
     const c = write('casts', 'a.cast', 2000, 60_000); seedCast(c, null)
-    sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 500 } }, OPTS)
+    sweepArtifactStore('cast', { retention: { casts: { maxBytes: 500 } } }, OPTS)
     expect(fs.existsSync(c)).toBe(false)
     const ev = queryEvents({ limit: 100 }).find(
       (e) => e.agentType === 'shell' && e.data?.subtype === 'session_end'
@@ -170,14 +170,14 @@ describeDB('artifact store size-pressure eviction', () => {
 
   it('is a no-op without an operator id — every event needs attribution', () => {
     const c = write('casts', 'a.cast', 2000, 60_000); seedCast(c, null)
-    const r = sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 500 } }, { engagementId: 'e', operatorId: '' })
+    const r = sweepArtifactStore('cast', { retention: { casts: { maxBytes: 500 } } }, { engagementId: 'e', operatorId: '' })
     expect(r.evicted).toBe(0)
     expect(fs.existsSync(c)).toBe(true)
   })
 
   it('tolerates a missing directory', () => {
-    expect(() => sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 1 } }, OPTS)).not.toThrow()
-    expect(() => sweepArtifactStore('screenshot', { screenshots: { maxBytes: 1 } }, OPTS)).not.toThrow()
+    expect(() => sweepArtifactStore('cast', { retention: { casts: { maxBytes: 1 } } }, OPTS)).not.toThrow()
+    expect(() => sweepArtifactStore('screenshot', { retention: { screenshots: { maxBytes: 1 } } }, OPTS)).not.toThrow()
   })
 
   it('takes an evicted recording out of the search index too', async () => {
@@ -198,7 +198,7 @@ describeDB('artifact store size-pressure eviction', () => {
     fs.utimesSync(cast, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000))
     seedCast(cast, null)
 
-    const r = sweepArtifactStore('cast', { terminal: { castStoreMaxBytes: 1 } }, OPTS)
+    const r = sweepArtifactStore('cast', { retention: { casts: { maxBytes: 1 } } }, OPTS)
     expect(r.evicted).toBe(1)
     expect(fs.existsSync(cast)).toBe(false)
     expect(castIndex.searchCasts('EVICTION-CANARY-9317', 10, dir).length).toBe(0)

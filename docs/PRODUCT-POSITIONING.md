@@ -5,11 +5,9 @@ from *defensibility* to *knowability*; see `DESIGN-core-and-capture.md` for the
 review that produced the change and what it does to capture coverage.
 
 This is the single source of truth for
-**who RedLog is for, what job it does, and where its edges are**. The one-line
-positioning has lived in `ROADMAP.md` and `docs/README.md`; this page keeps
-those in sync and adds the layer they never had — users, jobs, and the
-competitive frame. When positioning and roadmap disagree, this page wins and
-the roadmap is the bug.
+**who RedLog is for, what job it does, and where its edges are**: users, jobs,
+and the competitive frame. The one-line positioning in `docs/README.md` follows
+this page; a spec in `specs/` that contradicts it is the bug.
 
 ## One sentence
 
@@ -179,10 +177,9 @@ The positioning is strong; the risk is that the *experience* undercuts it.
 1. **"Zero-friction capture" vs. a high-friction first run.** The core promise
    is passive capture, but RedLog records nothing until a source is wired up —
    the README says so in bold. A first-run operator who sees an empty timeline
-   and no clear next step experiences the *opposite* of the promise. Tracked and
-   partly addressed by the Capture Readiness onboarding work
-   (`DEV-REQUIREMENTS-capture-onboarding.md`); the standing gap is in
-   `UX-AUDIT-2026-08.md`.
+   and no clear next step experiences the *opposite* of the promise. The
+   Capture Readiness onboarding (`lib/captureReadiness.ts`) addresses it; the
+   original finding is in `UX-AUDIT-2026-08.md`.
 2. **Surface area vs. the solo persona.** 18 timeline lanes, an 8-tab / 34-group
    Settings page, 4 integration layers, a plugin trust model. Each is defensible
    in isolation; together they read as an enterprise tool to a P1 who wanted a

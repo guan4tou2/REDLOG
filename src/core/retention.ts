@@ -18,6 +18,7 @@ import { pruneCast } from './cast-index'
 import { matchPattern } from './scope-evaluator'
 import { planEviction, type BodyEntry } from './body-eviction'
 import { pruneHttpBodyIndex } from './http-body-index'
+import type { RedLogConfig } from './config'
 
 // v0.6.89 `_causes`: cast_pruned and screenshot_pruned should reference the
 // upstream event so focus chain walks light up the "originally recorded here
@@ -203,17 +204,12 @@ export function sweepLoggedTier(
   }
 }
 
-export function sweepRetention(config: {
-  terminal?: { castKeepDays?: number }
-  screenshots?: { keepDays?: number }
-  agentTranscripts?: { keepDays?: number }
-  httpBodies?: { keepDays?: number }
-}, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number; httpBodies: number } {
+export function sweepRetention(config: Pick<RedLogConfig, 'retention'>, opts: { engagementId: string; operatorId: string }): { cast: number; screenshots: number; agentTranscripts: number; httpBodies: number } {
   if (!opts.operatorId) return { cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 }
   let projectDir: string
   try { projectDir = getProjectDir() } catch { return { cast: 0, screenshots: 0, agentTranscripts: 0, httpBodies: 0 } }
-  const castDays = config.terminal?.castKeepDays ?? 0
-  const shotDays = config.screenshots?.keepDays ?? 0
+  const castDays = config.retention?.casts?.keepDays ?? 0
+  const shotDays = config.retention?.screenshots?.keepDays ?? 0
   // v0.7.2 F: agent-transcripts sweep.
   // v0.7.4 F2: default changed from 30 to 0 (keep forever unless opted in),
   // matching cast + screenshot conventions. Code-review adversarial pass
@@ -225,7 +221,7 @@ export function sweepRetention(config: {
   // registerSession (which dedups even if the sidecar was reset), but
   // matching sibling conventions removes the surprise for operators who
   // expected evidence to be kept by default.
-  const agentDays = config.agentTranscripts?.keepDays ?? 0
+  const agentDays = config.retention?.agentTranscripts?.keepDays ?? 0
   const cast = sweepDir(
     path.join(projectDir, 'casts'),
     castDays,
@@ -247,7 +243,7 @@ export function sweepRetention(config: {
     'agent_transcript_pruned',
     opts
   )
-  const httpBodyDays = config.httpBodies?.keepDays ?? 0
+  const httpBodyDays = config.retention?.httpBodies?.keepDays ?? 0
   const httpBodies = sweepDir(
     path.join(projectDir, 'http-bodies'),
     httpBodyDays,
@@ -295,15 +291,12 @@ export function sweepBookmarks(
 }
 
 export function sweepBodyStore(
-  config: {
-    httpBodies?: { maxBytes?: number }
-    scope?: { targets?: string[] }
-  },
+  config: Pick<RedLogConfig, 'retention'> & { scope?: { targets?: string[] } },
   opts: { engagementId: string; operatorId: string }
 ): { evicted: number; freedBytes: number; shortfallBytes: number } {
   const none = { evicted: 0, freedBytes: 0, shortfallBytes: 0 }
   if (!opts.operatorId) return none
-  const budget = config.httpBodies?.maxBytes ?? 0
+  const budget = config.retention?.httpBodies?.maxBytes ?? 0
   if (budget <= 0) return none  // unbounded is the default; opt in to bound it
 
   let projectDir: string
@@ -458,18 +451,12 @@ function pinnedArtifactFiles(kind: 'cast' | 'screenshot', scopeTargets: string[]
 
 export function sweepArtifactStore(
   kind: 'cast' | 'screenshot',
-  config: {
-    terminal?: { castStoreMaxBytes?: number }
-    screenshots?: { maxBytes?: number }
-    scope?: { targets?: string[] }
-  },
+  config: Pick<RedLogConfig, 'retention'> & { scope?: { targets?: string[] } },
   opts: { engagementId: string; operatorId: string }
 ): { evicted: number; freedBytes: number; shortfallBytes: number } {
   const none = { evicted: 0, freedBytes: 0, shortfallBytes: 0 }
   if (!opts.operatorId) return none
-  const budget = kind === 'cast'
-    ? (config.terminal?.castStoreMaxBytes ?? 0)
-    : (config.screenshots?.maxBytes ?? 0)
+  const budget = (kind === 'cast' ? config.retention?.casts : config.retention?.screenshots)?.maxBytes ?? 0
   if (budget <= 0) return none  // unbounded is the default; opt in to bound it
 
   let projectDir: string
