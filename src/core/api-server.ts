@@ -5,6 +5,7 @@ import os from 'os'
 import { restrictToOwner } from './fs-acl'
 import { queryEvents, queryEventById, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { parseQuery } from './query/contract'
+import { decodeCursor } from './query-page'
 import { createBookmark, listBookmarks } from './db/bookmarks'
 import {
   ensurePrimaryOperator,
@@ -400,11 +401,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 400, { error: 'Query could not be parsed', reason: outcome.reason, token: outcome.token })
         return
       }
+      // Constitution IV: a page says whether it is the whole answer. A cursor
+      // the store cannot read is refused rather than read as "first page",
+      // which would hand a paging script the same page forever.
+      const cursor = url.searchParams.get('cursor')
+      if (cursor && !decodeCursor(cursor)) {
+        json(res, 400, { error: 'Invalid cursor' })
+        return
+      }
       try {
-        const page = executeEventQuery({ parsed: outcome.parsed, limit })
+        const page = executeEventQuery({ parsed: outcome.parsed, limit, cursor })
         json(res, 200, {
           count: page.items.length,
           events: page.items,
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
           ...(page.toolSession ? { toolSession: page.toolSession } : {})
         })
       } catch (e) {

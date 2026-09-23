@@ -225,7 +225,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
 | POST | `/api/recording` | Control recording (`pause`/`resume`/`toggle`) |
 | POST | `/api/events` | Insert event |
 | GET | `/api/events` | Query events (filter by `agent_type`, `target_id`, `limit`, `since`) |
-| GET | `/api/events/search` | Full-text search (`?q=...&limit=N`) |
+| GET | `/api/events/search` | Full-text search (`?q=...&limit=N&cursor=...`, pages with `hasMore` / `nextCursor`) |
 | GET | `/api/events/count` | Event count |
 | POST | `/api/marker` | Create a marker event |
 | GET | `/api/bookmarks` | List bookmarks |
