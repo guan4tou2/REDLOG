@@ -68,7 +68,9 @@ describeDB('searchEventsPage', () => {
   describe('acceptance: 537 matching events, pageSize=100', () => {
     const PAGE_SIZE = 100
 
-    beforeEach(() => {
+    // One transaction: row-at-a-time autocommit fsyncs every insert, which on
+    // a loaded Windows runner outlasts the 10s hook timeout.
+    beforeEach(() => getDB().transaction(() => {
       for (let i = 0; i < 250; i++) {
         rawInsert('events', 10000 - i, 'shell', { command: `searchterm target-${i}` })
       }
@@ -77,7 +79,7 @@ describeDB('searchEventsPage', () => {
           subtype: 'http_response', url: `http://searchterm.example/${i}`
         })
       }
-    })
+    })())
 
     it('paginating through all pages yields exactly 537 unique events', () => {
       const allIds: string[] = []
@@ -133,7 +135,9 @@ describeDB('searchEventsPage', () => {
   })
 
   describe('combined filters: query + agentType + since/before + cursor', () => {
-    beforeEach(() => {
+    // One transaction: row-at-a-time autocommit fsyncs every insert, which on
+    // a loaded Windows runner outlasts the 10s hook timeout.
+    beforeEach(() => getDB().transaction(() => {
       for (let i = 0; i < 200; i++) {
         rawInsert('events', 5000 + i, 'shell', { command: `findme cmd-${i}` })
       }
@@ -145,7 +149,7 @@ describeDB('searchEventsPage', () => {
       for (let i = 0; i < 50; i++) {
         rawInsert('events', 5000 + i, 'screenshot', { command: `findme screenshot-${i}` })
       }
-    })
+    })())
 
     it('agentType filter returns only matching type across pages', () => {
       const allIds: string[] = []
