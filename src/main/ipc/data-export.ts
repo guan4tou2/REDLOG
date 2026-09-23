@@ -1,7 +1,5 @@
 import type { IpcMain } from 'electron'
-import { shell } from 'electron'
 import path from 'path'
-import { homedir } from 'os'
 import fs from 'fs'
 import type { IpcContext } from './types'
 import { loadConfig, snapshotScope } from '../../core/config'
@@ -29,7 +27,6 @@ import { exportBundle } from '../../core/bundle-export'
 import { exportHar } from '../../core/har-export'
 import { markerIdsIn, sliceWithAmendments } from '../../core/marker-amend'
 import { scrubOperatorPii } from '../../core/operator-pii'
-import { isInsideDir } from '../../core/paths'
 
 function sliceExport(ctx: IpcContext, name: string, payload: unknown): string | null {
   const project = ctx.getActiveProject()
@@ -257,46 +254,6 @@ export function registerDataExportIpc(
       return { ok: true as const, planId: plan.id, fingerprint: plan.fingerprint, artifactPath, counts: plan.counts, warnings: [] }
     } catch (error) {
       return { ok: false as const, planId: plan.id, fingerprint: plan.fingerprint, error: (error as Error)?.message ?? String(error) }
-    }
-  })
-
-  // Renderer button "Reveal in Finder / Show in Explorer" wants shell access
-  // without exposing the whole Electron shell module to preload. This handler
-  // opens the containing directory of an exported bundle/file. Rejects any
-  // path that isn't a string — belt+braces against renderer bugs.
-  // Operator tokens are written to a file rather than handed to the operator
-  // as text to copy (UIUX-STANDARD §10). Two reasons, and the second is the
-  // one that matters: a token on the clipboard is a token in every clipboard
-  // manager on the machine, and a token the operator pastes into a note is a
-  // token in whatever that note gets backed up to. Writing it means there is
-  // exactly one copy and the app knows where it is.
-  //
-  // `~/.redlog/tokens/` sits deliberately outside the project directory, so
-  // no bundle export or evidence package can ever sweep it up —
-  // those walk the project tree, and a credential is not evidence.
-
-  ipcMain.handle('data:revealPath', async (_e, target: string) => {
-    if (typeof target !== 'string' || !target) return false
-    try {
-      // Containment: `target` comes from the renderer, and shell.openPath on a
-      // directory opens it — a macOS `.app` bundle IS a directory, so an
-      // unconstrained path is a renderer→app-launch primitive. Only reveal
-      // inside the app's own roots: the active project dir, or ~/.redlog (where
-      // the tokens dir lives). Everything RedLog reveals is under one of these.
-      const resolved = path.resolve(target)
-      const redlogHome = path.join(homedir(), '.redlog')
-      const project = ctx.getActiveProject()
-      const projectDir = project ? getProjectPath(project) : null
-      const allowed = (projectDir && isInsideDir(projectDir, resolved)) || isInsideDir(redlogHome, resolved)
-      if (!allowed) return false
-      // If `target` is a file, open its parent directory; if it's a directory,
-      // open it directly. shell.openPath returns an empty string on success.
-      const stat = fs.existsSync(resolved) ? fs.statSync(resolved) : null
-      const toOpen = stat && stat.isFile() ? path.dirname(resolved) : resolved
-      const err = await shell.openPath(toOpen)
-      return err === ''
-    } catch {
-      return false
     }
   })
 

@@ -29,7 +29,6 @@ describe('loadConfig', () => {
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'engagement:\n  id: test-123\n')
     const config = loadConfig(tmpDir)
     expect(config.engagement.id).toBe('test-123')
-    expect(config.engagement.name).toBe('Default Engagement')
     expect(config.network.checkInterval).toBe(60)
     expect(config.agentTailer?.enabled).toBe(false)
   })

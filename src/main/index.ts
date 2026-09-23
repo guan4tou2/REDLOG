@@ -54,12 +54,12 @@ import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
-import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser, DEFAULT_BROWSER } from './services/browser-launcher'
+import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
+import { DEFAULT_BROWSER } from '../core/browser-defaults'
 import { managedHttpProxy, type ManagedProxyStatus } from './services/managed-http-proxy'
 import { isManagedLoopbackProxy } from '../core/managed-proxy-url'
-import { detectLink } from './services/network-info'
+import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
 import { checkForUpdates, setUpdaterAirgap } from './services/updater'
-import { anchorBeforeRestart } from '../core/update-anchor'
 import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
@@ -79,7 +79,6 @@ import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS } from './ipc/markers'
-import { registerViewsIpc } from './ipc/views'
 import { registerTargetContextIpc } from './ipc/target-context'
 import type { IpcContext } from './ipc/types'
 
@@ -352,6 +351,16 @@ function getActivePivots(): ActivePivot[] {
 // and refreshed on a timer so the (blocking-ish) shell-outs never sit on the IP
 // broadcast path; the last-known value rides along with every ip:status.
 let currentLink: { type: 'wifi' | 'wired' | 'unknown'; name: string } = { type: 'unknown', name: '' }
+// What detectLink read, before network.showWifiName decides whether the SSID
+// may reach a surface. Kept so turning the setting off applies at once.
+let detectedLink: NetworkLink = { type: 'unknown', name: '' }
+let showWifiName = false
+function publishLink(): void {
+  currentLink = linkForDisplay(detectedLink, showWifiName)
+  // Push the link into the IP producer so the next IPChangeSignal carries it —
+  // IPPolicy's `lanSafety` verdict pathway (ea G-A4) reads the signal's link.
+  alertRuntime.setLink(currentLink)
+}
 let linkTimer: ReturnType<typeof setInterval> | null = null
 
 // Whether RedLog keeps a macOS Dock icon. Showing the overlay flips the app to an
@@ -367,11 +376,8 @@ function startLinkMonitor(): void {
   const refresh = (): void => {
     detectLink()
       .then((l) => {
-        currentLink = l
-        // Push the fresh link into the IP producer so the next IPChangeSignal
-        // carries it — IPPolicy's `lanSafety` verdict pathway (ea G-A4)
-        // reads from the signal's link.
-        alertRuntime.setLink(l)
+        detectedLink = l
+        publishLink()
       })
       .catch(() => {})
   }
@@ -505,6 +511,7 @@ function startProject(project: ProjectMeta): void {
   saveConfig(projectDir, config)
   keepDockIcon = config.overlay?.showInDock !== false
   applyDock()
+  showWifiName = config.network?.showWifiName === true
   const engagementId = config.engagement.id
   const operatorId = config.operator.id
   currentEngagementId = engagementId
@@ -1085,7 +1092,6 @@ app.whenReady().then(() => {
   registerEventsIpc(ipcMain, ipcCtx)
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
-  registerViewsIpc(ipcMain, ipcCtx)
   registerTargetContextIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
@@ -1102,7 +1108,7 @@ app.whenReady().then(() => {
     const config = loadConfig(projectDir)
     const merged = {
       ...config,
-      engagement: { ...config.engagement, id: project.id, name: project.name, ...initialConfig?.engagement },
+      engagement: { ...config.engagement, id: project.id, ...initialConfig?.engagement },
       operator: { ...config.operator, ...initialConfig?.operator },
       network: { ...config.network, ...initialConfig?.network },
       scope: { ...config.scope, ...initialConfig?.scope },
@@ -1188,6 +1194,12 @@ app.whenReady().then(() => {
     // that affect enforcement or attribution; cosmetic changes stay silent.
     const configChangedId = logConfigDiff(oldConfig, newConfig)
     keepDockIcon = newConfig.overlay?.showInDock !== false
+    // docs/TESTING.md §5.6: turning the SSID off applies now, not at the next poll.
+    if (showWifiName !== (newConfig.network?.showWifiName === true)) {
+      showWifiName = newConfig.network?.showWifiName === true
+      publishLink()
+      broadcastIPStatus(alertRuntime.ipStatus())
+    }
     applyDock()
     const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, {
@@ -1306,7 +1318,7 @@ app.whenReady().then(() => {
   // That log holds 500 rows and resets on every project switch, so it could
   // never show a retroactive row and would go on counting one that had been
   // withdrawn — the page would contradict the record it exists to show.
-  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : []))
+  ipcMain.handle('scope:getViolations', () => (activeProject ? queryScopeViolationRows() : { rows: [], truncated: false }))
   ipcMain.handle('scope:getViolationCount', () => (activeProject ? activeViolationCount() : 0))
   ipcMain.handle('scope:getLastRecompute', () => (activeProject ? queryLastScopeRecompute() : null))
   ipcMain.handle('scope:isConfigured', () => alertRuntime.scopeIsConfigured())
@@ -1397,19 +1409,7 @@ app.whenReady().then(() => {
     if (!activeProject) return null
     const projectDir = getProjectPath(activeProject)
     const config = loadConfig(projectDir)
-    // v0.6.96 Ops-2: also carry saved Timeline views. Team hand-off used to
-    // ship scope + operators but leave the current operator's per-project
-    // views.json behind — the receiving teammate lost every zoom window +
-    // filter combo the sender had bookmarked.
-    let views: unknown[] = []
-    try {
-      const viewsPath = path.join(projectDir, 'views.json')
-      if (fs.existsSync(viewsPath)) {
-        const raw = JSON.parse(fs.readFileSync(viewsPath, 'utf-8'))
-        if (Array.isArray(raw)) views = raw
-      }
-    } catch { /* views file missing / malformed — just ship an empty list */ }
-    const profile = { version: 1, ...config, views }
+    const profile = { version: 1, ...config }
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `redlog-profile-${activeProject.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
       filters: [
@@ -1440,26 +1440,9 @@ app.whenReady().then(() => {
       const ext = path.extname(result.filePaths[0]).toLowerCase()
       const data = ext === '.json' ? JSON.parse(raw) : yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
       delete data.version
-      // v0.6.96 Ops-2: split saved views out of the config payload and merge
-      // them into the local views.json. Prior teammate's views are preserved
-      // (dedupe by id — imported views win on id collision).
-      const incomingViews = Array.isArray(data.views) ? data.views as Array<{ id: string }> : []
+      // Older profiles also carried saved Timeline views, which have no UI;
+      // keep them out of the config.
       delete data.views
-      if (incomingViews.length > 0 && activeProject) {
-        try {
-          const viewsPath = path.join(getProjectPath(activeProject), 'views.json')
-          let existing: Array<{ id: string }> = []
-          try {
-            if (fs.existsSync(viewsPath)) {
-              const raw = JSON.parse(fs.readFileSync(viewsPath, 'utf-8'))
-              if (Array.isArray(raw)) existing = raw
-            }
-          } catch { /* start fresh */ }
-          const byId = new Map(existing.map((v) => [v.id, v]))
-          for (const v of incomingViews) if (v && v.id) byId.set(v.id, v)
-          fs.writeFileSync(viewsPath, JSON.stringify(Array.from(byId.values()), null, 2))
-        } catch { /* views merge is best-effort */ }
-      }
       return data as Partial<RedLogConfig>
     } catch {
       return null
@@ -1523,14 +1506,6 @@ app.whenReady().then(() => {
 
   // --- Updates ---
   ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
-  // 5a: anchor the chain head + mark the expected recording gap before the
-  // design's update card sends the operator to quit-and-reinstall.
-  ipcMain.handle('app:anchorForRestart', (_e, opts?: { toVersion?: string }) =>
-    anchorBeforeRestart({
-      fromVersion: app.getVersion(),
-      toVersion: opts?.toVersion ?? null,
-      engagementId: currentEngagementId ?? 'default'
-    }))
   // Renderer needs a way to open a URL in the operator's real browser (marks
   // page, plugin homepage, etc.). Only http/https allowed — Electron's
   // openExternal can dispatch file:/// and other schemes with unbounded side

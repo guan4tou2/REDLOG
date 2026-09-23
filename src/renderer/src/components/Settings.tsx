@@ -16,16 +16,19 @@ import AgentsPanel, { HookWatchPathsPanel } from './settings/AgentsPanel'
 
 // The thirteen pages §10 asks for. Declared as a union so a typo in a route
 // is a compile error rather than a page that silently never renders.
-type SettingsPage =
+export type SettingsPage =
   | 'hooks' | 'agents' | 'captureControl'
   | 'scope' | 'network'
   | 'integrity'
   | 'plugins'
   | 'general' | 'hud'
 
-export default function Settings(): JSX.Element {
+/** `request` is the page a link asked for (lib/navigation.ts). A new object
+ *  per request, so asking again for the same page switches back to it. */
+export default function Settings({ request = null }: { request?: { page: SettingsPage } | null } = {}): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
-  const [tab, setTab] = useState<SettingsPage>('hooks')
+  const [tab, setTab] = useState<SettingsPage>(request?.page ?? 'hooks')
+  useEffect(() => { if (request) setTab(request.page) }, [request])
   const [pageQuery, setPageQuery] = useState('')
   const [saved, setSaved] = useState(false)
   const [hooks, setHooks] = useState<HookInfo[]>([])
@@ -113,8 +116,8 @@ export default function Settings(): JSX.Element {
           <input
             value={pageQuery}
             onChange={(e) => setPageQuery(e.target.value)}
-            placeholder={t('settings.searchPages')}
-            aria-label={t('settings.searchPages')}
+            placeholder={t('settings.filterPages')}
+            aria-label={t('settings.filterPages')}
             className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
           />
         </div>

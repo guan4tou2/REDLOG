@@ -4,8 +4,8 @@ import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
-  queryTargetEventsPage, queryScreenshotPage,
-  distinctHosts, hostCausalChain,
+  queryScreenshotPage,
+  distinctHosts,
   type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
 } from '../../core/db/events'
 import { loadConfig, snapshotScope } from '../../core/config'
@@ -63,11 +63,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('events:aggregateTargets', () =>
     ctx.getActiveProject() ? aggregateTargets() : [])
 
-  ipcMain.handle('events:queryTargetPage', (_e, opts: { targetId: string; limit?: number; cursor?: string | null }) =>
-    ctx.getActiveProject() && typeof opts?.targetId === 'string'
-      ? queryTargetEventsPage(opts)
-      : { items: [], hasMore: false, nextCursor: null })
-
   ipcMain.handle('events:queryScreenshotPage', (_e, opts: { limit?: number; cursor?: string | null; trigger?: string | null }) =>
     ctx.getActiveProject()
       ? queryScreenshotPage(opts ?? {})
@@ -75,9 +70,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:distinctHosts', () =>
     ctx.getActiveProject() ? distinctHosts() : [])
-
-  ipcMain.handle('events:hostChain', (_e, host: string, opts?: { chainLimit?: number }) =>
-    ctx.getActiveProject() ? hostCausalChain(host, opts ?? {}) : null)
 
   ipcMain.handle('events:queryByFlowId', (_e, flowId: string) =>
     ctx.getActiveProject() ? queryByFlowId(flowId) : [])

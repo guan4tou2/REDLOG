@@ -1,8 +1,7 @@
-// Renderer-side mirror of the defaults the main process ships in
-// `src/core/config.ts`. The renderer deliberately imports nothing across the
-// process boundary (see electron.vite.config.ts — the two bundles share no
-// module graph), so the handful of values a form needs before the config
-// round-trips have to be restated here rather than imported.
+// Renderer-side defaults a form needs before the config round-trips.
+// `src/core/config.ts` reads the filesystem, so the renderer cannot import it;
+// a default that lives in an import-free core module (core/browser-defaults.ts)
+// is imported from there instead of restated.
 //
 // Keep this list short. A value belongs here only if the renderer needs it
 // synchronously, before any IPC has answered; anything the main process can
@@ -13,5 +12,6 @@
 // connector is actually polling — and fall back to this only when no status
 // has arrived yet.
 
-/** Must match `cdpPort` in `src/core/config.ts`. */
-export const DEFAULT_CDP_PORT = 9222
+import { DEFAULT_BROWSER } from '../../../core/browser-defaults'
+
+export const DEFAULT_CDP_PORT = DEFAULT_BROWSER.cdpPort

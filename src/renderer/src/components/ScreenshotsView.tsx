@@ -7,6 +7,7 @@ import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { formatTime } from '../lib/time'
 import { useI18n } from '../i18n'
+import { settingsTarget } from '../lib/navigation'
 
 const PAGE_SIZE = 100
 
@@ -114,7 +115,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             label: t('screenshots.captureNow'),
             onClick: () => { void window.redlog.screenshot.capture() }
           }}
-          secondary={{ label: t('screenshots.emptyEnable'), onClick: () => onNavigate('settings') }}
+          secondary={{ label: t('screenshots.emptySettings'), onClick: () => onNavigate(settingsTarget('captureControl')) }}
         />
       ) : (() => {
         const triggerCounts = new Map<string, number>()
