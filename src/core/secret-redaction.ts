@@ -8,7 +8,7 @@
 // sanitizer) and shouldn't share a namespace.
 //
 // Applied at ingest time by:
-//   - src/main/services/agent-transcript-tailer.ts (per user_message /
+//   - src/main/services/tailer-host.ts (per user_message /
 //     assistant_message / tool_input.command / tool_result.output before
 //     insert into the events table).
 
