@@ -75,11 +75,6 @@ export function configureProcessMonitor(next: Partial<ProcessMonitorConfig>): vo
   restart()
 }
 
-export function startProcessMonitor(next?: Partial<ProcessMonitorConfig>): void {
-  if (next) cfg = { ...cfg, ...next }
-  restart()
-}
-
 export function stopProcessMonitor(): void {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   knownProcs.clear()

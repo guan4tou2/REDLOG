@@ -12,7 +12,7 @@ import os from 'os'
 // trigger, so instead the corruption path is validated by unit-testing
 // noteSampleBroken's effect on getCaptureHealth — the actual mismatch
 // branch inside verifyRandomSample is already exercised by the shape-
-// variant logic verifyChainFull tests cover.
+// variant logic verifyChainFullAsync tests cover.
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB

@@ -28,7 +28,8 @@
     "pree2e": "electron-rebuild -f -o better-sqlite3",
     "e2e": "playwright test",
     "pree2e:ui": "electron-rebuild -f -o better-sqlite3",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "verify:architecture": "node scripts/verify-architecture.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest'
 import {
   registerTargetExtractors, unregisterTargetExtractors,
-  extractTargetWithProvenance, listExternalTargetExtractors
+  extractTargetWithProvenance, _listExternalTargetExtractors
 } from '../src/core/target-extractor'
 import { loadBuiltinTargetExtractors, unloadBuiltinTargetExtractors } from './helpers/builtin-extractors'
 
@@ -215,11 +215,11 @@ describe('extractTargetWithProvenance host extraction', () => {
       expect(ry.extractorName).toBe('y-rule')
     })
 
-    it('listExternalTargetExtractors snapshot exposes name + description', () => {
+    it('_listExternalTargetExtractors snapshot exposes name + description', () => {
       registerTargetExtractors('audit-ext', [
         { cmd: '^foo\\s', extract: '--t\\s+(\\S+)', name: 'foo-rule', description: 'internal fooer' }
       ])
-      const list = listExternalTargetExtractors().filter((p) => p.pluginId === 'audit-ext')
+      const list = _listExternalTargetExtractors().filter((p) => p.pluginId === 'audit-ext')
       expect(list.length).toBe(1)
       expect(list[0].extractorName).toBe('foo-rule')
       expect(list[0].description).toBe('internal fooer')

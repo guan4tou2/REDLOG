@@ -1,0 +1,13 @@
+{
+  "src/core/db/operators.ts#slugifyOperatorId": "Kept by decision in #143: the operator IPC channels were removed (renderer code could mint API tokens with nothing on screen); the core functions and their tests stay for a future operator UI.",
+  "src/core/db/operators.ts#getOperatorSignerPubKey": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/db/operators.ts#renameOperator": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/db/operators.ts#revokeOperator": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/db/operators.ts#deleteOperator": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/mappers.ts#mapRaw": "Pending product decision: plugin `contributes.mappers` are registered but never applied in production. Refuse them like exporters/monitors (Spec 027), or apply them.",
+  "src/core/raw-store.ts#readRaw": "Pending product decision: the raw envelope store has a write path (plugin-kernel direction) but no producer sends raw bytes and nothing reads them back yet.",
+  "src/core/raw-store.ts#isRawRef": "Pending product decision (see readRaw).",
+  "src/core/shell-catalog.ts#defaultShell": "Pending product decision: a pane without a chosen shell uses $SHELL; this picks a recordable shell first. Wire it (changes the default pane) or remove it.",
+  "src/renderer/src/lib/issues.ts#dismissIssue": "Pending product decision: the dismiss / dismiss-all issue UI (UIUX-STANDARD §9) was never built. Build it or remove these.",
+  "src/renderer/src/lib/issues.ts#dismissAllPending": "Pending product decision (see dismissIssue)."
+}

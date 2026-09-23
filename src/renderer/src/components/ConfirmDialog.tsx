@@ -44,11 +44,6 @@ export function confirm(title: string, message: string, destructive = false): Pr
   return _showConfirm({ title, message, level: destructive ? 'irreversible' : 'plain' })
 }
 
-/** Cannot be undone, but does not touch the chain. Gated by a checkbox. */
-export function confirmIrreversible(opts: Omit<ConfirmOpts, 'level'>): Promise<boolean> {
-  return _showConfirm({ ...opts, level: 'irreversible' })
-}
-
 /** Touches the evidence chain or the audit record. Gated by typing the
  *  project name, with the consequences listed. */
 export function confirmChainImpact(opts: Omit<ConfirmOpts, 'level'>): Promise<boolean> {

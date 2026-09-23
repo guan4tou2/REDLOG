@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { loadPlugins } from '../src/core/plugins/loader'
 import { applyContributions, removeContributions } from '../src/core/plugins/contributions'
-import { extractTargetWithProvenance, listExternalTargetExtractors } from '../src/core/target-extractor'
+import { extractTargetWithProvenance, _listExternalTargetExtractors } from '../src/core/target-extractor'
 
 const extractedHost = (command: string): string | null => extractTargetWithProvenance(command).host
 
@@ -45,6 +45,6 @@ describe('builtin-tools pack (E1 Option B)', () => {
     // With the pack gone, core no longer recognises nmap (no URL to fall back
     // on) — the whole point of Option B: no tool knowledge left in core.
     expect(extractedHost('nmap -sV 192.168.1.1')).toBeNull()
-    expect(listExternalTargetExtractors().filter((e) => e.pluginId === 'builtin-tools')).toHaveLength(0)
+    expect(_listExternalTargetExtractors().filter((e) => e.pluginId === 'builtin-tools')).toHaveLength(0)
   })
 })
