@@ -45,7 +45,6 @@ import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
 import { configurePowershellTranscript, stopPowershellTranscript } from './services/powershell-transcript'
-import { startProxyBypassDetector, stopProxyBypassDetector } from './services/proxy-bypass-detector'
 import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins } from '../core/plugins'
@@ -743,7 +742,6 @@ function startProject(project: ProjectMeta): void {
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
   })
-  startProxyBypassDetector({ engagementId, operatorId })
   // v0.7.2 A: Claude Code transcript tailer. Reads `~/.claude/projects/`
   // JSONL sessions, derives per-turn events (user_message / assistant_message
   // / tool_call / tool_result) plus a whole-file sha256 snapshot event
@@ -963,7 +961,6 @@ function stopProject(): void {
   stopProcessMonitor()
   stopConnectionMonitor()
   stopPowershellTranscript()
-  stopProxyBypassDetector()
   stopAgentTailer()
   stopCdpMonitor()
   stopOpsecMonitor()
