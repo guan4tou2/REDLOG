@@ -233,7 +233,7 @@ curl -X POST http://127.0.0.1:$PORT/api/marker \
 | POST | `/api/recording` | yes | Control recording (`{"action":"pause\|resume\|toggle"}`) |
 | POST | `/api/events` | yes | Insert event (operator_id set from token; auto-detects targets, pivots, cleanup, file transfers, loot) |
 | GET | `/api/events` | yes | Query events (`?agent_type=&limit=&target_id=&since=&before=`) |
-| GET | `/api/events/search` | yes | Full-text search (`?q=&limit=`) |
+| GET | `/api/events/search` | yes | Full-text search (`?q=&limit=&cursor=`; page with `hasMore` / `nextCursor`) |
 | GET | `/api/events/count` | yes | Event count |
 | POST | `/api/marker` | yes | Create marker (`{ title, notes?, severity?, target_id? }`) |
 | GET | `/api/bookmarks` | yes | List bookmarks |
