@@ -1,13 +1,13 @@
 // Bundled policy implementations.
 //
-// Four policies ship with the app:
-//   • IPPolicy       — Self alarm; consumes IPChangeSignal, emits IPVerdict
-//   • ScopePolicy    — Target alarm; consumes TargetHitSignal, emits ScopeVerdict
-//   • CombinedPolicy — cross-signal; watches recent verdicts from IP + Scope
-//                      via a peek at the bus's emitted verdict history (held
-//                      on the policy itself, not the bus)
-//   • BurstPolicy    — rate limiter; aggregates ScopeVerdicts into a single
-//                      BurstVerdict when N-in-T is hit
+// Two policies ship with the app:
+//   • IPPolicy    — Self alarm; consumes IPChangeSignal, emits IPVerdict
+//   • ScopePolicy — Target alarm; consumes TargetHitSignal, emits ScopeVerdict
+//
+// There were two more, CombinedPolicy and BurstPolicy, which read these
+// verdicts and wrote their own. They were removed in Spec 024: correlation is
+// outside the product, nothing presented their output, and the chain events
+// they wrote cited no source.
 //
 // Every policy is a class so it can hold config + reset state. Config
 // lives on the policy (not the bus) so the bus stays generic — swapping
@@ -24,8 +24,6 @@ import type {
   IPVerdict,
   IPVerdictKind,
   ScopeVerdict,
-  CombinedVerdict,
-  BurstVerdict,
   Authority,
   Severity
 } from './policy'
@@ -264,171 +262,5 @@ export class ScopePolicy implements Policy {
 
   private classify(s: TargetHitSignal): ScopeVerdict {
     return classifyScopeTarget(s.target, this.cfg, this.indexes)
-  }
-}
-
-// ─── CombinedPolicy — cross-signal escalation ───────────────────────────────
-
-export interface CombinedPolicyConfig {
-  /** Correlation window — an IP verdict and Scope verdict within this many
-   *  ms of each other are considered co-occurring. */
-  windowMs: number
-  /** Minimum severity per side to trigger. Both sides must be at or above
-   *  this to escalate; both-clean pairs are noise. */
-  ipSeverityFloor: Severity
-  scopeSeverityFloor: Severity
-}
-
-const SEVERITY_ORDER: Record<Severity, number> = { clean: 0, notice: 1, warning: 2, critical: 3 }
-function atLeast(a: Severity, floor: Severity): boolean {
-  return SEVERITY_ORDER[a] >= SEVERITY_ORDER[floor]
-}
-
-export class CombinedPolicy implements Policy {
-  readonly name = 'combined'
-  private cfg: CombinedPolicyConfig = {
-    windowMs: 30_000,
-    ipSeverityFloor: 'warning',
-    scopeSeverityFloor: 'warning'
-  }
-  private lastIp: { verdict: IPVerdict; at: number } | null = null
-  private lastScope: { verdict: ScopeVerdict; at: number } | null = null
-  /** Dedup — a burst of Scope verdicts against the same non-clean IP
-   *  otherwise emits Combined for every one of them. Cool down for the
-   *  correlation window. */
-  private lastEmitAt = 0
-
-  configure(next: Partial<CombinedPolicyConfig>): void {
-    if (typeof next.windowMs === 'number') this.cfg.windowMs = next.windowMs
-    if (next.ipSeverityFloor) this.cfg.ipSeverityFloor = next.ipSeverityFloor
-    if (next.scopeSeverityFloor) this.cfg.scopeSeverityFloor = next.scopeSeverityFloor
-  }
-
-  /** Peek-in from downstream — a policy can't listen to bus.emit() from
-   *  inside evaluate(), so the AlertBus wire-up calls this whenever the
-   *  IPPolicy or ScopePolicy emits. Two-way glue is what lets Combined
-   *  work without a real event-store. */
-  ingest(verdict: Verdict): Verdict[] {
-    const at = Date.now()
-    if (verdict.kind === 'ip') this.lastIp = { verdict, at }
-    else if (verdict.kind === 'scope') this.lastScope = { verdict, at }
-    else return []
-    return this.tryEmit(at)
-  }
-
-  evaluate(_signal: Signal): Verdict[] {
-    // Combined is fed by verdicts, not signals — it registers with the bus
-    // but produces from `ingest` instead of `evaluate`. Returning [] here
-    // keeps the Policy interface honest.
-    return []
-  }
-
-  reset(): void {
-    this.lastIp = null
-    this.lastScope = null
-    this.lastEmitAt = 0
-  }
-
-  private tryEmit(now: number): Verdict[] {
-    if (!this.lastIp || !this.lastScope) return []
-    const dt = Math.abs(this.lastIp.at - this.lastScope.at)
-    if (dt > this.cfg.windowMs) return []
-    if (!atLeast(this.lastIp.verdict.severity, this.cfg.ipSeverityFloor)) return []
-    if (!atLeast(this.lastScope.verdict.severity, this.cfg.scopeSeverityFloor)) return []
-    if (now - this.lastEmitAt < this.cfg.windowMs) return []
-    this.lastEmitAt = now
-
-    const escalated = escalate(
-      this.lastIp.verdict.severity,
-      this.lastScope.verdict.severity
-    )
-    const combined: CombinedVerdict = {
-      ipValue: this.lastIp.verdict.value,
-      scopeDistance: this.lastScope.verdict.distance,
-      correlationMs: dt,
-      severity: escalated,
-      authority: minAuthority(this.lastIp.verdict.authority, this.lastScope.verdict.authority)
-    }
-    return [{ kind: 'combined', ...combined }]
-  }
-}
-
-function escalate(a: Severity, b: Severity): Severity {
-  const worst = SEVERITY_ORDER[a] > SEVERITY_ORDER[b] ? a : b
-  if (worst === 'critical') return 'critical'
-  if (worst === 'warning') return 'critical'
-  if (worst === 'notice') return 'warning'
-  return 'notice'
-}
-
-const AUTH_ORDER: Record<Authority, number> = { unknown: 0, inferred: 1, fact: 2 }
-function minAuthority(a: Authority, b: Authority): Authority {
-  return AUTH_ORDER[a] < AUTH_ORDER[b] ? a : b
-}
-
-// ─── BurstPolicy — N-in-T aggregator ────────────────────────────────────────
-
-export interface BurstPolicyConfig {
-  /** Only these distances aggregate. Defaults exclude `in_scope` (no
-   *  operator wants a "you did 200 good things" flag). */
-  distances: ScopeDistance[]
-  windowMs: number
-  threshold: number
-}
-
-const DEFAULT_BURST_DISTANCES: ScopeDistance[] = ['adjacent_subnet', 'adjacent_domain', 'excluded', 'unrelated']
-
-export class BurstPolicy implements Policy {
-  readonly name = 'burst'
-  private cfg: BurstPolicyConfig = {
-    distances: DEFAULT_BURST_DISTANCES,
-    windowMs: 60_000,
-    threshold: 10
-  }
-  private windows = new Map<ScopeDistance, Array<{ target: string; at: number }>>()
-  /** After a burst fires, silence the same distance for a full window so
-   *  we don't fire another burst on hits 11..20 immediately after. */
-  private cooldownUntil = new Map<ScopeDistance, number>()
-
-  configure(next: Partial<BurstPolicyConfig>): void {
-    if (next.distances) this.cfg.distances = next.distances
-    if (typeof next.windowMs === 'number') this.cfg.windowMs = next.windowMs
-    if (typeof next.threshold === 'number') this.cfg.threshold = next.threshold
-  }
-
-  ingest(verdict: Verdict): Verdict[] {
-    if (verdict.kind !== 'scope') return []
-    if (!this.cfg.distances.includes(verdict.distance)) return []
-    const now = Date.now()
-    if ((this.cooldownUntil.get(verdict.distance) ?? 0) > now) return []
-    const bucket = this.windows.get(verdict.distance) ?? []
-    // Slide the window
-    const cutoff = now - this.cfg.windowMs
-    const pruned = bucket.filter((r) => r.at >= cutoff)
-    pruned.push({ target: verdict.signal.target, at: now })
-    this.windows.set(verdict.distance, pruned)
-    if (pruned.length >= this.cfg.threshold) {
-      this.cooldownUntil.set(verdict.distance, now + this.cfg.windowMs)
-      this.windows.set(verdict.distance, [])
-      const targets = Array.from(new Set(pruned.map((r) => r.target)))
-      const burst: BurstVerdict = {
-        distance: verdict.distance,
-        count: pruned.length,
-        windowMs: this.cfg.windowMs,
-        firstAt: pruned[0].at,
-        lastAt: pruned[pruned.length - 1].at,
-        targets,
-        severity: verdict.severity,  // burst inherits the base severity — it's a rate, not an escalation
-        authority: 'inferred'  // burst is always an inference, not a fact
-      }
-      return [{ kind: 'burst', ...burst }]
-    }
-    return []
-  }
-
-  evaluate(_signal: Signal): Verdict[] { return [] }
-  reset(): void {
-    this.windows.clear()
-    this.cooldownUntil.clear()
   }
 }
