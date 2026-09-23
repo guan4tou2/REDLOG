@@ -28,6 +28,37 @@ for full commit body + generated notes.
   workflow gate, including one that ran clean (constitution 1.1.0).
 - **Spec Kit:** the Claude Code integration is installed alongside Codex, so
   `/speckit-*` works in Claude Code; Codex stays the default.
+- **Timeline:** when a newer scope violation replaced an older one for the same
+  command, the Timeline drew the newer one as withdrawn and the stale one as
+  standing. It now uses the recompute's own rule, and an `in_scope` verdict no
+  longer makes a violation look withdrawn.
+- **Loot:** the page no longer folds rows by type and preview line, which
+  merged two private keys with the same PEM header and one key seen on two
+  targets. The dedup checkbox is gone. The sidebar and Dashboard count secrets,
+  as the page does, instead of detection events.
+- **Capture:** the proxy-bypass heuristic is removed. It wrote a guess into the
+  signed chain whenever python, node, curl or another "network tool" started
+  without proxy traffic, citing neither.
+- **HTTP capture:** a browser proxy on another loopback port — Burp on
+  `127.0.0.1:8081` — is used as set, instead of being swapped for RedLog's
+  capture proxy. Changing the capture port still moves a browser proxy that
+  pointed at the old one.
+- **AI agents:** saving watch paths in Settings no longer clears
+  `excludedPaths` in `~/.redlog/hook-config.json`.
+- **HUD:** click-through set with ⌘⇧P, the HUD button or the menu bar is kept,
+  instead of being undone by the next unrelated Settings autosave. The menu bar
+  item now releases click-through like ⌘⇧P, which it names.
+- **Export:** in "For sharing" mode, the evidence bundle and HAR — which cannot
+  scrub PII — are disabled with the reason, instead of failing after you pick
+  them.
+- **Recording:** the tray menu and terminal tabs follow pause and resume; a tab
+  shows `paused` rather than `rec`. Pause and resume from the status bar, ⌘.
+  and ⌘K now report failure and offer undo the same way. ⌘K's Capture Now no
+  longer says a screenshot was captured when none was saved.
+- **Search:** a failing recording index shows as a failure, not as no hits. ⌘K
+  says when its 40 event matches are only the newest.
+- **Local API:** `GET /api/events/search` returns `hasMore` and `nextCursor`
+  and takes `cursor`; an unreadable cursor is a 400.
 
 ## v0.16.0 — 2026-09-23
 
