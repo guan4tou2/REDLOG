@@ -2,6 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import yaml from 'js-yaml'
+import { DEFAULT_BROWSER } from './browser-defaults'
 
 export interface VpnAdapter {
   name: string
@@ -27,7 +28,6 @@ export const DEFAULT_VPN_ADAPTERS: VpnAdapter[] = [
 export interface RedLogConfig {
   engagement: {
     id: string
-    name: string
     activeTarget?: string | null
   }
   operator: {
@@ -265,7 +265,6 @@ export function isAgentTailerEnabled(config: Pick<RedLogConfig, 'agentTailer'>):
 const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',
-    name: 'Default Engagement',
     activeTarget: null
   },
   operator: {
@@ -313,15 +312,7 @@ const DEFAULT_CONFIG: RedLogConfig = {
     pollMs: 1500,
     storePreview: false
   },
-  browser: {
-    binary: '',
-    proxy: 'http://127.0.0.1:8080',
-    cdpPort: 9222,
-    isolateProfile: true,
-    ignoreCertErrors: true,
-    startUrl: '',
-    extraArgs: []
-  },
+  browser: { ...DEFAULT_BROWSER, extraArgs: [] },
   httpCapture: {
     routeTerminals: false,
     port: 8080

@@ -3,7 +3,7 @@ import path from 'path'
 import { createHash } from 'crypto'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
-import { insertEvent, queryMarkerAmendments, screenshotsReferencedByMarker, type RedLogEvent } from '../../core/db/events'
+import { insertEvent, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
 import { ingestEvent } from '../../core/ingest'
 import { getProjectDir } from '../../core/project-manager'
 import { loadConfig } from '../../core/config'
@@ -82,7 +82,4 @@ export function registerMarkersIpc(
       return { ok: false, error: (e as Error).message }
     }
   })
-
-  ipcMain.handle('screenshot:markerReferenced', (_e, ids: unknown) =>
-    ctx.getActiveProject() && Array.isArray(ids) ? screenshotsReferencedByMarker(ids.map(String)) : [])
 }

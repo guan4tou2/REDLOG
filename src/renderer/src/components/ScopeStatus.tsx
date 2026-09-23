@@ -4,6 +4,8 @@ import { LoadingSpinner } from './Feedback'
 import { Ban } from 'lucide-react'
 import { formatTime, formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { useInfiniteScroll } from '../lib/useInfiniteScroll'
+import { ListFooter } from './ListFooter'
 
 const SCOPE_SUBTYPES = new Set(['scope_violation', 'scope_cleared', 'scope_recomputed'])
 
@@ -82,6 +84,8 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   // navigation state — reopening the page starts from the active rows again,
   // which is what an operator wants under time pressure.
   const [showCleared, setShowCleared] = useState(false)
+  // The store holds more violation records than the page read.
+  const [truncated, setTruncated] = useState(false)
   const { t } = useI18n()
 
   const active = violations.filter((v) => !v.cleared)
@@ -93,7 +97,10 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   // that needs a mouse.
   // Active first: a withdrawn violation is history, and the operator opened
   // this page to see what still stands.
-  const shownViolations = (showCleared ? [...active, ...cleared] : active).slice(0, 10)
+  // Paged like every other list (§9): the page used to cut at 10 of up to 500
+  // with nothing saying so (Constitution IV).
+  const paged = useInfiniteScroll(showCleared ? [...active, ...cleared] : active)
+  const shownViolations = paged.visible
   const listNav = useListKeyboard({
     count: shownViolations.length,
     onActivate: (i) => { const v = shownViolations[i]; if (v) onOpenInTimeline?.(v.timestamp) },
@@ -102,12 +109,12 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
 
   useEffect(() => {
     const refetch = (): void => {
-      void window.redlog.scope.getViolations().then((r) => setViolations(r as ViolationRow[]))
+      void window.redlog.scope.getViolations().then((r) => { setViolations(r.rows as ViolationRow[]); setTruncated(r.truncated) })
       void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
     }
     Promise.all([
       window.redlog.scope.isConfigured().then(setConfigured),
-      window.redlog.scope.getViolations().then((r) => setViolations(r as ViolationRow[])),
+      window.redlog.scope.getViolations().then((r) => { setViolations(r.rows as ViolationRow[]); setTruncated(r.truncated) }),
       window.redlog.chain.length().then(setChainLen)
     ]).then(() => setLoading(false))
     void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
@@ -199,7 +206,7 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
           <div
             className="space-y-1"
             {...listNav.containerProps}
-            aria-label={t('scope.violationsLabel', { count: shownViolations.length })}
+            aria-label={t('scope.violationsLabel', { count: paged.total })}
           >
           {shownViolations.map((v, i) => {
             const rowProps = listNav.itemProps(i)
@@ -244,6 +251,10 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
             )
           })}
           </div>
+          <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
+          {truncated && (
+            <p data-testid="scope-truncated" className="text-xs text-amber-400">{t('scope.truncated')}</p>
+          )}
         </div>
       )}
     </div>

@@ -96,6 +96,24 @@ describeDB('chain-anchor', () => {
     expect(r.clockAnomalies).toEqual([])
   })
 
+  // The anchor is the defence against a chain rewritten end to end: rows
+  // re-hashed consistently pass the walk, so only the anchor can catch it.
+  // The full verify accepted any anchor whose row count had been reached.
+  it('verifyChainFull checks the anchored head, not just the row count', async () => {
+    insertEvent('shell', { command: 'a' })
+    insertEvent('shell', { command: 'b' })
+    const good = await anchor.anchorNow([])
+    insertEvent('shell', { command: 'c' })
+    expect(anchor.verifyChainFull().anchorMatchesWalkedHead).toBe(true)
+
+    const { getDB } = await import('../src/core/db/index')
+    getDB().prepare(
+      `INSERT INTO chain_anchors (id, head_event_id, head_hash, event_count, calendar_receipts, status, created_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('rewritten', good!.headEventId, '0'.repeat(64), good!.eventCount, '[]', 'failed', good!.createdAt + 1, null)
+    expect(anchor.verifyChainFull().anchorMatchesWalkedHead).toBe(false)
+  })
+
   describe('buildOtsBundle', () => {
     it('composes MAGIC + version + op + digest + timestamp', () => {
       const digestHex = 'a'.repeat(64) // 32 bytes

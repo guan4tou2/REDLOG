@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
+import { capabilitiesFor, isExportFormat, type ExportCapabilities, type ExportFormat } from './export-capabilities'
 
 /**
  * A point-in-time snapshot of both DB tiers' max rowid.
@@ -15,8 +16,6 @@ export interface ExportSnapshot {
   loggedMaxRowId: number
   takenAt: number
 }
-
-export type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
 
 export type ExportSubset =
   | { kind: 'all' }
@@ -38,14 +37,6 @@ export interface NormalizedExportRequest {
   maskOutOfScope: boolean
   scopeOnly: boolean
   scrubPii: boolean
-}
-
-export interface ExportCapabilities {
-  snapshot: boolean
-  boundedSubset: boolean
-  scopeMasking: boolean
-  piiScrubbing: boolean
-  attachments: boolean
 }
 
 export interface ExportCounts {
@@ -166,20 +157,8 @@ export interface ExportPlan {
   fingerprint: string
 }
 
-const CAPABILITIES: Record<ExportFormat, ExportCapabilities> = {
-  json: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
-  ndjson: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
-  bundle: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: false, attachments: true },
-  har: { snapshot: true, boundedSubset: true, scopeMasking: false, piiScrubbing: false, attachments: false },
-  timeline: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false }
-}
-
-export function capabilitiesFor(format: ExportFormat): ExportCapabilities {
-  return { ...CAPABILITIES[format] }
-}
-
 export function normalizeExportRequest(request: ExportRequest): NormalizedExportRequest {
-  if (!Object.hasOwn(CAPABILITIES, request.format)) throw new Error('Invalid export format')
+  if (!isExportFormat(request.format)) throw new Error('Invalid export format')
   const subset = request.subset ?? { kind: 'all' as const }
   if (subset.kind === 'time-range' && (!Number.isFinite(subset.since) || !Number.isFinite(subset.before) || subset.since >= subset.before)) {
     throw new Error('Invalid export time range')

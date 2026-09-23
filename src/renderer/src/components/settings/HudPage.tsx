@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { FieldGroup, isMacOS, type ConfigState } from './SettingsShared'
 
 export default function HudPage({
@@ -7,6 +8,15 @@ export default function HudPage({
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
+  // Pass-through is stored by overlay:setPassThrough whichever control changed
+  // it — this box, the HUD button, ⌘⇧P, the menu bar — so mirror the change.
+  useEffect(() => window.redlog?.overlay?.onPassThroughChanged?.((on) => {
+    setConfig({ ...config, overlay: { ...config.overlay, passThrough: on } })
+  }), [config, setConfig])
+  const setPassThrough = (on: boolean): void => {
+    setConfig({ ...config, overlay: { ...config.overlay, passThrough: on } })
+    window.redlog.overlay.setPassThrough(on)
+  }
   return (
     <>
       <FieldGroup title={t('settings.overlayGroup')}>
@@ -100,7 +110,7 @@ export default function HudPage({
           <input
             type="checkbox"
             checked={config.overlay?.passThrough === true}
-            onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThrough: e.target.checked } })}
+            onChange={(e) => setPassThrough(e.target.checked)}
             className="accent-red-600"
           />
           <span className="text-xs text-redlog-text">{t('settings.overlayPassThrough')}</span>

@@ -4,7 +4,6 @@ import os from 'os'
 import path from 'path'
 import {
   ExportPlanRegistry,
-  capabilitiesFor,
   countExportAttachments,
   countReferencedAttachments,
   createExportPlan,
@@ -12,6 +11,7 @@ import {
   type ExportCounts,
   type ExportSnapshot
 } from '../src/core/export-plan'
+import { capabilitiesFor } from '../src/core/export-capabilities'
 
 const snapshot: ExportSnapshot = { chainedMaxRowId: 12, loggedMaxRowId: 7, takenAt: 1000 }
 const counts: ExportCounts = {

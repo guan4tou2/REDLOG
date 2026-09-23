@@ -3,6 +3,7 @@ import { toast } from '../Toast'
 import { raiseIssue, clearIssue } from '../../lib/issues'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from '../../lib/verifyResultCache'
 import { formatDateTime } from '../../lib/time'
+import { settingsTarget } from '../../lib/navigation'
 import { FieldGroup } from './SettingsShared'
 
 interface FullVerifyResult {
@@ -25,7 +26,6 @@ interface FullVerifyResult {
 export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
   const [anchors, setAnchors] = useState<ChainAnchorInfo[]>([])
   const [busy, setBusy] = useState(false)
-  const [verifyMsg, setVerifyMsg] = useState<string | null>(null)
   // v0.6.87 E1: rich full-chain verify result, shown as a detail card.
   const [fullVerify, setFullVerify] = useState<FullVerifyResult | null>(null)
   const [verifying, setVerifying] = useState(false)
@@ -50,7 +50,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
       } else {
         raiseIssue({
           id: 'anchor', tier: 'attention',
-          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: 'settings'
+          title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'), view: settingsTarget('integrity')
         })
         toast(t('settings.anchorFailed'), {
           type: 'error',
@@ -68,29 +68,30 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
     }
   }
 
+  // One verify, because the walk also checks the latest anchor. There was an
+  // anchor-only button too, and only it raised the issue below; the walk,
+  // which also finds a broken row, only filled its own card.
   const handleVerify = async (): Promise<void> => {
-    const result = await window.redlog.chain.verify()
-    if (!result.anchor) {
-      setVerifyMsg(t('settings.integrityVerifiedNone'))
-    } else {
-      const anchorCount = result.anchor.eventCount
-      const currentRow = anchors[0]?.eventCount ?? anchorCount
-      const msg = result.ok
-        ? t('settings.integrityVerifiedOk').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(Math.max(currentRow, anchorCount)))
-        : t('settings.integrityVerifiedBad').replace('{{n}}', String(anchorCount)).replace('{{m}}', String(currentRow))
-      setVerifyMsg(msg)
-      // A chain that will not verify is the most consequential condition the
-      // app can be in, and the old inline message cleared itself after eight
-      // seconds — so an operator who looked away lost it entirely (SS9).
-      if (result.ok) clearIssue('chain')
-      else {
-        raiseIssue({
-          id: 'chain', tier: 'attention',
-          title: t('issues.chainBroken'), detail: t('issues.chainBrokenDetail'), view: 'settings'
-        })
-      }
+    setVerifying(true)
+    setFullVerify(null)
+    const r = await window.redlog.chain.verify()
+    setVerifying(false)
+    setFullVerify(r)
+    // v0.6.89.5: publish to the module-level cache so a fresh Timeline mount
+    // picks up the broken-chain state without another verify click.
+    setLastVerifyResult(r as CachedFullVerifyResult | null)
+    // A chain that will not verify is the most consequential condition the
+    // app can be in, so it stays on the issue list until a verify passes (SS9).
+    // A chain re-hashed end to end, or cut short, still walks cleanly; only
+    // the anchor disagrees, and that is a broken chain too.
+    const anchorBad = r.anchor != null && !r.anchorMatchesWalkedHead
+    if (r.ok && !anchorBad) clearIssue('chain')
+    else {
+      raiseIssue({
+        id: 'chain', tier: 'attention', title: t('issues.chainBroken'),
+        detail: t(r.ok ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'), view: settingsTarget('integrity')
+      })
     }
-    setTimeout(() => setVerifyMsg(null), 8000)
   }
 
   const statusColor = (s: string): string => {
@@ -114,30 +115,12 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
         >
           {busy ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
         </button>
+        {/* v0.6.87 E1: walks every event, recomputes each hash, and checks
+            it against `prev_hash`, then checks the latest anchor. Shows a
+            detail card with walked count, broken-at (if any), current head,
+            and anchor match. */}
         <button
           onClick={handleVerify}
-          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
-        >
-          {t('settings.integrityVerify')}
-        </button>
-        {/* v0.6.87 E1: full-chain verify. Walks every event, recomputes each
-            hash, and checks it against `prev_hash`. Slower than anchor-only
-            verify but proves the chain is intact end-to-end — critical for
-            delivery / client demo. Shows a detail card with walked count,
-            broken-at (if any), current head, and anchor match. */}
-        <button
-          onClick={async () => {
-            setVerifying(true)
-            setFullVerify(null)
-            const r = await window.redlog.chain.verify({ full: true })
-            setVerifying(false)
-            setFullVerify(r)
-            // v0.6.89.5: publish to the module-level cache so a fresh
-            // Timeline mount picks up the broken-chain state without
-            // requiring another verify click. Custom event lets an
-            // already-mounted Timeline update in place.
-            setLastVerifyResult(r as CachedFullVerifyResult | null)
-          }}
           disabled={verifying}
           className="px-3 py-1.5 bg-redlog-elevated text-emerald-300 text-xs rounded hover:bg-redlog-elevated-hover disabled:opacity-50"
         >
@@ -146,7 +129,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
         <button
           onClick={async () => {
             const r = await window.redlog.chain.upgrade() as { upgraded: number; scanned: number } | null
-            if (r) toast(`Upgraded ${r.upgraded}/${r.scanned} anchors`, r.upgraded > 0 ? 'success' : 'info')
+            if (r) toast(t('settings.integrityUpgraded', { n: r.upgraded, m: r.scanned }), r.upgraded > 0 ? 'success' : 'info')
             await reload()
           }}
           className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"
@@ -154,14 +137,14 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
           {t('settings.integrityUpgradeAll')}
         </button>
       </div>
-      {verifyMsg && <p className="text-xs text-redlog-text font-mono">{verifyMsg}</p>}
       {fullVerify && (
         <div className={`p-3 rounded border text-xs space-y-1 font-mono ${
           fullVerify.ok ? 'border-emerald-800 bg-emerald-950/30' : 'border-red-800 bg-red-950/30'
         }`}>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <span className={fullVerify.ok ? 'text-emerald-400' : 'text-red-400'}>
-              {fullVerify.ok ? '✓' : '✗'} {t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}
+              <span aria-hidden="true">{fullVerify.ok ? '✓' : '✗'} </span>
+              <span>{t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}</span>
             </span>
           </div>
           <div className="text-redlog-text-dim">
@@ -184,12 +167,14 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
               {t('settings.integrityHeadHash')}: {fullVerify.currentHead.slice(0, 32)}...
             </div>
           )}
-          {fullVerify.anchor && (
+          {fullVerify.anchor ? (
             <div className={fullVerify.anchorMatchesWalkedHead ? 'text-emerald-400' : 'text-amber-400'}>
               {fullVerify.anchorMatchesWalkedHead
                 ? t('settings.integrityFullAnchorMatch')
                 : t('settings.integrityFullAnchorMismatch')}
             </div>
+          ) : fullVerify.ok && (
+            <div className="text-redlog-text-dim">{t('settings.integrityFullNoAnchor')}</div>
           )}
           {fullVerify.clockAnomalies && fullVerify.clockAnomalies.length > 0 && (
             <div className="text-amber-400">

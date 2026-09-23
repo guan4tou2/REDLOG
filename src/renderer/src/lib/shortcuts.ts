@@ -176,7 +176,7 @@ export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
       label: 'timeline.help.group.filter',
       rows: [
         { keys: '/', label: 'timeline.help.slash' },
-        { keys: `${m}K`, label: 'timeline.help.palette' },
+        { keys: `${m}F`, label: 'timeline.help.findInPage' },
         { keys: 'Alt-click', label: 'timeline.help.soloLane' },
         { keys: 'Esc', label: 'timeline.help.escFilter' }
       ]

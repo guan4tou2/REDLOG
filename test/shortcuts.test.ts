@@ -156,7 +156,7 @@ describe('the table drives the handler, not just the cheatsheet', () => {
 
   it('writes the modifier the platform uses, in both tables', () => {
     expect(appShortcuts(SIDEBAR_ORDER, false).find((r) => r.id === 'app:palette')?.keys).toBe('Ctrl+K')
-    expect(timelineShortcuts(false)[0].rows[1].keys).toBe('Ctrl+K')
+    expect(timelineShortcuts(false)[0].rows[1].keys).toBe('Ctrl+F')
   })
 })
 

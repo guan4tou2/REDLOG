@@ -47,19 +47,6 @@ export function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
   })
 }
 
-// v0.6.91 W1/W3: case-insensitive substring "score". Higher = better; earlier
-// match position wins, then shorter-target-vs-query as tiebreak. Deliberately
-// not a real fuzzy matcher (no gap tolerance) — the palette and filter both aim
-// at literal identifiers (command names, hosts, subtypes), so a subsequence
-// matcher's extra false positives aren't worth it.
-export function fuzzyScore(target: string, q: string): number {
-  if (!q) return 0
-  if (!target) return -1
-  const idx = target.toLowerCase().indexOf(q.toLowerCase())
-  if (idx < 0) return -1
-  return 1000 - idx - Math.max(0, target.length - q.length) * 0.05
-}
-
 /** Compact duration for a compressed gap label — "2h", "45m". */
 export function formatGap(ms: number): string {
   const min = Math.round(ms / 60000)

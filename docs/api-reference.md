@@ -76,9 +76,15 @@ Primary event ingestion. The server strips any `operator_id` from the body (attr
 
 #### `GET /api/events/search`
 
-**Query params:** `q` (min 2 chars), `limit` (default 100)
+**Query params:** `q` (min 2 chars, the app's query language — see
+[SPEC-search-query-semantics.md](domain/SPEC-search-query-semantics.md)),
+`limit` (default 100), `cursor` (the `nextCursor` of the previous page)
 
-**Response:** `{ count: number, events: Event[] }`
+**Response:** `{ count: number, events: Event[], hasMore: boolean, nextCursor: string | null, toolSession? }`
+
+`hasMore: false` means the answer is complete. Follow `nextCursor` until it is.
+`400` for an unparsable query (`reason`, `token`) or a cursor the store cannot
+read; `500` when the search itself fails — never an empty `events` list.
 
 #### `GET /api/events/count`
 
