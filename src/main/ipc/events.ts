@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import {
-  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, searchEvents,
+  queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   getEventCount, getLatestLoggedTs, distinctAgentTypes, aggregateTargets,
   queryTargetEventsPage, queryScreenshotPage,
@@ -44,9 +44,6 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
 
   ipcMain.handle('events:getLatestLoggedTs', () =>
     ctx.getActiveProject() ? getLatestLoggedTs() : null)
-
-  ipcMain.handle('events:search', (_e, query: string, limit?: number, opts?: EventFilter) =>
-    ctx.getActiveProject() ? searchEvents(query, limit, withActiveScope(opts ?? {})) : [])
 
   // Spec 017. The renderer parses and sends the result, so it can show how the
   // query was read without a round trip and a parse failure never becomes a
