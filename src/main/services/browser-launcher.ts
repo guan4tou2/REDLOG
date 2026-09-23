@@ -2,26 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import os from 'os'
-
-export interface BrowserConfig {
-  binary: string        // '' = auto-detect
-  proxy: string         // e.g. http://127.0.0.1:8080 — '' disables the flag
-  cdpPort: number       // remote debugging port, so Bookmarks can read the tab
-  isolateProfile: boolean
-  ignoreCertErrors: boolean
-  startUrl: string
-  extraArgs: string[]
-}
-
-export const DEFAULT_BROWSER: BrowserConfig = {
-  binary: '',
-  proxy: 'http://127.0.0.1:8080',
-  cdpPort: 9222,
-  isolateProfile: true,
-  ignoreCertErrors: true,
-  startUrl: '',
-  extraArgs: []
-}
+import type { BrowserConfig } from '../../core/browser-defaults'
 
 const MAC_CANDIDATES = [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
