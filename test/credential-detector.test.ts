@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectCredentialUse, credentialFromClipboard } from '../src/core/credential-detector'
+import { detectCredentialUse } from '../src/core/credential-detector'
 
 // docs/DESIGN-core-and-capture.md §4d. Two failure modes matter and pull
 // against each other: a false negative silently drops a real credential use
@@ -92,19 +92,6 @@ describe('credential use from an Authorization header', () => {
     expect(c.userContext).toBe('admin')
     expect(JSON.stringify(c)).not.toContain(PW)
     expect(JSON.stringify(c)).not.toContain(b64)
-  })
-})
-
-describe('credential use from the clipboard', () => {
-  it('records a copied secret, masked', () => {
-    const copied = 'placeholder-clipboard-secret'
-    const c = credentialFromClipboard(copied, true)
-    expect(c?.kind).toBe('clipboard_secret')
-    expect(c?.masked).not.toContain(copied)
-  })
-
-  it('ignores clipboard text the loot patterns did not flag as a secret', () => {
-    expect(credentialFromClipboard('just some notes', false)).toBeNull()
   })
 })
 

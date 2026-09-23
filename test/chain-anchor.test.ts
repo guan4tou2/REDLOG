@@ -85,11 +85,11 @@ describeDB('chain-anchor', () => {
     expect(v.ok).toBe(true)
   })
 
-  it('verifyChainFull passes on a clean chain and reports zero anomalies', () => {
+  it('verifyChainFullAsync passes on a clean chain and reports zero anomalies', async () => {
     insertEvent('shell', { command: 'a' })
     insertEvent('shell', { command: 'b' })
     insertEvent('shell', { command: 'c' })
-    const r = anchor.verifyChainFull()
+    const r = (await anchor.verifyChainFullAsync())
     expect(r.ok).toBe(true)
     expect(r.walked).toBe(3)
     expect(r.brokenAtEventId).toBeNull()
@@ -99,19 +99,19 @@ describeDB('chain-anchor', () => {
   // The anchor is the defence against a chain rewritten end to end: rows
   // re-hashed consistently pass the walk, so only the anchor can catch it.
   // The full verify accepted any anchor whose row count had been reached.
-  it('verifyChainFull checks the anchored head, not just the row count', async () => {
+  it('verifyChainFullAsync checks the anchored head, not just the row count', async () => {
     insertEvent('shell', { command: 'a' })
     insertEvent('shell', { command: 'b' })
     const good = await anchor.anchorNow([])
     insertEvent('shell', { command: 'c' })
-    expect(anchor.verifyChainFull().anchorMatchesWalkedHead).toBe(true)
+    expect((await anchor.verifyChainFullAsync()).anchorMatchesWalkedHead).toBe(true)
 
     const { getDB } = await import('../src/core/db/index')
     getDB().prepare(
       `INSERT INTO chain_anchors (id, head_event_id, head_hash, event_count, calendar_receipts, status, created_at, completed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run('rewritten', good!.headEventId, '0'.repeat(64), good!.eventCount, '[]', 'failed', good!.createdAt + 1, null)
-    expect(anchor.verifyChainFull().anchorMatchesWalkedHead).toBe(false)
+    expect((await anchor.verifyChainFullAsync()).anchorMatchesWalkedHead).toBe(false)
   })
 
   describe('buildOtsBundle', () => {

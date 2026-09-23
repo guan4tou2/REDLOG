@@ -29,7 +29,6 @@ export type CredentialKind =
   | 'password_flag'   // -p / --password on a command line
   | 'url_userinfo'    // scheme://user:pass@host
   | 'auth_header'     // Authorization: Basic/Bearer/...
-  | 'clipboard_secret'// a secret-shaped value copied to the clipboard
 
 export interface CredentialUse {
   kind: CredentialKind
@@ -150,13 +149,4 @@ export function detectCredentialUse(text: string, opts: DetectOptions = {}): Cre
   if (!want || want.has('url_userinfo')) out.push(...fromUrlUserinfo(text))
   if (!want || want.has('auth_header')) out.push(...fromAuthHeader(text, opts.destHost))
   return out
-}
-
-/** A clipboard value that looks like a secret is credential material the
- *  operator is about to paste somewhere. Kept separate because the input is a
- *  whole clipboard payload, not a command, and the "is this a secret" test is
- *  the loot patterns' job — the caller passes the loot verdict in. */
-export function credentialFromClipboard(content: string, isSecret: boolean): CredentialUse | null {
-  if (!isSecret || !content) return null
-  return { kind: 'clipboard_secret', masked: mask(content.trim()) }
 }

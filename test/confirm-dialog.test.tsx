@@ -13,7 +13,7 @@ import fs from 'fs'
 import path from 'path'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import {
-  ConfirmDialogContainer, confirm, confirmIrreversible, confirmChainImpact
+  ConfirmDialogContainer, confirm, confirmChainImpact
 } from '../src/renderer/src/components/ConfirmDialog'
 
 afterEach(cleanup)
@@ -59,7 +59,7 @@ describe('graded confirmation', () => {
 
   it('irreversible: the confirm button is disabled until the box is ticked', async () => {
     mount()
-    const answer = confirmIrreversible({ title: 'Remove hook', message: 'This cannot be undone.' })
+    const answer = confirm('Remove hook', 'This cannot be undone.', true)
     await openedDialog()
 
     const button = screen.getByRole('button', { name: /delete|刪除/i })
@@ -104,7 +104,7 @@ describe('graded confirmation', () => {
   it('Escape always resolves false, at every level', async () => {
     for (const open of [
       () => confirm('a', 'b'),
-      () => confirmIrreversible({ title: 'a', message: 'b' }),
+      () => confirm('a', 'b', true),
       () => confirmChainImpact({ title: 'a', message: 'b', requireTyped: 'x' })
     ]) {
       mount()
@@ -144,7 +144,7 @@ describe('focus trap', () => {
     // outside the dialog entirely — the exact failure a trap exists to
     // prevent, in the two levels that matter most.
     mount()
-    void confirmIrreversible({ title: 'Remove hook', message: 'Gone for good.' })
+    void confirm('Remove hook', 'Gone for good.', true)
     await openedDialog()
     expect((document.activeElement as HTMLElement)?.getAttribute('type')).toBe('checkbox')
     cleanup()

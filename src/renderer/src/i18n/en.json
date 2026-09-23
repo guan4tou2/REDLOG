@@ -865,8 +865,6 @@
   "palette.hostHits": "{{count}} events",
   "palette.operatorPrimary": "primary",
   "settings.categories": "Settings categories",
-  "settings.filterPages": "Filter categories…",
-  "settings.noPageMatches": "No category matches “{{query}}”",
   "settings.groupCapture": "What to record",
   "settings.groupScope": "Scope",
   "settings.groupEvidence": "Evidence",
@@ -1198,5 +1196,10 @@
   "settings.lootGroup": "Loot detection",
   "settings.lootHint": "Rules that are off are not recorded as loot. What they match is still masked in the record and in exports.",
   "settings.lootBuiltin": "built-in",
-  "settings.lootRulesFailed": "Could not load the loot rules."
+  "settings.lootRulesFailed": "Could not load the loot rules.",
+  "settings.searchSettings": "Search settings…",
+  "settings.noSettingMatches": "No setting matches “{{query}}”",
+  "settings.searchResults": "Settings",
+  "statusBar.uptimeSince": "Time since this project was created ({{date}}), not this session",
+  "settings.lootRuleStopped": "Stopped: this rule ran past its time limit, so it no longer runs — or masks what it matches. Reload the plugin after fixing the pattern."
 }
