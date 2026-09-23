@@ -164,7 +164,8 @@ const api: RedLogAPI = {
     upgrade: (id?: string) => ipcRenderer.invoke('chain:upgrade', id)
   },
   loot: {
-    getCount: () => ipcRenderer.invoke('loot:getCount')
+    getCount: () => ipcRenderer.invoke('loot:getCount'),
+    rules: () => ipcRenderer.invoke('loot:rules')
   },
   bookmarks: {
     list: () => ipcRenderer.invoke('bookmarks:list'),

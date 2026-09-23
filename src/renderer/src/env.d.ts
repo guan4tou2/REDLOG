@@ -293,6 +293,8 @@ interface RedLogAPI {
   }
   loot: {
     getCount: () => Promise<number>
+    /** Every loot rule, for the Settings switches (Spec 032). */
+    rules: () => Promise<Array<{ id: string; type: string; confidence: 'high' | 'medium' | 'low'; pluginId: string | null; description?: string }>>
   }
   bookmarks: {
     list: () => Promise<Bookmark[]>

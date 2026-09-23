@@ -13,6 +13,10 @@ for full commit body + generated notes.
   secret split across two output chunks.
 - **Loot:** a failed loot write is reported in Capture Health and retried on
   the next sighting instead of being dropped.
+- **Loot:** every rule can be switched off in Settings ▸ Capture ▸ Loot
+  detection (`loot.disabledRules`). `jwt` and `generic_api_key` now ship off —
+  they fired on every bearer header and on `password=` in help text. A rule
+  that is off is not recorded as loot; its values are still masked.
 - **Plugins:** `lootPatterns` entries take an optional `group` naming the
   capture group that holds the secret; without it the whole match is the
   value. It used to be capture group 1 whenever the pattern had one.

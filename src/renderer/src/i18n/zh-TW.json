@@ -414,12 +414,11 @@
   "settings.screenshot.interval.60s": "每 1 分鐘",
   "settings.screenshot.interval.5m": "每 5 分鐘",
   "settings.screenshot.intervalHint": "依所選間隔自動擷取桌面。相同畫面會用 SHA-256 去重，桌面靜置時不會塞爆事件鏈。",
-  "settings.rotationGroup": "磁碟壓力 / 證物輪替",
   "settings.rotationHint": "各儲存區的容量上限（MB）。0＝全部保留（不淘汰）。當儲存區超過上限時，會優先淘汰最久未使用的範圍外檔案；目標屬於本次委任範圍的檔案會被釘選保留。事件與其 SHA-256 一律保留，只刪除磁碟上的檔案。",
   "settings.rotationHttpBodies": "HTTP 內容儲存上限（MB）",
   "settings.rotationCastStore": "終端錄影儲存上限（MB）",
   "settings.rotationScreenshots": "截圖儲存上限（MB）",
-  "settings.retentionGroup": "列保留",
+  "settings.retentionGroup": "保存與容量",
   "settings.retentionLoggedTier": "流量事件（HTTP / DNS / 行程）保留天數",
   "settings.retentionLoggedTierHint": "logged 層列（HTTP 流量、DNS、行程監控）的保留天數。0 = 永久保留。這些列不上鏈，作為調查脈絡使用。",
   "settings.checkUpdate": "檢查更新",
@@ -1199,5 +1198,9 @@
   "transcript.queryToolSessionOthers": "同一個 tool-use ID 也出現在另外 {{count}} 個 session；加上 session: 條件可以指定。",
   "transcript.queryCoverage": "文字搜尋涵蓋已儲存的事件內容。未被 inline 捕獲的指令輸出留在終端錄影裡，搜不到——沒有命中不代表那段輸出沒有這個字串。",
   "palette.searchFailed": "事件搜尋失敗 —— 這不代表沒有符合的事件。",
-  "palette.searchUnparsable": "條件還沒寫完（例如 session: 後面缺值），所以沒有送出搜尋。加上值，或用雙引號當作文字搜尋。"
+  "palette.searchUnparsable": "條件還沒寫完（例如 session: 後面缺值），所以沒有送出搜尋。加上值，或用雙引號當作文字搜尋。",
+  "settings.lootGroup": "戰利品偵測",
+  "settings.lootHint": "關閉的規則不會記成戰利品；它比對到的內容在紀錄與匯出中仍會被遮蔽。",
+  "settings.lootBuiltin": "內建",
+  "settings.lootRulesFailed": "無法載入戰利品規則。"
 }
