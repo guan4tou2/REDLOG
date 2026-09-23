@@ -7,6 +7,13 @@ import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
+import { toast, toastUndo } from '../src/renderer/src/components/Toast'
+
+vi.mock('../src/renderer/src/components/Toast', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/renderer/src/components/Toast')>()),
+  toast: vi.fn(),
+  toastUndo: vi.fn()
+}))
 
 const bridge = {
   project: { list: vi.fn(async () => []), open: vi.fn(async () => null) },
@@ -78,6 +85,31 @@ describe('command palette', () => {
     expect(hints.filter((h) => /(?:⌘|Ctrl\+)9$/.test(h))).toHaveLength(1)
     const marks = screen.getByText(/marks/i).closest('[role="option"]')
     expect(marks?.textContent).not.toMatch(/(?:⌘|Ctrl\+)\d/)
+  })
+
+  // The status bar, ⌘. and this palette all pause and resume recording, with
+  // three kinds of feedback — and this one gave none: a failed toggle was
+  // swallowed, so the operator could believe capture had paused.
+  it('reports a failed recording toggle, like the status bar', async () => {
+    bridge.recording.toggle.mockRejectedValueOnce(new Error('main did not apply it'))
+    open({ recording: true })
+    fireEvent.click(await screen.findByText(/pause recording/i))
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("Couldn't change recording state", expect.objectContaining({ type: 'error' })))
+  })
+
+  it('offers the status bar’s undo after pausing', async () => {
+    open({ recording: true })
+    fireEvent.click(await screen.findByText(/pause recording/i))
+    await waitFor(() => expect(toastUndo).toHaveBeenCalledWith('Recording paused', expect.any(Function), expect.objectContaining({ type: 'warning' })))
+  })
+
+  // A manual capture returns null when nothing new was stored — the screen
+  // matched the last capture, or capturing failed. Neither is "captured".
+  it('does not report a screenshot that was not saved', async () => {
+    open()
+    fireEvent.click(await screen.findByText('Capture Now'))
+    await waitFor(() => expect(toast).toHaveBeenCalled())
+    expect(toast).not.toHaveBeenCalledWith('Screenshot captured', 'success')
   })
 
   it('navigates and closes on Enter', async () => {

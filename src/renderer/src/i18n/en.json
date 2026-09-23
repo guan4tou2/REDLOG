@@ -862,6 +862,8 @@
   "palette.pauseRecording": "Pause recording",
   "palette.resumeRecording": "Resume recording",
   "palette.screenshotTaken": "Screenshot captured",
+  "palette.screenshotNotSaved": "No new screenshot was saved",
+  "palette.screenshotNotSavedWhy": "The screen matched the last capture, or capturing failed — Capture Health shows which.",
   "palette.densityTight": "Switch to tight density",
   "palette.densityComfortable": "Switch to comfortable density",
   "dashboard.findInPage": "Filter what is on screen",
