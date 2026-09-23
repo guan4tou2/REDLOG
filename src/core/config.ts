@@ -198,6 +198,15 @@ export interface RedLogConfig {
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
     emitThinking?: boolean
   }
+  /** Loot detection (Spec 032). */
+  loot?: {
+    /** Rule ids (`listLootRules()`) not recorded as loot. A rule that is off
+     *  still matches for masking — its values are redacted either way. Ships
+     *  with the two noisiest built-ins off: `jwt` fires on every bearer header
+     *  in HTTP traffic, `generic_api_key` on `password=` in help text and error
+     *  messages. */
+    disabledRules?: string[]
+  }
   /** Every store's retention, one section (Spec 028). Two knobs, the same
    *  names everywhere they apply:
    *  - `keepDays` — age sweep on project open. `0` = keep forever (default for
@@ -343,6 +352,9 @@ const DEFAULT_CONFIG: RedLogConfig = {
   agentTailer: {
     enabled: false,
     emitThinking: false
+  },
+  loot: {
+    disabledRules: ['jwt', 'generic_api_key']
   },
   retention: {
     // v0.13.0→v0.15: default changed from 30 to 0 (keep forever) — #91.

@@ -1,4 +1,5 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
+import LootRulesGroup from './LootRulesGroup'
 
 export default function CaptureControlPage({
   config, setConfig, t
@@ -119,6 +120,8 @@ export default function CaptureControlPage({
         <p className="text-xs text-redlog-text-faint">{t('settings.powershellTranscriptEnableHint')}</p>
       </FieldGroup>
 
+      <LootRulesGroup config={config} setConfig={setConfig} t={t} />
+
       <FieldGroup title={t('settings.screenshotGroup')}>
         <div className="flex items-center gap-2 flex-wrap">
           {[
@@ -187,7 +190,10 @@ export default function CaptureControlPage({
           in MB (operators think in MB; config stores bytes). 0 = keep
           everything. When a store is over budget the coldest out-of-scope
           files are evicted first and in-scope evidence is pinned. */}
-      <FieldGroup title={t('settings.rotationGroup')}>
+      {/* One group for every store's retention (Spec 028's single model):
+          size budgets first, then the row tier's age. Merged in Spec 032,
+          which added the Loot group, so the group count holds. */}
+      <FieldGroup title={t('settings.retentionGroup')}>
         <p className="text-xs text-redlog-text-faint">{t('settings.rotationHint')}</p>
         {([
           ['httpBodies', 'settings.rotationHttpBodies'],
@@ -202,9 +208,6 @@ export default function CaptureControlPage({
             type="number"
           />
         ))}
-      </FieldGroup>
-
-      <FieldGroup title={t('settings.retentionGroup')}>
         <p className="text-xs text-redlog-text-faint">{t('settings.retentionLoggedTierHint')}</p>
         <Field
           label={t('settings.retentionLoggedTier')}
