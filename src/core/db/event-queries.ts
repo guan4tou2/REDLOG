@@ -819,64 +819,6 @@ function toMatchQuery(raw: string): string | null {
     })
     .join(' ')
 }
-
-export function searchEvents(query: string, limit = 100, opts: EventFilter = {}): RedLogEvent[] {
-  const db = getReadonlyDB()
-  const match = toMatchQuery(query)
-  if (!match) return []
-  const bodyIdsJson = JSON.stringify(searchHttpBodyEventIds(query))
-
-  const extraConds: string[] = []
-  const extraParams: unknown[] = []
-  appendEventFilter(opts, extraConds, extraParams, 'e')
-
-  const whereExtra = extraConds.length ? ' AND ' + extraConds.join(' AND ') : ''
-
-  const chainedSelect = `
-    SELECT e.rowid AS _row,
-           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-           e.hostname, e.source_ip, e.target_id, e.data, e.hash, e.prev_hash, e.created_at,
-           e.monotonic_ns, e.ntp_offset_ms, e.signature, 'chained' AS tier
-    FROM events e
-    WHERE (e.rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-           OR e.id IN (SELECT value FROM json_each(?)))${whereExtra}
-  `
-  const loggedSelect = `
-    SELECT e.rowid AS _row,
-           e.id, e.timestamp, e.engagement_id, e.session_id, e.operator_id, e.agent_type,
-           e.hostname, e.source_ip, e.target_id, e.data,
-           NULL AS hash, NULL AS prev_hash, e.created_at,
-           NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
-           'logged' AS tier
-    FROM events_logged e
-    WHERE (e.rowid IN (SELECT rowid FROM events_logged_fts WHERE events_logged_fts MATCH ?)
-           OR e.id IN (SELECT value FROM json_each(?)))${whereExtra}
-  `
-
-  const sql = `SELECT * FROM (
-    SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
-    UNION ALL
-    SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
-  ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
-  const bind = [match, bodyIdsJson, ...extraParams, limit, match, bodyIdsJson, ...extraParams, limit, limit]
-
-  try {
-    const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
-    return rows.map(rowToEvent)
-  } catch {
-    return []
-  }
-}
-
-
-/**
- * Spec 017: evaluate a parsed query. Conditions and free text are two
- * intersecting paths, not one — free text goes to FTS, a condition resolves
- * against its stored field. The FTS tables index `data` as a single blob, so
- * an identifier quoted inside unrelated command output is findable there;
- * satisfying a condition that way would match evidence the operator did not
- * ask for and call it an exact hit.
- */
 export interface EventQueryRequest {
   parsed: ParsedQuery
   filter?: EventFilter
