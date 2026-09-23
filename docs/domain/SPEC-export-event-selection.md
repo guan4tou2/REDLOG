@@ -2,7 +2,7 @@
 
 > Domain: Evidence / Engagement / Handoff
 > Invariant: Export selection must operate across ALL persisted event tiers.
-> Status: Implemented and regression-tested across both tiers. ExportPlan migration in progress under `specs/001-export-plan-consistency/`.
+> Status: Implemented and regression-tested across both tiers. Every file-producing export resolves an ExportPlan (Spec 001, Verified).
 
 ## Domain Concepts
 
