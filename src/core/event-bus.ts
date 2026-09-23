@@ -18,11 +18,13 @@ class RedLogEventBus extends EventEmitter {
   // the origin. Combined with the operator_id resolved from the token, a
   // reviewer can tell "the operator paused" from "the agent paused itself".
   pause(source: RecordingToggleSource = 'unknown'): void {
+    if (this._paused) return
     this._paused = true
     this.emit('recording', false, source)
   }
 
   resume(source: RecordingToggleSource = 'unknown'): void {
+    if (!this._paused) return
     this._paused = false
     this.emit('recording', true, source)
   }

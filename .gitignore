@@ -7,3 +7,7 @@ dist/
 # Runtime data (screenshots, DB, cast files)
 .redlog/
 test-results/
+
+# Python capture helper bytecode
+__pycache__/
+*.pyc

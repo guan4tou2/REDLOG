@@ -108,7 +108,7 @@ export default function App(): JSX.Element {
     )
   }
 
-  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline'].includes(view)
+  const showFilterBar = ['search', 'transcript', 'http_history', 'timeline', 'loot'].includes(view)
 
   return (
     <FilterProvider>

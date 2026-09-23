@@ -75,7 +75,7 @@ describeDB('body store size-pressure eviction', () => {
   it('does nothing when unbounded (maxBytes 0)', () => {
     const f = writeBody('a', 1000)
     seedRef(f, 1000, null)
-    const r = sweepBodyStore({ httpBodies: { maxBytes: 0 } }, OPTS)
+    const r = sweepBodyStore({ retention: { httpBodies: { maxBytes: 0 } } }, OPTS)
     expect(r.evicted).toBe(0)
     expect(exists(f)).toBe(true)
   })
@@ -85,7 +85,7 @@ describeDB('body store size-pressure eviction', () => {
     const warm = writeBody('warm', 800, 1_000)
     seedRef(cold, 800, null)
     seedRef(warm, 800, null)
-    const r = sweepBodyStore({ httpBodies: { maxBytes: 1000 } }, OPTS)
+    const r = sweepBodyStore({ retention: { httpBodies: { maxBytes: 1000 } } }, OPTS)
     expect(r.evicted).toBe(1)
     expect(exists(cold)).toBe(false)
     expect(exists(warm)).toBe(true)
@@ -99,7 +99,7 @@ describeDB('body store size-pressure eviction', () => {
     seedRef(inScope, 900, '10.10.11.24')
     seedRef(outScope, 900, '8.8.8.8')
     const r = sweepBodyStore(
-      { httpBodies: { maxBytes: 1000 }, scope: { targets: ['10.10.11.24'] } },
+      { retention: { httpBodies: { maxBytes: 1000 } }, scope: { targets: ['10.10.11.24'] } },
       OPTS
     )
     expect(exists(inScope), 'in-scope evidence was evicted').toBe(true)
@@ -113,7 +113,7 @@ describeDB('body store size-pressure eviction', () => {
     seedRef(inScope, 900, 'api.target.com')
     seedRef(outScope, 900, 'evil.example')
     sweepBodyStore(
-      { httpBodies: { maxBytes: 1000 }, scope: { targets: ['*.target.com'] } },
+      { retention: { httpBodies: { maxBytes: 1000 } }, scope: { targets: ['*.target.com'] } },
       OPTS
     )
     expect(exists(inScope)).toBe(true)
@@ -125,7 +125,7 @@ describeDB('body store size-pressure eviction', () => {
     seedRef(p1, 800, '10.10.11.24'); seedRef(p2, 800, '10.10.11.24')
     const cold = writeBody('cold', 400, 60_000); seedRef(cold, 400, null)
     const r = sweepBodyStore(
-      { httpBodies: { maxBytes: 1000 }, scope: { targets: ['10.10.11.24'] } },
+      { retention: { httpBodies: { maxBytes: 1000 } }, scope: { targets: ['10.10.11.24'] } },
       OPTS
     )
     expect(exists(p1)).toBe(true)
@@ -136,7 +136,7 @@ describeDB('body store size-pressure eviction', () => {
 
   it('writes an audit event so shrinking evidence is on the record', () => {
     const f = writeBody('a', 2000, 60_000); seedRef(f, 2000, null)
-    sweepBodyStore({ httpBodies: { maxBytes: 500 } }, OPTS)
+    sweepBodyStore({ retention: { httpBodies: { maxBytes: 500 } } }, OPTS)
     const audit = queryEvents({ limit: 100 })
       .filter((e) => e.agentType === 'system' && e.data?.subtype === 'body_evicted')
     expect(audit.length).toBe(1)
@@ -149,7 +149,7 @@ describeDB('body store size-pressure eviction', () => {
     // chain still proves what the body was.
     const f = writeBody('a', 2000, 60_000)
     seedRef(f, 2000, null)
-    sweepBodyStore({ httpBodies: { maxBytes: 500 } }, OPTS)
+    sweepBodyStore({ retention: { httpBodies: { maxBytes: 500 } } }, OPTS)
     expect(exists(f)).toBe(false)
     const ev = queryEvents({ limit: 100 }).find((e) =>
       (e.data?.response_body_ref as { file?: string } | undefined)?.file === f)
@@ -162,7 +162,7 @@ describeDB('body store size-pressure eviction', () => {
     const warm = writeBody('warm', 800, 1_000); seedRef(warm, 800, '10.10.11.24')
     // No scope targets → nothing is pinned → coldest goes even though it has a
     // target, because "in-scope" is undefined without a declared scope.
-    const r = sweepBodyStore({ httpBodies: { maxBytes: 1000 } }, OPTS)
+    const r = sweepBodyStore({ retention: { httpBodies: { maxBytes: 1000 } } }, OPTS)
     expect(r.evicted).toBe(1)
     expect(exists(cold)).toBe(false)
     expect(exists(warm)).toBe(true)

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { request } from 'node:http'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -79,6 +80,39 @@ describeDB('api-server', () => {
     closeDB()
     fs.rmSync(tmpDir, { recursive: true, force: true })
     fs.rmSync(FAKE_HOME, { recursive: true, force: true })
+  })
+
+  it('rejects events pinned to a different engagement before ingest', async () => {
+    const before = getEventCount()
+    const response = await fetch(`${base}/api/events`, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Redlog-Engagement': 'other-client' },
+      body: JSON.stringify({ agent_type: 'shell', data: { subtype: 'session_output', stdout: 'cross-project-canary' } })
+    })
+    expect(response.status).toBe(409)
+    expect(getEventCount()).toBe(before)
+  })
+
+  it('rechecks pinned identity after an in-flight body spans a project switch', async () => {
+    const before = getEventCount()
+    let finish!: () => void
+    const response = new Promise<number | undefined>((resolve, reject) => {
+      const req = request(`${base}/api/events`, { method: 'POST', headers: {
+        ...authHeaders, 'Content-Type': 'application/json', 'X-Redlog-Engagement': 'eng-1'
+      } }, res => { res.resume(); resolve(res.statusCode) })
+      req.on('error', reject)
+      req.write('{"agent_type":"shell",')
+      finish = () => req.end('"data":{"subtype":"session_output","stdout":"inflight-canary"}}')
+    })
+    try {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      api.configureApi({ engagementId: 'eng-2', operatorId: 'op-primary', operatorName: 'Primary' })
+      finish()
+      expect(await response).toBe(409)
+      expect(getEventCount()).toBe(before)
+    } finally {
+      api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', operatorName: 'Primary' })
+    }
   })
 
   it('serves bookmarks only on the current route', async () => {
@@ -176,5 +210,27 @@ describeDB('api-server', () => {
     })
     expect(forged.status).toBe(403)
     expect(getEventCount(), 'a refused amendment must write nothing').toBe(before)
+  })
+
+  // Spec 026. The local API is where scripts and external tools search, so it
+  // answers the same query language the app does — a condition resolves the
+  // field, and a record merely quoting the id is not a match.
+  it('searches with the same query language as the app', async () => {
+    const { insertEvent } = await import('../src/core/db/event-write')
+    const owner = insertEvent('agent', { subtype: 'assistant_message', session_id: 'API-S1', full: 'alpha' },
+      { operatorId: 'op-primary', engagementId: 'eng-1' })!
+    insertEvent('agent', { subtype: 'assistant_message', session_id: 'API-S2', full: 'this one only mentions API-S1' },
+      { operatorId: 'op-primary', engagementId: 'eng-1' })
+    const r = await fetch(`${base}/api/events/search?q=${encodeURIComponent('session:API-S1')}`, { headers: authHeaders })
+    expect(r.status).toBe(200)
+    const body = await r.json() as { events: Array<{ id: string }> }
+    expect(body.events.map((e) => e.id)).toEqual([owner.id])
+  })
+
+  it('rejects a half-typed condition instead of searching for its text', async () => {
+    const r = await fetch(`${base}/api/events/search?q=${encodeURIComponent('session:')}`, { headers: authHeaders })
+    expect(r.status).toBe(400)
+    const body = await r.json() as { error: string; reason?: string }
+    expect(body.reason).toBe('empty-condition-value')
   })
 })

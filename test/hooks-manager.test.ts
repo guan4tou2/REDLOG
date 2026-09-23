@@ -22,7 +22,7 @@ describe('hooks-manager guided setup', () => {
 
   it('one-click hooks carry no manual steps', () => {
     // v0.7.3 A: `claude-code` retired from the registry — its per-tool
-    // ingest is now handled by `agent-transcript-tailer.ts` which reads
+    // ingest is now handled by the agent tailer (`agent-tailer.ts`), which reads
     // Claude Code's own transcript file. No hook install needed anymore.
     for (const id of ['shell-zsh', 'shell-bash']) {
       expect(byId(id).installMethod).not.toBe('manual')
@@ -35,7 +35,7 @@ describe('hooks-manager guided setup', () => {
       const plan = getHookInstallPlan(id)
       expect(plan?.map((file) => file.target.split(/[\\/]/).pop())).toEqual([
         id === 'shell-zsh' ? 'shell-hook.zsh' : 'shell-bash-hook.sh',
-        'shell-common.sh'
+        'shell-common.sh', 'redlog-session.py'
       ])
       expect(plan?.every((file) => fs.existsSync(file.source))).toBe(true)
     }

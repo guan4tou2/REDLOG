@@ -12,6 +12,7 @@ export interface SharedFilter {
   agentType: string | null
   timeRange: TimeRange | null
   inScopeOnly: boolean
+  hidePersonal: boolean
 }
 
 /** Convert UI state into the canonical cross-process query contract. */
@@ -21,7 +22,8 @@ export function toEventFilter(filter: SharedFilter): EventFilter {
     ...(filter.agentType ? { agentType: filter.agentType } : {}),
     ...(filter.timeRange?.since != null ? { since: filter.timeRange.since } : {}),
     ...(filter.timeRange?.before != null ? { before: filter.timeRange.before } : {}),
-    ...(filter.inScopeOnly ? { inScopeOnly: true } : {})
+    ...(filter.inScopeOnly ? { inScopeOnly: true } : {}),
+    ...(filter.hidePersonal ? { hidePersonal: true } : {})
   }
 }
 
@@ -31,15 +33,17 @@ interface FilterContextValue {
   setAgentType: (type: string | null) => void
   setTimeRange: (range: TimeRange | null) => void
   setInScopeOnly: (v: boolean) => void
+  setHidePersonal: (v: boolean) => void
   clearAll: () => void
   activeCount: number
   knownTargets: Array<{ target: string; eventCount: number }>
   knownAgentTypes: string[]
   scopeTargets: string[]
   scopeExcludeTargets: string[]
+  personalDomains: string[]
 }
 
-const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
+const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true }
 
 const FilterContext = createContext<FilterContextValue>({
   filter: EMPTY,
@@ -47,12 +51,14 @@ const FilterContext = createContext<FilterContextValue>({
   setAgentType: () => {},
   setTimeRange: () => {},
   setInScopeOnly: () => {},
+  setHidePersonal: () => {},
   clearAll: () => {},
   activeCount: 0,
   knownTargets: [],
   knownAgentTypes: [],
   scopeTargets: [],
-  scopeExcludeTargets: []
+  scopeExcludeTargets: [],
+  personalDomains: []
 })
 
 export function FilterProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -61,6 +67,7 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [knownAgentTypes, setKnownAgentTypes] = useState<string[]>([])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const [scopeExcludeTargets, setScopeExcludeTargets] = useState<string[]>([])
+  const [personalDomains, setPersonalDomains] = useState<string[]>([])
 
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -76,9 +83,10 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
 
   useEffect(() => {
     const refreshScope = (): void => { window.redlog.config.get().then((c) => {
-      const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
+      const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[]; personalDomains?: string[] } } | null
       setScopeTargets(cfg?.scope?.targets ?? [])
       setScopeExcludeTargets(cfg?.scope?.excludeTargets ?? [])
+      setPersonalDomains(cfg?.scope?.personalDomains ?? [])
     }).catch(() => {}) }
     refreshScope()
     window.addEventListener('redlog:config-saved', refreshScope)
@@ -112,6 +120,9 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const setInScopeOnly = useCallback((v: boolean) => {
     setFilter((prev) => ({ ...prev, inScopeOnly: v }))
   }, [])
+  const setHidePersonal = useCallback((v: boolean) => {
+    setFilter((prev) => ({ ...prev, hidePersonal: v }))
+  }, [])
   const clearAll = useCallback(() => setFilter(EMPTY), [])
 
   const activeCount = (filter.targetId ? 1 : 0)
@@ -120,10 +131,10 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     + (filter.inScopeOnly ? 1 : 0)
 
   const value = useMemo(() => ({
-    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets
-  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, clearAll,
-       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets])
+    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains
+  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains])
 
   return <FilterContext value={value}>{children}</FilterContext>
 }

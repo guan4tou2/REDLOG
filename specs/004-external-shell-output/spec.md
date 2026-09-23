@@ -66,10 +66,15 @@ capture level is active before I rely on the resulting log.
 
 - `.specify/memory/constitution.md`: Surface Truthfulness, Evidence Integrity,
   Explicit Failure and Architectural Restraint.
-- `docs/timeline-io-visibility.md`: external-shell constraint and G1.
+- `docs/archive/timeline-io-visibility.md`: external-shell constraint and G1.
 
 ## Out of Scope
 
 Transparent interception of every external-shell command, TUI/session PTY
 recording, per-shell adapter extraction and fish/Nushell support, Windows
 PowerShell streaming, unified I/O sidecars, and proxy setup.
+
+## Follow-up
+
+Spec 022 adds a separate explicit POSIX PTY session launcher. The ordinary
+hook and `redlog-run` contracts above remain unchanged.

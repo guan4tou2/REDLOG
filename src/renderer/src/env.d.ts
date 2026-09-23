@@ -218,7 +218,6 @@ interface RedLogAPI {
      *  if none have been written. Drives the CaptureHealthCard "last
      *  fed" freshness readout without pulling row bodies. */
     getLatestLoggedTs: () => Promise<number | null>
-    search: (query: string, limit?: number, opts?: import('../../core/db/events').EventFilter) => Promise<RedLogEvent[]>
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
@@ -254,7 +253,6 @@ interface RedLogAPI {
     getById: (ids: string[]) => Promise<RedLogEvent[]>
     causalChain: (anchorId: string, opts?: { maxDepth?: number; eventLimit?: number }) => Promise<import('../../core/db/events').EventCausalChain>
     onNewBatch: (cb: (events: RedLogEvent[]) => void) => () => void
-    logSecretRevealed: (sourceEventId: string, fields: string[]) => Promise<{ ok: boolean } | null>
     toggleDoNotExport: (eventId: string) => Promise<boolean | null>
     isDoNotExport: (eventId: string) => Promise<boolean>
   }
@@ -320,6 +318,11 @@ interface RedLogAPI {
     status: () => Promise<{ running: boolean }>
     launch: () => Promise<BrowserLaunchResult>
     stop: () => Promise<{ stopped: boolean }>
+  }
+  httpCapture: {
+    status: () => Promise<ManagedProxyStatus>
+    start: () => Promise<ManagedProxyStatus>
+    stop: () => Promise<ManagedProxyStatus>
   }
   data: {
     resolveExportPlan: (request: ExportRequest) => Promise<ExportPlanResponse>
@@ -468,6 +471,7 @@ interface CaptureHealthInfo {
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
   lastSampleOkAt?: number | null
   proxyEnv?: { httpProxy?: string; httpsProxy?: string; noProxy?: string }
+  managedHttpProxy?: ManagedProxyStatus
 }
 
 interface BrowserLaunchResult {
@@ -477,6 +481,15 @@ interface BrowserLaunchResult {
   args?: string[]
   profileDir?: string
   error?: string
+}
+
+interface ManagedProxyStatus {
+  state: 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
+  url: string | null
+  pid?: number
+  error?: string
+  caPath?: string
+  certReady?: boolean
 }
 
 interface OperatorInfo {

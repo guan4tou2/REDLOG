@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { AlertBus } from '../../src/core/alert/bus'
 import type { Signal } from '../../src/core/alert/signal'
 import type { Policy, Verdict, Surface } from '../../src/core/alert'
-import type { DerivedPolicy } from '../../src/core/alert/bus'
 
 function makePolicy(name: string, out: Verdict[]): Policy {
   return { name, evaluate: () => out }
@@ -64,53 +63,27 @@ describe('AlertBus — fan-out', () => {
     expect(seen).toHaveLength(1)
   })
 
-  it('derived policy sees verdicts and can emit further verdicts', () => {
+  it('resetPolicies calls reset on every policy', () => {
+    const reset: string[] = []
+    bus.registerPolicy({ name: 'p1', evaluate: () => [], reset: () => { reset.push('p1') } })
+    bus.registerPolicy({ name: 'p2', evaluate: () => [], reset: () => { reset.push('p2') } })
+    bus.resetPolicies()
+    expect(reset).toEqual(['p1', 'p2'])
+  })
+
+  it('a verdict reaches surfaces and nothing else', () => {
+    // A verdict used to be offered back to a second class of policy that
+    // could emit more; nothing consumes verdicts but surfaces now.
     const { surface, seen } = makeSurface()
-    const derived: DerivedPolicy = {
-      name: 'derived',
-      evaluate: () => [],
-      ingest: (v) => (v.kind === 'ip' ? [{ kind: 'burst', distance: 'adjacent_subnet', count: 1, windowMs: 0, firstAt: 0, lastAt: 0, targets: [], severity: 'notice', authority: 'inferred' }] : [])
-    }
     bus.registerPolicy(makePolicy('p', [ipVerdict()]))
-    bus.registerPolicy(derived)  // duck-typed as DerivedPolicy
     bus.registerSurface(surface)
     bus.dispatch(ipSignal())
-    expect(seen).toHaveLength(2)  // original ip + derived burst
-    expect(seen[0].kind).toBe('ip')
-    expect(seen[1].kind).toBe('burst')
+    expect(seen.map((v) => v.kind)).toEqual(['ip'])
   })
 
-  it('recursion cap prevents runaway derived loops', () => {
-    const { surface, seen } = makeSurface()
-    let calls = 0
-    const loopy: DerivedPolicy = {
-      name: 'loopy',
-      evaluate: () => [],
-      ingest: (v) => {
-        calls++
-        return [v]  // re-emit whatever we saw → infinite loop without the cap
-      }
-    }
-    bus.registerPolicy(loopy)
-    bus.registerSurface(surface)
-    bus.emit(ipVerdict())
-    expect(calls).toBeGreaterThan(0)
-    expect(calls).toBeLessThan(100)  // cap kicks in well before this
-  })
-
-  it('resetPolicies calls reset on both kinds', () => {
-    let signalReset = false, derivedReset = false
-    bus.registerPolicy({ name: 'p1', evaluate: () => [], reset: () => { signalReset = true } })
-    bus.registerPolicy({ name: 'p2', evaluate: () => [], ingest: () => [], reset: () => { derivedReset = true } })
-    bus.resetPolicies()
-    expect(signalReset).toBe(true)
-    expect(derivedReset).toBe(true)
-  })
-
-  it('debug counts split signal vs derived', () => {
+  it('debug counts policies and surfaces', () => {
     bus.registerPolicy(makePolicy('sig', []))
-    bus.registerPolicy({ name: 'deriv', evaluate: () => [], ingest: () => [] })
     bus.registerSurface({ name: 's', handle: () => {} })
-    expect(bus._debugCounts()).toEqual({ signals: 1, derived: 1, surfaces: 1 })
+    expect(bus._debugCounts()).toEqual({ policies: 1, surfaces: 1 })
   })
 })

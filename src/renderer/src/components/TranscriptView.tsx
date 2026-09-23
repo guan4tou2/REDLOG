@@ -141,6 +141,14 @@ function buildBlocks(events: Ev[], names: Record<string, string>): Block[] {
     const d = e.data ?? {}
     const sub = String(d.subtype ?? '')
 
+    if (e.agentType === 'shell' && sub === 'session_output') {
+      const output = String(d.stdout ?? '')
+      out.push({ id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
+        input: `Session ${String(d.terminalId ?? '')} · #${String(d.sequence ?? '')}`,
+        output, outputBytes: output.length, meta: 'PTY · stdout/stderr merged', events: [e] })
+      continue
+    }
+
     if (e.agentType === 'shell' && sub === 'command_end') {
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
       const inlineOut = [d.stdout, d.stderr].filter((x) => typeof x === 'string').join('')
@@ -383,7 +391,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder) return
@@ -426,7 +434,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       setLoadingOlder(false)
     }
-  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {

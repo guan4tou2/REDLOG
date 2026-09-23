@@ -12,12 +12,34 @@ import { getProjectDir } from '../core/db/index'
 import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
 import { buildShellCatalog, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
+import { indexCast } from '../core/cast-index'
 
 // The shells this machine can open, discovered asynchronously and read
 // synchronously by spawnTerminal. Probing is what must not happen on the main
 // thread — listWslDistros() alone cost 2.1 s of blocking spawnSync before
 // #100, and a pane opening is not the moment to pay it again.
 let catalog: ShellOption[] = []
+
+let managedProxyUrlProvider: () => string | null = () => null
+
+export function configureTerminalProxy(provider: () => string | null): void {
+  managedProxyUrlProvider = provider
+}
+
+export function withManagedProxyEnv(
+  base: Record<string, string | undefined>,
+  proxyUrl: string | null,
+  enabled = false
+): Record<string, string | undefined> {
+  if (!enabled || !proxyUrl) return { ...base }
+  return {
+    ...base,
+    HTTP_PROXY: proxyUrl,
+    HTTPS_PROXY: proxyUrl,
+    http_proxy: proxyUrl,
+    https_proxy: proxyUrl
+  }
+}
 
 export function cachedShells(): ShellOption[] { return catalog }
 
@@ -94,9 +116,7 @@ function finaliseSession(session: TerminalSession, exitCode: number): void {
   // lost.
   if (session.castPath) {
     const p = session.castPath
-    void import('../core/cast-index')
-      .then((m) => m.indexCast(p))
-      .catch(() => { /* index is rebuildable; never block the exit path */ })
+    void indexCast(p).catch(() => { /* index is rebuildable; never block the exit path */ })
   }
 
   try {
@@ -322,7 +342,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     rows,
     cwd,
     env: {
-      ...process.env,
+      ...withManagedProxyEnv(process.env, managedProxyUrlProvider(), true),
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
       REDLOG_TERMINAL: '1',
@@ -467,7 +487,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // `hookSourced: false` is the pane saying "my commands are not being
   // recorded". The renderer shows it, because a capture gap the operator
   // cannot see is the one failure mode the product does not allow
-  // (docs/PRD-COMPLETION.md §1.5).
+  // (constitution II, Surface Truthfulness).
   return {
     pid: term.pid,
     shell,

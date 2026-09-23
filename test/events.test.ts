@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { parseQuery } from '../src/core/query/contract'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -10,7 +11,7 @@ let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 let getEventCount: typeof import('../src/core/db/events').getEventCount
-let searchEvents: typeof import('../src/core/db/events').searchEvents
+let executeEventQuery: typeof import('../src/core/db/events').executeEventQuery
 let queryScopeFilteredEvents: typeof import('../src/core/db/events').queryScopeFilteredEvents
 
 let dbAvailable = false
@@ -24,7 +25,7 @@ try {
   insertEventRaw = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
   getEventCount = eventsMod.getEventCount
-  searchEvents = eventsMod.searchEvents
+  executeEventQuery = eventsMod.executeEventQuery
   queryScopeFilteredEvents = eventsMod.queryScopeFilteredEvents
   dbAvailable = true
 } catch {
@@ -33,6 +34,16 @@ try {
 
 const insertEvent: typeof import('../src/core/db/events').insertEvent = (agentType, data, opts) =>
   insertEventRaw(agentType, data, { operatorId: 'test-op', ...opts })
+
+
+// Spec 027: the non-paged `searchEvents` lost its last caller with the plugin
+// host. These assertions were written against it and run unchanged against the
+// query contract through this.
+function searchEvents(query: string, limit = 100, filter: import('../src/core/db/events').EventFilter = {}) {
+  const outcome = parseQuery(query)
+  if (!outcome.ok) throw new Error(`test query did not parse: ${outcome.reason}`)
+  return executeEventQuery({ parsed: outcome.parsed, filter, limit }).items
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 
@@ -286,6 +297,25 @@ describeDB('queryEvents', () => {
     expect(rows).toHaveLength(5)
     expect(rows.every((event) => event.targetId?.startsWith('10.10.10.'))).toBe(true)
   })
+
+  it('hides personal targets before the result limit without dropping ambient events', () => {
+    for (let i = 0; i < 8; i++) {
+      insertEvent('marker', { title: `private-${i}` }, { targetId: '127.0.0.1' })
+    }
+    insertEvent('marker', { title: 'work' }, { targetId: '10.10.10.5' })
+    insertEvent('system', { subtype: 'audit-boundary' })
+
+    const rows = queryEvents({
+      limit: 2,
+      hidePersonal: true,
+      personalDomains: ['127.0.0.0/8', 'localhost']
+    })
+
+    expect(rows).toHaveLength(2)
+    expect(rows.some((event) => event.targetId === '127.0.0.1')).toBe(false)
+    expect(rows.some((event) => event.targetId === '10.10.10.5')).toBe(true)
+    expect(rows.some((event) => event.targetId === null)).toBe(true)
+  })
 })
 
 describeDB('getEventCount', () => {
@@ -310,7 +340,7 @@ describeDB('getEventCount', () => {
   })
 })
 
-describeDB('searchEvents', () => {
+describeDB('full-text search on the query contract', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
     initDB(tmpDir)

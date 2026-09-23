@@ -1,14 +1,15 @@
 // The Surface layer of the alert subsystem (v0.12.0).
 //
 // A **Surface** consumes verdicts and produces side effects. Every I/O
-// path exits through here — chain writes, badge updates, webhook posts,
-// adherence counting. Policies stay pure by delegating all "landing"
+// path exits through here — chain writes, badge updates, adherence
+// counting, the violation log. Policies stay pure by delegating all "landing"
 // work to surfaces.
 //
 // Four bundled surfaces:
 //   • ChainEmitter        — writes verdict as `system.*` event, chained/signed
 //   • BadgeSurface        — updates the operator's IP badge state
 //   • AdherenceCounter    — accumulates the post-hoc scope-adherence report
+//   • ViolationLog        — the recent scope violations the UI lists
 //
 // Adding a Surface = implement the interface, register with AlertBus.
 // Nothing else in the subsystem changes — that's what the seam buys.
@@ -95,31 +96,6 @@ export class ChainEmitter implements Surface {
             ...(v.signal.sourceEventId ? { _causes: [v.signal.sourceEventId] } : {})
           },
           targetId: v.signal.target
-        }
-      case 'combined':
-        return {
-          agentType: 'system',
-          subtype: 'combined_alert',
-          data: {
-            ip_value: v.ipValue,
-            scope_distance: v.scopeDistance,
-            correlation_ms: v.correlationMs,
-            description: 'Both IP verdict and Scope verdict non-clean within recall window — see linked events for detail.'
-          }
-        }
-      case 'burst':
-        return {
-          agentType: 'system',
-          subtype: 'burst_alert',
-          data: {
-            distance: v.distance,
-            count: v.count,
-            window_ms: v.windowMs,
-            first_at: v.firstAt,
-            last_at: v.lastAt,
-            targets: v.targets.slice(0, 10),
-            description: `Burst: ${v.count} ${v.distance} verdicts in ${Math.round(v.windowMs / 1000)}s`
-          }
         }
     }
   }

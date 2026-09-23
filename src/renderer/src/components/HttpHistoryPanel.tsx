@@ -467,7 +467,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
     }
-  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly])
+  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
