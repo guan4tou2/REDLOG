@@ -67,18 +67,17 @@ describe('settings information architecture', () => {
     expect(SRC).not.toMatch(/tab === 'export'/)
   })
 
-  it('has a filter box over the categories', () => {
-    expect(SRC).toMatch(/settings\.filterPages/)
-    expect(SRC).toMatch(/pageQuery/)
-  })
-
-  // It matches page names only. "Search settings…" promised the fields on
-  // those pages, and typing a setting's own name found nothing.
-  it('says the box filters categories, not settings', () => {
+  // History: the box once said "Search settings…" but matched page names only,
+  // so #143 relabelled it "Filter categories…". It now searches the settings
+  // themselves (lib/settingsSearch.ts), so the label says so again — and the
+  // label is only allowed while the search is wired.
+  it('has a search box that searches settings, not just categories', () => {
+    expect(SRC).toMatch(/settings\.searchSettings/)
+    expect(SRC).toMatch(/searchSettings\(pageQuery/)
     const en = JSON.parse(R('src/renderer/src/i18n/en.json')) as Record<string, string>
     const zh = JSON.parse(R('src/renderer/src/i18n/zh-TW.json')) as Record<string, string>
-    expect(en['settings.filterPages']).toBe('Filter categories…')
-    expect(zh['settings.filterPages']).toBe('篩選分類…')
+    expect(en['settings.searchSettings']).toBe('Search settings…')
+    expect(zh['settings.searchSettings']).toBe('搜尋設定…')
   })
 
   it('flattens plugins to one level', () => {
