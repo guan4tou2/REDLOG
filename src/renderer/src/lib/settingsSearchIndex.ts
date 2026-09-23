@@ -104,7 +104,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.lootGroup',
     'settings.lootHint',
     'settings.lootRulesFailed',
-    'settings.lootBuiltin'
+    'settings.lootBuiltin',
+    'settings.lootRuleStopped'
   ],
   scope: [
     'settings.scopeEnforcement',
