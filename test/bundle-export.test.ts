@@ -65,6 +65,21 @@ describeDB('evidence bundle export', () => {
     }
   })
 
+  it('refuses to export, leaving nothing behind, when the verifier cannot be found', () => {
+    // A packaged build that lost tools/redlog-verify.py used to skip the
+    // verifier, its wrappers and the README silently. A bundle sold as
+    // "with verifier" must not be produced without one.
+    const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-bundle-out-'))
+    const realExists = fs.existsSync
+    vi.spyOn(fs, 'existsSync').mockImplementation((p) => String(p).endsWith('redlog-verify.py') ? false : realExists(p))
+    try {
+      expect(() => exportBundle('eng', { outRoot })).toThrow(/verifier/i)
+      expect(fs.readdirSync(outRoot)).toEqual([])
+    } finally {
+      fs.rmSync(outRoot, { recursive: true, force: true })
+    }
+  })
+
   it('ships a self-contained verifier so a third party needs nothing from us', () => {
     const { outDir } = exportBundle('eng', {})
     for (const f of ['events.jsonl', 'manifest.json', 'manifest.sha256', 'redlog-verify.py', 'README.md']) {
