@@ -59,6 +59,12 @@ const DEFAULT_IGNORES = [
 
 let cfg: FileWatcherConfig = { enabled: false, engagementId: '', operatorId: '' }
 let watcher: ChokidarWatcher | null = null
+// Bumped by every stop, and so by every restart. The restart awaits the
+// chokidar import before it creates a watcher, and config:save and project
+// open configure this twice in one synchronous run: without the check, both
+// restarts created a watcher, the first leaked, and it kept emitting — twice
+// per change while the pack was on, and on after it was turned off.
+let generation = 0
 
 export function configureFileWatcher(next: Partial<FileWatcherConfig>): Promise<void> {
   cfg = { ...cfg, ...next }
@@ -66,6 +72,7 @@ export function configureFileWatcher(next: Partial<FileWatcherConfig>): Promise<
 }
 
 export function stopFileWatcher(): void {
+  generation++
   if (watcher) {
     watcher.close().catch(() => {})
     watcher = null
@@ -74,11 +81,15 @@ export function stopFileWatcher(): void {
 
 async function restartFileWatcher(): Promise<void> {
   stopFileWatcher()
+  const run = generation
   if (!cfg.enabled) return
   if (!cfg.engagementId || !cfg.operatorId) return
   const paths = (cfg.watchPaths ?? []).filter(Boolean)
   if (paths.length === 0) return  // nothing configured — silent no-op
   const chok = await loadChokidar()
+  // A newer restart or a stop ran while chokidar loaded, and it owns the
+  // watcher now — including when it turned the pack off.
+  if (run !== generation || !cfg.enabled) return
   if (!chok) {
     console.warn('[file-watcher] chokidar not installed; skipping')
     return
@@ -112,12 +123,15 @@ async function restartFileWatcher(): Promise<void> {
     })
   } catch (e) {
     console.error('[file-watcher] failed to start:', e)
-    watcher = null
+    // Only this run's watcher: a newer one may have replaced it while this
+    // one waited for 'ready'.
+    if (run === generation) watcher = null
   }
 }
 
 function emit(absPath: string, subtype: 'file_created' | 'file_modified' | 'file_deleted', isDir = false): void {
-  if (eventBus.paused) return
+  // Off is checked here too, so no watcher can record after the pack is off.
+  if (!cfg.enabled || eventBus.paused) return
   if (!cfg.engagementId || !cfg.operatorId) return
   let size: number | undefined
   let mtime: number | undefined
