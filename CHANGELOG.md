@@ -20,6 +20,13 @@ for full commit body + generated notes.
   plugin; disabling it in Plugins removes it from every project and from
   capture health. Turning a pack on or off now applies immediately — the AI
   agents switch used to take effect only when the project was reopened.
+- **Plugins:** a plugin that contributes `mappers` is now refused with the
+  reason. Nothing applied mappers — they normalise raw input to
+  `POST /api/ingest`, which was never built — so such a plugin loaded and did
+  nothing.
+- **Removed:** `defaultShell` (a new pane keeps using `$SHELL`; a shell RedLog
+  cannot record is already flagged in the pane and the picker) and the unused
+  dismiss functions for status-bar issues (no issue is dismissible today).
 
 ## v0.16.1 — 2026-09-23
 

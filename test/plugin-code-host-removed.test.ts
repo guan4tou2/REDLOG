@@ -32,6 +32,16 @@ describe('retired code contributions are refused, not silently inert', () => {
     })
   }
 
+  it('rejects a manifest contributing mappers: nothing applies them (POST /api/ingest was never built)', () => {
+    const parsed = validateManifest({ ...base, contributes: {
+      mappers: [{ id: 'm', version: '1', agentType: 'scanner', fields: { host: '$.h' } }]
+    } }, '/tmp/x')
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.error).toMatch(/contributes\.mappers is not supported/)
+    expect(parsed.error).toMatch(/api\/events/)
+  })
+
   it('still treats tailers as privileged, so the trust gate keeps guarding it', () => {
     expect(tierOf({ ...base, contributes: { tailers: './tailer.js' } } as Parameters<typeof tierOf>[0])).toBe('privileged')
   })

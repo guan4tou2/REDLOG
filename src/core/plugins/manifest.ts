@@ -10,10 +10,16 @@ import {
 // Their presence makes a plugin 'privileged' and subject to the trust gate.
 const PRIVILEGED_KEYS: Array<keyof PluginContributes> = ['tailers']
 
-/** Code contributions RedLog once declared and never ran. Refused by name: a
- *  plugin shipping one expects it to execute, and loading the rest of the
+/** Contributions RedLog once declared and never ran. Refused by name: a
+ *  plugin shipping one expects it to take effect, and loading the rest of the
  *  plugin while silently dropping it would look like success. */
-const RETIRED_CODE_KEYS = ['exporters', 'monitors'] as const
+const RETIRED_KEYS: Record<string, string> = {
+  exporters: 'RedLog has no host to run plugin code of this kind',
+  monitors: 'RedLog has no host to run plugin code of this kind',
+  // Mappers normalise raw bytes posted to POST /api/ingest, which was never
+  // built (docs/DESIGN-plugin-kernel.md §3); a registered mapper ran nowhere.
+  mappers: 'nothing applies mappers yet — producers post normalised events to POST /api/events'
+}
 
 export function tierOf(manifest: PluginManifest): PluginTier {
   const c = manifest.contributes ?? {}
@@ -83,23 +89,13 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
     return { ok: false, error: 'missing contributes block' }
   }
 
-  for (const retired of RETIRED_CODE_KEYS) {
+  for (const [retired, why] of Object.entries(RETIRED_KEYS)) {
     if ((m.contributes as Record<string, unknown>)[retired] !== undefined) {
-      return { ok: false, error: `contributes.${retired} is not supported: RedLog has no host to run plugin code of this kind` }
+      return { ok: false, error: `contributes.${retired} is not supported: ${why}` }
     }
   }
 
   const contributes = m.contributes as PluginContributes
-  if (contributes.mappers !== undefined) {
-    if (!Array.isArray(contributes.mappers)) return { ok: false, error: 'contributes.mappers must be an array' }
-    for (const mp of contributes.mappers) {
-      if (typeof mp?.id !== 'string' || typeof mp.version !== 'string' || typeof mp.agentType !== 'string'
-        || typeof mp.fields !== 'object' || mp.fields === null) {
-        return { ok: false, error: 'mapper needs id, version, agentType and fields' }
-      }
-    }
-  }
-
   // Capabilities must be from the known set.
   let capabilities: Capability[] | undefined
   if (m.capabilities !== undefined) {

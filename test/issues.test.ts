@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  raiseIssue, clearIssue, dismissIssue, snapshotIssues, _resetIssues
+  raiseIssue, clearIssue, snapshotIssues, _resetIssues
 } from '../src/renderer/src/lib/issues'
 
 // The store behind the status bar's two counters (UIUX-STANDARD §9). The rule
@@ -23,28 +23,6 @@ describe('issue store', () => {
     raiseIssue({ id: 'chain', tier: 'attention', title: 'Chain broken', since: 1000 })
     raiseIssue({ id: 'chain', tier: 'attention', title: 'Chain broken', since: 9999 })
     expect(snapshotIssues()[0].since).toBe(1000)
-  })
-
-  it('refuses to dismiss an attention-tier issue', () => {
-    raiseIssue({ id: 'chain', tier: 'attention', title: 'Chain broken' })
-    dismissIssue('chain')
-    expect(snapshotIssues().map((x) => x.id)).toEqual(['chain'])
-  })
-
-  it('dismisses a pending issue', () => {
-    raiseIssue({ id: 'update', tier: 'pending', title: 'Update available' })
-    dismissIssue('update')
-    expect(snapshotIssues()).toEqual([])
-  })
-
-  it('un-dismisses when the condition goes away and comes back', () => {
-    // Otherwise a dismissal is permanent for the session, and a fault that
-    // recurs after being waved away never shows again.
-    raiseIssue({ id: 'update', tier: 'pending', title: 'Update available' })
-    dismissIssue('update')
-    clearIssue('update')
-    raiseIssue({ id: 'update', tier: 'pending', title: 'Update available' })
-    expect(snapshotIssues().map((x) => x.id)).toEqual(['update'])
   })
 
   it('sorts attention ahead of pending, oldest first inside a tier', () => {
