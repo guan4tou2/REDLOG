@@ -346,7 +346,6 @@ default fails a named test rather than a distant integration.
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
 | `engagement.id` | `default` | stamped on every event | `config-options` |
-| `engagement.name` | `Default Engagement` | display only | `config-options` |
 | `operator.id` | `operator-1` | attribution; no operator = no capture (see 2.5, 2.9) | `config-options` |
 | `operator.name` | `Operator` | display only | `config-options` |
 

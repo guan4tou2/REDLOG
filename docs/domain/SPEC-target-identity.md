@@ -101,17 +101,8 @@ Then:
   only '10.0.0.1' in result (marker excluded — it has no target identity)
 ```
 
-### Scenario 5: hostCausalChain consistency
-
-```
-Given:
-  target T with events in both tiers
-When:
-  hostCausalChain(T).eventCount
-Then:
-  >= aggregateTargets().find(t => t.target === T).eventCount
-  (hostCausalChain may match broader — data.host, detectedTarget — but never narrower)
-```
+Scenario 5 bounded `hostCausalChain`, which #143 removed with its only
+channel; nothing called it.
 
 ## Acceptance Criteria
 
@@ -119,10 +110,9 @@ Then:
 2. Case-insensitive grouping: `LOWER(target_id)` in GROUP BY
 3. Aggregate count and `queryEvents({ targetId })` agree for the same target
 4. Events with `target_id` but no `detectedTarget` are included in aggregates
-5. `hostCausalChain` eventCount is >= aggregate eventCount (broader match is OK)
-6. No change to Scope matchers in this fix (separate P1)
-7. Active-target context is project-scoped and cleared from runtime on project close
-8. Explicit or detected targets override active-target context
+5. No change to Scope matchers in this fix (separate P1)
+6. Active-target context is project-scoped and cleared from runtime on project close
+7. Explicit or detected targets override active-target context
 
 ## Property
 
