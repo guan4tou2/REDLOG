@@ -267,25 +267,25 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Tests for User Story 5 (write first, confirm they fail)
 
-- [ ] T042 [P] [US5] Write failing tests in `test/display-zone.test.ts`.
+- [X] T042 [P] [US5] Write failing tests in `test/display-zone.test.ts`.
   - `formatTime`, `formatDate` and `formatDateTime` print local time by default. After `setDisplayZone('utc')` they print UTC with `Z` (`07:04Z`, `2026-09-24 07:04Z`).
   - Migration: `redlog-timeline-tz` = `'utc'` becomes `'utc'`, and `'project'` or `'local'` becomes `'local'`. The result is stored as `redlog-display-zone`.
   - `useDisplayZone()` re-renders on `setDisplayZone` and on a `storage` event.
-- [ ] T043 [P] [US5] Write failing tests in `test/display-zone-surfaces.test.tsx`.
+- [X] T043 [P] [US5] Write failing tests in `test/display-zone-surfaces.test.tsx`.
   - `GeneralPage` offers Local and UTC.
   - The Timeline ⋯ menu has no `timeline-tz-select`.
   - `MarkerDetail` and the FilterBar time chip print `Z` times under UTC.
 
 ### Implementation for User Story 5
 
-- [ ] T044 [US5] In `src/renderer/src/lib/time.ts`, add `getDisplayZone`, `setDisplayZone` and `useDisplayZone` (`useSyncExternalStore`, with a `storage` listener), stored as `redlog-display-zone` with the one-time migration. Make `formatTime`, `formatDate` and `formatDateTime` zone-aware, with the `Z` suffix in UTC. Delete `formatTs`, `TzMode` and `TsStyle`. T042 passes.
-- [ ] T045 [US5] Move the `formatTs` callers onto the three formatters:
+- [X] T044 [US5] In `src/renderer/src/lib/time.ts`, add `getDisplayZone`, `setDisplayZone` and `useDisplayZone` (`useSyncExternalStore`, with a `storage` listener), stored as `redlog-display-zone` with the one-time migration. Make `formatTime`, `formatDate` and `formatDateTime` zone-aware, with the `Z` suffix in UTC. Delete `formatTs`, `TzMode` and `TsStyle`. T042 passes.
+- [X] T045 [US5] Move the `formatTs` callers onto the three formatters:
   - `src/renderer/src/lib/timelineDomain.ts` (axis ticks)
   - `Timeline.tsx`: remove `tz`, `projectTz`, the `engagement.timezone` fetch and the ⋯ tz select
   - `src/renderer/src/components/MarkerDetail.tsx`: remove the `tz`/`projectTz` props
-- [ ] T046 [US5] Add the Local/UTC choice to the personal viewing-preference block of `src/renderer/src/components/settings/GeneralPage.tsx`. Add i18n `settings.displayZone`, `settings.displayZoneLocal` and `settings.displayZoneUtc`. T043 passes.
-- [ ] T047 [US5] Subscribe the surfaces that stay mounted while Settings is open, so they reprint on a change: `StatusBar.tsx`, `ReplayDrawer.tsx`, and `src/renderer/src/OverlayApp.tsx` (the HUD window, through `storage`). Each calls `useDisplayZone()`.
-- [ ] T048 [US5] Update `e2e/timeline-toolbar-overflow.spec.ts`: remove the `timeline-tz-select` steps and the `redlog-timeline-tz` assertion.
+- [X] T046 [US5] Add the Local/UTC choice to the personal viewing-preference block of `src/renderer/src/components/settings/GeneralPage.tsx`. Add i18n `settings.displayZone`, `settings.displayZoneLocal` and `settings.displayZoneUtc`. T043 passes.
+- [X] T047 [US5] Subscribe the surfaces that stay mounted while Settings is open, so they reprint on a change: `StatusBar.tsx` and `src/renderer/src/OverlayApp.tsx` (the HUD window, through `storage`). Each calls `useDisplayZone()`. (`ReplayDrawer.tsx` was listed here, but it prints only the elapsed playback position, `mm:ss`, which is not an event time, so it needs no subscription. FR-013 and the plan are corrected to match.)
+- [X] T048 [US5] Update `e2e/timeline-toolbar-overflow.spec.ts`: remove the `timeline-tz-select` steps and the `redlog-timeline-tz` assertion.
 
 **Checkpoint**: T042 and T043 pass, and one event's time is printed identically on every surface under UTC.
 

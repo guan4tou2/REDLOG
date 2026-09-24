@@ -23,29 +23,33 @@ test.describe.serial('timeline toolbar overflow', () => {
   })
   test.afterAll(async () => { await app?.close() })
 
+  const boundaries = (): ReturnType<Page['getByRole']> =>
+    page.getByRole('menuitemcheckbox', { name: /Session boundaries/ })
+
   test('the rare view controls are not in the flat row', async () => {
-    // The timezone select should NOT be visible until the overflow is
-    // opened — that is the whole point of moving it.
-    await expect(page.locator('[data-testid="timeline-tz-select"]')).toHaveCount(0)
+    // The session-boundaries toggle should NOT be visible until the overflow
+    // is opened — that is the whole point of moving it.
+    await expect(boundaries()).toHaveCount(0)
     await expect(page.locator('[data-testid="timeline-more-menu"]')).toBeVisible()
   })
 
   test('the overflow reveals them and they still work', async () => {
     await page.locator('[data-testid="timeline-more-menu"]').click()
-    const tz = page.locator('[data-testid="timeline-tz-select"]')
-    await expect(tz).toBeVisible()
-    // Spec 033 SC-007: the tier is one control, the FilterBar chip, not a
-    // second switch in this menu.
+    await expect(boundaries()).toBeVisible()
+    // Spec 033: the zone and the tier are not Timeline settings. The zone is
+    // chosen in Settings ▸ General; the tier is the FilterBar chip (SC-007).
+    await expect(page.locator('[data-testid="timeline-tz-select"]')).toHaveCount(0)
     await expect(page.locator('[data-testid="timeline-auditor-view-chip"]')).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Chained only/ })).toBeVisible()
-    // Toggling the timezone through the menu persists to localStorage.
-    await tz.selectOption('utc')
-    const stored = await page.evaluate(() => localStorage.getItem('redlog-timeline-tz'))
-    expect(stored).toContain('utc')
+    // Toggling through the menu persists to localStorage.
+    const before = await page.evaluate(() => localStorage.getItem('redlog-timeline-session-dividers'))
+    await boundaries().click()
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('redlog-timeline-session-dividers')))
+      .toBe(before === '0' ? '1' : '0')
   })
 
   test('the menu closes on outside click', async () => {
     await page.mouse.click(5, 5)
-    await expect(page.locator('[data-testid="timeline-tz-select"]')).toHaveCount(0)
+    await expect(boundaries()).toHaveCount(0)
   })
 })

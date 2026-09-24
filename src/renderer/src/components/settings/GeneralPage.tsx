@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useI18n, type Locale } from '../../i18n'
 import { usePersistentState } from '../../lib/usePersistentState'
+import { useDisplayZone, setDisplayZone } from '../../lib/time'
 import { toast } from '../Toast'
 import { applyDensity, resolveDensity, storedDensity } from '../../lib/density'
 import { storedShowAllPages, setShowAllPages } from '../../lib/showAllPages'
@@ -78,6 +79,10 @@ export default function GeneralPage({
             </button>
           ))}
         </div>
+        {/* In the language group rather than a group of its own: both say how
+            this machine reads the app, and the settings page holds its group
+            count (settings-ia test). */}
+        <DisplayZoneControl t={t} />
       </FieldGroup>
       <FieldGroup title={t('settings.uiScale')}>
         <UiScaleControl t={t} />
@@ -86,6 +91,34 @@ export default function GeneralPage({
         <ShowAllPagesControl t={t} />
       </FieldGroup>
     </>
+  )
+}
+
+// Spec 033: the one zone every event time in the app is printed in. It was
+// the Timeline's own picker, and no other view followed it. A viewing
+// preference of this machine, like the UI scale, so it is not project config,
+// and exports stay ISO 8601 whatever it is.
+function DisplayZoneControl({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }): JSX.Element {
+  const zone = useDisplayZone()
+  return (
+    <div className="space-y-1.5 pt-2">
+      <p className="text-xs text-redlog-text-dim">{t('settings.displayZone')}</p>
+      <div className="flex gap-2">
+        {(['local', 'utc'] as const).map((z) => (
+          <button
+            key={z}
+            aria-pressed={zone === z}
+            onClick={() => setDisplayZone(z)}
+            className={`px-3 py-1.5 text-xs rounded ${
+              zone === z
+                ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
+                : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
+            }`}
+          >{t(z === 'local' ? 'settings.displayZoneLocal' : 'settings.displayZoneUtc')}</button>
+        ))}
+      </div>
+      <p className="text-xs text-redlog-text-faint">{t('settings.displayZoneHint')}</p>
+    </div>
   )
 }
 

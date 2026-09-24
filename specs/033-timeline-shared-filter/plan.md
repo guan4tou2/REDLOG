@@ -142,7 +142,6 @@ src/renderer/src/
     ├── CommandPalette.tsx     # operator:<id> and quoted host
     ├── MarkerDetail.tsx       # display zone
     ├── StatusBar.tsx          # display zone; auditor tooltip points at the chip
-    ├── ReplayDrawer.tsx       # display zone
     ├── App.tsx                # focusTarget removed
     └── settings/GeneralPage.tsx # Local/UTC setting
 src/renderer/src/OverlayApp.tsx  # HUD: display zone through `storage`

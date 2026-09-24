@@ -7,7 +7,7 @@ import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
-import { formatTime, formatTs, type TzMode, type TsStyle } from '../lib/time'
+import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
@@ -336,21 +336,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
   )
 
-  // v0.6.91 S7: timezone picker. `projectTz` is filled from
-  // config.engagement.timezone when the panel mounts; if unset or invalid,
-  // the "Project" option falls back to Local (via formatTs).
-  const [tz, setTz] = usePersistentState<TzMode>(
-    'redlog-timeline-tz', 'local',
-    { parse: (raw) => (raw === 'utc' || raw === 'project' ? raw : 'local') }
-  )
-  const [projectTz, setProjectTz] = useState<string | null>(null)
-  useEffect(() => {
-    window.redlog.config.get().then((c) => {
-      const cfg = c as { engagement?: { timezone?: string } } | null | undefined
-      const tzName = cfg?.engagement?.timezone
-      setProjectTz(typeof tzName === 'string' && tzName ? tzName : null)
-    }).catch(() => {})
-  }, [])
+  // The display zone is not a Timeline setting (spec 033): it is chosen in
+  // Settings ▸ General and `lib/time`'s formatters print in it. This view is
+  // unmounted while Settings is open, so it prints the new zone on return.
 
   // ⌘F focuses the in-page filter (§5.7, §10). `/` still does too — it is the
   // chord this view taught first and there is no reason to take it away — but
@@ -1958,19 +1946,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                     <span>⋮ {t('timeline.boundaries.toggle')}</span>
                     <span className={sessionDividers ? 'text-indigo-300' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
                   </button>
-                  <div className="flex items-center gap-2 px-3 py-1.5">
-                    <span className="text-xs font-mono text-redlog-text-dim">{t('timeline.tz.tooltip')}</span>
-                    <select
-                      data-testid="timeline-tz-select"
-                      value={tz}
-                      onChange={(e) => setTz(e.target.value as TzMode)}
-                      className="ml-auto text-xs px-1 py-0.5 rounded font-mono bg-redlog-elevated/60 text-redlog-text border border-redlog-border focus:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-                    >
-                      <option value="local">{t('timeline.tz.local')}</option>
-                      <option value="utc">{t('timeline.tz.utc')}</option>
-                      <option value="project" disabled={!projectTz}>{t('timeline.tz.project')}{projectTz ? ` (${projectTz})` : ''}</option>
-                    </select>
-                  </div>
                 </div>
               </>
             )}
@@ -2259,7 +2234,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                         identical "09:11" ticks with nothing to separate them. Once
                         the span crosses a day, the first tick and every tick that
                         lands on a new date carry the date too. */}
-                    {axisLabel(ts, i, ticks, timeSpan, tz, projectTz)}
+                    {axisLabel(ts, i, ticks, timeSpan)}
                   </span>
                 ))}
               </div>
@@ -2430,7 +2405,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                       data-timeline-event
                       tabIndex={isTabStop ? 0 : -1}
                       aria-label={`${single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
+                        ? `${formatTime(evt.timestamp, { seconds: true })} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
                         : t('timeline.events', { count: c.events.length })}${notMatching ? ` · ${t('timeline.notMatching')}` : ''}`}
                       aria-disabled={dimmed || undefined}
                       aria-pressed={sel || undefined}
@@ -2451,8 +2426,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} — ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
-                        : `${c.events.length} ${t('timeline.title')} · ${formatTs(c.events[0].timestamp, tz, projectTz, 'timeSec')}`}
+                        ? `${formatTime(evt.timestamp, { seconds: true })} — ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
+                        : `${c.events.length} ${t('timeline.title')} · ${formatTime(c.events[0].timestamp, { seconds: true })}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
                       onClick={() => single ? (sel ? (setSelectedEvent(null), setDetailOpen(false)) : (setSelectedEvent(evt), setDetailOpen(true))) : setCluster({ x: c.x, y: c.y, events: c.events })}
@@ -2590,7 +2565,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                           }}
                         >
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(evt.agentType, evt.data?.subtype as string | undefined, pluginTypes)] }} />
-                          <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTs(evt.timestamp, tz, projectTz, 'timeSec')}</span>
+                          <span className="text-redlog-text-faint font-mono text-xs tabular-nums shrink-0">{formatTime(evt.timestamp, { seconds: true })}</span>
                           <span title={titleOf(evt)} className="text-redlog-text text-xs truncate">{titleOf(evt)}</span>
                         </button>
                       ))}
@@ -2631,7 +2606,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                 >
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
                   <span className="text-redlog-text-faint font-mono tabular-nums shrink-0 w-16">
-                    {formatTs(evt.timestamp, tz, projectTz, 'timeSec')}
+                    {formatTime(evt.timestamp, { seconds: true })}
                   </span>
                   {/* v0.14 §9.1: per-row tier badge. Icon-only in the row so
                    *  the visual density stays low — the full labeled version
@@ -2782,7 +2757,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                           className="text-xs px-1.5 py-0.5 rounded border border-redlog-border bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text font-mono"
                           title={cid}
                         >
-                          {t('timeline.detail.causeNotLoaded', { time: formatTs(srcTs, tz, projectTz, 'timeSec') })}
+                          {t('timeline.detail.causeNotLoaded', { time: formatTime(srcTs, { seconds: true }) })}
                         </button>
                       )
                     }
@@ -2951,8 +2926,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
               linkedScreenshots={(effectsById.get(selectedEvent.id) ?? [])
                 .map((id) => eventsMapRef.current.get(id))
                 .filter((e): e is RedLogEvent => !!e && e.agentType === 'screenshot')}
-              tz={tz}
-              projectTz={projectTz}
               operatorLabel={operatorLabel}
               onAmend={(id, changes) => void handleAmend(id, changes)}
               onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
