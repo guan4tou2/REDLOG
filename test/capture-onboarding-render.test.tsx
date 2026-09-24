@@ -37,7 +37,7 @@ function draw(capture: any): HTMLElement {
 // A dark engagement: shell hook not installed, tailer never touched, no terminal.
 const DARK = health([
   { id: 'shell-hook', hookId: 'shell-zsh', installed: false, state: 'absent', lastEventAt: null },
-  { id: 'agent-tailer', configPath: 'agentTailer.enabled', state: 'idle', lastEventAt: null },
+  { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'idle', lastEventAt: null },
   { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
 ], 'dark')
 
@@ -83,7 +83,7 @@ describe('CaptureHealthCard onboarding', () => {
     // is the one that gets the operator out of dark.
     const wired = health([
       { id: 'shell-hook', hookId: 'shell-zsh', installed: true, state: 'idle', lastEventAt: null },
-      { id: 'agent-tailer', configPath: 'agentTailer.enabled', state: 'idle', lastEventAt: null },
+      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'idle', lastEventAt: null },
       { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
     ], 'partial')
     const el = draw(wired)
@@ -93,7 +93,7 @@ describe('CaptureHealthCard onboarding', () => {
   it('hides the onboarding block once a core source is recording', () => {
     const live = health([
       { id: 'shell-hook', hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 },
-      { id: 'agent-tailer', configPath: 'agentTailer.enabled', state: 'idle', lastEventAt: null },
+      { id: 'agent-tailer', configPath: 'packs.aiAgents', state: 'idle', lastEventAt: null },
       { id: 'builtin-terminal', state: 'idle', lastEventAt: null }
     ], 'healthy')
     const el = draw(live)

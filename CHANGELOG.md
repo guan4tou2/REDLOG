@@ -5,6 +5,21 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+**Upgrading — read first.**
+
+- **Optional capture moved into packs.** `clipboard.enabled`,
+  `fileWatcher.enabled`, `processMonitor.enabled`, `connectionMonitor.enabled`,
+  `powershellTranscript.enabled` and `agentTailer.enabled` are no longer read.
+  A project that had any of them on **stops recording that source** until you
+  turn its pack on in Settings ▸ Capture: Host monitors (process, connection,
+  file, clipboard), AI agents, or Windows terminal output.
+
+- **Capture packs.** Settings ▸ Capture now lists what every project records
+  (shell hook, HTTP(S) through mitmproxy, redlog-session output, the built-in
+  terminal) and the optional packs, one switch each. Each pack is a bundled
+  plugin; disabling it in Plugins removes it from every project and from
+  capture health. Turning a pack on or off now applies immediately — the AI
+  agents switch used to take effect only when the project was reopened.
 - **Plugins:** a plugin that contributes `mappers` is now refused with the
   reason. Nothing applied mappers — they normalise raw input to
   `POST /api/ingest`, which was never built — so such a plugin loaded and did

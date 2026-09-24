@@ -9,10 +9,10 @@ export default function AgentsPanel({
   config: ConfigState
   setConfig: (c: ConfigState) => void
 }): JSX.Element {
-  const at = (config.agentTailer ?? { enabled: false, emitThinking: false }) as { enabled: boolean; emitThinking?: boolean }
-  const patch = (delta: Partial<typeof at>): void => {
-    setConfig({ ...config, agentTailer: { ...at, ...delta } })
-  }
+  // Whether agent transcripts are recorded is the AI agents pack (Spec 035);
+  // this page keeps the pack's own switch next to its tuning.
+  const on = config.packs?.aiAgents === true
+  const emitThinking = config.agentTailer?.emitThinking ?? false
   return (
     <FieldGroup title={t('settings.agents')}>
       <p className="text-xs text-redlog-text-faint">{t('settings.agents.hint')}</p>
@@ -20,8 +20,8 @@ export default function AgentsPanel({
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={at.enabled}
-            onChange={(e) => patch({ enabled: e.target.checked })}
+            checked={on}
+            onChange={(e) => setConfig({ ...config, packs: { ...config.packs, aiAgents: e.target.checked } })}
             className="accent-red-600"
           />
           <span className="text-xs text-redlog-text">{t('settings.agents.enable')}</span>
@@ -30,12 +30,12 @@ export default function AgentsPanel({
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={at.emitThinking ?? false}
-            onChange={(e) => patch({ emitThinking: e.target.checked })}
+            checked={emitThinking}
+            onChange={(e) => setConfig({ ...config, agentTailer: { ...config.agentTailer, emitThinking: e.target.checked } })}
             className="accent-red-600"
-            disabled={!at.enabled}
+            disabled={!on}
           />
-          <span className={`text-xs ${at.enabled ? 'text-redlog-text' : 'text-redlog-text-faint'}`}>
+          <span className={`text-xs ${on ? 'text-redlog-text' : 'text-redlog-text-faint'}`}>
             {t('settings.agents.emitThinking')}
           </span>
         </label>

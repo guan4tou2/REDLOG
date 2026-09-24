@@ -32,7 +32,11 @@ export function diffSecurityConfig(
   check('engagement.id', oldCfg.engagement?.id, newCfg.engagement?.id)
   check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
   check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
-  check('clipboard.enabled', oldCfg.clipboard?.enabled, newCfg.clipboard?.enabled)
+  // What the engagement records is part of the audit trail (Spec 035: packs
+  // replaced the per-source switches, including clipboard's).
+  check('packs.hostMonitors', oldCfg.packs?.hostMonitors, newCfg.packs?.hostMonitors)
+  check('packs.aiAgents', oldCfg.packs?.aiAgents, newCfg.packs?.aiAgents)
+  check('packs.windowsOutput', oldCfg.packs?.windowsOutput, newCfg.packs?.windowsOutput)
   check('network.checkInterval', oldCfg.network?.checkInterval, newCfg.network?.checkInterval)
   check('network.ipMode', oldCfg.network?.ipMode, newCfg.network?.ipMode)
   return changed

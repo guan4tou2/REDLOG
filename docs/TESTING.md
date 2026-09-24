@@ -462,7 +462,7 @@ and the chain survive, so a pruned file verifies as *pruned*, not as tampered.
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| `enabled` | `false` | off captures nothing at all; flipping it off stops the poll; on start the current clipboard is seeded so pre-session content is never captured | `clipboard-options` |
+| *(runs with)* | `packs.hostMonitors` | the pack off captures nothing at all; turning it off stops the poll; on start the current clipboard is seeded so pre-session content is never captured | `clipboard-options`, `capture-packs` |
 | `pollMs` | `1500` | honoured as given, **clamped up to 500 ms** | `clipboard-options` |
 | `storePreview` | `false` | off stores hash + length + line count and `preview: null`; on stores a preview capped at 120 chars with high-entropy secrets masked to `•` | `clipboard-options` |
 
@@ -526,19 +526,32 @@ Bundle building is gated on the reviewed-by-operator flag and produces
 zip + `manifest.json` (`cloud-share`); registry installs enforce revocation,
 signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust`).
 
-## 2.12 `fileWatcher` / `processMonitor` / `agentTailer` / `powershellTranscript`
+## 2.12 `fileWatcher` / `processMonitor` / `agentTailer` (tuning; see `packs`)
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| `fileWatcher.enabled` | `false` | starts only with enabled + non-empty `watchPaths` + an engagement id; flipping off stops the watcher | `file-watcher` |
-| `fileWatcher.watchPaths` | `[]` | empty is a no-op even when enabled | `file-watcher` |
+| *(runs with)* | `packs.hostMonitors` | starts only with the pack on + non-empty `watchPaths` + an engagement id; turning the pack off stops the watcher | `file-watcher`, `capture-packs` |
+| `fileWatcher.watchPaths` | `[]` | empty is a no-op even with the pack on | `file-watcher` |
 | `fileWatcher.ignorePatterns` | `[]` | added on top of the built-in ignores | `file-watcher` |
-| `processMonitor.enabled` | `false` | off by default; Windows emits a one-shot advisory | `process-monitor` |
+| *(runs with)* | `packs.hostMonitors` | off by default; Windows emits a one-shot advisory | `process-monitor`, `capture-packs` |
 | `processMonitor.pollMs` | `500` | poll cadence; floored at 200 ms, and at **2000 ms on Windows** where a cold PowerShell spawn is 800–1500 ms and a 500 ms cadence would stack calls | `process-monitor-cadence` |
 | `processMonitor.ignoreCommands` | `[]` | leading-token match, on top of the built-ins | `process-monitor` |
-| `agentTailer.enabled` | `false` | agent transcripts are sensitive: off until the operator opts the project in; a `.redlog-app-root` marker still opts a repo out | `config`, `agent-tailer` |
+| *(runs with)* | `packs.aiAgents` | agent transcripts are sensitive: off until the operator turns the pack on for the project; a `.redlog-app-root` marker still opts a repo out | `capture-packs`, `agent-tailer` |
 | `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-tailer` |
-| `powershellTranscript.enabled` | `false` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript` |
+| *(runs with)* | `packs.windowsOutput` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript`, `capture-packs` |
+
+## 2.12a `packs` — optional capture (Spec 035)
+
+| Option | Default | Behaviour | Proof |
+|---|---|---|---|
+| `packs.hostMonitors` | `false` | runs the process, connection, file and clipboard monitors | `capture-packs` |
+| `packs.aiAgents` | `false` | runs the Claude Code / Codex / OpenCode transcript tailers | `capture-packs` |
+| `packs.windowsOutput` | `false` | runs the PowerShell Start-Transcript follower | `capture-packs` |
+
+A pack runs only when it is on **and** its bundled plugin (`pack-host-monitors`,
+`pack-ai-agents`, `pack-windows-output`) is active; disabling the plugin in
+Plugins removes the pack's sources from Settings and capture health. The
+sources' own `enabled` keys were removed and are not read (`capture-packs`).
 
 ## 2.13 `loot`
 
