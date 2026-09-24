@@ -887,16 +887,20 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
       localStorage.setItem(`redlog-timeline-collapsed-bands:${projectIdForKeys}`, JSON.stringify([...collapsedBands]))
     } catch { /* ignore */ }
   }, [hiddenLanes, collapsedBands, projectIdForKeys])
+  // Set once the restore below has had its one attempt. Declared before the
+  // save effect, which reads it.
+  const initialFocusRestoreRef = useRef(false)
   useEffect(() => {
     try {
       if (selectedEvent?.id) localStorage.setItem('redlog-timeline-focus-event', selectedEvent.id)
-      else localStorage.removeItem('redlog-timeline-focus-event')
+      // Nothing is selected on mount, so clearing then erased the id the
+      // restore was about to read: clear only once the restore has run.
+      else if (initialFocusRestoreRef.current) localStorage.removeItem('redlog-timeline-focus-event')
     } catch { /* ignore */ }
   }, [selectedEvent])
   // On first successful load, if no explicit prop-driven focus is in play,
   // restore the previously-selected event by id. Bail after one attempt so we
   // don't fight the operator's later clicks.
-  const initialFocusRestoreRef = useRef(false)
   useEffect(() => {
     if (initialFocusRestoreRef.current) return
     if (loading || events.length === 0) return
