@@ -409,3 +409,15 @@ record written as it happens.
   must not be read as a failure.
 - Do not mark checklist items: `checklists/query-integrity.md` belongs to the
   reviewer.
+
+## Phase 9: Convergence
+
+- [ ] T057 CRITICAL: Make the Timeline's empty state say why nothing is drawn, per Constitution II and the Edge Cases' "a filter that matches nothing" (contradicts). In `src/renderer/src/components/Timeline.tsx` the filtered-empty state (`timeline-empty-filtered`) is gated on FilterContext's `activeCount`, which leaves out personal traffic, and "No events recorded yet" is chosen from the folded `events`. So a project whose admitted rows are all personal-domain traffic, or all collapsed agent turns, reads as having recorded nothing.
+  - Show the filtered-empty state whenever a narrowing condition is active, personal traffic included: `hidePersonal` with personal domains configured, which the FilterBar shows lit as "Non-work hidden".
+  - List personal traffic among the active conditions in `conditionLabels` / `describeActiveConditions` (`src/renderer/src/lib/FilterContext.tsx`).
+  - When rows are held but the agent-turn collapse hides every one, say so, with the count and the toggle, instead of the empty-project state (FR-015).
+  - RED first in `test/timeline-shared-filter.test.tsx`: a personal-only case and a collapse-only case.
+- [ ] T058 Make the Targets count agree with the Timeline's total, per SC-002 and FR-005 (partial). `aggregateTargets` (`src/core/db/event-aggregates.ts`) and the Targets page's list (`src/renderer/src/components/TargetView.tsx`, `queryPage({ targetId })`) count housekeeping rows, which the Timeline's total excludes. The ingest's active-target fallback (`src/core/ingest.ts`, `ACTIVE_TARGET_FALLBACK_TYPES`) stamps every shell row with the current target, `session_start` and hook-source rows included, so the Targets page promised rows the Timeline never shows.
+  - Apply `HOUSEKEEPING_SQL` in `aggregateTargets` (export it from `src/core/db/event-queries.ts`) and pass `excludeHousekeeping: true` for the Targets list. Check the other consumers: FilterContext's known targets and `ActiveTargetControl`.
+  - Update `docs/domain/SPEC-target-identity.md`'s Invariant and Property to the housekeeping-excluded count.
+  - RED first in `test/target-identity-case.test.ts`: a `shell.session_start` row carrying the target makes the aggregate exceed `countEvents({ filter: { targetId }, excludeHousekeeping: true })`.
