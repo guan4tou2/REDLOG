@@ -71,8 +71,8 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Tests for User Story 1 (write first, confirm they fail)
 
-- [ ] T008 [P] [US1] Write a failing core test in `test/timeline-filter-completeness.test.ts`. With ≥1,200 fixture events, paging `queryEventsPage({ agentType: 'dns', since, before, excludeHousekeeping: true })` to the end returns exactly the DNS rows in range (SC-001). Add one case each for `targetId`, `inScopeOnly` and `hidePersonal`.
-- [ ] T009 [P] [US1] Write failing renderer tests in `test/timeline-shared-filter.test.tsx`: jsdom, `TimelinePanel` inside `FilterProvider`, and a mocked bridge that records calls.
+- [X] T008 [P] [US1] Write a failing core test in `test/timeline-filter-completeness.test.ts`. With ≥1,200 fixture events, paging `queryEventsPage({ agentType: 'dns', since, before, excludeHousekeeping: true })` to the end returns exactly the DNS rows in range (SC-001). Add one case each for `targetId`, `inScopeOnly` and `hidePersonal`.
+- [X] T009 [P] [US1] Write failing renderer tests in `test/timeline-shared-filter.test.tsx`: jsdom, `TimelinePanel` inside `FilterProvider`, and a mocked bridge that records calls.
   1. The first `events.queryPage` call carries the shared filter's `agentType`, `since`, `before`, `targetId`, `inScopeOnly` and `hidePersonal`, plus `excludeHousekeeping: true`. `events.query` is never called.
   2. A filter change re-queries from the first page and drops a late reply from the previous filter.
   3. While `hasMore`, the status line reads "N of M events", with M from `events.count`.
@@ -89,28 +89,28 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] In `src/renderer/src/components/Timeline.tsx`, replace both `window.redlog.events.query(...)` loads (the initial load and the old-edge pager) with `events.queryPage({ ...toEventFilter(sharedFilter), excludeHousekeeping: true, limit: 200, cursor })`.
+- [X] T010 [US1] In `src/renderer/src/components/Timeline.tsx`, replace both `window.redlog.events.query(...)` loads (the initial load and the old-edge pager) with `events.queryPage({ ...toEventFilter(sharedFilter), excludeHousekeeping: true, limit: 200, cursor })`.
   - Keep `nextCursor` and `hasMore` in state, replacing `allLoaded`.
   - Add a generation counter: a shared-filter change bumps it, clears `eventsMapRef`/`sortedRef`, and reloads. A reply from an older generation is dropped.
-- [ ] T011 [US1] In `Timeline.tsx`, add the total and the status line.
+- [X] T011 [US1] In `Timeline.tsx`, add the total and the status line.
   - Call `events.count({ filter, excludeHousekeeping: true })` once per generation.
   - While `hasMore`, show "N of M events · scroll back for older" (FR-003, US1 scenario 5).
   - A failed total shows "total unavailable" with retry.
   - Add i18n keys `timeline.rangeOfTotal` and `timeline.totalUnavailable` to `src/renderer/src/i18n/en.json` and `zh-TW.json`.
-- [ ] T012 [US1] In `Timeline.tsx`, admit every batch from `events.onNewBatch` through `events.matchIds({ ids, filter: toEventFilter(sharedFilter), excludeHousekeeping: true })`, in chunks of ≤1,000, whatever the filter (research R10).
+- [X] T012 [US1] In `Timeline.tsx`, admit every batch from `events.onNewBatch` through `events.matchIds({ ids, filter: toEventFilter(sharedFilter), excludeHousekeeping: true })`, in chunks of ≤1,000, whatever the filter (research R10).
   - Each admitted row adds one to the total M.
   - A failure shows `timeline.liveAdmissionFailed` with retry.
   - Remove the Timeline's renderer `isHousekeeping` checks from the page and live paths: `HOUSEKEEPING_SQL` is the one rule.
-- [ ] T013 [US1] Remove the client-side shared-filter work from `Timeline.tsx`:
+- [X] T013 [US1] Remove the client-side shared-filter work from `Timeline.tsx`:
   - the `hidePersonal`/`personalDomains` filter in the `events` memo
   - the `computeScopeMatches` call and its dimming branch
   Delete `computeScopeMatches` from `src/renderer/src/lib/timelineFilters.ts`, and its cases from `test/timeline-filters.test.ts`.
-- [ ] T014 [US1] In `Timeline.tsx`, add the three states (FR-010, FR-017, Edge Cases):
+- [X] T014 [US1] In `Timeline.tsx`, add the three states (FR-010, FR-017, Edge Cases):
   - loading, while a generation's first page is in flight
   - the empty-with-filter state, listing active conditions from `useSharedFilter()`; add i18n `timeline.emptyFiltered`
   - page failure with retry
-- [ ] T015 [US1] Handle a selected event that a filter change excludes. After a generation's first page, check `selectedEvent` with `events.matchIds([id])`. If it is excluded, clear the selection and show `timeline.outsideFilter` (i18n en and zh-TW). Also make `resolveReferencedEvent`, which follows an amendment to its marker, check admission before inserting a fetched row. An excluded row opens in the detail panel with `timeline.outsideFilter` and is never added to `eventsMapRef` or `sortedRef` (spec edge case, research R5).
-- [ ] T016 [US1] Change the export contribution in `Timeline.tsx` (`useContributeExport`). While any shared-filter condition is active, use label `timeline.exportSliceUnfiltered` and omit `count` (FR-016). Add i18n "Visible time range, filter not applied" / "可見時間範圍（不套用篩選）".
+- [X] T015 [US1] Handle a selected event that a filter change excludes. After a generation's first page, check `selectedEvent` with `events.matchIds([id])`. If it is excluded, clear the selection and show `timeline.outsideFilter` (i18n en and zh-TW). Also make `resolveReferencedEvent`, which follows an amendment to its marker, check admission before inserting a fetched row. An excluded row opens in the detail panel with `timeline.outsideFilter` and is never added to `eventsMapRef` or `sortedRef` (spec edge case, research R5). The causal-chain focus admits its links the same way: only admitted links are drawn, and the badge counts the rest.
+- [X] T016 [US1] Change the export contribution in `Timeline.tsx` (`useContributeExport`). While any shared-filter condition is active, use label `timeline.exportSliceUnfiltered` and omit `count` (FR-016). Add i18n "Visible time range, filter not applied" / "可見時間範圍（不套用篩選）".
 
 **Checkpoint**: T008 and T009 pass, and `npx vitest run test/renderer-smoke.test.tsx test/timeline-filters.test.ts test/timeline-flush.test.ts` passes.
 

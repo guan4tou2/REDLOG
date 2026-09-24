@@ -1,7 +1,6 @@
 import type { RedLogEvent } from '../../../core/db/event-types'
 import { groupAmendments, foldMarker } from './markerFold'
 import { eventTitle } from './eventTitle'
-import { hostInScope } from './scope'
 import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './timelineDomain'
 
 /**
@@ -68,25 +67,6 @@ export function computeTargetMatches(
     const d = e.data as Record<string, unknown> | undefined
     const fields = [e.targetId, d?.detectedTarget, d?.remote_addr, d?.host, d?.dest_ip, d?.dest_host, d?.target]
     if (fields.some((v) => typeof v === 'string' && v.toLowerCase() === t)) set.add(e.id)
-  }
-  return set
-}
-
-/**
- * Events matching at least one scope pattern, or lacking a targetId
- * (ambient events always pass). Returns null when scope filter is off.
- */
-export function computeScopeMatches(
-  events: readonly RedLogEvent[],
-  scopeTargets: readonly string[],
-  excludeTargets: readonly string[],
-  inScopeOnly: boolean
-): Set<string> | null {
-  if (!inScopeOnly || (scopeTargets.length === 0 && excludeTargets.length === 0)) return null
-  const set = new Set<string>()
-  for (const e of events) {
-    if (!e.targetId) { set.add(e.id); continue }
-    if (hostInScope(e.targetId, [...scopeTargets], [...excludeTargets])) set.add(e.id)
   }
   return set
 }

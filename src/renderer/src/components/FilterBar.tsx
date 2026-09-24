@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
-import { useSharedFilter } from '../lib/FilterContext'
+import { useSharedFilter, conditionLabels } from '../lib/FilterContext'
 import { useI18n } from '../i18n'
-import { formatTime } from '../lib/time'
 
 export function FilterBar(): JSX.Element | null {
   const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
     activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
+  const labels = conditionLabels(filter, t)
   const barRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -38,14 +38,14 @@ export function FilterBar(): JSX.Element | null {
 
         {/* Active filter chips — always visible */}
         {filter.targetId && (
-          <Chip label={`${t('filter.target')}: ${filter.targetId}`} onClear={() => setTargetId(null)} />
+          <Chip label={labels.target ?? ''} onClear={() => setTargetId(null)} />
         )}
         {filter.agentType && (
-          <Chip label={`${t('filter.type')}: ${filter.agentType}`} onClear={() => setAgentType(null)} />
+          <Chip label={labels.type ?? ''} onClear={() => setAgentType(null)} />
         )}
         {filter.timeRange && (
           <Chip
-            label={`${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}`}
+            label={labels.time ?? ''}
             onClear={() => setTimeRange(null)}
           />
         )}
@@ -177,17 +177,4 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
       </select>
     </div>
   )
-}
-
-function formatTimeRange(range: { since?: number; before?: number }, t: (k: string, v?: Record<string, string | number>) => string): string {
-  if (range.since && !range.before) {
-    return t('filter.since', { time: formatTime(range.since, { seconds: false }) })
-  }
-  if (!range.since && range.before) {
-    return t('filter.before', { time: formatTime(range.before, { seconds: false }) })
-  }
-  if (range.since && range.before) {
-    return `${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
-  }
-  return ''
 }

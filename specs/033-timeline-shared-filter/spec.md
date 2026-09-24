@@ -242,6 +242,8 @@ All five agree.
 - Folded displays (a command start folded into its end, agent turns collapsed,
   a marker folded with its amendments) do not change what matches. A marker
   whose amended title matches is found as that marker.
+- A causal chain that crosses the filter: focusing it draws only the links the
+  filter admits. The focus badge says how many links are outside the filter.
 - An amendment the filter admits whose marker it does not (the marker is older
   than the time range, for instance): the amendment row is drawn. Following it
   to its marker opens the marker in the detail panel with the "outside the
@@ -286,9 +288,9 @@ All five agree.
   but the filter box does not match stay drawn, dimmed, so a match keeps its
   context. The query layer decides the matches, over the whole project.
   - **Counts**: the Timeline's counts MUST describe the events the shared filter
-    admits and, while the box is set, how many of them match. A lane chip counts
-    the drawn events in its lane. The agent-turn collapse counts the drawn rows it
-    hides.
+    admits and, while the box is set, how many of them match. A lane chip
+    appears only for a lane with drawn events; chips show no counts. The
+    agent-turn collapse counts the drawn rows it hides.
   - **Earlier matches**: when the box matches events older than the drawn range,
     the Timeline MUST say how many, counted in events. A marker and an amendment
     that both match are two. That notice MUST load back to the nearest earlier
