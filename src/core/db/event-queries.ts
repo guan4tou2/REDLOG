@@ -28,35 +28,60 @@ export interface EventFilter {
   tier?: 'chained'
 }
 
-function inScopeTargetIds(filter: EventFilter): string[] | null {
-  if (!filter.inScopeOnly || !filter.scope) return null
-  const { targets, excludeTargets } = filter.scope
-  if (targets.length === 0 && excludeTargets.length === 0) return null
+const scopeActive = (filter: EventFilter): boolean =>
+  !!filter.inScopeOnly && !!filter.scope && (filter.scope.targets.length > 0 || filter.scope.excludeTargets.length > 0)
+const personalActive = (filter: EventFilter): boolean =>
+  !!filter.hidePersonal && !!filter.personalDomains?.length
+
+/** The targets the scope and personal predicates decide over: every target
+ *  in the project, or only those of `ids` when the rows are already named.
+ *  Each target's decision is the same either way, so the answer for those
+ *  rows is too. Spec 033: a check of 100 live rows scanned every target of
+ *  the project, once per tier arm, which a busy second of batches could not
+ *  afford (research R10). */
+function candidateTargets(ids?: string[]): string[] {
   const db = getReadonlyDB()
+  const named = ids ? ' AND id IN (SELECT value FROM json_each(?))' : ''
+  const params = ids ? [JSON.stringify(ids), JSON.stringify(ids)] : []
   const rows = db.prepare(`
-    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''
+    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''${named}
     UNION
-    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''
-  `).all() as Array<{ target_id: string }>
-  return rows
-    .map((row) => row.target_id)
-    .filter((target) => {
-      const decision = evaluateScope(target, { targets, excludeTargets })
-      return decision.status === 'in-scope' || decision.status === 'no-scope'
-    })
+    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''${named}
+  `).all(...params) as Array<{ target_id: string }>
+  return rows.map((row) => row.target_id)
 }
 
-function personalTargetIds(filter: EventFilter): string[] | null {
-  if (!filter.hidePersonal || !filter.personalDomains?.length) return null
-  const db = getReadonlyDB()
-  const rows = db.prepare(`
-    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''
-    UNION
-    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''
-  `).all() as Array<{ target_id: string }>
-  return rows
-    .map((row) => row.target_id)
-    .filter((target) => evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
+function inScopeTargetIds(filter: EventFilter, candidates: string[]): string[] {
+  const { targets, excludeTargets } = filter.scope ?? { targets: [], excludeTargets: [] }
+  return candidates.filter((target) => {
+    const decision = evaluateScope(target, { targets, excludeTargets })
+    return decision.status === 'in-scope' || decision.status === 'no-scope'
+  })
+}
+
+function personalTargetIds(filter: EventFilter, candidates: string[]): string[] {
+  return candidates.filter((target) =>
+    evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
+}
+
+/** Scope and personal traffic over a target column: untargeted rows always
+ *  pass. The tier arms apply it to rows, the HTTP flow page to flow heads. */
+function appendTargetPolicy(
+  filter: EventFilter, column: string, conditions: string[], params: unknown[], ids?: string[]
+): void {
+  const byScope = scopeActive(filter)
+  const byPersonal = personalActive(filter)
+  if (!byScope && !byPersonal) return
+  const candidates = candidateTargets(ids)
+  if (byScope) {
+    conditions.push(`(${column} IS NULL OR ${column} = '' OR ${column} IN (SELECT value FROM json_each(?)))`)
+    params.push(JSON.stringify(inScopeTargetIds(filter, candidates)))
+  }
+  const personal = byPersonal ? personalTargetIds(filter, candidates) : []
+  if (personal.length) {
+    conditions.push(`(${column} IS NULL OR ${column} = '' OR ${column} NOT IN (SELECT value FROM json_each(?)))`)
+    params.push(JSON.stringify(personal))
+  }
 }
 
 /** Target identity is `target_id`, compared lowercased (SPEC-target-identity):
@@ -70,13 +95,15 @@ export function targetPredicate(column: string): string {
 
 /** The one evaluator of the shared filter. `arm` is the tier whose SQL this
  *  is: a filter can exclude a whole tier, so a caller building both arms from
- *  one call could not express it. Required so that a new caller cannot forget. */
+ *  one call could not express it. Required so that a new caller cannot forget.
+ *  `ids`: the caller's WHERE already restricts the rows to these. */
 function appendEventFilter(
   filter: EventFilter,
   conditions: string[],
   params: unknown[],
   arm: 'chained' | 'logged',
-  alias = ''
+  alias = '',
+  ids?: string[]
 ): void {
   const col = (name: string): string => alias ? `${alias}.${name}` : name
   // "Chained only" leaves the logged arm nothing. It is a predicate like the
@@ -86,16 +113,7 @@ function appendEventFilter(
   if (filter.since != null) { conditions.push(`${col('timestamp')} >= ?`); params.push(filter.since) }
   if (filter.before != null) { conditions.push(`${col('timestamp')} <= ?`); params.push(filter.before) }
   if (filter.targetId) { conditions.push(targetPredicate(col('target_id'))); params.push(filter.targetId) }
-  const allowed = inScopeTargetIds(filter)
-  if (allowed !== null) {
-    conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} IN (SELECT value FROM json_each(?)))`)
-    params.push(JSON.stringify(allowed))
-  }
-  const personal = personalTargetIds(filter)
-  if (personal?.length) {
-    conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} NOT IN (SELECT value FROM json_each(?)))`)
-    params.push(JSON.stringify(personal))
-  }
+  appendTargetPolicy(filter, col('target_id'), conditions, params, ids)
 }
 
 // HOUSEKEEPING_SQL (below) hides RedLog's plumbing rows, which still land in
@@ -207,16 +225,7 @@ export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?:
   if (opts.targetId) { where.push(targetPredicate('target_id')); params.push(opts.targetId) }
   if (opts.since != null) { where.push('start_ts >= ?'); params.push(opts.since) }
   if (opts.before != null) { where.push('start_ts <= ?'); params.push(opts.before) }
-  const allowed = inScopeTargetIds(opts)
-  if (allowed !== null) {
-    where.push("(target_id IS NULL OR target_id = '' OR target_id IN (SELECT value FROM json_each(?)))")
-    params.push(JSON.stringify(allowed))
-  }
-  const personal = personalTargetIds(opts)
-  if (personal?.length) {
-    where.push("(target_id IS NULL OR target_id = '' OR target_id NOT IN (SELECT value FROM json_each(?)))")
-    params.push(JSON.stringify(personal))
-  }
+  appendTargetPolicy(opts, 'target_id', where, params)
   if (cursor) {
     where.push('(start_ts < ? OR (start_ts = ? AND flow_id < ?))')
     params.push(cursor.startTs, cursor.startTs, cursor.flowId)
@@ -400,7 +409,7 @@ function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { wh
     params.push(q.match, q.bodyIdsJson)
   }
   if (q) appendConditions(q.conditions, parts, params, tier)
-  appendEventFilter(input.filter ?? {}, parts, params, tier, 'e')
+  appendEventFilter(input.filter ?? {}, parts, params, tier, 'e', input.ids)
   if (input.excludeHousekeeping) parts.push(HOUSEKEEPING_SQL)
   if (input.ids) {
     parts.push('e.id IN (SELECT value FROM json_each(?))')
