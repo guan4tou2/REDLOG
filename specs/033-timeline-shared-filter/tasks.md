@@ -163,12 +163,12 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Tests for User Story 3 (write first, confirm they fail)
 
-- [ ] T023 [P] [US3] Write failing tests in `test/query-operator-condition.test.ts`.
+- [X] T023 [P] [US3] Write failing tests in `test/query-operator-condition.test.ts`.
   - `parseQuery('operator:op-2')` yields `{ field: 'operator', value: 'op-2' }`.
   - `operator:` fails with `empty-condition-value`.
   - `executeEventQuery` with the condition returns only `op-2`'s rows in both tiers.
   - A row whose text mentions `op-2` but whose `operator_id` is `op-1` does not match.
-- [ ] T024 [P] [US3] Write failing tests in `test/query-readout.test.tsx`. `QueryReadout` renders condition and text tokens with `data-testid="search-query-parse"` and the unparsable message with `data-testid="search-query-unparsable"`. `SearchPanel` and `TranscriptView` render it.
+- [X] T024 [P] [US3] Write failing tests in `test/query-readout.test.tsx`. `QueryReadout` renders condition and text tokens with `data-testid="search-query-parse"` and the unparsable message with `data-testid="search-query-unparsable"`. `SearchPanel` and `TranscriptView` render it.
 - [ ] T025 [P] [US3] Write failing renderer tests in `test/timeline-text-query.test.tsx` (jsdom, mocked bridge):
   1. Typing `10.0.0.5` calls `events.matchIds({ ids: <drawn>, parsed: parseQuery(...).parsed, filter, excludeHousekeeping: true })`. Unreturned events stay drawn, with a non-visual not-matching state (FR-018).
   2. The QueryReadout shows the tokens.
@@ -188,8 +188,8 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Add `'operator'` to `QueryField` and `QUERY_FIELDS` in `src/core/query/contract.ts`. Add `case 'operator': e.operator_id = ?` to `appendConditions` in `src/core/db/event-queries.ts`. T023 passes.
-- [ ] T027 [US3] Create `src/renderer/src/components/QueryReadout.tsx` from `SearchPanel.tsx`'s token block (~lines 301–316) and its unparsable block. Replace both in `SearchPanel.tsx` and the block in `TranscriptView.tsx` (~line 535). The existing test ids stay, and T024 passes.
+- [X] T026 [US3] Add `'operator'` to `QueryField` and `QUERY_FIELDS` in `src/core/query/contract.ts`. Add `case 'operator': e.operator_id = ?` to `appendConditions` in `src/core/db/event-queries.ts`. T023 passes.
+- [X] T027 [US3] Create `src/renderer/src/components/QueryReadout.tsx` from `SearchPanel.tsx`'s token block (~lines 301–316) and its unparsable block. Replace both in `SearchPanel.tsx` and the block in `TranscriptView.tsx` (~line 535). The existing test ids stay, and T024 passes.
 - [ ] T028 [US3] Rebuild the filter box state in `Timeline.tsx`.
   - Parse with `parseQuery` (`core/query/contract.ts`). The states are empty, unparsable, matching, matched and failed (data-model TimelineText).
   - Render `QueryReadout`.
