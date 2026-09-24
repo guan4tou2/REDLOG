@@ -69,6 +69,11 @@ was edited in the same change.
 - **Scope**: NOCASE folds ASCII only. Hostnames reach RedLog as ASCII
   (IDN as punycode), and IP addresses have no case, except IPv6 hex digits,
   which NOCASE folds correctly.
+- **Export**: the `queryEvents` target branch is also the export resolver's
+  (`src/main/ipc/data-export.ts`). So a time-range export limited to a target,
+  such as HTTP History's HAR, now selects every casing: the same rows the view
+  shows. Preview and execute both resolve through that one plan, so they stay
+  equal (Constitution V). SPEC-export-event-selection records the change.
 
 ## R4. The Targets page sets the shared target
 
@@ -101,16 +106,22 @@ was edited in the same change.
   work to what is drawn, and it covers live rows (R10). Counting from the
   Timeline's own cursor makes "earlier" exact, even for timestamps tied at the
   boundary.
-- **Folded rows**: a match on a row the Timeline folds away counts as a match
-  on the row it folds into:
-  - an amendment → its marker
-  - a command start → its end
-  - a collapsed agent turn → the session row it is collapsed under, when that
-    row is drawn
+- **Folded rows**:
+  - A match on a row the Timeline hides counts as a match on the row that
+    stands for it. A command start stands for its end. A collapsed agent turn
+    stands for the session row it is collapsed under, when that row is drawn.
+  - An amendment is drawn as its own row. A match on it also lights its marker,
+    since the marker's shown title comes from the amendment.
+  - A match with no drawn row to stand for it still counts, for example a turn
+    in a session whose closing row has not arrived. The count line says it is
+    hidden by the collapse.
   The fold index the Timeline already builds provides the mapping (FR-015,
-  edge case). A match with no drawn row to stand for it (a turn in a session
-  whose closing row has not arrived) still counts. The count line says it is
-  hidden by the collapse.
+  edge case).
+- **A referenced row outside the filter**: `resolveReferencedEvent`, which
+  follows an amendment to its marker, today inserts the fetched marker into the
+  drawn rows. It first checks admission with `matchEventIds`. An excluded
+  marker opens in the detail panel with the "outside the current filter" note,
+  and is not drawn.
 - **Counting**: the earlier-match count counts rows, housekeeping excluded. A
   marker and its amendment that both match count twice; the notice says
   "events".
@@ -195,20 +206,27 @@ was edited in the same change.
 
 ## R10. Live rows are admitted by the persistence layer
 
-- **Decision**: on `events:new-batch`, if any shared-filter condition or text is
-  set, the Timeline asks `events:matchIds` which new rows the filter admits and
-  which of those match the text. With nothing set, rows are admitted without a
-  round trip; housekeeping is excluded as today.
-- **Rationale**: one implementation of the filter (Constitution III), and the
-  live-row edge case.
-- **Alternative**: a client-side mirror of `appendEventFilter`. Rejected.
+- **Decision**: every `events:new-batch` batch goes through `events:matchIds`,
+  in chunks of ≤1,000, with `excludeHousekeeping`. It asks which new rows the
+  filter admits and which of those match the box. This holds whether or not a
+  filter is set. Each admitted live row adds one to the total M, so N never
+  exceeds M. The Timeline's renderer `isHousekeeping` checks go:
+  `HOUSEKEEPING_SQL` is the one rule.
+- **Rationale**: one implementation of the filter and of housekeeping
+  (Constitution III), and the live-row edge case. Batches are coalesced per
+  frame, so the cost is one round trip per frame of new rows.
+- **Alternatives**:
+  - A client-side mirror of `appendEventFilter`. Rejected.
+  - Keeping `isHousekeeping` for the no-filter path. Rejected: it keeps two
+    housekeeping rules, synced by hand.
 
 ## R11. The Timeline's time-range export
 
-- **Decision**: export selection is unchanged. While a shared filter is set, the
-  Timeline's contributed export is labelled "Visible time range, filter not
-  applied", and it contributes no `count`, since its drawn rows are not what
-  the plan exports (FR-016).
+- **Decision**: export selection is unchanged, except that a target subset
+  matches every casing (R3). While a shared filter is set, the Timeline's
+  contributed export is labelled "Visible time range, filter not applied", and
+  it contributes no `count`, since its drawn rows are not what the plan exports
+  (FR-016).
 - **Rationale**: [SPEC-export-event-selection](../../docs/domain/SPEC-export-event-selection.md)
   exports the whole persisted population in the range. The export menu shows
   the plan resolver's counts, so preview and execute already agree
@@ -236,6 +254,7 @@ was edited in the same change.
   - `countEvents`
   - `matchEventIds` for 1,000 ids
   - `executeEventQuery` with a cursor and `limit: 1`
-  A filter change redraws in under 2 s (SC-006).
+  The first page and total together are SC-006. An end-to-end redraw time is
+  not claimed, because nothing measures it.
 - **Measure first**: add the NOCASE target indexes (R3) only if the target
   queries miss the budget.

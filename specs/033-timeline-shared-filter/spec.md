@@ -240,6 +240,10 @@ All five agree.
 - Folded displays (a command start folded into its end, agent turns collapsed,
   a marker folded with its amendments) do not change what matches. A marker
   whose amended title matches is found as that marker.
+- An amendment the filter admits whose marker it does not (the marker is older
+  than the time range, for instance): the amendment row is drawn. Following it
+  to its marker opens the marker in the detail panel with the "outside the
+  current filter" note. The marker is never added to the drawn events.
 - Target case: `Example.COM` and `example.com` are one target on the Targets
   page. Picking it selects both spellings.
 - An event opened in the Timeline from another view, or selected before a
@@ -252,6 +256,9 @@ All five agree.
 - The Timeline's "Visible time range" export: export selection is unchanged
   and exports every event in that range
   ([SPEC-export-event-selection](../../docs/domain/SPEC-export-event-selection.md)).
+  The one change reaches export through target identity: an export limited to
+  a target (HTTP History's HAR) selects every casing of it, as every target
+  filter does (FR-005).
   While a shared filter hides events on the Timeline, the export's label says
   the filter is not applied, so the export is never read as "what I see".
 
@@ -349,7 +356,9 @@ All five agree.
   many.
 - **FR-016**: While a shared filter is set, the Timeline's time-range export
   MUST say that it does not apply the filter, and MUST NOT offer the drawn
-  count as its size. Export selection itself is unchanged.
+  count as its size. Export selection itself is unchanged, except that a
+  target subset matches the target case-insensitively (FR-005). Preview and
+  execute still resolve through one plan.
 - **FR-017**: The Timeline MUST show that it is working while it works:
   - loading, for a filter change
   - "matching", for filter-box input
@@ -395,9 +404,9 @@ All five agree.
 - **SC-005**: One event's time is printed identically in every view that shows
   it, to the precision both views print: minutes, or seconds where both show
   seconds.
-- **SC-006**: Applying or changing each kind of shared-filter condition updates
-  the Timeline within 2 seconds. It is measured on the 100,000-event fixture
-  (research R13) with a warm cache, and the operator is told while it loads.
+- **SC-006**: On the 100,000-event fixture (research R13), with a warm cache,
+  each kind of shared-filter condition returns the Timeline's first page and
+  its total within 200 ms each. The Timeline shows loading until both arrive.
 - **SC-007**: With "chained only" set, every row every event view lists is
   chained. Where a view states a total, it equals the chained-tier count for
   the same filter.
@@ -439,3 +448,5 @@ All five agree.
     Normalization, Invariant and Scenario 3, for case-insensitive filtering.
   - [INVENTORY-query-completeness](../../docs/domain/INVENTORY-query-completeness.md)
     §1, the Timeline row.
+  - [SPEC-export-event-selection](../../docs/domain/SPEC-export-event-selection.md):
+    a target subset selects every casing of the target.
