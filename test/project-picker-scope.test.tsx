@@ -52,12 +52,13 @@ describe('ProjectPicker scope on the create card', () => {
     expect((box as HTMLInputElement).checked).toBe(false)
     fireEvent.click(box)
     fireEvent.click(screen.getByText('Create'))
-    await vi.waitFor(() => expect(save).toHaveBeenCalled())
-    const createCfg = create.mock.calls[0][1] as { scope?: { excludeTargets?: string[] } } | undefined
-    expect(createCfg?.scope?.excludeTargets ?? []).not.toContain('192.168.1.23')
-    const saved = save.mock.calls[0][0] as { scope: { personalDomains: string[] } }
-    // Appended — the default local-traffic patterns are kept.
-    expect(saved.scope.personalDomains).toEqual(['127.0.0.0/8', '::1', 'localhost', '192.168.1.23'])
+    await vi.waitFor(() => expect(create).toHaveBeenCalled())
+    // One call: project:create adds it to the default personal domains
+    // (mergeInitialConfig, test/create-config-merge.test.ts); no second save.
+    const createCfg = create.mock.calls[0][1] as { scope: { excludeTargets: string[]; personalDomains: string[] } }
+    expect(createCfg.scope.excludeTargets).not.toContain('192.168.1.23')
+    expect(createCfg.scope.personalDomains).toEqual(['192.168.1.23'])
+    expect(save).not.toHaveBeenCalled()
   })
 
   it('hides the local-traffic checkbox when no internal IP is known', async () => {
