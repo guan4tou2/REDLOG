@@ -164,11 +164,26 @@ Source hooks **only** in engagement shells. Commands in unhooked shells are neve
 logged. A clean pattern: do engagement work in a dedicated WSL distro with the
 hook in `~/.bashrc`; keep personal work on the Windows host (unhooked).
 
-### 7.2 Pause limitation
+### 7.2 What pause does
 
-The status-bar recording toggle only hides events from the live timeline — it
-does **not** stop database writes. For genuine isolation, stop the producer
-(unsource the hook or close the engagement workspace).
+Pausing (status bar, ⌘/Ctrl+., or `POST /api/recording`) stops RedLog from
+**writing**, not just from displaying. The gate sits at the single database
+write point, so every source is covered — the shell and PowerShell hooks, the
+mitmproxy addon, the monitors. While paused:
+
+- No event is written except RedLog's own audit trail (`system`, including the
+  `recording_paused` / `recording_resumed` pair that explains the gap) and
+  markers you create explicitly.
+- Nothing is derived from the discarded events either — no scope violation,
+  loot, pivot or target row that would leak the paused content.
+- The built-in terminal keeps working, but its `.cast` recording stops growing.
+  Periodic screenshots are skipped.
+- The API answers a paused event with `200 {recording:false, skipped}`, so the
+  hook does not spool the command and replay it after resume.
+
+The hook still *sends* each command to `127.0.0.1` while paused; RedLog drops
+it on arrival. If a command must never leave the shell at all, run it in a
+shell that does not source the hook (see 7.1).
 
 ### 7.3 Per-engagement isolation
 
