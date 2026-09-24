@@ -20,6 +20,11 @@ extraResources:
   # extraction (and scope monitoring that rides on it) silently goes dark.
   - from: plugins
     to: plugins
+  # The offline evidence-bundle verifier every export copies in. bundle-export
+  # resolves it as <resources>/tools/redlog-verify.py in a packaged build;
+  # without this line every installed RedLog exported bundles with no verifier.
+  - from: tools/redlog-verify.py
+    to: tools/redlog-verify.py
 mac:
   icon: resources/icon.icns
   category: public.app-category.developer-tools
