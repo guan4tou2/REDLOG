@@ -77,14 +77,15 @@ operator believes are filtered out.
 
 **Independent Test**: seed events of two types across three hours, with the
 newest 200 all of one type. Set `Type` to the other type and `Time` to the
-oldest hour. The Timeline shows exactly the events a Search page returns for
-the same chips and no text, including those older than the first 200 loaded.
+oldest hour. The Timeline shows exactly the events the project holds for
+those chips, housekeeping rows excepted, including those older than the first
+200 loaded.
 
 **Acceptance Scenarios**:
 
 1. **Given** `Type: dns` is set, **When** the operator opens the Timeline,
-   **Then** it shows only DNS events, and its count matches the other views'
-   count for the same filter.
+   **Then** it shows only DNS events, and its count is the number of DNS
+   events the project holds.
 2. **Given** `Time: last 1h` is set, **When** the Timeline opens, **Then** it
    shows only events inside that hour.
 3. **Given** a target, in-scope and personal-traffic filter, **When** matching
@@ -211,8 +212,8 @@ All five agree.
 **Acceptance Scenarios**:
 
 1. **Given** the display zone is set, **When** any view prints an event time,
-   **Then** it uses that zone and says which zone it is, where a time is
-   printed without a date.
+   **Then** it uses that zone. A UTC time carries its `Z`, so it is never read
+   as local. A local time stays unmarked, as it is today.
 2. **Given** the Timeline's zone choice, **When** this feature ships, **Then**
    it becomes one setting in Settings ▸ General, Local or UTC, that every view
    uses. An operator who chose UTC on the Timeline keeps UTC.
@@ -238,11 +239,18 @@ All five agree.
   whose amended title matches is found as that marker.
 - Target case: `Example.COM` and `example.com` are one target on the Targets
   page. Picking it selects both spellings.
-- A focused or selected event that the new filter excludes: the selection is
-  cleared, or the operator is told it is outside the filter. It is never
-  silently shown as if it matched.
+- An event opened in the Timeline from another view, or selected before a
+  filter change: if it is older than what is drawn, the Timeline loads back to
+  it. If the shared filter excludes it, the Timeline says so and clears the
+  selection. It is never silently shown as if it matched, and never silently
+  missing.
 - The Timeline's own display choices (lane visibility, session dividers, zoom,
   follow mode) are not filters, and do not change counts or matches.
+- The Timeline's "Visible time range" export: export selection is unchanged
+  and exports every event in that range
+  ([SPEC-export-event-selection](../../docs/domain/SPEC-export-event-selection.md)).
+  While a shared filter hides events on the Timeline, the export's label says
+  the filter is not applied, so the export is never read as "what I see".
 
 ## Requirements *(mandatory)*
 
@@ -295,14 +303,18 @@ All five agree.
   the condition is shown, as HTTP History and the Transcript do today.
 - **FR-013**: Every view MUST print event times in one display zone, chosen
   once in Settings ▸ General as Local or UTC. This covers the Timeline, the
-  event detail and the FilterBar time chip. A time printed without a date MUST
-  say which zone it is in. The Timeline MUST NOT keep a zone setting of its
-  own, and an operator's existing Timeline choice of UTC MUST carry over.
+  event detail and the FilterBar time chip. A time printed in UTC MUST carry
+  its zone marker, so it is never read as local. The Timeline MUST NOT keep a
+  zone setting of its own, and an operator's existing Timeline choice of UTC
+  MUST carry over.
 - **FR-014**: The "Project" zone MUST NOT be offered. Nothing can set a project
   zone, so it can never differ from Local.
 - **FR-015**: Display folding (command pairs, agent turns, marker amendments)
   and the Timeline's layout controls MUST NOT change which events match or how
   many.
+- **FR-016**: While a shared filter is set, the Timeline's time-range export
+  MUST say that it does not apply the filter. Export selection itself is
+  unchanged.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -321,9 +333,11 @@ All five agree.
 
 ### Measurable Outcomes
 
-- **SC-001**: For any combination of shared-filter conditions, the Timeline
-  and Search (with no text) select the same events. Checked over a fixture of
-  at least 1,000 events spanning more than five pages.
+- **SC-001**: For any combination of shared-filter conditions, the events the
+  Timeline draws once paged back to the start are exactly the events the project
+  holds for that filter, housekeeping rows excepted. Checked over a fixture of
+  at least 1,000 events spanning more than five pages. (Search cannot be the
+  reference: a query with no text answers nothing.)
 - **SC-002**: For every target on the Targets page, the Targets count, the
   Timeline count after "Open in Timeline", and the FilterBar-chip count are
   equal.
