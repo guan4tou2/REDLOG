@@ -217,7 +217,7 @@ export function CommandPalette({
         hint: op.isPrimary ? t('palette.operatorPrimary') : undefined,
         // Filtering the timeline by operator is the question worth asking of
         // one: "what did this person do".
-        run: () => { onNavigate('timeline'); setTimeout(() => window.dispatchEvent(new CustomEvent('redlog:filter-operator', { detail: op.name })), 0) }
+        run: () => { onNavigate('timeline'); setTimeout(() => window.dispatchEvent(new CustomEvent('redlog:filter-operator', { detail: op.id })), 0) }
       })
     }
 

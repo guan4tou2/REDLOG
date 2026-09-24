@@ -27,23 +27,22 @@ const memoBody = (name: string): string => {
 }
 
 describe('per-batch work (W19)', () => {
-  it('the search index is not built while idle', () => {
-    // Measured on a real 131,833-event project: 116 ms to build, and it ran on
-    // every flush whether or not anything was being filtered. It was the most
-    // expensive thing on the panel by a factor of three.
-    // Logic extracted to timelineFilters.ts — verify delegation and that the
-    // extracted module still has the bail-before-loop guard.
-    expect(SRC, 'Timeline delegates to buildSearchIndex')
-      .toMatch(/buildSearchIndex\(/)
-    expect(FILTERS_SRC, 'must bail before the loop when no query is active')
-      .toMatch(/if \(!query\.trim\(\)\) return idx/)
-    expect(FILTERS_SRC.indexOf('return idx')).toBeLessThan(FILTERS_SRC.indexOf('for (const e of events)'))
+  it('the filter box asks nothing while it is empty', () => {
+    // Spec 033 replaced the in-renderer search index, whose build was the most
+    // expensive thing on the panel at 131,833 events, with an id check in the
+    // persistence layer. The property that index guarded still holds: with
+    // no query there is no work, not a round trip per flush.
+    const bail = SRC.indexOf('if (!parsedQuery || !queryKey) {')
+    const ask = SRC.indexOf('ids, parsed: parsedQuery, filter: eventFilterRef.current, excludeHousekeeping: true')
+    expect(bail, 'the match effect bails before asking').toBeGreaterThan(-1)
+    expect(ask).toBeGreaterThan(bail)
   })
 
-  it('the index rebuilds when the query changes', () => {
-    // Making it lazy without this dep would leave the index empty forever.
-    expect(SRC).toMatch(/buildSearchIndex\(events, operatorNames, filterQueryDebounced\)/)
-    expect(SRC).toMatch(/\[events, operatorNames, filterQueryDebounced\]/)
+  it('the match check follows the query and the rows, once per row', () => {
+    // Checked ids are cached per query and filter, so a flush asks only about
+    // rows it has not asked about; a new query or filter starts the cache over.
+    expect(SRC).toContain('}, [queryKey, rawEvents, boxRetry])')
+    expect(SRC).toContain('rawEvents.filter((e) => !cache.checked.has(e.id))')
   })
 
   it('flushes coalesce once the event set is large', () => {
