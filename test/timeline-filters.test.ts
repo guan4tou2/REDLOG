@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   buildSearchIndex,
   computeFilterMatches,
-  computeTargetMatches,
   distributeLaneEvents,
   distributeRowEvents,
   computeRecentEvents,
@@ -90,47 +89,6 @@ describe('computeFilterMatches', () => {
     const idx = new Map([['a', 'nmap scan']])
     const result = computeFilterMatches(idx, 'NMAP')!
     expect(result.has('a')).toBe(true)
-  })
-})
-
-describe('computeTargetMatches', () => {
-  it('returns null when no target', () => {
-    expect(computeTargetMatches([evt('a', 'shell')], null)).toBeNull()
-    expect(computeTargetMatches([evt('a', 'shell')], '')).toBeNull()
-  })
-
-  it('matches by targetId', () => {
-    const events = [evt('a', 'shell', {}, { targetId: '10.0.20.15' })]
-    const result = computeTargetMatches(events, '10.0.20.15')!
-    expect(result.has('a')).toBe(true)
-  })
-
-  it('matches by data.host', () => {
-    const events = [evt('a', 'scanner', { host: 'web01.internal' })]
-    const result = computeTargetMatches(events, 'web01.internal')!
-    expect(result.has('a')).toBe(true)
-  })
-
-  it('matches by data.dest_ip', () => {
-    const events = [evt('a', 'dns', { dest_ip: '192.168.1.1' })]
-    const result = computeTargetMatches(events, '192.168.1.1')!
-    expect(result.has('a')).toBe(true)
-  })
-
-  it('is case-insensitive', () => {
-    const events = [evt('a', 'scanner', { host: 'Web01.Internal' })]
-    const result = computeTargetMatches(events, 'web01.internal')!
-    expect(result.has('a')).toBe(true)
-  })
-
-  it('excludes non-matching events', () => {
-    const events = [
-      evt('a', 'shell', {}, { targetId: '10.0.20.15' }),
-      evt('b', 'shell', {}, { targetId: '10.0.20.16' })
-    ]
-    const result = computeTargetMatches(events, '10.0.20.15')!
-    expect(result.has('a')).toBe(true)
-    expect(result.has('b')).toBe(false)
   })
 })
 

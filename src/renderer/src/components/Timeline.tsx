@@ -15,7 +15,7 @@ import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineClus
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, computeTargetMatches, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
+import { buildSearchIndex, computeFilterMatches, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
@@ -75,7 +75,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
   }
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; focusTarget?: string; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
+export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
   // Spec 033: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
   const { filter: sharedFilter, activeCount: filterActiveCount } = useSharedFilter()
@@ -312,14 +312,9 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
   // filter survives a reload; empty string means "no filter".
-  // Target focus: scope the view to one target's activity, arrived at from
-  // the Targets list. It reuses the filter-dimming pipeline rather than
-  // adding a second axis - the source lanes stay, and everything that did
-  // not touch this target dims away. Matched precisely (id or endpoint), so
-  // 10.0.0.5 does not also light up 10.0.0.50 the way the text filter would.
-  const [targetFocus, setTargetFocus] = useState<string | null>(focusTarget ?? null)
-  useEffect(() => { setTargetFocus(focusTarget ?? null) }, [focusTarget])
-  const effectiveTarget = sharedFilter.targetId ?? targetFocus
+  // The target is not a Timeline control (spec 033): it is the shared
+  // filter's target_id, set by the FilterBar or by the Targets page, and the
+  // pages above never return a row outside it.
 
   const [filterQuery, setFilterQuery] = useState('')
   useEffect(() => {
@@ -858,10 +853,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
     [searchIndex, filterQueryDebounced]
   )
 
-  const targetMatches = useMemo(
-    () => computeTargetMatches(events, effectiveTarget),
-    [events, effectiveTarget]
-  )
 
 
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
@@ -1643,23 +1634,6 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
           >×</button>
         </div>
       )}
-      {effectiveTarget && (
-        <div
-          data-testid="timeline-target-focus-badge"
-          className="absolute z-40 flex items-center gap-2 px-2 py-1 rounded-md border border-redlog-accent/50 bg-redlog-bg/95 text-xs font-mono shadow-lg"
-          style={{ top: (focusChain || focusMeta.loading || focusMeta.failed) ? 36 : 6, right: 8 }}
-        >
-          <span className="text-redlog-accent">
-            {t('timeline.targetFocus.badge', { target: effectiveTarget, count: targetMatches?.size ?? 0 })}
-          </span>
-          <button
-            onClick={() => { setTargetFocus(null) }}
-            className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
-            title={t('timeline.targetFocus.exit')}
-            aria-label={t('timeline.targetFocus.exit')}
-          >×</button>
-        </div>
-      )}
       {/* Header. `flex-wrap` so that on a narrow window the controls drop to
           a second row instead of squeezing: without it the title broke into
           three lines and the lane chips on the right were clipped at 1440px,
@@ -2252,13 +2226,10 @@ export default function TimelinePanel({ focusEventId, focusTs, focusTarget, onDr
                     dimmed = !c.events.some((e) => focusChain.has(e.id))
                   } else if (anomalyFilter) {
                     dimmed = !c.events.some((e) => badgesById.has(e.id))
-                  } else if (targetMatches || filterMatches) {
-                    // Compose: when target focus, text filter, or scope
-                    // filter are active, a cluster stays lit only if it
-                    // has an event satisfying all active conditions.
-                    dimmed = !c.events.some((e) =>
-                      (!targetMatches || targetMatches.has(e.id)) &&
-                      (!filterMatches || filterMatches.has(e.id)))
+                  } else if (filterMatches) {
+                    // The shared filter never reaches here: rows it excludes
+                    // are not loaded. Only the filter box dims.
+                    dimmed = !c.events.some((e) => filterMatches.has(e.id))
                   }
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.

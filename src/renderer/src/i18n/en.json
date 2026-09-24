@@ -1015,8 +1015,6 @@
   "settings.connectionMonitorSynNote": "Established connections only. A SYN scan (nmap -sS) completes no handshake and will not appear — the command is still recorded, the connections are not.",
   "capture.connectionMonitor": "Network connections",
   "timeline.detail.httpBodyEvicted": "Body content no longer on disk — pruned by retention or evicted under disk pressure. The event and its SHA-256 remain; only the openable body is gone.",
-  "timeline.targetFocus.badge": "Focused on {{target}} · {{count}} events",
-  "timeline.targetFocus.exit": "Clear target focus",
   "activeTarget.label": "Current target",
   "activeTarget.none": "No current target",
   "activeTarget.hint": "Unclassified commands, markers and screenshots use this target",

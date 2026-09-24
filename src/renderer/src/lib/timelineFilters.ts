@@ -51,26 +51,6 @@ export function computeFilterMatches(
   return set
 }
 
-/**
- * Events that touched the given target — by targetId, detectedTarget,
- * remote_addr, host, dest_ip, dest_host, or target field.
- * Returns null when no target is focused.
- */
-export function computeTargetMatches(
-  events: readonly RedLogEvent[],
-  effectiveTarget: string | null | undefined
-): Set<string> | null {
-  if (!effectiveTarget) return null
-  const t = effectiveTarget.toLowerCase()
-  const set = new Set<string>()
-  for (const e of events) {
-    const d = e.data as Record<string, unknown> | undefined
-    const fields = [e.targetId, d?.detectedTarget, d?.remote_addr, d?.host, d?.dest_ip, d?.dest_host, d?.target]
-    if (fields.some((v) => typeof v === 'string' && v.toLowerCase() === t)) set.add(e.id)
-  }
-  return set
-}
-
 // ── Viewport windowing ─────────────────────────────────────────────
 
 export interface ViewportWindow {
