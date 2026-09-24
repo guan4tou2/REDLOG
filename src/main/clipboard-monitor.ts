@@ -117,3 +117,8 @@ async function restart(): Promise<void> {
   lastHash = seed
   timer = setInterval(() => { sample().catch(() => {}) }, Math.max(500, cfg.pollMs))
 }
+
+// Resuming is treated like starting: whatever is on the clipboard then, copied
+// during the pause or not, is seeded rather than captured, and nothing is read
+// while paused (TESTING.md G-CB1).
+eventBus.on('recording', (recording: boolean) => { if (recording && cfg.enabled) void restart() })

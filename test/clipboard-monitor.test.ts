@@ -112,6 +112,35 @@ describe('clipboard monitor — what it captures', () => {
   })
 })
 
+describe('clipboard monitor — pausing', () => {
+  // Nothing from the paused window may reach the record. Resuming is treated
+  // like starting: what is on the clipboard then is seeded, not captured
+  // (TESTING.md G-CB1).
+  it('does not capture, on resume, what was copied during the pause', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    monitor.configureClipboardMonitor(ON)
+    await settle()
+    eventBus.pause('ui')
+    await copy('copied while paused')
+    eventBus.resume('ui')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(h.events, 'the paused copy, still on the clipboard').toHaveLength(0)
+
+    await copy('copied after resuming')
+    expect(h.events).toHaveLength(1)
+  })
+
+  it('does not read the clipboard while paused', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    monitor.configureClipboardMonitor(ON)
+    await settle()
+    eventBus.pause('ui')
+    const before = h.reads
+    await copy('copied while paused')
+    expect(h.reads).toBe(before)
+  })
+})
+
 describe('clipboard monitor — turning it off', () => {
   // config:save in src/main/index.ts: the options first, then applyCapturePacks
   // switches the pack — two configure calls in one synchronous run.
