@@ -18,12 +18,18 @@ for full commit body + generated notes.
   FilterBar's target, which every view applies; the Timeline's own target
   focus is gone. Target matching is case-insensitive everywhere, so
   `Example.COM` and `example.com` count and filter as the one target the
-  Targets page already showed.
+  Targets page already showed. The Targets count and list leave out RedLog's own
+  housekeeping rows, as the Timeline does, so the count is what "Open in
+  Timeline" shows; with a current target set, opening a terminal used to add
+  rows the Timeline never drew.
 - **Filter:** "Chained only" is a FilterBar chip every event view applies,
   counted over the whole project; the Timeline's auditor switch is gone. HTTP
   History under it, and Loot under a Type other than loot, say they are empty
   by construction. HTTP History no longer says "No HTTP traffic captured yet"
   beneath a notice that explains its empty list.
+- **Timeline:** an empty Timeline says why. It names personal traffic among
+  the conditions hiding events, and says when the AI-turn collapse hides every
+  row, instead of "No events recorded yet".
 - **Timeline:** an event stored without a subtype, as the local API or a
   plugin may post one, is no longer hidden as RedLog's own housekeeping. A
   command row without its command or exit code is titled with `?` instead of
