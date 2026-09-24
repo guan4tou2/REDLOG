@@ -47,8 +47,6 @@ function mount(event: RedLogEvent, amendments: RedLogEvent[] = [], over: Record<
         event={event}
         fold={amendments.length ? foldMarker(event, amendments) : undefined}
         linkedScreenshots={[]}
-        tz="local"
-        projectTz={null}
         operatorLabel={(id) => id}
         onAmend={onAmend}
         onSelect={onSelect}

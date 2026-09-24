@@ -349,7 +349,7 @@ All five agree.
     - the Timeline and its axis, and the event and marker detail
     - Search, the Transcript, HTTP History, Loot, Screenshots, the Targets page
       and Scope
-    - the Dashboard, Bookmarks and the replay drawer
+    - the Dashboard and Bookmarks
     - Settings ▸ Integrity, the status bar, the HUD and the FilterBar time chip
   - **Marker**: a time printed in UTC MUST carry its zone marker, so it is never
     read as local.

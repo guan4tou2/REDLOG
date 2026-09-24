@@ -4,10 +4,13 @@ import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
-import { formatTime } from '../lib/time'
+import { formatTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 
 export default function StatusBar(): JSX.Element {
+  // Mounted under Settings too, so it reprints the last-event time when the
+  // display zone changes there (spec 033).
+  useDisplayZone()
   const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [loggedCount, setLoggedCount] = useState(0)
