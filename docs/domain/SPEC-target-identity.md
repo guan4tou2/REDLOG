@@ -50,12 +50,17 @@ existing rows are never re-attributed.
 ∀ target T:
   aggregateTargets().find(t => t.target ≈ T).eventCount
   ==
-  queryEvents({ targetId: T }).length  (uncapped)
+  countEvents({ filter: { targetId: T }, excludeHousekeeping: true })
 ```
 
 `≈` is the case-insensitive match the aggregate groups by. In words: the
-aggregate count and the detail query must agree because they key on the same
-identity, including for a target recorded in two casings.
+Targets page count, its list and the Timeline's total must agree, because they
+key on the same identity, including for a target recorded in two casings, and
+leave out the same rows: RedLog's own housekeeping (`HOUSEKEEPING_SQL`). The
+active-target fallback stamps every shell row, so a terminal opening or the
+hook sourcing itself can carry a target; those rows are not what happened to
+it (Spec 033). A read without `excludeHousekeeping`, such as an export, still
+sees them.
 
 ## Scenarios
 
@@ -122,7 +127,7 @@ channel; nothing called it.
 
 1. `aggregateTargets()` groups by `target_id` column, NOT `json_extract(data, '$.detectedTarget')`
 2. Case-insensitive grouping: `LOWER(target_id)` in GROUP BY
-3. Aggregate count and `queryEvents({ targetId })` agree for the same target
+3. The aggregate count, the Targets list and the Timeline's total agree for the same target, housekeeping rows counted by none of them (Spec 033)
 4. Events with `target_id` but no `detectedTarget` are included in aggregates
 5. No change to Scope matchers in this fix (separate P1)
 6. Active-target context is project-scoped and cleared from runtime on project close
@@ -133,6 +138,6 @@ channel; nothing called it.
 
 ```
 ∀ target T in aggregateTargets():
-  T.eventCount == COUNT(events WHERE target_id = T COLLATE NOCASE)
-               + COUNT(events_logged WHERE target_id = T COLLATE NOCASE)
+  T.eventCount == COUNT(events WHERE target_id = T COLLATE NOCASE AND NOT housekeeping)
+               + COUNT(events_logged WHERE target_id = T COLLATE NOCASE AND NOT housekeeping)
 ```

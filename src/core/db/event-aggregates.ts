@@ -2,6 +2,7 @@ import { getReadonlyDB } from './index'
 import type { RedLogEvent } from './event-types'
 import { rowToEvent } from './event-types'
 import { matchPattern } from '../scope-evaluator'
+import { HOUSEKEEPING_SQL } from './event-queries'
 
 const ALLOWED_NO_TARGET_TYPES = new Set(['marker', 'screenshot'])
 const EXCLUDED_NO_TARGET_TYPES = new Set(['clipboard', 'system'])
@@ -128,10 +129,10 @@ export function aggregateTargets(): TargetAggregate[] {
            MAX(timestamp) AS lastSeen
     FROM (
       SELECT target_id AS target, timestamp FROM events
-      WHERE target_id IS NOT NULL AND target_id != ''
+      WHERE target_id IS NOT NULL AND target_id != '' AND ${HOUSEKEEPING_SQL}
       UNION ALL
       SELECT target_id AS target, timestamp FROM events_logged
-      WHERE target_id IS NOT NULL AND target_id != ''
+      WHERE target_id IS NOT NULL AND target_id != '' AND ${HOUSEKEEPING_SQL}
     )
     GROUP BY LOWER(target)
     ORDER BY lastSeen DESC
