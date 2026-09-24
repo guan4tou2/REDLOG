@@ -4,7 +4,7 @@
 畫面在回答什麼問題。介面與本手冊都是繁體中文。要接手開發請改讀
 [`HANDOVER-2026-09.md`](archive/HANDOVER-2026-09.md) 與 [`README.md`](README.md)。
 
-對照版本：`main` @ v0.16.1。
+對照版本：`main` @ v0.17.0。
 
 ---
 
