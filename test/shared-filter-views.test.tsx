@@ -130,6 +130,16 @@ describe('views empty by construction say so (FR-012)', () => {
     const notice = await screen.findByTestId('empty-by-construction-notice')
     expect(notice.textContent).toContain('logged tier')
     expect(screen.queryByTestId('unapplied-filter-notice')).toBeNull()
+    // The notice is why the list is empty. "No HTTP traffic captured yet"
+    // beside it would claim what this view cannot know.
+    expect(screen.queryByText('No HTTP traffic captured yet.')).toBeNull()
+  })
+
+  it('HTTP History under a Type it cannot serve does not claim there is no traffic', async () => {
+    state.filter = { ...base(), agentType: 'shell' }
+    await mountView('http')
+    expect(await screen.findByTestId('unapplied-filter-notice')).not.toBeNull()
+    expect(screen.queryByText('No HTTP traffic captured yet.')).toBeNull()
   })
 
   it('Loot with a Type other than loot: it lists only loot rows', async () => {

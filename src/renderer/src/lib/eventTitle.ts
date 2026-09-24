@@ -34,8 +34,10 @@ export function eventTitle(event: RedLogEvent, t: Translate = englishTitle): str
   const d = event.data
   switch (event.agentType) {
     case 'shell':
-      if (d.subtype === 'command_start') return `$ ${(d.command as string).slice(0, 100)}`
-      if (d.subtype === 'command_end') return `$ ${(d.command as string).slice(0, 80)} → exit ${d.exit_code}`
+      // A producer on the local API may send a command row without `command`
+      // or `exit_code`; `?` says so rather than throwing or printing "undefined".
+      if (d.subtype === 'command_start') return `$ ${String(d.command ?? '?').slice(0, 100)}`
+      if (d.subtype === 'command_end') return `$ ${String(d.command ?? '?').slice(0, 80)} → exit ${String(d.exit_code ?? '?')}`
       if (d.subtype === 'command' && d.command) return `$ ${(d.command as string).slice(0, 100)}`
       if (d.subtype === 'session_output') return `PTY #${String(d.sequence ?? '')}: ${String(d.stdout ?? '').slice(0, 100)}`
       if (d.subtype === 'session_start') return t('eventTitle.terminalOpened')

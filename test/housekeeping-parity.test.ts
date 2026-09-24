@@ -74,6 +74,28 @@ describe('housekeeping', () => {
     for (const e of EVIDENCE) expect(ids, JSON.stringify(e.data)).toContain(e.id)
   })
 
+  // The fixtures above store a missing subtype as ''. The ingest stores NULL
+  // (event-write.ts), as for an event from the local API or a plugin, and in
+  // SQL `NOT (subtype = 'session_start' OR …)` is then NULL, not true: the row
+  // was dropped as though it were housekeeping. Once live rows were admitted by
+  // this rule too (spec 033), such an event never appeared at all.
+  it('keeps a row stored with no subtype, and a command row with no command', () => {
+    const stored = [
+      { id: 'n-shell', agentType: 'shell', subtype: null, data: { command: 'nmap -sV 10.0.0.5' } },
+      { id: 'n-system', agentType: 'system', subtype: null, data: { note: 'posted by a tool' } },
+      { id: 'n-terminal', agentType: 'terminal', subtype: null, data: { title: 'tab 2' } },
+      { id: 'n-end', agentType: 'shell', subtype: 'command_end', data: { exitCode: 0 } }
+    ]
+    for (const [i, r] of stored.entries()) {
+      insertFixtureRow({
+        table: 'events', id: r.id, timestamp: 1000 + i, agentType: r.agentType,
+        subtype: r.subtype as unknown as string, operatorId: 'o', targetId: null, data: r.data
+      })
+    }
+    const ids = kept()
+    for (const r of stored) expect(ids, r.id).toContain(r.id)
+  })
+
   it('recognises the hook by its script name only', () => {
     expect(isHookSource('/x/shell-bash-hook.sh')).toBe(true)
     expect(isHookSource('/x/shell-zsh-hook.zsh')).toBe(true)
