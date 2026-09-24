@@ -25,7 +25,7 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ## Phase 1: Setup
 
-- [ ] T001 Create `test/helpers/timeline-query-fixture.ts` with `seedTimelineFixture(opts)`, following `addExportEvent` in `test/helpers/export-fixtures.ts`. It inserts rows directly into `events` or `events_logged` with `id`, `timestamp`, `created_at`, `operator_id`, `agent_type`, `subtype`, `target_id` and `data`. The FTS triggers index them.
+- [X] T001 Create `test/helpers/timeline-query-fixture.ts` with `seedTimelineFixture(opts)`, following `addExportEvent` in `test/helpers/export-fixtures.ts`. It inserts rows directly into `events` or `events_logged` with `id`, `timestamp`, `created_at`, `operator_id`, `agent_type`, `subtype`, `target_id` and `data`. The FTS triggers index them.
   - It seeds a configurable count across both tiers, by default the newest 200 all `shell`.
   - Targets include `Example.COM` / `example.com`, `10.0.0.5` and `10.0.0.50`, plus rows that mention `10.0.0.5` only in `data.host` or `data.remote_addr`.
   - It adds housekeeping rows (`system/api_started`, `shell/session_start`) and a marker with an `amended` row carrying `markerId`.
@@ -38,7 +38,7 @@ Timeline paging that US1 introduces. US5 is independent.
 
 **Purpose**: one WHERE builder, plus the count and id-match queries every story uses (plan Design 1–2, research R5, R12).
 
-- [ ] T002 [P] Write failing tests in `test/event-query-builder.test.ts`, using T001's fixture:
+- [X] T002 [P] Write failing tests in `test/event-query-builder.test.ts`, using T001's fixture:
   - `queryEventsPage({ excludeHousekeeping: true })` and `executeEventQuery({ parsed, excludeHousekeeping: true })` return no housekeeping rows in either tier.
   - `countEvents({ filter })` equals the number of rows `queryEventsPage` pages through to the end. Cover `agentType`, `since`/`before`, `targetId`, `inScopeOnly` + `scope`, and `hidePersonal` + `personalDomains`.
   - With a `cursor`, it equals the rows remaining after that cursor.
@@ -46,18 +46,18 @@ Timeline paging that US1 introduces. US5 is independent.
   - `matchEventIds({ ids, filter })` returns the admitted subset in input order, and with `parsed` the matching subset. An unknown id is omitted.
   - 1,001 ids throws "matchEventIds takes at most 1000 ids". Empty `ids` returns `[]`.
   - SC-003: for each scenario input in SPEC-search-query-semantics (a plain word, `10.0.0.5`, `session:S1`, a quoted phrase), `matchEventIds({ ids: <every fixture id, chunked>, parsed })` equals the set of ids `executeEventQuery({ parsed })` pages through.
-- [ ] T003 Extract `buildTierWhere(tier, { parsed?, filter, cursor?, excludeHousekeeping?, ids? })` from `executeEventQuery` in `src/core/db/event-queries.ts`.
+- [X] T003 Extract `buildTierWhere(tier, { parsed?, filter, cursor?, excludeHousekeeping?, ids? })` from `executeEventQuery` in `src/core/db/event-queries.ts`.
   - Both `executeEventQuery` and `queryEventsPage` build each arm with it.
   - `appendEventFilter(filter, parts, params, arm, alias?)` takes a **required** `arm: 'chained' | 'logged'`, with no behaviour change yet.
   - Every existing query test stays green: `npx vitest run test/event-query test/search test/transcript`.
-- [ ] T004 Add `excludeHousekeeping?: boolean` to `queryEventsPage`'s options and to `EventQueryRequest` in `src/core/db/event-queries.ts`. It applies `HOUSEKEEPING_SQL` inside each arm.
-- [ ] T005 Implement `countEvents(req)` in `src/core/db/event-queries.ts`: `SUM` of the per-arm `COUNT(*)` over `buildTierWhere`, with the cursor meaning "strictly past this position". Also `matchEventIds(req)`: the same predicates plus `e.id IN (SELECT value FROM json_each(?))`, the result reordered to input order, with the 1,000-id limit. Both come through the `src/core/db/events.ts` barrel. T002 passes.
-- [ ] T006 Register `events:count` and `events:matchIds` in `src/main/ipc/events.ts`.
+- [X] T004 Add `excludeHousekeeping?: boolean` to `queryEventsPage`'s options and to `EventQueryRequest` in `src/core/db/event-queries.ts`. It applies `HOUSEKEEPING_SQL` inside each arm.
+- [X] T005 Implement `countEvents(req)` in `src/core/db/event-queries.ts`: `SUM` of the per-arm `COUNT(*)` over `buildTierWhere`, with the cursor meaning "strictly past this position". Also `matchEventIds(req)`: the same predicates plus `e.id IN (SELECT value FROM json_each(?))`, the result reordered to input order, with the 1,000-id limit. Both come through the `src/core/db/events.ts` barrel. T002 passes.
+- [X] T006 Register `events:count` and `events:matchIds` in `src/main/ipc/events.ts`.
   - Both go through `withActiveScope`.
   - Without an active project they return `0` and `[]`.
   - Errors are not caught (contracts/ipc.md).
   - Pass `excludeHousekeeping` through on `events:queryPage` and `events:runQuery`.
-- [ ] T007 Expose `events.count(req)` and `events.matchIds(req)` in `src/preload/index.ts`. Type them, and the new request fields, in `src/renderer/src/env.d.ts` from the core types.
+- [X] T007 Expose `events.count(req)` and `events.matchIds(req)` in `src/preload/index.ts`. Type them, and the new request fields, in `src/renderer/src/env.d.ts` from the core types.
 
 **Checkpoint**: `npx vitest run test/event-query-builder.test.ts` passes; `npx tsc -p tsconfig.check.json` passes.
 
