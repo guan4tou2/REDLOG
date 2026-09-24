@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { EventFilter } from '../../../core/db/events'
+import { formatTime } from './time'
 
 export interface TimeRange {
   since?: number
@@ -26,6 +27,37 @@ export function toEventFilter(filter: SharedFilter): EventFilter {
     ...(filter.hidePersonal ? { hidePersonal: true } : {})
   }
 }
+
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+export function formatTimeRange(range: TimeRange, t: Translate): string {
+  if (range.since && !range.before) {
+    return t('filter.since', { time: formatTime(range.since, { seconds: false }) })
+  }
+  if (!range.since && range.before) {
+    return t('filter.before', { time: formatTime(range.before, { seconds: false }) })
+  }
+  if (range.since && range.before) {
+    return `${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
+  }
+  return ''
+}
+
+/** How each active condition is named: the FilterBar's chips, and any view
+ *  that has to say which conditions explain what it shows. */
+export function conditionLabels(filter: SharedFilter, t: Translate): {
+  target?: string; type?: string; time?: string; inScope?: string
+} {
+  return {
+    ...(filter.targetId ? { target: `${t('filter.target')}: ${filter.targetId}` } : {}),
+    ...(filter.agentType ? { type: `${t('filter.type')}: ${filter.agentType}` } : {}),
+    ...(filter.timeRange ? { time: `${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}` } : {}),
+    ...(filter.inScopeOnly ? { inScope: t('filter.inScopeOnly') } : {})
+  }
+}
+
+export const describeActiveConditions = (filter: SharedFilter, t: Translate): string[] =>
+  Object.values(conditionLabels(filter, t)).filter((l): l is string => !!l)
 
 interface FilterContextValue {
   filter: SharedFilter
