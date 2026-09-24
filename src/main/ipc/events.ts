@@ -15,7 +15,7 @@ import { toggleDoNotExport, isDoNotExport } from '../../core/db/do-not-export'
 import { readBody as readHttpBody, type BodyRef } from '../../core/http-body-store'
 
 export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
-  const withActiveScope = <T extends EventFilter>(opts: T): T => {
+  const withActiveScope = <T extends Pick<EventFilter, 'inScopeOnly' | 'hidePersonal'>>(opts: T): T => {
     if (!opts.inScopeOnly && !opts.hidePersonal) return opts
     const project = ctx.getActiveProject()
     if (!project) return opts

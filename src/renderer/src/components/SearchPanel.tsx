@@ -151,7 +151,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
     const opts = toEventFilter(sharedFilter)
     if (effectiveTypeFilter) opts.agentType = effectiveTypeFilter
     return opts
-  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const doSearch = useCallback((q: string) => {
     if (q.length < 1) {
@@ -274,7 +274,7 @@ export function SearchPanel({ onOpenInTimeline }: SearchPanelProps = {}): JSX.El
 
   useEffect(() => {
     if (query.length >= 1) doSearch(query)
-  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [effectiveTypeFilter, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const onChange = useCallback((val: string) => {
     setQuery(val)

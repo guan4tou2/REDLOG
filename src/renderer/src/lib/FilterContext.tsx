@@ -14,6 +14,9 @@ export interface SharedFilter {
   timeRange: TimeRange | null
   inScopeOnly: boolean
   hidePersonal: boolean
+  /** Spec 033: "chained only" is a condition of the investigation, applied
+   *  by every view's query. Not persisted, like the rest of this state. */
+  tier: 'all' | 'chained'
 }
 
 /** Convert UI state into the canonical cross-process query contract. */
@@ -24,7 +27,8 @@ export function toEventFilter(filter: SharedFilter): EventFilter {
     ...(filter.timeRange?.since != null ? { since: filter.timeRange.since } : {}),
     ...(filter.timeRange?.before != null ? { before: filter.timeRange.before } : {}),
     ...(filter.inScopeOnly ? { inScopeOnly: true } : {}),
-    ...(filter.hidePersonal ? { hidePersonal: true } : {})
+    ...(filter.hidePersonal ? { hidePersonal: true } : {}),
+    ...(filter.tier === 'chained' ? { tier: 'chained' as const } : {})
   }
 }
 
@@ -46,13 +50,14 @@ export function formatTimeRange(range: TimeRange, t: Translate): string {
 /** How each active condition is named: the FilterBar's chips, and any view
  *  that has to say which conditions explain what it shows. */
 export function conditionLabels(filter: SharedFilter, t: Translate): {
-  target?: string; type?: string; time?: string; inScope?: string
+  target?: string; type?: string; time?: string; inScope?: string; tier?: string
 } {
   return {
     ...(filter.targetId ? { target: `${t('filter.target')}: ${filter.targetId}` } : {}),
     ...(filter.agentType ? { type: `${t('filter.type')}: ${filter.agentType}` } : {}),
     ...(filter.timeRange ? { time: `${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}` } : {}),
-    ...(filter.inScopeOnly ? { inScope: t('filter.inScopeOnly') } : {})
+    ...(filter.inScopeOnly ? { inScope: t('filter.inScopeOnly') } : {}),
+    ...(filter.tier === 'chained' ? { tier: t('filter.chainedOnly') } : {})
   }
 }
 
@@ -66,6 +71,7 @@ interface FilterContextValue {
   setTimeRange: (range: TimeRange | null) => void
   setInScopeOnly: (v: boolean) => void
   setHidePersonal: (v: boolean) => void
+  setTier: (tier: SharedFilter['tier']) => void
   clearAll: () => void
   activeCount: number
   knownTargets: Array<{ target: string; eventCount: number }>
@@ -75,7 +81,7 @@ interface FilterContextValue {
   personalDomains: string[]
 }
 
-const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true }
+const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true, tier: 'all' }
 
 const FilterContext = createContext<FilterContextValue>({
   filter: EMPTY,
@@ -84,6 +90,7 @@ const FilterContext = createContext<FilterContextValue>({
   setTimeRange: () => {},
   setInScopeOnly: () => {},
   setHidePersonal: () => {},
+  setTier: () => {},
   clearAll: () => {},
   activeCount: 0,
   knownTargets: [],
@@ -155,17 +162,21 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const setHidePersonal = useCallback((v: boolean) => {
     setFilter((prev) => ({ ...prev, hidePersonal: v }))
   }, [])
+  const setTier = useCallback((tier: SharedFilter['tier']) => {
+    setFilter((prev) => ({ ...prev, tier }))
+  }, [])
   const clearAll = useCallback(() => setFilter(EMPTY), [])
 
   const activeCount = (filter.targetId ? 1 : 0)
     + (filter.agentType ? 1 : 0)
     + (filter.timeRange ? 1 : 0)
     + (filter.inScopeOnly ? 1 : 0)
+    + (filter.tier === 'chained' ? 1 : 0)
 
   const value = useMemo(() => ({
-    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
     activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains
-  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
        activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains])
 
   return <FilterContext value={value}>{children}</FilterContext>

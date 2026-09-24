@@ -225,13 +225,13 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Tests for User Story 4 (write first, confirm they fail)
 
-- [ ] T034 [P] [US4] Write failing core tests in `test/shared-filter-tier.test.ts`. Each of these returns no logged row under `tier: 'chained'`:
+- [X] T034 [P] [US4] Write failing core tests in `test/shared-filter-tier.test.ts`. Each of these returns no logged row under `tier: 'chained'`:
   - `queryEventsPage`
   - `executeEventQuery({ filter: { tier: 'chained' } })`
   - `countEvents`
   - `matchEventIds`
   `queryHttpFlowPage({ tier: 'chained' })` returns an empty page. Without a tier, both tiers return.
-- [ ] T035 [P] [US4] Write failing renderer tests in `test/filter-bar-tier.test.tsx`:
+- [X] T035 [P] [US4] Write failing renderer tests in `test/filter-bar-tier.test.tsx`:
   - `FilterBar` shows an always-visible "Chained only" chip beside "In scope only".
   - Toggling sets `filter.tier`, `toEventFilter` emits `{ tier: 'chained' }`, and `activeCount` counts it.
   - A fresh `FilterProvider` starts at `'all'` even with `redlog-timeline-auditor-view:<id>` = `'1'` in localStorage.
@@ -240,20 +240,20 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Implementation for User Story 4
 
-- [ ] T036 [US4] Add `tier?: 'chained'` to `EventFilter` in `src/core/db/event-queries.ts`. In `appendEventFilter`, emit `0 = 1` for the logged arm when `filter.tier === 'chained'`. `queryHttpFlowPage` returns an empty page under it. T034 passes.
-- [ ] T037 [US4] In `src/renderer/src/lib/FilterContext.tsx`, add `SharedFilter.tier: 'all' | 'chained'` (default `'all'` in `EMPTY`), `setTier`, the `toEventFilter` mapping and the `activeCount` term.
-- [ ] T038 [US4] Add the "Chained only" chip beside the in-scope chip in `src/renderer/src/components/FilterBar.tsx`. Add i18n `filter.chainedOnly` and `filter.chainedOnlyHint` (en and zh-TW).
-- [ ] T039 [US4] Add the "empty by construction" notices (FR-012), in the notice style and worded differently from the `filter.unapplied*` notices:
+- [X] T036 [US4] Add `tier?: 'chained'` to `EventFilter` in `src/core/db/event-queries.ts`. In `appendEventFilter`, emit `0 = 1` for the logged arm when `filter.tier === 'chained'`. `queryHttpFlowPage` returns an empty page under it. T034 passes.
+- [X] T037 [US4] In `src/renderer/src/lib/FilterContext.tsx`, add `SharedFilter.tier: 'all' | 'chained'` (default `'all'` in `EMPTY`), `setTier`, the `toEventFilter` mapping and the `activeCount` term.
+- [X] T038 [US4] Add the "Chained only" chip beside the in-scope chip in `src/renderer/src/components/FilterBar.tsx`. Add i18n `filter.chainedOnly` and `filter.chainedOnlyHint` (en and zh-TW).
+- [X] T039 [US4] Add the "empty by construction" notices (FR-012), in the notice style and worded differently from the `filter.unapplied*` notices:
   - In `src/renderer/src/components/HttpHistoryPanel.tsx`, while `sharedFilter.tier === 'chained'`, show `filter.chainedOnlyHttp` ("HTTP flows are recorded in the logged tier; Chained only leaves nothing here").
   - In `src/renderer/src/components/LootPanel.tsx`, while the Type chip is set to anything other than `loot`, show `filter.lootTypeEmpty` ("Loot lists only loot rows; this Type leaves nothing here") in place of the bare empty list.
-- [ ] T040 [US4] Remove the auditor view from `Timeline.tsx`:
+- [X] T040 [US4] Remove the auditor view from `Timeline.tsx`:
   - the `auditorView` state
   - its `redlog-timeline-auditor-view` load and save
   - the logged-row drop in the `events` memo
   - `hiddenLoggedCount`
   - the ⋯-menu chip (`data-testid="timeline-auditor-view-chip"`)
   Remove the `timeline.auditorView.*` i18n keys. The status bar tooltip that names the auditor toggle points at the FilterBar chip instead (`src/renderer/src/components/StatusBar.tsx`). T035 passes.
-- [ ] T041 [US4] Update `e2e/timeline-toolbar-overflow.spec.ts`: the ⋯ menu no longer holds the auditor chip. Grep `e2e/` for `timeline-auditor-view-chip` and update any other user.
+- [X] T041 [US4] Update `e2e/timeline-toolbar-overflow.spec.ts`: the ⋯ menu no longer holds the auditor chip. Grep `e2e/` for `timeline-auditor-view-chip` and update any other user.
 
 **Checkpoint**: T034 and T035 pass, and no view lists a logged row under "Chained only".
 

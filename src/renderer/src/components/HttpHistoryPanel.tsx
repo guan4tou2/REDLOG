@@ -9,7 +9,7 @@ import { groupFlows, type Activity } from '../lib/httpActivity'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
-import { UnappliedFilterNotice } from './FilterNotice'
+import { UnappliedFilterNotice, EmptyByConstructionNotice } from './FilterNotice'
 
 /** HTTP flows are recorded by the proxy, which publishes as `scanner`. */
 const HTTP_FLOW_AGENT_TYPE = 'scanner'
@@ -467,7 +467,7 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
     }
-  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
@@ -715,6 +715,9 @@ export function HttpHistoryPanel({ onOpenInTimeline }: {
           title={t('filter.unappliedTitle', { condition: `${t('filter.type')}: ${sharedFilter.agentType}` })}
           reason={t('filter.unappliedHttpType')}
         />
+      )}
+      {sharedFilter.tier === 'chained' && (
+        <EmptyByConstructionNotice text={t('filter.chainedOnlyHttp')} />
       )}
 
       <div className="flex items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">

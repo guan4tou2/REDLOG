@@ -268,8 +268,9 @@ export default function StatusBar(): JSX.Element {
          *  hovering to figure out what the second number is.
          *
          *  A read-out, not a control: it used to toggle the Timeline's
-         *  auditor view, which did nothing on any other page. That toggle
-         *  lives in the Timeline's ⋯ menu.
+         *  auditor view, which did nothing on any other page. The tier is
+         *  now the FilterBar's "Chained only" chip, which every view applies
+         *  (spec 033).
          */}
         {loggedCount > 0 ? (
           <span

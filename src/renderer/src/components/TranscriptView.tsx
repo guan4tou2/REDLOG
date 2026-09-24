@@ -392,7 +392,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder) return
@@ -435,7 +435,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       setLoadingOlder(false)
     }
-  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
