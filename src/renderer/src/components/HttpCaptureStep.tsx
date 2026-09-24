@@ -7,7 +7,7 @@
 // proxied-browser launch. The CA path stays behind a link: an operator who is
 // only proxying the browser RedLog launches never needs it.
 //
-// Spec 038: a running proxy is not "capturing". While it runs the card listens
+// Spec 039: a running proxy is not "capturing". While it runs the card listens
 // for the first HTTP event and only then says verified; after 60 s it names the
 // reasons that apply and keeps listening, so a late request still verifies.
 

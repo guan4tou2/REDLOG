@@ -1,4 +1,4 @@
-// Spec 038: what "HTTP capture works" means. A running proxy proves only that
+// Spec 039: what "HTTP capture works" means. A running proxy proves only that
 // mitmdump is listening; the proof is a request the addon delivered to RedLog.
 // The same contract as the shell's nonce: ready → first real event → verified.
 

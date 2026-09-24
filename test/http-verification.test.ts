@@ -1,4 +1,4 @@
-// Spec 038: what counts as "HTTP traffic reached RedLog", and which reasons
+// Spec 039: what counts as "HTTP traffic reached RedLog", and which reasons
 // apply when it has not.
 import { describe, it, expect } from 'vitest'
 import { isHttpCaptureEvent, httpTimeoutReasons } from '../src/renderer/src/lib/httpVerification'
