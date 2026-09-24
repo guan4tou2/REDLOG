@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
+import { parseScopeInput } from '../lib/scopeInput'
 import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
@@ -28,8 +29,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [showAdvanced])
-  const [scopeTargets, setScopeTargets] = useState<string[]>([])
-  const [excludeTargets, setExcludeTargets] = useState<string[]>([])
+  // Spec 037: scope and excludes are pasted on the create card itself. Only
+  // the entries the parser accepts are submitted; the rest are listed inline.
+  const [scopeText, setScopeText] = useState('')
+  const [excludeText, setExcludeText] = useState('')
+  const scope = useMemo(() => parseScopeInput(scopeText), [scopeText])
+  const exclude = useMemo(() => parseScopeInput(excludeText), [excludeText])
+  // The operator's own address. It belongs in personalDomains (their own
+  // traffic, Spec 021), never in excludeTargets (client targets out of scope).
+  const [localIP, setLocalIP] = useState<string | null>(null)
+  const [ignoreLocal, setIgnoreLocal] = useState(false)
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [blacklist, setBlacklist] = useState<string[]>([])
   const [warnOnViolation, setWarnOnViolation] = useState(true)
@@ -55,6 +64,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   useEffect(() => {
     if (bridgeMissing) return
     window.redlog.project.list().then(setProjects).catch(() => {})
+    window.redlog.ip?.getStatus().then((s) => setLocalIP(s?.internalIP ?? null)).catch(() => {})
   }, [bridgeMissing])
 
   async function handleCreate(): Promise<void> {
@@ -62,13 +72,23 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      const initialConfig = (scopeTargets.length > 0 || excludeTargets.length > 0 || whitelist.length > 0 || blacklist.length > 0)
+      const initialConfig = (scope.valid.length > 0 || exclude.valid.length > 0 || whitelist.length > 0 || blacklist.length > 0)
         ? {
-          scope: { targets: scopeTargets, excludeTargets, warnOnViolation, scopeFile: null },
+          scope: { targets: scope.valid, excludeTargets: exclude.valid, warnOnViolation, scopeFile: null },
           network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
       const project = await window.redlog.project.create(name, initialConfig)
+      // project:create merges `scope` shallowly, so sending personalDomains
+      // there would replace the defaults (loopback, localhost). Append to the
+      // stored list once the new project's config exists instead.
+      if (ignoreLocal && localIP) {
+        const cfg = await window.redlog.config.get() as { scope: { personalDomains?: string[] } } | null
+        const personal = cfg?.scope.personalDomains ?? []
+        if (cfg && !personal.includes(localIP)) {
+          await window.redlog.config.save({ ...cfg, scope: { ...cfg.scope, personalDomains: [...personal, localIP] } })
+        }
+      }
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
       setCreating(false)
@@ -121,7 +141,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   async function handleImportProfile(): Promise<void> {
     const profile = await window.redlog.config.importProfile() as RedLogConfigPartial | null
     if (!profile) return
-    if (profile.scope?.targets) setScopeTargets(profile.scope.targets)
+    if (profile.scope?.targets) setScopeText(profile.scope.targets.join('\n'))
     const allow = profile.network?.whitelist
     if (allow) setWhitelist(allow)
     const deny = profile.network?.blacklist
@@ -193,6 +213,39 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             </Button>
           </div>
 
+          <div className="mt-3 space-y-3">
+            <ScopeTextField
+              id="project-scope"
+              label={t('project.scopeTargets')}
+              value={scopeText}
+              onChange={setScopeText}
+              placeholder={t('project.scopePlaceholder')}
+              invalid={scope.invalid}
+            />
+            {scope.valid.length === 0 && (
+              <p className="text-xs text-redlog-text-faint -mt-2">{t('project.scopeEmptyNote')}</p>
+            )}
+            <ScopeTextField
+              id="project-exclude"
+              label={t('project.excludeTargets')}
+              value={excludeText}
+              onChange={setExcludeText}
+              placeholder={t('project.excludePlaceholder')}
+              invalid={exclude.invalid}
+            />
+            {localIP && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={ignoreLocal}
+                  onChange={(e) => setIgnoreLocal(e.target.checked)}
+                  className="accent-red-600"
+                />
+                <span className="text-xs text-redlog-text">{t('project.ignoreLocalTraffic', { ip: localIP })}</span>
+              </label>
+            )}
+          </div>
+
           {/* Advanced toggle — opens a modal instead of expanding inline. The
               inline version pushed the recent-projects list off the viewport
               on smaller windows; the modal keeps the picker at a fixed size. */}
@@ -202,11 +255,9 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           >
             <ChevronRight size={14} className="text-redlog-muted" aria-hidden />
             {t('project.advancedSetup')}
-            {(scopeTargets.length + excludeTargets.length + whitelist.length + blacklist.length > 0) && (
+            {(whitelist.length + blacklist.length > 0) && (
               <span className="ml-1 text-redlog-text-dim">
                 ({t('project.advancedSummary', {
-                  scope: scopeTargets.length,
-                  exclude: excludeTargets.length,
                   safe: whitelist.length,
                   exposed: blacklist.length
                 })})
@@ -245,18 +296,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               </div>
 
               <div className="space-y-3">
-                <MiniListField
-                  label={t('project.scopeTargets')}
-                  items={scopeTargets}
-                  onChange={setScopeTargets}
-                  placeholder={t('project.scopePlaceholder')}
-                />
-                <MiniListField
-                  label={t('project.excludeTargets')}
-                  items={excludeTargets}
-                  onChange={setExcludeTargets}
-                  placeholder={t('project.excludePlaceholder')}
-                />
                 <MiniListField
                   label={t('project.whitelist')}
                   items={whitelist}
@@ -385,6 +424,33 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
       </div>
       </div>
+    </div>
+  )
+}
+
+function ScopeTextField({ id, label, value, onChange, placeholder, invalid }: {
+  id: string; label: string; value: string; onChange: (v: string) => void; placeholder: string; invalid: string[]
+}): JSX.Element {
+  const { t } = useI18n()
+  return (
+    <div>
+      <label htmlFor={id} className="text-xs text-redlog-text-dim block mb-1">{label}</label>
+      <textarea
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={2}
+        spellCheck={false}
+        aria-invalid={invalid.length > 0}
+        aria-describedby={invalid.length > 0 ? `${id}-invalid` : undefined}
+        className="w-full bg-redlog-bg border border-redlog-border rounded-lg px-3 py-2 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/20 placeholder-redlog-muted"
+      />
+      {invalid.length > 0 && (
+        <p id={`${id}-invalid`} className="text-xs text-red-400 mt-1 font-mono break-all">
+          {t('project.invalidEntries', { entries: invalid.join(', ') })}
+        </p>
+      )}
     </div>
   )
 }
