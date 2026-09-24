@@ -3,7 +3,7 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
-## Unreleased
+## v0.17.1 — 2026-09-24
 
 - **Fixed: exported evidence bundles had no verifier.** Installed builds did
   not ship `tools/redlog-verify.py`, so every bundle exported from them
@@ -11,6 +11,8 @@ for full commit body + generated notes.
   README. The verifier now ships, the release check requires it, and an
   export that cannot find it fails with the reason instead of producing a
   bundle nobody can verify.
+- **Docs:** `docs/RELEASE-SMOKE-TEST.md` — the per-release checklist run on a
+  clean machine with the packaged build.
 
 ## v0.17.0 — 2026-09-24
 
