@@ -16,11 +16,8 @@ test.describe.serial('scope entry and project identity', () => {
 
   test('creates a project with excludes and keeps engagement ID read-only', async () => {
     await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('Scope Lab')
-    await page.getByText('Advanced Setup (optional)').click()
-    const exclude = page.getByPlaceholder('127.0.0.1, Kali IP, or excluded CIDR')
-    await exclude.fill('127.0.0.1')
-    await exclude.press('Enter')
-    await page.getByRole('button', { name: 'Done' }).click()
+    // Spec 037: excludes are pasted on the create card, not in Advanced Setup.
+    await page.locator('#project-exclude').fill('127.0.0.1')
     await page.getByRole('button', { name: 'Create' }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'dashboard')
 

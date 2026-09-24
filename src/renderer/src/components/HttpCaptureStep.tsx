@@ -1,0 +1,132 @@
+// Spec 037: the optional HTTP step on the first-run screen. It never gates
+// "done" — a host-only engagement has no web traffic to record — so it sits
+// after the terminal step and can be dismissed.
+//
+// It drives the managed proxy the dashboard already owns (httpCapture IPC and
+// its stopped/starting/running/unavailable/failed state) and the existing
+// proxied-browser launch. The CA path stays behind a link: an operator who is
+// only proxying the browser RedLog launches never needs it.
+
+import { useEffect, useState } from 'react'
+import { useI18n } from '../i18n'
+import { Button } from './Button'
+import { toast } from './Toast'
+import { writeClipboard } from '../lib/clipboard'
+
+const MITM_INSTALL = 'uv tool install mitmproxy'
+
+function listenAddress(url: string | null): string {
+  if (!url) return ''
+  try { return new URL(url).host } catch { return url }
+}
+
+export function HttpCaptureStep(): JSX.Element | null {
+  const { t } = useI18n()
+  const [dismissed, setDismissed] = useState(false)
+  const [status, setStatus] = useState<ManagedProxyStatus>({ state: 'stopped', url: null })
+  const [mitmMissing, setMitmMissing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [config, setConfig] = useState<Record<string, unknown> | null>(null)
+  const [showCa, setShowCa] = useState(false)
+
+  const check = async (): Promise<void> => {
+    const [pf, st] = await Promise.all([
+      window.redlog.runtime.preflight().catch(() => null),
+      window.redlog.httpCapture.status().catch(() => null)
+    ])
+    if (pf) setMitmMissing(pf.checks.some((c) => c.id === 'mitmdump' && !c.found))
+    if (st) setStatus(st)
+  }
+
+  useEffect(() => {
+    void check()
+    window.redlog.config.get().then((c) => setConfig((c ?? {}) as Record<string, unknown>)).catch(() => {})
+  }, [])
+
+  const start = async (): Promise<void> => {
+    setBusy(true)
+    try { setStatus(await window.redlog.httpCapture.start()) } catch { /* status stays as it was */ }
+    setBusy(false)
+  }
+
+  const launch = async (): Promise<void> => {
+    const r = await window.redlog.browser.launch().catch((e) => ({ ok: false, error: String(e) }))
+    toast(r.ok ? t('browser.launched') : (r.error || t('browser.failed')), r.ok ? 'success' : 'error')
+  }
+
+  const httpCapture = (config?.httpCapture ?? {}) as Record<string, unknown>
+  const routeTerminals = httpCapture.routeTerminals === true
+  const setRouteTerminals = (on: boolean): void => {
+    if (!config) return
+    const next = { ...config, httpCapture: { ...httpCapture, routeTerminals: on } }
+    setConfig(next)
+    void window.redlog.config.save(next)
+  }
+
+  if (dismissed) return null
+  const unavailable = mitmMissing || status.state === 'unavailable'
+
+  return (
+    <section data-testid="first-run-http" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-semibold text-redlog-text">{t('firstRun.http.title')}</p>
+        <button onClick={() => setDismissed(true)} className="text-redlog-text-faint hover:text-redlog-text">
+          {t('firstRun.http.skip')}
+        </button>
+      </div>
+      {unavailable ? (
+        <div className="space-y-2">
+          <p className="text-redlog-text">{t('firstRun.http.missing')}</p>
+          <div className="flex items-center gap-2">
+            <code className="font-mono text-redlog-text-dim">{MITM_INSTALL}</code>
+            <Button level="quiet" onClick={() => void writeClipboard(MITM_INSTALL)}>{t('firstRun.copy')}</Button>
+          </div>
+          <Button level="secondary" onClick={() => void check()}>{t('firstRun.recheck')}</Button>
+        </div>
+      ) : status.state === 'running' ? (
+        <div className="space-y-2">
+          <p className="text-emerald-500">{t('firstRun.http.listening', { address: listenAddress(status.url) })}</p>
+          <Button level="secondary" onClick={() => void launch()}>{t('firstRun.http.launchBrowser')}</Button>
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              data-testid="first-run-route-terminals"
+              checked={routeTerminals}
+              disabled={!config}
+              onChange={(e) => setRouteTerminals(e.target.checked)}
+            />
+            <span>
+              <span className="text-redlog-text-dim">{t('firstRun.http.routeTerminals')}</span>
+              <span className="block text-redlog-text-faint">{t('firstRun.http.routeTerminalsLimit')}</span>
+            </span>
+          </label>
+          {status.caPath && (
+            <div>
+              <button onClick={() => setShowCa((v) => !v)} className="text-redlog-text-faint underline hover:text-redlog-text">
+                {t('firstRun.http.caLink')}
+              </button>
+              {showCa && (
+                <p className="mt-1 font-mono text-redlog-text-faint break-all">
+                  {status.certReady === false
+                    ? t('httpCapture.caMissing', { path: status.caPath })
+                    : t('httpCapture.caReady', { path: status.caPath })}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : status.state === 'starting' || busy ? (
+        <p className="text-redlog-text-dim">{t('httpCapture.starting')}</p>
+      ) : (
+        <div className="space-y-2">
+          {status.state === 'failed' && (
+            <p className="text-redlog-text-dim break-all">{status.error || t('httpCapture.failed')}</p>
+          )}
+          <Button level="secondary" onClick={() => void start()}>
+            {status.state === 'failed' ? t('firstRun.record.retry') : t('httpCapture.start')}
+          </Button>
+        </div>
+      )}
+    </section>
+  )
+}

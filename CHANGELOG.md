@@ -20,6 +20,16 @@ for full commit body + generated notes.
   app. The zsh/bash hook now counts as available only when python3 and curl
   are both present (it used to say "available" without python3 and record
   nothing).
+- **Scope on the create card.** Paste scope and excluded targets (newline,
+  comma or space separated) when creating a project; invalid entries are
+  flagged inline. An option adds this machine's IP to personal traffic so your
+  own traffic stays out of deliverables.
+- **Record my terminal, with proof.** After the built-in terminal records its
+  first command, the first-run screen offers to record your Zsh / Bash /
+  PowerShell (or WSL) terminal and confirms only when a one-time
+  `echo redlog-ok-…` arrives from it; after 60 s it says why not. HTTP capture
+  is an optional card, and the Dashboard no longer points at AI agents as the
+  next step.
 - **Old hook detected.** A profile that still loads the pre-0.16 shell hook is
   detected; one click backs up the file, removes the old line and installs the
   current hook.
