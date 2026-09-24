@@ -10,7 +10,7 @@
 ## Automated checks
 
 ```bash
-npx vitest run test/shared-filter-tier.test.ts test/target-identity-case.test.ts test/event-count-match.test.ts test/query-operator-condition.test.ts
+npx vitest run test/shared-filter-tier.test.ts test/target-identity-case.test.ts test/event-query-builder.test.ts test/query-operator-condition.test.ts
 ```
 
 ```bash
@@ -44,5 +44,5 @@ With a 100,000-event fixture, time each of these:
 - `matchEventIds` for 1,000 ids
 - `executeEventQuery` with a cursor and `limit: 1`
 
-Each must stay under 200 ms. Add the NOCASE target indexes only if the target
-cases miss.
+Each must stay under 200 ms. The first page and total for each condition kind
+are SC-006. Add the NOCASE target indexes only if the target cases miss.

@@ -49,8 +49,9 @@ and a filter change redraws in under 2 s (SC-006, R13).
 - The query layer never catches an error.
 - The renderer can only narrow the scope policy that main attaches.
 - There is one contiguous Timeline range (R6).
-- No new toolbar controls; the earlier-match notice is the only new clickable
-  surface.
+- No new Timeline toolbar controls. The earlier-match notice is the only new
+  Timeline control; retry actions go on failure states. The "Chained only" chip
+  and the Settings zone choice are moved controls, not added ones.
 
 **Scale/Scope**: about 12 source files changed; `Timeline.tsx` is the largest
 at 2,700 lines. Two domain contracts are updated.
@@ -65,7 +66,7 @@ at 2,700 lines. Two domain contracts are updated.
 | II Surface Truthfulness | A lit chip is applied or disclosed (SC-004). A partial Timeline says "N of M". Earlier matches are counted. "Project" time is removed. HTTP History says why "Chained only" empties it. The export label says it ignores the filter (R11). |
 | III Canonical Domain Semantics | One filter predicate set, `appendEventFilter`, including tier and target. One text meaning, the query contract. One time formatter, `lib/time`. One query read-out, `QueryReadout`. The Timeline's private matchers are deleted: `computeTargetMatches`, `computeScopeMatches`, `buildSearchIndex`, `computeFilterMatches`, and the client-side personal and auditor filters. |
 | IV Query Completeness | Predicates apply before the limit, on every Timeline read. There is `hasMore` plus a total, and an earlier-match count from the same cursor (R12). |
-| V Preview/Execute Consistency | Export selection is untouched. The menu already shows the plan resolver's counts (R11). |
+| V Preview/Execute Consistency | Export selection is unchanged except that a target subset matches every casing (R3). Preview and execute still resolve through one plan, and the menu shows the resolver's counts (R11). |
 | VI Explicit Failure | Text has five states: empty, unparsable, matching, matched, failed (data-model). The new IPC rejects rather than returning empty. `matchEventIds` refuses more than 1,000 ids instead of truncating. |
 | VII Evidence Provenance | Unchanged. Folded rows keep their mapping to the source rows they stand for (R5). |
 | VIII Risk-Based Test-First | Every behaviour starts as a failing test: core predicates, the IPC shapes, and the Timeline in jsdom. The affected e2e journeys run before Verified. |
@@ -89,8 +90,9 @@ Invariants affected:
 - *Target Canonical Identity*: the case-insensitive predicate makes the
   aggregate and detail counts agree (R3).
 - *One query text, one meaning*: the Timeline joins the contract.
-- *Export operates on the complete population*: untouched, and the label says
-  so (R11).
+- *Export operates on the complete population*: untouched, except that a
+  target subset selects every casing (R3). The label says the Timeline's export
+  ignores the filter (R11).
 
 ## Project Structure
 
@@ -118,6 +120,7 @@ src/core/
 ├── db/event-queries.ts        # targetPredicate, arm-aware appendEventFilter,
 │                              #   buildTierWhere, countEvents, matchEventIds,
 │                              #   excludeHousekeeping on page/query requests
+├── db/index.ts                # NOCASE target indexes, only if R13 needs them
 └── query/contract.ts          # `operator` field
 src/main/ipc/events.ts         # events:count, events:matchIds; new request fields
 src/preload/index.ts           # bridge for the two new channels
@@ -138,13 +141,20 @@ src/renderer/src/
     ├── TargetView.tsx         # sets the shared target
     ├── CommandPalette.tsx     # operator:<id> and quoted host
     ├── MarkerDetail.tsx       # display zone
+    ├── StatusBar.tsx          # display zone; auditor tooltip points at the chip
+    ├── ReplayDrawer.tsx       # display zone
     ├── App.tsx                # focusTarget removed
     └── settings/GeneralPage.tsx # Local/UTC setting
+src/renderer/src/OverlayApp.tsx  # HUD: display zone through `storage`
+src/renderer/src/i18n/{en,zh-TW}.json
 docs/domain/
 ├── SPEC-search-query-semantics.md
 ├── SPEC-target-identity.md
+├── SPEC-export-event-selection.md   # a target subset matches every casing
 └── INVENTORY-query-completeness.md
+docs/UIUX-STANDARD.md, docs/DESIGN-core-and-capture.md
 test/                          # new and changed tests, per tasks.md
+e2e/target-focus.spec.ts, e2e/timeline-toolbar-overflow.spec.ts
 ```
 
 **Structure Decision**: the existing Electron layout. Core owns the query
@@ -168,7 +178,10 @@ directories.
 4. **Timeline reads**:
    - `events:queryPage` with the shared filter and a generation guard. A total
      comes from `events:count`.
-   - Live batches are admitted through `events:matchIds` when a filter is set.
+   - Every live batch is admitted through `events:matchIds`, and each admitted
+     row adds one to the total. The renderer `isHousekeeping` checks are
+     removed (R10).
+   - `resolveReferencedEvent` never draws a row the filter excludes (R5).
    - Removed: the client-side personal, scope, target and auditor filters, the
      auditor chip, `targetFocus`, and App's `focusTarget`.
    - TargetView sets the shared target.

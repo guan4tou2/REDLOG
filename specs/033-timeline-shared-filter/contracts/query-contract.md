@@ -1,9 +1,11 @@
 # Contract delta: Search Query Semantics and Target Identity
 
-These are the changes this feature makes to the two living domain contracts.
-The tasks update [SPEC-search-query-semantics](../../../docs/domain/SPEC-search-query-semantics.md)
-and [SPEC-target-identity](../../../docs/domain/SPEC-target-identity.md)
-to say this. This file is the review copy.
+These are the changes this feature makes to the living domain contracts.
+The tasks update [SPEC-search-query-semantics](../../../docs/domain/SPEC-search-query-semantics.md),
+[SPEC-target-identity](../../../docs/domain/SPEC-target-identity.md) and
+[SPEC-export-event-selection](../../../docs/domain/SPEC-export-event-selection.md)
+to say this. This file is the review copy. Once T049–T051 land, the domain
+documents are authoritative and this file is history.
 
 ## Search Query Semantics
 
@@ -62,5 +64,12 @@ Search does not.
 - The Timeline no longer matches a target on `data.host`, `remote_addr`,
   `dest_ip`, `dest_host`, `detectedTarget` or `target`. Its target is the shared
   filter's, and the shared filter's is `target_id`.
-- Scenario 3 (case-insensitive grouping) gains its filtering half, and Scenario 5
-  (`hostCausalChain`) is removed, with the function, in #143.
+- Scenario 3 (case-insensitive grouping) gains its filtering half. Scenario 5
+  (`hostCausalChain`) was removed with the function in #143.
+
+## Export Event Selection
+
+- A `time-range` subset with `targetId` selects every casing of that target:
+  the export resolver reads through the one target predicate. Preview and
+  execute resolve through the same plan, so they still agree (Constitution V).
+  Nothing else about selection changes.

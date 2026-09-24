@@ -78,7 +78,8 @@ shared filter changes → generation++ → items = [], cursor = null → load pa
 scroll to the old edge → load the next page (cursor)
 loadBackTo(id)       → matchIds([id]) → admitted?  no → "outside the filter" notice
                                       → yes → load pages of 1,000 until id is drawn
-live batch           → nothing set ? admit : matchIds(new ids) → insert the admitted ones
+live batch           → matchIds(new ids, excludeHousekeeping) → insert the admitted ones; total += admitted
+referenced row       → matchIds([id]) → admitted ? draw and select : detail panel only, "outside the filter"
 ```
 
 ## TimelineText (renderer, Timeline)

@@ -45,6 +45,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - `countEvents({ parsed })` equals the rows `executeEventQuery` pages through; with neither text nor conditions it is 0.
   - `matchEventIds({ ids, filter })` returns the admitted subset in input order, and with `parsed` the matching subset. An unknown id is omitted.
   - 1,001 ids throws "matchEventIds takes at most 1000 ids". Empty `ids` returns `[]`.
+  - SC-003: for each scenario input in SPEC-search-query-semantics (a plain word, `10.0.0.5`, `session:S1`, a quoted phrase), `matchEventIds({ ids: <every fixture id, chunked>, parsed })` equals the set of ids `executeEventQuery({ parsed })` pages through.
 - [ ] T003 Extract `buildTierWhere(tier, { parsed?, filter, cursor?, excludeHousekeeping?, ids? })` from `executeEventQuery` in `src/core/db/event-queries.ts`.
   - Both `executeEventQuery` and `queryEventsPage` build each arm with it.
   - `appendEventFilter(filter, parts, params, arm, alias?)` takes a **required** `arm: 'chained' | 'logged'`, with no behaviour change yet.
@@ -78,11 +79,13 @@ Timeline paging that US1 introduces. US5 is independent.
   4. A rejected `events.count` shows "total unavailable" with retry, and never a zero or guessed total.
   5. A rejected `events.queryPage` shows a failure with retry, never an empty timeline.
   6. A filter with zero rows shows an empty state listing every active condition, distinct from the empty-project state.
-  7. With a filter set, a live batch calls `events.matchIds` and inserts only the returned ids. With no filter, no `matchIds` call is made.
+  7. A live batch calls `events.matchIds` with `excludeHousekeeping: true`, with or without a filter, and inserts only the returned ids. M grows by the admitted count, so N never exceeds M.
   8. A rejected live `matchIds` shows the live-admission failure with retry.
   9. A selected event that the new filter excludes (per `events.matchIds([id])`) is deselected, and the "outside the current filter" notice shows.
   10. With a filter set, the contributed export label is "Visible time range, filter not applied", with no `count`.
   11. While a page loads, the loading state shows.
+  12. Following an amendment to a marker that `events.matchIds` excludes opens the marker in the detail panel with the "outside the current filter" note, and adds nothing to the drawn events.
+  13. Lane chip counts, and the agent-turn collapse's hidden count, count drawn, admitted rows only.
 
 ### Implementation for User Story 1
 
@@ -91,12 +94,13 @@ Timeline paging that US1 introduces. US5 is independent.
   - Add a generation counter: a shared-filter change bumps it, clears `eventsMapRef`/`sortedRef`, and reloads. A reply from an older generation is dropped.
 - [ ] T011 [US1] In `Timeline.tsx`, add the total and the status line.
   - Call `events.count({ filter, excludeHousekeeping: true })` once per generation.
-  - While `hasMore`, show "N of M events" (FR-003).
+  - While `hasMore`, show "N of M events · scroll back for older" (FR-003, US1 scenario 5).
   - A failed total shows "total unavailable" with retry.
   - Add i18n keys `timeline.rangeOfTotal` and `timeline.totalUnavailable` to `src/renderer/src/i18n/en.json` and `zh-TW.json`.
-- [ ] T012 [US1] In `Timeline.tsx`, when any shared-filter condition is active, admit rows from `events.onNewBatch` through `events.matchIds({ ids, filter: toEventFilter(sharedFilter), excludeHousekeeping: true })`, in chunks of ≤1,000.
+- [ ] T012 [US1] In `Timeline.tsx`, admit every batch from `events.onNewBatch` through `events.matchIds({ ids, filter: toEventFilter(sharedFilter), excludeHousekeeping: true })`, in chunks of ≤1,000, whatever the filter (research R10).
+  - Each admitted row adds one to the total M.
   - A failure shows `timeline.liveAdmissionFailed` with retry.
-  - With no condition active, keep the existing path, housekeeping still excluded.
+  - Remove the Timeline's renderer `isHousekeeping` checks from the page and live paths: `HOUSEKEEPING_SQL` is the one rule.
 - [ ] T013 [US1] Remove the client-side shared-filter work from `Timeline.tsx`:
   - the `hidePersonal`/`personalDomains` filter in the `events` memo
   - the `computeScopeMatches` call and its dimming branch
@@ -105,7 +109,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - loading, while a generation's first page is in flight
   - the empty-with-filter state, listing active conditions from `useSharedFilter()`; add i18n `timeline.emptyFiltered`
   - page failure with retry
-- [ ] T015 [US1] Handle a selected event that a filter change excludes. After a generation's first page, check `selectedEvent` with `events.matchIds([id])`. If it is excluded, clear the selection and show `timeline.outsideFilter` (i18n en and zh-TW).
+- [ ] T015 [US1] Handle a selected event that a filter change excludes. After a generation's first page, check `selectedEvent` with `events.matchIds([id])`. If it is excluded, clear the selection and show `timeline.outsideFilter` (i18n en and zh-TW). Also make `resolveReferencedEvent`, which follows an amendment to its marker, check admission before inserting a fetched row. An excluded row opens in the detail panel with `timeline.outsideFilter` and is never added to `eventsMapRef` or `sortedRef` (spec edge case, research R5).
 - [ ] T016 [US1] Change the export contribution in `Timeline.tsx` (`useContributeExport`). While any shared-filter condition is active, use label `timeline.exportSliceUnfiltered` and omit `count` (FR-016). Add i18n "Visible time range, filter not applied" / "可見時間範圍（不套用篩選）".
 
 **Checkpoint**: T008 and T009 pass, and `npx vitest run test/renderer-smoke.test.tsx test/timeline-filters.test.ts test/timeline-flush.test.ts` passes.
@@ -126,7 +130,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - the rows `queryEventsPage({ targetId: 'EXAMPLE.com' })` pages through
   - `countEvents({ filter: { targetId: 'Example.COM' } })`
   - `queryHttpFlowPage({ targetId: 'EXAMPLE.COM' })`, which matches case-insensitively
-  For target `10.0.0.5`, rows for `10.0.0.50` and `host`-only mentions are excluded.
+  For target `10.0.0.5`, rows for `10.0.0.50` and `host`-only mentions are excluded. An export plan for a `time-range` subset with `targetId: 'EXAMPLE.com'` includes both casings, and its preview counts equal its execute counts (research R3).
 - [ ] T018 [P] [US2] Write failing tests in `test/targets-open-in-timeline.test.tsx`.
   - "Open in Timeline" on `TargetView` sets the shared `targetId`, seen through a probe inside `FilterProvider`.
   - It calls `onOpenInTimeline(ts)` without a target argument.
@@ -177,6 +181,10 @@ Timeline paging that US1 introduces. US5 is independent.
   9. `redlog:filter-operator` with `op-2` sets the box to `operator:op-2`. `redlog:filter-host` with `10.0.0.5:8080` sets `"10.0.0.5:8080"`.
   10. `focusEventId` for an undrawn event loads back to it. For an event the filter excludes, it shows `timeline.outsideFilter`.
   11. Only earlier matches: every drawn event is dimmed.
+  12. A `command_start` match lights its drawn `command_end`. A collapsed agent-turn match lights its drawn session row, or is counted as hidden by the collapse (FR-015).
+  13. While `matchIds` is pending, the "matching" state shows (FR-017).
+  14. A rejected load-back page shows a failure with retry and keeps what was loaded.
+  15. The box input survives a remount of the Timeline for the same project (FR-008).
 
 ### Implementation for User Story 3
 
@@ -186,7 +194,10 @@ Timeline paging that US1 introduces. US5 is independent.
   - Parse with `parseQuery` (`core/query/contract.ts`). The states are empty, unparsable, matching, matched and failed (data-model TimelineText).
   - Render `QueryReadout`.
   - Get matches from `events.matchIds` for the drawn ids, in chunks of 1,000. New pages and live rows are checked incrementally.
-  - Map folded rows through the existing fold index: amendment → marker (`groupAmendments`), command start → end, and collapsed agent turn → its drawn session row. Otherwise count the match as hidden by collapse.
+  - Map matches through the existing fold index (research R5):
+    - a command start lights its drawn end
+    - a collapsed agent turn lights its drawn session row, or is counted as hidden by the collapse
+    - an amendment, drawn as its own row, also lights its marker (`groupAmendments`)
   - Dim with `aria-disabled` and visually hidden "not matching" text.
   - Announce the match count in an `aria-live="polite"` region.
   - Keep the mutual exclusion with focus-chain and anomaly.
@@ -225,6 +236,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - Toggling sets `filter.tier`, `toEventFilter` emits `{ tier: 'chained' }`, and `activeCount` counts it.
   - A fresh `FilterProvider` starts at `'all'` even with `redlog-timeline-auditor-view:<id>` = `'1'` in localStorage.
   - `HttpHistoryPanel` under "Chained only" shows the logged-tier notice, in wording distinct from the unapplied-Type notice, and no rows.
+  - SC-004 matrix: with each chip set in turn (target, type, time, in-scope, personal, tier), `SearchPanel`, `TranscriptView`, `LootPanel` and `HttpHistoryPanel` either carry it in their bridge request, via `toEventFilter`, or show their notice for it. The expected notices are HTTP History × Type, HTTP History × Chained only, and the Transcript × an unbucketed Type.
 
 ### Implementation for User Story 4
 
@@ -293,6 +305,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - Scenario 3's filtering half.
   - The Timeline no longer matches observation fields.
   - The Status line.
+  Update `docs/domain/SPEC-export-event-selection.md` as well: a target subset selects every casing of the target (research R3). Preview and execute resolve through one plan.
 - [ ] T051 [P] Update `docs/domain/INVENTORY-query-completeness.md` §1: the Timeline row is now `queryEventsPage` with the shared filter, keyset cursor, total via `countEvents`, and completeness visible as "N of M". Update the cross-surface table and mark Batch 3 done.
 - [ ] T052 [P] Update `docs/UIUX-STANDARD.md`:
   - §6's view-mode divergence note: the zone moved to Settings ▸ General, and the auditor switch is the shared "Chained only" chip.
@@ -304,7 +317,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - `countEvents`
   - `matchEventIds` for 1,000 ids
   - `executeEventQuery` with a cursor and `limit: 1`
-  Record the numbers in verification.md. Add NOCASE `target_id` indexes to `src/core/db/index.ts` only if a target case exceeds 200 ms.
+  The first page and total for each condition kind are SC-006: under 200 ms each. Record the numbers in verification.md. Add NOCASE `target_id` indexes to `src/core/db/index.ts` only if a target case exceeds 200 ms.
 - [ ] T054 Add Unreleased entries to `CHANGELOG.md`:
   - The Timeline honours Type and Time, over the whole project.
   - `/` reads like Search and dims.
