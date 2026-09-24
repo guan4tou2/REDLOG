@@ -17,6 +17,8 @@ const required = [
   'hooks/shell-hook.ps1',
   'hooks/shell-common.sh',
   'hooks/redlog-session.py',
+  // Copied into every evidence bundle; an export refuses to run without it.
+  'tools/redlog-verify.py',
   'plugins/starter-pack/plugin.json',
   // Spec 035: a capture pack whose manifest is missing does not run.
   'plugins/pack-host-monitors/plugin.json',
