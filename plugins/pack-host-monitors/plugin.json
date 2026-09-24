@@ -1,0 +1,10 @@
+{
+  "id": "pack-host-monitors",
+  "name": "Host monitors",
+  "version": "1.0.0",
+  "kind": "pack",
+  "redlogApi": 1,
+  "author": "RedLog",
+  "description": "Bundled capture pack (Spec 035). Process, connection, file and clipboard monitors: which programs ran, which connections they held, which files changed and what was copied. Off until the project turns the pack on. The capture code is part of RedLog; this manifest makes the pack removable \u2014 disable it here to remove it from every project.",
+  "contributes": {}
+}

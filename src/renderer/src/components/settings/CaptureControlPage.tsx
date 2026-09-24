@@ -1,5 +1,6 @@
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
 import LootRulesGroup from './LootRulesGroup'
+import CapturePackGroup, { usePackAvailability } from './CapturePackGroup'
 
 export default function CaptureControlPage({
   config, setConfig, t
@@ -8,117 +9,80 @@ export default function CaptureControlPage({
   setConfig: (c: ConfigState) => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
+  const packs = usePackAvailability()
   return (
     <>
-      <FieldGroup title={t('settings.clipboardGroup')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.clipboard?.enabled === true}
-            onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.clipboardEnable')}</span>
-        </label>
+      {/* Spec 035: what every project records, then the optional packs —
+          one switch each, their members' tuning beneath while on. */}
+      <FieldGroup title={t('settings.essentialGroup')}>
+        <p className="text-xs text-redlog-text-faint">{t('settings.essentialHint')}</p>
+        <ul className="text-xs text-redlog-text space-y-1 list-disc pl-4" data-testid="essential-capture">
+          <li>{t('settings.essentialShell')}</li>
+          <li>{t('settings.essentialHttp')}</li>
+          <li>{t('settings.essentialPty')}</li>
+          <li>{t('settings.essentialTerminal')}</li>
+        </ul>
+      </FieldGroup>
+
+      <CapturePackGroup
+        pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
+        available={packs?.hostMonitors} config={config} setConfig={setConfig} t={t}
+      >
+        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.clipboardGroup')}</p>
         <p className="text-xs text-redlog-text-faint">{t('settings.clipboardEnableHint')}</p>
-        {config.clipboard?.enabled && (
-          <label className="flex items-center gap-2 cursor-pointer mt-2">
-            <input
-              type="checkbox"
-              checked={config.clipboard?.storePreview === true}
-              onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, enabled: true, storePreview: e.target.checked } })}
-              className="accent-red-600"
-            />
-            <span className="text-xs text-redlog-text">{t('settings.clipboardStorePreview')}</span>
-          </label>
-        )}
-        {config.clipboard?.enabled && (
-          <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
-        )}
-      </FieldGroup>
-
-      <FieldGroup title={t('settings.fileWatcherGroup')}>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={config.fileWatcher?.enabled === true}
-            onChange={(e) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: e.target.checked } })}
+            checked={config.clipboard?.storePreview === true}
+            onChange={(e) => setConfig({ ...config, clipboard: { ...config.clipboard, storePreview: e.target.checked } })}
             className="accent-red-600"
           />
-          <span className="text-xs text-redlog-text">{t('settings.fileWatcherEnable')}</span>
+          <span className="text-xs text-redlog-text">{t('settings.clipboardStorePreview')}</span>
         </label>
+        <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
+
+        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.fileWatcherGroup')}</p>
         <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherEnableHint')}</p>
-        {config.fileWatcher?.enabled && (
-          <>
-            <ListField
-              label={t('settings.fileWatcherPaths')}
-              items={config.fileWatcher?.watchPaths ?? []}
-              onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, watchPaths: items } })}
-              placeholder={t('settings.fileWatcherPathsPlaceholder')}
-            />
-            <ListField
-              label={t('settings.fileWatcherIgnore')}
-              items={config.fileWatcher?.ignorePatterns ?? []}
-              onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, enabled: true, ignorePatterns: items } })}
-              placeholder={t('settings.fileWatcherIgnorePlaceholder')}
-            />
-            <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
-          </>
-        )}
-      </FieldGroup>
+        <ListField
+          label={t('settings.fileWatcherPaths')}
+          items={config.fileWatcher?.watchPaths ?? []}
+          onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, watchPaths: items } })}
+          placeholder={t('settings.fileWatcherPathsPlaceholder')}
+        />
+        <ListField
+          label={t('settings.fileWatcherIgnore')}
+          items={config.fileWatcher?.ignorePatterns ?? []}
+          onChange={(items) => setConfig({ ...config, fileWatcher: { ...config.fileWatcher, ignorePatterns: items } })}
+          placeholder={t('settings.fileWatcherIgnorePlaceholder')}
+        />
+        <p className="text-xs text-redlog-text-faint">{t('settings.fileWatcherIgnoreHint')}</p>
 
-      <FieldGroup title={t('settings.processMonitorGroup')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.processMonitor?.enabled === true}
-            onChange={(e) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.processMonitorEnable')}</span>
-        </label>
+        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.processMonitorGroup')}</p>
         <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorEnableHint')}</p>
-        {config.processMonitor?.enabled && (
-          <>
-            <ListField
-              label={t('settings.processMonitorIgnore')}
-              items={config.processMonitor?.ignoreCommands ?? []}
-              onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, enabled: true, ignoreCommands: items } })}
-              placeholder={t('settings.processMonitorIgnorePlaceholder')}
-            />
-            <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
-          </>
-        )}
-      </FieldGroup>
+        <ListField
+          label={t('settings.processMonitorIgnore')}
+          items={config.processMonitor?.ignoreCommands ?? []}
+          onChange={(items) => setConfig({ ...config, processMonitor: { ...config.processMonitor, ignoreCommands: items } })}
+          placeholder={t('settings.processMonitorIgnorePlaceholder')}
+        />
+        <p className="text-xs text-redlog-text-faint">{t('settings.processMonitorIgnoreHint')}</p>
 
-      <FieldGroup title={t('settings.connectionMonitorGroup')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.connectionMonitor?.enabled === true}
-            onChange={(e) => setConfig({ ...config, connectionMonitor: { ...config.connectionMonitor, enabled: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.connectionMonitorEnable')}</span>
-        </label>
+        <p className="text-xs font-semibold text-redlog-text-dim mt-2">{t('settings.connectionMonitorGroup')}</p>
         <p className="text-xs text-redlog-text-faint">{t('settings.connectionMonitorEnableHint')}</p>
         {/* The blind spot, stated where the operator turns it on — not
             only in a system event they might scroll past. */}
         <p className="text-xs text-amber-500/80">{t('settings.connectionMonitorSynNote')}</p>
-      </FieldGroup>
+      </CapturePackGroup>
 
-      <FieldGroup title={t('settings.powershellTranscriptGroup')}>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={config.powershellTranscript?.enabled === true}
-            onChange={(e) => setConfig({ ...config, powershellTranscript: { ...config.powershellTranscript, enabled: e.target.checked } })}
-            className="accent-red-600"
-          />
-          <span className="text-xs text-redlog-text">{t('settings.powershellTranscriptEnable')}</span>
-        </label>
-        <p className="text-xs text-redlog-text-faint">{t('settings.powershellTranscriptEnableHint')}</p>
-      </FieldGroup>
+      <CapturePackGroup
+        pack="aiAgents" title={t('settings.packAiAgents')} hint={t('settings.packAiAgentsHint')}
+        available={packs?.aiAgents} config={config} setConfig={setConfig} t={t}
+      />
+
+      <CapturePackGroup
+        pack="windowsOutput" title={t('settings.packWindowsOutput')} hint={t('settings.powershellTranscriptEnableHint')}
+        available={packs?.windowsOutput} config={config} setConfig={setConfig} t={t}
+      />
 
       <LootRulesGroup config={config} setConfig={setConfig} t={t} />
 

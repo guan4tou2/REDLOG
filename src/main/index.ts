@@ -7,7 +7,8 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, isAgentTailerEnabled, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
+import { isPackOn } from '../core/capture-packs'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
@@ -48,7 +49,7 @@ import { configurePowershellTranscript, stopPowershellTranscript } from './servi
 import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
-import { initPlugins } from '../core/plugins'
+import { initPlugins, listPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
@@ -298,6 +299,22 @@ function debouncedSaveWindowState(win: BrowserWindow): void {
 const alertRuntime = new AlertRuntime({ engagementId: '', operatorId: '' })
 const screenshotAgent = new ScreenshotAgent()
 const lootDetector = new LootDetector()
+
+/** Start or stop every optional capture source from the project's packs
+ *  (Spec 035): a pack runs only when the project turns it on and its bundled
+ *  plugin is active. Called on project open, on config save, and when a pack
+ *  plugin is enabled or disabled. Agent transcripts can hold unrelated work
+ *  from the operator's home directory, so nothing here defaults a pack on. */
+function applyCapturePacks(cfg: RedLogConfig): void {
+  const plugins = listPlugins()
+  const host = isPackOn(cfg, 'hostMonitors', plugins)
+  configureClipboardMonitor({ enabled: host })
+  void configureFileWatcher({ enabled: host })
+  configureConnectionMonitor({ enabled: host })
+  configureProcessMonitor({ enabled: host })
+  void configurePowershellTranscript({ enabled: isPackOn(cfg, 'windowsOutput', plugins) })
+  configureAgentTailer({ enabled: isPackOn(cfg, 'aiAgents', plugins) })
+}
 
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,
 // most-recent first, capped. Lets the floating window show the live pivot chain.
@@ -718,7 +735,6 @@ function startProject(project: ProjectMeta): void {
   })
   startOpsecMonitor()
   configureClipboardMonitor({
-    enabled: config.clipboard?.enabled ?? false,
     pollMs: config.clipboard?.pollMs ?? 1500,
     storePreview: config.clipboard?.storePreview ?? false,
     engagementId, operatorId, lootDetector
@@ -728,25 +744,21 @@ function startProject(project: ProjectMeta): void {
   // v0.6.92 W-project — file watcher + process monitor. Both opt-in; the
   // producers just no-op when disabled so the wiring is unconditional.
   configureFileWatcher({
-    enabled: config.fileWatcher?.enabled ?? false,
     watchPaths: config.fileWatcher?.watchPaths ?? [],
     ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
     engagementId, operatorId
   })
   configureConnectionMonitor({
-    enabled: config.connectionMonitor?.enabled ?? false,
     pollMs: config.connectionMonitor?.pollMs,
     engagementId,
     operatorId,
     selfPorts: [getApiPort()]
   })
   configurePowershellTranscript({
-    enabled: config.powershellTranscript?.enabled ?? false,
     engagementId,
     operatorId
   })
   configureProcessMonitor({
-    enabled: config.processMonitor?.enabled ?? false,
     pollMs: config.processMonitor?.pollMs,
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
@@ -758,10 +770,6 @@ function startProject(project: ProjectMeta): void {
   {
     const { excludedPaths, watchPaths } = readHookConfig()
     configureAgentTailer({
-      // Agent transcripts can include unrelated work from the operator's home
-      // directory. Capture is therefore opt-in for every project; a partial or
-      // hand-written config must never turn it on implicitly.
-      enabled: isAgentTailerEnabled(config),
       engagementId, operatorId,
       excludedPaths, watchPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
@@ -771,6 +779,8 @@ function startProject(project: ProjectMeta): void {
       scopeDispatch: (input) => alertRuntime.dispatchTargetHit(input)
     })
   }
+  // Spec 035: which optional sources run is decided by packs alone.
+  applyCapturePacks(config)
 
   configureApi({
     engagementId,
@@ -1082,7 +1092,8 @@ app.whenReady().then(() => {
     getCurrentOperatorId: () => currentOperatorId,
     send,
     triggerBookmark,
-    triggerInstantMark
+    triggerInstantMark,
+    onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)
   registerDataExportIpc(ipcMain, ipcCtx)
@@ -1232,29 +1243,25 @@ app.whenReady().then(() => {
       maxCastBytes: newConfig.terminal?.maxCastBytes })
     lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
     configureClipboardMonitor({
-      enabled: newConfig.clipboard?.enabled ?? false,
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
       storePreview: newConfig.clipboard?.storePreview ?? false,
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, lootDetector
     })
     configureFileWatcher({
-      enabled: newConfig.fileWatcher?.enabled ?? false,
       watchPaths: newConfig.fileWatcher?.watchPaths ?? [],
       ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
     configureConnectionMonitor({
-      enabled: newConfig.connectionMonitor?.enabled ?? false,
       pollMs: newConfig.connectionMonitor?.pollMs,
       selfPorts: [getApiPort()]
     })
-    configurePowershellTranscript({ enabled: newConfig.powershellTranscript?.enabled ?? false })
     configureProcessMonitor({
-      enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
       ignoreCommands: newConfig.processMonitor?.ignoreCommands ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
+    applyCapturePacks(newConfig)
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     setVpnAdapters(newConfig.network.vpnAdapters)
     // The HUD reads its config once at mount — push overlay settings so toggling

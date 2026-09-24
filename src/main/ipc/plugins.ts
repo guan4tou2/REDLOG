@@ -26,7 +26,7 @@ function pluginView() {
 export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('plugins:list', () => pluginView())
   ipcMain.handle('plugins:eventTypes', () => listEventTypes())
-  ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); invalidateHooksDetectCache(); reloadPlugins(); return pluginView() })
+  ipcMain.handle('plugins:reload', () => { invalidateHooksCache(); invalidateHooksDetectCache(); reloadPlugins(); ctx.onPluginsChanged(); return pluginView() })
   // Open the user plugin dir in Finder/Explorer so operators can drop new
   // plugin folders in and reload without hunting for the path.
   ipcMain.handle('plugins:openFolder', async () => {
@@ -35,7 +35,7 @@ export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     shell.openPath(dir)
     return dir
   })
-  ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); invalidateHooksDetectCache(); return pluginView() })
+  ipcMain.handle('plugins:setEnabled', (_e, id: string, enabled: boolean) => { setPluginEnabled(id, enabled); invalidateHooksCache(); invalidateHooksDetectCache(); ctx.onPluginsChanged(); return pluginView() })
   ipcMain.handle('plugins:grant', (_e, id: string) => {
     const project = ctx.getActiveProject()
     const opId = project ? loadConfig(getProjectPath(project)).operator.id : 'unknown'
