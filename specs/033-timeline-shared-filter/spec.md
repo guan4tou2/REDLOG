@@ -25,8 +25,9 @@ The Timeline does not:
    §1, Constitution IV).
 3. **Its `/` text means something else.** It is a substring match over ten
    fields of the loaded rows. The same text in Search is parsed by the query
-   contract and matched as phrases over all stored content. `10.0.0.5` also
-   lights up `10.0.0.50` in the Timeline, and not in Search.
+   contract and matched as phrases over all stored content, the last term as a
+   prefix. `map` lights up `nmap` in the Timeline, and not in Search.
+   `session:S1` is a condition in Search, and plain text in the Timeline.
 4. **Its target is not the Target.** Target identity is the recorded target
    ([SPEC-target-identity](../../docs/domain/SPEC-target-identity.md)). The
    Timeline's target focus, reached from the Targets page, matches any of seven
@@ -142,8 +143,9 @@ conditions and which as text.
 
 **Acceptance Scenarios**:
 
-1. **Given** the text `10.0.0.5`, **When** it is typed in the Timeline, **Then**
-   events that mention only `10.0.0.50` do not match.
+1. **Given** the text `map`, **When** it is typed in the Timeline, **Then**
+   events that mention only `nmap` do not match, as in Search. The last term is
+   a prefix, as in Search, so `10.0.0.5` also matches `10.0.0.50`.
 2. **Given** input is typed in the filter box, **When** the Timeline draws,
    **Then** the events Search would return for that input and the same shared
    filter are the

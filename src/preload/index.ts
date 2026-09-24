@@ -67,7 +67,7 @@ const api: RedLogAPI = {
   },
   events: {
     query: (opts: import('../core/db/events').EventQueryOptions) => ipcRenderer.invoke('events:query', opts),
-    queryPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) =>
+    queryPage: (opts: import('../core/db/events').EventFilter & { limit?: number; cursor?: string | null; excludeHousekeeping?: boolean }) =>
       ipcRenderer.invoke('events:queryPage', opts) as Promise<{
         items: import('../core/db/events').RedLogEvent[]
         hasMore: boolean
@@ -80,6 +80,11 @@ const api: RedLogAPI = {
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
     runQuery: (req: import('../core/db/events').EventQueryRequest) =>
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
+    // Spec 033: the Timeline's total, earlier matches and held-row checks.
+    count: (req: import('../core/db/events').EventCountRequest) =>
+      ipcRenderer.invoke('events:count', req) as Promise<number>,
+    matchIds: (req: import('../core/db/events').EventMatchRequest) =>
+      ipcRenderer.invoke('events:matchIds', req) as Promise<string[]>,
     toolCounterparts: (keys: import('../core/db/events').ToolPairKey[]) =>
       ipcRenderer.invoke('events:toolCounterparts', keys) as Promise<import('../core/db/events').RedLogEvent[]>,
     distinctAgentTypes: () => ipcRenderer.invoke('events:distinctAgentTypes') as Promise<string[]>,

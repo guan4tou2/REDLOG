@@ -188,7 +188,7 @@ interface RedLogAPI {
   }
   events: {
     query: (opts: import('../../core/db/events').EventQueryOptions) => Promise<RedLogEvent[]>
-    queryPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null }) => Promise<{
+    queryPage: (opts: import('../../core/db/events').EventFilter & { limit?: number; cursor?: string | null; excludeHousekeeping?: boolean }) => Promise<{
       items: RedLogEvent[]
       hasMore: boolean
       nextCursor: string | null
@@ -205,6 +205,10 @@ interface RedLogAPI {
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
+    /** Spec 033: how many rows a page or a query walks past `cursor`. */
+    count: (req: import('../../core/db/events').EventCountRequest) => Promise<number>
+    /** Spec 033: which of up to 1000 held ids the filter (and query) admit. */
+    matchIds: (req: import('../../core/db/events').EventMatchRequest) => Promise<string[]>
     toolCounterparts: (
       keys: import('../../core/db/events').ToolPairKey[]
     ) => Promise<RedLogEvent[]>
