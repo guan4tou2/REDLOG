@@ -57,6 +57,15 @@ function personalTargetIds(filter: EventFilter): string[] | null {
     .filter((target) => evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
 }
 
+/** Target identity is `target_id`, compared lowercased (SPEC-target-identity):
+ *  the Targets page groups `LOWER(target)`, so every filter has to match a
+ *  target in any casing or the two counts part. NOCASE folds ASCII, which is
+ *  what hostnames (IDN as punycode) and addresses are. The one place a target
+ *  is compared, so no reader can compare it another way. */
+export function targetPredicate(column: string): string {
+  return `${column} = ? COLLATE NOCASE`
+}
+
 /** The one evaluator of the shared filter. `arm` is the tier whose SQL this
  *  is: a filter can exclude a whole tier, so a caller building both arms from
  *  one call could not express it. Required so that a new caller cannot forget. */
@@ -71,7 +80,7 @@ function appendEventFilter(
   if (filter.agentType) { conditions.push(`${col('agent_type')} = ?`); params.push(filter.agentType) }
   if (filter.since != null) { conditions.push(`${col('timestamp')} >= ?`); params.push(filter.since) }
   if (filter.before != null) { conditions.push(`${col('timestamp')} <= ?`); params.push(filter.before) }
-  if (filter.targetId) { conditions.push(`${col('target_id')} = ?`); params.push(filter.targetId) }
+  if (filter.targetId) { conditions.push(targetPredicate(col('target_id'))); params.push(filter.targetId) }
   const allowed = inScopeTargetIds(filter)
   if (allowed !== null) {
     conditions.push(`(${col('target_id')} IS NULL OR ${col('target_id')} = '' OR ${col('target_id')} IN (SELECT value FROM json_each(?)))`)
@@ -84,13 +93,10 @@ function appendEventFilter(
   }
 }
 
-// SQL predicate that matches the renderer-side `isHousekeeping()` filter in
-// Timeline.tsx. Kept in sync manually — both hide RedLog plumbing rows that
-// still land in the chain (for audit integrity) but must not show up in the
-// operator's view. Pushing this filter into SQL fixes the Load-More pager,
-// which was fetching 200 rows and filtering to ~30 client-side, then setting
-// `allLoaded=true` because <200 came back — operators saw an empty timeline
-// with more history they couldn't reach.
+// HOUSEKEEPING_SQL (below) hides RedLog's plumbing rows, which still land in
+// the chain for audit integrity but are not the operator's activity. It is the
+// one housekeeping rule: the Timeline's pages, counts and live admission all
+// apply it here (spec 033), so no renderer copy can drift from it.
 /**
  * What counts as the operator having DONE something, as opposed to the app
  * talking to itself.
@@ -188,7 +194,7 @@ export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?:
   const cursor = decodeHttpFlowCursor(opts.cursor)
   const where: string[] = []
   const params: unknown[] = []
-  if (opts.targetId) { where.push('target_id = ?'); params.push(opts.targetId) }
+  if (opts.targetId) { where.push(targetPredicate('target_id')); params.push(opts.targetId) }
   if (opts.since != null) { where.push('start_ts >= ?'); params.push(opts.since) }
   if (opts.before != null) { where.push('start_ts <= ?'); params.push(opts.before) }
   const allowed = inScopeTargetIds(opts)

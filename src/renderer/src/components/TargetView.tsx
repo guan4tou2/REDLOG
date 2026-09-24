@@ -7,6 +7,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
 import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
 import { hostInScope } from '../lib/scope'
+import { useSharedFilter } from '../lib/FilterContext'
 
 interface TargetEntry {
   target: string
@@ -17,13 +18,14 @@ interface TargetEntry {
 }
 
 interface TargetViewProps {
-  /** §7: a target row leads to the Timeline. The target string comes with it
-   *  so the timeline can focus on just that target's activity. Optional so the
-   *  view still renders standalone in tests. */
-  onOpenInTimeline?: (ts: number, target?: string) => void
+  /** §7: a target row leads to the Timeline, narrowed to that target through
+   *  the shared filter (spec 033), which this view sets before calling. Optional
+   *  so the view still renders standalone in tests. */
+  onOpenInTimeline?: (ts: number) => void
 }
 
 export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Element {
+  const { setTargetId } = useSharedFilter()
   const [targets, setTargets] = useState<TargetEntry[]>([])
   // §5.4: distinguish "still loading" from "genuinely empty" so a project that
   // has targets doesn't flash the no-targets empty state on the initial async.
@@ -142,7 +144,11 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     onActivate: (i) => { const tgt = filtered[i]; if (tgt) void loadEvidence(tgt.target) },
     onJumpToTimeline: (i) => {
       const tgt = filtered[i]
-      if (tgt) onOpenInTimeline?.(tgt.lastSeen, tgt.target)
+      if (!tgt) return
+      // One target control: the FilterBar chip, the same target_id predicate
+      // the count on this page comes from.
+      setTargetId(tgt.target)
+      onOpenInTimeline?.(tgt.lastSeen)
     },
     onEscape: () => setSelected(null)
   })

@@ -124,28 +124,28 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ### Tests for User Story 2 (write first, confirm they fail)
 
-- [ ] T017 [P] [US2] Write failing tests in `test/target-identity-case.test.ts`. With `Example.COM` and `example.com` rows, one number must be equal across:
+- [X] T017 [P] [US2] Write failing tests in `test/target-identity-case.test.ts`. With `Example.COM` and `example.com` rows, one number must be equal across:
   - `aggregateTargets()`'s count
   - `queryEvents({ targetId: 'example.com' }).length`
   - the rows `queryEventsPage({ targetId: 'EXAMPLE.com' })` pages through
   - `countEvents({ filter: { targetId: 'Example.COM' } })`
   - `queryHttpFlowPage({ targetId: 'EXAMPLE.COM' })`, which matches case-insensitively
   For target `10.0.0.5`, rows for `10.0.0.50` and `host`-only mentions are excluded. An export plan for a `time-range` subset with `targetId: 'EXAMPLE.com'` includes both casings, and its preview counts equal its execute counts (research R3). Drive it through the registered-handler harness in `test/export-plan-ipc.test.ts`.
-- [ ] T018 [P] [US2] Write failing tests in `test/targets-open-in-timeline.test.tsx`.
+- [X] T018 [P] [US2] Write failing tests in `test/targets-open-in-timeline.test.tsx`.
   - "Open in Timeline" on `TargetView` sets the shared `targetId`, seen through a probe inside `FilterProvider`.
   - It calls `onOpenInTimeline(ts)` without a target argument.
   - The Timeline shows no `timeline-target-focus-badge`, and its first `queryPage` carries `targetId`.
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Add `targetPredicate(column)` → `${column} = ? COLLATE NOCASE` in `src/core/db/event-queries.ts`. Use it in `appendEventFilter`, in the `queryEvents` `targetId` branch and in `queryHttpFlowPage`, replacing each `target_id = ?`. T017 passes.
-- [ ] T020 [US2] In `src/renderer/src/components/TargetView.tsx`, "Open in Timeline" (the click and ⌘↩ paths) calls `useSharedFilter().setTargetId(target)` and then `onOpenInTimeline(ts)`. Narrow `TargetViewProps.onOpenInTimeline` to `(ts: number) => void`.
-- [ ] T021 [US2] Remove App's `focusTarget` state and prop in `src/renderer/src/App.tsx`.
+- [X] T019 [US2] Add `targetPredicate(column)` → `${column} = ? COLLATE NOCASE` in `src/core/db/event-queries.ts`. Use it in `appendEventFilter`, in the `queryEvents` `targetId` branch and in `queryHttpFlowPage`, replacing each `target_id = ?`. T017 passes.
+- [X] T020 [US2] In `src/renderer/src/components/TargetView.tsx`, "Open in Timeline" (the click and ⌘↩ paths) calls `useSharedFilter().setTargetId(target)` and then `onOpenInTimeline(ts)`. Narrow `TargetViewProps.onOpenInTimeline` to `(ts: number) => void`.
+- [X] T021 [US2] Remove App's `focusTarget` state and prop in `src/renderer/src/App.tsx`.
   - In `Timeline.tsx`, remove the `focusTarget` prop, `targetFocus`, `effectiveTarget` and the target-focus badge (`data-testid="timeline-target-focus-badge"`).
   - Delete `computeTargetMatches` from `src/renderer/src/lib/timelineFilters.ts` and from `test/timeline-filters.test.ts`.
   - Remove the `timeline.targetFocus.*` keys from both locale files.
   - T018 passes.
-- [ ] T022 [US2] Rewrite `e2e/target-focus.spec.ts` for the shared target:
+- [X] T022 [US2] Rewrite `e2e/target-focus.spec.ts` for the shared target:
   - arriving from a target shows the FilterBar target chip with `10.10.11.24`
   - clearing the chip restores the unfiltered Timeline
   - leaving and coming back keeps the chip, which is visible, per FR-005
