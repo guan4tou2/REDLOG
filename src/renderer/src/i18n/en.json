@@ -588,6 +588,8 @@
   "timeline.collapseAgent.label": "Hide AI turns",
   "timeline.collapseAgent.hint": "Hide per-turn AI-agent events (keeps snapshot + session_end)",
   "timeline.collapseAgent.hidden": "Hiding {{count}} per-turn agent events — click to show all",
+  "timeline.allFolded": "Hide AI turns is on, and every event here is an AI turn ({{count}}).",
+  "timeline.showAgentTurns": "Show AI turns",
   "timeline.detail.causedBy": "▶ Caused by:",
   "timeline.detail.relatedCommands": "Possible related commands",
   "timeline.detail.relatedCommandsHint": "Based on working-directory and timing overlap; this does not prove which process wrote the file.",

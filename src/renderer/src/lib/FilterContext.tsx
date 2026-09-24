@@ -48,21 +48,29 @@ export function formatTimeRange(range: TimeRange, t: Translate): string {
 }
 
 /** How each active condition is named: the FilterBar's chips, and any view
- *  that has to say which conditions explain what it shows. */
-export function conditionLabels(filter: SharedFilter, t: Translate): {
-  target?: string; type?: string; time?: string; inScope?: string; tier?: string
+ *  that has to say which conditions explain what it shows. Personal traffic
+ *  narrows only once personal domains are configured, which is also when the
+ *  FilterBar shows its chip, so it is named only when `personalDomains` is
+ *  passed and non-empty. */
+export function conditionLabels(filter: SharedFilter, t: Translate, opts: { personalDomains?: string[] } = {}): {
+  target?: string; type?: string; time?: string; inScope?: string; tier?: string; personal?: string
 } {
   return {
     ...(filter.targetId ? { target: `${t('filter.target')}: ${filter.targetId}` } : {}),
     ...(filter.agentType ? { type: `${t('filter.type')}: ${filter.agentType}` } : {}),
     ...(filter.timeRange ? { time: `${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}` } : {}),
     ...(filter.inScopeOnly ? { inScope: t('filter.inScopeOnly') } : {}),
-    ...(filter.tier === 'chained' ? { tier: t('filter.chainedOnly') } : {})
+    ...(filter.tier === 'chained' ? { tier: t('filter.chainedOnly') } : {}),
+    ...(filter.hidePersonal && opts.personalDomains?.length ? { personal: t('filter.personalHidden') } : {})
   }
 }
 
-export const describeActiveConditions = (filter: SharedFilter, t: Translate): string[] =>
-  Object.values(conditionLabels(filter, t)).filter((l): l is string => !!l)
+/** Every condition narrowing what a view shows, named. Empty means nothing
+ *  narrows it, so an empty view is an empty project. */
+export const describeActiveConditions = (
+  filter: SharedFilter, t: Translate, opts: { personalDomains?: string[] } = {}
+): string[] =>
+  Object.values(conditionLabels(filter, t, opts)).filter((l): l is string => !!l)
 
 interface FilterContextValue {
   filter: SharedFilter
