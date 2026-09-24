@@ -39,6 +39,7 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
+import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -54,6 +55,7 @@ import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
+import { applyLoginPath } from './login-path'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
@@ -136,6 +138,8 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
 
 async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  // mitmdump is spawned by bare name; look it up on the operator's PATH.
+  await loginPathReady
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
   const config = loadConfig(getProjectPath(activeProject))
@@ -971,6 +975,15 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.quit()
 }
+
+// Dock / Finder launches inherit a minimal PATH; widen it from the login shell
+// (src/main/login-path.ts) without blocking the window. Tool lookups that ran
+// before it settled are cached, so drop those caches once PATH changes.
+const loginPathReady: Promise<void> = gotSingleInstanceLock
+  ? applyLoginPath()
+    .then((changed) => { if (changed) { invalidateHooksCache(); invalidateHooksDetectCache() } })
+    .catch(() => { /* PATH stays as launched */ })
+  : Promise.resolve()
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -1468,6 +1481,11 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
+  ipcMain.handle('hooks:migrateLegacy', (_e, ref: LegacyHookRef) => { invalidateHooksCache(); invalidateHooksDetectCache(); return migrateLegacyHook(ref) })
+  // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts
+  // with a minimal PATH, and probing before it lands reports installed tools
+  // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.
+  ipcMain.handle('runtime:preflight', async () => { await loginPathReady; return runPreflight() })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())
