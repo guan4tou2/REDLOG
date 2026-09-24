@@ -3,7 +3,7 @@
 RedLog release history. Each entry links to the tag; run `gh release view v0.6.x`
 for full commit body + generated notes.
 
-## Unreleased
+## v0.17.0 — 2026-09-24
 
 **Upgrading — read first.**
 
