@@ -39,6 +39,7 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
+import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -1468,6 +1469,8 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
+  ipcMain.handle('hooks:migrateLegacy', (_e, ref: LegacyHookRef) => { invalidateHooksCache(); invalidateHooksDetectCache(); return migrateLegacyHook(ref) })
+  ipcMain.handle('runtime:preflight', () => runPreflight())
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())
