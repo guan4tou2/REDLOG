@@ -109,15 +109,26 @@ time-format (the zone lives in `lib/time`; no other file keeps one),
 marker-detail (no zone props), and the e2e journeys `target-focus` and
 `timeline-toolbar-overflow`.
 
-Final run, 2026-09-24, Windows 11 (win32 10.0.26200), Node v22.23.1:
+Final run, 2026-09-24, Windows 11 (win32 10.0.26200), Node v22.23.1, after
+merging main (#145-#152 and v0.16.1) and renumbering this spec from 033 to
+038, because main gave 033 to the loot regex time bound (#148):
 
 | Check | Command | Result |
 |-------|---------|--------|
-| Unit and integration | `npx vitest run` | 225 files passed, 3 skipped; 2413 tests passed, 20 skipped, 0 failed |
+| Unit and integration | `npx vitest run` | 235 files passed, 3 skipped; 2439 tests passed, 23 skipped, 0 failed |
 | Types | `npx tsc -p tsconfig.check.json` | exit 0 |
 | Build | `npm run build` | exit 0 |
 | Spec gates | `npm run verify:specs` | passed |
-| Desktop E2E (Electron ABI) | `npx playwright test` on `target-focus`, `timeline-encoding`, `timeline-geometry`, `timeline-lane-bands`, `timeline-presentation`, `timeline-toolbar-overflow`, `timeline-virtualisation`, `search-query-contract`, `transcript-view`, `http-activity-view`, `loot-view`, `marker-amend` | 36 passed, before and after the walk-through fixes; after T057 and T058, with `active-target-context` added, 37 passed |
+| Architecture gate (from main) | `npm run verify:architecture` | passed: 248 source files, every export reachable from production |
+| Desktop E2E (Electron ABI) | `npx playwright test` on `target-focus`, `timeline-encoding`, `timeline-geometry`, `timeline-lane-bands`, `timeline-presentation`, `timeline-toolbar-overflow`, `timeline-virtualisation`, `search-query-contract`, `transcript-view`, `http-activity-view`, `loot-view`, `marker-amend` | 36 passed, before and after the walk-through fixes; after T057 and T058, with `active-target-context` added, 37 passed; on the merged build, 37 passed |
+
+The merge met three tests that main had added for Spec 034 and that this
+branch changed the ground under: `agent-type-label` now follows the Type
+chip through the shared `conditionLabels`, which calls `agentTypeLabel`;
+the settings search index was regenerated for the zone setting; and this
+branch's own empty-state test now expects "Type: DNS". Main had removed
+`formatIso`, so the display-zone test's export case became a structural
+guard that nothing in core or main reads the zone.
 
 One earlier full run had a single failure, `confirm-dialog` "pulls focus back
 when it is outside the dialog". It passed 3/3 run alone and in the final full
