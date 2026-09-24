@@ -67,13 +67,13 @@ describe('_resolveLoginShellPath', () => {
 })
 
 describe('_runShell', () => {
-  it('kills a real shell that outlives the timeout and returns null', async () => {
+  it.skipIf(process.platform === 'win32')('kills a real shell that outlives the timeout and returns null', async () => {
     const started = Date.now()
     expect(await _runShell('/bin/sh', ['-c', 'sleep 5; echo late'], 200)).toBeNull()
     expect(Date.now() - started).toBeLessThan(2000)
   })
 
-  it('returns stdout of a shell that exits in time', async () => {
+  it.skipIf(process.platform === 'win32')('returns stdout of a shell that exits in time', async () => {
     expect(await _runShell('/bin/sh', ['-c', 'echo hi'], 2000)).toBe('hi\n')
   })
 })
