@@ -91,7 +91,8 @@ describe('shell adapters require python3 AND curl (requiresAll)', () => {
 })
 
 describe('runPreflight', () => {
-  it('lists exactly the missing commands, each with a copyable remediation', async () => {
+  // POSIX PATH semantics (':' delimiter) cannot carry a Windows temp dir with a drive letter.
+  it.skipIf(process.platform === 'win32')('lists exactly the missing commands, each with a copyable remediation', async () => {
     fakeCommand('curl')
     fakeCommand('zsh')
     fakeCommand('bash')
@@ -171,7 +172,8 @@ describe('legacy hook references', () => {
       expect(after).not.toContain('shell-preexec-hook.sh')
       expect(after).toContain('export FOO=1')
       expect(after).toContain('alias ll="ls -l"')
-      expect(after).toContain(`source ${path.join(home, '.redlog', 'shell-hook.zsh')}`)
+      // The adapter path is written POSIX-style under a pretended darwin, so match either separator.
+      expect(after.replace(/\\/g, '/')).toContain(`source ${path.join(home, '.redlog', 'shell-hook.zsh').replace(/\\/g, '/')}`)
       expect(fs.existsSync(path.join(home, '.redlog', 'shell-hook.zsh'))).toBe(true)
       expect(preflight.findLegacyHookReferences({ home })).toEqual([])
     } finally { restore() }
