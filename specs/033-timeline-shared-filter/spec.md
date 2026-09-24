@@ -55,6 +55,13 @@ The Timeline does not:
   Settings ▸ General, Local or UTC. Every view, the event detail and the
   FilterBar time chip use it. The "Project" option is dropped. Exports stay
   ISO 8601.
+- Q: When the `/` text matches events older than what the Timeline has drawn,
+  how does the operator reach them? → A: The Timeline says how many earlier
+  matches there are. Clicking that notice loads back to the nearest one. No
+  toolbar button is added.
+- Q: Does "chained only" survive reopening the project? → A: No. Like the other
+  shared-filter conditions, it starts at "All tiers" each time a project
+  opens. The Timeline's per-project auditor setting is not carried over.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -145,9 +152,9 @@ conditions and which as text.
 4. **Given** unparsable input (an unterminated quote, `session:` with no
    value), **When** it is typed, **Then** the Timeline says it cannot read it,
    distinct from "no match", and draws nothing as matched.
-5. **Given** a matching event older than what is loaded, **When** the operator
-   types the text, **Then** the Timeline shows or reaches that event, and states
-   how many matches there are when not all are drawn.
+5. **Given** matching events older than what is drawn, **When** the operator
+   types the text, **Then** the Timeline says how many earlier matches there
+   are. Clicking that notice loads back to the nearest one and selects it.
 6. **Given** the operator picks an operator or a host in ⌘K, **When** the
    Timeline opens on it, **Then** it shows that operator's events, or the events
    that host's name matches in Search, not a substring guess.
@@ -183,6 +190,9 @@ paged. It is visible as an applied condition wherever it applies.
    list, and it does not ignore the chip.
 4. **Given** the Timeline's auditor switch, **When** this feature ships, **Then**
    the switch is this shared condition. There is no second control.
+5. **Given** "chained only" was on, **When** the project is closed and opened
+   again, **Then** every view starts at "All tiers", as it does for the other
+   shared-filter conditions.
 
 ---
 
@@ -251,7 +261,9 @@ All five agree.
   does not match stay drawn, dimmed, so a match keeps its context. The query
   layer decides the matches, over the whole project. The Timeline's counts MUST
   describe the events the shared filter admits and, when text is set, how many
-  of them match.
+  of them match. When text matches events older than the drawn range, the
+  Timeline MUST say how many. That notice MUST load back to the nearest earlier
+  match when clicked. No other control is added for it.
 - **FR-005**: The Timeline's target MUST be the canonical target identity
   ([SPEC-target-identity](../../docs/domain/SPEC-target-identity.md)). Arriving
   from the Targets page MUST set the shared target, so the Targets page count,
@@ -276,7 +288,9 @@ All five agree.
   "Chained only". Every event view MUST apply it (Search, the Transcript, HTTP
   History, Loot and the Timeline), by the query over the whole project, and the
   FilterBar MUST show it as a chip. The Timeline's auditor switch MUST become
-  this condition and MUST NOT remain as a second control.
+  this condition and MUST NOT remain as a second control. Like the other
+  shared-filter conditions, it MUST start at "All tiers" each time a project
+  opens, and a stored Timeline auditor setting MUST NOT narrow a view.
 - **FR-012**: A view that cannot honour a shared condition MUST say so where
   the condition is shown, as HTTP History and the Transcript do today.
 - **FR-013**: Every view MUST print event times in one display zone, chosen
