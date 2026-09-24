@@ -293,7 +293,7 @@ Timeline paging that US1 introduces. US5 is independent.
 
 ## Phase 8: Polish, domain contracts and verification
 
-- [ ] T049 [P] Update `docs/domain/SPEC-search-query-semantics.md` per `contracts/query-contract.md`:
+- [X] T049 [P] Update `docs/domain/SPEC-search-query-semantics.md` per `contracts/query-contract.md`:
   - Parsing rule 2 and Evaluation rule 2 (`operator:`)
   - Evaluation rules 7, 9 and 13 (tier; the Timeline)
   - a Counting rule and a Matching-given-rows rule
@@ -301,20 +301,20 @@ Timeline paging that US1 introduces. US5 is independent.
   - the Timeline's empty-box section
   - Housekeeping
   - the Status line, adding Spec 033
-- [ ] T050 [P] Update `docs/domain/SPEC-target-identity.md`:
+- [X] T050 [P] Update `docs/domain/SPEC-target-identity.md`:
   - Normalization: filters compare case-insensitively through one helper.
   - The Invariant's `≈`.
   - Scenario 3's filtering half.
   - The Timeline no longer matches observation fields.
   - The Status line.
   Update `docs/domain/SPEC-export-event-selection.md` as well: a target subset selects every casing of the target (research R3). Preview and execute resolve through one plan.
-- [ ] T051 [P] Update `docs/domain/INVENTORY-query-completeness.md` §1: the Timeline row is now `queryEventsPage` with the shared filter, keyset cursor, total via `countEvents`, and completeness visible as "N of M". Update the cross-surface table and mark Batch 3 done.
-- [ ] T052 [P] Update `docs/UIUX-STANDARD.md`:
+- [X] T051 [P] Update `docs/domain/INVENTORY-query-completeness.md` §1: the Timeline row is now `queryEventsPage` with the shared filter, keyset cursor, total via `countEvents`, and completeness visible as "N of M". Update the cross-surface table and mark Batch 3 done.
+- [X] T052 [P] Update `docs/UIUX-STANDARD.md`:
   - §6's view-mode divergence note: the zone moved to Settings ▸ General, and the auditor switch is the shared "Chained only" chip.
   - §7's target jump uses the shared target chip.
   - Any description of the Timeline's substring `/` filter.
   Grep `docs/DESIGN-core-and-capture.md` for the target-focus design and mark it superseded by spec 033.
-- [ ] T053 Add a performance check, `test/timeline-query-perf.test.ts`, skipped unless `REDLOG_PERF=1`. On a 100,000-event fixture it times each of these (research R13):
+- [X] T053 Add a performance check, `test/timeline-query-perf.test.ts`, skipped unless `REDLOG_PERF=1`. On a 100,000-event fixture it times each of these (research R13):
   - `queryEventsPage` for each filter kind
   - `countEvents`
   - `matchEventIds` for 1,000 ids
@@ -322,7 +322,7 @@ Timeline paging that US1 introduces. US5 is independent.
   The first page and total for each condition kind are SC-006: under 200 ms each.
   Add a burst case for live admission (research R10): 60 `matchEventIds` calls of 100 ids within one second, with the main thread's total time under 100 ms (10%). If it misses, T012 coalesces admissions to at most 4 calls a second, and the case is re-run.
   Record the numbers, and the machine they come from, in verification.md. Add NOCASE `target_id` indexes to `src/core/db/index.ts` only if a target case exceeds 200 ms.
-- [ ] T054 Add Unreleased entries to `CHANGELOG.md`:
+- [X] T054 Add Unreleased entries to `CHANGELOG.md`:
   - The Timeline honours Type and Time, over the whole project.
   - `/` reads like Search and dims.
   - Earlier matches are counted and reachable.
@@ -330,11 +330,11 @@ Timeline paging that US1 introduces. US5 is independent.
   - "Chained only" is a shared-filter chip; the auditor switch is gone.
   - One Local/UTC setting in Settings ▸ General; "Project" is gone.
   - The export label is truthful.
-- [ ] T055 Run the full verification:
+- [X] T055 Run the full verification:
   - `npx vitest run`, checking for `[0-9]+ failed`
   - `npx tsc -p tsconfig.check.json`, `npm run build`, `npm run verify:specs`
   - the affected e2e journeys with the Electron ABI build: `target-focus`, `timeline-*`, `search-query-contract`, `transcript-view`, `http-activity-view`, `loot-view`, `marker-amend`
-- [ ] T056 Write `specs/033-timeline-shared-filter/verification.md` from `.specify/templates/overrides/verification-template.md`:
+- [X] T056 Write `specs/033-timeline-shared-filter/verification.md` from `.specify/templates/overrides/verification-template.md`:
   - `## RED`: each test file and the reason it failed first.
   - `## GREEN`: the evidence from T055 and the T053 numbers.
   - `## Gates`: Clarify (5 answered), Checklist (41 items, and the reviewer's result), Analyze, Converge.
