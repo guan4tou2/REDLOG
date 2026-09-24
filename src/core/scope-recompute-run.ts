@@ -376,19 +376,26 @@ export function queryScopeViolationRows(limit = 500): ScopeViolationPage {
   const existing = readExistingViolations()
   const db = getDB()
   const byId = new Map(existing.map((v) => [v.id, v]))
+  // Only what the page lists may take a place in the window, so the cut and
+  // `truncated` both count violations. In-scope verdicts are written under
+  // this subtype too (they are adherence records), and a record a newer one
+  // replaced is not listed. Cutting before dropping them let busy in-scope
+  // traffic push every standing violation off the page while the status bar
+  // still counted them (TESTING.md G-S3).
+  const replaced = existing.filter((v) => v.supersededBy !== null).map((v) => v.id)
   const rows = db.prepare(
     `SELECT id, timestamp, data FROM events
      WHERE agent_type = 'system' AND subtype = 'scope_violation'
+       AND COALESCE(json_extract(data, '$.distance'), '') <> 'in_scope'
+       AND id NOT IN (SELECT value FROM json_each(?))
      ORDER BY created_at DESC, rowid DESC LIMIT ?`
-  ).all(limit + 1) as Array<{ id: string; timestamp: number; data: string }>
+  ).all(JSON.stringify(replaced), limit + 1) as Array<{ id: string; timestamp: number; data: string }>
   const truncated = rows.length > limit
   const out: ScopeViolationRow[] = []
   for (const r of rows.slice(0, limit)) {
     let d: Record<string, unknown>
     try { d = JSON.parse(r.data) } catch { continue }
-    if (d.distance === 'in_scope') continue   // an adherence record, not a violation
     const v = byId.get(r.id)
-    if (v?.supersededBy) continue          // a newer record replaced it
     out.push({
       id: r.id,
       target: String(d.target ?? ''),
