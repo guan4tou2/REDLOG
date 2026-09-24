@@ -80,7 +80,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
   // Spec 033: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
-  const { filter: sharedFilter, activeCount: filterActiveCount } = useSharedFilter()
+  const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains } = useSharedFilter()
   const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
   const eventFilterRef = useRef(eventFilter)
   eventFilterRef.current = eventFilter
@@ -1644,15 +1644,33 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     )
   }
 
+  // Rows are held but the agent-turn collapse hides every one (FR-015): they
+  // are events, folded out of view, not a project that recorded nothing.
+  if (rawEvents.length > 0 && events.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div data-testid="timeline-all-folded" role="status" className="flex flex-col items-center gap-2 text-center px-8">
+          <p className="text-sm text-redlog-text-dim">{t('timeline.allFolded', { count: hiddenAgentTurnCount })}</p>
+          <button onClick={() => setCollapseAgentTurns(false)} className="text-xs text-redlog-text-dim underline hover:text-redlog-text">
+            {t('timeline.showAgentTurns')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // Nothing admitted by the filter is not the same as an empty project: say
-  // which conditions are narrowing it.
-  if (events.length === 0 && filterActiveCount > 0) {
+  // which conditions are narrowing it. Personal traffic is one of them once
+  // personal domains are set, though FilterContext's badge count leaves it
+  // out (Constitution II).
+  const activeConditions = describeActiveConditions(sharedFilter, t, { personalDomains })
+  if (events.length === 0 && activeConditions.length > 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <div data-testid="timeline-empty-filtered" className="flex flex-col items-center gap-2 text-center px-8">
           <p className="text-sm text-redlog-text-dim">{t('timeline.emptyFiltered')}</p>
           <ul className="text-xs text-redlog-text-faint font-mono">
-            {describeActiveConditions(sharedFilter, t).map((label) => <li key={label}>{label}</li>)}
+            {activeConditions.map((label) => <li key={label}>{label}</li>)}
           </ul>
         </div>
       </div>

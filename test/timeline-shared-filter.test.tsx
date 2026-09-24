@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider, useSharedFilter } from '../src/renderer/src/lib/FilterContext'
@@ -184,5 +184,43 @@ describe('the Timeline on the shared filter', () => {
     mount()
     await waitFor(() => expect(status()).toMatch(/\b1 event/))
     expect(screen.queryByTitle(/Shell/i)).toBeNull()
+  })
+})
+
+// T057 (Constitution II): "No events recorded yet" is a claim about the
+// project. It was chosen whenever nothing was drawn and FilterContext's
+// activeCount was 0, which leaves out personal traffic and ignores display
+// folding, so rows the project holds read as never recorded.
+describe('an empty Timeline says why it is empty', () => {
+  let b: TimelineBridge
+  beforeEach(() => {
+    b = installTimelineBridge()
+    try { localStorage.clear() } catch { /* ignore */ }
+  })
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  it('names personal traffic when hiding it leaves nothing', async () => {
+    const bridge = window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }
+    bridge.redlog.config.get = async () => ({ scope: { targets: [], excludeTargets: [], personalDomains: ['gmail.com'] } })
+    b.queryPage.mockResolvedValue(page([]))
+    mount()
+    const empty = await screen.findByTestId('timeline-empty-filtered')
+    expect(empty.textContent).toContain('Non-work hidden')
+    expect(screen.queryByText('No events recorded yet')).toBeNull()
+  })
+
+  it('says the rows are folded when the agent-turn collapse hides every one (FR-015)', async () => {
+    localStorage.setItem('redlog-timeline-collapse-agent', '1')
+    firstPageOnly(b, page([
+      makeEvent('a1', T0, 'agent', { data: { subtype: 'tool_call' } }),
+      makeEvent('a2', T0 - 1000, 'agent', { data: { subtype: 'assistant_message' } })
+    ]))
+    mount()
+    const folded = await screen.findByTestId('timeline-all-folded')
+    expect(folded.textContent).toContain('2')
+    expect(screen.queryByText('No events recorded yet')).toBeNull()
+    fireEvent.click(within(folded).getByRole('button'))
+    await waitFor(() => expect(screen.queryByTestId('timeline-all-folded')).toBeNull())
+    expect(screen.queryByText('No events recorded yet')).toBeNull()
   })
 })

@@ -588,6 +588,8 @@
   "timeline.collapseAgent.label": "隱藏 AI 逐輪",
   "timeline.collapseAgent.hint": "隱藏 AI agent 每輪對話事件（保留快照與結束事件）",
   "timeline.collapseAgent.hidden": "隱藏了 {{count}} 個 agent 逐輪事件——點擊全部顯示",
+  "timeline.allFolded": "已開啟「隱藏 AI 逐輪」，而這裡的事件全是 AI 逐輪（{{count}} 筆）。",
+  "timeline.showAgentTurns": "顯示 AI 逐輪",
   "timeline.detail.causedBy": "▶ 觸發自：",
   "timeline.detail.relatedCommands": "可能相關的指令",
   "timeline.detail.relatedCommandsHint": "依工作目錄與時間重疊推測，不能證明是哪個程序寫入此檔案。",
