@@ -191,8 +191,10 @@ RedLog 開已遷移的專案會找不到表、那頁變空。若有混用版本�
 
 **狀態:地基已實作(PR #36),完整外掛化為設計。** 見 [`DESIGN-plugin-kernel.md`](DESIGN-plugin-kernel.md)。
 
-已落地:`raw-store`、`mappers`、`ingest`、envelope 欄位、plugin 角色欄位、`/api/events` 與 PS
-transcript 走 ingest。
+已落地:`raw-store`(只有寫入端,尚無 producer 送 raw)、`ingest`、envelope 欄位、plugin 角色欄位、
+`/api/events` 與 PS transcript 走 ingest。**`mappers` 已於 2026-09-24 移除**:`POST /api/ingest`
+從未實作,登記的 mapper 沒有任何地方執行;manifest 宣告 `mappers` 現在會被拒絕並說明原因。
+做 `/api/ingest` 時再一併加回。
 
 **尚待設計/實作的完成路徑:**
 1. **內建 target extractor 宣告化 + 外掛化(E1 Option A #41、Option B #44)已實作。** Option A 立起 `STRATEGIES` 註冊表 + 宣告式資料;Option B 把整張工具→策略表搬進 bundled pack `plugins/builtin-tools/plugin.json`,`target-extractor.ts` 不再有任何 per-tool 資料,啟動時 `initPlugins()` 經 `registerTargetExtractors` 註冊該 pack;precedence 以 source 決定(user 蓋 bundled)、載入順序在測試 setup 與啟動路徑都解掉、`plugins/` 加進 `extraResources` 才會隨包出貨(連帶修好 c2-tailers 從沒打包的舊漏)。停用該 pack 即移除內建。

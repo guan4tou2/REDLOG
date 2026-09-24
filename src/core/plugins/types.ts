@@ -149,21 +149,8 @@ export const ALL_CAPABILITIES: Capability[] = [
   'read:events', 'write:events', 'read:bookmarks', 'read:config', 'net:outbound'
 ]
 
-/** 🟢 A declarative mapper: how a producer's raw payload becomes envelope
- *  fields. See src/core/mappers.ts for the path syntax. */
-export interface MapperContribution {
-  id: string
-  version: string
-  agentType: string
-  fields: Record<string, string | string[]>
-  tsSource?: string
-  keepExtra?: boolean
-}
-
 export interface PluginContributes {
   // 🟢 declarative
-  /** raw → envelope field mappings (docs/DESIGN-plugin-kernel.md §2). */
-  mappers?: MapperContribution[]
   lootPatterns?: LootPatternContribution[]
   redaction?: RedactionContribution
   commandTags?: CommandTagContribution[]
