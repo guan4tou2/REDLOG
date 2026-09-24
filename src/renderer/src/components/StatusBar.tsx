@@ -4,7 +4,7 @@ import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { Gem } from 'lucide-react'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
-import { formatTime, useDisplayZone } from '../lib/time'
+import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 
 export default function StatusBar(): JSX.Element {
@@ -15,6 +15,9 @@ export default function StatusBar(): JSX.Element {
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [loggedCount, setLoggedCount] = useState(0)
   const [uptime, setUptime] = useState(0)
+  // The counter runs from the project's creation (audit P1 #33), which a bare
+  // number next to REC does not say — it reads as this session's recording time.
+  const [since, setSince] = useState<number | null>(null)
   const [recording, setRecording] = useState(true)
   const [pausedAt, setPausedAt] = useState<number | null>(null)
   const [pauseElapsed, setPauseElapsed] = useState(0)
@@ -32,7 +35,7 @@ export default function StatusBar(): JSX.Element {
     // first render can be off by a second, subsequent poll ticks correct.
     let start = Date.now()
     window.redlog.project.active().then((p) => {
-      if (p?.createdAt) start = p.createdAt
+      if (p?.createdAt) { start = p.createdAt; setSince(p.createdAt) }
     })
     window.redlog.ip.getStatus().then(setIpStatus)
     // v0.13.0: fetch the logged-tier count for the chained·logged split.
@@ -212,7 +215,12 @@ export default function StatusBar(): JSX.Element {
               : captureVerdict === 'dark' || (recording && !lastEventAt) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
-            <span className="text-redlog-text-dim tabular-nums">{uptimeStr}</span>
+            <span
+              className="text-redlog-text-dim tabular-nums"
+              title={since ? t('statusBar.uptimeSince', { date: formatDateTime(since) }) : undefined}
+              aria-label={since ? `${uptimeStr} — ${t('statusBar.uptimeSince', { date: formatDateTime(since) })}` : undefined}
+              data-testid="statusbar-uptime"
+            >{uptimeStr}</span>
           </button>
         )
       })()}

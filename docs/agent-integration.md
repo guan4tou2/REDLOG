@@ -25,7 +25,7 @@ RedLog (Red Team Operation Log) is designed to work as a passive recorder for AI
         └───────────────────┘
 ```
 
-**Passive hooks** capture everything without the agent knowing. **The API** lets the agent actively query scope, create markers, and search history.
+**Passive hooks** record every command without the agent knowing (command metadata — see [what records output](#what-records-output)). **The API** lets the agent actively query scope, create markers, and search history.
 
 ## How agents capture: hooks log
 
@@ -43,9 +43,9 @@ So the division of labour is:
 
 | Use **hooks** for (logging) | Use the **API** for (operating the app) |
 |---|---|
-| Every shell / Bash command and its output (automatic) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
+| Every shell / Bash command — command, exit code, duration, cwd (automatic; output only via the built-in terminal, `redlog-run` or `redlog-session`) | Findings and phase markers (`redlog_mark`) — a judgement a hook can't infer |
 | mitmproxy HTTP traffic (automatic) | Scope checks before acting (`redlog_scope`) |
-| Screenshots, clipboard, file transfers (automatic) | Loot scanning of pasted output (`redlog_loot_scan`) |
+| File transfers detected from commands (automatic); screenshots and clipboard once turned on (periodic screenshots, Host monitors pack) | Loot scanning of pasted output (`redlog_loot_scan`) |
 | | Confirming identity (`redlog_whoami`), anchoring the chain (`redlog_chain_anchor_now`), reading history (`redlog_search`/`redlog_events`) |
 | | Structured events for actions no shell ran — GUI clicks, manual observations (`redlog_log_event`) |
 
@@ -59,26 +59,26 @@ RedLog captures **nothing** until a source is wired up. Being open is not enough
 
 | Source | Covers | How | Only while RedLog open? |
 |---|---|---|---|
-| **Agent transcript tailer** | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Automatic — watches `~/.claude/projects/` JSONL files. Filter with **Settings ▸ Integrations ▸ Watch Paths** (whitelist). | Yes |
-| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…) | Settings ▸ Hooks ▸ Zsh/Bash → Enable, then `source ~/.zshrc` | Yes — it no-ops when RedLog is closed |
+| **Agent transcript tailer** *(optional)* | Full Claude Code session: every tool call, user message, assistant response, thinking block. Also covers Codex and OpenCode. | Off by default. Turn on the **AI agents** capture pack in **Settings ▸ Capture control**; it then watches `~/.claude/projects/` JSONL files. Filter with watch paths in **Settings ▸ AI agent monitoring** (whitelist). | Yes |
+| **Shell hook** | Every command in *your own* terminal (nmap, ffuf, nuclei…): command, exit code, duration, cwd — **not** stdout/stderr | Dashboard **Capture Health ▸ Install shell hook** (or Settings ▸ Commands & terminal), then open a new terminal | Yes — it no-ops when RedLog is closed |
 | **mitmproxy (HTTP)** | HTTP/S traffic (the main source for web bounties) | `mitmdump -s /path/to/redlog/hooks/mitmproxy-addon.py` and route your browser through it (or use the one-click Proxied Browser) | Yes |
 | **mitmproxy (DNS)** | DNS queries + responses; useful when target resolution matters (subdomain takeover, DoH bypass checks) | `mitmdump --mode dns@5353 -s /path/to/redlog/hooks/mitmproxy-addon.py` — point the target at 127.0.0.1:5353. Root required for port 53. | Yes |
-| **RedLog terminal** | Commands run inside RedLog's own terminal pane | Built in, always on | — |
+| **RedLog terminal** | Commands run inside RedLog's own terminal pane, **with output** (asciinema `.cast`) | Built in, always on | — |
 | **Browser console (CDP)** | `console.error`/`warn`/`log` + uncaught exceptions from every open tab | Enabled automatically once you launch Chrome through the Proxied Browser (uses port 9222 by default) | Yes |
-| **File watcher** | File create/modify/delete in operator-defined paths | Settings ▸ Capture ▸ File watcher → Enable + add absolute paths. Off by default (noisy). | Yes |
-| **Process spawn tree** | Every process spawned/exited on the box (macOS + Linux) | Settings ▸ Capture ▸ Process monitor → Enable. RedLog and its subprocesses are auto-filtered. Windows: not yet supported. | Yes |
+| **File watcher** *(optional)* | File create/modify/delete in operator-defined paths | Part of the **Host monitors** capture pack (Settings ▸ Capture control), off by default; add absolute paths. | Yes |
+| **Process spawn tree** *(optional)* | Every process spawned/exited on the box (macOS + Linux) | Part of the **Host monitors** capture pack (Settings ▸ Capture control), off by default. RedLog and its subprocesses are auto-filtered. Windows: not yet supported. | Yes |
 
 **Three things that trip people up:**
 
-1. **The agent transcript tailer captures Claude Code directly.** It watches `~/.claude/projects/` and captures the full session — tool calls, reasoning, and user messages.
-2. **Use watch paths to scope capture.** Without a whitelist, the tailer ingests ALL Claude Code sessions into the current project. Set **Settings ▸ Integrations ▸ Watch Paths** to your engagement's working directory so only relevant sessions are recorded. See [Watch Paths](#watch-paths-whitelist) below.
+1. **The shell hook records what ran, not what it printed.** Command, exit code, duration and cwd land on the timeline; stdout/stderr do not. See [What records output](#what-records-output).
+2. **Agent capture is opt-in, and needs watch paths once on.** The AI agents pack is off by default. When you turn it on, the tailer ingests ALL Claude Code sessions into the current project unless you set watch paths in **Settings ▸ AI agent monitoring** to your engagement's working directory. See [Watch Paths](#watch-paths-whitelist) below.
 3. **Hooks only record while RedLog is running with a project open.** They read `~/.redlog/api-port`/`api-token`, which exist only while the app is up — so nothing is logged when you're off the clock (by design), and nothing is logged if you forgot to open the project.
 
 **Verify capture is live:** run a command in your terminal, then check the Dashboard's Capture Health card (or `redlog-cli status` → `capture`) — the shell hook source should flip to *active*.
 
 ### Watch Paths (whitelist)
 
-By default, the agent transcript tailer ingests ALL Claude Code sessions into the current project. On a machine with hundreds of sessions this creates thousands of irrelevant events. Use **watch paths** to scope capture to your engagement directory.
+Once the AI agents pack is on, the agent transcript tailer ingests ALL Claude Code sessions into the current project. On a machine with hundreds of sessions this creates thousands of irrelevant events. Use **watch paths** to scope capture to your engagement directory.
 
 **Config file:** `~/.redlog/hook-config.json` (global, applies to all projects)
 
@@ -100,9 +100,24 @@ By default, the agent transcript tailer ingests ALL Claude Code sessions into th
 
 **Additional self-exclusion:** A `.redlog-app-root` marker file in any ancestor directory causes the tailer to skip that session (RedLog's own repo uses this to prevent capturing its own dev sessions).
 
-**Settings UI:** **Settings ▸ Integrations ▸ Watch Paths** — add/remove paths with a folder picker. Changes take effect immediately (the tailer is live-reconfigured).
+**Settings UI:** **Settings ▸ AI agent monitoring** — add/remove watch paths with a folder picker. Changes take effect immediately (the tailer is live-reconfigured).
 
-**Recommendation:** At the start of every engagement, set `watchPaths` to your engagement directory. This prevents noise from personal or unrelated Claude Code sessions.
+**Recommendation:** If you use the AI agents pack, set `watchPaths` at the start of every engagement to your engagement directory. This prevents noise from personal or unrelated Claude Code sessions.
+
+### What records output
+
+Only these sources record a command's stdout/stderr:
+
+| Source | Output recorded |
+|---|---|
+| RedLog's built-in terminal | Everything, as an asciinema `.cast` per pane (per-command and full-session replay) |
+| `redlog-run <cmd>` in a hooked shell | Capped, separated stdout/stderr in that command's `command_end` |
+| `redlog-session` (macOS/Linux) | The full terminal session, bounded — see [external session recording](external-session-recording.md) |
+| **Windows terminal output** capture pack (off by default) | PowerShell sessions, via a `Start-Transcript` follower |
+
+The ordinary shell hook (zsh/bash/PowerShell) records **command metadata only**:
+command, exit code, duration and working directory. On the timeline such a
+command shows *output not captured*.
 
 ## 1. Terminal Hooks (Passive Capture)
 
@@ -112,7 +127,7 @@ Terminal hooks intercept commands at the shell level. The agent doesn't need to 
 
 The agent transcript tailer watches `~/.claude/projects/**/*.jsonl` and captures the **full** Claude Code session: every tool call (Bash, Read, Write, Edit, Grep, Task, MCP, etc.), user messages, assistant responses, and thinking blocks. It also covers Codex (`~/.codex/sessions/`) and OpenCode (`storage/message/`).
 
-**Setup:** Automatic — the tailer starts when RedLog opens a project. No hook wiring needed.
+**Setup:** Turn on the **AI agents** capture pack (Settings ▸ Capture control) for the project — it is off by default. No hook wiring needed.
 
 **What it captures:**
 
@@ -343,7 +358,7 @@ Team members import this when creating a new project:
 
 ## Proxied Browser
 
-The title-bar **Launch Browser** button (also in Settings ▸ Data) starts a Chromium-based browser wired up for capture in one click:
+The Dashboard's **Launch capture browser** button starts a Chromium-based browser wired up for capture in one click:
 
 | Flag | Why |
 |---|---|
@@ -355,7 +370,7 @@ The title-bar **Launch Browser** button (also in Settings ▸ Data) starts a Chr
 
 Launching logs a `system` event with `subtype: browser_launched` recording the binary, proxy, CDP port, and pid — so the report shows exactly which browser instance produced the captured traffic. The browser is terminated when RedLog quits.
 
-Configure under Settings ▸ Data ▸ Proxied Browser, or in `config.yaml`:
+Configure under Settings ▸ Proxy & browser, or in `config.yaml`:
 
 ```yaml
 browser:
@@ -381,7 +396,7 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 For maximum coverage with minimal friction — **hooks first, API only for the gaps** (see [Capture priority](#how-agents-capture-hooks-log)):
 
 1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
-2. **Enable the agent transcript tailer** and set the engagement watch path.
+2. *(Optional)* **Turn on the AI agents capture pack** and set the engagement watch path.
 3. **Add the mitmproxy addon** if you're proxying traffic — passive HTTP capture.
 4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use the API for what hooks can't do (markers, scope checks, anchoring).
 5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.

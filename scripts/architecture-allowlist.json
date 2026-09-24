@@ -1,0 +1,9 @@
+{
+  "src/core/db/operators.ts#slugifyOperatorId": "Kept by decision in #143: the operator IPC channels were removed (renderer code could mint API tokens with nothing on screen); the core functions and their tests stay for a future operator UI.",
+  "src/core/db/operators.ts#getOperatorSignerPubKey": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/db/operators.ts#renameOperator": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/db/operators.ts#revokeOperator": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/db/operators.ts#deleteOperator": "Kept by decision in #143 (see slugifyOperatorId).",
+  "src/core/raw-store.ts#readRaw": "Reserved for POST /api/ingest (docs/DESIGN-plugin-kernel.md §3): the raw store's read side and format contract. Decided 2026-09-24 to keep the store and build the reader with ingest; remove both if ingest is dropped.",
+  "src/core/raw-store.ts#isRawRef": "Reserved for POST /api/ingest (see readRaw)."
+}

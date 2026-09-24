@@ -39,29 +39,6 @@ export function decodeCursor(opaque: string): CursorKey | null {
   }
 }
 
-// Builds the WHERE clause fragment for keyset pagination at the OUTER level
-// of a UNION ALL (where _row and tier_rank are resolved column names from
-// the subquery, not aliases of the same SELECT).
-//
-// Expands to:
-//   (timestamp < :ts)
-//   OR (timestamp = :ts AND _row < :row)
-//   OR (timestamp = :ts AND _row = :row AND tier_rank < :tierRank)
-//
-// Returns { sql, params } to be AND-ed into existing WHERE conditions.
-// `tierExpr` is the SQL expression that produces 0 or 1 for the tier rank
-// (e.g. a literal for single-tier queries, or from the SELECT alias).
-export function buildCursorWhere(
-  cursor: CursorKey,
-  tierExpr: string = 'tier_rank'
-): { sql: string; params: unknown[] } {
-  const rank = TIER_RANK[cursor.tier] ?? 0
-  return {
-    sql: `(timestamp < ? OR (timestamp = ? AND _row < ?) OR (timestamp = ? AND _row = ? AND ${tierExpr} < ?))`,
-    params: [cursor.ts, cursor.ts, cursor.row, cursor.ts, cursor.row, rank]
-  }
-}
-
 // Per-arm cursor predicate for use INSIDE each UNION arm's WHERE clause.
 // Uses `rowid` (the real SQLite column) instead of the `_row` alias, and
 // resolves the tier_rank comparison at build time since each arm's rank is

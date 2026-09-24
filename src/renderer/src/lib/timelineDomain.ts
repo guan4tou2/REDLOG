@@ -33,9 +33,6 @@ export const BANDS: ReadonlyArray<{ id: BandId; lanes: readonly LaneId[] }> = [
 export const BAND_OF: Record<LaneId, BandId> = Object.fromEntries(
   BANDS.flatMap((b) => b.lanes.map((l) => [l, b.id]))
 ) as Record<LaneId, BandId>
-// Lanes in band order — replaces the raw LANES order for row layout so a
-// band's members are contiguous.
-export const LANES_BY_BAND: readonly LaneId[] = BANDS.flatMap((b) => b.lanes)
 
 // Lanes with no built-in producer — populated only by external agents
 // (custom MCP tools, third-party plugins) posting to /api/events. Showing
@@ -118,6 +115,35 @@ export function firstStringArg(input: Record<string, unknown>, cap: number): str
   return keys.length ? `{${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ', …' : ''}}` : ''
 }
 
+/** The i18n key of each lane's name — shared by the Timeline's lane labels and
+ *  the filter bar's type picker, so both say "HTTP", not `http_navigation`. */
+export const LANE_LABEL_KEYS: Record<LaneId, string> = {
+  shell: 'timeline.shell',
+  agent: 'timeline.agent',
+  http_navigation: 'timeline.http',
+  scanner: 'timeline.scanner',
+  browser: 'timeline.browser',
+  dns: 'timeline.dns',
+  pivot: 'timeline.pivot',
+  screenshot: 'timeline.screenshot',
+  clipboard: 'timeline.clipboard',
+  file_transfer: 'timeline.files',
+  credential_use: 'timeline.credentialUse',
+  c2_checkin: 'timeline.c2Checkin',
+  marker: 'timeline.markers',
+  loot: 'timeline.loot',
+  cleanup: 'timeline.cleanup',
+  scope: 'timeline.scope',
+  process: 'timeline.process',
+  system: 'timeline.system'
+}
+
+/** What an operator calls an event type. A type with no lane of its own (a
+ *  plugin's) keeps its stored name — there is nothing better to show. */
+export function agentTypeLabel(agentType: string, t: (key: string) => string): string {
+  return (LANES as readonly string[]).includes(agentType) ? t(LANE_LABEL_KEYS[agentType as LaneId]) : agentType
+}
+
 export function toLane(agentType: string, subtype?: string, pluginTypes?: PluginEventType[]): LaneId {
   // Scope violations are stored under agent_type='system' for historical reasons
   // (historical: a since-removed webhook filter watched 'system'). Route them into their own
@@ -160,10 +186,6 @@ export function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): voi
     else hi = mid
   }
   sorted.splice(lo, 0, evt)
-}
-
-export function formatTimeLabel(date: Date): string {
-  return formatTime(date.getTime())
 }
 
 /** v0.11.4 (AUDIT V6): time-only ticks are ambiguous across midnight. Prefix
@@ -282,43 +304,4 @@ export function computeBadges(
 export function subagentIndentPx(evt: RedLogEvent): number {
   const d = (evt.data as Record<string, unknown> | undefined) ?? {}
   return evt.agentType === 'agent' && d.is_sidechain === true ? 12 : 0
-}
-
-// BFS walk of the causal graph anchored at `anchor`. Walks `_causes` upstream
-// AND the reverse-effects map downstream, both bounded to depth 20.
-export function walkFocusChain(
-  anchor: RedLogEvent,
-  eventsMap: Map<string, RedLogEvent>,
-  effects: Map<string, string[]>
-): Set<string> {
-  const visited = new Set<string>([anchor.id])
-  const q: { id: string; depth: number; dir: 'up' | 'down' }[] = [
-    { id: anchor.id, depth: 0, dir: 'up' },
-    { id: anchor.id, depth: 0, dir: 'down' }
-  ]
-  while (q.length) {
-    const { id, depth, dir } = q.shift()!
-    if (depth >= 20) continue
-    if (dir === 'up') {
-      const e = eventsMap.get(id)
-      const causes = (e?.data as { _causes?: unknown } | undefined)?._causes
-      if (Array.isArray(causes)) {
-        for (const c of causes) {
-          if (typeof c === 'string' && !visited.has(c)) {
-            visited.add(c)
-            q.push({ id: c, depth: depth + 1, dir: 'up' })
-          }
-        }
-      }
-    } else {
-      const eff = effects.get(id)
-      if (eff) for (const c of eff) {
-        if (!visited.has(c)) {
-          visited.add(c)
-          q.push({ id: c, depth: depth + 1, dir: 'down' })
-        }
-      }
-    }
-  }
-  return visited
 }

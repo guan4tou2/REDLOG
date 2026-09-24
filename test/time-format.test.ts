@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { repoRelative } from './helpers/repo-path'
 import glob from 'fast-glob'
-import { formatTime, formatDateTime, formatIso, formatFreshness } from '../src/renderer/src/lib/time'
+import { formatTime, formatDateTime, formatFreshness } from '../src/renderer/src/lib/time'
 
 const ROOT = path.join(__dirname, '..')
 const at = (iso: string): number => new Date(iso).getTime()
@@ -32,12 +32,8 @@ describe('time formatting', () => {
     expect([c, b, a].sort()).toEqual([a, b, c])
   })
 
-  it('exports ISO 8601', () => {
-    expect(formatIso(at('2026-08-20T15:04:05Z'))).toBe('2026-08-20T15:04:05.000Z')
-  })
-
   it('survives a non-finite timestamp instead of rendering "Invalid Date"', () => {
-    for (const fn of [formatTime, formatDateTime, formatIso]) {
+    for (const fn of [formatTime, formatDateTime]) {
       expect(fn(NaN)).toBe('')
       expect(fn(Infinity)).toBe('')
     }

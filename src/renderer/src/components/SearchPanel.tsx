@@ -4,7 +4,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
-import { isMarkerAmendment, foldMarker, groupAmendments, amendedFields, type MarkerFold } from '../lib/markerFold'
+import { isMarkerAmendment, foldAllMarkers, amendedFields, type MarkerFold } from '../lib/markerFold'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
@@ -37,19 +37,6 @@ function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
     return body ? `Agent: ${String(body).slice(0, 120)}` : `Agent: ${d.subtype || 'event'}`
   }
   return `${e.agentType}: ${d.subtype || JSON.stringify(d).slice(0, 60)}`
-}
-
-/** Fold every marker in a result page against the amendments fetched for it. */
-function buildFolds(rows: RedLogEvent[], amendments: RedLogEvent[]): Map<string, MarkerFold> {
-  const byMarker = groupAmendments(amendments)
-  const out = new Map<string, MarkerFold>()
-  if (byMarker.size === 0) return out
-  for (const e of rows) {
-    if (e.agentType !== 'marker' || isMarkerAmendment(e)) continue
-    const mine = byMarker.get(e.id)
-    if (mine) out.set(e.id, foldMarker(e, mine))
-  }
-  return out
 }
 
 /** Compose rather than replace: the hover has to reveal the full DISPLAYED
@@ -98,7 +85,9 @@ async function resolveAndFold(
   const amendments = markerIds.size > 0
     ? (await window.redlog.marker.amendments([...markerIds])) ?? []
     : []
-  const newFolds = buildFolds(rows, amendments)
+  // Originals come from the page; amendments only from the fetch, so an
+  // amendment that also matched the query is not counted twice.
+  const newFolds = foldAllMarkers([...rows.filter((e) => !isMarkerAmendment(e)), ...amendments])
   return { rows, newFolds }
 }
 

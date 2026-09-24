@@ -61,7 +61,7 @@ export function createOperator(opts: {
   // mirrored into the DB so verify never touches disk to walk history.
   // Failures (permissions, no home dir writable) degrade to an unsigned
   // operator — the audit chain hash still protects events, and
-  // verifyChainFull reports "unsigned" rather than "broken".
+  // verifyChainFullAsync reports "unsigned" rather than "broken".
   let signerPubKey: string | null = null
   try {
     const kp = generateOperatorKeyPair(opts.id)
@@ -90,7 +90,7 @@ export function updateOperatorToken(id: string, token: string): boolean {
 }
 
 // v0.6.89: read the operator's public signing key without touching disk.
-// verifyChainFull calls this once per row (cheap — small operator set); the
+// verifyChainFullAsync calls this once per row (cheap — small operator set); the
 // DB copy is authoritative for chain verification.
 export function getOperatorSignerPubKey(id: string): string | null {
   const db = getDB()

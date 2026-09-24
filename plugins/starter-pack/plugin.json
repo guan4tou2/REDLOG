@@ -13,6 +13,7 @@
       "description": "Captures commands and exit codes from zsh",
       "agentType": "shell",
       "requires": [],
+      "requiresAll": ["python3", "curl"],
       "hookFile": "hooks/shell-zsh-hook.zsh",
       "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py"],
       "installMethod": "shell-source",
@@ -25,6 +26,7 @@
       "description": "Captures commands via preexec/precmd hooks",
       "agentType": "shell",
       "requires": [],
+      "requiresAll": ["python3", "curl"],
       "hookFile": "hooks/shell-bash-hook.sh",
       "supportFiles": ["hooks/shell-common.sh", "hooks/redlog-session.py"],
       "installMethod": "shell-source",
@@ -56,7 +58,8 @@
       "agentType": "shell",
       "requires": [],
       "hookFile": "hooks/shell-hook.ps1",
-      "installMethod": "manual"
+      "installMethod": "powershell-profile",
+      "installTarget": "~/.redlog/shell-hook.ps1"
     },
     {
       "id": "shell-wsl",

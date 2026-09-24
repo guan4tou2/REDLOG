@@ -451,7 +451,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 | 缺口 | 畫面 | 狀態 | 證據 | 備註 |
 |---|---|---|---|---|
 | **5a 更新流程** | 5a | 🔴 未做（**誤標✓**）| `updater.ts:76-96` 用原生 `showMessageBox` 彈窗 | 設計要「記錄中只一顆青點、不彈視窗；重啟前先錨定鏈頭 + 『約 8 秒不記錄』確認框」。現況彈窗正好相反，青點／錨定／揭露全無。macOS 無簽章擋自動安裝可接受，但錨定與揭露是證據鏈保證 |
-| **3c 需要注意 互動層** | 3c | 🔴 未做 | `StatusBar.tsx:179-200` 只有計數；`lib/issues.ts:64` `dismissIssue` **零呼叫者（死碼）** | 兩個計數器會顯示，但彈出層 + 每列〈修復／診斷〉+〈忽略／全部忽略〉未建 |
+| **3c 需要注意 互動層** | 3c | ⏸ 暫緩 | 目前沒有任何 issue 屬於 pending 層，〈忽略／全部忽略〉無對象；`dismissIssue`／`dismissAllPending` 已移除（2026-09-24） | 兩個計數器會顯示；彈出層 + 每列〈修復／診斷〉未建。第一個 pending 來源出現時再連同忽略一起做 |
 | **10a Inspector〈相關〉host 因果鏈面板** | 3b/10a | 🔴 未做 | `Timeline.tsx:677`/`:848`/`:3761` 僅 `_causes` 高亮 | 見 §24；repo 的 `_causes` 是直接因果圖，非 host 策展敘事鏈 |
 | **2b 終端機 per-pane〈記錄中／未記錄〉chip** | 2b | 🔴 未做 | `TerminalView.tsx:164` 只有存活點 | 這是該畫面的核心設計（「每個窗格說明自己有沒有在記錄」）；連 `.cast` 用量條、互動式工作階段標未記錄、底部 stale-hook 橫幅都缺 |
 | **5b 終端機設定頁** | 5b | 🔴 未做（**誤標「已繪出」**）| `Settings.tsx:81-88` union 無 `terminal` | 字型／scrollback／50MB 上限與用量都無 UI（後端有 `terminal-manager.ts:107`）|

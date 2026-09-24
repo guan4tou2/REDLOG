@@ -17,7 +17,11 @@ const required = [
   'hooks/shell-hook.ps1',
   'hooks/shell-common.sh',
   'hooks/redlog-session.py',
-  'plugins/starter-pack/plugin.json'
+  'plugins/starter-pack/plugin.json',
+  // Spec 035: a capture pack whose manifest is missing does not run.
+  'plugins/pack-host-monitors/plugin.json',
+  'plugins/pack-ai-agents/plugin.json',
+  'plugins/pack-windows-output/plugin.json'
 ]
 const forbidden = [
   'hooks/shell-preexec-hook.sh',

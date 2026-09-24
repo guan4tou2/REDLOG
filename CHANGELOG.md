@@ -5,6 +5,55 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+**Upgrading — read first.**
+
+- **Optional capture moved into packs.** `clipboard.enabled`,
+  `fileWatcher.enabled`, `processMonitor.enabled`, `connectionMonitor.enabled`,
+  `powershellTranscript.enabled` and `agentTailer.enabled` are no longer read.
+  A project that had any of them on **stops recording that source** until you
+  turn its pack on in Settings ▸ Capture: Host monitors (process, connection,
+  file, clipboard), AI agents, or Windows terminal output.
+
+- **Install readiness.** First launch shows whether this machine can record
+  your own terminal — python3, curl, your shell, mitmproxy (optional) — with a
+  copyable install command for anything missing; it never blocks entering the
+  app. The zsh/bash hook now counts as available only when python3 and curl
+  are both present (it used to say "available" without python3 and record
+  nothing).
+- **Scope on the create card.** Paste scope and excluded targets (newline,
+  comma or space separated) when creating a project; invalid entries are
+  flagged inline. An option adds this machine's IP to personal traffic so your
+  own traffic stays out of deliverables.
+- **Record my terminal, with proof.** After the built-in terminal records its
+  first command, the first-run screen offers to record your Zsh / Bash /
+  PowerShell (or WSL) terminal and confirms only when a one-time
+  `echo redlog-ok-…` arrives from it; after 60 s it says why not. HTTP capture
+  is an optional card, and the Dashboard no longer points at AI agents as the
+  next step.
+- **Old hook detected.** A profile that still loads the pre-0.16 shell hook is
+  detected; one click backs up the file, removes the old line and installs the
+  current hook.
+- **PowerShell hook installs in one click** (was manual).
+- **Tools installed with uv or Homebrew are found when RedLog is opened from
+  the Dock/Finder.** RedLog reads your login shell's PATH at startup, so
+  `mitmdump` in `~/.local/bin` starts HTTP capture.
+- **Releases include `SHA256SUMS.txt`.** README and the user guide now start
+  with installing and using RedLog; developer setup moved to Development.
+
+- **Capture packs.** Settings ▸ Capture now lists what every project records
+  (shell hook, HTTP(S) through mitmproxy, redlog-session output, the built-in
+  terminal) and the optional packs, one switch each. Each pack is a bundled
+  plugin; disabling it in Plugins removes it from every project and from
+  capture health. Turning a pack on or off now applies immediately — the AI
+  agents switch used to take effect only when the project was reopened.
+- **Plugins:** a plugin that contributes `mappers` is now refused with the
+  reason. Nothing applied mappers — they normalise raw input to
+  `POST /api/ingest`, which was never built — so such a plugin loaded and did
+  nothing.
+- **Removed:** `defaultShell` (a new pane keeps using `$SHELL`; a shell RedLog
+  cannot record is already flagged in the pane and the picker) and the unused
+  dismiss functions for status-bar issues (no issue is dismissible today).
+
 - **Timeline:** Type and Time now narrow the Timeline, over the whole
   project. It reads through the shared filter where events are stored, instead
   of loading the newest 200 rows and ignoring both chips. The status line says
@@ -42,6 +91,34 @@ for full commit body + generated notes.
   time range without the filter, and shows no count.
 - **⌘K:** an operator pick filters the Timeline by `operator:<id>`, the
   recorded id rather than the display name; a host pick puts `"<host>"` in `/`.
+
+## v0.16.1 — 2026-09-23
+
+- **Loot / plugins:** plugin loot patterns run in a worker with a time bound.
+  A pattern that backtracks catastrophically used to freeze capture and the
+  app for as long as it ran; now the rule is stopped after 250 ms, marked in
+  Settings ▸ Capture ▸ Loot detection, and the other rules keep running. A
+  stopped rule no longer masks what it matches; reloading the plugin restarts
+  it.
+- **Windows:** checking which capture tools are installed no longer starts a
+  `where` process per tool. The first capture-health check after launch could
+  stall the window for seconds; it now reads PATH directly.
+- **Settings:** the search box finds settings — group titles, field labels and
+  hints — not only page names, and opens the page at the match.
+- **Timeline filter:** event types read Shell, HTTP, Proxy… instead of
+  `http_navigation`; the stored type is the tooltip.
+- **Status bar:** the clock says what it counts — time since the project was
+  created, not this session.
+- **Raw capture store:** after switching projects, raw bytes could be written
+  into the previous project's folder. They now go to the open project.
+- **Development:** CI fails on exported code that nothing in the app uses, or
+  that only tests use (`npm run verify:architecture`); dead code it found is
+  removed.
+- **Updates (Windows):** the app downloads and installs an update itself, with
+  a progress window; macOS and Linux still open the download page. Each step
+  of an update is logged with an `[updater]` prefix.
+- **Project picker:** the Create button no longer wraps, and faint and muted
+  text meet WCAG AA contrast on the dark background.
 - **Loot:** a secret is now masked every time it appears — before, its second
   occurrence was stored and exported unmasked. Loot rows are one per secret per
   target, compared on the full value (two keys sharing a prefix, or two private

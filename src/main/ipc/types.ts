@@ -21,4 +21,7 @@ export interface IpcContext {
   triggerBookmark: () => void
   /** Drops an instant HUD mark into the chain. */
   triggerInstantMark: () => { ok: boolean; id?: string }
+  /** Re-applies the open project's capture packs after a plugin was enabled,
+   *  disabled or reloaded (Spec 035: a pack runs only while its plugin is). */
+  onPluginsChanged: () => void
 }

@@ -118,9 +118,9 @@ export interface RedLogConfig {
      *  retention — store-wide cleanup lives under `retention.casts`. */
     maxCastBytes: number
   }
+  /** Clipboard monitor tuning. Whether it runs is the Host monitors pack
+   *  (`packs.hostMonitors`, Spec 035) — clipboard is sensitive, off by default. */
   clipboard: {
-    /** default off — clipboard is highly sensitive; opt-in per engagement */
-    enabled: boolean
     /** poll interval in ms — Electron has no clipboard-change event, so we sample */
     pollMs: number
     /** store the redacted preview (first N chars) alongside hash+length; still
@@ -155,7 +155,6 @@ export interface RedLogConfig {
    *  noisy without a well-scoped watchPaths list. Emits `file_transfer`
    *  events with subtype `file_created/modified/deleted`. */
   fileWatcher?: {
-    enabled: boolean
     /** Absolute paths + globs; empty = disabled */
     watchPaths?: string[]
     /** Additional gitignore-style patterns on top of the built-in defaults
@@ -167,7 +166,6 @@ export interface RedLogConfig {
    *  Off by default; polling cadence is a CPU/coverage tradeoff. Windows
    *  is unsupported for now and emits a one-shot system advisory. */
   processMonitor?: {
-    enabled: boolean
     pollMs?: number
     ignoreCommands?: string[]
   }
@@ -176,13 +174,17 @@ export interface RedLogConfig {
    *  Off by default — it is capture the operator opts into, and it shells out
    *  every pollMs. */
   connectionMonitor?: {
-    enabled: boolean
     pollMs?: number
   }
-  /** PowerShell Start-Transcript follower (§2.3), Windows output capture.
-   *  Off by default; the operator opts in and adds the hook to their profile. */
-  powershellTranscript?: {
-    enabled: boolean
+  /** Optional capture, one switch per pack (Spec 035): Host monitors (process,
+   *  connection, file, clipboard), AI agents (transcript tailers), Windows
+   *  output (PowerShell Start-Transcript follower). A pack runs only when this
+   *  is on AND its bundled plugin is active (core/capture-packs.ts). All off by
+   *  default. The members' own `enabled` keys were removed and are not read. */
+  packs?: {
+    hostMonitors?: boolean
+    aiAgents?: boolean
+    windowsOutput?: boolean
   }
   /** v0.7.2 A: agent transcript tailer. Watches `~/.claude/projects/**`
    *  (and future OpenCode/Codex sidecar paths in v0.8.1+) and emits
@@ -192,7 +194,6 @@ export interface RedLogConfig {
    *  in the session's cwd still opts individual repos out. See
    *  src/main/services/agent-tailer.ts. */
   agentTailer?: {
-    enabled: boolean
     /** Off by default — thinking blocks are large and mostly meta. Turn on
      *  for engagements where the reasoning transcript is itself audit-
      *  relevant (e.g. AI-safety red-team, tool-use policy compliance). */
@@ -255,13 +256,6 @@ export interface RedLogConfig {
   }
 }
 
-/** Agent transcript capture is sensitive and always requires an explicit
- * project opt-in. Keep this decision here so runtime callers cannot re-create
- * a permissive fallback for partial or hand-written configs. */
-export function isAgentTailerEnabled(config: Pick<RedLogConfig, 'agentTailer'>): boolean {
-  return config.agentTailer?.enabled === true
-}
-
 const DEFAULT_CONFIG: RedLogConfig = {
   engagement: {
     id: 'default',
@@ -308,7 +302,6 @@ const DEFAULT_CONFIG: RedLogConfig = {
     maxCastBytes: 50 * 1024 * 1024
   },
   clipboard: {
-    enabled: false,
     pollMs: 1500,
     storePreview: false
   },
@@ -324,24 +317,22 @@ const DEFAULT_CONFIG: RedLogConfig = {
     minLength: 20
   },
   fileWatcher: {
-    enabled: false,
     watchPaths: [],
     ignorePatterns: []
   },
   processMonitor: {
-    enabled: false,
     pollMs: 500,
     ignoreCommands: []
   },
   connectionMonitor: {
-    enabled: false,
     pollMs: 2000
   },
-  powershellTranscript: {
-    enabled: false
+  packs: {
+    hostMonitors: false,
+    aiAgents: false,
+    windowsOutput: false
   },
   agentTailer: {
-    enabled: false,
     emitThinking: false
   },
   loot: {
@@ -376,6 +367,24 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
     }
   }
   return result
+}
+
+/** The config a new project starts with: the loaded defaults, the engagement
+ *  id seeded from the project, and what the create card sent. Sections are
+ *  merged field by field; `scope.personalDomains` is ADDED to the defaults
+ *  (loopback, localhost) rather than replacing them, so the card can send the
+ *  operator's own IP in the same call (Spec 037). */
+export function mergeInitialConfig(config: RedLogConfig, projectId: string, initial?: Partial<RedLogConfig>): RedLogConfig {
+  const personal = [...(config.scope.personalDomains ?? [])]
+  for (const d of initial?.scope?.personalDomains ?? []) if (!personal.includes(d)) personal.push(d)
+  return {
+    ...config,
+    engagement: { ...config.engagement, id: projectId, ...initial?.engagement },
+    operator: { ...config.operator, ...initial?.operator },
+    network: { ...config.network, ...initial?.network },
+    scope: { ...config.scope, ...initial?.scope, personalDomains: personal },
+    screenshot: { ...config.screenshot, ...initial?.screenshot }
+  }
 }
 
 export function loadConfig(projectDir: string): RedLogConfig {
