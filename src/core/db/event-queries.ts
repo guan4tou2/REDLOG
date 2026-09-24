@@ -152,12 +152,16 @@ export const EVIDENCE_SQL = `
  *  row and is NOT one of these. */
 export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as const
 
+// Null-safe on purpose: the ingest stores a missing subtype as NULL, and
+// `NOT (NULL)` is NULL, which a WHERE drops. Without the COALESCEs, a shell,
+// system or terminal row with no subtype, or a command row with no command,
+// was hidden as though it were housekeeping.
 const HOUSEKEEPING_SQL = `
   NOT (
-    (agent_type = 'system' AND subtype IN ('api_started','session_start'))
-    OR (agent_type = 'shell' AND subtype = 'session_start')
-    OR (agent_type = 'terminal' AND subtype = 'session_start')
-    OR (agent_type = 'shell' AND subtype IN ('command_start','command','command_end') AND (json_extract(data,'$.command') LIKE '%shell-bash-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-zsh-hook.zsh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%'))
+    (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start'))
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start')
+    OR (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start')
+    OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%'))
   )
 `
 
