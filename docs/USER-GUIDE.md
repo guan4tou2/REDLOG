@@ -27,7 +27,9 @@ HackerOne / SIEM）。RedLog 出廠**不裝**任何 MITRE 標記外掛——標�
 RedLog 裝在**你發動攻擊的那台機器**（Kali、筆電），不是裝在目標上——它記錄你做的事，
 不是植入程式。安裝檔、各平台的未簽章放行步驟與 `SHA256SUMS.txt` 驗證方式見
 [README 的 Install 一節](../README.md#install)。記錄自己的 shell 需要 `python3` 與
-`curl`；要擷取 HTTP(S) 再另裝 mitmproxy（`uv tool install mitmproxy`）。
+`curl`；要擷取 HTTP(S) 再另裝 mitmproxy（`uv tool install mitmproxy`）。macOS／Linux 上 RedLog
+啟動時會讀你登入 shell 的 `PATH`（外加 `~/.local/bin` 與 Homebrew），從 Dock 或桌面
+捷徑開啟也找得到這些工具；仍顯示找不到時，把工具所在目錄加進 shell 設定檔的 `PATH`。
 
 ### 1. 建立專案
 開 app → 輸入專案名（例如 `Client-Pentest-Q3`）→ 建立。展開「進階設定」把交戰規則裡的
