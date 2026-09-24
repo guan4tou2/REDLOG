@@ -81,6 +81,20 @@ describeDB('one WHERE builder: page, count and id match', () => {
     })
   }
 
+  // A check by id decides scope and personal over only the named rows'
+  // targets (research R10). That narrowing must not change one answer.
+  for (const [name, filter] of filters) {
+    it(`admits by id exactly what the page walks: ${name}`, () => {
+      const walked = new Set(pageAllIds((cursor) => ev.queryEventsPage({ ...filter, excludeHousekeeping: true, limit: 64, cursor })))
+      const all = fx.rows.map((r) => r.id)
+      const admitted: string[] = []
+      for (let i = 0; i < all.length; i += 1000) {
+        admitted.push(...ev.matchEventIds({ ids: all.slice(i, i + 1000), filter, excludeHousekeeping: true }))
+      }
+      expect(admitted).toEqual(all.filter((id) => walked.has(id)))
+    })
+  }
+
   it('counts strictly past a cursor, as the next page would walk', () => {
     const first = ev.queryEventsPage({ excludeHousekeeping: true, limit: 50 })
     const total = ev.countEvents({ excludeHousekeeping: true })
