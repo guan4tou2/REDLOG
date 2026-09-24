@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { loadConfig, saveConfig, loadScopeFile, snapshotScope, isAgentTailerEnabled, type RedLogConfig } from '../src/core/config'
+import { loadConfig, saveConfig, loadScopeFile, snapshotScope, type RedLogConfig } from '../src/core/config'
 
 let tmpDir: string
 
@@ -22,7 +22,7 @@ describe('loadConfig', () => {
     expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
     expect(config.scope.warnOnViolation).toBe(true)
-    expect(config.agentTailer?.enabled).toBe(false)
+    expect(config.packs?.aiAgents).toBe(false)
   })
 
   it('merges partial config with defaults', () => {
@@ -30,7 +30,7 @@ describe('loadConfig', () => {
     const config = loadConfig(tmpDir)
     expect(config.engagement.id).toBe('test-123')
     expect(config.network.checkInterval).toBe(60)
-    expect(config.agentTailer?.enabled).toBe(false)
+    expect(config.packs?.aiAgents).toBe(false)
   })
 
 })
@@ -48,10 +48,14 @@ describe('saveConfig', () => {
 })
 
 describe('agent transcript capture default', () => {
-  it('requires an explicit true value', () => {
-    expect(isAgentTailerEnabled({})).toBe(false)
-    expect(isAgentTailerEnabled({ agentTailer: { enabled: false } })).toBe(false)
-    expect(isAgentTailerEnabled({ agentTailer: { enabled: true } })).toBe(true)
+  // Spec 035: agent transcripts run with the AI agents pack. A partial or
+  // hand-written config must never turn it on — including one that still
+  // carries the removed `agentTailer.enabled: true`.
+  it('stays off unless the pack is explicitly on', () => {
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'agentTailer:\n  enabled: true\n')
+    expect(loadConfig(tmpDir).packs?.aiAgents).toBe(false)
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'packs:\n  aiAgents: true\n')
+    expect(loadConfig(tmpDir).packs?.aiAgents).toBe(true)
   })
 })
 

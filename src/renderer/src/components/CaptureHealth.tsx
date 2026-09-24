@@ -5,6 +5,7 @@ import { toast } from './Toast'
 import { useTick } from '../lib/useTick'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
+import { openRuntimeReadiness } from '../lib/runtimeReadiness'
 
 // The dark/setup onboarding block: the three core sources as an ordered
 // checklist, plus one primary CTA derived from readiness.nextStep. This is the
@@ -284,6 +285,12 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xs font-semibold text-redlog-text-dim uppercase tracking-[0.15em]">{t('capture.title')}</h2>
           <div className="flex items-center gap-3">
+            <button
+              onClick={openRuntimeReadiness}
+              className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"
+            >
+              {t('readiness.reopen')}
+            </button>
             <button
               onClick={() => setManage((m) => !m)}
               className="text-xs font-mono text-redlog-text-dim hover:text-redlog-text transition-colors"

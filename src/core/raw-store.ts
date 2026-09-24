@@ -38,19 +38,18 @@ export interface RawRef {
   encoding: 'json' | 'bytes'
 }
 
-let _cachedDir: string | null = null
+// The directory is derived from the open project on every call; only the
+// mkdir is remembered. Caching the path itself kept writing into the previous
+// project's raw/ after a project switch.
+let _ensuredDir: string | null = null
 
 function rawDir(): string {
-  if (_cachedDir && fs.existsSync(_cachedDir)) return _cachedDir
   const dir = path.join(getProjectDir(), 'raw')
-  fs.mkdirSync(dir, { recursive: true })
-  _cachedDir = dir
+  if (dir !== _ensuredDir || !fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+    _ensuredDir = dir
+  }
   return dir
-}
-
-/** Tests and project switches. */
-export function resetRawStoreCache(): void {
-  _cachedDir = null
 }
 
 function fileForNow(now = Date.now()): string {

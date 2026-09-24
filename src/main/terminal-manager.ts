@@ -10,7 +10,7 @@ import { eventBus } from '../core/event-bus'
 import { noteDbError } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
 import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
-import { buildShellCatalog, type ShellOption } from '../core/shell-catalog'
+import { buildShellCatalog, isHookable, type ShellOption } from '../core/shell-catalog'
 import { listWslDistros, windowsPathToWsl } from '../core/wsl-manager'
 import { indexCast } from '../core/cast-index'
 
@@ -462,7 +462,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     pid: term.pid,
     castPath,
     hookSourced: session.hookSourced,
-    ...(session.hookSourced ? {} : { hookMissing: flavour === 'none' ? 'no-hook-for-shell' : 'hook-file-not-found' })
+    ...(session.hookSourced ? {} : { hookMissing: isHookable(flavour) ? 'hook-file-not-found' : 'no-hook-for-shell' })
     // Identity from the session, not the module: #114 captures it at spawn so
     // a project switch mid-session cannot re-attribute this row.
   }, { engagementId: session.engagementId, operatorId: session.operatorId })

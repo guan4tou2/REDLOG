@@ -129,12 +129,6 @@ export function formatDateTime(ms: number, opts: { seconds?: boolean; year?: boo
   return `${ymd(c, opts.year !== false)} ${hm(c, opts.seconds)}${mark(c)}`
 }
 
-/** ISO 8601 with the offset — for anything leaving the app. */
-export function formatIso(ms: number): string {
-  if (!Number.isFinite(ms)) return ''
-  return new Date(ms).toISOString()
-}
-
 /**
  * Age, for freshness fields only. Everything else takes an absolute time.
  * `t` is passed in rather than imported, so the strings stay translatable

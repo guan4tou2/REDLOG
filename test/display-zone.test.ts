@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'fs'
+import path from 'path'
+import glob from 'fast-glob'
 
 type TimeModule = typeof import('../src/renderer/src/lib/time')
 
@@ -44,12 +47,12 @@ describe('one display zone', () => {
     expect(localStorage.getItem('redlog-display-zone')).toBe('utc')
   })
 
-  it('leaves exports ISO 8601, whatever the zone', async () => {
-    const time = await freshTime()
-    for (const zone of ['local', 'utc'] as const) {
-      time.setDisplayZone(zone)
-      expect(time.formatIso(AT)).toBe('2026-09-24T07:04:05.000Z')
-    }
+  // Exports stay ISO 8601 whatever the zone: they are written in the main
+  // process, which must never read this renderer preference.
+  it('is not read where exports are written', () => {
+    const offenders = glob.sync('src/{core,main}/**/*.ts', { cwd: path.join(__dirname, '..'), absolute: true })
+      .filter((f) => /renderer\/src\/lib\/time|DisplayZone|redlog-display-zone/.test(fs.readFileSync(f, 'utf-8')))
+    expect(offenders).toEqual([])
   })
 
   // FR-013: an operator's Timeline choice of UTC carries over. FR-014: nothing

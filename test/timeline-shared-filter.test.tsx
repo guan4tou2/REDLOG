@@ -109,7 +109,8 @@ describe('the Timeline on the shared filter', () => {
     b.queryPage.mockResolvedValue(page([]))
     act(() => { filterApi.setAgentType('dns') })
     const empty = await screen.findByTestId('timeline-empty-filtered')
-    expect(empty.textContent).toContain('dns')
+    // Named as the FilterBar names it (Spec 034): "Type: DNS", not `dns`.
+    expect(empty.textContent).toContain('Type: DNS')
     expect(screen.queryByText('No events recorded yet')).toBeNull()
   })
 

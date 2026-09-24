@@ -62,15 +62,15 @@ test.describe.serial('connection-level capture', () => {
   test('the operator can turn connection capture on and it sticks', async () => {
     await openView(page, 'settings')
     await openSettingsPage(page, 'captureControl')
-    // Reach the checkbox by its label text, not by DOM position.
-    const toggle = page.locator('label', { hasText: 'Record established connections' }).locator('input[type="checkbox"]')
+    // Spec 035: connection capture is part of the Host monitors pack.
+    const toggle = page.getByTestId('pack-switch-hostMonitors')
     await expect(toggle).toHaveCount(1)
     await toggle.check()
     // Settings autosaves on a 350ms debounce; wait for the round-trip to land
     // rather than reading config the instant the box flips.
     await expect.poll(async () => page.evaluate(async () =>
       (await (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>> } } })
-        .redlog.config.get() as { connectionMonitor?: { enabled?: boolean } }).connectionMonitor?.enabled),
+        .redlog.config.get() as { packs?: { hostMonitors?: boolean } }).packs?.hostMonitors),
       { timeout: 5000 }
     ).toBe(true)
   })

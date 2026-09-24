@@ -63,11 +63,6 @@ export const EMPTY_SIGNALS: VisibilitySignals = {
   loggedEver: false
 }
 
-/** The first day: somewhere to look, somewhere to read, somewhere to type.
- *  Settings is pinned outside DEFAULT_ORDER and always shown, so the sidebar
- *  starts at exactly four buttons. */
-export const DAY_ONE: readonly SidebarViewId[] = ['dashboard', 'timeline', 'terminal']
-
 /**
  * What each noun waits for.
  *

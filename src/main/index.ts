@@ -7,7 +7,8 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, isAgentTailerEnabled, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, mergeInitialConfig, RedLogConfig } from '../core/config'
+import { isPackOn } from '../core/capture-packs'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
 import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
@@ -38,6 +39,7 @@ import {
   killAllTerminals, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition
 } from './terminal-manager'
+import { migrateLegacyHook, runPreflight, type LegacyHookRef } from '../core/runtime-preflight'
 import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, uninstallHook } from '../core/hooks-manager'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics } from '../core/wsl-manager'
 import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
@@ -48,11 +50,12 @@ import { configurePowershellTranscript, stopPowershellTranscript } from './servi
 import { configureAgentTailer, stopAgentTailer } from './services/agent-tailer'
 import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
-import { initPlugins } from '../core/plugins'
+import { initPlugins, listPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
+import { applyLoginPath } from './login-path'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
@@ -135,6 +138,8 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
 
 async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  // mitmdump is spawned by bare name; look it up on the operator's PATH.
+  await loginPathReady
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
   const config = loadConfig(getProjectPath(activeProject))
@@ -298,6 +303,22 @@ function debouncedSaveWindowState(win: BrowserWindow): void {
 const alertRuntime = new AlertRuntime({ engagementId: '', operatorId: '' })
 const screenshotAgent = new ScreenshotAgent()
 const lootDetector = new LootDetector()
+
+/** Start or stop every optional capture source from the project's packs
+ *  (Spec 035): a pack runs only when the project turns it on and its bundled
+ *  plugin is active. Called on project open, on config save, and when a pack
+ *  plugin is enabled or disabled. Agent transcripts can hold unrelated work
+ *  from the operator's home directory, so nothing here defaults a pack on. */
+function applyCapturePacks(cfg: RedLogConfig): void {
+  const plugins = listPlugins()
+  const host = isPackOn(cfg, 'hostMonitors', plugins)
+  configureClipboardMonitor({ enabled: host })
+  void configureFileWatcher({ enabled: host })
+  configureConnectionMonitor({ enabled: host })
+  configureProcessMonitor({ enabled: host })
+  void configurePowershellTranscript({ enabled: isPackOn(cfg, 'windowsOutput', plugins) })
+  configureAgentTailer({ enabled: isPackOn(cfg, 'aiAgents', plugins) })
+}
 
 // Recent distinct pivot nodes for the overlay — dedup by intermediate node,
 // most-recent first, capped. Lets the floating window show the live pivot chain.
@@ -718,7 +739,6 @@ function startProject(project: ProjectMeta): void {
   })
   startOpsecMonitor()
   configureClipboardMonitor({
-    enabled: config.clipboard?.enabled ?? false,
     pollMs: config.clipboard?.pollMs ?? 1500,
     storePreview: config.clipboard?.storePreview ?? false,
     engagementId, operatorId, lootDetector
@@ -728,25 +748,21 @@ function startProject(project: ProjectMeta): void {
   // v0.6.92 W-project — file watcher + process monitor. Both opt-in; the
   // producers just no-op when disabled so the wiring is unconditional.
   configureFileWatcher({
-    enabled: config.fileWatcher?.enabled ?? false,
     watchPaths: config.fileWatcher?.watchPaths ?? [],
     ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
     engagementId, operatorId
   })
   configureConnectionMonitor({
-    enabled: config.connectionMonitor?.enabled ?? false,
     pollMs: config.connectionMonitor?.pollMs,
     engagementId,
     operatorId,
     selfPorts: [getApiPort()]
   })
   configurePowershellTranscript({
-    enabled: config.powershellTranscript?.enabled ?? false,
     engagementId,
     operatorId
   })
   configureProcessMonitor({
-    enabled: config.processMonitor?.enabled ?? false,
     pollMs: config.processMonitor?.pollMs,
     ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
     engagementId, operatorId
@@ -758,10 +774,6 @@ function startProject(project: ProjectMeta): void {
   {
     const { excludedPaths, watchPaths } = readHookConfig()
     configureAgentTailer({
-      // Agent transcripts can include unrelated work from the operator's home
-      // directory. Capture is therefore opt-in for every project; a partial or
-      // hand-written config must never turn it on implicitly.
-      enabled: isAgentTailerEnabled(config),
       engagementId, operatorId,
       excludedPaths, watchPaths,
       emitThinking: config.agentTailer?.emitThinking ?? false,
@@ -771,6 +783,8 @@ function startProject(project: ProjectMeta): void {
       scopeDispatch: (input) => alertRuntime.dispatchTargetHit(input)
     })
   }
+  // Spec 035: which optional sources run is decided by packs alone.
+  applyCapturePacks(config)
 
   configureApi({
     engagementId,
@@ -961,6 +975,15 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.quit()
 }
+
+// Dock / Finder launches inherit a minimal PATH; widen it from the login shell
+// (src/main/login-path.ts) without blocking the window. Tool lookups that ran
+// before it settled are cached, so drop those caches once PATH changes.
+const loginPathReady: Promise<void> = gotSingleInstanceLock
+  ? applyLoginPath()
+    .then((changed) => { if (changed) { invalidateHooksCache(); invalidateHooksDetectCache() } })
+    .catch(() => { /* PATH stays as launched */ })
+  : Promise.resolve()
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -1082,7 +1105,8 @@ app.whenReady().then(() => {
     getCurrentOperatorId: () => currentOperatorId,
     send,
     triggerBookmark,
-    triggerInstantMark
+    triggerInstantMark,
+    onPluginsChanged: () => { if (activeProject) applyCapturePacks(loadConfig(getProjectPath(activeProject))) }
   }
   registerOverlayIpc(ipcMain, ipcCtx)
   registerDataExportIpc(ipcMain, ipcCtx)
@@ -1105,16 +1129,7 @@ app.whenReady().then(() => {
     // on the box. Seed both from what the operator just typed; the advanced
     // setup (or a later edit) still overrides.
     const projectDir = getProjectPath(project)
-    const config = loadConfig(projectDir)
-    const merged = {
-      ...config,
-      engagement: { ...config.engagement, id: project.id, ...initialConfig?.engagement },
-      operator: { ...config.operator, ...initialConfig?.operator },
-      network: { ...config.network, ...initialConfig?.network },
-      scope: { ...config.scope, ...initialConfig?.scope },
-      screenshot: { ...config.screenshot, ...initialConfig?.screenshot }
-    }
-    saveConfig(projectDir, merged)
+    saveConfig(projectDir, mergeInitialConfig(loadConfig(projectDir), project.id, initialConfig))
     startProject(project)
     return project
   })
@@ -1232,29 +1247,25 @@ app.whenReady().then(() => {
       maxCastBytes: newConfig.terminal?.maxCastBytes })
     lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
     configureClipboardMonitor({
-      enabled: newConfig.clipboard?.enabled ?? false,
       pollMs: newConfig.clipboard?.pollMs ?? 1500,
       storePreview: newConfig.clipboard?.storePreview ?? false,
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id, lootDetector
     })
     configureFileWatcher({
-      enabled: newConfig.fileWatcher?.enabled ?? false,
       watchPaths: newConfig.fileWatcher?.watchPaths ?? [],
       ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
     configureConnectionMonitor({
-      enabled: newConfig.connectionMonitor?.enabled ?? false,
       pollMs: newConfig.connectionMonitor?.pollMs,
       selfPorts: [getApiPort()]
     })
-    configurePowershellTranscript({ enabled: newConfig.powershellTranscript?.enabled ?? false })
     configureProcessMonitor({
-      enabled: newConfig.processMonitor?.enabled ?? false,
       pollMs: newConfig.processMonitor?.pollMs,
       ignoreCommands: newConfig.processMonitor?.ignoreCommands ?? [],
       engagementId: newConfig.engagement.id, operatorId: newConfig.operator.id
     })
+    applyCapturePacks(newConfig)
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     setVpnAdapters(newConfig.network.vpnAdapters)
     // The HUD reads its config once at mount — push overlay settings so toggling
@@ -1461,6 +1472,11 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:health', () => activeProject ? getCaptureHealth() : null)
   ipcMain.handle('hooks:install', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return installHook(hookId) })
   ipcMain.handle('hooks:uninstall', (_e, hookId: string) => { invalidateHooksCache(); invalidateHooksDetectCache(); return uninstallHook(hookId) })
+  ipcMain.handle('hooks:migrateLegacy', (_e, ref: LegacyHookRef) => { invalidateHooksCache(); invalidateHooksDetectCache(); return migrateLegacyHook(ref) })
+  // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts
+  // with a minimal PATH, and probing before it lands reports installed tools
+  // (python3, curl, mitmdump in ~/.local/bin or /opt/homebrew/bin) as missing.
+  ipcMain.handle('runtime:preflight', async () => { await loginPathReady; return runPreflight() })
 
   // --- WSL ---
   ipcMain.handle('wsl:listDistros', () => listWslDistros())

@@ -70,7 +70,7 @@ test.describe.serial('the first run', () => {
     await post('shell', { subtype: 'command_start', command: 'nmap -sV 10.0.0.5' })
     await expect(page.locator('[data-testid="first-run-strip"]'))
       .toHaveAttribute('data-first-run-lit', 'true', { timeout: 15_000 })
-    await expect(page.locator('[data-testid="first-run-open-timeline"]')).toBeVisible()
+    await expect(page.locator('[data-testid="first-run-builtin-only"]')).toBeVisible()
   })
 
   test('hands over to the real dashboard, and does not come back', async () => {

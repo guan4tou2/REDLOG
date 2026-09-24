@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
 import { useSharedFilter, conditionLabels } from '../lib/FilterContext'
 import { useI18n } from '../i18n'
+import { agentTypeLabel } from '../lib/timelineDomain'
 
 export function FilterBar(): JSX.Element | null {
   const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
@@ -41,7 +42,7 @@ export function FilterBar(): JSX.Element | null {
           <Chip label={labels.target ?? ''} onClear={() => setTargetId(null)} />
         )}
         {filter.agentType && (
-          <Chip label={labels.type ?? ''} onClear={() => setAgentType(null)} />
+          <Chip label={labels.type ?? ''} title={filter.agentType} onClear={() => setAgentType(null)} />
         )}
         {filter.timeRange && (
           <Chip
@@ -117,7 +118,7 @@ export function FilterBar(): JSX.Element | null {
             label={t('filter.type')}
             value={filter.agentType}
             onChange={setAgentType}
-            options={knownAgentTypes.map((at) => ({ value: at, label: at }))}
+            options={knownAgentTypes.map((at) => ({ value: at, label: agentTypeLabel(at, t), title: at }))}
             placeholder={t('filter.allTypes')}
           />
 
@@ -159,9 +160,9 @@ export function FilterBar(): JSX.Element | null {
   )
 }
 
-function Chip({ label, onClear }: { label: string; onClear: () => void }): JSX.Element {
+function Chip({ label, title, onClear }: { label: string; title?: string; onClear: () => void }): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-xs text-redlog-text-dim border border-redlog-border">
+    <span title={title} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-redlog-elevated text-xs text-redlog-text-dim border border-redlog-border">
       {label}
       <button onClick={onClear} className="hover:text-red-400 transition-colors" aria-label="Clear">
         <X size={10} />
@@ -174,7 +175,7 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
   label: string
   value: string | null
   onChange: (v: string | null) => void
-  options: Array<{ value: string; label: string }>
+  options: Array<{ value: string; label: string; title?: string }>
   placeholder: string
 }): JSX.Element {
   return (
@@ -187,7 +188,7 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option key={o.value} value={o.value} title={o.title}>{o.label}</option>
         ))}
       </select>
     </div>

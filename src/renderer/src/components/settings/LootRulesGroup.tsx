@@ -49,6 +49,13 @@ export default function LootRulesGroup({
             <span className="text-redlog-text-faint">
               {' · '}{r.confidence}{' · '}{r.pluginId ?? t('settings.lootBuiltin')}
             </span>
+            {/* Spec 033: a rule that overran the time bound no longer runs,
+                so its values are no longer masked either. Say so here. */}
+            {r.stopped === 'time_limit' && (
+              <span className="block text-red-400" data-testid={`loot-rule-stopped-${r.id}`}>
+                {t('settings.lootRuleStopped')}
+              </span>
+            )}
           </span>
         </label>
       ))}

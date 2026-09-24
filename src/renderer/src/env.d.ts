@@ -278,7 +278,7 @@ interface RedLogAPI {
   loot: {
     getCount: () => Promise<number>
     /** Every loot rule, for the Settings switches (Spec 032). */
-    rules: () => Promise<Array<{ id: string; type: string; confidence: 'high' | 'medium' | 'low'; pluginId: string | null; description?: string }>>
+    rules: () => Promise<Array<{ id: string; type: string; confidence: 'high' | 'medium' | 'low'; pluginId: string | null; description?: string; stopped?: 'time_limit' }>>
   }
   bookmarks: {
     list: () => Promise<Bookmark[]>
@@ -376,6 +376,12 @@ interface RedLogAPI {
     detect: () => Promise<HookInfo[]>
     install: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
     uninstall: (hookId: string) => Promise<{ success: boolean; error?: string; message?: string }>
+    /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
+    migrateLegacy: (ref: LegacyHookRef) => Promise<LegacyMigrationResult>
+  }
+  runtime: {
+    /** Spec 036: runtime dependencies + legacy hook references, answered without spawning processes. */
+    preflight: () => Promise<RuntimePreflight>
   }
   plugins: {
     list: () => Promise<unknown[]>
@@ -400,6 +406,35 @@ interface RedLogAPI {
     uninstallHook: (distro: string, shell: string) => Promise<{ success: boolean; message: string }>
     runDiagnostics: (distro: string) => Promise<WslDiagnosticResult>
   }
+}
+
+interface LegacyHookRef {
+  file: string
+  line: number
+  text: string
+  /** current adapter that replaces the retired file; null = remove only */
+  hookId: string | null
+}
+
+interface LegacyMigrationResult {
+  success: boolean
+  message: string
+  backupPath?: string
+  removed: number
+  hookId: string | null
+}
+
+interface RuntimePreflight {
+  platform: string
+  shell: { name: string; hookId: string } | null
+  checks: Array<{
+    id: 'python3' | 'curl' | 'mitmdump' | 'zsh' | 'bash' | 'pwsh' | 'powershell'
+    found: boolean
+    neededFor: string[]
+    /** copyable install command, present when missing */
+    remediation?: string
+  }>
+  legacyHooks: LegacyHookRef[]
 }
 
 interface CaptureSourceInfo {

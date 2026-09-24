@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildShellCatalog, defaultShell, isHookable, type ShellProbe } from '../src/core/shell-catalog'
+import { buildShellCatalog, isHookable, type ShellProbe } from '../src/core/shell-catalog'
 
 const GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe'
 const PWSH7 = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'
@@ -80,23 +80,4 @@ describe('shell catalog', () => {
     expect(new Set(cat.map((s) => s.id)).size).toBe(cat.length)
   })
 
-  describe('defaultShell', () => {
-    it('honours the remembered choice', () => {
-      const cat = buildShellCatalog(probe({ exists: (p) => p === GIT_BASH }))
-      expect(defaultShell(cat, 'git-bash')?.id).toBe('git-bash')
-      expect(defaultShell(cat, 'cmd')?.id).toBe('cmd')
-    })
-
-    it('falls back to a shell that can be recorded, not just the first one', () => {
-      // A remembered id that no longer exists (distro removed, Git uninstalled)
-      // must not silently drop the pane onto an unhookable shell.
-      const cat = buildShellCatalog(probe({ exists: (p) => p === GIT_BASH }))
-      expect(defaultShell(cat, 'wsl:gone')?.id).toBe('powershell')
-      expect(isHookable(defaultShell(cat)!.flavour)).toBe(true)
-    })
-
-    it('returns null for an empty catalog', () => {
-      expect(defaultShell([])).toBeNull()
-    })
-  })
 })

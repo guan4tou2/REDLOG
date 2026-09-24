@@ -11,6 +11,13 @@
 //
 // The ten sources are not deleted, only demoted: the same CaptureHealthCard,
 // unchanged, sits behind a disclosure below.
+//
+// Spec 037: proving the built-in terminal records is the first step, not the
+// last. Once it has, the primary action becomes connecting the terminal the
+// operator actually works in (RecordTerminalFlow, verified by a nonce command),
+// with the timeline demoted to a text link and HTTP offered as an optional,
+// dismissable step. And when the built-in terminal is silent, preflight says
+// which dependency is missing instead of a timer guessing at it.
 
 import { lazy, Suspense, useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
@@ -19,15 +26,18 @@ import { isEvidence } from '../lib/housekeeping'
 import { eventTitle } from '../lib/eventTitle'
 import { EmptyState } from './EmptyState'
 import { Button } from './Button'
+import { RecordTerminalFlow, MissingList, type RecordTarget } from './RecordTerminalFlow'
+import { HttpCaptureStep } from './HttpCaptureStep'
+import { missingDependencies, shellLabel } from '../lib/terminalActivation'
 import { ChevronRight, Terminal as TerminalIcon } from 'lucide-react'
 import type { RedLogEvent } from '../../../core/db/events'
 
 const TerminalView = lazy(() => import('./TerminalView'))
 
 /** How long to wait after the operator starts typing before admitting that
- *  nothing is arriving. Long enough that a slow first command is not called a
- *  failure; short enough that they are not left reading "nothing yet" while the
- *  hook is silently broken. */
+ *  nothing is arriving — used only once preflight has found every dependency,
+ *  so the message can no longer be "python3 or curl" by guesswork. Long enough
+ *  that a slow first command is not called a failure. */
 const STUCK_AFTER_MS = 10_000
 
 export function FirstRunView({ onNavigate, renderCaptureCard }: {
@@ -42,6 +52,23 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   const [showSources, setShowSources] = useState(false)
   const [stuck, setStuck] = useState(false)
   const waitingSince = useRef<number | null>(null)
+  const [preflight, setPreflight] = useState<RuntimePreflight | null>(null)
+  const [wsl, setWsl] = useState<WslDistro | null>(null)
+  const [recording, setRecording] = useState<RecordTarget | null>(null)
+
+  const checkRuntime = (): void => {
+    window.redlog.runtime.preflight().then(setPreflight).catch(() => { /* no preflight, no claims */ })
+  }
+  useEffect(checkRuntime, [])
+
+  // WSL is its own terminal with its own install path (the one Settings'
+  // WslPanel uses); offer it beside the host shell, never instead of it.
+  useEffect(() => {
+    if (preflight?.platform !== 'win32') return
+    window.redlog.wsl.listDistros()
+      .then((ds) => setWsl(ds.find((d) => d.isDefault) ?? ds[0] ?? null))
+      .catch(() => setWsl(null))
+  }, [preflight?.platform])
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -62,9 +89,9 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   }, [])
 
   // "Nothing has arrived" and "capture is broken" look identical for the first
-  // few seconds and completely different after ten. The hook this screen relies
-  // on needs python3 and curl; without them the operator would otherwise run a
-  // command and go on reading an empty-state that says nothing has run yet.
+  // few seconds and completely different after ten. A missing dependency is
+  // known up front from preflight and shown without waiting; this timer only
+  // covers what preflight cannot see.
   useEffect(() => {
     if (rows.length > 0) { setStuck(false); return }
     const onKey = (): void => { if (waitingSince.current === null) waitingSince.current = Date.now() }
@@ -76,6 +103,13 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   }, [rows.length])
 
   const lit = rows.length > 0
+  const missing = missingDependencies(preflight)
+  const hostTarget: RecordTarget | null = preflight?.shell
+    ? { kind: 'host', hookId: preflight.shell.hookId, label: shellLabel(preflight.shell.name) }
+    : null
+  const wslTarget: RecordTarget | null = wsl
+    ? { kind: 'wsl', distro: wsl.name, shell: wsl.hookStatus.zsh !== 'no-shell' ? 'zsh' : 'bash', label: `WSL ${wsl.name}` }
+    : null
 
   return (
     <div className="h-full flex flex-col p-4 gap-3 overflow-auto">
@@ -111,10 +145,36 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                   </li>
                 ))}
               </ul>
-              <Button level="primary" onClick={() => onNavigate('timeline')} data-testid="first-run-open-timeline">
-                {t('firstRun.openTimeline')}
-              </Button>
+              <p className="text-xs text-redlog-text mb-2">{t('firstRun.recordedOk')}</p>
+              <div className="flex flex-wrap gap-2">
+                {hostTarget && (
+                  <Button level="primary" onClick={() => setRecording(hostTarget)} data-testid="first-run-record-terminal">
+                    {t('firstRun.recordMyTerminal', { shell: hostTarget.label })}
+                  </Button>
+                )}
+                {wslTarget && (
+                  <Button level="secondary" onClick={() => setRecording(wslTarget)} data-testid="first-run-record-wsl">
+                    {t('firstRun.recordMyWsl', { distro: wsl?.name ?? '' })}
+                  </Button>
+                )}
+              </div>
+              <button
+                onClick={() => onNavigate('timeline')}
+                data-testid="first-run-builtin-only"
+                className="mt-2 text-xs text-redlog-text-dim hover:text-redlog-text underline"
+              >
+                {t('firstRun.builtinOnly')}
+              </button>
+              {recording && <RecordTerminalFlow key={recording.label} target={recording} />}
+              <div className="mt-3"><HttpCaptureStep /></div>
             </>
+          ) : missing.length > 0 ? (
+            <div data-testid="first-run-missing-deps" className="text-xs space-y-2">
+              <p className="font-semibold text-redlog-text">{t('firstRun.missingTitle')}</p>
+              <p className="text-redlog-text-dim">{t('firstRun.missingWhy', { names: missing.map((c) => c.id).join(', ') })}</p>
+              <MissingList missing={missing} />
+              <Button level="secondary" onClick={checkRuntime}>{t('firstRun.recheck')}</Button>
+            </div>
           ) : stuck ? (
             <EmptyState
               icon={TerminalIcon}

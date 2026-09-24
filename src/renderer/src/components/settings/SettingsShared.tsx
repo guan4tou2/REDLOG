@@ -14,11 +14,12 @@ export interface ConfigState {
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
   screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
   overlay?: { showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
-  clipboard?: { enabled: boolean; pollMs?: number; storePreview?: boolean }
-  fileWatcher?: { enabled: boolean; watchPaths?: string[]; ignorePatterns?: string[] }
-  processMonitor?: { enabled: boolean; pollMs?: number; ignoreCommands?: string[] }
-  connectionMonitor?: { enabled: boolean; pollMs?: number }
-  powershellTranscript?: { enabled: boolean }
+  clipboard?: { pollMs?: number; storePreview?: boolean }
+  fileWatcher?: { watchPaths?: string[]; ignorePatterns?: string[] }
+  processMonitor?: { pollMs?: number; ignoreCommands?: string[] }
+  connectionMonitor?: { pollMs?: number }
+  // Optional capture packs (Spec 035); mirrors RedLogConfig['packs'].
+  packs?: { hostMonitors?: boolean; aiAgents?: boolean; windowsOutput?: boolean }
   browser?: {
     binary: string
     proxy: string
@@ -34,7 +35,6 @@ export interface ConfigState {
   // plugins; the shape here (enabled + emitThinking) stays the "default"
   // per-plugin knob set going forward.
   agentTailer?: {
-    enabled: boolean
     emitThinking?: boolean
   }
   // Mirrors RedLogConfig['loot'] (Spec 032).
@@ -61,7 +61,7 @@ export interface HookInfo {
   agentType: string
   installed: boolean
   available: boolean
-  installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  installMethod: 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
   hookFile: string
   manualSteps?: ManualStep[]
 }

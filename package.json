@@ -1,6 +1,6 @@
 {
   "name": "redlog",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "Red Team Operation Log",
   "author": "guan4tou2",
   "repository": {
@@ -28,7 +28,9 @@
     "pree2e": "electron-rebuild -f -o better-sqlite3",
     "e2e": "playwright test",
     "pree2e:ui": "electron-rebuild -f -o better-sqlite3",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "gen:settings-search": "node scripts/gen-settings-search.mjs",
+    "verify:architecture": "node scripts/verify-architecture.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
@@ -39,6 +41,7 @@
     "@xterm/xterm": "^5.5.0",
     "better-sqlite3": "^13.0.3",
     "chokidar": "^3.6.0",
+    "electron-updater": "^6.8.9",
     "js-yaml": "^4.1.0",
     "lucide-react": "^1.33.0",
     "node-pty": "^1.1.0",

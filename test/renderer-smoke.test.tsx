@@ -8,7 +8,7 @@
 // least one event of every agent_type, which is exactly the shape that broke.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, cleanup, screen, fireEvent, act } from '@testing-library/react'
+import { render, cleanup, screen, fireEvent, act, within, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
@@ -93,7 +93,7 @@ function installBridge(): void {
       create: async () => ({ id: 'p1', name: 'Proj', createdAt: 1, lastOpened: 2, path: '/tmp/p1' }),
       open: async () => ({ id: 'p1', name: 'Proj', createdAt: 1, lastOpened: 2, path: '/tmp/p1' }),
       delete: async () => true,
-      active: async () => ({ id: 'p1', name: 'Proj' })
+      active: async () => ({ id: 'p1', name: 'Proj', createdAt: Date.UTC(2026, 8, 1, 9, 0) })
     },
     ip: {
       getStatus: async () => ({
@@ -332,6 +332,22 @@ describe('renderer views render without throwing', () => {
 
   // #47: the artifact-rotation eviction budgets live in the "Capture control"
   // Settings tab. Switching to it must surface the controls.
+  it('StatusBar says its clock runs from the project\'s creation, not this session', async () => {
+    renderView(<StatusBar />)
+    const clock = await screen.findByTestId('statusbar-uptime')
+    await waitFor(() => expect(clock.getAttribute('title')).toMatch(/since this project was created .*not this session/))
+  })
+
+  it('Settings search finds a field and opens the page that holds it', async () => {
+    renderView(<Settings />)
+    const box = await screen.findByPlaceholderText('Search settings…')
+    fireEvent.change(box, { target: { value: 'loot detection' } })
+    const results = await screen.findByTestId('settings-search-results')
+    fireEvent.click(within(results).getByText('Loot detection'))
+    // The Capture control page is open: its Loot detection hint is on screen.
+    expect(await screen.findByText(/Rules that are off are not recorded as loot/)).toBeTruthy()
+  })
+
   it('Settings exposes the artifact-rotation budgets under "Capture control"', async () => {
     renderView(<Settings />)
     const tab = await screen.findByText('Capture control')

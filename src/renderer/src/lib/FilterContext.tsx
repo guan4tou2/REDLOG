@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, u
 import type { ReactNode } from 'react'
 import type { EventFilter } from '../../../core/db/events'
 import { formatTime } from './time'
+import { agentTypeLabel } from './timelineDomain'
 
 export interface TimeRange {
   since?: number
@@ -57,7 +58,8 @@ export function conditionLabels(filter: SharedFilter, t: Translate, opts: { pers
 } {
   return {
     ...(filter.targetId ? { target: `${t('filter.target')}: ${filter.targetId}` } : {}),
-    ...(filter.agentType ? { type: `${t('filter.type')}: ${filter.agentType}` } : {}),
+    // "Type: Shell", not the stored `shell` (Spec 034); the FilterBar puts the stored type in the tooltip.
+    ...(filter.agentType ? { type: `${t('filter.type')}: ${agentTypeLabel(filter.agentType, t)}` } : {}),
     ...(filter.timeRange ? { time: `${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}` } : {}),
     ...(filter.inScopeOnly ? { inScope: t('filter.inScopeOnly') } : {}),
     ...(filter.tier === 'chained' ? { tier: t('filter.chainedOnly') } : {}),
