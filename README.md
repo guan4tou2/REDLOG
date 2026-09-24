@@ -15,17 +15,17 @@ Install RedLog on **your operator machine** (the Kali box or laptop you attack
 from), not on a target. It records what you do; it is not an implant.
 
 Grab the installer for your platform from the
-[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.17.0**.
+[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.17.1**.
 Builds are unsigned (ad-hoc signed, not notarised), so each OS asks you to
 confirm once.
 
 | Platform | File | Install |
 |----------|------|---------|
-| Kali / Debian / Ubuntu (x64) | [`redlog_0.17.0_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.0/redlog_0.17.0_amd64.deb) | `sudo apt install ./redlog_*.deb` |
-| Other Linux (x64) | [`RedLog-0.17.0.AppImage`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.0/RedLog-0.17.0.AppImage) | `chmod +x RedLog-*.AppImage && ./RedLog-*.AppImage` |
-| Windows (x64 installer) | [`RedLog.Setup.0.17.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.0/RedLog.Setup.0.17.0.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
-| Windows (x64 portable) | [`RedLog.0.17.0.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.0/RedLog.0.17.0.exe) | No install; same SmartScreen prompt |
-| macOS (Apple Silicon) | [`RedLog-0.17.0-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.0/RedLog-0.17.0-arm64.dmg) | Drag to `/Applications`, then see below |
+| Kali / Debian / Ubuntu (x64) | [`redlog_0.17.1_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.1/redlog_0.17.1_amd64.deb) | `sudo apt install ./redlog_*.deb` |
+| Other Linux (x64) | [`RedLog-0.17.1.AppImage`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.1/RedLog-0.17.1.AppImage) | `chmod +x RedLog-*.AppImage && ./RedLog-*.AppImage` |
+| Windows (x64 installer) | [`RedLog.Setup.0.17.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.1/RedLog.Setup.0.17.1.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
+| Windows (x64 portable) | [`RedLog.0.17.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.1/RedLog.0.17.1.exe) | No install; same SmartScreen prompt |
+| macOS (Apple Silicon) | [`RedLog-0.17.1-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.17.1/RedLog-0.17.1-arm64.dmg) | Drag to `/Applications`, then see below |
 | macOS (Intel) | — | No installer; [build from source](#development) |
 
 **macOS** — the first launch is blocked because the app is unsigned. Right-click

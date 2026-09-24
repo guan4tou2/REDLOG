@@ -13,6 +13,17 @@ for full commit body + generated notes.
   names the likely reason (browser not proxied, HTTPS certificate, terminal
   routing).
 
+## v0.17.1 — 2026-09-24
+
+- **Fixed: exported evidence bundles had no verifier.** Installed builds did
+  not ship `tools/redlog-verify.py`, so every bundle exported from them
+  silently lacked `redlog-verify.py`, `verify.sh`, `verify.cmd` and the
+  README. The verifier now ships, the release check requires it, and an
+  export that cannot find it fails with the reason instead of producing a
+  bundle nobody can verify.
+- **Docs:** `docs/RELEASE-SMOKE-TEST.md` — the per-release checklist run on a
+  clean machine with the packaged build.
+
 ## v0.17.0 — 2026-09-24
 
 **Upgrading — read first.**
