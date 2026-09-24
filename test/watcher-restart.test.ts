@@ -112,3 +112,46 @@ describe('file watcher — restarting', () => {
     expect(openWatchers()).toBe(0)
   })
 })
+
+describe('PowerShell transcript follower — restarting', () => {
+  let pt: typeof import('../src/main/services/powershell-transcript')
+  // stopProject, then startProject: configure (src/main/index.ts), then
+  // applyCapturePacks switches the pack. config:save calls it only once.
+  const switchProject = (packOn: boolean): void => {
+    pt.stopPowershellTranscript()
+    void pt.configurePowershellTranscript({ engagementId: 'eng2', operatorId: 'op2' })
+    void pt.configurePowershellTranscript({ enabled: packOn })
+  }
+
+  beforeEach(async () => { pt = await import('../src/main/services/powershell-transcript') })
+  afterEach(() => pt.stopPowershellTranscript())
+
+  it('stops following when a project with the pack off opens after one with it on', async () => {
+    await pt.configurePowershellTranscript({ enabled: true, ...IDS })
+    switchProject(false)
+    await settle()
+    expect(openWatchers()).toBe(0)
+
+    const dir = path.join(home, '.redlog', 'transcripts')
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'session.txt')
+    fs.writeFileSync(file, [
+      '**********************',
+      'Windows PowerShell transcript start',
+      'Start time: 20260924120000',
+      'Machine: DESKTOP-7',
+      '**********************',
+      'PS C:\\> whoami',
+      'desktop\\operator'
+    ].join('\n'))
+    fire('change', file)
+    expect(h.ingested).toHaveLength(0)
+  })
+
+  it('keeps one follower when a project with the pack on opens after another', async () => {
+    await pt.configurePowershellTranscript({ enabled: true, ...IDS })
+    switchProject(true)
+    await settle()
+    expect(openWatchers()).toBe(1)
+  })
+})
