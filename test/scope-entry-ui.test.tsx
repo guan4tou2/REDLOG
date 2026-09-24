@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProjectPicker from '../src/renderer/src/components/ProjectPicker'
 import GeneralPage from '../src/renderer/src/components/settings/GeneralPage'
@@ -9,7 +9,7 @@ import type { ConfigState } from '../src/renderer/src/components/settings/Settin
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('scope and project identity entry', () => {
-  it('persists exclude targets entered during advanced project creation', async () => {
+  it('persists exclude targets entered on the project creation card', async () => {
     const create = vi.fn(async () => ({ id: 'p1', name: 'Lab', createdAt: 1, lastOpened: 1, path: '/tmp/p1' }))
     ;(window as unknown as { redlog: unknown }).redlog = {
       project: { list: async () => [], create, open: async () => null, delete: async () => true, rename: async () => ({ ok: true }), active: async () => ({ id: 'p1' }) },
@@ -17,12 +17,7 @@ describe('scope and project identity entry', () => {
     }
     render(<I18nProvider><ProjectPicker onProjectOpen={() => {}} /></I18nProvider>)
     fireEvent.change(screen.getByPlaceholderText('e.g. Client-Pentest-Q3'), { target: { value: 'Lab' } })
-    fireEvent.click(screen.getByText('Advanced Setup (optional)'))
-    const dialog = await screen.findByRole('dialog')
-    const exclude = within(dialog).getByPlaceholderText('127.0.0.1, Kali IP, or excluded CIDR')
-    fireEvent.change(exclude, { target: { value: '127.0.0.1' } })
-    fireEvent.keyDown(exclude, { key: 'Enter' })
-    fireEvent.click(within(dialog).getByLabelText('Close'))
+    fireEvent.change(screen.getByLabelText('Excluded targets'), { target: { value: '127.0.0.1' } })
     fireEvent.click(screen.getByText('Create'))
     await vi.waitFor(() => expect(create).toHaveBeenCalledWith('Lab', expect.objectContaining({
       scope: expect.objectContaining({ excludeTargets: ['127.0.0.1'] })
