@@ -14,65 +14,65 @@
 
 ## Requirement Completeness
 
-- [ ] CHK001 Does the spec say whether the partial-range disclosure gives a total, a way to reach the rest, or both? FR-003 says "or", and research R12 picks a total. [Clarity, Spec §FR-003]
-- [ ] CHK002 Are the placement and lifetime of the "N of M" disclosure specified: where on the Timeline it appears, and when it goes away? [Gap, Spec §FR-003]
-- [ ] CHK003 Is every view × condition pair that cannot be honoured listed? That means HTTP History × Type, HTTP History × tier, the Transcript × Type, and any others. [Completeness, Spec §FR-012]
-- [ ] CHK004 Is the list of surfaces that print an event time complete? Candidates: the HUD, Screenshots, Loot, the Targets page's first and last seen, Scope, the export dialog and the status bar. [Completeness, Spec §FR-013]
-- [ ] CHK005 Is failure handling required for every Timeline read: page, total, match check, earlier count, nearest match, load-back, and live-row admission? US3 scenario 7 covers only the text query. [Coverage, Spec §FR-010]
-- [ ] CHK006 Are loading requirements defined separately for each case? The cases are a filter change, text matching, and load-back progress. SC-006 says only "told while it loads". [Completeness, Spec §SC-006]
-- [ ] CHK007 Does the spec require load-back to be cancellable and to show progress, or are these only in research R6? [Gap, Spec §US3-5]
-- [ ] CHK008 Does the spec require the domain-document updates, and name the documents and sections? The constitution requires this as an explicit task. [Dependency, Spec §Assumptions, FR-008]
+- [x] CHK001 Does the spec say whether the partial-range disclosure gives a total, a way to reach the rest, or both? FR-003 says "or", and research R12 picks a total. [Clarity, Spec §FR-003]
+- [x] CHK002 Are the placement and lifetime of the "N of M" disclosure specified: where on the Timeline it appears, and when it goes away? [Gap, Spec §FR-003]
+- [x] CHK003 Is every view × condition pair that cannot be honoured listed? That means HTTP History × Type, HTTP History × tier, the Transcript × Type, and any others. [Completeness, Spec §FR-012]
+- [x] CHK004 Is the list of surfaces that print an event time complete? Candidates: the HUD, Screenshots, Loot, the Targets page's first and last seen, Scope, the export dialog and the status bar. [Completeness, Spec §FR-013]
+- [x] CHK005 Is failure handling required for every Timeline read: page, total, match check, earlier count, nearest match, load-back, and live-row admission? US3 scenario 7 covers only the text query. [Coverage, Spec §FR-010]
+- [x] CHK006 Are loading requirements defined separately for each case? The cases are a filter change, text matching, and load-back progress. SC-006 says only "told while it loads". [Completeness, Spec §SC-006]
+- [x] CHK007 Does the spec require load-back to be cancellable and to show progress, or are these only in research R6? [Gap, Spec §US3-5]
+- [x] CHK008 Does the spec require the domain-document updates, and name the documents and sections? The constitution requires this as an explicit task. [Dependency, Spec §Assumptions, FR-008]
 
 ## Requirement Clarity
 
-- [ ] CHK009 Does the spec use "text" in one sense only? FR-004, FR-007 and FR-008 use it for the whole filter box, but the query contract uses it only for tokens that are not conditions. [Ambiguity, Spec §FR-004, §FR-007, §FR-008]
-- [ ] CHK010 Is it stated that a conditions-only input (for example `session:S1`) dims events, like free text, rather than removing them? [Clarity, Spec §FR-004, Clarifications]
-- [ ] CHK011 Is the unit of the earlier-match count defined as events (rows) or as drawn items? A marker and its amendment are two rows (research R5). [Clarity, Spec §FR-004, §US3-5]
-- [ ] CHK012 Is the `operator:` condition's rule, matching the recorded operator id and never a display name, stated in the requirements? Today it appears only in Assumptions and research R7. [Clarity, Spec §FR-009]
-- [ ] CHK013 Does the spec say how a ⌘K host pick is read? Is it quoted phrase text, and what happens to hosts with a port or a colon? [Clarity, Spec §FR-009, §US3-6]
-- [ ] CHK014 When several conditions are set, is it defined which one the empty state names as "the filter responsible"? [Clarity, Spec §Edge Cases]
-- [ ] CHK015 Is the tier control's place in the FilterBar specified? It could be an always-visible chip like "In scope only", or sit inside the expanded panel. [Clarity, Spec §FR-011, §Assumptions]
-- [ ] CHK016 Are relative freshness labels ("3s ago", "Xm behind") explicitly outside the display-zone requirement? [Clarity, Spec §FR-013]
+- [x] CHK009 Does the spec use "text" in one sense only? FR-004, FR-007 and FR-008 use it for the whole filter box, but the query contract uses it only for tokens that are not conditions. [Ambiguity, Spec §FR-004, §FR-007, §FR-008]
+- [x] CHK010 Is it stated that a conditions-only input (for example `session:S1`) dims events, like free text, rather than removing them? [Clarity, Spec §FR-004, Clarifications]
+- [x] CHK011 Is the unit of the earlier-match count defined as events (rows) or as drawn items? A marker and its amendment are two rows (research R5). [Clarity, Spec §FR-004, §US3-5]
+- [x] CHK012 Is the `operator:` condition's rule, matching the recorded operator id and never a display name, stated in the requirements? Today it appears only in Assumptions and research R7. [Clarity, Spec §FR-009]
+- [x] CHK013 Does the spec say how a ⌘K host pick is read? Is it quoted phrase text, and what happens to hosts with a port or a colon? [Clarity, Spec §FR-009, §US3-6]
+- [x] CHK014 When several conditions are set, is it defined which one the empty state names as "the filter responsible"? [Clarity, Spec §Edge Cases]
+- [x] CHK015 Is the tier control's place in the FilterBar specified? It could be an always-visible chip like "In scope only", or sit inside the expanded panel. [Clarity, Spec §FR-011, §Assumptions]
+- [x] CHK016 Are relative freshness labels ("3s ago", "Xm behind") explicitly outside the display-zone requirement? [Clarity, Spec §FR-013]
 
 ## Requirement Consistency
 
-- [ ] CHK017 Is it stated that a target chosen on the Targets page stays set across views? Earlier behaviour cleared it on every navigation, and research R4 now keeps it. [Gap, Spec §US2, §FR-005]
-- [ ] CHK018 Is it stated that the case-insensitive target match applies to every view's target filter, including Search, the Transcript, HTTP History and Loot? Or does the spec suggest it applies only to the Timeline? [Consistency, Spec §Edge Cases, §FR-005]
-- [ ] CHK019 Do FR-012 ("cannot honour") and US4 scenario 3 (applied, but empty by construction) keep the two cases distinct, each with its own wording requirement? [Consistency, Spec §FR-012, §US4-3]
-- [ ] CHK020 Do the Timeline's existing counts have defined meanings in the new model: lane chips, the agent-turn "hidden" count, and the export slice count? Or are they left to contradict FR-004's "counts describe admitted events"? [Consistency, Spec §FR-004, §FR-015, §FR-016]
-- [ ] CHK021 Is persistence of the `/` text across project reopen specified? Clarifications decide it for the tier only; the text is stored per project today. [Gap, Consistency, Spec §Clarifications]
-- [ ] CHK022 Is the way text dimming interacts with the other highlight modes specified? Causal-chain focus and the anomaly filter are mutually exclusive with it today. [Coverage, Spec §Assumptions]
+- [x] CHK017 Is it stated that a target chosen on the Targets page stays set across views? Earlier behaviour cleared it on every navigation, and research R4 now keeps it. [Gap, Spec §US2, §FR-005]
+- [x] CHK018 Is it stated that the case-insensitive target match applies to every view's target filter, including Search, the Transcript, HTTP History and Loot? Or does the spec suggest it applies only to the Timeline? [Consistency, Spec §Edge Cases, §FR-005]
+- [x] CHK019 Do FR-012 ("cannot honour") and US4 scenario 3 (applied, but empty by construction) keep the two cases distinct, each with its own wording requirement? [Consistency, Spec §FR-012, §US4-3]
+- [x] CHK020 Do the Timeline's existing counts have defined meanings in the new model: lane chips, the agent-turn "hidden" count, and the export slice count? Or are they left to contradict FR-004's "counts describe admitted events"? [Consistency, Spec §FR-004, §FR-015, §FR-016]
+- [x] CHK021 Is persistence of the `/` text across project reopen specified? Clarifications decide it for the tier only; the text is stored per project today. [Gap, Consistency, Spec §Clarifications]
+- [x] CHK022 Is the way text dimming interacts with the other highlight modes specified? Causal-chain focus and the anomaly filter are mutually exclusive with it today. [Coverage, Spec §Assumptions]
 
 ## Acceptance Criteria Quality
 
-- [ ] CHK023 Is SC-001's fixture self-consistent? 1,000 events is exactly five pages of 200, not "more than five". [Measurability, Spec §SC-001]
-- [ ] CHK024 Does SC-002's "FilterBar-chip count" name a count that some surface actually states? The chip itself shows no count. [Clarity, Spec §SC-002]
-- [ ] CHK025 Is "printed identically" in SC-005 defined when surfaces print different precisions: time only, with seconds, or with date? [Clarity, Spec §SC-005]
-- [ ] CHK026 Does SC-006 define its measurement conditions, such as filter kinds, cold or warm cache, and the reference hardware? [Measurability, Spec §SC-006]
-- [ ] CHK027 Is SC-007 measurable for views that state no total? Search pages with `hasMore` and shows no count. [Measurability, Spec §SC-007]
-- [ ] CHK028 Is SC-004's rule, that a lit chip is either applied or disclosed, required on every view for the new tier chip, and not only on the Timeline? [Coverage, Spec §SC-004, §FR-011]
+- [x] CHK023 Is SC-001's fixture self-consistent? 1,000 events is exactly five pages of 200, not "more than five". [Measurability, Spec §SC-001]
+- [x] CHK024 Does SC-002's "FilterBar-chip count" name a count that some surface actually states? The chip itself shows no count. [Clarity, Spec §SC-002]
+- [x] CHK025 Is "printed identically" in SC-005 defined when surfaces print different precisions: time only, with seconds, or with date? [Clarity, Spec §SC-005]
+- [x] CHK026 Does SC-006 define its measurement conditions, such as filter kinds, cold or warm cache, and the reference hardware? [Measurability, Spec §SC-006]
+- [x] CHK027 Is SC-007 measurable for views that state no total? Search pages with `hasMore` and shows no count. [Measurability, Spec §SC-007]
+- [x] CHK028 Is SC-004's rule, that a lit chip is either applied or disclosed, required on every view for the new tier chip, and not only on the Timeline? [Coverage, Spec §SC-004, §FR-011]
 
 ## Scenario and Edge Case Coverage
 
-- [ ] CHK029 Is the case defined where there are earlier matches but none in the drawn range? The whole view is dimmed apart from the notice. [Coverage, Spec §US3-5]
-- [ ] CHK030 Is it specified whether the earlier-match count and the nearest match update after a load-back, and after live rows arrive? [Gap, Spec §FR-004]
-- [ ] CHK031 Is migration of a stored "Project" zone choice specified? FR-014 removes the option, and research R8 maps it to Local. [Coverage, Spec §FR-013, §FR-014]
-- [ ] CHK032 Are partial failures covered? One case is a successful page with a failed total, so "N of M" has no M. [Edge Case, Gap, Spec §FR-003, §FR-010]
-- [ ] CHK033 Is "no active project" required to be distinguishable from "no results" for the new channels? contracts/ipc.md returns empty shapes for it. [Consistency, contracts/ipc.md, Spec §FR-010]
+- [x] CHK029 Is the case defined where there are earlier matches but none in the drawn range? The whole view is dimmed apart from the notice. [Coverage, Spec §US3-5]
+- [x] CHK030 Is it specified whether the earlier-match count and the nearest match update after a load-back, and after live rows arrive? [Gap, Spec §FR-004]
+- [x] CHK031 Is migration of a stored "Project" zone choice specified? FR-014 removes the option, and research R8 maps it to Local. [Coverage, Spec §FR-013, §FR-014]
+- [x] CHK032 Are partial failures covered? One case is a successful page with a failed total, so "N of M" has no M. [Edge Case, Gap, Spec §FR-003, §FR-010]
+- [x] CHK033 Is "no active project" required to be distinguishable from "no results" for the new channels? contracts/ipc.md returns empty shapes for it. [Consistency, contracts/ipc.md, Spec §FR-010]
 
 ## Non-Functional Requirements
 
-- [ ] CHK034 Are accessibility requirements defined for dimmed and matched events, so dimming is conveyed by more than opacity? [Gap, Accessibility]
-- [ ] CHK035 Are keyboard requirements defined for the earlier-match notice and for cancelling load-back? [Gap, Accessibility, Spec §US3-5]
-- [ ] CHK036 Are both-locale requirements (en and zh-TW) stated for every new notice and label? [Gap, Localization]
-- [ ] CHK037 Is load-back's worst-case cost (research R6's known limit) captured as an accepted limitation in the spec, so it is not an unstated assumption? [Assumption, Spec §Assumptions]
+- [x] CHK034 Are accessibility requirements defined for dimmed and matched events, so dimming is conveyed by more than opacity? [Gap, Accessibility]
+- [x] CHK035 Are keyboard requirements defined for the earlier-match notice and for cancelling load-back? [Gap, Accessibility, Spec §US3-5]
+- [x] CHK036 Are both-locale requirements (en and zh-TW) stated for every new notice and label? [Gap, Localization]
+- [x] CHK037 Is load-back's worst-case cost (research R6's known limit) captured as an accepted limitation in the spec, so it is not an unstated assumption? [Assumption, Spec §Assumptions]
 
 ## Cross-Layer Contract Consistency
 
-- [ ] CHK038 Do the contracts require the page, the count and the match check to share one predicate set, so a count cannot disagree with its page? Is that requirement traceable to the spec? [Consistency, contracts/ipc.md, research R12]
-- [ ] CHK039 Are `events:count`'s cursor semantics, "strictly past this position", defined as the same boundary `events:queryPage` pages from? [Consistency, contracts/ipc.md]
-- [ ] CHK040 Are the 1,000-id limit on `events:matchIds` and its "reject, not truncate" rule consistent with Constitution VI? Does the Timeline's chunking requirement follow from it? [Consistency, contracts/ipc.md, data-model.md]
-- [ ] CHK041 Is it stated whether `/api/events/search` and the ⌘K palette take the new tier, or apply no shared filter as before? [Coverage, contracts/query-contract.md]
+- [x] CHK038 Do the contracts require the page, the count and the match check to share one predicate set, so a count cannot disagree with its page? Is that requirement traceable to the spec? [Consistency, contracts/ipc.md, research R12]
+- [x] CHK039 Are `events:count`'s cursor semantics, "strictly past this position", defined as the same boundary `events:queryPage` pages from? [Consistency, contracts/ipc.md]
+- [x] CHK040 Are the 1,000-id limit on `events:matchIds` and its "reject, not truncate" rule consistent with Constitution VI? Does the Timeline's chunking requirement follow from it? [Consistency, contracts/ipc.md, data-model.md]
+- [x] CHK041 Is it stated whether `/api/events/search` and the ⌘K palette take the new tier, or apply no shared filter as before? [Coverage, contracts/query-contract.md]
 
 ## Notes
 
@@ -83,3 +83,8 @@
 - Add comments or findings inline
 - Link to relevant resources or documentation
 - Items are numbered sequentially for easy reference
+- 2026-09-24: evaluated by Claude at the reviewer's request, against the spec as remediated after both Analyze runs. Three items failed first, and the spec was fixed before they were checked:
+  - CHK003: FR-012 now lists Loot with a non-`loot` Type.
+  - CHK004: FR-013 now names every surface, and says all print through one formatter.
+  - CHK026: SC-006 records the measuring machine.
+  The reviewer can uncheck any item.

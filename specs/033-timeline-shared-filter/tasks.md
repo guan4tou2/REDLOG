@@ -83,7 +83,7 @@ Timeline paging that US1 introduces. US5 is independent.
   8. A rejected live `matchIds` shows the live-admission failure with retry.
   9. A selected event that the new filter excludes (per `events.matchIds([id])`) is deselected, and the "outside the current filter" notice shows.
   10. With a filter set, the contributed export label is "Visible time range, filter not applied", with no `count`.
-  11. While a page loads, the loading state shows.
+  11. While the first page loads, the loading state shows. Once it arrives and before the total does, the status line marks the total as pending.
   12. Following an amendment to a marker that `events.matchIds` excludes opens the marker in the detail panel with the "outside the current filter" note, and adds nothing to the drawn events.
   13. Lane chip counts, and the agent-turn collapse's hidden count, count drawn, admitted rows only.
 
@@ -130,7 +130,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - the rows `queryEventsPage({ targetId: 'EXAMPLE.com' })` pages through
   - `countEvents({ filter: { targetId: 'Example.COM' } })`
   - `queryHttpFlowPage({ targetId: 'EXAMPLE.COM' })`, which matches case-insensitively
-  For target `10.0.0.5`, rows for `10.0.0.50` and `host`-only mentions are excluded. An export plan for a `time-range` subset with `targetId: 'EXAMPLE.com'` includes both casings, and its preview counts equal its execute counts (research R3).
+  For target `10.0.0.5`, rows for `10.0.0.50` and `host`-only mentions are excluded. An export plan for a `time-range` subset with `targetId: 'EXAMPLE.com'` includes both casings, and its preview counts equal its execute counts (research R3). Drive it through the registered-handler harness in `test/export-plan-ipc.test.ts`.
 - [ ] T018 [P] [US2] Write failing tests in `test/targets-open-in-timeline.test.tsx`.
   - "Open in Timeline" on `TargetView` sets the shared `targetId`, seen through a probe inside `FilterProvider`.
   - It calls `onOpenInTimeline(ts)` without a target argument.
@@ -236,14 +236,16 @@ Timeline paging that US1 introduces. US5 is independent.
   - Toggling sets `filter.tier`, `toEventFilter` emits `{ tier: 'chained' }`, and `activeCount` counts it.
   - A fresh `FilterProvider` starts at `'all'` even with `redlog-timeline-auditor-view:<id>` = `'1'` in localStorage.
   - `HttpHistoryPanel` under "Chained only" shows the logged-tier notice, in wording distinct from the unapplied-Type notice, and no rows.
-  - SC-004 matrix: with each chip set in turn (target, type, time, in-scope, personal, tier), `SearchPanel`, `TranscriptView`, `LootPanel` and `HttpHistoryPanel` either carry it in their bridge request, via `toEventFilter`, or show their notice for it. The expected notices are HTTP History × Type, HTTP History × Chained only, and the Transcript × an unbucketed Type.
+  - SC-004 matrix: with each chip set in turn (target, type, time, in-scope, personal, tier), `SearchPanel`, `TranscriptView`, `LootPanel` and `HttpHistoryPanel` either carry it in their bridge request, via `toEventFilter`, or show their notice for it. The expected notices are HTTP History × Type, HTTP History × Chained only, the Transcript × an unbucketed Type, and Loot × a Type other than `loot`.
 
 ### Implementation for User Story 4
 
 - [ ] T036 [US4] Add `tier?: 'chained'` to `EventFilter` in `src/core/db/event-queries.ts`. In `appendEventFilter`, emit `0 = 1` for the logged arm when `filter.tier === 'chained'`. `queryHttpFlowPage` returns an empty page under it. T034 passes.
 - [ ] T037 [US4] In `src/renderer/src/lib/FilterContext.tsx`, add `SharedFilter.tier: 'all' | 'chained'` (default `'all'` in `EMPTY`), `setTier`, the `toEventFilter` mapping and the `activeCount` term.
 - [ ] T038 [US4] Add the "Chained only" chip beside the in-scope chip in `src/renderer/src/components/FilterBar.tsx`. Add i18n `filter.chainedOnly` and `filter.chainedOnlyHint` (en and zh-TW).
-- [ ] T039 [US4] In `src/renderer/src/components/HttpHistoryPanel.tsx`, while `sharedFilter.tier === 'chained'`, show `filter.chainedOnlyHttp` ("HTTP flows are recorded in the logged tier; Chained only leaves nothing here"). Use the notice style, with wording distinct from `filter.unappliedHttpType` (FR-012).
+- [ ] T039 [US4] Add the "empty by construction" notices (FR-012), in the notice style and worded differently from the `filter.unapplied*` notices:
+  - In `src/renderer/src/components/HttpHistoryPanel.tsx`, while `sharedFilter.tier === 'chained'`, show `filter.chainedOnlyHttp` ("HTTP flows are recorded in the logged tier; Chained only leaves nothing here").
+  - In `src/renderer/src/components/LootPanel.tsx`, while the Type chip is set to anything other than `loot`, show `filter.lootTypeEmpty` ("Loot lists only loot rows; this Type leaves nothing here") in place of the bare empty list.
 - [ ] T040 [US4] Remove the auditor view from `Timeline.tsx`:
   - the `auditorView` state
   - its `redlog-timeline-auditor-view` load and save
@@ -317,7 +319,9 @@ Timeline paging that US1 introduces. US5 is independent.
   - `countEvents`
   - `matchEventIds` for 1,000 ids
   - `executeEventQuery` with a cursor and `limit: 1`
-  The first page and total for each condition kind are SC-006: under 200 ms each. Record the numbers in verification.md. Add NOCASE `target_id` indexes to `src/core/db/index.ts` only if a target case exceeds 200 ms.
+  The first page and total for each condition kind are SC-006: under 200 ms each.
+  Add a burst case for live admission (research R10): 60 `matchEventIds` calls of 100 ids within one second, with the main thread's total time under 100 ms (10%). If it misses, T012 coalesces admissions to at most 4 calls a second, and the case is re-run.
+  Record the numbers, and the machine they come from, in verification.md. Add NOCASE `target_id` indexes to `src/core/db/index.ts` only if a target case exceeds 200 ms.
 - [ ] T054 Add Unreleased entries to `CHANGELOG.md`:
   - The Timeline honours Type and Time, over the whole project.
   - `/` reads like Search and dims.

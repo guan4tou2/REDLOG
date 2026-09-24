@@ -335,13 +335,18 @@ All five agree.
     Type (it pins the proxy's type) and the Transcript with a Type outside its
     buckets.
   - **The condition is honoured but leaves the view nothing by
-    construction.** This is HTTP History with Chained only: its flows are all
-    in the logged tier.
+    construction.** Two cases:
+    - HTTP History with Chained only: its flows are all in the logged tier.
+    - Loot with a Type other than `loot`: Loot lists only loot rows.
 - **FR-013**: Every surface that prints an event time MUST use one display
   zone, chosen once in Settings ▸ General as Local or UTC.
-  - **Surfaces**: the Timeline and its axis, the event and marker detail,
-    Search, the Transcript, HTTP History, Loot, Screenshots, the Targets page,
-    Scope, the HUD and the FilterBar time chip.
+  - **Surfaces**: every surface that prints an event time, because all of them
+    print through the one formatter. That includes:
+    - the Timeline and its axis, and the event and marker detail
+    - Search, the Transcript, HTTP History, Loot, Screenshots, the Targets page
+      and Scope
+    - the Dashboard, Bookmarks and the replay drawer
+    - Settings ▸ Integrity, the status bar, the HUD and the FilterBar time chip
   - **Marker**: a time printed in UTC MUST carry its zone marker, so it is never
     read as local.
   - **Out of scope**: relative freshness labels ("3s ago", "Xm behind") are not
@@ -406,7 +411,9 @@ All five agree.
   seconds.
 - **SC-006**: On the 100,000-event fixture (research R13), with a warm cache,
   each kind of shared-filter condition returns the Timeline's first page and
-  its total within 200 ms each. The Timeline shows loading until both arrive.
+  its total within 200 ms each. The Timeline shows loading until the first page
+  arrives, and marks the total as pending until it does. The machine the numbers
+  come from is recorded with them in verification.md.
 - **SC-007**: With "chained only" set, every row every event view lists is
   chained. Where a view states a total, it equals the chained-tier count for
   the same filter.
