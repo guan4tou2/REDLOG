@@ -103,7 +103,8 @@
   - 預覽列出事件總數、包含數與丟棄數；
   - 按執行，產出一個資料夾。
 - [ ] 資料夾裡有 `manifest.json`、`manifest.sha256`、`events.jsonl`、**`redlog-verify.py`、`verify.sh`、`verify.cmd`、`README.md`**。
-  - ⚠️ v0.17.0 已知會失敗：打包版沒有附上 `tools/redlog-verify.py`，匯出時默默少了後面四個檔。
+  - v0.17.0 以前的版本會少掉後面四個檔：打包版沒有附上 `tools/redlog-verify.py`。v0.17.1 已修正（#157），
+    現在找不到驗證器時，匯出會直接失敗並說明原因。
 - [ ] 在資料夾裡跑 `bash verify.sh`（Windows 用 `verify.cmd`），exit 0，並回報 chain 完整。
 - [ ] 改掉 `events.jsonl` 的任一個字元再驗證 → 失敗（exit 不是 0）。
 
