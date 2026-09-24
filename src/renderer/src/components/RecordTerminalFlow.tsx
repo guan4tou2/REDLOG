@@ -178,7 +178,7 @@ export function MissingList({ missing }: { missing: RuntimePreflight['checks'] }
   )
 }
 
-/** Spec 038: "connected" is not "the session is recorded". The hook records
+/** Spec 039: "connected" is not "the session is recorded". The hook records
  *  command metadata only, so the verified state says so and names the way to
  *  keep output — `redlog-session` where the POSIX adapter provides it. */
 function VerifiedScope({ target }: { target: RecordTarget }): JSX.Element {

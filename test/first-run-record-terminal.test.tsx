@@ -270,7 +270,7 @@ describe('first run: optional HTTP card', () => {
   })
 })
 
-// Spec 038: "connected" must say what is recorded, and HTTP is verified by the
+// Spec 039: "connected" must say what is recorded, and HTTP is verified by the
 // first request that reaches RedLog, not by the proxy process running.
 async function verifyShell(): Promise<HTMLElement> {
   fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
@@ -279,7 +279,7 @@ async function verifyShell(): Promise<HTMLElement> {
   return screen.findByTestId('record-terminal-verified')
 }
 
-describe('first run: a verified shell says what it records (Spec 038)', () => {
+describe('first run: a verified shell says what it records (Spec 039)', () => {
   it('names the metadata, says output is not included, and offers redlog-session', async () => {
     install()
     draw()
@@ -303,7 +303,7 @@ describe('first run: a verified shell says what it records (Spec 038)', () => {
 const RUNNING: ManagedProxyStatus = { state: 'running', url: 'http://127.0.0.1:8080', caPath: '/home/op/.mitmproxy/mitmproxy-ca-cert.pem' }
 const HTTP_EVENT: Ev = { id: 'h1', timestamp: 10, agentType: 'scanner', data: { subtype: 'http_request_start', flow_id: 'f1', url: 'http://example.test/' } }
 
-describe('first run: HTTP is verified by the first request (Spec 038)', () => {
+describe('first run: HTTP is verified by the first request (Spec 039)', () => {
   it('waits while the proxy runs and verifies only on an HTTP request event, then stops listening', async () => {
     install({ proxy: RUNNING })
     draw()

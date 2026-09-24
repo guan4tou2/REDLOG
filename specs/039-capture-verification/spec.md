@@ -1,6 +1,6 @@
 # Feature Specification: Capture Verification Contract
 
-**Feature Branch**: `feat/038-capture-verification`
+**Feature Branch**: `feat/039-capture-verification`
 **Created**: 2026-09-24
 **Status**: Verified
 **Input**: After v0.17.0, "connected" still overpromised in two places: a verified shell did not say that output is not recorded, and HTTP counted as working once mitmdump was listening.
