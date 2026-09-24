@@ -15,8 +15,10 @@ import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineClus
 import { buildTimeMap, computeDomainBounds, computeBins, type TimeMap } from '../lib/timelineTimeMap'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeViolationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { buildSearchIndex, computeFilterMatches, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, computeRecentEvents, computeSliceCount, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
+import { QueryReadout } from './QueryReadout'
+import { parseQuery } from '../../../core/query/contract'
 import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment,
@@ -145,6 +147,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // is dropped, so rows for the old filter never land under the new one.
   const [hasMore, setHasMore] = useState(false)
   const pageCursorRef = useRef<string | null>(null)
+  // The same cursor as state, for what is computed from it (earlier matches).
+  const [pageCursor, setPageCursorState] = useState<string | null>(null)
+  const setPageCursor = (c: string | null): void => { pageCursorRef.current = c; setPageCursorState(c) }
   const generationRef = useRef(0)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -380,18 +385,20 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   }, [])
 
   // ⌘K → an operator → filter this view to what that person did. The palette
-  // cannot reach into the Timeline's filter state, so it asks by event.
+  // cannot reach into the Timeline's filter state, so it asks by event. The
+  // pick arrives as the recorded operator id and becomes the query contract's
+  // `operator:` condition (spec 033 FR-009); names change, ids do not.
   useEffect(() => {
     const onFilterOperator = (e: Event): void => {
-      const name = (e as CustomEvent<string>).detail
-      if (name) setFilterQuery(name)
+      const id = (e as CustomEvent<string>).detail
+      if (id) setFilterQuery(`operator:${id}`)
     }
     window.addEventListener('redlog:filter-operator', onFilterOperator)
-    // §10: ⌘K host search lands the operator on the Timeline filtered to that
-    // host — the filter box already matches `data.host`, so it's the same path.
+    // §10: ⌘K host search lands the operator on the Timeline with that host
+    // as quoted text: a phrase, so `10.0.0.5:8080` is never read as a field.
     const onFilterHost = (e: Event): void => {
       const host = (e as CustomEvent<string>).detail
-      if (host) setFilterQuery(host)
+      if (host) setFilterQuery(`"${host.replace(/"/g, '')}"`)
     }
     window.addEventListener('redlog:filter-host', onFilterHost)
     return () => {
@@ -641,7 +648,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     const gen = ++generationRef.current
     eventsMapRef.current = new Map()
     sortedRef.current = []
-    pageCursorRef.current = null
+    setPageCursor(null)
     setEvents([])
     setHasMore(false)
     setLoadError(null)
@@ -655,7 +662,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         mergeRows(page.items)
         setEvents([...sortedRef.current])
         setHasMore(page.hasMore)
-        pageCursorRef.current = page.nextCursor
+        setPageCursor(page.nextCursor)
         setLoading(false)
         checkSelection(gen)
       })
@@ -674,17 +681,21 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   const loadMore = useCallback(() => {
     if (loading || !hasMore || !pageCursorRef.current) return
     const gen = generationRef.current
+    const from = pageCursorRef.current
     setLoadError(null)
     setLoading(true)
     window.redlog.events.queryPage({
-      ...eventFilterRef.current, excludeHousekeeping: true, limit: PAGE_ROWS, cursor: pageCursorRef.current
+      ...eventFilterRef.current, excludeHousekeeping: true, limit: PAGE_ROWS, cursor: from
     })
       .then((page) => {
         if (gen !== generationRef.current) return
+        // A load-back moved the range past this page while it was in flight;
+        // its rows are already drawn and its cursor would step backwards.
+        if (pageCursorRef.current !== from) { setLoading(false); return }
         mergeRows(page.items)
         setEvents([...sortedRef.current])
         setHasMore(page.hasMore)
-        pageCursorRef.current = page.nextCursor
+        setPageCursor(page.nextCursor)
         setLoading(false)
       })
       .catch((err: unknown) => {
@@ -814,47 +825,97 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     [events, visibleRows, collapsedBands, pluginTypes]
   )
 
-  // Debounced so a held key or a fast typist does not run the scan per
-  // character. 120 ms sits below the point where the filter feels laggy and
-  // above a burst of keystrokes.
+  // Spec 033 US3: the box is read by the query contract — the same parse,
+  // conditions and text matching as Search — and the persistence layer says
+  // which drawn rows match. Nothing typed here removes a row: the rest stay
+  // drawn, dimmed, so a match keeps its context (FR-004). Debounced so a held
+  // key or a fast typist does not query per character.
   const [filterQueryDebounced, setFilterQueryDebounced] = useState(filterQuery)
   useEffect(() => {
     const id = window.setTimeout(() => setFilterQueryDebounced(filterQuery), 120)
     return () => window.clearTimeout(id)
   }, [filterQuery])
+  const parseOutcome = useMemo(
+    () => (filterQueryDebounced.trim() ? parseQuery(filterQueryDebounced) : null),
+    [filterQueryDebounced]
+  )
+  const parsedQuery = parseOutcome?.ok ? parseOutcome.parsed : null
+  const queryKey = parsedQuery ? `${JSON.stringify(parsedQuery)}|${filterKey}` : null
+
+  // Which loaded rows the query matches, checked by id and cached per query
+  // and filter, so each new page or live row is asked about once.
+  const matchCacheRef = useRef<{ key: string | null; checked: Map<string, boolean> }>({ key: null, checked: new Map() })
+  const [matchedIds, setMatchedIds] = useState<Set<string> | null>(null)
+  const [boxState, setBoxState] = useState<'idle' | 'matching' | 'matched' | 'failed'>('idle')
+  const [boxRetry, setBoxRetry] = useState(0)
+  useEffect(() => {
+    if (!parsedQuery || !queryKey) {
+      matchCacheRef.current = { key: null, checked: new Map() }
+      setMatchedIds(null)
+      setBoxState('idle')
+      return
+    }
+    if (matchCacheRef.current.key !== queryKey) {
+      matchCacheRef.current = { key: queryKey, checked: new Map() }
+      setMatchedIds(null)
+    }
+    const cache = matchCacheRef.current
+    const publish = (): void => {
+      setMatchedIds(new Set([...cache.checked].filter(([, hit]) => hit).map(([id]) => id)))
+      setBoxState('matched')
+    }
+    const unchecked = rawEvents.filter((e) => !cache.checked.has(e.id)).map((e) => e.id)
+    if (unchecked.length === 0) { publish(); return }
+    setBoxState('matching')
+    void (async () => {
+      for (let i = 0; i < unchecked.length; i += MATCH_CHUNK) {
+        const ids = unchecked.slice(i, i + MATCH_CHUNK)
+        const hit = new Set(await window.redlog.events.matchIds({
+          ids, parsed: parsedQuery, filter: eventFilterRef.current, excludeHousekeeping: true
+        }))
+        if (matchCacheRef.current !== cache) return
+        for (const id of ids) cache.checked.set(id, hit.has(id))
+      }
+      if (matchCacheRef.current === cache) publish()
+    })().catch(() => { if (matchCacheRef.current === cache) setBoxState('failed') })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey, rawEvents, boxRetry])
+
+  // How many matches lie past the drawn range, counted from the page cursor
+  // with the same predicates, and the nearest of them to load back to.
+  const [earlier, setEarlier] = useState<
+    { state: 'none' } | { state: 'pending' } | { state: 'ok'; count: number; nearestId: string | null } | { state: 'failed' }
+  >({ state: 'none' })
+  const [earlierRetry, setEarlierRetry] = useState(0)
+  useEffect(() => {
+    if (!parsedQuery || !hasMore || !pageCursor) { setEarlier({ state: 'none' }); return }
+    let stale = false
+    setEarlier({ state: 'pending' })
+    const req = { parsed: parsedQuery, filter: eventFilterRef.current, cursor: pageCursor, excludeHousekeeping: true }
+    Promise.all([window.redlog.events.count(req), window.redlog.events.runQuery({ ...req, limit: 1 })])
+      .then(([count, nearest]) => {
+        if (!stale) setEarlier({ state: 'ok', count, nearestId: nearest.items[0]?.id ?? null })
+      })
+      .catch(() => { if (!stale) setEarlier({ state: 'failed' }) })
+    return () => { stale = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey, hasMore, pageCursor, earlierRetry])
+
+  const boxLit = useMemo(
+    () => (matchedIds ? mapMatchesToDrawn(matchedIds, rawEvents, events) : null),
+    [matchedIds, rawEvents, events]
+  )
+  // Dimming follows only a live answer: an unparsable input, a failed check,
+  // or a query whose first answer has not arrived dims nothing.
+  const filterMatches = parsedQuery && boxState !== 'failed' && boxLit ? boxLit.lit : null
+
+
 
   // v0.6.89.5: reverse-effects index (feature 1) — `effectsById[causeId] =
   // [effectEventId, ...]`. Built once per events change; O(N × avg-causes).
   // Also the badges index (feature 3) so every dot render is O(1). The
   // broken-at id from the last full verify (feature 5) participates in the
   // badge set so the `⛓️‍💥` badge lights up on the offending row.
-  // v0.6.91 W1: filter-match set for the `/` search. Case-insensitive substring
-  // over any of: data.command / data.url / data.host / data.title / data.subtype,
-  // eventTitle (which is what the operator actually sees), and operatorId.
-  //
-  // (The original note here said this was "cheap for <= 5k events" and that
-  // the dim path dominated for larger sets. Measured at 131,833: the index
-  // build is 126 ms and dominates everything else on the panel. Hence the
-  // early return below.)
-  // v0.9.8: the searchable text is built once per event set, not once per
-  // keystroke. This used to allocate a nine-element array, join it, lowercase
-  // it and call eventTitle() (which slices and replaces) for EVERY event on
-  // EVERY character typed — the memo listed `filterQuery` in its deps, so a
-  // 100k-event engagement redid all of that between keypresses. Now typing
-  // only walks an array of prebuilt strings.
-  const searchIndex = useMemo(
-    () => buildSearchIndex(events, operatorNames, filterQueryDebounced),
-    [events, operatorNames, filterQueryDebounced]
-  )
-
-
-  const filterMatches = useMemo(
-    () => computeFilterMatches(searchIndex, filterQueryDebounced),
-    [searchIndex, filterQueryDebounced]
-  )
-
-
-
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
   const effectsById = useMemo(() => buildEffectsIndex(events), [events])
   // ── What each marker says now (design turn 8b) ─────────────────────────
@@ -862,8 +923,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // TDZ contract, and it is not theoretical — the e2e has caught this exact
   // mistake twice in this file (see the `collapsedBands` note above). A hook's
   // dependency array evaluates during render, so nothing ABOVE this point may
-  // name `foldById` or `titleOf`; every consumer is below. `searchIndex` sits
-  // higher and deliberately does its own inline pass instead.
+  // name `foldById` or `titleOf`; every consumer is below.
   //
   // One walk of `events`, whose body is a type test — the marker lane is a
   // rounding error next to a scan's traffic, and this memo runs on every flush.
@@ -1523,6 +1583,76 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     }
   }, [scrollToEvent, t])
 
+  // Spec 033 (research R6): reach an admitted event older than the drawn
+  // range by paging back to it, 1,000 rows a request, keeping the one
+  // contiguous range the axis and minimap assume. It checks admission first,
+  // so an event the filter excludes is said to be excluded instead of paged
+  // for; it shows how far it has come, and Esc stops it, keeping what loaded.
+  const [loadBack, setLoadBack] = useState<
+    { state: 'loading'; loaded: number } | { state: 'cancelled' } | { state: 'failed'; eventId: string } | null
+  >(null)
+  const loadBackCancelRef = useRef(false)
+  const loadBackTo = useCallback(async (eventId: string): Promise<void> => {
+    const select = (evt: RedLogEvent): void => {
+      setSelectedEvent(evt)
+      setDetailOpen(true)
+      requestAnimationFrame(() => scrollToEvent(evt))
+    }
+    const known = eventsMapRef.current.get(eventId)
+    if (known) { select(known); return }
+    const gen = generationRef.current
+    const filter = eventFilterRef.current
+    loadBackCancelRef.current = false
+    setLoadBack({ state: 'loading', loaded: 0 })
+    let loaded = 0
+    try {
+      const admitted = await window.redlog.events.matchIds({ ids: [eventId], filter, excludeHousekeeping: true })
+      if (!admitted.includes(eventId)) { setLoadBack(null); setOutsideFilter(true); return }
+      while (!eventsMapRef.current.has(eventId) && pageCursorRef.current) {
+        const from = pageCursorRef.current
+        const page = await window.redlog.events.queryPage({ ...filter, excludeHousekeeping: true, limit: 1000, cursor: from })
+        if (loadBackCancelRef.current) return
+        if (gen !== generationRef.current) { setLoadBack(null); return }
+        // Another page landed first; ask again from where the range now ends.
+        if (pageCursorRef.current !== from) continue
+        mergeRows(page.items)
+        loaded += page.items.length
+        setEvents([...sortedRef.current])
+        setHasMore(page.hasMore)
+        setPageCursor(page.nextCursor)
+        setLoadBack({ state: 'loading', loaded })
+        if (!page.hasMore) break
+      }
+      setLoadBack(null)
+      const evt = eventsMapRef.current.get(eventId)
+      if (evt) select(evt)
+    } catch {
+      if (!loadBackCancelRef.current && gen === generationRef.current) setLoadBack({ state: 'failed', eventId })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToEvent])
+
+  useEffect(() => {
+    if (loadBack?.state !== 'loading') return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.stopImmediatePropagation()
+      loadBackCancelRef.current = true
+      setLoadBack({ state: 'cancelled' })
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [loadBack?.state])
+
+  // "Open in Timeline" from Search, Loot or the Transcript names an event;
+  // one older than the drawn range is loaded back to rather than missed.
+  const focusLoadBackRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!focusEventId || loading || focusLoadBackRef.current === focusEventId) return
+    focusLoadBackRef.current = focusEventId
+    if (!eventsMapRef.current.has(focusEventId)) void loadBackTo(focusEventId)
+  }, [focusEventId, loading, loadBackTo])
+
   if (loading && events.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -1924,8 +2054,65 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       {/* Spec 033: what the panel could not do, said where the operator is
           looking. A failed read is never shown as fewer rows (FR-010), and a
           row the filter excludes is never shown as if it matched (FR-004). */}
-      {((loadError && rawEvents.length > 0) || liveError || outsideFilter) && (
+      {((loadError && rawEvents.length > 0) || liveError || outsideFilter || parseOutcome || loadBack) && (
         <div className="px-4 py-1 border-b border-redlog-border/80 flex flex-col gap-0.5 text-xs shrink-0">
+          {/* The filter box (spec 033 US3): how the input was read, whether it
+              is still being checked, whether the check failed, and how many
+              matches lie past what is drawn. */}
+          <QueryReadout outcome={parseOutcome} testId="timeline-query" unparsableTitle={t('timeline.queryUnparsable')} />
+          {parsedQuery && boxState === 'matching' && (
+            <span data-testid="timeline-query-matching" role="status" className="text-redlog-text-faint">{t('timeline.matching')}</span>
+          )}
+          {parsedQuery && boxState === 'failed' && (
+            <div role="alert" data-testid="timeline-query-failed" className="text-red-300">
+              {t('timeline.queryFailed')}{' '}
+              <button
+                onClick={() => { matchCacheRef.current = { key: null, checked: new Map() }; setBoxRetry((n) => n + 1) }}
+                className="underline hover:text-red-200"
+              >{t('common.retry')}</button>
+            </div>
+          )}
+          {parsedQuery && boxState === 'matched' && (
+            <span data-testid="timeline-match-count" className="sr-only" aria-live="polite">
+              {t('timeline.matchCount', { count: matchedIds?.size ?? 0 })}
+            </span>
+          )}
+          {parsedQuery && (boxLit?.hiddenByCollapse ?? 0) > 0 && (
+            <span className="text-redlog-text-faint">{t('timeline.hiddenByCollapse', { count: boxLit?.hiddenByCollapse ?? 0 })}</span>
+          )}
+          {parsedQuery && earlier.state === 'ok' && earlier.count > 0 && earlier.nearestId && !loadBack && (
+            <button
+              data-testid="timeline-earlier-matches"
+              onClick={() => { if (earlier.nearestId) void loadBackTo(earlier.nearestId) }}
+              className="self-start text-cyan-300 underline decoration-dotted hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70 rounded"
+            >{t('timeline.earlierMatches', { count: earlier.count })}</button>
+          )}
+          {parsedQuery && earlier.state === 'failed' && (
+            <div role="alert" data-testid="timeline-earlier-failed" className="text-red-300">
+              {t('timeline.earlierFailed')}{' '}
+              <button onClick={() => setEarlierRetry((n) => n + 1)} className="underline hover:text-red-200">{t('common.retry')}</button>
+            </div>
+          )}
+          {loadBack?.state === 'loading' && (
+            <span data-testid="timeline-loadback-progress" role="status" className="text-redlog-text-dim">
+              {t('timeline.loadingBack', { count: loadBack.loaded })}
+            </span>
+          )}
+          {loadBack?.state === 'cancelled' && (
+            <span data-testid="timeline-loadback-cancelled" role="status" className="text-redlog-text-dim flex items-center gap-2">
+              {t('timeline.loadBackCancelled')}
+              <button onClick={() => setLoadBack(null)} aria-label={t('common.cancel')} className="text-redlog-text-faint hover:text-redlog-text leading-none">×</button>
+            </span>
+          )}
+          {loadBack?.state === 'failed' && (
+            <div role="alert" data-testid="timeline-loadback-failed" className="text-red-300">
+              {t('timeline.loadBackFailed')}{' '}
+              <button
+                onClick={() => { const id = loadBack.eventId; setLoadBack(null); void loadBackTo(id) }}
+                className="underline hover:text-red-200"
+              >{t('common.retry')}</button>
+            </div>
+          )}
           {loadError && rawEvents.length > 0 && (
             <div role="alert" data-testid="timeline-page-failed" className="text-red-300">
               {t('timeline.pageFailed')}{' '}
@@ -2231,6 +2418,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                     // are not loaded. Only the filter box dims.
                     dimmed = !c.events.some((e) => filterMatches.has(e.id))
                   }
+                  // FR-018: a dimmed dot says so to assistive technology too,
+                  // not only by its opacity.
+                  const notMatching = dimmed && !!filterMatches && !focusChain && !anomalyFilter
                   // In-chain event also gets a slim ring in the anchor's lane
                   // colour so operators can see the chain trail at a glance.
                   const anchorEvt = focusAnchorId ? eventsMapRef.current.get(focusAnchorId) : null
@@ -2271,9 +2461,10 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                       type="button"
                       data-timeline-event
                       tabIndex={isTabStop ? 0 : -1}
-                      aria-label={single
+                      aria-label={`${single
                         ? `${formatTs(evt.timestamp, tz, projectTz, 'timeSec')} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
-                        : t('timeline.events', { count: c.events.length })}
+                        : t('timeline.events', { count: c.events.length })}${notMatching ? ` · ${t('timeline.notMatching')}` : ''}`}
+                      aria-disabled={dimmed || undefined}
                       aria-pressed={sel || undefined}
                       className="absolute cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 rounded"
                       style={{

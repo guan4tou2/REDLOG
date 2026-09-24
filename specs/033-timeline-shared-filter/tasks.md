@@ -169,7 +169,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - `executeEventQuery` with the condition returns only `op-2`'s rows in both tiers.
   - A row whose text mentions `op-2` but whose `operator_id` is `op-1` does not match.
 - [X] T024 [P] [US3] Write failing tests in `test/query-readout.test.tsx`. `QueryReadout` renders condition and text tokens with `data-testid="search-query-parse"` and the unparsable message with `data-testid="search-query-unparsable"`. `SearchPanel` and `TranscriptView` render it.
-- [ ] T025 [P] [US3] Write failing renderer tests in `test/timeline-text-query.test.tsx` (jsdom, mocked bridge):
+- [X] T025 [P] [US3] Write failing renderer tests in `test/timeline-text-query.test.tsx` (jsdom, mocked bridge):
   1. Typing `10.0.0.5` calls `events.matchIds({ ids: <drawn>, parsed: parseQuery(...).parsed, filter, excludeHousekeeping: true })`. Unreturned events stay drawn, with a non-visual not-matching state (FR-018).
   2. The QueryReadout shows the tokens.
   3. `session:` shows unparsable and dims nothing.
@@ -190,7 +190,7 @@ Timeline paging that US1 introduces. US5 is independent.
 
 - [X] T026 [US3] Add `'operator'` to `QueryField` and `QUERY_FIELDS` in `src/core/query/contract.ts`. Add `case 'operator': e.operator_id = ?` to `appendConditions` in `src/core/db/event-queries.ts`. T023 passes.
 - [X] T027 [US3] Create `src/renderer/src/components/QueryReadout.tsx` from `SearchPanel.tsx`'s token block (~lines 301–316) and its unparsable block. Replace both in `SearchPanel.tsx` and the block in `TranscriptView.tsx` (~line 535). The existing test ids stay, and T024 passes.
-- [ ] T028 [US3] Rebuild the filter box state in `Timeline.tsx`.
+- [X] T028 [US3] Rebuild the filter box state in `Timeline.tsx`.
   - Parse with `parseQuery` (`core/query/contract.ts`). The states are empty, unparsable, matching, matched and failed (data-model TimelineText).
   - Render `QueryReadout`.
   - Get matches from `events.matchIds` for the drawn ids, in chunks of 1,000. New pages and live rows are checked incrementally.
@@ -201,17 +201,17 @@ Timeline paging that US1 introduces. US5 is independent.
   - Dim with `aria-disabled` and visually hidden "not matching" text.
   - Announce the match count in an `aria-live="polite"` region.
   - Keep the mutual exclusion with focus-chain and anomaly.
-- [ ] T029 [US3] Add earlier matches in `Timeline.tsx`: `events.count({ parsed, filter, cursor: pageCursor, excludeHousekeeping: true })` and `events.runQuery({ ..., limit: 1 })`.
+- [X] T029 [US3] Add earlier matches in `Timeline.tsx`: `events.count({ parsed, filter, cursor: pageCursor, excludeHousekeeping: true })` and `events.runQuery({ ..., limit: 1 })`.
   - The notice is a keyboard-focusable button: "K earlier matches" (`timeline.earlierMatches`).
   - It recomputes after every load-back. Live rows never change it (FR-004).
-- [ ] T030 [US3] Implement `loadBackTo(eventId)` in `Timeline.tsx`.
+- [X] T030 [US3] Implement `loadBackTo(eventId)` in `Timeline.tsx`.
   1. Check admission with `events.matchIds({ ids: [eventId], filter })`. If excluded, show `timeline.outsideFilter` and stop.
   2. Otherwise page `events.queryPage` with `limit: 1000` until the event is drawn, passed or the end is reached. Show `timeline.loadingBack` with a count.
   3. Esc cancels (`timeline.loadBackCancelled`) and keeps what was loaded. A failure offers retry.
   Wire it to the earlier-match notice, and to `focusEventId` when the event is not drawn: "Open in Timeline" from Search, Loot and the Transcript.
-- [ ] T031 [US3] Delete `buildSearchIndex` and `computeFilterMatches` from `src/renderer/src/lib/timelineFilters.ts`, their use in `Timeline.tsx`, and their cases in `test/timeline-filters.test.ts`. Keep the persisted-per-project box input (FR-008).
-- [ ] T032 [US3] In `src/renderer/src/components/CommandPalette.tsx`, the operator pick dispatches `redlog:filter-operator` with `op.id`. In `Timeline.tsx`, that event sets `operator:<id>`, and `redlog:filter-host` sets `"<host>"` (quoted).
-- [ ] T033 [US3] Add i18n keys to `en.json` and `zh-TW.json`: `timeline.earlierMatches`, `timeline.loadingBack`, `timeline.loadBackCancelled`, `timeline.outsideFilter` (if not added in T015), `timeline.matching`, `timeline.matchCount`, `timeline.hiddenByCollapse` and `timeline.notMatching`. T025 passes, and `test/i18n-keys.test.ts` passes.
+- [X] T031 [US3] Delete `buildSearchIndex` and `computeFilterMatches` from `src/renderer/src/lib/timelineFilters.ts`, their use in `Timeline.tsx`, and their cases in `test/timeline-filters.test.ts`. Keep the persisted-per-project box input (FR-008).
+- [X] T032 [US3] In `src/renderer/src/components/CommandPalette.tsx`, the operator pick dispatches `redlog:filter-operator` with `op.id`. In `Timeline.tsx`, that event sets `operator:<id>`, and `redlog:filter-host` sets `"<host>"` (quoted).
+- [X] T033 [US3] Add i18n keys to `en.json` and `zh-TW.json`: `timeline.earlierMatches`, `timeline.loadingBack`, `timeline.loadBackCancelled`, `timeline.outsideFilter` (if not added in T015), `timeline.matching`, `timeline.matchCount`, `timeline.hiddenByCollapse` and `timeline.notMatching`. T025 passes, and `test/i18n-keys.test.ts` passes.
 
 **Checkpoint**: T023, T024 and T025 pass. `e2e/search-query-contract.spec.ts` still passes.
 

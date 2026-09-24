@@ -1,54 +1,56 @@
 import type { RedLogEvent } from '../../../core/db/event-types'
-import { groupAmendments, foldMarker } from './markerFold'
-import { eventTitle } from './eventTitle'
+import { isMarkerAmendment } from './markerFold'
+import { isCollapsibleAgentTurn } from './timelineEvents'
 import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './timelineDomain'
 
 /**
- * Pre-built lowercase search bag per event id — nine string coercions,
- * a join and a lowercase per event, done once per event set change
- * (not per keystroke). Returns empty when `query` is blank so the
- * caller can skip the build entirely in idle state.
+ * Spec 033 (research R5): the rows the query layer matched, as the rows the
+ * Timeline draws. Which rows match is not decided here — the filter box goes
+ * through the query contract and `events:matchIds` — only how a match on a
+ * row the panel folds away is shown:
+ *
+ * - a command start hidden behind its end lights the end;
+ * - a collapsed agent turn lights a drawn row of its session, or, with none
+ *   drawn, is counted as hidden by the collapse rather than lost;
+ * - an amendment is drawn as its own row, and also lights its marker, whose
+ *   shown title comes from it.
  */
-export function buildSearchIndex(
-  events: readonly RedLogEvent[],
-  operatorNames: Record<string, string>,
-  query: string
-): Map<string, string> {
-  const idx = new Map<string, string>()
-  if (!query.trim()) return idx
-  const amendmentsByMarker = groupAmendments(events)
-  for (const e of events) {
-    const d = e.data as Record<string, unknown> | undefined
-    const mine = amendmentsByMarker.get(e.id)
-    idx.set(e.id, [
-      String(d?.command ?? ''),
-      String(d?.url ?? ''),
-      String(d?.host ?? ''),
-      String(d?.title ?? ''),
-      String(d?.subtype ?? ''),
-      e.agentType === 'marker' ? String(d?.title ?? '') : '',
-      mine ? foldMarker(e, mine).effective.title : '',
-      e.operatorId,
-      operatorNames[e.operatorId] ?? '',
-      eventTitle(e)
-    ].join('').toLowerCase())
+export function mapMatchesToDrawn(
+  matchedIds: ReadonlySet<string>,
+  loaded: readonly RedLogEvent[],
+  drawn: readonly RedLogEvent[]
+): { lit: Set<string>; hiddenByCollapse: number } {
+  const drawnIds = new Set(drawn.map((e) => e.id))
+  const commandKey = (e: RedLogEvent): string => `${e.data?.pid ?? ''}|${e.data?.command ?? ''}`
+  const endByCommand = new Map<string, string>()
+  const rowBySession = new Map<string, string>()
+  for (const e of drawn) {
+    if (e.agentType === 'shell' && e.data?.subtype === 'command_end') endByCommand.set(commandKey(e), e.id)
+    const session = e.data?.session_id
+    if (e.agentType === 'agent' && typeof session === 'string' && !rowBySession.has(session)) rowBySession.set(session, e.id)
   }
-  return idx
-}
-
-/**
- * Subset of event ids whose search bag contains the query string.
- * Returns null when the query is blank (meaning "no filter active").
- */
-export function computeFilterMatches(
-  searchIndex: Map<string, string>,
-  query: string
-): Set<string> | null {
-  const q = query.trim().toLowerCase()
-  if (!q) return null
-  const set = new Set<string>()
-  for (const [id, bag] of searchIndex) if (bag.includes(q)) set.add(id)
-  return set
+  const lit = new Set<string>()
+  let hiddenByCollapse = 0
+  for (const e of loaded) {
+    if (!matchedIds.has(e.id)) continue
+    if (drawnIds.has(e.id)) {
+      lit.add(e.id)
+      const markerId = isMarkerAmendment(e) ? String(e.data?.markerId ?? '') : ''
+      if (markerId && drawnIds.has(markerId)) lit.add(markerId)
+      continue
+    }
+    if (e.agentType === 'shell' && e.data?.subtype === 'command_start') {
+      const end = endByCommand.get(commandKey(e))
+      if (end) lit.add(end)
+      continue
+    }
+    if (isCollapsibleAgentTurn(e)) {
+      const row = typeof e.data?.session_id === 'string' ? rowBySession.get(e.data.session_id) : undefined
+      if (row) lit.add(row)
+      else hiddenByCollapse += 1
+    }
+  }
+  return { lit, hiddenByCollapse }
 }
 
 // ── Viewport windowing ─────────────────────────────────────────────

@@ -235,7 +235,9 @@ describe('operator search', () => {
     })
     fireEvent.click(option)
     expect(onNavigate).toHaveBeenCalledWith('timeline')
-    await waitFor(() => expect(dispatched).toEqual(['alice']))
+    // The recorded operator id, which the Timeline reads as `operator:op1`
+    // (spec 033); a display name can change and the text index never held it.
+    await waitFor(() => expect(dispatched).toEqual(['op1']))
   })
 
   it('leaves revoked operators out', async () => {
