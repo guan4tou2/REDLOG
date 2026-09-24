@@ -61,7 +61,7 @@ export interface HookInfo {
   agentType: string
   installed: boolean
   available: boolean
-  installMethod: 'claude-settings' | 'shell-source' | 'manual'
+  installMethod: 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
   hookFile: string
   manualSteps?: ManualStep[]
 }
