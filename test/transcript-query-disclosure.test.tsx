@@ -73,7 +73,7 @@ describe('the Transcript shows how it read the query (T013)', () => {
     const strip = await screen.findByTestId('transcript-query-parse', {}, { timeout: 3000 })
     const token = Array.from(strip.querySelectorAll('span')).find((el) => el.textContent === 'sesion:S1')
     expect(token).toBeDefined()
-    expect(token!.getAttribute('title')).toBe('transcript.queryTokenText')
+    expect(token!.getAttribute('title')).toBe('query.tokenText')
   })
 
   it('shows nothing when there is no query', async () => {

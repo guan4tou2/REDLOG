@@ -959,6 +959,10 @@ function appendConditions(
         sqlParts.push("json_extract(e.data, '$.tool_use_id') = ?")
         params.push(c.value)
         break
+      case 'operator':
+        sqlParts.push('e.operator_id = ?')
+        params.push(c.value)
+        break
     }
   }
 }
