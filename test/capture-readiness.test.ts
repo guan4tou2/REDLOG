@@ -38,7 +38,7 @@ describe('computeCaptureReadiness', () => {
   it('is dark with a clear first step when nothing is wired', () => {
     const h = health([
       src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', state: 'idle' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
       src('builtin-terminal', { state: 'idle' })
     ], { verdict: 'dark' })
 
@@ -58,7 +58,7 @@ describe('computeCaptureReadiness', () => {
     // while HTTP events landed on the timeline.
     const h = health([
       src('builtin-terminal', { state: 'idle' }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', state: 'idle' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
       src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' })
     ], { verdict: 'dark' })
 
@@ -88,7 +88,7 @@ describe('computeCaptureReadiness', () => {
     const h = health([
       // shell hook installed but no command has run yet
       src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'idle' }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', state: 'idle' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
       src('builtin-terminal', { state: 'idle' })
     ], { verdict: 'partial' })
 
@@ -105,7 +105,7 @@ describe('computeCaptureReadiness', () => {
   it('treats an enabled tailer as wired even before its first event', () => {
     const h = health([
       src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', enabled: true, state: 'idle' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'idle' }),
       src('builtin-terminal', { state: 'idle' })
     ])
     const r = computeCaptureReadiness(h)
@@ -118,7 +118,7 @@ describe('computeCaptureReadiness', () => {
   it('is recording, with no urgent next step, once any core source is active', () => {
     const h = health([
       src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'active', lastEventAt: 1 }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', state: 'idle' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', state: 'idle' }),
       src('builtin-terminal', { state: 'idle' })
     ], { verdict: 'healthy', recording: true })
 
@@ -132,7 +132,7 @@ describe('computeCaptureReadiness', () => {
   it('once everything is wired but nothing active, nudges the operator to generate activity', () => {
     const h = health([
       src('shell-hook', { hookId: 'shell-zsh', installed: true, state: 'idle' }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', enabled: true, state: 'idle' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: true, state: 'idle' }),
       src('builtin-terminal', { state: 'idle', lastEventAt: 5 })
     ], { verdict: 'partial' })
 
@@ -150,7 +150,7 @@ describe('computeCaptureReadiness', () => {
     // purposes — offering to enable it is exactly the right nudge.
     const h = health([
       src('shell-hook', { hookId: 'shell-zsh', installed: false, state: 'absent' }),
-      src('agent-tailer', { configPath: 'agentTailer.enabled', enabled: false, state: 'off' }),
+      src('agent-tailer', { configPath: 'packs.aiAgents', enabled: false, state: 'off' }),
       src('builtin-terminal', { state: 'idle' })
     ], { verdict: 'dark' })
     const r = computeCaptureReadiness(h)

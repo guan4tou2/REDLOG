@@ -1,0 +1,10 @@
+{
+  "id": "pack-ai-agents",
+  "name": "AI agents",
+  "version": "1.0.0",
+  "kind": "pack",
+  "redlogApi": 1,
+  "author": "RedLog",
+  "description": "Bundled capture pack (Spec 035). Transcripts of Claude Code, Codex and OpenCode sessions, turn by turn. Off until the project turns the pack on; a .redlog-app-root marker still opts a repository out. The capture code is part of RedLog; this manifest makes the pack removable \u2014 disable it here to remove it from every project.",
+  "contributes": {}
+}

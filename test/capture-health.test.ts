@@ -10,6 +10,7 @@ let getCaptureHealth: typeof import('../src/core/capture-health').getCaptureHeal
 let configureCaptureHealth: typeof import('../src/core/capture-health').configureCaptureHealth
 let invalidateHooksCache: typeof import('../src/core/capture-health').invalidateHooksCache
 let hooksMod: typeof import('../src/core/hooks-manager')
+let pluginsIndex: typeof import('../src/core/plugins/index')
 
 let dbAvailable = false
 try {
@@ -17,6 +18,7 @@ try {
   const evMod = await import('../src/core/db/events')
   const chMod = await import('../src/core/capture-health')
   hooksMod = await import('../src/core/hooks-manager')
+  pluginsIndex = await import('../src/core/plugins/index')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   getCaptureHealth = chMod.getCaptureHealth
@@ -42,7 +44,15 @@ function mockHooks(installed: Record<string, boolean>): void {
 
 describeDB('capture-health', () => {
   let tmp: string
-  beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap-')); initDB(tmp) })
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap-')); initDB(tmp)
+    // The app loads the bundled pack plugins at startup; tests do not, and a
+    // pack whose plugin is not active is left out of health (Spec 035).
+    const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+    )
+  })
   afterEach(() => { closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks() })
 
   it('dark when no hooks installed and only system events exist', () => {
@@ -182,6 +192,7 @@ describeDB('capture-health', () => {
   // from the transcript tailer, which sees every tool, not just Bash.
   it('reports agent activity through the tailer row, not a claude-code row', () => {
     mockHooks({ 'shell-zsh': false })
+    configureCaptureHealth({ packs: { aiAgents: true } })
     ins('agent', { subtype: 'tool_call', tool_name: 'Bash' })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'claude-code')).toBeUndefined()
@@ -201,12 +212,13 @@ describeDB('capture-health', () => {
   // v0.9.7: installation and activation are separate axes.
   it('reports a switched-off source as off, not idle', () => {
     mockHooks({ 'shell-zsh': false })
-    configureCaptureHealth({ clipboard: { enabled: false }, fileWatcher: { enabled: true } })
+    // Spec 035: sources switch by pack. Host monitors off, AI agents on.
+    configureCaptureHealth({ packs: { hostMonitors: false, aiAgents: true } })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'clipboard')?.state).toBe('off')
     expect(h.sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
     // enabled-but-silent stays idle — that one is a real signal
-    expect(h.sources.find((s) => s.id === 'file-watcher')?.state).toBe('idle')
+    expect(h.sources.find((s) => s.id === 'agent-tailer')?.state).toBe('idle')
   })
 
   it('a switched-off source does not drag the verdict to partial', () => {
@@ -215,7 +227,7 @@ describeDB('capture-health', () => {
     // pinned the verdict to partial forever after.
     ins('process', { subtype: 'process_spawn', command: 'bash' })
     ins('scanner', { subtype: 'http_request', url: 'https://x' })
-    configureCaptureHealth({ processMonitor: { enabled: false } })
+    configureCaptureHealth({ packs: { hostMonitors: false } })
     const h = getCaptureHealth()
     expect(h.sources.find((s) => s.id === 'process-monitor')?.state).toBe('off')
     expect(h.verdict).toBe('healthy')
@@ -236,9 +248,9 @@ describeDB('capture-health', () => {
   // readout lags behind the thing it is reporting on.
   it('a config change is visible immediately, not after the cache TTL', () => {
     mockHooks({ 'shell-zsh': false })
-    configureCaptureHealth({ clipboard: { enabled: true } })
+    configureCaptureHealth({ packs: { hostMonitors: true } })
     expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(true)
-    configureCaptureHealth({ clipboard: { enabled: false } })
+    configureCaptureHealth({ packs: { hostMonitors: false } })
     expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
   })
 })
