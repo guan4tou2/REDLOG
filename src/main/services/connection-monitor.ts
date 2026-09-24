@@ -55,6 +55,13 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let known = new Map<string, Tracked>()
 let polling = false
 let announcedLimit = false
+// Bumped by every restart and stop. The seed and each poll read the socket
+// table asynchronously, and config:save and project open configure the monitor
+// twice in one synchronous run, so a read can finish after a newer restart or a
+// stop. Such a read must not act on it: announcing a capture start after the
+// pack was turned off, replacing the newer seed, or diffing against a table
+// the restart just emptied and recording every open connection as new.
+let generation = 0
 
 export function configureConnectionMonitor(next: Partial<ConnectionMonitorConfig>): void {
   cfg = { ...cfg, ...next }
@@ -62,23 +69,26 @@ export function configureConnectionMonitor(next: Partial<ConnectionMonitorConfig
 }
 
 export function stopConnectionMonitor(): void {
+  generation++
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   known = new Map()
   announcedLimit = false
 }
 
 function restart(): void {
+  const run = ++generation
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-  if (!cfg.enabled) return
-  if (!supportedPlatform()) return
+  // Capture is off, so the next start is a capture start and says so again.
+  // While it stays on, a restart (every Settings save is one) does not.
+  if (!cfg.enabled || !supportedPlatform()) { announcedLimit = false; return }
 
   known = new Map()
-  announcedLimit = false
 
   // Seed the current table so the first poll does not emit a `connection` for
   // every session already open when RedLog launched — those predate the
   // recording and were not caused by anything on the timeline.
   void snapshot().then((conns) => {
+    if (run !== generation || !cfg.enabled) return
     const seed = new Map<string, Tracked>()
     const now = Date.now()
     for (const c of conns) if (capturable(c)) seed.set(keyOf(c), { conn: c, openedAt: now })
@@ -123,8 +133,12 @@ async function poll(): Promise<void> {
   if (polling) return
   if (eventBus.paused) return
   polling = true
+  const run = generation
   try {
     const conns = (await snapshot()).filter(capturable)
+    // A restart or a stop ran while the table was read: its seed is what this
+    // would be diffed against, and it may have turned capture off.
+    if (run !== generation || !cfg.enabled) return
     const next = indexConns(conns)
     const { opened, closed } = diffConns(toConnMap(known), next)
 
