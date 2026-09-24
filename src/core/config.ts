@@ -369,6 +369,24 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return result
 }
 
+/** The config a new project starts with: the loaded defaults, the engagement
+ *  id seeded from the project, and what the create card sent. Sections are
+ *  merged field by field; `scope.personalDomains` is ADDED to the defaults
+ *  (loopback, localhost) rather than replacing them, so the card can send the
+ *  operator's own IP in the same call (Spec 037). */
+export function mergeInitialConfig(config: RedLogConfig, projectId: string, initial?: Partial<RedLogConfig>): RedLogConfig {
+  const personal = [...(config.scope.personalDomains ?? [])]
+  for (const d of initial?.scope?.personalDomains ?? []) if (!personal.includes(d)) personal.push(d)
+  return {
+    ...config,
+    engagement: { ...config.engagement, id: projectId, ...initial?.engagement },
+    operator: { ...config.operator, ...initial?.operator },
+    network: { ...config.network, ...initial?.network },
+    scope: { ...config.scope, ...initial?.scope, personalDomains: personal },
+    screenshot: { ...config.screenshot, ...initial?.screenshot }
+  }
+}
+
 export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {

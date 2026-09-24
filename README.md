@@ -66,18 +66,23 @@ the matching line in `SHA256SUMS.txt`.
 
 The first engagement, in the order that proves capture works:
 
-1. **Create a project.** Name it after the engagement. Open **Advanced Setup**
-   to add the scope targets (IPs, CIDRs, `*.domain`) from your rules of
-   engagement — one entry at a time.
+1. **Create a project.** Name it after the engagement and paste the scope
+   (IPs, CIDRs, `*.domain` — one per line, or separated by commas or spaces)
+   and any excluded targets straight into the create card. Scope may stay
+   empty; RedLog still records, it just cannot tell in-scope from out-of-scope.
+   Tick *ignore this machine's own traffic* to keep your own IP out of
+   deliverables.
 2. **Run a command in the built-in terminal and watch it appear.** A new
    project opens on a built-in terminal with a live recording strip beside it;
    run something with a target (`nmap -sV 10.0.0.5`) and it shows up there and
    on the Timeline. Everything in the built-in terminal is recorded, output
    included (as an asciinema `.cast`).
-3. **Connect your normal shell.** On the Dashboard, **Capture Health ▸ Install
-   shell hook** (or the shell hook's **install** under *manage*) adds one
-   `source` line to `~/.zshrc` or `~/.bashrc`. Open a **new** terminal — shells
-   that were already open are not hooked. From then on every command you type
+3. **Connect your normal shell.** Once the built-in command appears, the
+   first-run screen offers **Record my Zsh / Bash / PowerShell terminal**: it
+   checks python3 and curl, adds one line to your shell's startup file, asks you
+   to open a **new** terminal and run the `echo redlog-ok-…` it shows, and
+   confirms only when that command arrives — shells that were already open are
+   not hooked. (Later: **Capture Health ▸ Install shell hook** does the same.) From then on every command you type
    there is recorded as metadata: command, exit code, duration and working
    directory. Output is not; for that use the built-in terminal,
    `redlog-run <cmd>`, or a `redlog-session` recorded shell.
