@@ -45,6 +45,13 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
 // Minimal structural shape of a capture source. Both the main-process
 // CaptureSource and the renderer's ambient CaptureSourceInfo satisfy it, so
 // readiness needs no cross-boundary type import.
+// Spec 037: the sources that can finish onboarding — the ones that prove a
+// typed command is recorded. The agent tailer is an opt-in pack (Spec 035): it
+// stays in the commands group for Capture Health, but onboarding never sends
+// anyone to it. HTTP is optional for every engagement, so it can neither
+// complete onboarding nor hold it open.
+const ONBOARDING_SOURCES = ['shell-hook', 'builtin-terminal']
+
 export interface ReadinessSource {
   id: string
   state: 'active' | 'idle' | 'absent' | 'off'
@@ -86,8 +93,11 @@ export interface CaptureReadiness {
   steps: ReadinessStep[]
   /** the same steps, grouped by what they capture — what the UI renders */
   groups: ReadinessGroup[]
-  /** the single action to surface, or null once recording */
+  /** the single onboarding action to surface — only ever the shell hook or
+   *  the built-in terminal — or null once onboarding is complete */
   nextStep: ReadinessStep | null
+  /** the built-in terminal or the shell hook is recording */
+  onboardingComplete: boolean
   /** how many sources are currently active, across every group */
   activeCount: number
 }
@@ -141,18 +151,19 @@ export function computeCaptureReadiness(health: ReadinessHealth): CaptureReadine
   // A `wired` source is one setup step ahead of a `todo` one: it needs an
   // event, not an installation. Guiding to it first is the shortest route out
   // of dark, which is the only thing this model is for. Ties inside a status
-  // fall back to group order — commands before traffic before artefacts — not
-  // because commands rank higher, but because a tie needs a stable answer and
-  // that one at least matches how the groups are read.
+  // fall back to ONBOARDING_SOURCES order: a stable answer, and the shell
+  // hook first because it is the terminal the operator already works in.
+  const candidates = steps.filter((s) => ONBOARDING_SOURCES.includes(s.id))
+  const onboardingComplete = candidates.some((s) => s.status === 'active')
   let nextStep: ReadinessStep | null = null
-  if (level !== 'recording') {
+  if (!onboardingComplete) {
     nextStep =
-      steps.find((s) => s.status === 'wired') ??
-      steps.find((s) => s.status === 'todo') ??
+      candidates.find((s) => s.status === 'wired') ??
+      candidates.find((s) => s.status === 'todo') ??
       null
   }
 
-  return { level, steps, groups, nextStep, activeCount }
+  return { level, steps, groups, nextStep, activeCount, onboardingComplete }
 }
 
 
