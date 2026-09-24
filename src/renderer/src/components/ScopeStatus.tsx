@@ -86,6 +86,10 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   const [showCleared, setShowCleared] = useState(false)
   // The store holds more violation records than the page read.
   const [truncated, setTruncated] = useState(false)
+  // How many violations stand across the whole chain: the status bar's number.
+  // The rows are only the newest records, so a count or an "all within scope"
+  // taken from them alone could contradict it (TESTING.md G-S3).
+  const [standing, setStanding] = useState(0)
   const { t } = useI18n()
 
   const active = violations.filter((v) => !v.cleared)
@@ -110,11 +114,13 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
   useEffect(() => {
     const refetch = (): void => {
       void window.redlog.scope.getViolations().then((r) => { setViolations(r.rows as ViolationRow[]); setTruncated(r.truncated) })
+      void window.redlog.scope.getViolationCount().then(setStanding).catch(() => {})
       void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
     }
     Promise.all([
       window.redlog.scope.isConfigured().then(setConfigured),
       window.redlog.scope.getViolations().then((r) => { setViolations(r.rows as ViolationRow[]); setTruncated(r.truncated) }),
+      window.redlog.scope.getViolationCount().then(setStanding),
       window.redlog.chain.length().then(setChainLen)
     ]).then(() => setLoading(false))
     void window.redlog.scope.getLastRecompute().then(setLastRecompute).catch(() => {})
@@ -160,15 +166,15 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
             <span className="text-redlog-text-dim text-xs bg-redlog-elevated px-2 py-0.5 rounded">{t('scope.notSet')}</span>
           )}
         </div>
-        {configured && violations.length === 0 && (
+        {configured && standing === 0 && violations.length === 0 && (
           <p className="text-green-400 text-xs">{t('scope.allInScope')}</p>
         )}
-        {active.length > 0 && (
+        {standing > 0 && (
           // The digit is not red. §21 rule 6: danger colour on a number turns a
           // count into an alarm that never stops ringing on an eight-hour
           // screen — the wording carries the severity, the number stays legible.
           <div className="text-sm flex items-baseline gap-1.5">
-            <span className="font-mono tabular-nums text-redlog-text">{active.length}</span>
+            <span className="font-mono tabular-nums text-redlog-text">{standing}</span>
             <span className="text-redlog-text-dim">{t('scope.violationsCountLabel')}</span>
             {cleared.length > 0 && (
               <button
@@ -252,10 +258,12 @@ export function ScopeStatus({ onOpenInTimeline }: { onOpenInTimeline?: (ts: numb
           })}
           </div>
           <ListFooter shown={paged.shown} total={paged.total} sentinelRef={paged.sentinelRef} />
-          {truncated && (
-            <p data-testid="scope-truncated" className="text-xs text-amber-400">{t('scope.truncated')}</p>
-          )}
         </div>
+      )}
+      {truncated && (
+        // Outside the list: the newest records can all be withdrawn while
+        // older ones stand, and the cut has to be said either way.
+        <p data-testid="scope-truncated" className="text-xs text-amber-400">{t('scope.truncated')}</p>
       )}
     </div>
   )
