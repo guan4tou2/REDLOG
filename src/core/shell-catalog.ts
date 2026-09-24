@@ -123,13 +123,3 @@ export function buildShellCatalog(probe: ShellProbe): ShellOption[] {
   }
   return out
 }
-
-/** The entry a pane opens with when the operator has not chosen one.
- *  Prefers a shell RedLog can actually record over one it cannot. */
-export function defaultShell(catalog: ShellOption[], preferredId?: string): ShellOption | null {
-  if (preferredId) {
-    const chosen = catalog.find((s) => s.id === preferredId)
-    if (chosen) return chosen
-  }
-  return catalog.find((s) => isHookable(s.flavour)) ?? catalog[0] ?? null
-}
