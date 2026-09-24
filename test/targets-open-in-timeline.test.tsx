@@ -12,7 +12,7 @@ function Probe(): null { filterApi = useSharedFilter(); return null }
 
 const T0 = 1_700_000_000_000
 
-// Spec 033 US2: the target picked on the Targets page is the shared target.
+// Spec 038 US2: the target picked on the Targets page is the shared target.
 // It used to be a Timeline-only "focus" that matched seven observation
 // fields and dimmed the rest, beside a FilterBar chip that meant target_id,
 // so the Targets count and what the Timeline showed disagreed.

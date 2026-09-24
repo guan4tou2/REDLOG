@@ -82,7 +82,7 @@ describe('no component formats its own time', () => {
     // While the zone branch lived in the Timeline, `lib/time.ts` did not know
     // timestamps could carry a zone at all — so any rule it enforced was
     // enforced over half the app. Then the Timeline's zone was its own
-    // picker, and one event could read two ways (spec 033). Now the zone is
+    // picker, and one event could read two ways (spec 038). Now the zone is
     // held here and nowhere else keeps one.
     const mod = fs.readFileSync(path.join(ROOT, 'src/renderer/src/lib/time.ts'), 'utf-8')
     expect(mod).toMatch(/export function setDisplayZone/)

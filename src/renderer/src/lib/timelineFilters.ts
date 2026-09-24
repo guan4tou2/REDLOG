@@ -4,7 +4,7 @@ import { isCollapsibleAgentTurn } from './timelineEvents'
 import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './timelineDomain'
 
 /**
- * Spec 033 (research R5): the rows the query layer matched, as the rows the
+ * Spec 038 (research R5): the rows the query layer matched, as the rows the
  * Timeline draws. Which rows match is not decided here — the filter box goes
  * through the query contract and `events:matchIds` — only how a match on a
  * row the panel folds away is shown:

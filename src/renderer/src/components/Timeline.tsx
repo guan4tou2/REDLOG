@@ -78,7 +78,7 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 }
 
 export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
-  // Spec 033: the shared filter is applied where the events are stored, for
+  // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
   const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains } = useSharedFilter()
   const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
@@ -99,7 +99,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
-  // The tier is not decided here (spec 033): "Chained only" is a shared-filter
+  // The tier is not decided here (spec 038): "Chained only" is a shared-filter
   // condition, so a logged row never reaches rawEvents under it.
   const events = useMemo(
     () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
@@ -297,7 +297,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
   // filter survives a reload; empty string means "no filter".
-  // The target is not a Timeline control (spec 033): it is the shared
+  // The target is not a Timeline control (spec 038): it is the shared
   // filter's target_id, set by the FilterBar or by the Targets page, and the
   // pages above never return a row outside it.
 
@@ -336,7 +336,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
   )
 
-  // The display zone is not a Timeline setting (spec 033): it is chosen in
+  // The display zone is not a Timeline setting (spec 038): it is chosen in
   // Settings ▸ General and `lib/time`'s formatters print in it. This view is
   // unmounted while Settings is open, so it prints the new zone on return.
 
@@ -355,7 +355,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // ⌘K → an operator → filter this view to what that person did. The palette
   // cannot reach into the Timeline's filter state, so it asks by event. The
   // pick arrives as the recorded operator id and becomes the query contract's
-  // `operator:` condition (spec 033 FR-009); names change, ids do not.
+  // `operator:` condition (spec 038 FR-009); names change, ids do not.
   useEffect(() => {
     const onFilterOperator = (e: Event): void => {
       const id = (e as CustomEvent<string>).detail
@@ -548,7 +548,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     return Math.max(MIN_LANE_H, Math.floor(available / visibleRows.length))
   }, [containerH, visibleRows.length])
 
-  // Spec 033 (research R1): pages come from the shared-filter page query, on
+  // Spec 038 (research R1): pages come from the shared-filter page query, on
   // its keyset cursor (timestamp, rowid, tier). The old pager walked
   // `created_at` so a late row with an older wall-clock could not be skipped;
   // a keyset never skips a row past its cursor, and a row that lands inside
@@ -690,7 +690,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       if (sortedRef.current.length > BIG_SET) window.setTimeout(flush, SLOW_FLUSH_MS)
       else requestAnimationFrame(flush)
     }
-    // Spec 033 (research R10): every live row is admitted by the persistence
+    // Spec 038 (research R10): every live row is admitted by the persistence
     // layer, over the shared filter and the housekeeping rule, so the rows
     // drawn live are the rows the pages would have returned. The renderer's
     // own housekeeping check is gone: HOUSEKEEPING_SQL is the one rule.
@@ -777,7 +777,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     [events, visibleRows, collapsedBands, pluginTypes]
   )
 
-  // Spec 033 US3: the box is read by the query contract — the same parse,
+  // Spec 038 US3: the box is read by the query contract — the same parse,
   // conditions and text matching as Search — and the persistence layer says
   // which drawn rows match. Nothing typed here removes a row: the rest stay
   // drawn, dimmed, so a match keeps its context (FR-004). Debounced so a held
@@ -940,7 +940,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         return
       }
       // The chain spans the project; only the links the shared filter admits
-      // join the drawn range (spec 033 FR-004).
+      // join the drawn range (spec 038 FR-004).
       const fresh = result.events.filter((event) => !eventsMapRef.current.has(event.id))
       const admitted = new Set<string>()
       for (let i = 0; i < fresh.length; i += MATCH_CHUNK) {
@@ -1515,7 +1515,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       if (!fetched) return
       // A referenced row the shared filter excludes (an amended marker older
       // than the time range, say) opens in the detail panel but is never
-      // drawn: the track holds admitted rows only (spec 033 FR-004).
+      // drawn: the track holds admitted rows only (spec 038 FR-004).
       const admitted = await window.redlog.events.matchIds({
         ids: [fetched.id], filter: eventFilterRef.current, excludeHousekeeping: true
       })
@@ -1535,7 +1535,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
     }
   }, [scrollToEvent, t])
 
-  // Spec 033 (research R6): reach an admitted event older than the drawn
+  // Spec 038 (research R6): reach an admitted event older than the drawn
   // range by paging back to it, 1,000 rows a request, keeping the one
   // contiguous range the axis and minimap assume. It checks admission first,
   // so an event the filter excludes is said to be excluded instead of paged
@@ -1996,12 +1996,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
         </div>
       </div>
 
-      {/* Spec 033: what the panel could not do, said where the operator is
+      {/* Spec 038: what the panel could not do, said where the operator is
           looking. A failed read is never shown as fewer rows (FR-010), and a
           row the filter excludes is never shown as if it matched (FR-004). */}
       {((loadError && rawEvents.length > 0) || liveError || outsideFilter || parseOutcome || loadBack) && (
         <div className="px-4 py-1 border-b border-redlog-border/80 flex flex-col gap-0.5 text-xs shrink-0">
-          {/* The filter box (spec 033 US3): how the input was read, whether it
+          {/* The filter box (spec 038 US3): how the input was read, whether it
               is still being checked, whether the check failed, and how many
               matches lie past what is drawn. */}
           <QueryReadout outcome={parseOutcome} testId="timeline-query" unparsableTitle={t('timeline.queryUnparsable')} />

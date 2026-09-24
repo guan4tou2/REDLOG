@@ -1,8 +1,10 @@
 # Feature Specification: Timeline on the Shared Filter
 
-**Feature Branch**: `spec/033-timeline-shared-filter`
+**Feature Branch**: `spec/038-timeline-shared-filter`
 
 **Created**: 2026-09-23
+
+**Renumbered**: from 033 on 2026-09-24. Main gave 033 to the loot regex time bound (#148) while this spec was in flight; commits made before the move still say 033.
 
 **Status**: Verified
 

@@ -24,7 +24,7 @@ export interface EventFilter {
   scope?: ScopePolicy
   hidePersonal?: boolean
   personalDomains?: string[]
-  /** Spec 033: `chained` reads the chained tier only; absent reads both. */
+  /** Spec 038: `chained` reads the chained tier only; absent reads both. */
   tier?: 'chained'
 }
 
@@ -36,7 +36,7 @@ const personalActive = (filter: EventFilter): boolean =>
 /** The targets the scope and personal predicates decide over: every target
  *  in the project, or only those of `ids` when the rows are already named.
  *  Each target's decision is the same either way, so the answer for those
- *  rows is too. Spec 033: a check of 100 live rows scanned every target of
+ *  rows is too. Spec 038: a check of 100 live rows scanned every target of
  *  the project, once per tier arm, which a busy second of batches could not
  *  afford (research R10). */
 function candidateTargets(ids?: string[]): string[] {
@@ -119,7 +119,7 @@ function appendEventFilter(
 // HOUSEKEEPING_SQL (below) hides RedLog's plumbing rows, which still land in
 // the chain for audit integrity but are not the operator's activity. It is the
 // one housekeeping rule: the Timeline's pages, counts and live admission all
-// apply it here (spec 033), so no renderer copy can drift from it.
+// apply it here (spec 038), so no renderer copy can drift from it.
 /**
  * What counts as the operator having DONE something, as opposed to the app
  * talking to itself.
@@ -219,7 +219,7 @@ function decodeHttpFlowCursor(value?: string | null): { startTs: number; flowId:
  * capture began mid-flow); all request/response rows for selected flows return. */
 export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?: string | null }): HttpFlowPage {
   // Flows are recorded in the logged tier only, so "chained only" leaves
-  // this view nothing by construction (spec 033 FR-012); the panel says so.
+  // this view nothing by construction (spec 038 FR-012); the panel says so.
   if (opts.tier === 'chained') return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
   const db = getReadonlyDB()
   const limit = Math.max(1, opts.limit ?? 200)

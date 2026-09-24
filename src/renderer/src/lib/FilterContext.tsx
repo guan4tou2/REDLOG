@@ -15,7 +15,7 @@ export interface SharedFilter {
   timeRange: TimeRange | null
   inScopeOnly: boolean
   hidePersonal: boolean
-  /** Spec 033: "chained only" is a condition of the investigation, applied
+  /** Spec 038: "chained only" is a condition of the investigation, applied
    *  by every view's query. Not persisted, like the rest of this state. */
   tier: 'all' | 'chained'
 }

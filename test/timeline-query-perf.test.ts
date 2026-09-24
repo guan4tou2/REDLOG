@@ -7,7 +7,7 @@ import { queryEventsPage, countEvents, matchEventIds, executeEventQuery, type Ev
 import { parseQuery, type ParsedQuery } from '../src/core/query/contract'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
 
-// Spec 033 SC-006 and research R13: the Timeline's reads on a 100,000-event
+// Spec 038 SC-006 and research R13: the Timeline's reads on a 100,000-event
 // project, 50/50 tiers, 200 targets in mixed case. Skipped unless
 // REDLOG_PERF=1: it takes a while to seed, and a timing is only evidence on
 // the machine it is recorded for, which the report prints.
@@ -46,7 +46,7 @@ describe.skipIf(!PERF)('the Timeline query budget on 100,000 events', () => {
   const record = (name: string, ms: number): number => { report.push({ name, ms }); return ms }
 
   beforeAll(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-perf-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-perf-'))
     initDB(dir)
     const db = getDB()
     const insert = (table: 'events' | 'events_logged') => db.prepare(`

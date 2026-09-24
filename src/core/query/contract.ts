@@ -16,7 +16,7 @@
 // conclusion about absence.
 
 /** Fields that resolve against a stored value rather than matching text.
- *  `operator` is the recorded operator id (spec 033): names can change, and
+ *  `operator` is the recorded operator id (spec 038): names can change, and
  *  the text index does not hold the operator at all. */
 export type QueryField = 'event' | 'session' | 'transcript' | 'tool' | 'operator'
 

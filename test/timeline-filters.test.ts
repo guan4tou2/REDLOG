@@ -34,7 +34,7 @@ function evt(
   }
 }
 
-// Spec 033: which rows match is the query layer's answer (events:matchIds);
+// Spec 038: which rows match is the query layer's answer (events:matchIds);
 // this only decides how a match on a folded-away row is shown.
 describe('mapMatchesToDrawn', () => {
   it('lights a drawn row that matched, and nothing else', () => {

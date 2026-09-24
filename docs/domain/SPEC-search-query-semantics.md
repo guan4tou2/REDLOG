@@ -2,7 +2,7 @@
 
 > Domain: Investigation / Evidence
 > Invariant: One query text means one thing wherever it is typed. Its conditions, its text and the shared filter are all evaluated at the persistence layer, across both event tiers, before any limit.
-> Status: Implemented — Search, the Transcript, the Timeline, the ⌘K palette and `/api/events/search` evaluate through one contract (Specs 017, 018, 026, 033).
+> Status: Implemented — Search, the Transcript, the Timeline, the ⌘K palette and `/api/events/search` evaluate through one contract (Specs 017, 018, 026, 038).
 
 Terms such as Event Query, Agent Session, Query Intersection and the Chained /
 Logged tiers are defined in [glossary.md](glossary.md). This document states the
@@ -130,7 +130,7 @@ typed text
   never part of a `QueryPage`.
 - The ⌘K palette and `/api/events/search` search the whole project. They apply
   no shared filter.
-- The Timeline joined the contract in Spec 033. Its `/` box is a query: the
+- The Timeline joined the contract in Spec 038. Its `/` box is a query: the
   shared filter removes events, and the box dims those that do not match.
 
 ### The Timeline's empty box
@@ -246,6 +246,6 @@ For every query Q and shared-filter dataset D:
 - 2026-09-23: one FTS translation for all three indexes; recording search
   stopped swallowing failures; the palette and the local API say when a result
   is a subset.
-- Spec 033: the Timeline on the contract and the shared filter. `operator:`
+- Spec 038: the Timeline on the contract and the shared filter. `operator:`
   joined the conditions, the tier joined the shared filter, and
   `countEvents` / `matchEventIds` joined the readers.

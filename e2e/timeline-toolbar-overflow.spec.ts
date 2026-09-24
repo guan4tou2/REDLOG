@@ -5,7 +5,7 @@ import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from '
 // effect. The low-frequency view controls (session dividers, timezone) moved
 // behind one "More" control so the row is scannable instead of a flat wall of
 // chips. This checks they are reachable there, not lost. The auditor view left
-// the menu in spec 033: "Chained only" is a FilterBar chip every view applies.
+// the menu in spec 038: "Chained only" is a FilterBar chip every view applies.
 
 let app: ElectronApplication
 let page: Page
@@ -36,7 +36,7 @@ test.describe.serial('timeline toolbar overflow', () => {
   test('the overflow reveals them and they still work', async () => {
     await page.locator('[data-testid="timeline-more-menu"]').click()
     await expect(boundaries()).toBeVisible()
-    // Spec 033: the zone and the tier are not Timeline settings. The zone is
+    // Spec 038: the zone and the tier are not Timeline settings. The zone is
     // chosen in Settings ▸ General; the tier is the FilterBar chip (SC-007).
     await expect(page.locator('[data-testid="timeline-tz-select"]')).toHaveCount(0)
     await expect(page.locator('[data-testid="timeline-auditor-view-chip"]')).toHaveCount(0)

@@ -190,7 +190,7 @@ export function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): voi
 
 /** v0.11.4 (AUDIT V6): time-only ticks are ambiguous across midnight. Prefix
  *  the date on the first tick and on any tick that starts a new day. The day
- *  is the display zone's, as the time is (spec 033). */
+ *  is the display zone's, as the time is (spec 038). */
 export function axisLabel(ts: number, i: number, ticks: number[], span: number): string {
   if (span < 24 * 3600_000) return formatTime(ts)
   if (i > 0 && formatDate(ticks[i - 1]) === formatDate(ts)) return formatTime(ts)

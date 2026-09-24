@@ -38,7 +38,7 @@ const expectIds = (keep: (r: FixtureRow) => boolean): string[] =>
 describeDB('the Timeline page query is complete for every shared-filter condition', () => {
   const START = 1_700_000_000_000
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-complete-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-complete-'))
     db.initDB(dir)
     fx = seedTimelineFixture({ total: 1250, newestShell: 200, start: START })
   })

@@ -94,7 +94,7 @@ export default function GeneralPage({
   )
 }
 
-// Spec 033: the one zone every event time in the app is printed in. It was
+// Spec 038: the one zone every event time in the app is printed in. It was
 // the Timeline's own picker, and no other view followed it. A viewing
 // preference of this machine, like the UI scale, so it is not project config,
 // and exports stay ISO 8601 whatever it is.

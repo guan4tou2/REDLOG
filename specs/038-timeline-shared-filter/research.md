@@ -1,7 +1,7 @@
 # Research: Timeline on the Shared Filter
 
 Every decision below is taken against the code as it stands on
-`spec/033-timeline-shared-filter`. Where a decision corrects the spec, the spec
+`spec/038-timeline-shared-filter`. Where a decision corrects the spec, the spec
 was edited in the same change.
 
 ## R1. The Timeline pages through the shared-filter page query

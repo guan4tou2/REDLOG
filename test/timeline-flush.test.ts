@@ -28,7 +28,7 @@ const memoBody = (name: string): string => {
 
 describe('per-batch work (W19)', () => {
   it('the filter box asks nothing while it is empty', () => {
-    // Spec 033 replaced the in-renderer search index, whose build was the most
+    // Spec 038 replaced the in-renderer search index, whose build was the most
     // expensive thing on the panel at 131,833 events, with an id check in the
     // persistence layer. The property that index guarded still holds: with
     // no query there is no work, not a round trip per flush.

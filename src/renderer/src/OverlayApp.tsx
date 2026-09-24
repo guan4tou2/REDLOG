@@ -14,7 +14,7 @@ const MUTED = HUD.muted
 const VALUE = HUD.value
 
 export default function OverlayApp(): JSX.Element {
-  // Another window: the display zone reaches it through `storage` (spec 033).
+  // Another window: the display zone reaches it through `storage` (spec 038).
   useDisplayZone()
   const [status, setStatus] = useState<IPStatus | null>(null)
   const [expanded, setExpanded] = useState(false)

@@ -9,7 +9,7 @@ import { useAppCounts } from '../lib/useAppCounts'
 
 export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
-  // display zone changes there (spec 033).
+  // display zone changes there (spec 038).
   useDisplayZone()
   const { eventCount, lootCount, scopeViolations, scopeConfigured } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
@@ -281,7 +281,7 @@ export default function StatusBar(): JSX.Element {
          *  A read-out, not a control: it used to toggle the Timeline's
          *  auditor view, which did nothing on any other page. The tier is
          *  now the FilterBar's "Chained only" chip, which every view applies
-         *  (spec 033).
+         *  (spec 038).
          */}
         {loggedCount > 0 ? (
           <span

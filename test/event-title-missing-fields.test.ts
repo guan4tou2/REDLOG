@@ -9,7 +9,7 @@ const shell = (data: Record<string, unknown>): RedLogEvent => ({
 
 // A shell row's fields are whatever its producer sent: the local API and
 // plugins can post a command row without `command` or `exit_code`. Once the
-// housekeeping rule stopped hiding such a row (spec 033), it reaches the
+// housekeeping rule stopped hiding such a row (spec 038), it reaches the
 // Timeline, and its title must neither throw nor print "undefined".
 describe('a shell command row missing its fields', () => {
   for (const data of [

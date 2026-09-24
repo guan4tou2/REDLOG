@@ -1,6 +1,6 @@
 import { getDB } from '../../src/core/db/index'
 
-// Rows for the Timeline's query tests (spec 033), written straight into either
+// Rows for the Timeline's query tests (spec 038), written straight into either
 // tier like export-fixtures.ts does, so a test can place a row exactly: its
 // table, time, operator and target. The FTS triggers still index each insert.
 

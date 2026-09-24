@@ -25,7 +25,7 @@ const lastCall = (fn: ReturnType<typeof vi.fn>): Record<string, unknown> =>
 const shell = (id: string, ts: number, extra = {}): ReturnType<typeof makeEvent> =>
   makeEvent(id, ts, 'shell', { data: { subtype: 'command_end', command: `cmd ${id}` }, ...extra })
 
-// Spec 033 US3: the Timeline's box reads its input with the query contract,
+// Spec 038 US3: the Timeline's box reads its input with the query contract,
 // asks the persistence layer which drawn rows match, and dims — never
 // removes — the rest. It used to substring-match ten fields of the rows it
 // had loaded, so `session:S1` was text and a match older than the drawn

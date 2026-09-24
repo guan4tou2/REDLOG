@@ -1,6 +1,6 @@
 import { vi, type Mock } from 'vitest'
 
-// A bridge for mounting TimelinePanel in jsdom (spec 033). The event reads
+// A bridge for mounting TimelinePanel in jsdom (spec 038). The event reads
 // the Timeline makes are vi.fn()s a test can script and inspect; every other
 // namespace the panel or its children touch answers harmlessly: `on*`
 // subscriptions return an unsubscribe, anything else resolves to null.

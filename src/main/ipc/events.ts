@@ -55,7 +55,7 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       ? executeEventQuery({ ...req, filter: withActiveScope(req.filter ?? {}) })
       : { items: [], hasMore: false, nextCursor: null })
 
-  // Spec 033. The Timeline's total and "earlier matches", and the check of
+  // Spec 038. The Timeline's total and "earlier matches", and the check of
   // rows it already holds, go through the same predicates as its pages. Scope
   // is attached here as for the pages, so the answers agree with them.
   ipcMain.handle('events:count', (_e, req: EventCountRequest) =>

@@ -1,11 +1,11 @@
 ---
 
-description: "Tasks for spec 033: the Timeline on the shared filter"
+description: "Tasks for spec 038: the Timeline on the shared filter"
 ---
 
 # Tasks: Timeline on the Shared Filter
 
-**Input**: `specs/033-timeline-shared-filter/`: spec.md, plan.md, research.md
+**Input**: `specs/038-timeline-shared-filter/`: spec.md, plan.md, research.md
 (R1–R13), data-model.md, contracts/ipc.md, contracts/query-contract.md,
 quickstart.md.
 
@@ -149,7 +149,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - arriving from a target shows the FilterBar target chip with `10.10.11.24`
   - clearing the chip restores the unfiltered Timeline
   - leaving and coming back keeps the chip, which is visible, per FR-005
-  Update its header comment to cite spec 033 instead of the dimming focus.
+  Update its header comment to cite spec 038 instead of the dimming focus.
 
 **Checkpoint**: T017 and T018 pass, and the Targets page count equals the Timeline's "N of M" total for a mixed-case target.
 
@@ -300,7 +300,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - Coverage
   - the Timeline's empty-box section
   - Housekeeping
-  - the Status line, adding Spec 033
+  - the Status line, adding Spec 038
 - [X] T050 [P] Update `docs/domain/SPEC-target-identity.md`:
   - Normalization: filters compare case-insensitively through one helper.
   - The Invariant's `≈`.
@@ -313,7 +313,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - §6's view-mode divergence note: the zone moved to Settings ▸ General, and the auditor switch is the shared "Chained only" chip.
   - §7's target jump uses the shared target chip.
   - Any description of the Timeline's substring `/` filter.
-  Grep `docs/DESIGN-core-and-capture.md` for the target-focus design and mark it superseded by spec 033.
+  Grep `docs/DESIGN-core-and-capture.md` for the target-focus design and mark it superseded by spec 038.
 - [X] T053 Add a performance check, `test/timeline-query-perf.test.ts`, skipped unless `REDLOG_PERF=1`. On a 100,000-event fixture it times each of these (research R13):
   - `queryEventsPage` for each filter kind
   - `countEvents`
@@ -334,7 +334,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - `npx vitest run`, checking for `[0-9]+ failed`
   - `npx tsc -p tsconfig.check.json`, `npm run build`, `npm run verify:specs`
   - the affected e2e journeys with the Electron ABI build: `target-focus`, `timeline-*`, `search-query-contract`, `transcript-view`, `http-activity-view`, `loot-view`, `marker-amend`
-- [X] T056 Write `specs/033-timeline-shared-filter/verification.md` from `.specify/templates/overrides/verification-template.md`:
+- [X] T056 Write `specs/038-timeline-shared-filter/verification.md` from `.specify/templates/overrides/verification-template.md`:
   - `## RED`: each test file and the reason it failed first.
   - `## GREEN`: the evidence from T055 and the T053 numbers.
   - `## Gates`: Clarify (5 answered), Checklist (41 items, and the reviewer's result), Analyze, Converge.

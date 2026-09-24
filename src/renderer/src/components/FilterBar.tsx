@@ -63,7 +63,7 @@ export function FilterBar(): JSX.Element | null {
             {t('filter.inScopeOnly')}
           </button>
         )}
-        {/* Spec 033: the auditor's "chained evidence only", as a condition
+        {/* Spec 038: the auditor's "chained evidence only", as a condition
             every event view applies, not a Timeline display switch. Always
             shown: every project has the chained tier. */}
         <button

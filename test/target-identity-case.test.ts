@@ -45,7 +45,7 @@ describe('one case-insensitive target predicate', () => {
 
   beforeEach(() => {
     n = 0
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-target-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-target-'))
     initDB(dir)
     const rows = [
       row('events', 'Example.COM'), row('events_logged', 'Example.COM'), row('events', 'Example.COM'),

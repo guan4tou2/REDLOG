@@ -26,7 +26,7 @@ describe('agentTypeLabel', () => {
 
   it('is what the filter bar shows for the type chip and options', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src/renderer/src/components/FilterBar.tsx'), 'utf8')
-    // The chip shows the shared condition label (spec 033), the one every view
+    // The chip shows the shared condition label (spec 038), the one every view
     // that names its conditions uses, and that label names the type this way.
     expect(src).toMatch(/label=\{labels\.type/)
     const base = { targetId: null, timeRange: null, inScopeOnly: false, hidePersonal: false, tier: 'all' as const }

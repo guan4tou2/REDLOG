@@ -1,8 +1,8 @@
 # Implementation Plan: Timeline on the Shared Filter
 
-**Branch**: `spec/033-timeline-shared-filter` | **Date**: 2026-09-24 | **Spec**: [spec.md](spec.md)
+**Branch**: `spec/038-timeline-shared-filter` | **Date**: 2026-09-24 | **Spec**: [spec.md](spec.md)
 
-**Input**: Feature specification from `specs/033-timeline-shared-filter/spec.md`
+**Input**: Feature specification from `specs/038-timeline-shared-filter/spec.md`
 
 ## Summary
 
@@ -99,7 +99,7 @@ Invariants affected:
 ### Documentation (this feature)
 
 ```text
-specs/033-timeline-shared-filter/
+specs/038-timeline-shared-filter/
 ├── plan.md              # this file
 ├── research.md          # decisions R1–R13
 ├── data-model.md        # filter, request, Timeline and zone state

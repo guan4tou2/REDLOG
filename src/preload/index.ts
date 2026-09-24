@@ -80,7 +80,7 @@ const api: RedLogAPI = {
     // Spec 017: the renderer parses, so a parse failure never crosses the bridge.
     runQuery: (req: import('../core/db/events').EventQueryRequest) =>
       ipcRenderer.invoke('events:runQuery', req) as Promise<import('../core/db/events').EventQueryResult>,
-    // Spec 033: the Timeline's total, earlier matches and held-row checks.
+    // Spec 038: the Timeline's total, earlier matches and held-row checks.
     count: (req: import('../core/db/events').EventCountRequest) =>
       ipcRenderer.invoke('events:count', req) as Promise<number>,
     matchIds: (req: import('../core/db/events').EventMatchRequest) =>
