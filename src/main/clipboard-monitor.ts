@@ -29,6 +29,13 @@ interface Config {
 let cfg: Config = { enabled: false, pollMs: 1500, storePreview: false, engagementId: '', operatorId: '', lootDetector: null }
 let timer: ReturnType<typeof setInterval> | null = null
 let lastHash: string | null = null
+// Bumped by every restart and stop. config:save and project open configure the
+// monitor more than once in one synchronous run, and each restart awaits the
+// clipboard before arming the poll: without this, every restart that got past
+// the `enabled` check armed its own timer, the earlier ones leaked, and turning
+// the pack off left capture running (TESTING.md G-CB2). Only the newest
+// restart may arm the poll.
+let generation = 0
 
 function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex')
@@ -38,7 +45,8 @@ async function sample(): Promise<void> {
   // Recording paused → skip ambient clipboard capture entirely. Only
   // gate ambient/background capture here; user-driven writes (markers,
   // session boundaries) go through their own IPC and always land.
-  if (eventBus.paused) return
+  // Off is checked here too, so no timer can capture after the pack is off.
+  if (!cfg.enabled || eventBus.paused) return
   let text: string
   try { text = await clipboard.readText() } catch { return }
   if (!text) return
@@ -90,15 +98,22 @@ export function configureClipboardMonitor(next: Partial<Config>): void {
 export function startClipboardMonitor(): void { restart() }
 
 export function stopClipboardMonitor(): void {
+  generation++
   if (timer) { clearInterval(timer); timer = null }
   lastHash = null
 }
 
 async function restart(): Promise<void> {
+  const run = ++generation
   if (timer) { clearInterval(timer); timer = null }
   if (!cfg.enabled) return
   // Seed lastHash so the first poll doesn't emit an event for whatever was on
   // the clipboard before RedLog opened — that's out-of-scope for this session.
-  try { lastHash = sha256((await clipboard.readText()) || '') } catch { lastHash = null }
+  let seed: string | null
+  try { seed = sha256((await clipboard.readText()) || '') } catch { seed = null }
+  // A newer restart or a stop ran while this one waited, and it owns the
+  // poll now — including when it turned capture off.
+  if (run !== generation || !cfg.enabled) return
+  lastHash = seed
   timer = setInterval(() => { sample().catch(() => {}) }, Math.max(500, cfg.pollMs))
 }
