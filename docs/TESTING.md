@@ -346,9 +346,12 @@ default fails a named test rather than a distant integration.
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
 | `engagement.id` | `default` | stamped on every event | `config-options` |
-| `engagement.name` | `Default Engagement` | display only | `config-options` |
+| `engagement.activeTarget` | `null` | the operator's current target: canonical ingest labels shell, marker and screenshot rows that carry no target of their own with it, and never overwrites an observed one (SPEC-target-identity) | `ingest` |
 | `operator.id` | `operator-1` | attribution; no operator = no capture (see 2.5, 2.9) | `config-options` |
 | `operator.name` | `Operator` | display only | `config-options` |
+
+There is no `engagement.name`: the project's name is the one name, shown by the
+title bar and the picker, and Settings ▸ General renames the project.
 
 ## 2.2 `network`
 
@@ -359,8 +362,8 @@ default fails a named test rather than a distant integration.
 | `checkInterval` | `60` | seconds | §1.5; UI coerces junk to 60 | `ip-monitor-options` |
 | `providers` | `[]` | URLs | §1.4 | `ip-monitor-options` |
 | `confirmations` | `3` | ≥1 | §1.3; UI clamps to ≥1 | `ip-monitor-options` |
-| `staleAfter` | `2` | ≥1 | §1.2.1 — consecutive failed reads before the verdict expires to `unknown` + `stale` | `ip-monitor` |
 | `ipMode` | `auto` | `dns` \| `http` \| `auto` | §1.4 | `ip-monitor-dns` |
+| `offline` | `false` | bool | air-gap: RedLog makes no outbound requests of its own — OpenTimestamps anchoring, NTP, the update check and the external-IP lookup. The IP verdict reads `unknown`, with the internal address still shown. Capture and the local API are unaffected | `—` |
 | `showWifiName` | `false` | bool | off drops the SSID from the link before it reaches any surface, keeping the link **type** (the UI renders a generic "Wi-Fi"); on shows it. The toggle shows on every platform; on macOS it also asks for Location Services, since the OS redacts the SSID without it. Turning it off applies immediately rather than at the next 20 s poll | `network-link-display` |
 | `vpnAdapters` | 12 built-ins, all enabled | `{name, pattern, enabled}` | patterns are user regexes matched case-insensitively against interface names | `vpn-adapters` |
 
@@ -372,22 +375,32 @@ poller down; re-configuring replaces the pattern set. The shipped list is
 verified to recognise `wg0`, `tun0`, `tap0`, `tailscale0`, `nordlynx`, `proton0`,
 `utun4`, `ipsec0`, `ppp0`, and to leave `en0` / `eth0` / `wlan0` alone.
 
+There is no `staleAfter` option: the first failed read marks the verdict stale,
+and it reads `unknown` until a read succeeds (`alert/ip-policy`).
+
 ## 2.3 `scope`
 
 | Option | Default | Behaviour | Proof |
 |---|---|---|---|
-| `alertFloor` | `adjacent` | §1.7 — `excluded_only` \| `adjacent` \| `all`; the lowest rung that still alerts | `scope-monitor-behaviour` |
+| `warnOnViolation` | `true` | the alert floor (§1.7): `true` alerts on excluded targets and on the adjacent rungs, the same /24 and the same registrable domain; `false` alerts on excluded targets only. Unrelated traffic never alerts. There is no `alertFloor` key: the floor is derived from this (`alertFloorFor`) | `alert/scope-policy` |
 | `targets` | `[]` | §1.6; empty = everything in scope | `scope-monitor-behaviour` |
 | `excludeTargets` | `[]` | D1: always warns when hit | `scope-monitor-behaviour` |
-| `proximityBits` | `24` | container width derived for a **single-IP** scope entry; entries already written as CIDRs are never widened; values outside 1–32 or non-integers fall back to 24. Settings ▸ Scope renders it under the alert-floor control and hides it at `excluded_only` (with D2 silenced there is nothing to widen); the UI clamps to 1–32 and coerces junk to 24 | `scope-monitor-behaviour`, `config-options`, `settings-interaction` |
-| `publicSuffixes` | `[]` | extra multi-label suffixes on top of the built-in table, so an engagement on a suffix RedLog has not heard of is not blocked on a release. **Additive only** — the built-ins cannot be removed | `public-suffix` |
+| `personalDomains` | `127.0.0.0/8`, `::1`, `localhost` | hosts that are never part of any engagement, in the `excludeTargets` syntax. The personal-traffic filter hides them (`events`), the create card adds the operator's own IP to the defaults rather than replacing them (`create-config-merge`), and exports drop their rows rather than masking them (`—`) | `events`, `create-config-merge` |
 | `scopeFile` | `null` | external scope document, loaded on open | `config-options` |
 
-`scopeFile` parsing (`config-options`): plain text is one target per line with
-`#` comments and blank lines dropped; a file with no extension is read as text;
-a JSON array keeps only its string entries; malformed JSON, an unrecognised JSON
-shape, and a missing file all yield `[]` rather than throwing — an unreadable
-scope must never take the project open down with it.
+Adjacency is not configurable: a single-IP scope entry's neighbours are its /24
+(`subnetOf` in `scope-evaluator.ts`), and registrable domains come from a
+built-in table of two-label suffixes (`co.uk`, `co.jp`, …). There is no
+`proximityBits` or `publicSuffixes` option.
+
+`scopeFile` parsing (`loadScopeFile`): plain text is one target per line with
+`#` comments and blank lines dropped; a JSON array is read as the target list;
+a missing file yields `[]` rather than throwing (`config`). Also what the code
+does, but asserted by no test (`—`): a file with no extension, or any extension
+but `.json`, is read as text; a JSON array keeps only its string entries;
+Burp/ZAP's `target.scope` JSON is decoded; malformed JSON and an unrecognised
+JSON shape yield `[]`. An unreadable scope must never take the project open
+down with it.
 
 Burp/ZAP hold a scope host as a **regex**, so `burpHostToTarget()` decodes the
 shapes those tools write into RedLog target syntax:
@@ -412,6 +425,8 @@ successfully and never learns which hosts are missing from it.
 |---|---|---|---|---|
 | `quality` | `85` | 1–100 | passed to the JPEG encoder verbatim; `0` is ignored and 85 is used | `screenshot-options` |
 | `intervalSec` | `0` | seconds, `0` = off | `0` and negatives schedule nothing; `30` schedules a 30 s loop; `12.9` floors to 12 s; setting it back to `0` cancels the running loop; re-configuring replaces the timer instead of stacking one | `screenshot-options` |
+| `diffThreshold` | `5` | bits, `0` = off | automatic captures only: a frame whose dHash distance from the last stored frame is below this is skipped as no visible change; `0` stores every non-identical frame; manual captures ignore it | `dhash` |
+| `captureOnCommand` | `false` | bool | on captures a screenshot when a shell command finishes, linked to it by `_causes`; the perceptual dedup still applies | `—` |
 
 Capture gating (`screenshot-options`): a periodic capture of an unchanged screen
 is skipped (exact-bytes then perceptual dHash), a changed screen is captured
@@ -486,6 +501,13 @@ credential; a throwing loot detector does not lose the event.
 
 A fully stripped-down config produces no flags at all (`browser-launcher`).
 
+## 2.8a `httpCapture`
+
+| Option | Default | Behaviour | Proof |
+|---|---|---|---|
+| `port` | `8080` | the port RedLog's managed mitmdump listens on | `—` |
+| `routeTerminals` | `false` | on, a built-in terminal opened while HTTP capture is running gets `HTTP_PROXY` / `HTTPS_PROXY` pointing at the capture proxy | `first-run-record-terminal` (the setting), `—` (the environment) |
+
 ## 2.9 `redaction`
 
 | Option | Default | Behaviour | Proof |
@@ -498,33 +520,16 @@ A fully stripped-down config produces no flags at all (`browser-launcher`).
 Plugin-contributed denylist entries merge in and unregister cleanly
 (`redaction`); masking preserves span length (`redaction`, `secret-redaction`).
 
-## 2.10 `deconfliction`
+## 2.10 `deconfliction` — removed
 
-| Option | Default | Behaviour | Proof |
-|---|---|---|---|
-| `enabled` | `false` | disabled sends nothing | `deconfliction` |
-| `url` | `''` | empty sends nothing even when enabled | `deconfliction` |
-| `secret` | `''` | HMAC over the exact bytes sent | `deconfliction`, `signing` |
-| `events` | `marker, system, credential_use, c2_checkin` | only these agent types are forwarded | `deconfliction` |
-| `subtypes` | `scope_violation` | forwarded even when the agent type is not listed | `deconfliction` |
-| `includeData` | `false` | **the PII gate** — the event body is omitted unless this is on | `deconfliction` |
-| `authorityFloor` | `inferred` | lowest §3 authority tier to forward: `inferred` sends both tiers labelled; `fact` holds D2 proximity inferences back so the blue team only hears about observed rule matches (G-C2) | `deconfliction` |
+The blue-team webhook was removed (`98a7bba`); no code reads a `deconfliction`
+block. A config that still has one carries it through unread (Part 3).
 
-Events batch into a single POST and buffered events flush on shutdown rather
-than being dropped (`deconfliction`).
+## 2.11 `cloudShare` / `marketplace` — removed
 
-## 2.11 `cloudShare` / `marketplace`
-
-| Option | Default | Behaviour | Proof |
-|---|---|---|---|
-| `cloudShare.endpoint` | `''` | empty falls back to the local `file://` stub uploader | `cloud-share`, `cloud-share-uploader` |
-| `cloudShare.authToken` | `''` | sent as `Authorization: Bearer …` on the upload init | `cloud-share-uploader` |
-| `cloudShare.maxBundleBytes` | unset → 100 MB | an oversized bundle is rejected and the zip cleaned up | `cloud-share` |
-| `marketplace.defaultRegistryUrl` | bundled example registry | **dormant**: `MARKETPLACE_ENABLED = false` shelves the only panel that reads it, so the setting currently has no UI consumer at all. The shelved state itself is asserted, so un-shelving trips a test rather than quietly reviving an untested option | `settings-interaction` |
-
-Bundle building is gated on the reviewed-by-operator flag and produces
-zip + `manifest.json` (`cloud-share`); registry installs enforce revocation,
-signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust`).
+Cloud share (`1a77090`) and the plugin marketplace were removed, and
+`settings-ia` asserts both stay gone. No code reads either block; the evidence
+bundle itself remains, in the one export control.
 
 ## 2.12 `fileWatcher` / `processMonitor` / `agentTailer` (tuning; see `packs`)
 
@@ -536,6 +541,7 @@ signatures, and tarball hash/metadata agreement (`marketplace`, `publisher-trust
 | *(runs with)* | `packs.hostMonitors` | off by default; Windows emits a one-shot advisory | `process-monitor`, `capture-packs` |
 | `processMonitor.pollMs` | `500` | poll cadence; floored at 200 ms, and at **2000 ms on Windows** where a cold PowerShell spawn is 800–1500 ms and a 500 ms cadence would stack calls | `process-monitor-cadence` |
 | `processMonitor.ignoreCommands` | `[]` | leading-token match, on top of the built-ins | `process-monitor` |
+| `connectionMonitor.pollMs` | `2000` | socket-table poll cadence of the connection monitor, which runs with `packs.hostMonitors`; floored at 1000 ms | `—` |
 | *(runs with)* | `packs.aiAgents` | agent transcripts are sensitive: off until the operator turns the pack on for the project; a `.redlog-app-root` marker still opts a repo out | `capture-packs`, `agent-tailer` |
 | `agentTailer.emitThinking` | `false` | thinking blocks are excluded unless turned on | `agent-tailer` |
 | *(runs with)* | `packs.windowsOutput` | Windows: follows `~/.redlog/transcripts/*.txt` written by `start-transcript-hook.ps1` and emits each command once | `powershell-transcript`, `capture-packs` |
@@ -570,31 +576,23 @@ Capture Health and retried on the next sighting (`loot-correctness`).
 | Case | Behaviour | Proof |
 |---|---|---|
 | no `config.yaml` | full defaults | `config`, `config-options` |
-| corrupt / empty YAML | falls back to defaults, never throws | `config-options` |
-| partial file | merges over defaults; siblings keep their defaults | `config`, `config-options` |
-| arrays | **replace**, never concatenate | `config-options` |
-| explicit `[]` | wins over a non-empty default | `config-options` |
-| explicit `false` / `0` | kept, not treated as "unset" | `config-options` |
-| unknown key | carried through, not dropped | `config-options` |
-| save → load | round-trips every block | `config`, `config-options` |
-| `saveConfig` into a missing directory | creates it | `config-options` |
+| corrupt / empty YAML | falls back to defaults, never throws | `—` |
+| partial file | merges over defaults; siblings keep their defaults | `config` |
+| arrays | **replace**, never concatenate | `—` |
+| explicit `[]` | wins over a non-empty default | `—` |
+| explicit `false` / `0` | kept, not treated as "unset" | `—` |
+| unknown key | carried through, not dropped | `—` |
+| save → load | round-trips (asserted for `engagement.id` and `network.whitelist`) | `config` |
+| `saveConfig` into a missing directory | creates it | `—` |
 
-Legacy migration (`config-options`, `config`):
+Each `—` row is what `loadConfig` / `saveConfig` do today (a `deepMerge` over
+the defaults, a catch-all fallback, `mkdirSync({ recursive: true })`), but no
+test asserts it.
 
-| Old | New | Note |
-|---|---|---|
-| `network.vpnIPs` | `network.whitelist` | legacy key is deleted so it cannot re-migrate |
-| `network.safeIPs` | `network.whitelist` | beats `vpnIPs` when both are present |
-| `network.dailyIPs` | `network.blacklist` | |
-| `network.exposedIPs` | `network.blacklist` | |
-| `scope.enforcement: warn` | `warnOnViolation: true` | |
-| `scope.enforcement: log` | `warnOnViolation: false` | the only value that meant quiet (and it did not even log) |
-| `scope.enforcement: block` | `warnOnViolation: true` | `block` was the strictest value the old field offered; answering it with silence would give less protection than was asked for, on a config nobody revisits |
-| `scope.enforcement: <anything else>` | `warnOnViolation: true` | unrecognised values fail loud, not quiet |
-| `scope.warnOnViolation: false` | `alertFloor: 'excluded_only'` | the boolean could only silence D2 (G-C3) |
-| `scope.warnOnViolation: true` | `alertFloor: 'adjacent'` | |
-
-An explicit `warnOnViolation` is never overwritten by a stale `enforcement` key.
+No legacy key is migrated. Spec 006 (the pre-release contract reset) removed
+the migrations: `loadConfig` merges the file over the defaults and nothing
+else, so an old key such as `network.vpnIPs` or `scope.enforcement` is carried
+through unread.
 
 ---
 
@@ -614,7 +612,7 @@ An explicit `warnOnViolation` is never overwritten by a stale `enforcement` key.
 | inferred-vs-observed rendering (dot shape), orthogonal to severity | §1.7.1 | `dot-shape` |
 | `authority` resolution + the stamp `insertEvent` writes | §1.7.1 | `authority`, `authority-stamp` |
 | `scope_violation` payload: `reason` + `authority` per rung | §1.7 | `scope-violation-event` |
-| registrable-domain table incl. operator-added suffixes | §2.3 | `public-suffix` |
+| registrable-domain table (built-in two-label suffixes; not configurable) | §2.3 | `alert/scope-policy` |
 | settings search index covers every group | option discoverability | `settings-search` |
 | timeline lanes, axis, clustering, modes, wheel, geometry | timeline behaviour | `timeline-*` |
 | capture onboarding + readiness | empty/partial states | `capture-onboarding-render`, `capture-readiness`, `empty-state` |
@@ -713,7 +711,13 @@ sees — an assertion in `alert-display`.
 
 The first of those is **enforced, not requested**: `config-options` walks the
 real default config and fails on any option the table does not name (and on any
-table entry whose option has been removed). It found `network.staleAfter` and
-`scope.publicSuffixes` the first time it ran — both had reached Part 2 of this
-document but not the assertions, which is exactly the drift a sentence in a doc
-cannot prevent.
+table entry whose option has been removed). Its first run, with the table taken
+from this document as it stood, found drift both ways: nine options the
+defaults held that Part 2 never listed (`engagement.activeTarget`,
+`network.offline`, `scope.warnOnViolation`, `scope.personalDomains`,
+`screenshot.diffThreshold`, `screenshot.captureOnCommand`, `httpCapture.port`,
+`httpCapture.routeTerminals`, `connectionMonitor.pollMs`), and fifteen rows for
+options no code reads (`engagement.name`, `network.staleAfter`,
+`scope.alertFloor`, `scope.proximityBits`, `scope.publicSuffixes`, and the
+`deconfliction`, `cloudShare` and `marketplace` blocks). That is exactly the
+drift a sentence in a doc cannot prevent.
