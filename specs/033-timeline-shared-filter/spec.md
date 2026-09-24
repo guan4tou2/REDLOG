@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-23
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: User description: "Timeline on the shared filter: the Timeline answers the same filter as every other event view. Today the FilterBar's Type and Time controls are shown above the Timeline but the Timeline ignores them; the Timeline's `/` filter parses its own syntax instead of going through the Spec 026 query contract (parseQuery → executeEventQuery); "target" means different things in the Timeline, the FilterBar and the Targets view; the tier (chained/logged, auditor view) is a Timeline-only toggle rather than part of the shared filter; and the Timeline reads a time zone (engagement.timezone) that nothing else uses, so its times can disagree with the other views. One filter, one target definition, one query path, one time zone."
 
