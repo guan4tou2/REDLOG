@@ -90,6 +90,18 @@ describe('one case-insensitive target predicate', () => {
     expect(queryHttpFlowPage({ targetId: 'EXAMPLE.COM' }).flowCount).toBe(2)
   })
 
+  // SC-002 (T058): the active-target fallback stamps every shell row with the
+  // current target, a terminal opening and the hook sourcing itself included.
+  // Those are housekeeping, which the Timeline never draws or counts, so the
+  // Targets page promised rows that "Open in Timeline" then did not show.
+  it('counts on the Targets page what the Timeline totals, housekeeping aside', () => {
+    insertFixtureRow(row('events', 'example.com', { subtype: 'session_start', data: { shell: 'bash' } }))
+    insertFixtureRow(row('events', 'Example.COM', { subtype: 'command_start', data: { command: 'source ~/.redlog/shell-bash-hook.sh' } }))
+    const timelineTotal = countEvents({ filter: { targetId: 'example.com' }, excludeHousekeeping: true })
+    expect(timelineTotal).toBe(7)
+    expect(aggregateTargets().find((t) => t.target.toLowerCase() === 'example.com')?.eventCount).toBe(timelineTotal)
+  })
+
   it('selects neither a longer address nor an observation that names it', () => {
     expect(walkPage({ targetId: '10.0.0.5' })).toBe(2)
     expect(countEvents({ filter: { targetId: '10.0.0.5' } })).toBe(2)

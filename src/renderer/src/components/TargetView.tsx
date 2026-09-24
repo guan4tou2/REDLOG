@@ -45,6 +45,15 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const selectedRef = useRef(selected)
   selectedRef.current = selected
   const { t } = useI18n()
+  // Re-read the selected target's first page, when a live row could not be
+  // checked against it. Declared above the effect that calls it.
+  const reloadEvidenceRef = useRef(async (target: string): Promise<void> => {
+    const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: 200 })
+    if (selectedRef.current !== target) return
+    setEvidence(page.items)
+    setHasMore(page.hasMore)
+    setNextCursor(page.nextCursor)
+  })
 
   useEffect(() => {
     // Refresh both on mount and whenever the operator saves settings — the
@@ -59,13 +68,23 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     const unsub = window.redlog.events.onNewBatch((events) => {
       if (events.some((evt) => evt.targetId || evt.data?.detectedTarget)) loadTargets()
       const sel = selectedRef.current
-      const additions = sel ? events.filter((evt) => evt.targetId === sel) : []
-      if (additions.length) {
-        setEvidence((prev) => {
-          const known = new Set(prev.map((e) => e.id))
-          return [...additions.filter((event) => !known.has(event.id)).reverse(), ...prev]
+      const candidates = sel ? events.filter((evt) => evt.targetId).slice(-1000) : []
+      if (!sel || candidates.length === 0) return
+      // A live row joins the list through the page's own predicates: the
+      // target in any casing, and housekeeping aside. A plain `===` here
+      // missed the other casing and let plumbing rows in (spec 033 SC-002).
+      window.redlog.events.matchIds({ ids: candidates.map((e) => e.id), filter: { targetId: sel }, excludeHousekeeping: true })
+        .then((ids) => {
+          if (selectedRef.current !== sel || ids.length === 0) return
+          const admitted = new Set(ids)
+          setEvidence((prev) => {
+            const known = new Set(prev.map((e) => e.id))
+            return [...candidates.filter((e) => admitted.has(e.id) && !known.has(e.id)).reverse(), ...prev]
+          })
         })
-      }
+        // The header count is the aggregate, so a missed row shows as
+        // "loaded N of M" rather than as a complete list; re-read the page.
+        .catch(() => { if (selectedRef.current === sel) void reloadEvidenceRef.current(sel) })
     })
     void window.redlog.targetContext.get().then(setActiveTarget)
     const unsubTarget = window.redlog.targetContext.onChange(setActiveTarget)
@@ -110,7 +129,8 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       return
     }
     setSelected(target)
-    const page = await window.redlog.events.queryPage({ targetId: target, limit: PAGE_SIZE })
+    // Housekeeping aside, as the count and the Timeline leave it (spec 033 SC-002).
+    const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: PAGE_SIZE })
     setEvidence(page.items)
     setHasMore(page.hasMore)
     setNextCursor(page.nextCursor)
@@ -119,7 +139,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const loadMore = useCallback(async () => {
     if (!selected || !nextCursor || loadingMore) return
     setLoadingMore(true)
-    const page = await window.redlog.events.queryPage({ targetId: selected, limit: PAGE_SIZE, cursor: nextCursor })
+    const page = await window.redlog.events.queryPage({ targetId: selected, excludeHousekeeping: true, limit: PAGE_SIZE, cursor: nextCursor })
     setEvidence((prev) => [...prev, ...page.items])
     setHasMore(page.hasMore)
     setNextCursor(page.nextCursor)

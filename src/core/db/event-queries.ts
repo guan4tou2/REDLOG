@@ -156,7 +156,7 @@ export const HTTP_FLOW_SUBTYPES = ['http_request_start', 'http_response'] as con
 // `NOT (NULL)` is NULL, which a WHERE drops. Without the COALESCEs, a shell,
 // system or terminal row with no subtype, or a command row with no command,
 // was hidden as though it were housekeeping.
-const HOUSEKEEPING_SQL = `
+export const HOUSEKEEPING_SQL = `
   NOT (
     (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start'))
     OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start')
