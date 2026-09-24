@@ -106,6 +106,29 @@ jobs:
         with:
           path: artifacts
 
+      # One checksum file over the installers themselves (not blockmaps or the
+      # auto-update latest*.yml), keyed by the asset name an operator downloads
+      # so `sha256sum -c SHA256SUMS.txt --ignore-missing` works next to it.
+      # GitHub renames spaces in uploaded asset names to dots
+      # ("RedLog Setup 0.16.1.exe" → "RedLog.Setup.0.16.1.exe"); list them that way.
+      - name: Generate SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          sums=artifacts/SHA256SUMS.txt
+          : > "$sums.tmp"
+          find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) -print0 |
+            while IFS= read -r -d '' f; do
+              name=$(basename "$f")
+              printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "${name// /.}" >> "$sums.tmp"
+            done
+          if [ ! -s "$sums.tmp" ]; then
+            echo "::error::no installer artifacts to checksum"
+            exit 1
+          fi
+          sort -k2 "$sums.tmp" > "$sums"
+          rm "$sums.tmp"
+          cat "$sums"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

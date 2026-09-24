@@ -14,6 +14,22 @@ for full commit body + generated notes.
   turn its pack on in Settings ▸ Capture: Host monitors (process, connection,
   file, clipboard), AI agents, or Windows terminal output.
 
+- **Install readiness.** First launch shows whether this machine can record
+  your own terminal — python3, curl, your shell, mitmproxy (optional) — with a
+  copyable install command for anything missing; it never blocks entering the
+  app. The zsh/bash hook now counts as available only when python3 and curl
+  are both present (it used to say "available" without python3 and record
+  nothing).
+- **Old hook detected.** A profile that still loads the pre-0.16 shell hook is
+  detected; one click backs up the file, removes the old line and installs the
+  current hook.
+- **PowerShell hook installs in one click** (was manual).
+- **Tools installed with uv or Homebrew are found when RedLog is opened from
+  the Dock/Finder.** RedLog reads your login shell's PATH at startup, so
+  `mitmdump` in `~/.local/bin` starts HTTP capture.
+- **Releases include `SHA256SUMS.txt`.** README and the user guide now start
+  with installing and using RedLog; developer setup moved to Development.
+
 - **Capture packs.** Settings ▸ Capture now lists what every project records
   (shell hook, HTTP(S) through mitmproxy, redlog-session output, the built-in
   terminal) and the optional packs, one switch each. Each pack is a bundled
