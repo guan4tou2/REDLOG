@@ -2,9 +2,10 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
 // docs/DESIGN-core-and-capture.md §6: the eight flat toolbar toggles grouped by
-// effect. The low-frequency view/audit controls (session dividers, timezone,
-// auditor view) moved behind one "More" control so the row is scannable instead
-// of a flat wall of chips. This checks they are reachable there, not lost.
+// effect. The low-frequency view controls (session dividers, timezone) moved
+// behind one "More" control so the row is scannable instead of a flat wall of
+// chips. This checks they are reachable there, not lost. The auditor view left
+// the menu in spec 033: "Chained only" is a FilterBar chip every view applies.
 
 let app: ElectronApplication
 let page: Page
@@ -23,8 +24,8 @@ test.describe.serial('timeline toolbar overflow', () => {
   test.afterAll(async () => { await app?.close() })
 
   test('the rare view controls are not in the flat row', async () => {
-    // The timezone select and auditor chip should NOT be visible until the
-    // overflow is opened — that is the whole point of moving them.
+    // The timezone select should NOT be visible until the overflow is
+    // opened — that is the whole point of moving it.
     await expect(page.locator('[data-testid="timeline-tz-select"]')).toHaveCount(0)
     await expect(page.locator('[data-testid="timeline-more-menu"]')).toBeVisible()
   })
@@ -33,6 +34,10 @@ test.describe.serial('timeline toolbar overflow', () => {
     await page.locator('[data-testid="timeline-more-menu"]').click()
     const tz = page.locator('[data-testid="timeline-tz-select"]')
     await expect(tz).toBeVisible()
+    // Spec 033 SC-007: the tier is one control, the FilterBar chip, not a
+    // second switch in this menu.
+    await expect(page.locator('[data-testid="timeline-auditor-view-chip"]')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Chained only/ })).toBeVisible()
     // Toggling the timezone through the menu persists to localStorage.
     await tz.selectOption('utc')
     const stored = await page.evaluate(() => localStorage.getItem('redlog-timeline-tz'))

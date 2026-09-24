@@ -24,6 +24,8 @@ export interface EventFilter {
   scope?: ScopePolicy
   hidePersonal?: boolean
   personalDomains?: string[]
+  /** Spec 033: `chained` reads the chained tier only; absent reads both. */
+  tier?: 'chained'
 }
 
 function inScopeTargetIds(filter: EventFilter): string[] | null {
@@ -77,6 +79,9 @@ function appendEventFilter(
   alias = ''
 ): void {
   const col = (name: string): string => alias ? `${alias}.${name}` : name
+  // "Chained only" leaves the logged arm nothing. It is a predicate like the
+  // rest, so the arm still runs and its count is an honest 0.
+  if (filter.tier === 'chained' && arm === 'logged') conditions.push('0 = 1')
   if (filter.agentType) { conditions.push(`${col('agent_type')} = ?`); params.push(filter.agentType) }
   if (filter.since != null) { conditions.push(`${col('timestamp')} >= ?`); params.push(filter.since) }
   if (filter.before != null) { conditions.push(`${col('timestamp')} <= ?`); params.push(filter.before) }
@@ -138,7 +143,9 @@ const HOUSEKEEPING_SQL = `
   )
 `
 
-export interface EventQueryOptions extends EventFilter {
+/** `tier` here picks which arms run, a wider choice than the shared filter's
+ *  "chained only", so it replaces that field rather than extending it. */
+export interface EventQueryOptions extends Omit<EventFilter, 'tier'> {
   limit?: number
   since?: number
   // Time-range upper bound: return events strictly older than this wall-clock
@@ -189,6 +196,9 @@ function decodeHttpFlowCursor(value?: string | null): { startTs: number; flowId:
  * predicates apply to the request start (or earliest surviving flow row when
  * capture began mid-flow); all request/response rows for selected flows return. */
 export function queryHttpFlowPage(opts: EventFilter & { limit?: number; cursor?: string | null }): HttpFlowPage {
+  // Flows are recorded in the logged tier only, so "chained only" leaves
+  // this view nothing by construction (spec 033 FR-012); the panel says so.
+  if (opts.tier === 'chained') return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
   const db = getReadonlyDB()
   const limit = Math.max(1, opts.limit ?? 200)
   const cursor = decodeHttpFlowCursor(opts.cursor)
@@ -278,8 +288,9 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
   const chainedParams: unknown[] = []
   const loggedConds: string[] = []
   const loggedParams: unknown[] = []
-  appendEventFilter(opts, chainedConds, chainedParams, 'chained')
-  appendEventFilter(opts, loggedConds, loggedParams, 'logged')
+  const { tier: _arms, ...filterOpts } = opts
+  appendEventFilter(filterOpts, chainedConds, chainedParams, 'chained')
+  appendEventFilter(filterOpts, loggedConds, loggedParams, 'logged')
   chainedConds.push(...conditions)
   chainedParams.push(...params)
   loggedConds.push(...conditions)

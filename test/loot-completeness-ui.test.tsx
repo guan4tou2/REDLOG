@@ -105,7 +105,10 @@ describe('Loot completeness UI', () => {
     shared.filter = { targetId: null, agentType: 'shell', timeRange: null, inScopeOnly: false }
     render(<LootPanel />)
 
-    await waitFor(() => expect(screen.getByText('loot.empty')).not.toBeNull())
+    // Spec 033 FR-012: Loot lists only loot rows, so the empty list is by
+    // construction and says so, rather than reading as "no loot yet".
+    await waitFor(() => expect(screen.getByTestId('empty-by-construction-notice')).not.toBeNull())
+    expect(screen.queryByText('loot.empty')).toBeNull()
     expect(queryPage).not.toHaveBeenCalled()
   })
 })

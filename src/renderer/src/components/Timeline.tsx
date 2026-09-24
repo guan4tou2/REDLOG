@@ -99,24 +99,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
   // Hide command_start once its matching command_end lands — the end has the
   // exit code + duration, so the start would just be a duplicate row.
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
-  // v0.14 §9.2: auditor-view state hoisted above the `events` useMemo so
-  // the filter can compose in one place. Persistence + per-project scoping
-  // lives further down alongside the other filter state (see below).
-  const [auditorView, setAuditorView] = useState(false)
+  // The tier is not decided here (spec 033): "Chained only" is a shared-filter
+  // condition, so a logged row never reaches rawEvents under it.
   const events = useMemo(
-    () => {
-      const base = filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns)
-      // When auditor view is on, drop logged-tier rows.
-      return auditorView ? base.filter((e) => e.tier !== 'logged') : base
-    },
-    [rawEvents, collapseAgentTurns, auditorView]
-  )
-  // Count of logged rows that WOULD be hidden by auditor view — surfaces on
-  // the chip so the operator can see how much the filter is doing. Uses
-  // rawEvents so the number is stable regardless of the agent-turn collapse.
-  const hiddenLoggedCount = useMemo(
-    () => rawEvents.reduce((n, e) => n + (e.tier === 'logged' ? 1 : 0), 0),
-    [rawEvents]
+    () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
+    [rawEvents, collapseAgentTurns]
   )
   // Count of hidden agent turns to surface on the chip so the operator
   // knows the toggle is doing something (else the empty agent lane looks
@@ -273,7 +260,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       } catch { /* ignore */ }
     }
     load('redlog-timeline-anomaly-filter', (s) => s === '1', setAnomalyFilter)
-    load('redlog-timeline-auditor-view', (s) => s === '1', setAuditorView)
     load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
     load('redlog-timeline-filter-query', (s) => s, setFilterQuery)
     load('redlog-timeline-hidden-lanes', (s) => {
@@ -307,12 +293,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       localStorage.setItem(`redlog-timeline-anomaly-filter:${projectIdForKeys}`, anomalyFilter ? '1' : '0')
     } catch { /* ignore */ }
   }, [anomalyFilter, projectIdForKeys])
-  useEffect(() => {
-    if (!projectIdForKeys) return
-    try {
-      localStorage.setItem(`redlog-timeline-auditor-view:${projectIdForKeys}`, auditorView ? '1' : '0')
-    } catch { /* ignore */ }
-  }, [auditorView, projectIdForKeys])
 
   // v0.6.91 W1: inline `/` search — dims events whose title / command / URL /
   // host / operator doesn't substring-match the query. Persisted so the
@@ -406,8 +386,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
       window.removeEventListener('redlog:filter-host', onFilterHost)
     }
   }, [])
-  // Overflow for the low-frequency view/audit controls (session dividers,
-  // timezone, auditor view) so the toolbar row groups by effect instead of
+  // Overflow for the low-frequency view controls (session dividers,
+  // timezone) so the toolbar row groups by effect instead of
   // listing eight flat toggles (DESIGN-core-and-capture.md §6).
   const [moreOpen, setMoreOpen] = useState(false)
 
@@ -1977,18 +1957,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
                   >
                     <span>⋮ {t('timeline.boundaries.toggle')}</span>
                     <span className={sessionDividers ? 'text-indigo-300' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
-                  </button>
-                  <button
-                    role="menuitemcheckbox"
-                    data-testid="timeline-auditor-view-chip"
-                    aria-checked={auditorView}
-                    disabled={hiddenLoggedCount === 0 && !auditorView}
-                    onClick={() => { if (hiddenLoggedCount === 0 && !auditorView) return; setAuditorView((v) => !v) }}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5 disabled:opacity-40 disabled:cursor-default"
-                    title={t('timeline.auditorView.tooltip')}
-                  >
-                    <span>{t('timeline.auditorView.chip', { count: hiddenLoggedCount })}</span>
-                    <span className={auditorView ? 'text-emerald-300' : 'text-redlog-text-faint'}>{auditorView ? '✓' : ''}</span>
                   </button>
                   <div className="flex items-center gap-2 px-3 py-1.5">
                     <span className="text-xs font-mono text-redlog-text-dim">{t('timeline.tz.tooltip')}</span>
