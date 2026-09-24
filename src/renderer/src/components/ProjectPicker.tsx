@@ -72,23 +72,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
     if (!name) return
     setCreating(true)
     try {
-      const initialConfig = (scope.valid.length > 0 || exclude.valid.length > 0 || whitelist.length > 0 || blacklist.length > 0)
+      const personalDomains = ignoreLocal && localIP ? [localIP] : []
+      const initialConfig = (scope.valid.length > 0 || exclude.valid.length > 0 || whitelist.length > 0 || blacklist.length > 0 || personalDomains.length > 0)
         ? {
-          scope: { targets: scope.valid, excludeTargets: exclude.valid, warnOnViolation, scopeFile: null },
+          // personalDomains is added to the defaults by project:create
+          // (mergeInitialConfig), so the operator's IP goes in the same call.
+          scope: { targets: scope.valid, excludeTargets: exclude.valid, warnOnViolation, scopeFile: null, personalDomains },
           network: { whitelist, blacklist, checkInterval: 60 }
         }
         : undefined
       const project = await window.redlog.project.create(name, initialConfig)
-      // project:create merges `scope` shallowly, so sending personalDomains
-      // there would replace the defaults (loopback, localhost). Append to the
-      // stored list once the new project's config exists instead.
-      if (ignoreLocal && localIP) {
-        const cfg = await window.redlog.config.get() as { scope: { personalDomains?: string[] } } | null
-        const personal = cfg?.scope.personalDomains ?? []
-        if (cfg && !personal.includes(localIP)) {
-          await window.redlog.config.save({ ...cfg, scope: { ...cfg.scope, personalDomains: [...personal, localIP] } })
-        }
-      }
       onProjectOpen({ id: project.id, name: project.name })
     } catch (e) {
       setCreating(false)

@@ -7,7 +7,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, setTrayRecording } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import yaml from 'js-yaml'
-import { loadConfig, saveConfig, snapshotScope, RedLogConfig } from '../core/config'
+import { loadConfig, saveConfig, snapshotScope, mergeInitialConfig, RedLogConfig } from '../core/config'
 import { isPackOn } from '../core/capture-packs'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir } from '../core/db/index'
@@ -1129,16 +1129,7 @@ app.whenReady().then(() => {
     // on the box. Seed both from what the operator just typed; the advanced
     // setup (or a later edit) still overrides.
     const projectDir = getProjectPath(project)
-    const config = loadConfig(projectDir)
-    const merged = {
-      ...config,
-      engagement: { ...config.engagement, id: project.id, ...initialConfig?.engagement },
-      operator: { ...config.operator, ...initialConfig?.operator },
-      network: { ...config.network, ...initialConfig?.network },
-      scope: { ...config.scope, ...initialConfig?.scope },
-      screenshot: { ...config.screenshot, ...initialConfig?.screenshot }
-    }
-    saveConfig(projectDir, merged)
+    saveConfig(projectDir, mergeInitialConfig(loadConfig(projectDir), project.id, initialConfig))
     startProject(project)
     return project
   })
