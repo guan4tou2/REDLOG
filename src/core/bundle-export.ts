@@ -158,6 +158,21 @@ export function scrubCast(src: string, dst: string, reps: Array<[RegExp, string]
 }
 
 export function exportBundle(engagementId: string, opts: ExportBundleOpts): EvidenceBundle {
+  // __dirname resolves differently between dev (src/core/) and packaged
+  // builds (out/main/). Try the same two-then-three-parents pattern
+  // hooks-manager.ts uses for shipped assets, then fall back to cwd.
+  const verifierCandidates = [
+    path.join(__dirname, '..', '..', '..', 'tools', 'redlog-verify.py'),
+    path.join(__dirname, '..', '..', 'tools', 'redlog-verify.py'),
+    path.join(process.cwd(), 'tools', 'redlog-verify.py')
+  ]
+  // Resolved before anything is written: this bundle is sold as "with
+  // verifier", so a build that lost the file (it was once not packaged at all)
+  // must fail loudly here rather than ship a bundle a recipient cannot check.
+  const verifierResolved = verifierCandidates.find((p) => fs.existsSync(p))
+  if (!verifierResolved) {
+    throw new Error(`Evidence bundle verifier not found — this RedLog build is missing tools/redlog-verify.py. Tried: ${verifierCandidates.join(', ')}`)
+  }
   const outRoot = opts.outRoot
   const projectDir = getProjectDir()
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
@@ -514,16 +529,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // better-sqlite3. Python 3 stdlib is enough for the hash chain; Ed25519
   // signature verification is optional (`uv run --with cryptography`).
   // See tools/redlog-verify.py and docs/CLOUD_SHARE_BUNDLE.md.
-  // __dirname resolves differently between dev (src/core/) and packaged
-  // builds (out/main/). Try the same two-then-three-parents pattern
-  // hooks-manager.ts uses for shipped assets, then fall back to cwd.
-  const verifierCandidates = [
-    path.join(__dirname, '..', '..', '..', 'tools', 'redlog-verify.py'),
-    path.join(__dirname, '..', '..', 'tools', 'redlog-verify.py'),
-    path.join(process.cwd(), 'tools', 'redlog-verify.py')
-  ]
-  const verifierResolved = verifierCandidates.find((p) => fs.existsSync(p)) ?? null
-  if (verifierResolved) {
+  // The verifier, its OS wrappers and the recipient README.
+  {
     const verifierBytes = fs.readFileSync(verifierResolved)
     const verifierDest = path.join(bundleDir, 'redlog-verify.py')
     fs.writeFileSync(verifierDest, verifierBytes)
