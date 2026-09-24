@@ -9,35 +9,93 @@ Red Team Operation Log — an Electron desktop app that passively records everyt
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![Latest release](https://img.shields.io/github/v/release/guan4tou2/REDLOG?label=download&logo=github)](https://github.com/guan4tou2/REDLOG/releases/latest)
 
-## Download
+## Install
 
-Grab the latest installer from the [**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.16.1**:
+Install RedLog on **your operator machine** (the Kali box or laptop you attack
+from), not on a target. It records what you do; it is not an implant.
 
-| Platform | File |
-|----------|------|
-| macOS (Apple Silicon) | [`RedLog-0.16.1-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog-0.16.1-arm64.dmg) |
-| Windows (installer) | [`RedLog.Setup.0.16.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog.Setup.0.16.1.exe) |
-| Windows (portable) | [`RedLog.0.16.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog.0.16.1.exe) |
-| Linux (AppImage) | [`RedLog-0.16.1.AppImage`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog-0.16.1.AppImage) |
-| Linux (Debian/Ubuntu) | [`redlog_0.16.1_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/redlog_0.16.1_amd64.deb) |
+Grab the installer for your platform from the
+[**releases page**](https://github.com/guan4tou2/REDLOG/releases/latest) — current version **v0.16.1**.
+Builds are unsigned (ad-hoc signed, not notarised), so each OS asks you to
+confirm once.
 
-macOS builds are **Apple Silicon only** as of v0.9.4 — Intel Macs should build from source (`npm install && npm run build && npx electron-builder --mac`).
+| Platform | File | Install |
+|----------|------|---------|
+| Kali / Debian / Ubuntu (x64) | [`redlog_0.16.1_amd64.deb`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/redlog_0.16.1_amd64.deb) | `sudo apt install ./redlog_*.deb` |
+| Other Linux (x64) | [`RedLog-0.16.1.AppImage`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog-0.16.1.AppImage) | `chmod +x RedLog-*.AppImage && ./RedLog-*.AppImage` |
+| Windows (x64 installer) | [`RedLog.Setup.0.16.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog.Setup.0.16.1.exe) | Run it; at SmartScreen choose **More info → Run anyway** |
+| Windows (x64 portable) | [`RedLog.0.16.1.exe`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog.0.16.1.exe) | No install; same SmartScreen prompt |
+| macOS (Apple Silicon) | [`RedLog-0.16.1-arm64.dmg`](https://github.com/guan4tou2/REDLOG/releases/download/v0.16.1/RedLog-0.16.1-arm64.dmg) | Drag to `/Applications`, then see below |
+| macOS (Intel) | — | No installer; [build from source](#development) |
 
-Builds are unsigned (ad-hoc signed, not notarised).
-
-**macOS** — the download is quarantined, and since macOS 15 that shows up as
-*"RedLog is damaged and can't be opened"*. The file is fine; the right-click →
-**Open** trick no longer works for unsigned apps. After dragging the app to
-`/Applications`, clear the quarantine flag:
+**macOS** — the first launch is blocked because the app is unsigned. Right-click
+`RedLog.app` → **Open**, or open **System Settings ▸ Privacy & Security**,
+scroll to the blocked-app notice and choose **Open Anyway**. If macOS instead
+says *"RedLog is damaged and can't be opened"* (the quarantine flag on an
+unsigned download), clear the flag as a last resort:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/RedLog.app
 ```
 
-Or open **System Settings ▸ Privacy & Security**, scroll to the blocked-app
-notice and choose **Open Anyway**.
+### Verify the download
 
-**Windows** — click **More info → Run anyway** past SmartScreen.
+Every release carries a `SHA256SUMS.txt` covering each installer. Download it
+next to your installer and check:
+
+```sh
+sha256sum -c SHA256SUMS.txt --ignore-missing        # Linux
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing    # macOS
+```
+
+On Windows, compare `Get-FileHash .\RedLog.Setup.*.exe -Algorithm SHA256` with
+the matching line in `SHA256SUMS.txt`.
+
+### Runtime requirements
+
+- **`python3` and `curl`** — the shell hook (for your own terminal and for
+  RedLog's built-in terminal) uses both to send events. Without them commands
+  still run, but nothing is recorded. Kali and macOS ship both.
+- **mitmproxy** *(optional, for HTTP(S) capture)* — `uv tool install mitmproxy`
+  (or `pipx install mitmproxy`). RedLog runs `mitmdump` from its own `PATH`;
+  if HTTP capture reports *mitmdump unavailable*, start RedLog from a shell in
+  which `which mitmdump` succeeds.
+
+## Quick Start
+
+The first engagement, in the order that proves capture works:
+
+1. **Create a project.** Name it after the engagement. Open **Advanced Setup**
+   to add the scope targets (IPs, CIDRs, `*.domain`) from your rules of
+   engagement — one entry at a time.
+2. **Run a command in the built-in terminal and watch it appear.** A new
+   project opens on a built-in terminal with a live recording strip beside it;
+   run something with a target (`nmap -sV 10.0.0.5`) and it shows up there and
+   on the Timeline. Everything in the built-in terminal is recorded, output
+   included (as an asciinema `.cast`).
+3. **Connect your normal shell.** On the Dashboard, **Capture Health ▸ Install
+   shell hook** (or the shell hook's **install** under *manage*) adds one
+   `source` line to `~/.zshrc` or `~/.bashrc`. Open a **new** terminal — shells
+   that were already open are not hooked. From then on every command you type
+   there is recorded as metadata: command, exit code, duration and working
+   directory. Output is not; for that use the built-in terminal,
+   `redlog-run <cmd>`, or a `redlog-session` recorded shell.
+4. **Optionally, start HTTP capture.** **Start HTTP capture** on the Dashboard
+   (or Settings ▸ Proxy & browser) runs a local mitmproxy with RedLog's addon;
+   the one-click proxied browser goes through it. Trust the mitmproxy CA for
+   HTTPS. *Route new terminals through HTTP capture* (same page, off by
+   default) sets `HTTP_PROXY` / `HTTPS_PROXY` for built-in terminals opened
+   afterwards, so proxy-aware HTTP tools — curl, wget, Python `requests`, Node
+   HTTP clients — go through mitmproxy. nmap SYN scans, raw TCP, SMB, LDAP and
+   RDP do not use an HTTP proxy and are not captured this way.
+
+Everything beyond that is optional and off by default: **capture packs** under
+**Settings ▸ Capture control** add host monitors (processes, connections,
+files, clipboard), AI agent transcripts (Claude Code, Codex, OpenCode) and
+Windows terminal output. The full walkthrough, in Traditional Chinese, is the
+[operator guide](docs/USER-GUIDE.md).
+
+> **Windows / WSL users** — see [docs/windows-setup.md](docs/windows-setup.md) for PowerShell hooks and WSL integration.
 
 ## Screenshots
 
@@ -71,25 +129,6 @@ Penetration testers need a complete, tamper-evident record of every action taken
 - **Path exclusion** — the agent transcript tailer and the Codex / OpenCode hooks additionally skip any session whose cwd is in the operator's exclusion list, so daily/hobby coding stays off the audit chain by default. The shell preexec hook has no cwd gate: pause RedLog, or don't source it in shells you don't want recorded
 - **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (exporters, monitors) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
-
-## Quick Start
-
-```bash
-# Install dependencies (requires Node 20+, Python 3 for native modules)
-npm install
-npm run rebuild        # rebuild better-sqlite3 for Electron
-
-# Development
-npm run dev
-
-# Production build
-npm run build
-
-# Package as DMG/installer
-npx electron-builder --mac    # or --win / --linux
-```
-
-> **Windows / WSL users** — see [docs/windows-setup.md](docs/windows-setup.md) for build prerequisites, PowerShell hooks, and WSL integration.
 
 ## Features
 
@@ -178,7 +217,7 @@ RedLog is designed to work alongside AI coding agents. Three integration layers 
 
 Hook directly into the agent's execution shell so every command is logged without the agent needing to know about RedLog. This is the backbone of capture; set it up before anything else.
 
-> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions can be captured by enabling the built-in transcript tailer, which records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
+> **RedLog captures nothing until a source is wired up — being open is not enough.** Install the adapter for each interactive shell. AI sessions can additionally be captured by turning on the **AI agents** capture pack (Settings ▸ Capture control, off by default), whose transcript tailer records prompts, responses, tool calls, and tool results. The Dashboard's **Capture Health** card warns you when nothing is feeding. See [Set up capture](docs/agent-integration.md#set-up-capture--do-this-first).
 
 **Any agent via shell hook (zsh/bash):**
 
@@ -470,20 +509,30 @@ Export your project config as a `.yaml` or `.json` profile:
 | Build | electron-builder |
 | AI integration | HTTP API + shell hooks |
 
-## Packaging
+## Development
+
+Building from source is for contributors and for platforms without an
+installer (Intel Macs). Requires Node 20 or 22 and Python 3 plus a C/C++
+toolchain for the native `better-sqlite3` module.
 
 ```bash
-# macOS DMG
-npx electron-builder --mac
-
-# Windows installer
-npx electron-builder --win
-
-# Linux AppImage
-npx electron-builder --linux
+npm install
+npm run rebuild        # rebuild better-sqlite3 for Electron's ABI
+npm run dev            # run the app with hot reload
+npm run build          # production build of main + renderer
 ```
 
-Built artifacts go to `dist/`.
+### Packaging
+
+```bash
+npx electron-builder --mac      # DMG + zip, arm64 (Intel Mac: add --x64)
+npx electron-builder --win      # NSIS installer + portable
+npx electron-builder --linux    # AppImage + deb
+```
+
+Built artifacts go to `dist/`. Tagged releases are built by
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which also
+publishes `SHA256SUMS.txt`.
 
 ## Cloud share backend (optional)
 
