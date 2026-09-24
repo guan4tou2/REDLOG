@@ -69,6 +69,17 @@ let ownPid = process.pid
 let emitBucket = { count: 0, windowStart: 0 }
 // v0.6.96 Clean-2: removed sessionCache — was only fed to findCauseSession
 // which always returned undefined (see comment above emitSpawn).
+// Bumped whenever polling stops, so on every restart and stop. The seed and
+// each poll run ps asynchronously, and config:save and project open configure
+// the monitor twice in one synchronous run, so a run can finish after a newer
+// restart or a stop. It must not act then: repeating the advisory below,
+// replacing the newer seed, or diffing against the table the restart just
+// emptied and recording every running process as a spawn.
+let generation = 0
+// Whether this capture start has said ps is unusable. Once per capture start
+// (the first, after a stop, or when the pack is turned back on), not once per
+// restart: every Settings save restarts the monitor.
+let psAdvised = false
 
 export function configureProcessMonitor(next: Partial<ProcessMonitorConfig>): void {
   cfg = { ...cfg, ...next }
@@ -76,16 +87,29 @@ export function configureProcessMonitor(next: Partial<ProcessMonitorConfig>): vo
 }
 
 export function stopProcessMonitor(): void {
+  stopPolling()
+  // A stop ends the capture (project close or switch), so the next start may
+  // say again that ps is unusable.
+  psAdvised = false
+}
+
+/** Stop the poll and forget the table without ending the capture: restart()
+ *  does this on every configure. */
+function stopPolling(): void {
+  generation++
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   knownProcs.clear()
   emitBucket = { count: 0, windowStart: 0 }
 }
 
 function restart(): void {
-  stopProcessMonitor()
-  if (!cfg.enabled) return
-  if (!cfg.engagementId || !cfg.operatorId) return
-  if (process.platform !== 'darwin' && process.platform !== 'linux' && process.platform !== 'win32') return
+  stopPolling()
+  const run = generation
+  const capturing = cfg.enabled && !!cfg.engagementId && !!cfg.operatorId &&
+    (process.platform === 'darwin' || process.platform === 'linux' || process.platform === 'win32')
+  // Not capturing, so the next start is a capture start and may say again
+  // that ps is unusable. A restart while capture stays on does not.
+  if (!capturing) { psAdvised = false; return }
   // v0.6.98 D: Windows polls the Win32_Process CIM class via PowerShell.
   // Cold PowerShell spawn is 800ms-1.5s, hot spawn ~200-400ms, so the
   // 500ms default poll cadence would stack calls. Floor the interval at
@@ -98,12 +122,16 @@ function restart(): void {
   // process on the box — a fresh RedLog startup would insert thousands of
   // events. From here on, only real deltas fire.
   runPs().then((rows) => {
+    if (run !== generation || !cfg.enabled) return
     knownProcs = new Map(rows.map((r) => [r.pid, { pid: r.pid, ppid: r.ppid, command: r.command, startedAt: Date.now() }]))
   }).catch((err) => {
     // Alpine / BusyBox `ps` doesn't accept the procps
     // `-eo pid=,ppid=,etime=,command=` syntax and errors immediately —
     // syntax. Emit a one-shot advisory mirroring the Windows path so
-    // the operator sees why nothing shows up.
+    // the operator sees why nothing shows up: once per capture start, and
+    // only from the newest restart.
+    if (run !== generation || !cfg.enabled || psAdvised) return
+    psAdvised = true
     try {
       const ev = ingestEvent('system', {
         subtype: 'process_monitor_ps_unavailable',
@@ -127,8 +155,12 @@ async function poll(): Promise<void> {
 }
 
 async function pollInner(): Promise<void> {
+  const run = generation
   let rows: PsRow[]
   try { rows = await runPs() } catch { return }
+  // A restart or a stop ran while ps ran: its seed is what this would be
+  // diffed against, and it may have turned capture off.
+  if (run !== generation || !cfg.enabled) return
   const nowMap = new Map<number, PsRow>()
   for (const r of rows) nowMap.set(r.pid, r)
   const { spawns, exits } = diffProcs(knownProcs, nowMap, cfg.ignoreCommands ?? [])
