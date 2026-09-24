@@ -122,9 +122,7 @@ export function RecordTerminalFlow({ target }: { target: RecordTarget }): JSX.El
           <Button level="secondary" onClick={() => void run()}>{t('firstRun.record.retry')}</Button>
         </div>
       ) : phase === 'verified' ? (
-        <p data-testid="record-terminal-verified" className="text-emerald-500 font-medium">
-          {t('firstRun.record.verified', { shell: target.label })}
-        </p>
+        <VerifiedScope target={target} />
       ) : (
         <div className="space-y-2">
           <p className="text-redlog-text">{t('firstRun.record.paste')}</p>
@@ -177,5 +175,34 @@ export function MissingList({ missing }: { missing: RuntimePreflight['checks'] }
         </li>
       ))}
     </ul>
+  )
+}
+
+/** Spec 038: "connected" is not "the session is recorded". The hook records
+ *  command metadata only, so the verified state says so and names the way to
+ *  keep output — `redlog-session` where the POSIX adapter provides it. */
+function VerifiedScope({ target }: { target: RecordTarget }): JSX.Element {
+  const { t } = useI18n()
+  const hasSession = !(target.kind === 'host' && target.hookId === 'shell-powershell')
+  return (
+    <div className="space-y-2">
+      <p data-testid="record-terminal-verified" className="text-emerald-500 font-medium">
+        {t('firstRun.record.verified', { shell: target.label })}
+      </p>
+      <div data-testid="record-terminal-scope" className="space-y-1">
+        <p className="text-redlog-text-dim">{t('firstRun.record.scope')}</p>
+        {hasSession ? (
+          <>
+            <p className="text-redlog-text-dim">{t('firstRun.record.sessionHint')}</p>
+            <div className="flex items-center gap-2">
+              <code data-testid="record-terminal-session-command" className="font-mono bg-redlog-surface border border-redlog-border rounded px-2 py-1">redlog-session</code>
+              <Button level="quiet" onClick={() => void writeClipboard('redlog-session')}>{t('firstRun.copy')}</Button>
+            </div>
+          </>
+        ) : (
+          <p className="text-redlog-text-dim">{t('firstRun.record.outputBuiltin')}</p>
+        )}
+      </div>
+    </div>
   )
 }
