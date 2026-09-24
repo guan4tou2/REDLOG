@@ -76,12 +76,28 @@ test that failed first:
   notice saying the empty list is not evidence of no traffic, HTTP History
   also said "No HTTP traffic captured yet."
 
+Found by Converge, appended as T057 and T058, each RED first:
+
+- **T057** (Constitution II) `test/timeline-shared-filter.test.tsx`, two
+  cases: failed. With only personal traffic hiding everything, or the AI-turn
+  collapse folding every row, the Timeline said "No events recorded yet": its
+  filtered-empty state was gated on a badge count that leaves personal traffic
+  out, and on the folded rows.
+- **T058** (SC-002) `test/target-identity-case.test.ts`: failed, the Targets
+  aggregate 9 against the Timeline total 7. The active-target fallback stamps
+  every shell row with the target, a terminal opening and the hook sourcing
+  itself included; the aggregate counted those housekeeping rows and the
+  Timeline does not. `test/targets-open-in-timeline.test.tsx`, the live-row
+  case: passes with the change and fails with `TargetView.tsx` stashed (its
+  list read carried no `excludeHousekeeping`, and live rows were admitted by
+  an exact `===`).
+
 ## GREEN
 
 Per story, the files above pass after their tasks: T002 17/17, T006 4/4,
 T009 13/13, T017 3/3, T018 2/2, T023 3/3, T024 3/3, T025 16/16, T034 3/3,
 T035 3/3 and 35/35, T042 8/8, T043 5/5, housekeeping-parity 6/6,
-event-title-missing-fields 4/4.
+event-title-missing-fields 4/4, T057 15/15, T058 4/4 and 3/3.
 
 Existing tests changed because they pinned what this spec replaces:
 renderer-smoke (the bridge gained `count` / `matchIds`), timeline-filters,
@@ -97,11 +113,11 @@ Final run, 2026-09-24, Windows 11 (win32 10.0.26200), Node v22.23.1:
 
 | Check | Command | Result |
 |-------|---------|--------|
-| Unit and integration | `npx vitest run` | 225 files passed, 3 skipped; 2409 tests passed, 20 skipped, 0 failed |
+| Unit and integration | `npx vitest run` | 225 files passed, 3 skipped; 2413 tests passed, 20 skipped, 0 failed |
 | Types | `npx tsc -p tsconfig.check.json` | exit 0 |
 | Build | `npm run build` | exit 0 |
 | Spec gates | `npm run verify:specs` | passed |
-| Desktop E2E (Electron ABI) | `npx playwright test` on `target-focus`, `timeline-encoding`, `timeline-geometry`, `timeline-lane-bands`, `timeline-presentation`, `timeline-toolbar-overflow`, `timeline-virtualisation`, `search-query-contract`, `transcript-view`, `http-activity-view`, `loot-view`, `marker-amend` | 36 passed, twice: before and after the walk-through fixes |
+| Desktop E2E (Electron ABI) | `npx playwright test` on `target-focus`, `timeline-encoding`, `timeline-geometry`, `timeline-lane-bands`, `timeline-presentation`, `timeline-toolbar-overflow`, `timeline-virtualisation`, `search-query-contract`, `transcript-view`, `http-activity-view`, `loot-view`, `marker-amend` | 36 passed, before and after the walk-through fixes; after T057 and T058, with `active-target-context` added, 37 passed |
 
 One earlier full run had a single failure, `confirm-dialog` "pulls focus back
 when it is outside the dialog". It passed 3/3 run alone and in the final full
@@ -151,4 +167,4 @@ of its own, which the settings-ia group cap (29) refused.
 | Clarify | 5 answered: the filter removes and `/` dims; "Chained only" in the shared filter; one Local/UTC zone; earlier matches counted and reachable; the tier not persisted | 2026-09-24 |
 | Checklist | `requirements.md` 16/16. `query-integrity.md` 41 items, evaluated at the reviewer's request: 41 satisfied, with notes | 2026-09-24 |
 | Analyze | Two passes: 14 findings resolved (`0401b60`), then 3 more (`b67bd57`) | 2026-09-24 |
-| Converge | Pending: runs before the spec is marked Verified | |
+| Converge | 2 tasks appended (T057 CRITICAL, Constitution II; T058, SC-002) and implemented; the second run converged | 2026-09-24 |
