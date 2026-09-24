@@ -102,14 +102,19 @@ function appendEventFilter(
  *
  * `shell.session_end` is excluded for the same reason: a pty exiting, or an
  * orphaned session being recovered at startup, is the app tidying up.
+ *
+ * Null-safe on purpose: the ingest stores a missing subtype as NULL, and
+ * `NOT (NULL)` is NULL, which a WHERE drops. Without the COALESCEs a shell row
+ * with no subtype, or a command row with no command, was not evidence, though
+ * isEvidence (the renderer's twin) counted it.
  */
 export const EVIDENCE_SQL = `
   agent_type NOT IN ('system', 'cleanup')
-  AND NOT (agent_type = 'shell' AND subtype IN ('session_start','session_end'))
-  AND NOT (agent_type = 'terminal' AND subtype = 'session_start')
+  AND NOT (agent_type = 'shell' AND COALESCE(subtype, '') IN ('session_start','session_end'))
+  AND NOT (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start')
   AND NOT (
-    agent_type = 'shell' AND subtype IN ('command_start','command','command_end')
-    AND (json_extract(data,'$.command') LIKE '%shell-bash-hook.sh%' OR json_extract(data,'$.command') LIKE '%shell-zsh-hook.zsh%' OR json_extract(data,'$.command') LIKE '%shell-hook.ps1%')
+    agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end')
+    AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%')
   )
 `
 
