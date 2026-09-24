@@ -17,7 +17,8 @@ describe('tailer naming', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tailer-naming-'))
     try {
       const c = loadConfig(dir) as unknown as Record<string, unknown>
-      expect(c).toHaveProperty('powershellTranscript')
+      // Spec 035 replaced its only key with the Windows output pack.
+      expect(c).toHaveProperty('packs.windowsOutput')
       expect(c).not.toHaveProperty('transcriptTailer')
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }
     expect(exists('src/main/services/powershell-transcript.ts')).toBe(true)

@@ -1,3 +1,5 @@
+import { isPackAvailable, type CapturePackId } from './capture-packs'
+import { listPlugins } from './plugins'
 import { getDB } from './db/index'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
 
@@ -22,7 +24,7 @@ export interface CaptureSource {
   hookId?: string
   /** Config switch state. `undefined` = always on, no switch to offer. */
   enabled?: boolean
-  /** Dotted config path the switch writes, e.g. `clipboard.enabled`. */
+  /** Dotted config path the switch writes, e.g. `packs.hostMonitors`. */
   configPath?: string
   /** ms epoch of the most recent event attributable to this source, or null */
   lastEventAt: number | null
@@ -314,7 +316,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
     last: number | null,
     opts: { installed?: boolean; hookId?: string; configPath?: string } = {}
   ): CaptureSource => {
-    const enabled = opts.configPath ? cfgFlag(opts.configPath) : undefined
+    // A pack that is not set is off (Spec 035), not "unknown".
+    const enabled = opts.configPath
+      ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
+      : undefined
     return {
       id,
       installed: opts.installed,
@@ -329,17 +334,22 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const sources: CaptureSource[] = [
     mk('shell-hook', shellHookLast, { installed: shellInstalled, hookId: shellHookId }),
     mk('builtin-terminal', builtinLast),
-    mk('agent-tailer', tailerLast, { configPath: 'agentTailer.enabled' }),
+    mk('agent-tailer', tailerLast, { configPath: 'packs.aiAgents' }),
     mk('mitmproxy', Math.max(mitmLast ?? 0, dnsLast ?? 0) || null, {
       installed: hookInstalled('mitmproxy'), hookId: 'mitmproxy'
     }),
     mk('browser-console', browserLast),
-    mk('connection-monitor', connLast, { configPath: 'connectionMonitor.enabled' }),
+    mk('connection-monitor', connLast, { configPath: 'packs.hostMonitors' }),
     mk('screenshot', screenshotLast),
-    mk('clipboard', clipboardLast, { configPath: 'clipboard.enabled' }),
-    mk('process-monitor', processLast, { configPath: 'processMonitor.enabled' }),
-    mk('file-watcher', fileWatcherLast, { configPath: 'fileWatcher.enabled' })
-  ]
+    mk('clipboard', clipboardLast, { configPath: 'packs.hostMonitors' }),
+    mk('process-monitor', processLast, { configPath: 'packs.hostMonitors' }),
+    mk('file-watcher', fileWatcherLast, { configPath: 'packs.hostMonitors' })
+  ].filter((src) => {
+    // Spec 035: a pack whose plugin is disabled or missing is removed, not
+    // shown as "off" — its sources are not offered at all.
+    const pack = src.configPath?.startsWith('packs.') ? src.configPath.slice(6) as CapturePackId : null
+    return !pack || isPackAvailable(pack, listPlugins())
+  })
 
   // E3: PLUGIN-contributed capture producers, enumerated from the registry
   // rather than a second hardcoded list. detectHooks() already merges them with
