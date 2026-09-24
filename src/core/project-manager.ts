@@ -62,11 +62,12 @@ export function createProject(name: string): ProjectMeta {
   ensureDir(projectPath)
   ensureDir(path.join(projectPath, 'screenshots'))
 
+  const now = Date.now()
   const meta: ProjectMeta = {
     id,
     name,
-    createdAt: Date.now(),
-    lastOpened: Date.now(),
+    createdAt: now,
+    lastOpened: now,
     path: projectPath
   }
 
