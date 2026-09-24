@@ -125,8 +125,8 @@ export async function applyLoginPath(deps: {
   const exists = deps.exists ?? ((dir: string) => { try { return fs.statSync(dir).isDirectory() } catch { return false } })
   const shellPath = await _resolveLoginShellPath(env.SHELL, { run: deps.run, timeoutMs: deps.timeoutMs })
   const candidates = [
-    path.join(home, '.local', 'bin'),
-    path.join(home, '.cargo', 'bin'),
+    path.posix.join(home, '.local', 'bin'),
+    path.posix.join(home, '.cargo', 'bin'),
     '/opt/homebrew/bin',
     '/usr/local/bin'
   ]
