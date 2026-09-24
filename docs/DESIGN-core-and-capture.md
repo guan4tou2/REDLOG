@@ -385,7 +385,11 @@ recordings.
 - ~~Timeline view modes / the eight flat toggles.~~ **Done 2026-08-24.** The
   three-view-modes attempt was reverted (it invented personas); the toggles are
   now grouped by effect, with the low-frequency view/audit controls (session
-  dividers, timezone, auditor view) behind one "More" control.
+  dividers, timezone, auditor view) behind one "More" control. Spec 033 took
+  two of them out: the timezone is one display zone in Settings ▸ General, and
+  the auditor view is the FilterBar's "Chained only" chip, which every event
+  view applies. The Timeline's own target focus went too; its target is the
+  shared filter's.
 - ~~18 lanes.~~ **Done 2026-08-24.** Banded by capture group (commands /
   traffic / artifacts / signals), collapsible; the timeline opens as three or
   four bands instead of eighteen lanes.

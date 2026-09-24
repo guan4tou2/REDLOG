@@ -5,6 +5,37 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- **Timeline:** Type and Time now narrow the Timeline, over the whole
+  project. It reads through the shared filter where events are stored, instead
+  of loading the newest 200 rows and ignoring both chips. The status line says
+  how much is drawn, "N of M"; a total still counting, or one that failed,
+  says so.
+- **Timeline:** `/` reads a query as Search does — `operator:`, `session:`,
+  quoted phrases, the last word prefix-matched — and dims the events that do
+  not match instead of removing them. Matches older than what is drawn are
+  counted, and clicking the count loads back to the nearest one.
+- **Targets:** one target chip. Opening a target in the Timeline sets the
+  FilterBar's target, which every view applies; the Timeline's own target
+  focus is gone. Target matching is case-insensitive everywhere, so
+  `Example.COM` and `example.com` count and filter as the one target the
+  Targets page already showed.
+- **Filter:** "Chained only" is a FilterBar chip every event view applies,
+  counted over the whole project; the Timeline's auditor switch is gone. HTTP
+  History under it, and Loot under a Type other than loot, say they are empty
+  by construction. HTTP History no longer says "No HTTP traffic captured yet"
+  beneath a notice that explains its empty list.
+- **Timeline:** an event stored without a subtype, as the local API or a
+  plugin may post one, is no longer hidden as RedLog's own housekeeping. A
+  command row without its command or exit code is titled with `?` instead of
+  breaking.
+- **Time:** one display zone, Local or UTC, in Settings ▸ General, for every
+  event time; a UTC time ends in `Z`. It replaces the Timeline's own picker. A
+  choice of UTC there carries over, and "Project", which nothing could set, is
+  gone. Exports stay ISO 8601.
+- **Export:** while a filter is set, the Timeline's export says it exports the
+  time range without the filter, and shows no count.
+- **⌘K:** an operator pick filters the Timeline by `operator:<id>`, the
+  recorded id rather than the display name; a host pick puts `"<host>"` in `/`.
 - **Loot:** a secret is now masked every time it appears — before, its second
   occurrence was stored and exported unmasked. Loot rows are one per secret per
   target, compared on the full value (two keys sharing a prefix, or two private

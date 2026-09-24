@@ -91,6 +91,20 @@ Then:
   system event excluded
 ```
 
+### Scenario 6: A target subset selects every casing
+
+```
+Given:
+  chained event A with target_id = 'Example.COM'
+  logged event B with target_id = 'example.com'
+  a time-range subset over both, targetId = 'example.com'
+When:
+  the plan is previewed, then executed
+Then:
+  both select A and B — the Targets page counted them as one target
+  (SPEC-target-identity, Scenario 3)
+```
+
 ## Acceptance Criteria
 
 1. `queryScopeFilteredEvents` queries BOTH `events` AND `events_logged` tables
@@ -98,6 +112,7 @@ Then:
 3. Agent type whitelist/blacklist applies identically to both tiers
 4. Result ordering is by timestamp DESC across both tiers
 5. Callers (`data-export.ts` NDJSON and scope-filtered JSON) receive events from both tiers without code changes
+6. A target subset selects every casing of the target. Preview and execute (the Timeline slice and HAR) both read through `queryEvents`, and so through the one target predicate, `targetPredicate` (`COLLATE NOCASE`, SPEC-target-identity); they still agree (Spec 033)
 
 ## Property
 
