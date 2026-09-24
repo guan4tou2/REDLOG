@@ -57,9 +57,10 @@ the matching line in `SHA256SUMS.txt`.
   RedLog's built-in terminal) uses both to send events. Without them commands
   still run, but nothing is recorded. Kali and macOS ship both.
 - **mitmproxy** *(optional, for HTTP(S) capture)* — `uv tool install mitmproxy`
-  (or `pipx install mitmproxy`). RedLog runs `mitmdump` from its own `PATH`;
-  if HTTP capture reports *mitmdump unavailable*, start RedLog from a shell in
-  which `which mitmdump` succeeds.
+  (or `pipx install mitmproxy`). On macOS and Linux RedLog reads your login
+  shell's `PATH` at startup (plus `~/.local/bin` and Homebrew), so tools are
+  found even when it is launched from the Dock or a desktop launcher; if one
+  still shows as missing, add its directory to `PATH` in your shell profile.
 
 ## Quick Start
 
