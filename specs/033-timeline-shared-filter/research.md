@@ -256,5 +256,8 @@ was edited in the same change.
   - `executeEventQuery` with a cursor and `limit: 1`
   The first page and total together are SC-006. An end-to-end redraw time is
   not claimed, because nothing measures it.
+- **Live admission (R10)**: with 60 batches of 100 ids in one second, the main
+  thread spends under 100 ms (10%) in `matchEventIds`. If it does not,
+  admissions are coalesced to at most 4 calls a second.
 - **Measure first**: add the NOCASE target indexes (R3) only if the target
   queries miss the budget.
