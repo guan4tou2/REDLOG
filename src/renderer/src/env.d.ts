@@ -205,9 +205,9 @@ interface RedLogAPI {
     runQuery: (
       req: import('../../core/db/events').EventQueryRequest
     ) => Promise<import('../../core/db/events').EventQueryResult>
-    /** Spec 033: how many rows a page or a query walks past `cursor`. */
+    /** Spec 038: how many rows a page or a query walks past `cursor`. */
     count: (req: import('../../core/db/events').EventCountRequest) => Promise<number>
-    /** Spec 033: which of up to 1000 held ids the filter (and query) admit. */
+    /** Spec 038: which of up to 1000 held ids the filter (and query) admit. */
     matchIds: (req: import('../../core/db/events').EventMatchRequest) => Promise<string[]>
     toolCounterparts: (
       keys: import('../../core/db/events').ToolPairKey[]

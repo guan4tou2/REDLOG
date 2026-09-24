@@ -7,7 +7,7 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 
 // Parsing rule 6 of the query contract: every surface shows how it read the
 // query. Search and the Transcript each drew their own copy of that strip,
-// worded differently, and spec 033 adds the Timeline as a third surface.
+// worded differently, and spec 038 adds the Timeline as a third surface.
 describe('QueryReadout: one read-out of how a query was read', () => {
   afterEach(() => cleanup())
 

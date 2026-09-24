@@ -112,7 +112,7 @@ Then:
 3. Agent type whitelist/blacklist applies identically to both tiers
 4. Result ordering is by timestamp DESC across both tiers
 5. Callers (`data-export.ts` NDJSON and scope-filtered JSON) receive events from both tiers without code changes
-6. A target subset selects every casing of the target. Preview and execute (the Timeline slice and HAR) both read through `queryEvents`, and so through the one target predicate, `targetPredicate` (`COLLATE NOCASE`, SPEC-target-identity); they still agree (Spec 033)
+6. A target subset selects every casing of the target. Preview and execute (the Timeline slice and HAR) both read through `queryEvents`, and so through the one target predicate, `targetPredicate` (`COLLATE NOCASE`, SPEC-target-identity); they still agree (Spec 038)
 
 ## Property
 

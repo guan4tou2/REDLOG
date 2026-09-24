@@ -22,7 +22,7 @@ const LOCAL_DATE = `${here.getFullYear()}-${pad(here.getMonth() + 1)}-${pad(here
 
 beforeEach(() => { localStorage.clear() })
 
-// Spec 033 US5: one display zone, Local or UTC, for every surface that prints
+// Spec 038 US5: one display zone, Local or UTC, for every surface that prints
 // an event time. The Timeline had its own Local / UTC / Project picker, and
 // no other view knew about it.
 describe('one display zone', () => {

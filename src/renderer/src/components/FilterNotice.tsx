@@ -29,7 +29,7 @@ export function UnappliedFilterNotice({ title, reason }: {
   )
 }
 
-// Spec 033 FR-012: the other case. The condition is applied, and on this view
+// Spec 038 FR-012: the other case. The condition is applied, and on this view
 // it leaves nothing by construction: HTTP flows are all logged, so "Chained
 // only" empties HTTP History; Loot lists only loot rows, so any other Type
 // empties it. The empty list is the right answer to the question asked, so

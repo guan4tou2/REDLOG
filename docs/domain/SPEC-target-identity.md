@@ -2,7 +2,7 @@
 
 > Domain: Engagement / Evidence
 > Invariant: Every target-oriented query MUST use the same canonical target identity semantics.
-> Status: Implemented — canonical identity and active-target fallback share the ingest boundary; every target filter compares case-insensitively through one helper (Spec 033).
+> Status: Implemented — canonical identity and active-target fallback share the ingest boundary; every target filter compares case-insensitively through one helper (Spec 038).
 
 ## Canonical Definition
 
@@ -13,7 +13,7 @@
 - `data.host` is an HTTP/DNS transport field, not a target identity.
 - No filter matches an observation field as the target: `data.host`,
   `remote_addr`, `dest_ip`, `dest_host`, `detectedTarget`, `data.target`. The
-  Timeline did until Spec 033; its target is now the shared filter's, which is
+  Timeline did until Spec 038; its target is now the shared filter's, which is
   `target_id`.
 - `engagement.activeTarget` is operator context, not an observation. Canonical
   ingest uses it only for shell, marker and screenshot rows when neither an
@@ -59,7 +59,7 @@ key on the same identity, including for a target recorded in two casings, and
 leave out the same rows: RedLog's own housekeeping (`HOUSEKEEPING_SQL`). The
 active-target fallback stamps every shell row, so a terminal opening or the
 hook sourcing itself can carry a target; those rows are not what happened to
-it (Spec 033). A read without `excludeHousekeeping`, such as an export, still
+it (Spec 038). A read without `excludeHousekeeping`, such as an export, still
 sees them.
 
 ## Scenarios
@@ -127,12 +127,12 @@ channel; nothing called it.
 
 1. `aggregateTargets()` groups by `target_id` column, NOT `json_extract(data, '$.detectedTarget')`
 2. Case-insensitive grouping: `LOWER(target_id)` in GROUP BY
-3. The aggregate count, the Targets list and the Timeline's total agree for the same target, housekeeping rows counted by none of them (Spec 033)
+3. The aggregate count, the Targets list and the Timeline's total agree for the same target, housekeeping rows counted by none of them (Spec 038)
 4. Events with `target_id` but no `detectedTarget` are included in aggregates
 5. No change to Scope matchers in this fix (separate P1)
 6. Active-target context is project-scoped and cleared from runtime on project close
 7. Explicit or detected targets override active-target context
-8. Every target filter compares case-insensitively through `targetPredicate`, so the aggregate and a filter agree for a target recorded in two casings (Spec 033)
+8. Every target filter compares case-insensitively through `targetPredicate`, so the aggregate and a filter agree for a target recorded in two casings (Spec 038)
 
 ## Property
 

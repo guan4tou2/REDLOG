@@ -13,14 +13,14 @@ const row = (table: FixtureRow['table'], id: string, ts: number, extra: Partial<
   data: { command: `nmap ${id}` }, ...extra
 })
 
-// Spec 033 US4: "chained only" is a shared-filter condition, applied inside
+// Spec 038 US4: "chained only" is a shared-filter condition, applied inside
 // each tier's SQL like every other, so every event view can ask it and every
 // count covers the whole project. It was a Timeline switch that dropped
 // logged rows after loading them.
 describe('the tier as a shared-filter condition', () => {
   let dir: string
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-tier-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-tier-'))
     initDB(dir)
     for (const r of [
       row('events', 'c1', 5), row('events_logged', 'l1', 4), row('events', 'c2', 3), row('events_logged', 'l2', 2),

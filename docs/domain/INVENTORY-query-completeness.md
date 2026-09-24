@@ -2,7 +2,7 @@
 
 > Snapshot 2026-09-19. No production code changed — analysis only.
 > Updated 2026-09-24: §1 Timeline, its comparison row and Batch 3 describe the
-> Timeline after Spec 033. The rest is still the 2026-09-19 snapshot.
+> Timeline after Spec 038. The rest is still the 2026-09-19 snapshot.
 
 ## Executive summary
 
@@ -28,7 +28,7 @@ invisible to the user, and still has no total indicator.
 
 | Field | Value |
 |-------|-------|
-| **Source tables** | `events` + `events_logged` through `queryEventsPage` with the shared filter (Spec 033) |
+| **Source tables** | `events` + `events_logged` through `queryEventsPage` with the shared filter (Spec 038) |
 | **WHERE** | The shared filter, `appendEventFilter`: type, time, target, scope, personal traffic, tier. Plus `excludeHousekeeping` (`HOUSEKEEPING_SQL`, the one rule) |
 | **ORDER BY** | `timestamp DESC, _row DESC, tier_rank DESC` |
 | **LIMIT** | 200 per page; load-back to an event reads 1,000 at a time |
@@ -40,7 +40,7 @@ invisible to the user, and still has no total indicator.
 | **Completeness visible?** | **YES** — "N of M"; a pending or failed total says so; earlier text matches are counted and reachable |
 
 **Notes:**
-- Spec 033 replaced the `created_at` cursor and the renderer filters: the
+- Spec 038 replaced the `created_at` cursor and the renderer filters: the
   housekeeping copy, the auditor view, and scope, target and personal-traffic
   matching over loaded rows.
 
@@ -161,7 +161,7 @@ user to distinguish "exactly 200 matches" from "5000 matches, showing 200."
 
 | Surface | DB cap | Cursor | Total count | Cap visible? | Tier |
 |---------|--------|--------|-------------|--------------|------|
-| Timeline (Spec 033) | 200/page | keyset (timestamp, _row, tier) | Yes (`countEvents`) | Yes ("N of M") | all, or chained only |
+| Timeline (Spec 038) | 200/page | keyset (timestamp, _row, tier) | Yes (`countEvents`) | Yes ("N of M") | all, or chained only |
 | Target aggregate | none | No | Implicit (complete) | n/a | all |
 | Target detail | 500 | No | No | No | all |
 | Loot | 200 | No | No | No | all |
@@ -270,7 +270,7 @@ opaque string travels to the renderer. The domain event model is not polluted.
 - Search is the cleanest SQL pipeline, easy to add cursor
 - Loot's grouping/projection problem is **separate** — don't block pagination on it
 
-### Batch 3: Timeline — done (Spec 033)
+### Batch 3: Timeline — done (Spec 038)
 - Already had keyset pagination — migrated to the shared primitive
 - Largest renderer post-filter surface, highest risk. Its filters moved into
   the query; the total is `countEvents`

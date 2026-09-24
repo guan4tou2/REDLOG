@@ -21,7 +21,7 @@ afterEach(() => {
   setDisplayZone('local')
 })
 
-// Spec 033 US5 (FR-013, SC-005): the zone is chosen once, in Settings ▸
+// Spec 038 US5 (FR-013, SC-005): the zone is chosen once, in Settings ▸
 // General, and every surface that prints an event time prints it there.
 describe('the display zone on each surface', () => {
   it('is chosen in Settings ▸ General, Local or UTC', async () => {

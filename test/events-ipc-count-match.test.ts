@@ -22,7 +22,7 @@ describe('events:count and events:matchIds', () => {
   let fx: TimelineFixture
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-ipc-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-ipc-'))
     initDB(dir)
     const config = loadConfig(dir)
     saveConfig(dir, { ...config, scope: { ...config.scope, targets: ['10.0.0.5'], excludeTargets: [] } })

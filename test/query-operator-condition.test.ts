@@ -7,7 +7,7 @@ import { initDB, closeDB } from '../src/core/db/index'
 import { executeEventQuery } from '../src/core/db/events'
 import { insertFixtureRow } from './helpers/timeline-query-fixture'
 
-// Spec 033 FR-009 / research R7: ⌘K's operator pick lands on the Timeline
+// Spec 038 FR-009 / research R7: ⌘K's operator pick lands on the Timeline
 // as `operator:<id>`, matched on the recorded operator. It used to set the
 // operator's display name as substring text, which matched only because the
 // Timeline's own search bag happened to include operator names; the query
@@ -15,7 +15,7 @@ import { insertFixtureRow } from './helpers/timeline-query-fixture'
 describe('the operator: condition', () => {
   let dir: string
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-operator-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-operator-'))
     initDB(dir)
     const base = { agentType: 'shell', subtype: 'command_end', targetId: null }
     insertFixtureRow({ ...base, table: 'events', id: 'a1', timestamp: 3, operatorId: 'op-2', data: { command: 'id' } })

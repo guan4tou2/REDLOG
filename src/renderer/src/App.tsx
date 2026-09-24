@@ -52,7 +52,7 @@ export default function App(): JSX.Element {
   // Event to focus when the Timeline opens (set when jumping from Loot); cleared
   // on plain sidebar navigation so a normal Timeline visit scrolls to "now".
   const [focusEvent, setFocusEvent] = useState<{ id: string; ts: number } | null>(null)
-  // A target picked on the Targets page is the shared filter's (spec 033),
+  // A target picked on the Targets page is the shared filter's (spec 038),
   // set there and shown as the FilterBar chip on every view that honours it.
   const [showMarker, setShowMarker] = useState(false)
   // Feeds the export menu's "N events · about X" line. Refreshed on view

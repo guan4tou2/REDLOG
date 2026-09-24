@@ -1,6 +1,6 @@
 # Query Integrity Checklist: Timeline on the Shared Filter
 
-**Purpose**: Unit tests for the requirements of spec 033, covering four areas:
+**Purpose**: Unit tests for the requirements of spec 038, covering four areas:
 - query completeness and surface truthfulness
 - canonical semantics
 - explicit failure states

@@ -9,7 +9,7 @@ import { queryEventsPage } from '../src/core/db/events'
 import { insertFixtureRow } from './helpers/timeline-query-fixture'
 
 // Housekeeping is one rule, HOUSEKEEPING_SQL, applied where the rows are
-// stored (spec 033). It used to be asked twice, once in JS for what was
+// stored (spec 038). It used to be asked twice, once in JS for what was
 // rendered and once in SQL for the pager, and two copies drift. These run the
 // fixtures through the SQL itself.
 
@@ -78,7 +78,7 @@ describe('housekeeping', () => {
   // (event-write.ts), as for an event from the local API or a plugin, and in
   // SQL `NOT (subtype = 'session_start' OR …)` is then NULL, not true: the row
   // was dropped as though it were housekeeping. Once live rows were admitted by
-  // this rule too (spec 033), such an event never appeared at all.
+  // this rule too (spec 038), such an event never appeared at all.
   it('keeps a row stored with no subtype, and a command row with no command', () => {
     const stored = [
       { id: 'n-shell', agentType: 'shell', subtype: null, data: { command: 'nmap -sV 10.0.0.5' } },

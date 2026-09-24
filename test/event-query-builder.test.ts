@@ -37,14 +37,14 @@ function pageAllIds(fetch: (cursor: string | null) => { items: Array<{ id: strin
   return ids
 }
 
-// Spec 033 needs three reads over the one WHERE builder the page queries use:
+// Spec 038 needs three reads over the one WHERE builder the page queries use:
 // the page itself with housekeeping excluded, a count of what a page walks,
 // and "which of these ids match". A count or a match check built separately
 // from its page is how "N of M" and a dimmed row come to disagree with the
 // rows beside them.
 describeDB('one WHERE builder: page, count and id match', () => {
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-033-builder-'))
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-038-builder-'))
     db.initDB(dir)
     fx = seedTimelineFixture({ total: 300, newestShell: 40 })
   })

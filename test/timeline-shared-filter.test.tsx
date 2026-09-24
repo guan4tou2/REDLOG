@@ -34,7 +34,7 @@ const selectOnlyDot = (): void => {
   fireEvent.click(dot)
 }
 
-// Spec 033 US1: the Timeline draws what the shared filter admits, over the
+// Spec 038 US1: the Timeline draws what the shared filter admits, over the
 // whole project, read where the events are stored, and says when it has
 // drawn only part of it. It used to read the newest 200 rows unfiltered and
 // then ignore Type and Time outright.

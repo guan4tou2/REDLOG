@@ -19,7 +19,7 @@ interface TargetEntry {
 
 interface TargetViewProps {
   /** §7: a target row leads to the Timeline, narrowed to that target through
-   *  the shared filter (spec 033), which this view sets before calling. Optional
+   *  the shared filter (spec 038), which this view sets before calling. Optional
    *  so the view still renders standalone in tests. */
   onOpenInTimeline?: (ts: number) => void
 }
@@ -72,7 +72,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       if (!sel || candidates.length === 0) return
       // A live row joins the list through the page's own predicates: the
       // target in any casing, and housekeeping aside. A plain `===` here
-      // missed the other casing and let plumbing rows in (spec 033 SC-002).
+      // missed the other casing and let plumbing rows in (spec 038 SC-002).
       window.redlog.events.matchIds({ ids: candidates.map((e) => e.id), filter: { targetId: sel }, excludeHousekeeping: true })
         .then((ids) => {
           if (selectedRef.current !== sel || ids.length === 0) return
@@ -129,7 +129,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       return
     }
     setSelected(target)
-    // Housekeeping aside, as the count and the Timeline leave it (spec 033 SC-002).
+    // Housekeeping aside, as the count and the Timeline leave it (spec 038 SC-002).
     const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: PAGE_SIZE })
     setEvidence(page.items)
     setHasMore(page.hasMore)

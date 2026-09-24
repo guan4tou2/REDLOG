@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
-// Spec 033 (US2): arriving from a target sets the shared filter's target,
+// Spec 038 (US2): arriving from a target sets the shared filter's target,
 // the FilterBar chip every event view honours, instead of a Timeline-only
 // focus that matched seven observation fields and dimmed the rest. The lanes
 // stay, TargetView stays, and "what happened to 10.10.11.24" is answered by

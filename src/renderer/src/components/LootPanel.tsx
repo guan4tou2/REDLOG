@@ -213,7 +213,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
           </button>
         </div>
       ) : sharedFilter.agentType && sharedFilter.agentType !== 'loot' ? (
-        // Spec 033 FR-012: the Type chip is applied and Loot holds only loot
+        // Spec 038 FR-012: the Type chip is applied and Loot holds only loot
         // rows, so the list is empty by construction, not for want of loot.
         <EmptyByConstructionNotice
           text={t('filter.lootTypeEmpty', { condition: `${t('filter.type')}: ${sharedFilter.agentType}` })}

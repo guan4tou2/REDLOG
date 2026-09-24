@@ -13,7 +13,7 @@ const mount = (): void => {
   render(<I18nProvider><FilterProvider><Probe /><FilterBar /></FilterProvider></I18nProvider>)
 }
 
-// Spec 033 US4: "chained only" is a shared-filter condition with an
+// Spec 038 US4: "chained only" is a shared-filter condition with an
 // always-visible chip, like the other on/off conditions, and it starts at
 // "all tiers" whenever a project opens. It was the Timeline's auditor switch,
 // remembered per project, and no other view could ask it.

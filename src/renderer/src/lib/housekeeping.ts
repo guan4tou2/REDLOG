@@ -3,7 +3,7 @@
 // Housekeeping rows land in the chain for audit integrity — the record has to
 // show that the app started and attached a hook — but showing them would make a
 // fresh project look busy before anything has been captured. The rule itself is
-// HOUSEKEEPING_SQL in src/core/db/event-queries.ts: since spec 033 every
+// HOUSEKEEPING_SQL in src/core/db/event-queries.ts: since spec 038 every
 // Timeline read (pages, counts, live admission) applies it where the rows are
 // stored, so the JS copy that stood beside it is gone.
 

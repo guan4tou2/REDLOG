@@ -13,7 +13,7 @@
 //
 //   Exports are ISO 8601. Whatever reads them next is not a person.
 //
-// The display zone lives here too (spec 033). The Timeline kept its own
+// The display zone lives here too (spec 038). The Timeline kept its own
 // Local / UTC / Project picker and its own formatter, so one event could read
 // 15:04 on the Timeline and 07:04Z nowhere else, and this module did not know
 // timestamps could have a zone at all. Now one zone, chosen in Settings ▸
