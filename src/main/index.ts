@@ -55,6 +55,7 @@ import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, type TailerAdapter } from './services/tailer-host'
+import { applyLoginPath } from './login-path'
 import { getCaptureHealth, invalidateHooksCache, noteSampleBroken, noteSampleOk, clearSampleBroken, configureCaptureHealth, configureManagedProxyHealth, noteDbError } from '../core/capture-health'
 import { launchBrowser, stopBrowser, isBrowserRunning, detectBrowser } from './services/browser-launcher'
 import { DEFAULT_BROWSER } from '../core/browser-defaults'
@@ -137,6 +138,8 @@ function publishManagedProxyEvent(subtype: 'http_proxy_started' | 'http_proxy_st
 
 async function startManagedHttpCapture(): Promise<ManagedProxyStatus> {
   if (!activeProject) return { state: 'failed', url: null, error: 'No project open' }
+  // mitmdump is spawned by bare name; look it up on the operator's PATH.
+  await loginPathReady
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return { state: 'failed', url: null, error: 'mitmproxy capture addon is disabled or missing' }
   const config = loadConfig(getProjectPath(activeProject))
@@ -972,6 +975,15 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
   app.quit()
 }
+
+// Dock / Finder launches inherit a minimal PATH; widen it from the login shell
+// (src/main/login-path.ts) without blocking the window. Tool lookups that ran
+// before it settled are cached, so drop those caches once PATH changes.
+const loginPathReady: Promise<void> = gotSingleInstanceLock
+  ? applyLoginPath()
+    .then((changed) => { if (changed) { invalidateHooksCache(); invalidateHooksDetectCache() } })
+    .catch(() => { /* PATH stays as launched */ })
+  : Promise.resolve()
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
