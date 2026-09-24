@@ -98,6 +98,11 @@ for (const name of Object.keys(KNOWN_GAPS)) {
 
 const executableRoots = ['README.md', 'electron-builder.yml', 'package.json', 'src', 'hooks', 'plugins', 'cli', '.github']
 const forbidden = ['shell-preexec-hook.sh', 'redlog-hook.zsh', 'claude-code-hook.sh']
+// The one file allowed to name them: it holds the Spec 036 legacy-hook
+// DETECTION list (RETIRED_HOOK_FILES), which finds and removes the retired
+// source lines from operators' shell profiles. It is not an entry point or a
+// compatibility shim. Exact path match — no directory or glob.
+const forbiddenExempt = new Set(['src/core/runtime-preflight.ts'])
 const textExtensions = new Set(['.md', '.yml', '.yaml', '.json', '.ts', '.tsx', '.js', '.mjs', '.sh', '.zsh', '.ps1'])
 
 function visit(candidate) {
@@ -108,6 +113,7 @@ function visit(candidate) {
     return
   }
   if (!textExtensions.has(path.extname(candidate))) return
+  if (forbiddenExempt.has(path.relative(root, candidate).split(path.sep).join('/'))) return
   const text = fs.readFileSync(candidate, 'utf8')
   for (const alias of forbidden) {
     if (text.includes(alias)) failures.push(`${path.relative(root, candidate)}: removed compatibility entry ${alias}`)
