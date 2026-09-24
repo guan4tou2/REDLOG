@@ -128,7 +128,7 @@ Timeline", and the FilterBar target chip's result agree.
 
 ### User Story 3 - `/` in the Timeline means what it means in Search (Priority: P2)
 
-As an operator typing into the Timeline's filter box, I need the text read the
+As an operator typing into the Timeline's filter box, I need my input read the
 way Search reads it, so the Timeline and Search agree on what matches.
 
 **Why this priority**: "one query text means one thing wherever it is typed"
@@ -144,8 +144,9 @@ conditions and which as text.
 
 1. **Given** the text `10.0.0.5`, **When** it is typed in the Timeline, **Then**
    events that mention only `10.0.0.50` do not match.
-2. **Given** text is typed, **When** the Timeline draws, **Then** the events
-   Search would return for that text and the same shared filter are the
+2. **Given** input is typed in the filter box, **When** the Timeline draws,
+   **Then** the events Search would return for that input and the same shared
+   filter are the
    matches, and every other event the shared filter admits stays drawn,
    dimmed.
 3. **Given** `session:S1`, **When** it is typed, **Then** it is read as a
@@ -154,12 +155,12 @@ conditions and which as text.
    value), **When** it is typed, **Then** the Timeline says it cannot read it,
    distinct from "no match", and draws nothing as matched.
 5. **Given** matching events older than what is drawn, **When** the operator
-   types the text, **Then** the Timeline says how many earlier matches there
+   types the input, **Then** the Timeline says how many earlier matches there
    are. Clicking that notice loads back to the nearest one and selects it.
 6. **Given** the operator picks an operator or a host in ⌘K, **When** the
    Timeline opens on it, **Then** it shows that operator's events, or the events
    that host's name matches in Search, not a substring guess.
-7. **Given** a failed query, **When** the Timeline evaluates the text, **Then**
+7. **Given** a failed query, **When** the Timeline evaluates the input, **Then**
    it shows a failure with retry, never an empty or unfiltered view
    (Constitution VI).
 
@@ -225,9 +226,11 @@ All five agree.
 
 ### Edge Cases
 
-- A filter that matches nothing: the Timeline shows an empty state that names
-  the filter responsible, distinct from an empty project and from a failed
-  query.
+- A filter that matches nothing: the Timeline shows an empty state that lists
+  every active condition. It is distinct from an empty project and from a
+  failed query.
+- Matches only earlier than the drawn range: every drawn event is dimmed, and
+  the earlier-match notice is the only lit item.
 - A filter change while older pages are still loading: results for the old
   filter never appear under the new one.
 - A live event arriving while a filter is set: it appears only if it satisfies
@@ -261,69 +264,110 @@ All five agree.
   over the whole project, with the same meaning.
 - **FR-002**: Shared-filter conditions MUST be evaluated before any page limit,
   so no matching event is missed because it is older than what is loaded.
-- **FR-003**: When the Timeline draws only part of the matching events, it
-  MUST say so and give the total or a way to reach the rest.
+- **FR-003**: When the Timeline draws only part of the admitted events, its
+  status line MUST say so and give the total ("N of M events"). Older events
+  load as the operator scrolls back. The line goes away once every admitted
+  event is drawn. A total or count MUST be computed with the same predicates as
+  the rows it describes. If the total fails while the rows load, the line says
+  the total is unavailable and offers retry. It never shows a guessed or zero
+  total.
 - **FR-004**: Events outside the shared filter MUST NOT be drawn on the
-  Timeline, as the other views do not list them. Text in the Timeline's filter
-  box MUST NOT remove events. The events the shared filter admits but the text
-  does not match stay drawn, dimmed, so a match keeps its context. The query
-  layer decides the matches, over the whole project. The Timeline's counts MUST
-  describe the events the shared filter admits and, when text is set, how many
-  of them match. When text matches events older than the drawn range, the
-  Timeline MUST say how many. That notice MUST load back to the nearest earlier
-  match when clicked. No other control is added for it.
+  Timeline, as the other views do not list them. Nothing typed in the filter
+  box removes events, conditions included. The events the shared filter admits
+  but the filter box does not match stay drawn, dimmed, so a match keeps its
+  context. The query layer decides the matches, over the whole project.
+  - **Counts**: the Timeline's counts MUST describe the events the shared filter
+    admits and, while the box is set, how many of them match. A lane chip counts
+    the drawn events in its lane. The agent-turn collapse counts the drawn rows it
+    hides.
+  - **Earlier matches**: when the box matches events older than the drawn range,
+    the Timeline MUST say how many, counted in events. A marker and an amendment
+    that both match are two. That notice MUST load back to the nearest earlier
+    match when clicked. No other control is added for it.
+  - **Updates**: the count and the nearest match update after a load-back. Live
+    rows are newer than the drawn range and never change the earlier count.
 - **FR-005**: The Timeline's target MUST be the canonical target identity
   ([SPEC-target-identity](../../docs/domain/SPEC-target-identity.md)). Arriving
   from the Targets page MUST set the shared target, so the Targets page count,
-  the Timeline and the FilterBar chip agree.
+  the Timeline and the FilterBar chip agree. The target stays set across views,
+  as the chip, until the operator clears it. Target matching is
+  case-insensitive in every view's target filter, not only the Timeline's.
 - **FR-006**: There MUST be one target control on the Timeline: the shared
   target chip. The separate target focus MUST go.
-- **FR-007**: Text typed in the Timeline's filter box MUST be parsed and
+- **FR-007**: What is typed in the Timeline's filter box MUST be parsed and
   evaluated by the query contract, with the same conditions, text matching,
   parse failures and token display as Search
   ([SPEC-search-query-semantics](../../docs/domain/SPEC-search-query-semantics.md)).
-- **FR-008**: An empty filter box MUST mean "no text condition": the Timeline
-  shows every event the shared filter admits. This differs from Search, where
-  an empty query answers nothing, and the domain contract MUST record the
-  difference.
+- **FR-008**: An empty filter box MUST mean "no query": the Timeline shows
+  every event the shared filter admits. Search differs: an empty query there
+  answers nothing. The domain contract MUST record the difference. The box keeps
+  its input per project across reopen, as it does today. It is visible, with
+  its read-out.
 - **FR-009**: An operator or host picked in ⌘K MUST land on the Timeline
   narrowed by the query contract's meaning of that operator or host. It MUST NOT
   be a substring match.
-- **FR-010**: A query failure MUST show as a failure with retry. An unparsable
-  input MUST show as unparsable. Neither may show as no match or as the
+  - An operator pick matches the recorded operator id, never a display name.
+  - A host pick is quoted text, a phrase, so a host with a port or a colon
+    matches as typed.
+- **FR-010**: Every Timeline read MUST show a failure as a failure with retry:
+  the page, the total, the match check, the earlier count, the nearest match,
+  load-back and live-row admission. An unparsable input MUST show as
+  unparsable. None of these may show as no match, as an empty view, or as the
   unfiltered view.
 - **FR-011**: The tier MUST be a shared-filter condition, "All tiers" or
   "Chained only". Every event view MUST apply it (Search, the Transcript, HTTP
   History, Loot and the Timeline), by the query over the whole project, and the
-  FilterBar MUST show it as a chip. The Timeline's auditor switch MUST become
-  this condition and MUST NOT remain as a second control. Like the other
-  shared-filter conditions, it MUST start at "All tiers" each time a project
-  opens, and a stored Timeline auditor setting MUST NOT narrow a view.
-- **FR-012**: A view that cannot honour a shared condition MUST say so where
-  the condition is shown, as HTTP History and the Transcript do today.
-- **FR-013**: Every view MUST print event times in one display zone, chosen
-  once in Settings ▸ General as Local or UTC. This covers the Timeline, the
-  event detail and the FilterBar time chip. A time printed in UTC MUST carry
-  its zone marker, so it is never read as local. The Timeline MUST NOT keep a
-  zone setting of its own, and an operator's existing Timeline choice of UTC
-  MUST carry over.
+  FilterBar MUST show it as an always-visible chip beside "In scope only". The
+  Timeline's auditor switch MUST become this condition and MUST NOT remain as a
+  second control. Like the other shared-filter conditions, it MUST start at
+  "All tiers" each time a project opens, and a stored Timeline auditor setting
+  MUST NOT narrow a view.
+- **FR-012**: A view MUST say so where the condition is shown in two cases,
+  and the two MUST be worded differently:
+  - **The view cannot honour a condition.** Today these are HTTP History with
+    Type (it pins the proxy's type) and the Transcript with a Type outside its
+    buckets.
+  - **The condition is honoured but leaves the view nothing by
+    construction.** This is HTTP History with Chained only: its flows are all
+    in the logged tier.
+- **FR-013**: Every surface that prints an event time MUST use one display
+  zone, chosen once in Settings ▸ General as Local or UTC.
+  - **Surfaces**: the Timeline and its axis, the event and marker detail,
+    Search, the Transcript, HTTP History, Loot, Screenshots, the Targets page,
+    Scope, the HUD and the FilterBar time chip.
+  - **Marker**: a time printed in UTC MUST carry its zone marker, so it is never
+    read as local.
+  - **Out of scope**: relative freshness labels ("3s ago", "Xm behind") are not
+    event times and are unaffected.
+  - **No second setting**: the Timeline MUST NOT keep a zone setting of its own.
+    An operator's existing Timeline choice of UTC MUST carry over.
 - **FR-014**: The "Project" zone MUST NOT be offered. Nothing can set a project
-  zone, so it can never differ from Local.
+  zone, so it can never differ from Local. A stored "Project" choice becomes
+  Local.
 - **FR-015**: Display folding (command pairs, agent turns, marker amendments)
   and the Timeline's layout controls MUST NOT change which events match or how
   many.
 - **FR-016**: While a shared filter is set, the Timeline's time-range export
-  MUST say that it does not apply the filter. Export selection itself is
-  unchanged.
+  MUST say that it does not apply the filter, and MUST NOT offer the drawn
+  count as its size. Export selection itself is unchanged.
+- **FR-017**: The Timeline MUST show that it is working while it works:
+  - loading, for a filter change
+  - "matching", for filter-box input
+  - progress with a count, for a load-back
+  A load-back MUST be cancellable, with Esc. Cancelling keeps what was loaded.
+- **FR-018**: A dimmed event MUST carry a non-visual "not matching" state, not
+  only reduced opacity, and the match count MUST be announced when it changes.
+  The earlier-match notice MUST be reachable and activatable from the keyboard.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Shared filter**: the conditions the FilterBar sets and every event view
   answers: target, type, time range, in-scope only, personal traffic and tier.
   Defined by the query contract, not by any one view.
-- **Timeline query text**: what the operator types in the Timeline's box, read
-  as conditions and text by the query contract, and combined with the shared
-  filter.
+- **Filter box input**: everything the operator types in the Timeline's box.
+  The query contract reads it as conditions (for example `session:S1`,
+  `operator:<id>`) and free text, and combines it with the shared filter. In
+  this spec, "text" means the free-text part only, as in the query contract.
 - **Target**: the canonical target identity, the recorded target of an event.
   Observations such as `host` or `remote_addr` are not the Target.
 - **Display zone**: the one time zone every view prints event times in, Local
@@ -336,22 +380,27 @@ All five agree.
 - **SC-001**: For any combination of shared-filter conditions, the events the
   Timeline draws once paged back to the start are exactly the events the project
   holds for that filter, housekeeping rows excepted. Checked over a fixture of
-  at least 1,000 events spanning more than five pages. (Search cannot be the
-  reference: a query with no text answers nothing.)
-- **SC-002**: For every target on the Targets page, the Targets count, the
-  Timeline count after "Open in Timeline", and the FilterBar-chip count are
-  equal.
+  at least 1,200 events, which is more than five pages of 200. (Search cannot be
+  the reference: a query with no text answers nothing.)
+- **SC-002**: For every target on the Targets page, three figures are equal:
+  - the Targets count
+  - the Timeline's "N of M" total after "Open in Timeline"
+  - the total the Timeline states with the same target set from the FilterBar
 - **SC-003**: For the query contract's scenario inputs, the Timeline and
   Search select the same events. This includes conditions, quoted phrases,
   IP addresses and the two parse failures.
-- **SC-004**: No shared-filter chip is lit on the Timeline without being
-  applied or disclosed as unapplied. This is checked for every chip.
+- **SC-004**: On every view that shows the FilterBar, no chip is lit without
+  being either applied or disclosed as unapplied. This is checked for every
+  chip, the tier included.
 - **SC-005**: One event's time is printed identically in every view that shows
-  it.
-- **SC-006**: Applying or changing a filter on a project of 100,000 events
-  updates the Timeline within 2 seconds, with the operator told while it loads.
-- **SC-007**: With "chained only" set, no event view lists a logged event, and
-  each view's count equals the chained-tier count for the same filter.
+  it, to the precision both views print: minutes, or seconds where both show
+  seconds.
+- **SC-006**: Applying or changing each kind of shared-filter condition updates
+  the Timeline within 2 seconds. It is measured on the 100,000-event fixture
+  (research R13) with a warm cache, and the operator is told while it loads.
+- **SC-007**: With "chained only" set, every row every event view lists is
+  chained. Where a view states a total, it equals the chained-tier count for
+  the same filter.
 
 ## Assumptions
 
@@ -360,7 +409,16 @@ All five agree.
   the Timeline does with the filter, not the FilterBar.
 - Lane visibility, session dividers, zoom, follow mode, agent-turn collapse and
   the anomaly and causal-chain highlights stay Timeline display controls. They
-  are not shared-filter conditions.
+  are not shared-filter conditions. Filter-box dimming, causal-chain focus and
+  the anomaly filter stay mutually exclusive, as today: turning one on clears
+  the others.
+- The ⌘K palette and `/api/events/search` apply no shared filter, the tier
+  included, as the query contract already says.
+- Every new notice and label ships in en and zh-TW. The i18n key test enforces
+  both locales.
+- A load-back loads contiguously. A match far back costs what scrolling that far
+  costs today (research R6). This limit is accepted for this feature, not
+  hidden: the progress line says how far the load-back has come.
 - "Picked from ⌘K" covers the operator and host picks that set the Timeline's
   filter box today. An operator match is by recorded operator. The query
   contract has no operator condition yet, so this feature adds one to the
@@ -369,6 +427,15 @@ All five agree.
 - The display zone is a per-machine viewing preference, not project evidence.
   Exports stay ISO 8601 with the offset, whatever the display zone.
 - Depends on the query contract (Specs 017, 018, 026) and target identity as
-  documented. Both domain documents are updated where this feature changes
-  them: the Timeline joins the surfaces the query contract lists, FR-008's empty
-  text rule, and the operator condition.
+  documented. The domain documents are updated where this feature changes them,
+  as explicit tasks:
+  - [SPEC-search-query-semantics](../../docs/domain/SPEC-search-query-semantics.md):
+    - Parsing rule 2 and Evaluation rule 2, for `operator:`
+    - Evaluation rules 7, 9 and 13, for the tier and the Timeline
+    - a counting rule and a matching rule
+    - Coverage
+    - FR-008's empty-box rule
+  - [SPEC-target-identity](../../docs/domain/SPEC-target-identity.md):
+    Normalization, Invariant and Scenario 3, for case-insensitive filtering.
+  - [INVENTORY-query-completeness](../../docs/domain/INVENTORY-query-completeness.md)
+    §1, the Timeline row.
