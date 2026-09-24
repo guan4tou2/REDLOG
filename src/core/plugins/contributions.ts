@@ -3,7 +3,6 @@ import { registerLootPatterns, unregisterLootPatterns } from '../loot-detector'
 import { registerRedactionRules, unregisterRedactionRules } from '../redaction'
 import { registerCommandTags, unregisterCommandTags } from '../command-tagger'
 import { registerTargetExtractors, unregisterTargetExtractors } from '../target-extractor'
-import { registerMappers, unregisterMappers } from '../mappers'
 import { registerEventTypes, unregisterEventTypes } from '../event-registry'
 import { registerCapturePlugins, unregisterCapturePlugins } from '../hooks-manager'
 import { contributeTailer, withdrawTailer, type TailerLike } from './tailer-registry'
@@ -26,8 +25,6 @@ function fillHookPath(steps: Array<{ label: string; command?: string }> | undefi
 export function applyContributions(p: LoadedPlugin): void {
   const c = p.manifest.contributes ?? {}
   const id = p.manifest.id
-
-  if (c.mappers?.length) registerMappers(id, c.mappers)
   if (c.lootPatterns?.length) registerLootPatterns(id, c.lootPatterns)
   if (c.redaction) registerRedactionRules(id, c.redaction)
   if (c.commandTags?.length) registerCommandTags(id, c.commandTags)
@@ -111,7 +108,6 @@ export function removeContributions(pluginId: string): void {
   unregisterRedactionRules(pluginId)
   unregisterCommandTags(pluginId)
   unregisterTargetExtractors(pluginId)
-  unregisterMappers(pluginId)
   unregisterEventTypes(pluginId)
   unregisterCapturePlugins(pluginId)
   withdrawTailer(pluginId)
