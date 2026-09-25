@@ -105,10 +105,7 @@ export function FilterBar(): JSX.Element | null {
       </div>
 
       {expanded && (
-<<<<<<< HEAD
         <div id="filter-bar-panel" className="px-3 pb-2 flex flex-wrap gap-3">
-=======
-        <div className="px-3 pb-2 flex flex-wrap gap-3">
           {/* An empty menu and a menu that failed to load look identical, and
               the difference matters: one says this project has no targets, the
               other says we do not know. Whatever loaded before is kept and
@@ -126,7 +123,6 @@ export function FilterBar(): JSX.Element | null {
               >{t('filter.listsRetry')}</button>
             </div>
           )}
->>>>>>> origin/main
           {/* Target selector */}
           <FilterSelect
             label={t('filter.target')}
