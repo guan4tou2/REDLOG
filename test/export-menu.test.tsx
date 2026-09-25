@@ -8,6 +8,7 @@ function plan(included: number): ResolvedExportPlan {
   return {
     id: 'plan-1', fingerprint: '1234567890abcdef', expiresAt: Date.now() + 1000,
     snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
+    scopeSnapshot: { targets: ['10.0.0.0/24'], excludeTargets: [], personalDomains: [] },
     capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
     request: { format: 'json', subset: { kind: 'all' }, sharing: true, maskOutOfScope: true, scopeOnly: false, scrubPii: true },
     counts: {
@@ -67,7 +68,15 @@ describe('ExportMenu plan preview', () => {
     expect(screen.getByText('Calculating…')).toBeTruthy()
     release?.({ ok: true, plan: plan(3) })
     await waitFor(() => expect(screen.getByText('Entire approved snapshot')).toBeTruthy())
-    expect(screen.getByText('For sharing')).toBeTruthy()
+    // The policy line now names each decision rather than one preset word:
+    // an operator checking a delivery has to see whether masking was on.
+    const policy = screen.getByTestId('export-preview-policy').textContent ?? ''
+    expect(policy).toContain('For sharing')
+    expect(policy).toContain('out-of-scope masked')
+    expect(policy).toContain('PII scrubbed')
+    // And the boundary it was resolved against, which the menu used to
+    // hardcode as `hasScope: false`.
+    expect(screen.getByTestId('export-preview-scope').textContent).toContain('10.0.0.0/24')
     expect(screen.getByText('1234567890ab')).toBeTruthy()
     expect(screen.getByText('Data snapshot')).toBeTruthy()
   })
