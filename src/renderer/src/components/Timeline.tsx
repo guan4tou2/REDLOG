@@ -3,6 +3,7 @@ import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib/FilterContext'
+import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { resolveTimelineKey } from '../lib/timelineKeys'
@@ -80,7 +81,8 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
 export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; tierChip?: boolean } = {}): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
-  const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains } = useSharedFilter()
+  const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains,
+    setTimeRange: setSharedTimeRange } = useSharedFilter()
   const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
   const eventFilterRef = useRef(eventFilter)
   eventFilterRef.current = eventFilter
@@ -2688,6 +2690,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, tie
               <TierBadge tier={selectedEvent.tier} variant="detail" show={tierChip} />
             </div>
             <div className="flex items-center gap-2">
+              {/* "What else was happening when this ran" is the commonest
+                  next question about an event, and there was no way to ask
+                  it: the bar offered only windows ending now. */}
+              <button
+                type="button"
+                data-testid="detail-around-event"
+                className="text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+                title={t('filter.around')}
+                onClick={() => setSharedTimeRange(windowAround(selectedEvent.timestamp))}
+              >{t('filter.around')}</button>
               <button
                 type="button"
                 className={`text-xs font-mono px-1.5 py-0.5 rounded border transition-colors ${

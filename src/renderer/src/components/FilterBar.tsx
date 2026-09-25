@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
+import { toLocalInputValue, fromLocalInputValue, timeRangeError } from '../lib/timeRangeInput'
 import { useSharedFilter, conditionLabels } from '../lib/FilterContext'
 import { useI18n } from '../i18n'
+import { useDisplayZone } from '../lib/time'
 import { agentTypeLabel } from '../lib/timelineDomain'
 
 export function FilterBar(): JSX.Element | null {
@@ -9,6 +11,9 @@ export function FilterBar(): JSX.Element | null {
     activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
+  // Named beside the inputs, because a wall-clock field with no zone is
+  // ambiguous exactly where it matters.
+  const zoneLabel = useDisplayZone() === 'utc' ? 'UTC' : t('filter.localTime')
   const labels = conditionLabels(filter, t)
   const barRef = useRef<HTMLDivElement>(null)
 
@@ -126,6 +131,12 @@ export function FilterBar(): JSX.Element | null {
           <div className="flex flex-col gap-1">
             <span className="text-xs text-redlog-text-faint uppercase tracking-wider">{t('filter.time')}</span>
             <div className="flex gap-1">
+              {/* A preset takes a SNAPSHOT of the last N hours: the condition
+                  stops where it was clicked, so a result set does not slide
+                  while the operator reads it. That was already the behaviour;
+                  what was missing is saying so — the button said "last 1h"
+                  and twenty minutes later meant "since 15:03". The chip now
+                  prints the absolute window, and the title says it is fixed. */}
               {[
                 { label: t('filter.last1h'), ms: 3600_000 },
                 { label: t('filter.last6h'), ms: 21600_000 },
@@ -137,6 +148,7 @@ export function FilterBar(): JSX.Element | null {
                 return (
                   <button
                     key={preset.ms}
+                    title={t('filter.presetIsSnapshot')}
                     onClick={() => setTimeRange({ since: Date.now() - preset.ms })}
                     className={`px-2 py-0.5 rounded text-xs border transition-colors ${
                       active
@@ -153,6 +165,51 @@ export function FilterBar(): JSX.Element | null {
                 >{t('filter.allTime')}</button>
               )}
             </div>
+            {/* "Events on the 14th between 09:00 and 11:00" could not be asked
+                for at all. The inputs are wall-clock in whichever zone the
+                rest of the UI is displaying, so they agree with the
+                timestamps beside them. */}
+            <div className="flex items-end gap-2 pt-1">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-redlog-text-faint">{t('filter.from')}</span>
+                <input
+                  type="datetime-local"
+                  data-testid="filter-time-since"
+                  aria-label={t('filter.from')}
+                  value={toLocalInputValue(filter.timeRange?.since)}
+                  onChange={(e) => {
+                    const since = fromLocalInputValue(e.target.value)
+                    const next = { ...(filter.timeRange ?? {}), since }
+                    setTimeRange(next.since === undefined && next.before === undefined ? null : next)
+                  }}
+                  className="bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs text-redlog-text-faint">{t('filter.to')}</span>
+                <input
+                  type="datetime-local"
+                  data-testid="filter-time-before"
+                  aria-label={t('filter.to')}
+                  value={toLocalInputValue(filter.timeRange?.before)}
+                  onChange={(e) => {
+                    const before = fromLocalInputValue(e.target.value)
+                    const next = { ...(filter.timeRange ?? {}), before }
+                    setTimeRange(next.since === undefined && next.before === undefined ? null : next)
+                  }}
+                  className="bg-redlog-bg border border-redlog-border rounded px-1.5 py-0.5 text-xs text-redlog-text"
+                />
+              </label>
+              <span className="text-xs text-redlog-text-faint pb-1">{zoneLabel}</span>
+            </div>
+            {/* An end before its start is the one way to ask for nothing at
+                all. Saying so beats an empty view that reads as an empty
+                project. */}
+            {filter.timeRange && timeRangeError(filter.timeRange) && (
+              <p data-testid="filter-time-invalid" role="status" className="text-xs text-amber-400">
+                {t('filter.timeRangeInvalid')}
+              </p>
+            )}
           </div>
         </div>
       )}
