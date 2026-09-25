@@ -1294,5 +1294,15 @@
   "legacyHook.done": "Hook updated. Open a new terminal — the hook loads in new shells.",
   "legacyHook.backup": "Backup of your old profile:",
   "legacyHook.failed": "Update failed:",
-  "legacyHook.dismiss": "Dismiss"
+  "legacyHook.dismiss": "Dismiss",
+  "export.preview.scope": "Scope",
+  "export.preview.scopeNone": "not set",
+  "export.preview.subsetTarget": "target: {{target}}",
+  "export.preview.policyMask": "out-of-scope masked",
+  "export.preview.policyNoMask": "masking off",
+  "export.preview.policyScopeOnly": "in-scope only",
+  "export.preview.policyScrubPii": "PII scrubbed",
+  "export.preview.attachmentsUnsupported": "this format carries none",
+  "export.preview.attachmentsMissing": "Attachments missing",
+  "export.preview.attachmentsUnattributed": "Attachments unattributed"
 }

@@ -1294,5 +1294,15 @@
   "legacyHook.done": "hook 已更新。請開啟新的終端——hook 只會在新的 shell 中載入。",
   "legacyHook.backup": "舊設定檔的備份：",
   "legacyHook.failed": "更新失敗：",
-  "legacyHook.dismiss": "關閉"
+  "legacyHook.dismiss": "關閉",
+  "export.preview.scope": "測試範圍",
+  "export.preview.scopeNone": "未設定",
+  "export.preview.subsetTarget": "目標：{{target}}",
+  "export.preview.policyMask": "範圍外已遮蔽",
+  "export.preview.policyNoMask": "未遮蔽",
+  "export.preview.policyScopeOnly": "僅範圍內",
+  "export.preview.policyScrubPii": "已清除個資",
+  "export.preview.attachmentsUnsupported": "這個格式不帶附件",
+  "export.preview.attachmentsMissing": "附件遺失",
+  "export.preview.attachmentsUnattributed": "附件無法歸屬"
 }
