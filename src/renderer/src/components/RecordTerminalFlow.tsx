@@ -162,15 +162,31 @@ export function MissingList({ missing }: { missing: RuntimePreflight['checks'] }
   return (
     <ul className="space-y-1">
       {missing.map((c) => (
-        <li key={c.id} className="flex items-center gap-2">
-          <span className="font-mono text-redlog-text">{c.id}</span>
-          {c.remediation ? (
-            <>
-              <code className="font-mono text-redlog-text-dim">{c.remediation}</code>
-              <Button level="quiet" onClick={() => void writeClipboard(c.remediation ?? '')}>{t('firstRun.copy')}</Button>
-            </>
-          ) : (
-            <span className="text-redlog-text-faint">{t('firstRun.installManually')}</span>
+        <li key={c.id} className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-redlog-text">{c.id}</span>
+            {c.remediation ? (
+              <>
+                <code className="font-mono text-redlog-text-dim">{c.remediation}</code>
+                <Button level="quiet" onClick={() => void writeClipboard(c.remediation ?? '')}>{t('firstRun.copy')}</Button>
+              </>
+            ) : (
+              <span className="text-redlog-text-faint">{t('firstRun.installManually')}</span>
+            )}
+          </div>
+          {/* The fix is typed into a tool the machine may not have. Saying so
+              beside the command beats handing over `uv tool install …` on a
+              box with no uv and letting it fail. */}
+          {c.remediationRequires && (
+            <p data-testid={`missing-prereq-${c.id}`} className="text-redlog-text-faint">
+              {t('firstRun.remediationNeeds', { tool: c.remediationRequires.command })}{' '}
+              <a
+                href={c.remediationRequires.url}
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-redlog-text"
+              >{c.remediationRequires.url}</a>
+            </p>
           )}
         </li>
       ))}
