@@ -30,7 +30,7 @@ import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
 import { exportHar } from './har-export'
-import { getCaptureHealth, noteDbError } from './capture-health'
+import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
 import { isInsideDir } from './paths'
@@ -486,7 +486,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const filePath = await screenshotAgentRef.captureNow('api')
-      json(res, 200, { captured: !!filePath, filePath })
+      if (filePath) { json(res, 200, { captured: true, filePath }); return }
+      // A bare `captured: false` told the caller nothing — on Windows this
+      // endpoint returned it for weeks while every screen thumbnail came back
+      // empty, and no caller could tell that from "the screen had not changed".
+      const why = getCaptureError('screenshot')
+      json(res, 200, { captured: false, filePath: null, error: why?.message ?? 'screenshot not captured' })
       return
     }
 
