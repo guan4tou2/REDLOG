@@ -7,6 +7,7 @@ import WslPanel from './WslPanel'
 import GeneralPage from './settings/GeneralPage'
 import HudPage from './settings/HudPage'
 import NetworkPage from './settings/NetworkPage'
+import BrowserPage from './settings/BrowserPage'
 import ScopePage from './settings/ScopePage'
 import CaptureControlPage from './settings/CaptureControlPage'
 import HooksPanel from './settings/HooksPanel'
@@ -18,7 +19,7 @@ import { searchSettings } from '../lib/settingsSearch'
 // The thirteen pages §10 asks for. Declared as a union so a typo in a route
 // is a compile error rather than a page that silently never renders.
 export type SettingsPage =
-  | 'hooks' | 'agents' | 'captureControl'
+  | 'hooks' | 'agents' | 'captureControl' | 'browser'
   | 'scope' | 'network'
   | 'integrity'
   | 'plugins'
@@ -121,7 +122,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
       pages: [
         { id: 'hooks', label: t('settings.pageHooks') },
         { id: 'agents', label: t('settings.pageAgents') },
-        { id: 'captureControl', label: t('settings.pageCaptureControl') }
+        { id: 'captureControl', label: t('settings.pageCaptureControl') },
+        // The browser and its HTTP capture proxy decide what ends up in the
+        // record, so they belong with the other capture sources. They used to
+        // sit on Network, beside the VPN and IP-exposure settings, which
+        // answer a different question entirely.
+        { id: 'browser', label: t('settings.pageBrowser') }
       ]
     },
     {
@@ -244,6 +250,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
       <div ref={pane} className="flex-1 overflow-y-auto p-4 space-y-4 max-w-[900px]">
         {tab === 'general' && <GeneralPage config={config} setConfig={setConfig} />}
         {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
+        {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'network' && <NetworkPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'scope' && <ScopePage config={config} setConfig={setConfig} t={t} />}
         {tab === 'hooks' && (

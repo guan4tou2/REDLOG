@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { toast } from '../Toast'
-import { DEFAULT_CDP_PORT } from '../../lib/defaults'
 import { useI18n } from '../../i18n'
 import { FieldGroup, Field, ListField, isMacOS, type ConfigState } from './SettingsShared'
-import BrowserPanel from './BrowserPanel'
 
 const DEFAULT_VPN_ADAPTERS = [
   { name: 'WireGuard', pattern: 'wireguard|^wg\\d', enabled: true },
@@ -105,35 +103,6 @@ export default function NetworkPage({
 }): JSX.Element {
   return (
     <>
-      <BrowserPanel t={t} config={config} setConfig={setConfig} />
-      <FieldGroup title={t('settings.cdp')}>
-        <p className="text-xs text-redlog-text-faint mb-2">
-          {t('settings.cdpHint', { port: String(config.browser?.cdpPort ?? DEFAULT_CDP_PORT) })}
-        </p>
-        <button
-          onClick={async () => {
-            // Uses the CDP port from BrowserPanel above (config.browser.
-            // cdpPort) — the previous separate field silently didn't
-            // auto-save so users often set two different ports without
-            // knowing (audit finding P0 #43).
-            const port = config.browser?.cdpPort ?? DEFAULT_CDP_PORT
-            await window.redlog.cdp.setPort(port)
-            const cdpTab = await window.redlog.cdp.getTab()
-            if (cdpTab.connected) toast(t('settings.cdpConnected', { title: cdpTab.title ?? '', url: cdpTab.url ?? '' }), 'success')
-            else {
-              toast(t('settings.cdpNotConnectedTitle'), {
-                type: 'error',
-                why: t('settings.cdpNotConnected', { port: String(port) }),
-                action: { label: t('common.retry'), onClick: () => { void window.redlog.cdp.getTab() } }
-              })
-            }
-          }}
-          className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
-        >
-          {t('settings.testConnection')}
-        </button>
-      </FieldGroup>
-
       <FieldGroup title={t('settings.ipSafety')}>
         {/* Adapter detection used to be its own group. It exists only to
             answer this group's question — is my traffic where I think it
