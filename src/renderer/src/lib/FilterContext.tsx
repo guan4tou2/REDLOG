@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { EventFilter } from '../../../core/db/events'
-import { formatTime } from './time'
+import { formatTime, formatDate, formatDateTime } from './time'
 import { agentTypeLabel } from './timelineDomain'
 
 export interface TimeRange {
@@ -35,15 +35,33 @@ export function toEventFilter(filter: SharedFilter): EventFilter {
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
+/** The same calendar day, in the zone the UI is displaying. Below that, the
+ *  time of day is enough; across it, a bare `23:40 – 01:10` is a puzzle. */
+const sameDisplayDay = (a: number, b: number): boolean => formatDate(a) === formatDate(b)
+
+/** Never relative. The condition is a fixed window — a preset snapshots the
+ *  last N hours at the moment it is clicked — so the chip has to print what
+ *  the query actually holds. It used to repeat the button ("last 1h"), which
+ *  stopped being true a minute later. */
 export function formatTimeRange(range: TimeRange, t: Translate): string {
+  const stamp = (ms: number, withDate: boolean): string =>
+    withDate ? formatDateTime(ms, { seconds: false }) : formatTime(ms, { seconds: false })
+  const today = Date.now()
   if (range.since && !range.before) {
-    return t('filter.since', { time: formatTime(range.since, { seconds: false }) })
+    return t('filter.since', { time: stamp(range.since, !sameDisplayDay(range.since, today)) })
   }
   if (!range.since && range.before) {
-    return t('filter.before', { time: formatTime(range.before, { seconds: false }) })
+    return t('filter.before', { time: stamp(range.before, !sameDisplayDay(range.before, today)) })
   }
   if (range.since && range.before) {
-    return `${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
+    const crossesDay = !sameDisplayDay(range.since, range.before)
+    const notToday = !sameDisplayDay(range.since, today)
+    if (crossesDay) {
+      return `${formatDateTime(range.since, { seconds: false })} – ${formatDateTime(range.before, { seconds: false })}`
+    }
+    return notToday
+      ? `${formatDate(range.since)} ${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
+      : `${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
   }
   return ''
 }
