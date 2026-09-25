@@ -24,17 +24,22 @@
 // filenames and marker strings — because the cost of a false positive is an
 // operator's real command silently missing from the record.
 
-/** Adapter filenames RedLog sources into a shell. */
+import { RETIRED_HOOK_FILES } from './runtime-preflight'
+
+/** Adapter filenames RedLog sources into a shell.
+ *
+ *  The retired names come from `RETIRED_HOOK_FILES` rather than a second copy
+ *  here: it is the same list, those files are still sitting in the rc files of
+ *  operators who have not migrated, and a duplicate would drift. A repo guard
+ *  (scripts/verify-specs.mjs) forbids naming them anywhere else, which is the
+ *  same rule written down. */
 const ADAPTER_FILES = [
   'shell-hook.ps1',
   'shell-bash-hook.sh',
   'shell-zsh-hook.zsh',
   'shell-common.sh',
   'start-transcript-hook.ps1',
-  // Retired names, still present in an operator's rc file or profile until
-  // they migrate.
-  'shell-preexec-hook.sh',
-  'redlog-hook.zsh'
+  ...RETIRED_HOOK_FILES
 ]
 
 /** Internal functions of the POSIX adapter, reported by name when the shell's
