@@ -10,6 +10,7 @@ export const PAGE_SOURCES = {
   ],
   agents: [{ file: 'settings/AgentsPanel.tsx', before: 'export function HookWatchPathsPanel' }],
   captureControl: [{ file: 'settings/CaptureControlPage.tsx' }, { file: 'settings/LootRulesGroup.tsx' }],
+  browser: [{ file: 'settings/BrowserPage.tsx' }, { file: 'settings/BrowserPanel.tsx' }],
   scope: [{ file: 'settings/ScopePage.tsx' }],
   network: [{ file: 'settings/NetworkPage.tsx' }],
   integrity: [{ file: 'settings/IntegrityPanel.tsx' }],

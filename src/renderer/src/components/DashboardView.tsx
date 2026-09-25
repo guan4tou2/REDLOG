@@ -77,7 +77,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
           type: 'error',
           why: t('browser.failedWhy'),
           detail: r.error,
-          action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('network')) }
+          action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('browser')) }
         })
       }
     }
