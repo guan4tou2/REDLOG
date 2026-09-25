@@ -53,6 +53,7 @@
   "capture.pluginTag": "plugin",
   "capture.state.active": "active",
   "capture.state.idle": "idle",
+  "capture.state.error": "failing",
   "capture.state.absent": "off",
   "capture.ago": "ago",
   "capture.tierChain": "Chain",

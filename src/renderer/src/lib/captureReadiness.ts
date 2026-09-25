@@ -54,7 +54,7 @@ const ONBOARDING_SOURCES = ['shell-hook', 'builtin-terminal']
 
 export interface ReadinessSource {
   id: string
-  state: 'active' | 'idle' | 'absent' | 'off'
+  state: 'active' | 'idle' | 'absent' | 'off' | 'error'
   installed?: boolean
   enabled?: boolean
   lastEventAt: number | null
@@ -111,6 +111,10 @@ export interface CaptureReadiness {
 function statusFor(source: ReadinessSource): StepStatus {
   if (source.state === 'active') return 'active'
   if (source.state === 'off') return 'todo'
+  // A failing source is set up — reinstalling it is not the fix — so it ranks
+  // `wired`, never `active`. Onboarding stops nudging; Capture Health shows
+  // the failure and its reason.
+  if (source.state === 'error') return 'wired'
   const wired =
     source.installed === true ||
     source.enabled === true ||

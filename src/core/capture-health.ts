@@ -13,7 +13,10 @@ import { detectHooks, invalidateCommandCache } from './hooks-manager'
 // permanently grey noise. Installation and activation are now separate axes:
 //   installed — the hook exists on disk (only meaningful for hook sources)
 //   enabled   — the operator switched it on in config
-export type SourceState = 'active' | 'idle' | 'absent' | 'off'
+// `error` is a source that is wired up and was asked to capture, and whose
+// capture itself failed — distinct from `absent` (nothing installed) and from
+// a DB write failure, which is a whole-product fault rather than one source's.
+export type SourceState = 'active' | 'idle' | 'absent' | 'off' | 'error'
 
 export interface CaptureSource {
   id: string
@@ -29,6 +32,10 @@ export interface CaptureSource {
   /** ms epoch of the most recent event attributable to this source, or null */
   lastEventAt: number | null
   state: SourceState
+  /** Most recent capture failure from this source, while it is still live
+   *  (`CAPTURE_ERROR_TTL_MS`). Set by `noteCaptureError`; drives `state:
+   *  'error'` and gives the panel something to say beyond the colour. */
+  lastError?: { at: number; message: string }
   /** E3: a plugin-contributed capture producer, enumerated from the registry
    *  rather than the hardcoded core list. Informational sources are DISPLAY
    *  ONLY — they are appended after the verdict is computed and never feed
@@ -116,6 +123,41 @@ export function noteDbError(source: string, err: unknown): void {
   if (_dbErrorFirstAt === null) _dbErrorFirstAt = now
   healthCache = null
 }
+// A capture-side failure that belongs to ONE source: the screen grab came
+// back empty, the tailer's file vanished, the clipboard read threw. These used
+// to go through `noteDbError`, which exists for "writing evidence is broken"
+// and pins the whole verdict to `dark`. A camera that cannot see the screen is
+// not a dark log — every other source is still recording — and reporting it
+// that way teaches the operator to ignore the one signal that must never be
+// ignored. It tips the owning source to `error` and the verdict to `partial`.
+const CAPTURE_ERROR_TTL_MS = 10 * 60 * 1000
+const _captureErrors = new Map<string, { at: number; message: string }>()
+
+export function noteCaptureError(sourceId: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  _captureErrors.set(sourceId, { at: Date.now(), message: msg.slice(0, 200) })
+  healthCache = null
+}
+
+/** The live failure for one source, for callers that need to say WHY right
+ *  now rather than wait for the next health read. */
+export function getCaptureError(sourceId: string): { at: number; message: string } | undefined {
+  return getLiveCaptureError(sourceId, Date.now())
+}
+
+/** Called when a source captures successfully again, so the row recovers
+ *  without waiting out the TTL. */
+export function clearCaptureError(sourceId: string): void {
+  if (_captureErrors.delete(sourceId)) healthCache = null
+}
+
+function getLiveCaptureError(sourceId: string, now: number): { at: number; message: string } | undefined {
+  const e = _captureErrors.get(sourceId)
+  if (!e) return undefined
+  if (now - e.at > CAPTURE_ERROR_TTL_MS) { _captureErrors.delete(sourceId); return undefined }
+  return e
+}
+
 function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
   if (!_lastDbError) return undefined
   if (now - _lastDbError.at > DB_ERROR_TTL_MS) { _lastDbError = null; return undefined }
@@ -210,8 +252,18 @@ function stateFrom(
   // fault. Reported before `absent` so a hook that is both uninstalled and
   // disabled reads as the deliberate state rather than the broken one.
   if (enabled === false) return 'off'
-  if (installed === false) return 'absent'
+  // Evidence beats detection. A source that fed us seconds ago is recording,
+  // whatever `installed` claims, and saying `absent` about it is the one
+  // reading an operator must never get from this panel: it reads as "nothing
+  // is being captured here" while the timeline fills.
+  //
+  // Two live sources hit this on Windows. `mitmproxy` is `installed: false`
+  // by design — the managed proxy runs the addon with `-s <path>` instead of
+  // installing the standalone hook — and the shell hook was mis-detected
+  // outright (see shellInstalled below). Both showed `absent` with a
+  // `lastEventAt` from moments earlier.
   if (last !== null && now - last <= ACTIVE_WINDOW_MS) return 'active'
+  if (installed === false) return 'absent'
   return 'idle'
 }
 
@@ -305,7 +357,15 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const tailerLast = lastEventFor(`agent_type = 'agent'`)
   const screenshotLast = lastEventFor(`agent_type = 'screenshot'`)
 
-  const shellInstalled = hookInstalled('shell-zsh') ?? hookInstalled('shell-bash') ?? hookInstalled('shell-powershell')
+  // Any shell hook being installed makes the row installed — `??` could not
+  // express that, because `checkInstalled()` always returns a boolean, so
+  // `false ?? x` short-circuits on the first candidate. On Windows that
+  // candidate is `shell-zsh`, which is never installed, so the row read
+  // `installed: false` no matter what the operator had wired up: the panel
+  // said the shell hook was absent while PowerShell commands were landing.
+  const SHELL_HOOK_IDS = ['shell-zsh', 'shell-bash', 'shell-powershell']
+  const shellKnown = SHELL_HOOK_IDS.map(hookInstalled).filter((v) => v !== undefined)
+  const shellInstalled = shellKnown.length > 0 ? shellKnown.some(Boolean) : undefined
   // Which concrete hook id an Install button should act on. Prefer whichever
   // is already known to the detector for this platform.
   const shellHookId = hooks.find((h) => h.id === (process.platform === 'win32' ? 'shell-powershell' : 'shell-zsh'))?.id
@@ -320,6 +380,8 @@ function computeCaptureHealth(now: number): CaptureHealth {
     const enabled = opts.configPath
       ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
       : undefined
+    const lastError = getLiveCaptureError(id, now)
+    const state = stateFrom(opts.installed, last, now, enabled)
     return {
       id,
       installed: opts.installed,
@@ -327,7 +389,11 @@ function computeCaptureHealth(now: number): CaptureHealth {
       enabled,
       configPath: opts.configPath,
       lastEventAt: last,
-      state: stateFrom(opts.installed, last, now, enabled)
+      // A live capture failure outranks `idle`/`absent` — the source tried and
+      // could not — but not `off`, which is the operator's own choice, nor
+      // `active`, where something newer than the failure has landed since.
+      state: lastError && state !== 'off' && state !== 'active' ? 'error' : state,
+      ...(lastError ? { lastError } : {})
     }
   }
 
@@ -421,6 +487,11 @@ function computeCaptureHealth(now: number): CaptureHealth {
     // untouched (the installed-but-not-run guarantee holds).
     || pluginSources.some((s) => s.running === true && s.state !== 'active')
 
+  // A source whose own capture is failing tips the verdict amber. It must not
+  // go dark: the other sources are recording, and `dark` means "you have no
+  // log".
+  const anySourceErrored = sources.some((s) => s.state === 'error')
+
   const lastDbError = getLiveDbError(now)
   const lastSampleBroken = getLiveSampleBroken(now)
 
@@ -432,6 +503,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   else if (!anyWired && !everFed) verdict = 'dark'
   else if (activeCount === 0) verdict = 'partial'
   else if (expectedSilent) verdict = 'partial'  // v0.6.96 Ops-3
+  else if (anySourceErrored) verdict = 'partial'
   else verdict = 'healthy'
 
   const lastEventAt = [...sources, ...pluginSources].reduce<number | null>(

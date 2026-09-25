@@ -4,9 +4,13 @@ import path from 'path'
 import fs from 'fs'
 import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
-import { noteDbError } from '../../core/capture-health'
+import { noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import { getProjectDir } from '../../core/db/index'
 import { dHashFromBgra, hammingDistance } from '../../core/dhash'
+
+// Triggers that represent someone asking for this exact frame, as opposed to
+// the agent deciding to take one. See captureNow.
+const DELIBERATE_TRIGGERS = new Set(['manual', 'api'])
 
 export class ScreenshotAgent {
   private lastHash = ''
@@ -79,9 +83,14 @@ export class ScreenshotAgent {
 
   async captureNow(trigger: string, causeEventId?: string): Promise<string | null> {
     if (!this.operatorId) return null
-    // Manual captures always land — user intent overrides pause.
-    // Ambient triggers (periodic, idle) skip while recording is paused.
-    if (trigger !== 'manual' && eventBus.paused) return null
+    // Deliberate captures always land — operator intent overrides pause and
+    // dedup. `api` belongs here with `manual`: POST /api/screenshot is an
+    // operator (or their agent) asking for THIS frame, so silently skipping it
+    // because the screen looks like the last one, or because recording is
+    // paused, loses a frame someone asked for and says `captured: false` with
+    // no reason. Ambient triggers (periodic, idle, command) stay deduped.
+    const deliberate = DELIBERATE_TRIGGERS.has(trigger)
+    if (!deliberate && eventBus.paused) return null
     try {
       const display = screen.getPrimaryDisplay()
       const { width, height } = display.size
@@ -108,7 +117,7 @@ export class ScreenshotAgent {
       // asleep" rather than swallowing them. This is that same class of
       // failure; it just does not throw.
       if (!sources.length) {
-        noteDbError('screenshot', new Error(
+        noteCaptureError('screenshot', new Error(
           `desktopCapturer returned no screen sources (${screen.getAllDisplays().length} display(s) known)`
         ))
         return null
@@ -116,15 +125,36 @@ export class ScreenshotAgent {
 
       const image = sources[0].thumbnail
       const jpeg = image.toJPEG(this.quality)
+      // An empty frame is a FAILURE, and it must never become evidence.
+      //
+      // Windows 11 / Chromium 152 hands back the right number of screen
+      // sources with every thumbnail empty: `getSize()` 0x0, `isEmpty()`
+      // true, `toJPEG()` 0 bytes, at every `thumbnailSize` we asked for
+      // (window sources on the same box are fine). Nothing below this point
+      // notices — the sha256 of zero bytes is a perfectly good hash — so a
+      // deliberate capture wrote a 0-byte .jpg, ingested a screenshot event
+      // for it, showed it in the Screenshots grid as a captured frame, and
+      // exported it into the evidence bundle, where the verifier confirmed
+      // its sha256 and reported the file verified. A bundle that certifies a
+      // blank screenshot as a screenshot is worse than one with no screenshot
+      // in it: it is a claim about the engagement that is not true.
+      if (jpeg.length === 0 || image.isEmpty()) {
+        const { width: tw, height: th } = image.getSize()
+        noteCaptureError('screenshot', new Error(
+          `screen capture came back empty (${sources.length} source(s), thumbnail ${tw}x${th}, ` +
+          `${screen.getAllDisplays().length} display(s)) — nothing was recorded`
+        ))
+        return null
+      }
       const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
       const dedupKey = sha256.slice(0, 16)
 
-      if (trigger !== 'manual') {
+      if (!deliberate) {
         // First-pass exact-bytes dedup (rare hit, but zero-cost).
         if (dedupKey === this.lastHash) return null
         // Perceptual dedup — only for automatic triggers (periodic / idle),
         // and only when enabled (diffThreshold > 0; 0 stores every frame).
-        // Manual captures always land regardless of similarity.
+        // Deliberate captures always land regardless of similarity.
         if (this.diffThreshold > 0) {
           const dHash = this.computeDHash(image)
           if (this.lastDHash != null) {
@@ -167,14 +197,17 @@ export class ScreenshotAgent {
       }, {
         engagementId: this.engagementId,
         operatorId: this.operatorId,
-        bypassPause: trigger === 'manual'
+        bypassPause: deliberate
       })
+      clearCaptureError('screenshot')
       return filepath
     } catch (e) {
       // Screenshot capture failure — forward to capture-health so a persistent
       // failure (permission denied / disk full / display asleep) surfaces on
-      // StatusBar rather than silently swallowing (v0.6.86).
-      noteDbError('screenshot', e)
+      // StatusBar rather than silently swallowing (v0.6.86). It marks THIS
+      // source `error`; it is not a `noteDbError`, which means evidence cannot
+      // be written at all and takes the whole verdict dark.
+      noteCaptureError('screenshot', e)
       return null
     }
   }

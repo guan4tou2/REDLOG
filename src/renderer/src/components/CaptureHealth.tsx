@@ -140,7 +140,9 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     'file-watcher': t('capture.fileWatcher')
   }
   const dot = (s: string): string =>
-    s === 'active' ? 'bg-emerald-500' : s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
+    s === 'active' ? 'bg-emerald-500'
+      : s === 'error' ? 'bg-red-500'
+        : s === 'idle' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
 
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
@@ -176,7 +178,8 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
     // a fault to nag about, so they stay out of the compact "problems" view
     // (they're still listed in `manage`, read-only, with honest live state).
     !s.informational &&
-    (s.state === 'absent' || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null)))
+    (s.state === 'error' || s.state === 'absent'
+      || (s.state === 'idle' && (s.installed === true || s.lastEventAt !== null)))
   const problems = sources.filter(isProblem)
   const healthy = sources.filter((s) => s.state === 'active')
   const shown = manage ? sources : problems
@@ -335,13 +338,17 @@ export function CaptureHealthCard({ capture, onNavigate, onRefresh, tierSplit }:
                   </span>
                 )}
                 {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
+                {/* Why it failed, not just that it did — the operator cannot
+                    act on a red dot alone. */}
+                {s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
               </span>
               <span className="text-redlog-text-faint text-xs">
                 {s.state === 'off'
                   ? t('capture.state.off')
                   // A plugin producer isn't "installed" in the hook sense — it's
                   // run on demand — so report its live state, not "not installed".
-                  : (!s.informational && s.installed === false) ? t('capture.notInstalled') : stateLabel(s.state)}
+                  : s.state === 'error' ? stateLabel('error')
+                    : (!s.informational && s.installed === false) ? t('capture.notInstalled') : stateLabel(s.state)}
               </span>
               {!manage && s.installed !== false && s.state !== 'off' && (
                 <span className={`text-xs font-mono tabular-nums shrink-0 ${ageColor(s.lastEventAt, nowTick)}`}>

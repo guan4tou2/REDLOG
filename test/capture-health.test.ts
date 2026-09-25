@@ -254,3 +254,68 @@ describeDB('capture-health', () => {
     expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
   })
 })
+
+// Three ways this panel told an operator something that was not true, all
+// found by walking a real Windows install end to end.
+describeDB('capture-health tells the truth about live sources', () => {
+  let tmp: string
+  let noteCaptureError: typeof import('../src/core/capture-health').noteCaptureError
+  let clearCaptureError: typeof import('../src/core/capture-health').clearCaptureError
+  beforeEach(async () => {
+    const ch = await import('../src/core/capture-health')
+    noteCaptureError = ch.noteCaptureError; clearCaptureError = ch.clearCaptureError
+    clearCaptureError('screenshot')
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap2-')); initDB(tmp)
+    const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
+      [active('pack-host-monitors'), active('pack-ai-agents'), active('pack-windows-output')]
+    )
+  })
+  afterEach(() => {
+    clearCaptureError('screenshot')
+    closeDB(); fs.rmSync(tmp, { recursive: true, force: true }); vi.restoreAllMocks()
+  })
+
+  // On Windows `shell-zsh` is never installed, and `checkInstalled` returns a
+  // boolean, so `a ?? b ?? c` stopped at `false` and the row claimed the shell
+  // hook was absent while PowerShell commands were landing.
+  it('counts the shell hook installed when ANY shell hook is, not just the first', () => {
+    mockHooks({ 'shell-zsh': false, 'shell-bash': false, 'shell-powershell': true })
+    ins('shell', { subtype: 'command_end', command: 'whoami' })
+    const shell = getCaptureHealth().sources.find((s) => s.id === 'shell-hook')
+    expect(shell?.installed).toBe(true)
+    expect(shell?.state).toBe('active')
+  })
+
+  // The managed proxy runs the mitmproxy addon with `-s <path>` rather than
+  // installing the standalone hook, so `installed` is false by design while
+  // HTTP events pour in. "absent" over a source that fed seconds ago is the
+  // one reading this panel must never produce.
+  it('never calls a source absent while it is still feeding', () => {
+    mockHooks({ 'shell-zsh': false, mitmproxy: false })
+    ins('scanner', { subtype: 'http_request_start', url: 'https://example.com/', method: 'GET' })
+    const mitm = getCaptureHealth().sources.find((s) => s.id === 'mitmproxy')
+    expect(mitm?.installed).toBe(false)
+    expect(mitm?.state).toBe('active')
+  })
+
+  // A camera that cannot see the screen is not a dark log.
+  it('a capture failure marks that source, and tips the verdict amber — not dark', () => {
+    mockHooks({ 'shell-zsh': true })
+    ins('shell', { subtype: 'command_end', command: 'whoami' })
+    expect(getCaptureHealth().verdict).toBe('healthy')
+
+    noteCaptureError('screenshot', new Error('screen capture came back empty'))
+    const h = getCaptureHealth()
+    const shot = h.sources.find((s) => s.id === 'screenshot')
+    expect(shot?.state).toBe('error')
+    expect(shot?.lastError?.message).toContain('came back empty')
+    expect(h.verdict).toBe('partial')
+    // It is the source's fault, not the database's: nothing here claims
+    // evidence cannot be written.
+    expect(h.lastDbError).toBeUndefined()
+
+    clearCaptureError('screenshot')
+    expect(getCaptureHealth().sources.find((s) => s.id === 'screenshot')?.state).not.toBe('error')
+  })
+})
