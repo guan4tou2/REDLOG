@@ -1300,5 +1300,7 @@
   "firstRun.readFailedWhy": "這是讀取失敗，不代表沒有記錄 —— 擷取很可能正在運作。",
   "firstRun.preflightFailedTitle": "環境檢查無法執行",
   "firstRun.preflightFailedWhy": "在它跑起來之前，無法判斷缺少哪些相依套件。",
-  "firstRun.remediationNeeds": "這個指令需要先有 {{tool}}："
+  "firstRun.remediationNeeds": "這個指令需要先有 {{tool}}：",
+  "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
+  "filter.listsRetry": "重試"
 }

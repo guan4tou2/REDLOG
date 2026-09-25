@@ -1300,5 +1300,7 @@
   "firstRun.readFailedWhy": "This is a read failure, not an empty log — capture may well be running.",
   "firstRun.preflightFailedTitle": "The environment check could not run",
   "firstRun.preflightFailedWhy": "Missing dependencies cannot be reported until it does.",
-  "firstRun.remediationNeeds": "Needs {{tool}} first:"
+  "firstRun.remediationNeeds": "Needs {{tool}} first:",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry"
 }
