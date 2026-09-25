@@ -14,15 +14,21 @@ import {
 
 type Check = RuntimePreflight['checks'][number]
 
-function usePreflight(): { data: RuntimePreflight | null; recheck: () => void } {
+function usePreflight(): { data: RuntimePreflight | null; status: 'loading' | 'ready' | 'error'; recheck: () => void } {
   const [data, setData] = useState<RuntimePreflight | null>(null)
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const recheck = useCallback(() => {
+    setStatus('loading')
     // A bridge without the runtime API (older preload, test harness) must not
-    // take the screen down: no data simply means nothing to show.
-    Promise.resolve().then(() => window.redlog.runtime.preflight()).then(setData).catch(() => {})
+    // take the screen down. But a failure is not the same as "still working":
+    // swallowing it left `data` null, which this panel renders as a loading
+    // line — forever, with no way to ask again.
+    Promise.resolve().then(() => window.redlog.runtime.preflight())
+      .then((d) => { setData(d); setStatus('ready') })
+      .catch(() => setStatus('error'))
   }, [])
   useEffect(() => { recheck() }, [recheck])
-  return { data, recheck }
+  return { data, status, recheck }
 }
 
 function CopyCommand({ command }: { command: string }): JSX.Element {
@@ -63,7 +69,7 @@ const SHELL_LABEL: Record<string, string> = { zsh: 'zsh', bash: 'bash', pwsh: 'P
 
 function RuntimeReadinessPanel({ onDone }: { onDone: () => void }): JSX.Element {
   const { t } = useI18n()
-  const { data, recheck } = usePreflight()
+  const { data, status, recheck } = usePreflight()
   const check = (id: Check['id']): Check | undefined => data?.checks.find((c) => c.id === id)
   const runtime = (['python3', 'curl'] as const).map(check).filter((c): c is Check => !!c)
   const runtimeMissing = runtime.filter((c) => !c.found)
@@ -77,7 +83,15 @@ function RuntimeReadinessPanel({ onDone }: { onDone: () => void }): JSX.Element 
       className="fixed top-14 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4.5rem)] overflow-y-auto rounded-lg border border-redlog-border bg-redlog-surface shadow-xl p-4"
     >
       <h2 id="runtime-readiness-title" className="text-sm font-semibold text-redlog-text mb-2">{t('readiness.title')}</h2>
-      {!data ? (
+      {status === 'error' ? (
+        <div data-testid="readiness-check-failed" role="status" className="text-xs space-y-2">
+          <p className="text-amber-300">{t('readiness.checkFailed')}</p>
+          <button
+            onClick={recheck}
+            className="px-2 py-1 rounded border border-redlog-border text-redlog-text hover:bg-redlog-elevated"
+          >{t('readiness.recheck')}</button>
+        </div>
+      ) : !data ? (
         <p className="text-xs text-redlog-text-dim">{t('common.loading')}</p>
       ) : (
         <ul className="divide-y divide-redlog-border/50">

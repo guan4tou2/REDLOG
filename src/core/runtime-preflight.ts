@@ -23,6 +23,12 @@ export interface PreflightCheck {
   neededFor: string[]
   /** copyable install command; present only when the command is missing */
   remediation?: string
+  /** The tool `remediation` is typed into, when it is not one every machine
+   *  has. A clean box may have neither `uv` nor `brew`, so a bare
+   *  `uv tool install mitmproxy` is a command the operator cannot run and no
+   *  hint about why. Named here rather than baked into the command string so
+   *  the UI can offer the prerequisite without parsing it back out. */
+  remediationRequires?: { command: string; url: string }
 }
 
 export interface LegacyHookRef {
@@ -65,6 +71,22 @@ function remediationFor(cmd: PreflightCommand, platform: NodeJS.Platform): strin
   return undefined
 }
 
+// The installer a remediation is typed into. `apt` and `winget` ship with the
+// systems that use them here; `uv` and `brew` do not, so a clean machine can
+// be handed a fix it cannot run.
+const UV = { command: 'uv', url: 'https://docs.astral.sh/uv/getting-started/installation/' }
+const BREW = { command: 'brew', url: 'https://brew.sh' }
+function remediationRequiresFor(
+  remediation: string | undefined,
+  found: (cmd: string) => boolean
+): { command: string; url: string } | undefined {
+  if (!remediation) return undefined
+  const tool = remediation.startsWith('uv ') ? UV : remediation.startsWith('brew ') ? BREW : null
+  // Only when it is actually absent: naming a prerequisite the operator
+  // already has is noise on the one screen that must stay readable.
+  return tool && !found(tool.command) ? tool : undefined
+}
+
 function detectShell(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, found: (cmd: string) => boolean): PreflightResult['shell'] {
   if (platform === 'win32') {
     const name = found('pwsh') ? 'pwsh' : 'powershell'
@@ -94,7 +116,11 @@ export function runPreflight(opts: PreflightOptions = {}): PreflightResult {
   const checks = wanted.map(({ id, neededFor }): PreflightCheck => {
     const ok = found(id)
     const remediation = ok ? undefined : remediationFor(id, platform)
-    return remediation ? { id, found: ok, neededFor, remediation } : { id, found: ok, neededFor }
+    const requires = remediationRequiresFor(remediation, found)
+    if (!remediation) return { id, found: ok, neededFor }
+    return requires
+      ? { id, found: ok, neededFor, remediation, remediationRequires: requires }
+      : { id, found: ok, neededFor, remediation }
   })
   return {
     platform,
