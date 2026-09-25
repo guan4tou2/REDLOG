@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { EventFilter } from '../../../core/db/events'
+import { formatTime } from './time'
+import { agentTypeLabel } from './timelineDomain'
 
 export interface TimeRange {
   since?: number
@@ -13,6 +15,9 @@ export interface SharedFilter {
   timeRange: TimeRange | null
   inScopeOnly: boolean
   hidePersonal: boolean
+  /** Spec 038: "chained only" is a condition of the investigation, applied
+   *  by every view's query. Not persisted, like the rest of this state. */
+  tier: 'all' | 'chained'
 }
 
 /** Convert UI state into the canonical cross-process query contract. */
@@ -23,9 +28,51 @@ export function toEventFilter(filter: SharedFilter): EventFilter {
     ...(filter.timeRange?.since != null ? { since: filter.timeRange.since } : {}),
     ...(filter.timeRange?.before != null ? { before: filter.timeRange.before } : {}),
     ...(filter.inScopeOnly ? { inScopeOnly: true } : {}),
-    ...(filter.hidePersonal ? { hidePersonal: true } : {})
+    ...(filter.hidePersonal ? { hidePersonal: true } : {}),
+    ...(filter.tier === 'chained' ? { tier: 'chained' as const } : {})
   }
 }
+
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+export function formatTimeRange(range: TimeRange, t: Translate): string {
+  if (range.since && !range.before) {
+    return t('filter.since', { time: formatTime(range.since, { seconds: false }) })
+  }
+  if (!range.since && range.before) {
+    return t('filter.before', { time: formatTime(range.before, { seconds: false }) })
+  }
+  if (range.since && range.before) {
+    return `${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
+  }
+  return ''
+}
+
+/** How each active condition is named: the FilterBar's chips, and any view
+ *  that has to say which conditions explain what it shows. Personal traffic
+ *  narrows only once personal domains are configured, which is also when the
+ *  FilterBar shows its chip, so it is named only when `personalDomains` is
+ *  passed and non-empty. */
+export function conditionLabels(filter: SharedFilter, t: Translate, opts: { personalDomains?: string[] } = {}): {
+  target?: string; type?: string; time?: string; inScope?: string; tier?: string; personal?: string
+} {
+  return {
+    ...(filter.targetId ? { target: `${t('filter.target')}: ${filter.targetId}` } : {}),
+    // "Type: Shell", not the stored `shell` (Spec 034); the FilterBar puts the stored type in the tooltip.
+    ...(filter.agentType ? { type: `${t('filter.type')}: ${agentTypeLabel(filter.agentType, t)}` } : {}),
+    ...(filter.timeRange ? { time: `${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}` } : {}),
+    ...(filter.inScopeOnly ? { inScope: t('filter.inScopeOnly') } : {}),
+    ...(filter.tier === 'chained' ? { tier: t('filter.chainedOnly') } : {}),
+    ...(filter.hidePersonal && opts.personalDomains?.length ? { personal: t('filter.personalHidden') } : {})
+  }
+}
+
+/** Every condition narrowing what a view shows, named. Empty means nothing
+ *  narrows it, so an empty view is an empty project. */
+export const describeActiveConditions = (
+  filter: SharedFilter, t: Translate, opts: { personalDomains?: string[] } = {}
+): string[] =>
+  Object.values(conditionLabels(filter, t, opts)).filter((l): l is string => !!l)
 
 interface FilterContextValue {
   filter: SharedFilter
@@ -34,6 +81,7 @@ interface FilterContextValue {
   setTimeRange: (range: TimeRange | null) => void
   setInScopeOnly: (v: boolean) => void
   setHidePersonal: (v: boolean) => void
+  setTier: (tier: SharedFilter['tier']) => void
   clearAll: () => void
   activeCount: number
   knownTargets: Array<{ target: string; eventCount: number }>
@@ -43,7 +91,7 @@ interface FilterContextValue {
   personalDomains: string[]
 }
 
-const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true }
+const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true, tier: 'all' }
 
 const FilterContext = createContext<FilterContextValue>({
   filter: EMPTY,
@@ -52,6 +100,7 @@ const FilterContext = createContext<FilterContextValue>({
   setTimeRange: () => {},
   setInScopeOnly: () => {},
   setHidePersonal: () => {},
+  setTier: () => {},
   clearAll: () => {},
   activeCount: 0,
   knownTargets: [],
@@ -123,17 +172,21 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const setHidePersonal = useCallback((v: boolean) => {
     setFilter((prev) => ({ ...prev, hidePersonal: v }))
   }, [])
+  const setTier = useCallback((tier: SharedFilter['tier']) => {
+    setFilter((prev) => ({ ...prev, tier }))
+  }, [])
   const clearAll = useCallback(() => setFilter(EMPTY), [])
 
   const activeCount = (filter.targetId ? 1 : 0)
     + (filter.agentType ? 1 : 0)
     + (filter.timeRange ? 1 : 0)
     + (filter.inScopeOnly ? 1 : 0)
+    + (filter.tier === 'chained' ? 1 : 0)
 
   const value = useMemo(() => ({
-    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+    filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
     activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains
-  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+  }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
        activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains])
 
   return <FilterContext value={value}>{children}</FilterContext>

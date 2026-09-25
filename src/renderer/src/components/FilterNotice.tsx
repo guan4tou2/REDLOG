@@ -28,3 +28,21 @@ export function UnappliedFilterNotice({ title, reason }: {
     </div>
   )
 }
+
+// Spec 038 FR-012: the other case. The condition is applied, and on this view
+// it leaves nothing by construction: HTTP flows are all logged, so "Chained
+// only" empties HTTP History; Loot lists only loot rows, so any other Type
+// empties it. The empty list is the right answer to the question asked, so
+// this is not the amber "not the whole answer" notice. It still says why,
+// because an empty list reads as "nothing was recorded" otherwise.
+export function EmptyByConstructionNotice({ text }: { text: string }): JSX.Element {
+  return (
+    <div
+      data-testid="empty-by-construction-notice"
+      role="status"
+      className="mx-3 my-2 rounded border border-redlog-border bg-redlog-elevated/40 px-3 py-2 text-xs text-redlog-text-dim"
+    >
+      {text}
+    </div>
+  )
+}

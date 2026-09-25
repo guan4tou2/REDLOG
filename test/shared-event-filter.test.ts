@@ -19,7 +19,7 @@ describe('shared event filter wiring', () => {
     const loadMore = source.slice(source.indexOf('const loadMore'), source.indexOf('useEffect(() => {', source.indexOf('const loadMore')))
     expect(loadMore).toMatch(/const opts = buildSearchOpts\(\)/)
     expect(loadMore).toMatch(/filter: opts, limit: PAGE_SIZE, cursor: nextCursor/)
-    expect(source).toMatch(/\[effectiveTypeFilter, sharedFilter\.targetId, sharedFilter\.timeRange, sharedFilter\.inScopeOnly, sharedFilter\.hidePersonal\]/)
+    expect(source).toMatch(/\[effectiveTypeFilter, sharedFilter\.targetId, sharedFilter\.timeRange, sharedFilter\.inScopeOnly, sharedFilter\.hidePersonal, sharedFilter\.tier\]/)
   })
 
   it('Transcript sends shared predicates with each bounded backend bucket', () => {

@@ -3,12 +3,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAIN_ENTRY, REPO_ROOT, makeTempHome, openTestProject, openView } from './helpers'
 
-// docs/DESIGN-core-and-capture.md §3/§7, the reconciled target axis: rather
-// than PR #8's dynamic target-lanes (which also deleted TargetView), the
-// timeline gains a target FOCUS — the source lanes stay, TargetView stays, and
-// arriving from a target scopes the view to that target's activity. This is
-// the reconstruction question "what happened to 10.10.11.24" answered without
-// rebuilding the lane model of the product's most complex screen.
+// Spec 038 (US2): arriving from a target sets the shared filter's target,
+// the FilterBar chip every event view honours, instead of a Timeline-only
+// focus that matched seven observation fields and dimmed the rest. The lanes
+// stay, TargetView stays, and "what happened to 10.10.11.24" is answered by
+// the same target_id predicate the Targets page counted.
 
 let app: ElectronApplication
 let page: Page
@@ -41,30 +40,35 @@ test.describe.serial('target focus on the timeline', () => {
 
   test.afterAll(async () => { await app?.close() })
 
-  test('arriving from a target scopes the timeline to it', async () => {
+  const arriveFromTarget = async (): Promise<void> => {
     await openView(page, 'targets')
-    // Select the first target and jump to the timeline via the keyboard path
-    // (§7: the documented target → timeline route).
+    // Select the target and jump to the timeline via the keyboard path (§7:
+    // the documented target → timeline route).
     await page.keyboard.press('ArrowDown')
     // Land on the 10.10.11.24 row deterministically by clicking it.
     await page.getByText('10.10.11.24', { exact: false }).first().click()
-    await page.keyboard.press('Meta+Enter')
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter')
     await expect(page.locator('[data-testid="view-root"][data-view="timeline"]')).toBeVisible()
-    const badge = page.locator('[data-testid="timeline-target-focus-badge"]')
-    await expect(badge).toBeVisible()
-    await expect(badge).toContainText('10.10.11.24')
-  })
+  }
+  const chip = (): ReturnType<Page['getByText']> => page.getByText('Target: 10.10.11.24', { exact: true })
 
-  test('the focus can be cleared', async () => {
-    await page.locator('[data-testid="timeline-target-focus-badge"] button').click()
+  test('arriving from a target sets the shared target chip', async () => {
+    await arriveFromTarget()
+    await expect(chip()).toBeVisible()
     await expect(page.locator('[data-testid="timeline-target-focus-badge"]')).toHaveCount(0)
   })
 
-  test('navigating away and back does not silently keep the focus', async () => {
-    // focusTarget is cleared on any nav — a stale focus that quietly narrows a
-    // later visit is the kind of silent state this product must not have.
+  test('the chip clears it', async () => {
+    await chip().getByRole('button', { name: 'Clear' }).click()
+    await expect(chip()).toHaveCount(0)
+  })
+
+  test('navigating away and back keeps the target, visibly', async () => {
+    // FR-005: the target is the shared filter's, so it stays set across views
+    // until cleared. It is not silent: the chip says so wherever it applies.
+    await arriveFromTarget()
     await openView(page, 'dashboard')
     await openView(page, 'timeline')
-    await expect(page.locator('[data-testid="timeline-target-focus-badge"]')).toHaveCount(0)
+    await expect(chip()).toBeVisible()
   })
 })

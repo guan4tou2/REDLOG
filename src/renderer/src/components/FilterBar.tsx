@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
-import { useSharedFilter } from '../lib/FilterContext'
+import { useSharedFilter, conditionLabels } from '../lib/FilterContext'
 import { useI18n } from '../i18n'
-import { formatTime } from '../lib/time'
 import { agentTypeLabel } from '../lib/timelineDomain'
 
 export function FilterBar(): JSX.Element | null {
-  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, clearAll,
+  const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
     activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains } = useSharedFilter()
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
+  const labels = conditionLabels(filter, t)
   const barRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -39,18 +39,14 @@ export function FilterBar(): JSX.Element | null {
 
         {/* Active filter chips — always visible */}
         {filter.targetId && (
-          <Chip label={`${t('filter.target')}: ${filter.targetId}`} onClear={() => setTargetId(null)} />
+          <Chip label={labels.target ?? ''} onClear={() => setTargetId(null)} />
         )}
         {filter.agentType && (
-          <Chip
-            label={`${t('filter.type')}: ${agentTypeLabel(filter.agentType, t)}`}
-            title={filter.agentType}
-            onClear={() => setAgentType(null)}
-          />
+          <Chip label={labels.type ?? ''} title={filter.agentType} onClear={() => setAgentType(null)} />
         )}
         {filter.timeRange && (
           <Chip
-            label={`${t('filter.time')}: ${formatTimeRange(filter.timeRange, t)}`}
+            label={labels.time ?? ''}
             onClear={() => setTimeRange(null)}
           />
         )}
@@ -67,6 +63,21 @@ export function FilterBar(): JSX.Element | null {
             {t('filter.inScopeOnly')}
           </button>
         )}
+        {/* Spec 038: the auditor's "chained evidence only", as a condition
+            every event view applies, not a Timeline display switch. Always
+            shown: every project has the chained tier. */}
+        <button
+          onClick={() => setTier(filter.tier === 'chained' ? 'all' : 'chained')}
+          aria-pressed={filter.tier === 'chained'}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+            filter.tier === 'chained'
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              : 'border-redlog-border text-redlog-text-dim hover:text-redlog-text hover:border-redlog-accent/30'
+          }`}
+          title={t('filter.chainedOnlyHint')}
+        >
+          {t('filter.chainedOnly')}
+        </button>
         {personalDomains.length > 0 && (
           <button
             onClick={() => setHidePersonal(!filter.hidePersonal)}
@@ -182,17 +193,4 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
       </select>
     </div>
   )
-}
-
-function formatTimeRange(range: { since?: number; before?: number }, t: (k: string, v?: Record<string, string | number>) => string): string {
-  if (range.since && !range.before) {
-    return t('filter.since', { time: formatTime(range.since, { seconds: false }) })
-  }
-  if (!range.since && range.before) {
-    return t('filter.before', { time: formatTime(range.before, { seconds: false }) })
-  }
-  if (range.since && range.before) {
-    return `${formatTime(range.since, { seconds: false })} – ${formatTime(range.before, { seconds: false })}`
-  }
-  return ''
 }

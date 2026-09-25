@@ -13,7 +13,7 @@ Four independent implementations exist, with two different semantics:
 1. **`matchTarget`** (core/db/event-aggregates.ts) — lowercase substring match.
    `example.com` matches `notexample.com`. CIDR handling is broken (startsWith
    on network prefix string). Used by `queryScopeFilteredEvents` and
-   `hostCausalChain`.
+   `hostCausalChain` (removed in #143).
 2. **`matchesScope`** (renderer/lib/scope.ts) — case-sensitive exact + CIDR.
    Used by HTTP History, TargetView.
 3. **`matchesScopePattern`** (renderer/lib/timelineScopeMatch.ts) — identical

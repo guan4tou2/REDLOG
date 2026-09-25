@@ -8,6 +8,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
+import { EmptyByConstructionNotice } from './FilterNotice'
 
 interface LootEvent {
   id: string
@@ -211,6 +212,12 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
             {t('common.retry')}
           </button>
         </div>
+      ) : sharedFilter.agentType && sharedFilter.agentType !== 'loot' ? (
+        // Spec 038 FR-012: the Type chip is applied and Loot holds only loot
+        // rows, so the list is empty by construction, not for want of loot.
+        <EmptyByConstructionNotice
+          text={t('filter.lootTypeEmpty', { condition: `${t('filter.type')}: ${sharedFilter.agentType}` })}
+        />
       ) : lootEvents.length === 0 ? (
         <EmptyState
           icon={Gem}

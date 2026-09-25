@@ -2,9 +2,10 @@
 // Pulled out of Timeline.tsx so they are testable in isolation and
 // reusable by other modules (e.g. eventTitle, first-run strip).
 // No React dependency — everything here is a type, a constant, or a
-// referentially transparent function.
+// referentially transparent function. The time labels are the one
+// exception: they print in the display zone, which `lib/time` holds.
 
-import { formatTs, type TzMode } from './time'
+import { formatTime, formatDate, formatDateTime } from './time'
 import { compareMonotonicNs } from './eventOrder'
 
 // ── Lane / band topology ────────────────────────────────────────────
@@ -187,24 +188,13 @@ export function binarySearchInsert(sorted: RedLogEvent[], evt: RedLogEvent): voi
   sorted.splice(lo, 0, evt)
 }
 
-// v0.6.91 S7: timezone-aware formatter.
 /** v0.11.4 (AUDIT V6): time-only ticks are ambiguous across midnight. Prefix
- *  the date on the first tick and on any tick that starts a new day. */
-export function axisLabel(
-  ts: number, i: number, ticks: number[], span: number, tz: TzMode, projectTz: string | null
-): string {
-  const time = formatTs(ts, tz, projectTz, 'time')
-  if (span < 24 * 3600_000) return time
-  const dayOf = (ms: number): string => {
-    const d = new Date(ms)
-    return tz === 'utc' ? d.toISOString().slice(0, 10) : d.toDateString()
-  }
-  if (i > 0 && dayOf(ticks[i - 1]) === dayOf(ts)) return time
-  const d = new Date(ts)
-  const date = tz === 'utc'
-    ? d.toISOString().slice(5, 10)
-    : `${d.getMonth() + 1}/${d.getDate()}`
-  return `${date} ${time}`
+ *  the date on the first tick and on any tick that starts a new day. The day
+ *  is the display zone's, as the time is (spec 038). */
+export function axisLabel(ts: number, i: number, ticks: number[], span: number): string {
+  if (span < 24 * 3600_000) return formatTime(ts)
+  if (i > 0 && formatDate(ticks[i - 1]) === formatDate(ts)) return formatTime(ts)
+  return formatDateTime(ts, { year: false })
 }
 
 export function formatBehind(ms: number): string {

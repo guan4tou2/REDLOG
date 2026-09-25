@@ -6,6 +6,7 @@ import { formatTime, formatSize } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { UnappliedFilterNotice } from './FilterNotice'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
+import { QueryReadout } from './QueryReadout'
 import { AlignLeft } from 'lucide-react'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 
@@ -391,7 +392,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       if (seq === loadSeqRef.current) setLoading(false)
     }
-  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [buckets, backendQuery, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder) return
@@ -434,7 +435,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
     } finally {
       setLoadingOlder(false)
     }
-  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal])
+  }, [bucketPages, buckets, backendQuery, events, loadingOlder, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -532,22 +533,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
           placeholder={t('transcript.filter')}
           className="ml-2 flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
         />
-        {parse?.ok && parse.parsed.tokens.length > 0 && (
-          <span data-testid="transcript-query-parse" className="flex items-center gap-1 text-xs">
-            <span className="text-redlog-text-faint">{t('transcript.queryReadAs')}</span>
-            {parse.parsed.tokens.map((tok, i) => (
-              <span
-                key={i}
-                title={t(tok.read === 'condition' ? 'transcript.queryTokenCondition' : 'transcript.queryTokenText')}
-                className={`font-mono px-1 py-0.5 rounded border ${
-                  tok.read === 'condition'
-                    ? 'text-indigo-300 border-indigo-500/40 bg-indigo-500/10'
-                    : 'text-redlog-text-dim border-redlog-border bg-redlog-surface'
-                }`}
-              >{tok.raw}</span>
-            ))}
-          </span>
-        )}
+        <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         <div className="flex gap-1">
           {KINDS.map((k) => (
             <button
@@ -576,14 +562,7 @@ export default function TranscriptView({ onOpenInTimeline }: {
         {/* Unparsable is its own state. It is not a failure — nothing was
             asked — and it is emphatically not an empty result, which would
             invite reading a typo as proof the evidence is absent. */}
-        {parseFailed && !parse.ok && (
-          <div data-testid="transcript-query-unparsable" role="status" className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            <div className="font-medium">{t('transcript.queryUnparsable')}</div>
-            <div className="mt-1 text-redlog-text-dim">
-              {t(`transcript.queryUnparsable.${parse.reason}`, { token: parse.token })}
-            </div>
-          </div>
-        )}
+        <QueryReadout outcome={parseFailed && parse && !parse.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />
         {toolSession && (
           <div data-testid="transcript-tool-session" role="status" className="rounded border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200">
             <div>{t('transcript.queryToolSession', { tool: toolSession.toolUseId, session: toolSession.sessionId })}</div>

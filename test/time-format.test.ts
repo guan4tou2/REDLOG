@@ -78,17 +78,20 @@ describe('no component formats its own time', () => {
     expect(offenders).toEqual([])
   })
 
-  it('keeps the zone-aware path in the same module as the plain one', () => {
-    // The Timeline's audit mode pins UTC. While that branch lived only in
-    // Timeline.tsx, `lib/time.ts` did not know timestamps could carry a zone
-    // at all — so any rule it enforced was enforced over half the app.
+  it('keeps the one display zone in the same module as the formatters', () => {
+    // While the zone branch lived in the Timeline, `lib/time.ts` did not know
+    // timestamps could carry a zone at all — so any rule it enforced was
+    // enforced over half the app. Then the Timeline's zone was its own
+    // picker, and one event could read two ways (spec 038). Now the zone is
+    // held here and nowhere else keeps one.
     const mod = fs.readFileSync(path.join(ROOT, 'src/renderer/src/lib/time.ts'), 'utf-8')
-    expect(mod).toMatch(/export function formatTs/)
-    expect(mod).toMatch(/export type TzMode/)
-    const timeline = fs.readFileSync(
-      path.join(ROOT, 'src/renderer/src/components/Timeline.tsx'), 'utf-8'
-    )
-    expect(timeline).not.toMatch(/^function formatTs/m)
+    expect(mod).toMatch(/export function setDisplayZone/)
+    expect(mod).toMatch(/export type DisplayZone/)
+    const offenders = sources()
+      .filter(([f]) => !f.endsWith('lib/time.ts'))
+      .filter(([, src]) => /\bformatTs\b|\bTzMode\b|redlog-timeline-tz|redlog-display-zone/.test(src))
+      .map(([f]) => f)
+    expect(offenders).toEqual([])
   })
 
   it('keeps relative time to freshness fields', () => {

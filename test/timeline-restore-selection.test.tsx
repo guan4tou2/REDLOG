@@ -5,7 +5,7 @@ import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import en from '../src/renderer/src/i18n/en.json'
-import { installTimelineBridge, makeEvent, type TimelineBridge } from './helpers/timeline-bridge'
+import { installTimelineBridge, makeEvent, page, type TimelineBridge } from './helpers/timeline-bridge'
 
 const T0 = 1_700_000_000_000
 const KEY = 'redlog-timeline-focus-event'
@@ -26,7 +26,12 @@ describe('the Timeline restores the last selected event', () => {
   beforeEach(() => {
     b = installTimelineBridge()
     try { localStorage.clear() } catch { /* ignore */ }
-    b.query.mockResolvedValue([makeEvent('e1', T0 - 2000), makeEvent('e2', T0 - 1000), makeEvent('e3', T0)])
+    // Spec 038 moved the first load from `events.query` to `events.queryPage`,
+    // so scripting `query` leaves the panel with nothing and it renders the
+    // empty state — which is what the restore had nothing to select from.
+    b.queryPage.mockResolvedValue(
+      page([makeEvent('e1', T0 - 2000), makeEvent('e2', T0 - 1000), makeEvent('e3', T0)])
+    )
   })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 

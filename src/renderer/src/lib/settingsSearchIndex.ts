@@ -221,6 +221,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.language',
     'settings.uiScale',
     'settings.disclosure',
+    'settings.displayZone',
+    'settings.displayZoneHint',
     'settings.showAllPages',
     'settings.showAllPagesHint'
   ],
