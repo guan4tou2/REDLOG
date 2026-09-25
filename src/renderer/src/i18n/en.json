@@ -1295,10 +1295,16 @@
   "legacyHook.backup": "Backup of your old profile:",
   "legacyHook.failed": "Update failed:",
   "legacyHook.dismiss": "Dismiss",
+  "readiness.checkFailed": "The environment check could not run.",
+  "firstRun.readFailedTitle": "Could not read the timeline",
+  "firstRun.readFailedWhy": "This is a read failure, not an empty log — capture may well be running.",
+  "firstRun.preflightFailedTitle": "The environment check could not run",
+  "firstRun.preflightFailedWhy": "Missing dependencies cannot be reported until it does.",
+  "firstRun.remediationNeeds": "Needs {{tool}} first:",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry",
   "settings.save.saving": "Saving…",
   "settings.save.saved": "Config saved to this project",
   "settings.save.failed": "Could not save. Your changes are still here.",
-  "settings.save.retry": "Retry",
-  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
-  "filter.listsRetry": "Retry"
+  "settings.save.retry": "Retry"
 }
