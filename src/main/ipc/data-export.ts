@@ -124,7 +124,14 @@ function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, plans: Ex
   return plan
 }
 
-function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan, 'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts'> {
+// `scopeSnapshot` travels with the preview: the export menu has to be able to
+// name the boundary this plan was resolved against. Without it the menu could
+// only say whether masking was on, which is a policy, not the scope — and it
+// filled the gap with `hasScope: false`, a value it had simply made up.
+// `selectedEventIds` and the digests stay behind; the renderer confirms by
+// planId and never needs them.
+function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan,
+  'id' | 'fingerprint' | 'expiresAt' | 'request' | 'snapshot' | 'capabilities' | 'counts' | 'scopeSnapshot'> {
   return {
     id: plan.id,
     fingerprint: plan.fingerprint,
@@ -132,7 +139,8 @@ function exportPlanPreview(plan: ExportPlan): Pick<ExportPlan, 'id' | 'fingerpri
     request: plan.request,
     snapshot: plan.snapshot,
     capabilities: plan.capabilities,
-    counts: plan.counts
+    counts: plan.counts,
+    scopeSnapshot: plan.scopeSnapshot
   }
 }
 
