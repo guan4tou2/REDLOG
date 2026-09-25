@@ -1296,5 +1296,7 @@
   "legacyHook.failed": "Update failed:",
   "legacyHook.dismiss": "Dismiss",
   "filter.clearCondition": "Clear {{condition}}",
-  "settings.pageBrowser": "Browser & HTTP capture"
+  "settings.pageBrowser": "Browser & HTTP capture",
+  "filter.listsFailed": "Could not load the target and type lists. What is shown may be out of date.",
+  "filter.listsRetry": "Retry"
 }

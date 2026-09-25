@@ -54,6 +54,13 @@ try:
         if b'READY_FOR_INTERRUPT' in seen and not sent:
             os.write(master, b'\\x03')
             sent = True
+    if child.poll() is None and sent:
+        # The interrupt is in flight; let it land before reaching for SIGTERM,
+        # which would report 143 and read as 'the interrupt did nothing'.
+        try:
+            sys.exit(child.wait(timeout=3))
+        except subprocess.TimeoutExpired:
+            pass
     if child.poll() is None:
         child.terminate()
     sys.exit(child.wait(timeout=3))
