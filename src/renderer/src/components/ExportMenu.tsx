@@ -24,7 +24,6 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const [sharing, setSharing] = useState(false)
   const [maskScope, setMaskScope] = useState(true)
   const [pending, setPending] = useState<PendingExport | null>(null)
-  const [preview, setPreview] = useState<ExportPreview | null>(null)
   const [resolvedPlan, setResolvedPlan] = useState<ResolvedExportPlan | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -35,7 +34,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
-        if (pending) { setPending(null); setPreview(null) }
+        if (pending) { setPending(null); setResolvedPlan(null) }
         else setOpen(false)
       }
     }
@@ -46,32 +45,20 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
   const loadPreview = useCallback(async (p: PendingExport) => {
     setPending(p)
     setPreviewLoading(true)
-    setPreview(null)
     setResolvedPlan(null)
     setPreviewError(null)
     try {
       const resolved = await window.redlog.data.resolveExportPlan(p.request)
       if (!resolved.ok) throw new Error(resolved.error)
+      // The plan IS the preview. This used to be reshaped into an
+      // `ExportPreview` whose `hasScope`, `screenshotEvents` and `snapshot`
+      // were hardcoded to false/0/zeros, and whose `inScope` was
+      // `included - maskedOutOfScope` — arithmetic, not a scope
+      // classification. An operator checking what they are about to hand over
+      // was reading numbers RedLog had made up.
       setResolvedPlan(resolved.plan)
-      setPreview({
-          total: resolved.plan.counts.examined,
-          included: resolved.plan.counts.included,
-          dropped: resolved.plan.counts.excludedDoNotExport,
-          personalDropped: resolved.plan.counts.excludedPersonal,
-          blacklisted: resolved.plan.counts.excludedBlacklist,
-          outOfScope: resolved.plan.counts.maskedOutOfScope,
-          inScope: Math.max(0, resolved.plan.counts.included - resolved.plan.counts.maskedOutOfScope),
-          sanitized: resolved.plan.counts.sanitized,
-          doNotExportCount: resolved.plan.counts.excludedDoNotExport,
-          hasScope: false,
-          sharing: resolved.plan.request.sharing,
-          withBodyRefs: resolved.plan.counts.attachmentsIncluded,
-          screenshotEvents: 0,
-          snapshot: { chainedMaxRowId: 0, loggedMaxRowId: 0, takenAt: 0 }
-      })
     } catch (error) {
-      setPreview(null)
-      setPreviewError(String((error as Error)?.message ?? error))
+        setPreviewError(String((error as Error)?.message ?? error))
     } finally {
       setPreviewLoading(false)
     }
@@ -96,8 +83,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
     } finally {
       setBusy(false)
       setPending(null)
-      setPreview(null)
-      setResolvedPlan(null)
+        setResolvedPlan(null)
       setPreviewError(null)
       setOpen(false)
     }
@@ -177,7 +163,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-[90]" onClick={() => { setPending(null); setPreview(null); setOpen(false) }} />
+          <div className="fixed inset-0 z-[90]" onClick={() => { setPending(null); setResolvedPlan(null); setOpen(false) }} />
           <div
             ref={panel}
             role="menu"
@@ -188,7 +174,7 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
               /* ── Preview panel ── */
               <div aria-busy={previewLoading} aria-live="polite">
                 <button
-                  onClick={() => { setPending(null); setPreview(null) }}
+                  onClick={() => { setPending(null); setResolvedPlan(null) }}
                   className="flex items-center gap-1 px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text w-full"
                 >
                   <ChevronLeft size={12} />
@@ -197,9 +183,9 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                 <div className="border-t border-redlog-border" />
                 {previewLoading ? (
                   <p className="px-3 py-3 text-xs text-redlog-text-faint text-center">{t('export.preview.loading')}</p>
-                ) : preview ? (
+                ) : resolvedPlan ? (
                   <div className="py-1">
-                    {resolvedPlan && (
+                    {(
                       <div className="px-3 pb-2 mb-1 border-b border-redlog-border text-xs space-y-1">
                         <div className="flex justify-between gap-3">
                           <span className="text-redlog-text-dim">{t('export.preview.format')}</span>
@@ -207,16 +193,38 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         </div>
                         <div className="flex justify-between gap-3">
                           <span className="text-redlog-text-dim">{t('export.preview.subset')}</span>
-                          <span className="text-right text-redlog-text">
+                          {/* The actual boundary, not just "bounded": an
+                              operator checking a delivery needs the dates and
+                              the target they are about to hand over. */}
+                          <span data-testid="export-preview-subset" className="text-right text-redlog-text">
                             {resolvedPlan.request.subset.kind === 'all'
                               ? t('export.preview.subsetAll')
-                              : t('export.preview.subsetBounded')}
+                              : <>
+                                  {formatDateTime(resolvedPlan.request.subset.since, { seconds: true })}
+                                  {' → '}
+                                  {formatDateTime(resolvedPlan.request.subset.before, { seconds: true })}
+                                  {resolvedPlan.request.subset.targetId
+                                    && <><br />{t('export.preview.subsetTarget', { target: resolvedPlan.request.subset.targetId })}</>}
+                                </>}
                           </span>
                         </div>
                         <div className="flex justify-between gap-3">
                           <span className="text-redlog-text-dim">{t('export.preview.policy')}</span>
-                          <span className="text-right text-redlog-text">
-                            {resolvedPlan.request.sharing ? t('export.preset.delivery') : t('export.preset.merge')}
+                          <span data-testid="export-preview-policy" className="text-right text-redlog-text">
+                            {[
+                              resolvedPlan.request.sharing ? t('export.preset.delivery') : t('export.preset.merge'),
+                              resolvedPlan.request.maskOutOfScope ? t('export.preview.policyMask') : t('export.preview.policyNoMask'),
+                              ...(resolvedPlan.request.scopeOnly ? [t('export.preview.policyScopeOnly')] : []),
+                              ...(resolvedPlan.request.scrubPii ? [t('export.preview.policyScrubPii')] : [])
+                            ].join(' · ')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-redlog-text-dim">{t('export.preview.scope')}</span>
+                          <span data-testid="export-preview-scope" className="text-right text-redlog-text">
+                            {(resolvedPlan.scopeSnapshot?.targets ?? []).length === 0
+                              ? t('export.preview.scopeNone')
+                              : resolvedPlan.scopeSnapshot.targets.join(', ')}
                           </span>
                         </div>
                         <div className="flex justify-between gap-3" title={resolvedPlan.fingerprint}>
@@ -231,26 +239,42 @@ export function ExportMenu({ totalCount }: ExportMenuProps): JSX.Element {
                         </div>
                       </div>
                     )}
-                    <PreviewRow label={t('export.preview.total')} value={preview.total} />
-                    <PreviewRow label={t('export.preview.inScope')} value={preview.inScope} />
-                    <PreviewRow label={t('export.preview.outOfScope')} value={preview.outOfScope} warn />
-                    <PreviewRow label={t('export.preview.dropped')} value={preview.dropped} warn />
-                    <PreviewRow label={t('export.preview.personalDropped')} value={preview.personalDropped} warn />
-                    <PreviewRow label={t('export.preview.blacklisted')} value={preview.blacklisted} warn />
-                    <PreviewRow label={t('export.preview.sanitized')} value={preview.sanitized} />
-                    <PreviewRow label={t('export.preview.bodyRefs')} value={preview.withBodyRefs} />
-                    <PreviewRow label={t('export.preview.screenshots')} value={preview.screenshotEvents} />
-                    {resolvedPlan && <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />}
+                    {/* Every row below is a number the resolver measured.
+                        `inScope` used to be `included - maskedOutOfScope`,
+                        which is not a scope classification, and `screenshots`
+                        was hardcoded 0 - both are gone rather than guessed. */}
+                    <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />
+                    <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />
+                    <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
+                    <PreviewRow label={t('export.preview.personalDropped')} value={resolvedPlan.counts.excludedPersonal} warn />
+                    <PreviewRow label={t('export.preview.blacklisted')} value={resolvedPlan.counts.excludedBlacklist} warn />
+                    <PreviewRow label={t('export.preview.sanitized')} value={resolvedPlan.counts.sanitized} />
+                    {/* Three different things that all used to read as "0
+                        attachments": this format carries none, none were
+                        referenced, or some could not be attached. */}
+                    {!resolvedPlan.capabilities.attachments ? (
+                      <div data-testid="export-preview-no-attachments" className="flex justify-between text-xs px-3 py-0.5">
+                        <span className="text-redlog-text-dim">{t('export.preview.bodyRefs')}</span>
+                        <span className="text-redlog-text-faint">{t('export.preview.attachmentsUnsupported')}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <PreviewRow label={t('export.preview.bodyRefs')} value={resolvedPlan.counts.attachmentsIncluded} />
+                        <PreviewRow label={t('export.preview.attachmentsMissing')} value={resolvedPlan.counts.attachmentsMissing} warn />
+                        <PreviewRow label={t('export.preview.attachmentsUnattributed')} value={resolvedPlan.counts.attachmentsUnattributed} warn />
+                      </>
+                    )}
+                    <PreviewRow label={t('export.preview.unsupportedAttachments')} value={resolvedPlan.counts.unsupported} warn />
                     <div className="border-t border-redlog-border mt-1 pt-1">
                       <div className="flex justify-between text-xs px-3 py-0.5 font-medium">
                         <span className="text-redlog-text">{t('export.preview.included')}</span>
-                        <span className="text-redlog-text font-mono tabular-nums">{preview.included}</span>
+                        <span className="text-redlog-text font-mono tabular-nums">{resolvedPlan.counts.included}</span>
                       </div>
                     </div>
                     <div className="px-3 pt-2 pb-1">
                       <button
                         onClick={() => void confirmExport()}
-                        disabled={busy || preview.included === 0}
+                        disabled={busy || resolvedPlan.counts.included === 0}
                         className="w-full px-3 py-1.5 text-xs rounded bg-red-600 text-redlog-bg hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
                         {busy ? '…' : t('export.preview.confirm')}

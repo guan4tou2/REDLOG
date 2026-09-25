@@ -33,6 +33,9 @@ interface ResolvedExportPlan {
   expiresAt: number
   snapshot: ExportSnapshot
   request: Required<Omit<ExportRequest, 'subset'>> & { subset: ExportSubset }
+  /** The boundary this plan was resolved against, so the menu can name it
+   *  rather than guess at it. */
+  scopeSnapshot: { targets: string[]; excludeTargets: string[]; personalDomains: string[]; blacklist?: string[] }
   capabilities: {
     snapshot: boolean
     boundedSubset: boolean
@@ -57,22 +60,7 @@ interface ResolvedExportPlan {
 type ExportPlanResponse = { ok: true; plan: ResolvedExportPlan } | { ok: false; error: string }
 type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifactPath: string; counts: ResolvedExportPlan['counts']; warnings: string[] } | { ok: false; error: string; planId?: string; fingerprint?: string }
 
-interface ExportPreview {
-  total: number
-  included: number
-  dropped: number
-  personalDropped: number
-  blacklisted: number
-  outOfScope: number
-  inScope: number
-  sanitized: number
-  doNotExportCount: number
-  hasScope: boolean
-  sharing: boolean
-  withBodyRefs: number
-  screenshotEvents: number
-  snapshot: ExportSnapshot
-}
+
 
 interface IPStatus {
   externalIP: string | null
