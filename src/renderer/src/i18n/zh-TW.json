@@ -1304,5 +1304,7 @@
   "export.preview.policyScrubPii": "已清除個資",
   "export.preview.attachmentsUnsupported": "這個格式不帶附件",
   "export.preview.attachmentsMissing": "附件遺失",
-  "export.preview.attachmentsUnattributed": "附件無法歸屬"
+  "export.preview.attachmentsUnattributed": "附件無法歸屬",
+  "filter.listsFailed": "目標與類型清單載入失敗，畫面上顯示的可能不是最新的。",
+  "filter.listsRetry": "重試"
 }
