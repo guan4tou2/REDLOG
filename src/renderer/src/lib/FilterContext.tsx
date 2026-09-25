@@ -74,6 +74,16 @@ export const describeActiveConditions = (
 ): string[] =>
   Object.values(conditionLabels(filter, t, opts)).filter((l): l is string => !!l)
 
+/** Whether the option lists behind the filter menus are loaded.
+ *
+ *  Empty and failed are not the same thing, and the menus used to render them
+ *  identically: `refreshLists` and the scope read swallowed their rejections,
+ *  so a failed first load left an empty menu that read as "this project has no
+ *  targets", and a failed refresh left the previous values on screen with
+ *  nothing to say they were stale. An operator choosing what to look at
+ *  deserves to know which of those they are looking at. */
+export type ListsStatus = 'loading' | 'ready' | 'error'
+
 interface FilterContextValue {
   filter: SharedFilter
   setTargetId: (id: string | null) => void
@@ -89,6 +99,12 @@ interface FilterContextValue {
   scopeTargets: string[]
   scopeExcludeTargets: string[]
   personalDomains: string[]
+  /** Of the target/type menus. `error` keeps whatever loaded before. */
+  listsStatus: ListsStatus
+  /** Of the scope lists, which drive the in-scope and personal switches. */
+  scopeStatus: ListsStatus
+  /** Load the menus again, for the retry the operator is offered. */
+  retryLists: () => void
 }
 
 const EMPTY: SharedFilter = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true, tier: 'all' }
@@ -107,7 +123,10 @@ const FilterContext = createContext<FilterContextValue>({
   knownAgentTypes: [],
   scopeTargets: [],
   scopeExcludeTargets: [],
-  personalDomains: []
+  personalDomains: [],
+  listsStatus: 'loading',
+  scopeStatus: 'loading',
+  retryLists: () => {}
 })
 
 export function FilterProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -118,25 +137,42 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [scopeExcludeTargets, setScopeExcludeTargets] = useState<string[]>([])
   const [personalDomains, setPersonalDomains] = useState<string[]>([])
 
+  const [listsStatus, setListsStatus] = useState<ListsStatus>('loading')
+  const [scopeStatus, setScopeStatus] = useState<ListsStatus>('loading')
+
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A late reply must not write into a provider that has gone away — the
+  // provider unmounts when the project closes, so a reply in flight then
+  // belongs to a project that is no longer open.
+  const live = useRef(true)
+  useEffect(() => () => { live.current = false }, [])
 
   const refreshLists = useCallback(() => {
-    window.redlog.events.aggregateTargets()
-      .then((rows) => setKnownTargets(rows.map((r) => ({ target: r.target, eventCount: r.eventCount }))))
-      .catch(() => {})
-    ;(window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
+    // A failure keeps whatever loaded before rather than blanking the menus:
+    // stale-and-labelled beats empty-and-silent, which reads as "no data".
+    const targets = window.redlog.events.aggregateTargets()
+      .then((rows) => {
+        if (live.current) setKnownTargets(rows.map((r) => ({ target: r.target, eventCount: r.eventCount })))
+      })
+    const types = (window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
       .distinctAgentTypes?.()
-      .then((types) => setKnownAgentTypes(types ?? []))
-      .catch(() => {})
+      .then((list) => { if (live.current) setKnownAgentTypes(list ?? []) })
+      ?? Promise.resolve()
+    void Promise.allSettled([targets, types]).then((results) => {
+      if (!live.current) return
+      setListsStatus(results.some((r) => r.status === 'rejected') ? 'error' : 'ready')
+    })
   }, [])
 
   useEffect(() => {
     const refreshScope = (): void => { window.redlog.config.get().then((c) => {
+      if (!live.current) return
       const cfg = c as { scope?: { targets?: string[]; excludeTargets?: string[]; personalDomains?: string[] } } | null
       setScopeTargets(cfg?.scope?.targets ?? [])
       setScopeExcludeTargets(cfg?.scope?.excludeTargets ?? [])
       setPersonalDomains(cfg?.scope?.personalDomains ?? [])
-    }).catch(() => {}) }
+      setScopeStatus('ready')
+    }).catch(() => { if (live.current) setScopeStatus('error') }) }
     refreshScope()
     window.addEventListener('redlog:config-saved', refreshScope)
     return () => window.removeEventListener('redlog:config-saved', refreshScope)
@@ -183,11 +219,15 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     + (filter.inScopeOnly ? 1 : 0)
     + (filter.tier === 'chained' ? 1 : 0)
 
+  const retryLists = useCallback(() => { setListsStatus('loading'); refreshLists() }, [refreshLists])
+
   const value = useMemo(() => ({
     filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains,
+    listsStatus, scopeStatus, retryLists
   }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
-       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains])
+       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains,
+       listsStatus, scopeStatus, retryLists])
 
   return <FilterContext value={value}>{children}</FilterContext>
 }
