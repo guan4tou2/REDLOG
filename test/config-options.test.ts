@@ -78,7 +78,7 @@ const DEFAULTS: Record<string, Check> = {
 
   // 2.8 browser
   'browser.binary': '',
-  'browser.proxy': 'http://127.0.0.1:8080',
+  'browser.proxy': 'http://127.0.0.1:6661',
   'browser.cdpPort': 9222,
   'browser.isolateProfile': true,
   'browser.ignoreCertErrors': true,
@@ -86,7 +86,10 @@ const DEFAULTS: Record<string, Check> = {
   'browser.extraArgs': [],
 
   // 2.8a httpCapture
-  'httpCapture.port': 8080,
+  // Not 8080: Burp's default listener, and Burp is running on most machines
+  // this ships to, so the old default guaranteed a bind failure on first use.
+  'httpCapture.port': 6661,
+  'httpCapture.listenHost': '127.0.0.1',
   'httpCapture.routeTerminals': false,
 
   // 2.9 redaction

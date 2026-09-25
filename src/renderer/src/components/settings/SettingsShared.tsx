@@ -29,7 +29,7 @@ export interface ConfigState {
     startUrl: string
     extraArgs: string[]
   }
-  httpCapture?: { port: number; routeTerminals?: boolean }
+  httpCapture?: { port: number; listenHost?: string; routeTerminals?: boolean }
   // v0.7.7 U1: Settings > AI Agents surface for the built-in Claude Code
   // tailer. v0.8.0 will expand this into a list of installed tailer
   // plugins; the shape here (enabled + emitThinking) stays the "default"

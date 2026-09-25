@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { managedProxyUrl } from '../../core/managed-proxy-url'
 
 export type ManagedProxyState = 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
 
@@ -27,9 +28,9 @@ const DEFAULT_DEPS: Dependencies = {
   readinessTimeoutMs: 5_000
 }
 
-export function buildManagedProxyArgs(addonPath: string, port: number): string[] {
+export function buildManagedProxyArgs(addonPath: string, port: number, listenHost = '127.0.0.1'): string[] {
   return [
-    '--listen-host', '127.0.0.1',
+    '--listen-host', listenHost,
     '--listen-port', String(port),
     '--set', 'block_global=false',
     '-s', addonPath
@@ -68,11 +69,12 @@ export class ManagedHttpProxy {
     for (const listener of this.listeners) listener(current, previous)
   }
 
-  start(input: { addonPath: string; port: number; caPath?: string }): Promise<ManagedProxyStatus> {
+  start(input: { addonPath: string; port: number; listenHost?: string; caPath?: string }): Promise<ManagedProxyStatus> {
     if (this.snapshot.state === 'running') return Promise.resolve(this.status())
     if (this.startPromise) return this.startPromise
 
-    const url = `http://127.0.0.1:${input.port}`
+    const listenHost = input.listenHost ?? '127.0.0.1'
+    const url = managedProxyUrl({ host: listenHost, port: input.port })
     this.caPath = input.caPath ?? null
     if (!this.deps.exists(input.addonPath)) {
       this.update({ state: 'failed', url: null, error: `mitmproxy addon not found: ${input.addonPath}` })
@@ -101,7 +103,7 @@ export class ManagedHttpProxy {
 
       let child: ChildProcess
       try {
-        child = this.deps.spawn('mitmdump', buildManagedProxyArgs(input.addonPath, input.port), {
+        child = this.deps.spawn('mitmdump', buildManagedProxyArgs(input.addonPath, input.port, listenHost), {
           stdio: ['ignore', 'pipe', 'pipe'],
           env: process.env
         })
