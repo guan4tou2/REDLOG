@@ -269,3 +269,86 @@ describe('first run: optional HTTP card', () => {
     ))
   })
 })
+
+// Spec 039: "connected" must say what is recorded, and HTTP is verified by the
+// first request that reaches RedLog, not by the proxy process running.
+async function verifyShell(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
+  const cmd = (await screen.findByTestId('record-terminal-command')).textContent ?? ''
+  emit([{ id: 'v', timestamp: 9, agentType: 'shell', data: { subtype: 'command_end', command: cmd } }])
+  return screen.findByTestId('record-terminal-verified')
+}
+
+describe('first run: a verified shell says what it records (Spec 039)', () => {
+  it('names the metadata, says output is not included, and offers redlog-session', async () => {
+    install()
+    draw()
+    await verifyShell()
+    const scope = screen.getByTestId('record-terminal-scope')
+    expect(scope.textContent).toContain('指令、結束碼、耗時、工作目錄')
+    expect(scope.textContent).toContain('不含輸出')
+    expect(screen.getByTestId('record-terminal-session-command').textContent).toBe('redlog-session')
+  })
+
+  it('does not offer redlog-session for PowerShell, which has no such command', async () => {
+    install({ pre: preflight({ platform: 'win32', shell: { name: 'powershell', hookId: 'shell-powershell' } }) })
+    draw()
+    await verifyShell()
+    expect(screen.getByTestId('record-terminal-scope').textContent).toContain('不含輸出')
+    expect(screen.queryByTestId('record-terminal-session-command')).toBeNull()
+    expect(screen.getByTestId('record-terminal-scope').textContent).toContain('內建終端')
+  })
+})
+
+const RUNNING: ManagedProxyStatus = { state: 'running', url: 'http://127.0.0.1:8080', caPath: '/home/op/.mitmproxy/mitmproxy-ca-cert.pem' }
+const HTTP_EVENT: Ev = { id: 'h1', timestamp: 10, agentType: 'scanner', data: { subtype: 'http_request_start', flow_id: 'f1', url: 'http://example.test/' } }
+
+describe('first run: HTTP is verified by the first request (Spec 039)', () => {
+  it('waits while the proxy runs and verifies only on an HTTP request event, then stops listening', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    const card = await screen.findByTestId('first-run-http')
+    await waitFor(() => expect(card.textContent).toContain('等第一筆 HTTP 請求'))
+    const before = listeners.length
+    emit([{ id: 's', timestamp: 3, agentType: 'shell', data: { subtype: 'command_end', command: 'curl x' } }])
+    emit([{ id: 'n', timestamp: 4, agentType: 'network', data: { subtype: 'connection' } }])
+    expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
+    emit([HTTP_EVENT])
+    expect((await screen.findByTestId('first-run-http-verified')).textContent).toContain('HTTP 擷取已驗證')
+    expect(listeners.length).toBe(before - 1)
+  })
+
+  it('does not listen while the proxy is not running', async () => {
+    install({ proxy: { state: 'stopped', url: null } })
+    draw()
+    await screen.findByTestId('first-run-http')
+    const before = listeners.length
+    emit([HTTP_EVENT])
+    expect(screen.queryByTestId('first-run-http-verified')).toBeNull()
+    fireEvent.click(screen.getByText('開始 HTTP 擷取'))
+    await waitFor(() => expect(listeners.length).toBe(before + 1))
+  })
+
+  it('after 60 s names concrete reasons and still verifies a late request', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install({ proxy: { ...RUNNING, certReady: false } })
+    draw()
+    // `first-run-http` is the section wrapper and is present in every state,
+    // so finding it says nothing about whether the proxy has been reported as
+    // running yet. The timeout timer is armed by the effect that runs *when*
+    // it is (`if (!running || verified) return`), so advancing the clock
+    // before that arms nothing and the banner never appears — which is what
+    // made this the only red test on main in a full run while the file passed
+    // on its own. Wait for the running state, then advance.
+    await screen.findByTestId('first-run-http')
+    await screen.findByText(/正在監聽/)
+    await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
+    const why = await screen.findByTestId('first-run-http-timeout')
+    expect(why.textContent).toContain('開啟代理瀏覽器')
+    expect(why.textContent).toContain('HTTPS')
+    expect(why.textContent).toContain('預設關閉')
+    emit([HTTP_EVENT])
+    expect(await screen.findByTestId('first-run-http-verified')).toBeTruthy()
+    expect(screen.queryByTestId('first-run-http-timeout')).toBeNull()
+  })
+})

@@ -33,6 +33,19 @@ export default defineConfig({
     // the test asserts rather than of the clock. A genuine hang still ends the
     // run; a busy machine no longer fails a passing test.
     testTimeout: 15_000,
+    // `hookTimeout` is a separate budget and was left at its 10s default when
+    // testTimeout was raised. Hooks here do real work — a beforeEach that
+    // mkdtemps a directory, opens a SQLite database and seeds it — and on a
+    // loaded Windows runner that is what tips over first:
+    //
+    //   FAIL test/timeline-filter-completeness.test.ts
+    //   Error: Hook timed out in 10000ms.
+    //     at beforeEach → fs.mkdtempSync(...); db.initDB(dir)
+    //
+    // In the same run `chain-concurrency` took 46.8s, so the box was busy, not
+    // the hook slow. Same reasoning as testTimeout: a genuine hang still ends
+    // the run, a busy machine no longer fails a passing test.
+    hookTimeout: 15_000,
     // Keep a machine-readable record of every run in CI.
     //
     // The suite has an intermittent failure that lands on a different file

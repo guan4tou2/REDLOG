@@ -160,9 +160,14 @@ describe('focus trap', () => {
     document.body.appendChild(outside)
     mount()
     void confirm('Trapped', 'Focus belongs here.')
-    const dialog = await screen.findByRole('dialog')
+    // Listening, not merely present (see openedDialog). This case waited only
+    // for the element, so now and then the Tab below was pressed before the
+    // passive effect had registered the trap's keydown listener, and focus
+    // stayed outside.
+    const dialog = await openedDialog()
 
     outside.focus()
+    expect(dialog.contains(document.activeElement)).toBe(false)
     fireEvent.keyDown(document, { key: 'Tab' })
     expect(dialog.contains(document.activeElement)).toBe(true)
     outside.remove()
